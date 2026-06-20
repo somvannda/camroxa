@@ -1,0 +1,1338 @@
+[
+  {
+    "id": "d50a629a-7ccd-46ac-9a26-f06d402317ba",
+    "name": "Bass Drive",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff4500",
+              "#ff1493"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {
+        "smoke": {
+          "blur": 0.55,
+          "color": "#000000",
+          "noise": 0.55,
+          "speed": 0.35,
+          "enabled": false,
+          "opacity": 0.55,
+          "strength": 0.35
+        },
+        "vignette": {
+          "color": "#000000",
+          "enabled": false,
+          "feather": 0.65,
+          "opacity": 0.65,
+          "strength": 0.35
+        }
+      },
+      "logoPath": "C:/Users/Kong Somvannda/Downloads/bass drive logo.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200,
+        "scale": 1,
+        "enabled": true,
+        "opacity": 1,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "spinSpeed": 0.0,
+        "circleMask": true,
+        "reactivity": 0.7,
+        "spinEnabled": false,
+        "spinDirection": "cw"
+      },
+      "templateName": "Bass Drive",
+      "textOverlays": [],
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "spectrumEnabled": true,
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 2.5,
+        "color": "#ffffff",
+        "drift": 0.0,
+        "speed": 10.9,
+        "style": "dot",
+        "swirl": 0.0,
+        "enabled": true,
+        "opacity": 1.0,
+        "variant": "classic",
+        "maxCount": 1200,
+        "smoothing": 0.65,
+        "spawnArea": "centerRing",
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 400.0,
+        "reactColor": "#ffffff",
+        "reactivity": 0.5,
+        "sizeJitter": 0.0,
+        "lifetimeSec": 3.75,
+        "spawnTrigger": "both",
+        "reactStrength": 0.65,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "fitMode": "cover",
+        "smoothing": 0.35,
+        "userScale": 1.0,
+        "brightness": 1.25,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "userOffsetX": 0.0,
+        "userOffsetY": 0.0,
+        "motionZoomStrength": 1.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-15 18:05:32.566818"
+  },
+  {
+    "id": "a5c9436e-7dfe-466d-9994-f983cef9c0e6",
+    "name": "Bass Ignition",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff00ff",
+              "#00ffff"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {},
+      "logoPath": "C:/Users/Kong Somvannda/Downloads/BASS IGNITION.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200.0,
+        "scale": 1,
+        "opacity": 1,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "circleMask": true,
+        "reactivity": 0.7
+      },
+      "templateName": "Bass Ignition",
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 2.5,
+        "color": "#ffffff",
+        "speed": 10.9,
+        "style": "dot",
+        "enabled": true,
+        "opacity": 1.0,
+        "maxCount": 1200,
+        "smoothing": 0.65,
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 400.0,
+        "reactColor": "#ffffff",
+        "reactivity": 0.5,
+        "lifetimeSec": 3.75,
+        "spawnTrigger": "both",
+        "reactStrength": 0.65,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "smoothing": 0.35,
+        "brightness": 1.25,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "motionZoomStrength": 1.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-04 14:08:48.634510"
+  },
+  {
+    "id": "ede116fb-83d3-4aed-9166-e0eefb8770db",
+    "name": "Bass Reactor",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#55aaff",
+            "gradientColors": [
+              "#ff4500",
+              "#ff1493"
+            ],
+            "gradientDirection": "left-to-right"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {
+        "smoke": {
+          "blur": 0.55,
+          "color": "#000000",
+          "noise": 0.55,
+          "speed": 0.35,
+          "enabled": false,
+          "opacity": 0.55,
+          "strength": 0.35
+        },
+        "vignette": {
+          "color": "#000000",
+          "enabled": false,
+          "feather": 0.65,
+          "opacity": 0.65,
+          "strength": 0.35
+        }
+      },
+      "logoPath": "C:/Users/Kong Somvannda/Downloads/Bass Reactor Logo.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200,
+        "scale": 1,
+        "enabled": true,
+        "opacity": 1,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "spinSpeed": 0.0,
+        "circleMask": true,
+        "reactivity": 0.7,
+        "spinEnabled": false,
+        "spinDirection": "cw"
+      },
+      "templateName": "Bass Reactor",
+      "textOverlays": [],
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "spectrumEnabled": true,
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 2.5,
+        "color": "#ffffff",
+        "drift": 0.0,
+        "speed": 10.9,
+        "style": "dot",
+        "swirl": 0.0,
+        "enabled": true,
+        "opacity": 1.0,
+        "variant": "classic",
+        "maxCount": 1200,
+        "smoothing": 0.65,
+        "spawnArea": "centerRing",
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 400.0,
+        "reactColor": "#ffffff",
+        "reactivity": 0.5,
+        "sizeJitter": 0.0,
+        "lifetimeSec": 3.75,
+        "spawnTrigger": "both",
+        "reactStrength": 0.65,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "fitMode": "cover",
+        "smoothing": 0.35,
+        "userScale": 1.0,
+        "brightness": 1.25,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "userOffsetX": 0.0,
+        "userOffsetY": 0.0,
+        "motionZoomStrength": 1.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-15 18:06:32.365359"
+  },
+  {
+    "id": "bf33093f-2ff5-489f-a4de-7c3e2aea1271",
+    "name": "Bass Vortex",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff0000",
+              "#00ff00",
+              "#0000ff"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {},
+      "logoPath": "C:/Users/Kong Somvannda/Downloads/bass vortex logo.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200.0,
+        "scale": 1,
+        "opacity": 1,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "circleMask": true,
+        "reactivity": 0.7
+      },
+      "templateName": "Bass Vortex",
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 2.5,
+        "color": "#ffffff",
+        "speed": 10.9,
+        "style": "dot",
+        "enabled": true,
+        "opacity": 1.0,
+        "maxCount": 1200,
+        "smoothing": 0.65,
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 400.0,
+        "reactColor": "#ffffff",
+        "reactivity": 0.5,
+        "lifetimeSec": 3.75,
+        "spawnTrigger": "both",
+        "reactStrength": 0.65,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "smoothing": 0.54,
+        "brightness": 1.25,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "motionZoomStrength": 1.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-04 14:09:07.430607"
+  },
+  {
+    "id": "f9968cef-b452-47ad-9632-4775f0eb2899",
+    "name": "BASSNOVA",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#00ff00",
+              "#ffff00"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {
+        "smoke": {
+          "blur": 0.75,
+          "color": "#000000",
+          "noise": 0.73,
+          "speed": 1.39,
+          "enabled": true,
+          "opacity": 1.0,
+          "strength": 0.82
+        },
+        "vignette": {
+          "color": "#000000",
+          "enabled": true,
+          "feather": 0.84,
+          "opacity": 0.65,
+          "strength": 0.67
+        }
+      },
+      "logoPath": "E:/BassNova.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200,
+        "scale": 1,
+        "enabled": true,
+        "opacity": 1.0,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "spinSpeed": 0.0,
+        "circleMask": true,
+        "reactivity": 0.7,
+        "spinEnabled": false,
+        "spinDirection": "cw"
+      },
+      "templateName": "BASSNOVA",
+      "textOverlays": [],
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "spectrumEnabled": true,
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 8.2,
+        "color": "#ffffff",
+        "drift": 0.3,
+        "speed": 6.3,
+        "style": "glow",
+        "swirl": 0.52,
+        "enabled": true,
+        "opacity": 1.0,
+        "variant": "classic",
+        "maxCount": 276,
+        "smoothing": 0.46,
+        "spawnArea": "centerRing",
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 100,
+        "reactColor": "#ffaa00",
+        "reactivity": 0.5,
+        "sizeJitter": 0.3,
+        "lifetimeSec": 1.47,
+        "spawnTrigger": "both",
+        "reactStrength": 0.24,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "fitMode": "cover",
+        "smoothing": 0.5,
+        "userScale": 1.0,
+        "brightness": 2.0,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "userOffsetX": 0.0,
+        "userOffsetY": 0.0,
+        "motionZoomStrength": 2.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-08 11:25:00.315327"
+  },
+  {
+    "id": "f01125b0-d9f9-4242-a663-b92d2e5e76f9",
+    "name": "BassVolt",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#00ff00",
+              "#ffff00"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {
+        "smoke": {
+          "blur": 0.75,
+          "color": "#000000",
+          "noise": 0.73,
+          "speed": 1.39,
+          "enabled": true,
+          "opacity": 1.0,
+          "strength": 0.82
+        },
+        "vignette": {
+          "color": "#000000",
+          "enabled": true,
+          "feather": 0.84,
+          "opacity": 0.65,
+          "strength": 0.67
+        }
+      },
+      "logoPath": "E:/Bassvolt Logo.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200,
+        "scale": 1,
+        "enabled": true,
+        "opacity": 1.0,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "spinSpeed": 0.0,
+        "circleMask": true,
+        "reactivity": 0.7,
+        "spinEnabled": false,
+        "spinDirection": "cw"
+      },
+      "templateName": "BassVolt",
+      "textOverlays": [],
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "spectrumEnabled": true,
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 8.2,
+        "color": "#ffffff",
+        "drift": 0.3,
+        "speed": 6.3,
+        "style": "glow",
+        "swirl": 0.52,
+        "enabled": true,
+        "opacity": 1.0,
+        "variant": "classic",
+        "maxCount": 276,
+        "smoothing": 0.46,
+        "spawnArea": "centerRing",
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 100,
+        "reactColor": "#ffaa00",
+        "reactivity": 0.5,
+        "sizeJitter": 0.3,
+        "lifetimeSec": 1.47,
+        "spawnTrigger": "both",
+        "reactStrength": 0.24,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "fitMode": "cover",
+        "smoothing": 0.5,
+        "userScale": 1.0,
+        "brightness": 2.0,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "userOffsetX": 0.0,
+        "userOffsetY": 0.0,
+        "motionZoomStrength": 2.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-08 11:13:36.171542"
+  },
+  {
+    "id": "376e6a9c-d39e-4fc5-bb30-91762a05414a",
+    "name": "Beattok",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#8a2be2",
+              "#4b0082"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {},
+      "logoPath": "C:/Users/Kong Somvannda/Downloads/beattok logo.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200.0,
+        "scale": 1,
+        "opacity": 1,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "circleMask": true,
+        "reactivity": 0.7
+      },
+      "templateName": "Beattok",
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 3.0,
+        "color": "#ffffff",
+        "speed": 8.9,
+        "style": "dot",
+        "enabled": true,
+        "opacity": 1.0,
+        "maxCount": 475,
+        "smoothing": 0.46,
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 100.0,
+        "reactColor": "#ffffff",
+        "reactivity": 0.5,
+        "lifetimeSec": 2.24,
+        "spawnTrigger": "both",
+        "reactStrength": 0.65,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "smoothing": 0.35,
+        "brightness": 1.25,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "motionZoomStrength": 1.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-04 14:08:36.808273"
+  },
+  {
+    "id": "7a7205cf-290e-4dab-a360-df03101823dc",
+    "name": "Duke Luca",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#00ff00",
+              "#ffff00"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {
+        "smoke": {
+          "blur": 0.55,
+          "color": "#000000",
+          "noise": 0.55,
+          "speed": 0.35,
+          "enabled": false,
+          "opacity": 0.55,
+          "strength": 0.35
+        },
+        "vignette": {
+          "color": "#000000",
+          "enabled": false,
+          "feather": 0.65,
+          "opacity": 0.65,
+          "strength": 0.35
+        }
+      },
+      "logoPath": "C:/Users/Kong Somvannda/Downloads/Thunder Bass logo.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200.0,
+        "scale": 1,
+        "enabled": true,
+        "opacity": 1,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "spinSpeed": 0.0,
+        "circleMask": true,
+        "reactivity": 0.7,
+        "spinEnabled": false,
+        "spinDirection": "cw"
+      },
+      "templateName": "Duke Luca",
+      "textOverlays": [],
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "spectrumEnabled": true,
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 2.8,
+        "color": "#ffffff",
+        "drift": 0.0,
+        "speed": 8.9,
+        "style": "dot",
+        "swirl": 0.0,
+        "enabled": true,
+        "opacity": 1.0,
+        "variant": "classic",
+        "maxCount": 415,
+        "smoothing": 0.46,
+        "spawnArea": "centerRing",
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 121.0,
+        "reactColor": "#ffaa00",
+        "reactivity": 0.5,
+        "sizeJitter": 0.0,
+        "lifetimeSec": 1.24,
+        "spawnTrigger": "both",
+        "reactStrength": 0.65,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "fitMode": "cover",
+        "smoothing": 0.39,
+        "userScale": 1.0,
+        "brightness": 1.51,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "userOffsetX": 0.0,
+        "userOffsetY": 0.0,
+        "motionZoomStrength": 2.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-07 11:02:39.860225"
+  },
+  {
+    "id": "90e9de70-d430-4da7-a0dc-c0d13ff58162",
+    "name": "Thunder Bass",
+    "source": "user",
+    "template": {
+      "style": "liquid",
+      "layers": [
+        {
+          "id": "base-layer",
+          "blur": 30.0,
+          "glow": 100.0,
+          "name": "Base Ring",
+          "color": {
+            "mode": "gradient",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#00ff00",
+              "#ffff00"
+            ],
+            "gradientDirection": "diagonal"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 2.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 41.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 0.0
+        },
+        {
+          "id": "layer-1779789404142-2",
+          "blur": 0.0,
+          "glow": 0.0,
+          "name": "Layer 2",
+          "color": {
+            "mode": "solid",
+            "solidColor": "#ffffff",
+            "gradientColors": [
+              "#ff8800",
+              "#ff0000"
+            ],
+            "gradientDirection": "radial"
+          },
+          "curved": true,
+          "gravity": "bottom",
+          "opacity": 1.0,
+          "barWidth": 1.0,
+          "mirrored": true,
+          "rotation": 0.0,
+          "thickness": 65.0,
+          "blend_mode": "normal",
+          "fillCircle": true,
+          "radiusOffset": 4.0
+        }
+      ],
+      "effects": {
+        "smoke": {
+          "blur": 0.75,
+          "color": "#000000",
+          "noise": 0.73,
+          "speed": 1.39,
+          "enabled": true,
+          "opacity": 1.0,
+          "strength": 0.82
+        },
+        "vignette": {
+          "color": "#000000",
+          "enabled": true,
+          "feather": 0.84,
+          "opacity": 0.65,
+          "strength": 0.67
+        }
+      },
+      "logoPath": "C:/Users/Kong Somvannda/Downloads/Thunder Bass logo.png",
+      "position": {
+        "x": 0,
+        "y": 0,
+        "anchor": "center"
+      },
+      "globalColor": {
+        "mode": "solid",
+        "solidColor": "#ffffff",
+        "gradientColors": [
+          "#ff00ff",
+          "#00ffff"
+        ],
+        "gradientDirection": "left-to-right"
+      },
+      "previewLogo": "C:\\Users\\Kong Somvannda\\Downloads\\bass vortex logo.png",
+      "logoSettings": {
+        "size": 200,
+        "scale": 1,
+        "enabled": true,
+        "opacity": 1.0,
+        "position": {
+          "x": 0,
+          "y": 0,
+          "anchor": "center"
+        },
+        "smoothing": 0.59,
+        "spinSpeed": 0.0,
+        "circleMask": true,
+        "reactivity": 0.7,
+        "spinEnabled": false,
+        "spinDirection": "cw"
+      },
+      "templateName": "Thunder Bass",
+      "textOverlays": [],
+      "audioSettings": {
+        "bounce": 0,
+        "peakHold": 0,
+        "minHeight": 0.1,
+        "smoothing": 0.8,
+        "sensitivity": 1.31
+      },
+      "spectrumEnabled": true,
+      "renderBaseHeight": 411,
+      "particlesSettings": {
+        "size": 8.2,
+        "color": "#ffffff",
+        "drift": 0.3,
+        "speed": 6.3,
+        "style": "glow",
+        "swirl": 0.52,
+        "enabled": true,
+        "opacity": 1.0,
+        "variant": "classic",
+        "maxCount": 276,
+        "smoothing": 0.46,
+        "spawnArea": "centerRing",
+        "spawnMode": "reactiveOnly",
+        "spawnRate": 100,
+        "reactColor": "#ffaa00",
+        "reactivity": 0.5,
+        "sizeJitter": 0.3,
+        "lifetimeSec": 1.47,
+        "spawnTrigger": "both",
+        "reactStrength": 0.24,
+        "spawnThreshold": 0.15
+      },
+      "previewBackground": "C:\\Users\\Kong Somvannda\\Downloads\\ChatGPT Image May 23, 2026, 04_06_50 PM.png",
+      "backgroundSettings": {
+        "fitMode": "cover",
+        "smoothing": 0.5,
+        "userScale": 1.0,
+        "brightness": 2.0,
+        "motionMode": "zoom",
+        "reactivity": 2.0,
+        "userOffsetX": 0.0,
+        "userOffsetY": 0.0,
+        "motionZoomStrength": 2.0,
+        "motionVibrateStrength": 1.0
+      }
+    },
+    "updated_at": "2026-06-08 10:08:50.488075"
+  }
+]

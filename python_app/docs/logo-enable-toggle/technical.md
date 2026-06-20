@@ -1,0 +1,23 @@
+- Existing Architecture
+- - Template schema and defaults: [spectrum_model.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/models/spectrum_model.py)
+- - Settings UI (Logo tab widgets): [settings_view.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/views/settings_view.py#L163-L187)
+- - Template → controls mapping + updates: [main_window.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/app/main_window.py#L7905-L8337)
+- - Preview renderer (OpenGL): [components.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/views/components.py#L545-L936)
+- - Export renderer (GPU): [gpu_render.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/visualizer/gpu_render.py)
+- - Export renderer (CPU): [visualizer/main.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/visualizer/main.py)
+-
+- Data Model
+- - Add `logoSettings.enabled: bool` (default True).
+- - Backward compatibility: missing key should be treated as enabled.
+-
+- UI Wiring
+- - Add `self.logo_enabled` toggle and `self.logo_controls` container in SettingsView.
+- - `_apply_template_to_controls()` reads `template.logoSettings.enabled` and updates the toggle + visibility.
+- - `_update_logo_enabled()` updates `template.logoSettings.enabled`, toggles `logo_controls` visibility, and pushes template to preview.
+-
+- Render Behavior
+- - Preview: if disabled, skip logo render pass (do not call `vao_quad_logo.render`).
+- - GPU export: treat logo as absent:
+-   - Do not load `tex_logo` when disabled.
+-   - Do not render logo pass.
+- - CPU export: if disabled, force `logo_path=""` so CPU branch does not load/draw logo.

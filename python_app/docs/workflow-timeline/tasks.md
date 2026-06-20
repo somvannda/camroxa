@@ -1,0 +1,38 @@
+- Status: in progress
+-
+- Scope (Boss): Workflow page real-time overview timeline with circular step progress (icon + progress ring + percent) using existing pipeline metrics.
+-
+- Phase 1 — Inspect (pending)
+- - [x] Trace existing pipeline model sources:
+-   - Progress row computation in `MainWindow._collect_progress_rows`
+-   - YouTube live % cache `_youtube_progress_by_job_uid`
+- - [x] Confirm Workflow page currently uses placeholder in `MainWindow` primary stack.
+-
+- Phase 2 — Design (pending)
+- - [x] Define step list: Music → Image → Convert → Merge → YouTube
+- - [x] Define per-step percent + status mapping rules (READY/RUNNING/PENDING/FAILED/CANCELLED).
+- - [x] Define UX layout:
+-   - Left selector list (batch + channel OK/ALT)
+-   - Right timeline (large circles + connectors) + per-step detail lines under each step
+-   - Auto-refresh cadence + manual refresh
+-
+- Phase 3 — Implement (pending)
+- - [x] Add `WorkflowViewMixin` and build Workflow page UI.
+- - [x] Add reusable timeline widgets in `views/components.py` (painted progress ring + icon + labels).
+- - [x] Implement model builder to convert a selected progress row → step states.
+- - [x] Add refresh loop (timer + async DB fetch) without blocking UI.
+- - [x] Wire Workflow page into primary navigation, replacing placeholder.
+-
+- Phase 4 — Verify (pending)
+- - [ ] Manual UI validation:
+-   - Switch batches/channels and ensure timeline updates immediately.
+-   - Confirm live YouTube % shows when uploading.
+-   - Confirm color/states: inactive gray, active color ring, error red.
+- - [ ] Regression:
+-   - Progress page refresh still works.
+-   - Dashboard navigation unchanged.
+- - [x] `python -m compileall -q python_app`
+-
+- Phase 5 — Document (pending)
+- - [ ] Add DEVELOPMENT_LOG entry.
+- - [ ] Add screenshots (optional, Boss-driven).

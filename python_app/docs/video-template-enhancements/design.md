@@ -1,0 +1,50 @@
+- Product Goals
+- - Make templates more “channel branded” without extra manual editing.
+- - Keep UX clean: simple toggles + presets first, advanced controls optional.
+- - Ensure preview matches export (no surprises).
+-
+- Storage Location (Decision)
+- - Per Video Template (Boss approved).
+-
+- UI Layout (Professional UX)
+- - Background tab:
+-   - Add “Corner Effects” section with two toggles:
+-     - Vignette (subtle, professional)
+-     - Smoke (blur/noise patches)
+-   - Each toggle reveals its controls (pattern matches Particles + Logo)
+- - Particles tab:
+-   - Keep existing “Enable Particles”.
+-   - Add “Bubble Mode” preset selector:
+-     - Classic (existing)
+-     - Bokeh Bubbles
+-     - Soap Bubble (ring + highlight)
+-     - Floating Dust (soft glow)
+-   - Advanced options (optional): size variance, drift, spawn area, swirl.
+- - New Text tab:
+-   - Goal: add text overlays for first seconds.
+-   - Allow up to 5 items.
+-   - Each item card contains:
+-     - Enabled toggle
+-     - Content (multi-line)
+-     - Timing: startSec + durationSec
+-     - Placement: anchor + x/y offsets
+-     - Style: font family/path (v1: default font), size, color, stroke/shadow
+-     - Animation: dropdown (10 presets)
+-     - Quick actions: duplicate, delete
+-
+- Animation Presets (v1 target)
+- - Fade In / Fade Out
+- - Slide Up / Slide Down / Slide Left / Slide Right
+- - Pop (scale-in)
+- - Typewriter (reveal)
+- - Glow Pulse
+- - Shake
+-
+- Empty/Error States
+- - If text item is enabled but content is empty → show a warning style in the item header and skip rendering.
+- - If too many items (>5) → prevent add and show message.
+- - If “Smoke” is enabled but strength=0 → no visible change (valid).
+
+- Additional Request (Boss)
+- - Thumbnail generation option: when enabled, the thumbnail prompt should include a “tracklist title placement” instruction using the batch’s song titles (e.g., 10 songs).
+- - UX: a single checkbox under Profile → Image overrides so each channel can choose whether thumbnails should be “tracklist-ready”.

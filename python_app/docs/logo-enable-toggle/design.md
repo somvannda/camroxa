@@ -1,0 +1,18 @@
+- Product Goal
+- - Allow creators to turn the logo overlay on/off per Video Template without deleting the selected logo file.
+- - Match existing UX pattern used by Particles (toggle row + controls collapse).
+-
+- UX/Interaction
+- - Control location: Settings → Video Template → Logo tab.
+- - Toggle: Enable Logo (ON/OFF).
+- - When OFF:
+-   - Hide the rest of Logo controls (shape/size/opacity/reactivity/smoothing + file selection).
+-   - Preview updates immediately and the export renderer must also omit the logo.
+- - When ON:
+-   - Show Logo controls and render the logo (if a logo file exists).
+-
+- Edge States
+- - No logo file selected:
+-   - Enable Logo can remain ON, but nothing renders (same as current behavior).
+- - Existing templates created before this feature:
+-   - Should default to enabled=True to preserve current visuals.

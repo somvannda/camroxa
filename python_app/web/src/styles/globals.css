@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Exact colors from reference image */
+    --background: 228 50% 7%;           /* #080c24 */
+    --foreground: 0 0% 100%;            /* white */
+    --card: 228 45% 12%;                /* #12162e */
+    --card-foreground: 0 0% 100%;
+    --popover: 228 40% 13%;             /* #1a1f3a */
+    --popover-foreground: 0 0% 100%;
+    --primary: 263 70%;                 /* #7c3aed */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 263 80%;               /* #a855f7 */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 228 30% 10%;               /* #0f1538 */
+    --muted-foreground: 220 15% 55%;    /* #6b7280 */
+    --accent: 263 80%;                  /* #a855f7 */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 70% 50%;           /* #ef4444 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 10%;                 /* rgba(255,255,255,0.05) */
+    --input: 0 0% 10%;
+    --ring: 263 80%;                    /* #a855f7 */
+    --radius: 0.75rem;
+
+    /* Status colors */
+    --status-active: 160 80% 42%;       /* #10b981 */
+    --status-inactive: 220 10% 46%;     /* #6b7280 */
+    --status-premium: 263 80% 65%;      /* #a855f7 */
+    --status-warning: 38 90% 50%;       /* #f59e0b */
+
+    /* Sidebar */
+    --sidebar-background: 228 50% 7%;   /* #080c24 */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 263 70%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 263 80%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 10%;
+    --sidebar-ring: 263 80%;
+
+    /* Brand gradient */
+    --brand-start: 263 70% 42%;     /* #6d28d9 */
+    --brand-mid: 263 70% 50%;       /* #7c3aed */
+    --brand-end: 263 80% 65%;       /* #a855f7 */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Custom scrollbar - subtle dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Titlebar drag region */
+.drag-region {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Glass morphism utility */
+.glass {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Glow effects */
+.glow-purple {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.15),
+              0 0 40px rgba(168, 85, 247, 0.05);
+}
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.15),
+              0 0 40px rgba(0, 212, 255, 0.05);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Badge variants */
+.badge-success {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.badge-warning {
+  background: rgba(234, 179, 8, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(234, 179, 8, 0.2);
+}
+.badge-default {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+.badge-destructive {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}

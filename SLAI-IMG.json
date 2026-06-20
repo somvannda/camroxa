@@ -1,0 +1,60 @@
+{
+  "v": 12,
+  "name": "SLAI IMG",
+  "folders": [],
+  "requests": [
+    {
+      "v": "17",
+      "name": "SLAI Gen Img",
+      "method": "POST",
+      "endpoint": "https://api.slai.shop/v1/images/generations",
+      "params": [],
+      "headers": [],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "bearer",
+        "token": "<SLAI_API_KEY>",
+        "authActive": true
+      },
+      "body": {
+        "contentType": "application/json",
+        "body": "{\n  \"model\": \"cgpt-web/gpt-5.5-pro\",\n  \"prompt\": \"Let unblur this image with highest resolution\",\n  \"image_url\": \"https://farm3.static.flickr.com/2801/4132160802_95143fb3cc_o.jpg\",\n  \"aspect_ratio\": \"9:16\"\n}"
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    },
+    {
+      "v": "17",
+      "name": "SLAI edit Img",
+      "method": "POST",
+      "endpoint": "https://api.slai.shop/v1/images/generations",
+      "params": [],
+      "headers": [],
+      "preRequestScript": "",
+      "testScript": "",
+      "auth": {
+        "authType": "bearer",
+        "token": "<SLAI_API_KEY>",
+        "authActive": true
+      },
+      "body": {
+        "contentType": "application/json",
+        "body": "{\n  \"model\": \"cgpt-web/gpt-5.5-pro\",\n  \"prompt\": \"Let unblur this image with highest resolution\",\n  \"image_url\": \"https://farm3.static.flickr.com/2801/4132160802_95143fb3cc_o.jpg\",\n  \"aspect_ratio\": \"9:16\"\n}"
+      },
+      "requestVariables": [],
+      "responses": {},
+      "description": null
+    }
+  ],
+  "auth": {
+    "authActive": true,
+    "authType": "none"
+  },
+  "headers": [],
+  "variables": [],
+  "description": "",
+  "preRequestScript": "",
+  "testScript": ""
+}

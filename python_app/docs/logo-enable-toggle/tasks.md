@@ -1,0 +1,25 @@
+- Status: needs review (implementation complete; manual verification required)
+-
+- Goal: Add a professional, template-level Logo enable/disable toggle (like Particles), and ensure preview + export respect it.
+-
+- Phase 1 — Model (pending)
+- - [x] Add `logoSettings.enabled` default in template model.
+- - [x] Normalize/clamp `logoSettings.enabled` in template normalization.
+-
+- Phase 2 — UI (pending)
+- - [x] Add Logo tab toggle: Enable Logo (ON/OFF).
+- - [x] Hide/disable logo controls when disabled.
+- - [x] Load template value into the toggle when switching templates.
+-
+- Phase 3 — Render (pending)
+- - [x] Preview renderer: skip logo draw when disabled.
+- - [x] CPU export renderer: skip logo load/draw when disabled.
+- - [x] GPU export renderer: do not load/render logo texture when disabled.
+-
+- Phase 4 — Verify (pending)
+- - [ ] Create a template with logo enabled and confirm preview/export renders logo. (needs review)
+- - [ ] Disable logo and confirm preview/export renders no logo (without changing logoPath). (needs review)
+- - [ ] Toggle back on and confirm logo returns. (needs review)
+-
+- Phase 5 — Docs (pending)
+- - [x] Add DEVELOPMENT_LOG entry.

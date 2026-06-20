@@ -1,0 +1,59 @@
+- Status: in progress
+-
+- Scope (Boss approved): implement all discussed video-template enhancements:
+- - Bubbles/bubble variants (particles upgrades)
+- - Smoke/blur corners (background effects)
+- - Intro text overlays (up to 5 texts, styling, ~10 animations) with Preview + Export support
+- - AI thumbnail title-layout option (inject batch song titles into thumbnail prompt)
+-
+- Phase 1 — Inspect & Model (pending)
+- - [x] Add template defaults + normalization for:
+-   - `particlesSettings.bubble*` options (variant, jitter, drift, spawn shapes)
+-   - `effects.vignette` and `effects.smoke` (two modes supported)
+-   - `textOverlays` list (max 5)
+- - [x] Ensure backward compatibility (missing keys keep current visuals).
+-
+- Phase 2 — UI/UX (pending)
+- - [x] Particles tab: add “Bubble” section (variant presets + advanced sliders).
+- - [x] Background tab: add “Corner Effects” section:
+-   - Vignette (subtle)
+-   - Smoke (blur/noise)
+- - [x] New tab: “Text”:
+-   - Up to 5 overlay rows with add/remove
+-   - Per item: content, start, duration, position, size, color, outline/shadow, animation
+-   - Validation + safe defaults
+- - [x] Ensure UI stays clean (progressive disclosure; hide advanced fields behind a simple toggle).
+- - [ ] Profiles → Image overrides:
+-   - [x] Add “Thumbnail: include tracklist title layout” checkbox (per profile; inherits global).
+-   - [x] When enabled, thumbnail prompt includes batch song titles (from DB) and layout instructions.
+-
+- Phase 3 — Preview Renderer (pending)
+- - [x] Particles:
+-   - Add new GPU point style(s) for bubble look
+-   - Add size jitter / drift behavior in particle simulation (CPU + GPU preview path)
+- - [x] Background corner effects:
+-   - Apply vignette + smoke in the scene shader (components preview)
+- - [x] Text overlays:
+-   - Render text quads in preview with animations (time-based)
+-
+- Phase 4 — Export Renderers (pending)
+- - [x] GPU export:
+-   - Apply vignette/smoke consistently with preview
+-   - [x] Render text overlays on top (post-processing pass)
+- - [ ] CPU export:
+-   - Apply vignette/smoke consistently
+-   - Render text overlays (pygame font)
+-   - Note: CPU renderer is legacy and currently does not render the spectrum layer; GPU export is the production path.
+-
+- Phase 5 — Verification (pending)
+- - [ ] Preview: toggle each feature and verify immediate visual response.
+- - [ ] Export: render a short MP4 and confirm:
+-   - particles bubble style appears
+-   - smoke/vignette appears
+-   - text animations show for first seconds
+- - [ ] Regression: logo toggle, particles existing styles, background motion, exports still work.
+- - [ ] Thumbnail prompt: enable the checkbox and confirm the generated thumbnail prompt includes track titles for the batch.
+-
+- Phase 6 — Documentation (pending)
+- - [x] Add DEVELOPMENT_LOG entry.
+- - [ ] Document template JSON schema examples for all new settings.

@@ -1,0 +1,50 @@
+- Existing Architecture (Code Anchors)
+- - Template defaults + normalization:
+-   - [default_template](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/models/spectrum_model.py#L9-L83)
+-   - [normalize_template](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/models/spectrum_model.py#L90-L235)
+- - Template settings UI:
+-   - [settings_view.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/views/settings_view.py)
+-   - Wiring: [_apply_template_to_controls](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/app/main_window.py#L7905-L8079)
+- - Preview renderer:
+-   - [components.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/views/components.py#L459-L942)
+- - Export renderers:
+-   - CPU: [visualizer/main.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/visualizer/main.py)
+-   - GPU: [visualizer/gpu_render.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/visualizer/gpu_render.py)
+- - Particle simulation:
+-   - [particles.py](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/visualizer/particles.py)
+-
+- New Template Schema (v1)
+- - `effects.vignette` (subtle corner darken/haze)
+- - `effects.smoke` (blur/noise corner smoke)
+- - `particlesSettings` additions (bubble variants):
+-   - `variant`: string preset
+-   - `sizeJitter`: float (0..1)
+-   - `drift`: float
+-   - `swirl`: float
+-   - `spawnArea`: enum (centerRing, bottom, edges, full)
+- - `textOverlays`: list of up to 5 items:
+-   - `{ enabled, text, startSec, durationSec, anchor, x, y, sizePx, color, strokeColor, strokeWidth, shadow, animation }`
+-
+- Renderer Implementation Notes
+- - Vignette/Smoke:
+-   - GPU: extend scene fragment shader to apply vignette + smoke mask using UV distance + procedural noise.
+-   - CPU: not implemented for v1 (CPU renderer is legacy and does not render the spectrum layer).
+- - Bubbles:
+-   - GPU: add at least one new point style in the points shader for “soap bubble” look.
+-   - CPU: not implemented for v1 (GPU is the production export path).
+-   - Simulation: extend ParticleSystem to support drift/swirl and spawnArea.
+- - Text overlays:
+-   - Preview + GPU export: pre-render each text item to an RGBA texture using PIL once per template-change, then render as textured quads with time-based transforms (opacity/position/scale) per frame.
+-   - CPU export: not implemented for v1 (GPU export covers production needs; CPU parity can be added as a later milestone after CPU spectrum support exists).
+-
+- Risks / Performance
+- - Text overlay quads must be capped (<=5) and textures cached to avoid per-frame font rasterization overhead.
+- - Smoke blur mode can be expensive; v1 should include a “Quality” knob and allow disabling blur while keeping haze.
+
+- Thumbnail Tracklist Layout (Image Generation)
+- - Add a per-profile (inheritable) flag in `profiles.image_config`:
+-   - `thumbnailIncludeTrackTitles`: bool | null (null=inherits global)
+- - Enqueue time:
+-   - In [ImageController._enqueue_batch_channel_jobs](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/controllers/image_controller.py#L189-L321), if enabled:
+-     - fetch titles via [list_songs_by_batch_id](file:///d:/Development/Projects/Electron/MusicGenerator/python_app/database/music_db.py#L640-L675)
+-     - append a “tracklist title layout” instruction block to the thumbnail prompt (keep thumbnail style rules intact)
