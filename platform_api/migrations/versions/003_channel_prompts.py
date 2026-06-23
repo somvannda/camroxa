@@ -7,7 +7,7 @@ to generate channel names, logos, covers, descriptions, keywords, and tags.
 from alembic import op
 
 revision = "003_channel_prompts"
-down_revision = "002_add_api_key_pool"
+down_revision = "003_add_youtube_upload_jobs"
 branch_labels = None
 depends_on = None
 

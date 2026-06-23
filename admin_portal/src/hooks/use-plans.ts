@@ -17,9 +17,11 @@ export function useCreatePlan() {
       name: string;
       price_cents: number;
       profile_allowance: number;
-      monthly_song_quota: number | null;
+      monthly_song_limit: number | null;
+      monthly_image_limit: number | null;
       billing_cycle_days: number | null;
-      daily_song_limit_per_channel?: number;
+      daily_song_limit_per_channel: number;
+      daily_image_limit_per_channel: number;
     }) => httpClient.post<Plan>('/api/v1/plans', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['plans'] }),
   });

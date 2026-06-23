@@ -2,6 +2,11 @@
 
 from alembic import op
 
+revision = "003_add_youtube_upload_jobs"
+down_revision = "002_add_api_key_pool"
+branch_labels = None
+depends_on = None
+
 
 def upgrade() -> None:
     op.execute("""

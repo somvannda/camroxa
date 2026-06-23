@@ -139,6 +139,31 @@ export default function UsersPage() {
       ),
     },
     {
+      id: 'credit_balance',
+      header: 'Credits',
+      accessorFn: (row) => (
+        <span className="text-slate-200 font-medium">
+          {row.credit_balance.toLocaleString()} cr
+        </span>
+      ),
+    },
+    {
+      id: 'plan_name',
+      header: 'Plan',
+      accessorFn: (row) => (
+        row.plan_name
+          ? <span className="text-slate-200">{row.plan_name}</span>
+          : <span className="text-slate-500 italic">No plan</span>
+      ),
+    },
+    {
+      id: 'channel_profile_count',
+      header: 'Profiles',
+      accessorFn: (row) => (
+        <span className="text-slate-300">{row.channel_profile_count}</span>
+      ),
+    },
+    {
       id: 'created_at',
       header: 'Registered',
       accessorFn: (row) => (

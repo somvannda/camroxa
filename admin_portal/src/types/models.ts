@@ -5,8 +5,52 @@ export interface User {
   role: 'user' | 'admin';
   status: 'active' | 'suspended' | 'deleted';
   suspension_reason?: string;
+  credit_balance: number;
+  plan_name: string | null;
+  channel_profile_count: number;
   created_at: string;
-  updated_at: string;
+  updated_at: string | null;
+}
+
+export interface UserFullDetail {
+  id: string;
+  email: string;
+  display_name: string;
+  role: 'user' | 'admin';
+  status: 'active' | 'suspended' | 'deleted';
+  suspension_reason?: string;
+  created_at: string;
+  updated_at: string | null;
+
+  // Credits
+  credit_balance: number;
+  total_credits_spent: number;
+  recent_transactions: {
+    id: string;
+    amount: number;
+    direction: string;
+    reason: string;
+    created_at: string | null;
+  }[];
+
+  // Plan/License
+  plan_name: string | null;
+  plan_id: string | null;
+  license_status: string | null;
+  license_activated_at: string | null;
+  license_expires_at: string | null;
+
+  // Profiles
+  channel_profiles: {
+    id: string;
+    name: string;
+    folder_name: string;
+    created_at: string | null;
+  }[];
+
+  // Usage stats
+  total_songs_generated: number;
+  total_images_generated: number;
 }
 
 export interface License {
@@ -27,8 +71,10 @@ export interface Plan {
   price_cents: number;
   billing_cycle_days: number | null;
   profile_allowance: number;
-  monthly_song_quota: number | null;
+  monthly_song_limit: number | null;
+  monthly_image_limit: number | null;
   daily_song_limit_per_channel: number;
+  daily_image_limit_per_channel: number;
   is_active: boolean;
   effective_from: string;
   created_at: string;
@@ -48,11 +94,24 @@ export interface PlanOffer {
 export interface CreditPricing {
   id: string;
   model_identifier: string;
+  ai_service: string;
   operation_type: string;
   credits_per_operation: number;
   external_cost_cents: number | null;
+  sell_price_cents: number | null;
+  profit_margin_cents: number | null;
+  profit_margin_percent: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ServiceAvailabilityEntry {
+  ai_service: string;
+  status: 'available' | 'degraded' | 'unavailable';
+}
+
+export interface GlobalCreditValueResponse {
+  global_credit_value: number | null;
 }
 
 export interface CreditPack {

@@ -34,3 +34,6 @@ python_app/database/video_templates_local.json.*.tmp
 
 # Database backups (contain secrets)
 *.sql
+
+# Dev environment runtime
+.dev-pids

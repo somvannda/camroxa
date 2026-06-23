@@ -45,6 +45,7 @@ class SettingsRepositoryPort(Protocol):
 
     async def get_user_settings(self, user_id: UUID) -> dict[str, Any]: ...
     async def get_system_settings(self) -> dict[str, Any]: ...
+    async def get_system_setting(self, key: str) -> Any | None: ...
     async def upsert_user_settings(
         self, user_id: UUID, settings: dict[str, Any]
     ) -> None: ...
@@ -228,3 +229,49 @@ class SettingsService:
         if deleted:
             logger.info("Deleted user setting '%s' for user %s.", key, user_id)
         return deleted
+
+    # -----------------------------------------------------------------------
+    # Global Credit Value
+    # -----------------------------------------------------------------------
+
+    async def get_global_credit_value(self) -> float | None:
+        """Return the configured Global Credit Value, or None if not set.
+
+        The Global Credit Value defines the monetary value of a single credit
+        (e.g., 0.003333 means one credit is worth $0.003333). It is used
+        exclusively for margin display calculations in the Admin Portal.
+
+        Returns:
+            The global credit value as a float, or None if not configured.
+        """
+        value = await self._settings_repo.get_system_setting("global_credit_value")
+        if value is None:
+            return None
+        return float(value)
+
+    async def update_global_credit_value(self, value: float) -> float:
+        """Update the Global Credit Value system setting.
+
+        Validates that the value is a positive number greater than 0 and
+        at most 1.0, then stores it as a system setting.
+
+        Args:
+            value: The new global credit value (must be > 0 and <= 1.0).
+
+        Returns:
+            The stored global credit value.
+
+        Raises:
+            ValidationError: If the value is not in the valid range (0, 1.0].
+        """
+        if value <= 0 or value > 1.0:
+            raise ValidationError(
+                "Global Credit Value must be greater than 0 and at most 1.0",
+            )
+
+        await self._settings_repo.upsert_system_settings(
+            {"global_credit_value": value}
+        )
+
+        logger.info("Updated Global Credit Value to %s.", value)
+        return value

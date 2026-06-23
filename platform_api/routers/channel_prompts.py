@@ -5,15 +5,19 @@ Admin CRUD for channel setup prompts + public lookup for onboarding wizard.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.services.channel_prompt_service import ChannelPromptService, VALID_CATEGORIES
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Router
@@ -68,6 +72,17 @@ class UpdateChannelPromptRequest(BaseModel):
     is_active: bool | None = None
 
 
+class GeneratePromptRequest(BaseModel):
+    category: str = Field(..., description="title, logo, cover, description, keyword, tag")
+    genre: str = Field("", description="Genre name (e.g. EDM, Hip-Hop)")
+    match_key: str | None = Field(None, description="Music description match key")
+
+
+class GeneratePromptResponse(BaseModel):
+    content: str
+    category: str
+
+
 class PublicChannelPromptResponse(BaseModel):
     id: str
     name: str
@@ -118,6 +133,87 @@ async def delete_channel_prompt(
 ) -> dict:
     await svc.delete(prompt_id)
     return {"message": f"Channel prompt {prompt_id} has been deleted."}
+
+
+# ---------------------------------------------------------------------------
+# AI prompt generation endpoint
+# ---------------------------------------------------------------------------
+
+_CATEGORY_DESCRIPTIONS = {
+    "title": "YouTube channel name",
+    "logo": "YouTube channel logo",
+    "cover": "YouTube channel banner/cover art",
+    "description": "YouTube channel description (SEO-optimized)",
+    "keyword": "SEO keywords for a YouTube channel",
+    "tag": "YouTube tags for a music channel",
+}
+
+
+async def _call_deepseek(prompt: str, system: str = "") -> str:
+    """Call DeepSeek LLM API directly."""
+    from platform_api.config import get_settings
+
+    settings = get_settings()
+    api_key = settings.deepseek_api_key
+    base_url = settings.deepseek_api_base_url.rstrip("/")
+
+    if not api_key:
+        raise ValueError("DeepSeek API key not configured")
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": "deepseek-chat", "messages": messages, "temperature": 0.8, "max_tokens": 1500},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip()
+
+
+@router.post("/generate", response_model=GeneratePromptResponse)
+async def generate_channel_prompt(
+    request: GeneratePromptRequest,
+    ctx: AuthContext = Depends(require_admin),
+) -> GeneratePromptResponse:
+    """Generate a channel prompt using DeepSeek AI based on category and genre."""
+    category = request.category
+    genre = request.genre or "music"
+    desc = _CATEGORY_DESCRIPTIONS.get(category, category)
+
+    system = (
+        "You are an expert YouTube channel branding consultant and prompt engineer. "
+        "Your job is to generate a high-quality system/user prompt that will be used "
+        "by an AI to create channel onboarding assets.\n\n"
+        "The generated prompt should:\n"
+        "- Be specific to the music genre provided\n"
+        "- Include clear instructions for the AI that will consume it\n"
+        "- Support template variables like {channel_name} and {genre} where appropriate\n"
+        "- Be detailed enough to produce professional results\n"
+        "- NOT include any explanation, just the prompt text itself"
+    )
+
+    user = (
+        f"Generate a prompt for creating a **{desc}** for a YouTube music channel "
+        f"in the **{genre}** genre.\n\n"
+        f"Requirements:\n"
+        f"- The prompt will be used by an AI to generate the actual {desc}\n"
+        f"- It should instruct the AI to create something professional and genre-appropriate\n"
+        f"- Use {{channel_name}} as a placeholder for the channel name (where applicable)\n"
+        f"- Use {{genre}} as a placeholder for the genre (where applicable)\n"
+        f"- Return ONLY the prompt text, no labels or explanations\n"
+    )
+
+    content = await _call_deepseek(user, system)
+    # Strip any wrapping quotes the LLM might add
+    content = content.strip().strip('"').strip("'")
+
+    return GeneratePromptResponse(content=content, category=category)
 
 
 # ---------------------------------------------------------------------------

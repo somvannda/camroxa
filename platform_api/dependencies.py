@@ -183,6 +183,13 @@ def get_slai_client():
     return SlaiClient(settings=get_settings())
 
 
+def get_cala_client():
+    """Dependency that returns the CalaClient instance."""
+    from platform_api.clients.cala_client import CalaClient
+
+    return CalaClient(settings=get_settings())
+
+
 def get_llm_client():
     """Dependency that returns the LlmClient instance."""
     from platform_api.clients.llm_client import LlmClient
@@ -256,7 +263,27 @@ def get_credit_pricing_service():
     """Dependency that returns the CreditPricingService instance."""
     from platform_api.services.credit_pricing_service import CreditPricingService
 
-    return CreditPricingService(pricing_repo=get_credit_repo())
+    return CreditPricingService(pricing_repo=get_credit_repo(), db_pool=get_db_pool())
+
+
+def get_usage_tracking_repo():
+    """Dependency that returns the UsageTrackingRepository instance."""
+    from platform_api.repositories.usage_tracking_repo import UsageTrackingRepository
+
+    return UsageTrackingRepository(pool=get_db_pool())
+
+
+def get_usage_enforcement_service():
+    """Dependency that returns the UsageEnforcementService instance."""
+    from platform_api.services.usage_enforcement_service import UsageEnforcementService
+
+    return UsageEnforcementService(
+        credit_repo=get_credit_repo(),
+        usage_repo=get_usage_tracking_repo(),
+        plan_repo=get_plan_repo(),
+        pricing_repo=get_credit_repo(),
+        redis=get_redis(),
+    )
 
 
 def get_profile_service():
@@ -394,6 +421,26 @@ _connection_registry = ConnectionRegistry()
 def get_connection_registry() -> ConnectionRegistry:
     """Dependency that returns the WebSocket ConnectionRegistry singleton."""
     return _connection_registry
+
+
+def get_credit_operation_service():
+    """Dependency that returns the CreditService instance with pricing support.
+
+    This is the central credit service for all credit operations:
+    - execute_with_credits() for AI generation (deduct-execute-refund)
+    - purchase_pack() for credit pack purchases
+    - admin_adjust() for admin balance adjustments
+    - get_balance(), deduct(), refund() for direct operations
+    """
+    from platform_api.services.credit_service import CreditService
+
+    return CreditService(
+        credit_repo=get_credit_repo(),
+        license_repo=get_license_repo(),
+        plan_repo=get_plan_repo(),
+        pack_repo=get_credit_repo(),  # CreditRepo doubles as pack repo
+        pricing_service=get_credit_pricing_service(),
+    )
 
 
 def get_channel_prompt_repo():

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import httpClient from '@/lib/http-client';
 import type { PaginatedResponse, UserListParams } from '@/types/api';
-import type { User } from '@/types/models';
+import type { User, UserFullDetail } from '@/types/models';
 
 interface UsersApiResponse {
   users: User[];
@@ -60,5 +60,14 @@ export function useDeleteUser() {
     mutationFn: (id: string) =>
       httpClient.delete(`/api/v1/users/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+
+export function useUserDetails(id: string) {
+  return useQuery({
+    queryKey: ['users', id, 'details'],
+    queryFn: () => httpClient.get<UserFullDetail>(`/api/v1/users/${id}/details`),
+    enabled: !!id,
   });
 }

@@ -1,10 +1,12 @@
 """Async HTTP client for the SLAI image generation API.
 
-Handles image generation requests with 60-second timeout.
+Handles image generation requests with submit + poll pattern.
+SLAI returns a URL/cache_id on submit; we poll until the image is ready.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -15,16 +17,9 @@ from platform_api.exceptions import ExternalServiceError
 
 logger = logging.getLogger(__name__)
 
-# Timeout for SLAI image requests (seconds)
-_SLAI_TIMEOUT = 60.0
-
 
 def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceError:
-    """Convert an httpx exception or HTTP error response into an ExternalServiceError.
-
-    Retryable: timeouts, rate limits (429), 5xx server errors.
-    Permanent: 4xx client errors (except 429).
-    """
+    """Convert an httpx exception or HTTP error response into an ExternalServiceError."""
     if isinstance(exc, httpx.TimeoutException):
         return ExternalServiceError(
             f"SLAI timeout: {context}",
@@ -45,7 +40,6 @@ def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceErro
             },
         )
 
-    # Network-level failures are retryable
     return ExternalServiceError(
         f"SLAI connection error: {context} - {exc}",
         is_retryable=True,
@@ -54,34 +48,25 @@ def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceErro
 
 
 class SlaiClient:
-    """Async client for the SLAI image generation API."""
+    """Async client for the SLAI image generation API.
+
+    Uses a submit → poll pattern:
+    1. POST /v1/images/generations to start generation
+    2. If SLAI responds with a URL immediately, return it
+    3. If SLAI responds with a cache_id (pending), poll until ready
+    """
 
     def __init__(self, settings: Settings) -> None:
         self._base_url = settings.slai_api_base_url.rstrip("/")
         self._api_key = settings.slai_api_key
         self._timeout = httpx.Timeout(
             timeout=float(settings.image_timeout_seconds),
-            connect=10.0,
+            connect=15.0,
         )
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=self._base_url,
-                timeout=self._timeout,
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-        return self._client
 
     async def close(self) -> None:
-        """Close the underlying HTTP client."""
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-            self._client = None
+        """No persistent client to close (uses per-request clients)."""
+        pass
 
     async def generate_image(
         self,
@@ -92,38 +77,145 @@ class SlaiClient:
         style_strength: float = 0.6,
         reference_image_base64: str | None = None,
         extra_params: dict[str, Any] | None = None,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
         """Generate an image using SLAI.
 
-        Args:
-            prompt: Text prompt describing the desired image.
-            width: Output image width in pixels.
-            height: Output image height in pixels.
-            style_strength: Strength of style application (0.0-1.0).
-            reference_image_base64: Optional base64-encoded reference image.
-            extra_params: Additional model-specific parameters.
+        Submits a generation request and waits for the result. If the initial
+        request returns a cache_id (async generation), polls until the image
+        is ready (up to 3 minutes total).
 
         Returns:
-            Response dict containing image data/URLs from SLAI.
+            Response dict with 'data' containing image URL.
 
         Raises:
-            ExternalServiceError: On timeout, HTTP error, or connection failure.
+            ExternalServiceError: On permanent failure after retries.
         """
-        client = await self._get_client()
+        key = api_key or self._api_key
+
+        # Determine aspect ratio
+        if width == height:
+            aspect_ratio = "1:1"
+        elif height > width:
+            aspect_ratio = "9:16"
+        else:
+            aspect_ratio = "16:9"
+
         payload: dict[str, Any] = {
+            "model": "cgpt-web/gpt-5.5-pro",
             "prompt": prompt,
-            "width": width,
-            "height": height,
-            "style_strength": style_strength,
+            "aspect_ratio": aspect_ratio,
+            "response_format": "url",
+            "n": 1,
         }
+
         if reference_image_base64:
-            payload["reference_image"] = reference_image_base64
+            payload["image_url"] = f"data:image/png;base64,{reference_image_base64}"
+
         if extra_params:
             payload.update(extra_params)
 
+        url = f"{self._base_url}/v1/images/generations"
+
+        # Submit with generous timeout (SLAI can be slow)
         try:
-            response = await client.post("/v1/generate/image", json=payload)
-            response.raise_for_status()
-            return response.json()
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(180.0, connect=15.0),
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                },
+            ) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+
+                # Got immediate result with URL
+                if self._has_image_url(data):
+                    return data
+
+                # Got pending response — poll for result
+                cache_id = self._extract_cache_id(data)
+                if cache_id:
+                    logger.info("SLAI returned cache_id=%s, polling for result...", cache_id)
+                    return await self._poll_for_result(key, cache_id)
+
+                # Unknown shape but 200 — return as-is
+                return data
+
         except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
             raise _classify_error(exc, context="generate_image") from exc
+
+    async def _poll_for_result(
+        self, api_key: str, cache_id: str, max_wait: int = 150
+    ) -> dict[str, Any]:
+        """Poll SLAI for a completed image result.
+
+        Checks every 5 seconds for up to max_wait seconds.
+        """
+        poll_url = f"{self._base_url}/v1/images/generations/{cache_id}"
+        elapsed = 0.0
+        poll_interval = 5.0
+
+        while elapsed < max_wait:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(30.0, connect=10.0),
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                ) as client:
+                    resp = await client.get(poll_url)
+
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if self._has_image_url(data):
+                            logger.info(
+                                "SLAI image ready (cache_id=%s, %.0fs elapsed)",
+                                cache_id, elapsed,
+                            )
+                            return data
+                    # 202 = still processing, 404 = not ready yet
+                    elif resp.status_code not in (202, 404):
+                        logger.warning(
+                            "SLAI poll returned %d for cache_id=%s",
+                            resp.status_code, cache_id,
+                        )
+            except (httpx.TimeoutException, httpx.RequestError) as exc:
+                logger.debug("SLAI poll attempt failed: %s", exc)
+                continue
+
+        raise ExternalServiceError(
+            f"SLAI image generation did not complete within {max_wait}s (cache_id={cache_id})",
+            is_retryable=True,
+            details={"provider": "slai", "cache_id": cache_id},
+        )
+
+    @staticmethod
+    def _has_image_url(data: dict[str, Any]) -> bool:
+        """Check if the response contains a usable image URL."""
+        if not isinstance(data, dict):
+            return False
+        data_list = data.get("data")
+        if isinstance(data_list, list) and data_list:
+            first = data_list[0]
+            if isinstance(first, dict):
+                url = first.get("url", "")
+                return bool(url and url.startswith("http"))
+        return False
+
+    @staticmethod
+    def _extract_cache_id(data: dict[str, Any]) -> str:
+        """Extract cache_id from a pending SLAI response."""
+        if not isinstance(data, dict):
+            return ""
+        data_list = data.get("data")
+        if isinstance(data_list, list) and data_list:
+            first = data_list[0]
+            if isinstance(first, dict):
+                return str(first.get("cache_id", "") or "").strip()
+        return str(data.get("cache_id", "") or "").strip()

@@ -239,6 +239,57 @@ class ConfirmCodePage(QWidget):
 
 
 # ────────────────────────────────────────────────────────────
+# Logo spinner overlay (purple arc spinning around circle)
+# ────────────────────────────────────────────────────────────
+
+class _LogoSpinner(QWidget):
+    """A transparent overlay that draws a spinning purple arc around a circle."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._angle = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("background: transparent;")
+
+    def start(self):
+        self._timer.start(20)  # ~50fps smooth
+        self.show()
+
+    def stop(self):
+        self._timer.stop()
+        self.hide()
+
+    def _tick(self):
+        self._angle = (self._angle + 3) % 360
+        self.update()
+
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QPainter, QPen
+        from PyQt6.QtCore import QRectF
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(4, 4, self.width() - 8, self.height() - 8)
+
+        # Purple arc pen
+        pen = QPen(QColor(116, 102, 241, 200))  # #7466F1
+        pen.setWidth(3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+
+        # Draw a 90-degree arc that rotates clockwise
+        start_angle = -self._angle * 16  # Qt uses 1/16th degree units
+        span_angle = 90 * 16  # 90 degree arc
+        painter.drawArc(rect, start_angle, span_angle)
+
+        painter.end()
+
+
+# ────────────────────────────────────────────────────────────
 # Page 2: Channel Setup Wizard (Primary + Secondary)
 # ────────────────────────────────────────────────────────────
 
@@ -779,11 +830,28 @@ class ChannelWizardPage(QWidget):
         header.setStyleSheet(f"color: {accent_color}; background: transparent; border: none;")
         card_layout.addWidget(header)
 
+        # Logo preview container (holds both the preview label and the spinner overlay)
+        preview_container = QWidget()
+        preview_container.setFixedSize(210, 210)
+        preview_container.setStyleSheet("background: transparent;")
+        container_layout = QVBoxLayout(preview_container)
+        container_layout.setContentsMargins(5, 5, 5, 5)
+        container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         preview = QLabel("Generating...")
         preview.setFixedSize(200, 200)
         preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview.setStyleSheet("background: #111738; border-radius: 100px; color: rgba(255,255,255,0.3); font-size: 12px;")
-        card_layout.addWidget(preview, 0, Qt.AlignmentFlag.AlignCenter)
+        container_layout.addWidget(preview)
+
+        # Spinning border animation overlay
+        spinner = _LogoSpinner(preview_container)
+        spinner.setFixedSize(210, 210)
+        spinner.move(0, 0)
+        spinner.raise_()
+        spinner.start()
+
+        card_layout.addWidget(preview_container, 0, Qt.AlignmentFlag.AlignCenter)
 
         count_label = text_muted("Refreshes remaining: 3")
         count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -794,10 +862,20 @@ class ChannelWizardPage(QWidget):
         history_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addLayout(history_row)
 
-        refresh_btn = button_ghost("↻ Regenerate")
-        card_layout.addWidget(refresh_btn, 0, Qt.AlignmentFlag.AlignCenter)
+        # Buttons row: Regenerate + Upload
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        btn_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        return {"card": card, "preview": preview, "count_label": count_label, "history_row": history_row, "refresh_btn": refresh_btn}
+        refresh_btn = button_ghost("↻ Regenerate")
+        btn_row.addWidget(refresh_btn)
+
+        upload_btn = button_ghost("📁 Upload")
+        btn_row.addWidget(upload_btn)
+
+        card_layout.addLayout(btn_row)
+
+        return {"card": card, "preview": preview, "count_label": count_label, "history_row": history_row, "refresh_btn": refresh_btn, "upload_btn": upload_btn, "spinner": spinner}
 
     def _build_logo_step(self) -> QWidget:
         def build(content):
@@ -810,15 +888,21 @@ class ChannelWizardPage(QWidget):
             subtitle = text_secondary("We'll generate a logo for each channel. You can regenerate up to 3 times each.")
             v.addWidget(subtitle)
 
+            timing_note = text_muted("Logo generation typically takes 20–60 seconds. Please be patient while our AI creates your unique design.")
+            timing_note.setWordWrap(True)
+            v.addWidget(timing_note)
+
             columns_row = QHBoxLayout()
             columns_row.setSpacing(16)
 
             self._primary_logo_col = self._build_logo_column("Primary Logo", self._PRIMARY_ACCENT)
             self._primary_logo_col["refresh_btn"].clicked.connect(lambda: self._on_refresh_logo("primary"))
+            self._primary_logo_col["upload_btn"].clicked.connect(lambda: self._on_upload_logo("primary"))
             columns_row.addWidget(self._primary_logo_col["card"], 1)
 
             self._secondary_logo_col = self._build_logo_column("Secondary Logo", self._SECONDARY_ACCENT)
             self._secondary_logo_col["refresh_btn"].clicked.connect(lambda: self._on_refresh_logo("secondary"))
+            self._secondary_logo_col["upload_btn"].clicked.connect(lambda: self._on_upload_logo("secondary"))
             columns_row.addWidget(self._secondary_logo_col["card"], 1)
 
             v.addLayout(columns_row)
@@ -837,6 +921,10 @@ class ChannelWizardPage(QWidget):
             subtitle = text_secondary("YouTube banners for each channel. Click any to download.")
             v.addWidget(subtitle)
 
+            timing_note = text_muted("Cover generation typically takes 20–60 seconds per image. Please be patient while our AI designs your banners.")
+            timing_note.setWordWrap(True)
+            v.addWidget(timing_note)
+
             # Primary covers
             p_header = text_label("Primary Channel")
             p_header.setStyleSheet(f"color: {self._PRIMARY_ACCENT}; background: transparent; border: none;")
@@ -850,10 +938,20 @@ class ChannelWizardPage(QWidget):
             self._primary_covers_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v.addWidget(self._primary_covers_status)
 
+            p_btn_row = QHBoxLayout()
+            p_btn_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            p_btn_row.setSpacing(12)
+
             p_refresh = button_ghost("↻ Regenerate Primary")
             p_refresh.clicked.connect(lambda: self._on_refresh_covers("primary"))
             self._primary_covers_refresh_btn = p_refresh
-            v.addWidget(p_refresh, 0, Qt.AlignmentFlag.AlignCenter)
+            p_btn_row.addWidget(p_refresh)
+
+            p_upload = button_ghost("📁 Upload Cover")
+            p_upload.clicked.connect(lambda: self._on_upload_cover("primary"))
+            p_btn_row.addWidget(p_upload)
+
+            v.addLayout(p_btn_row)
 
             v.addSpacing(16)
 
@@ -870,10 +968,20 @@ class ChannelWizardPage(QWidget):
             self._secondary_covers_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
             v.addWidget(self._secondary_covers_status)
 
+            s_btn_row = QHBoxLayout()
+            s_btn_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            s_btn_row.setSpacing(12)
+
             s_refresh = button_ghost("↻ Regenerate Secondary")
             s_refresh.clicked.connect(lambda: self._on_refresh_covers("secondary"))
             self._secondary_covers_refresh_btn = s_refresh
-            v.addWidget(s_refresh, 0, Qt.AlignmentFlag.AlignCenter)
+            s_btn_row.addWidget(s_refresh)
+
+            s_upload = button_ghost("📁 Upload Cover")
+            s_upload.clicked.connect(lambda: self._on_upload_cover("secondary"))
+            s_btn_row.addWidget(s_upload)
+
+            v.addLayout(s_btn_row)
 
             self._add_nav_buttons(v, 3, "Next →", lambda: self._go_to_step(4))
         return self._build_scroll_wrapper(build)
@@ -899,60 +1007,8 @@ class ChannelWizardPage(QWidget):
             summary_header.setStyleSheet("color: #ffffff; background: transparent; border: none;")
             summary_layout.addWidget(summary_header)
 
-            channels_data = [
-                ("Primary Channel", self._primary_name or "—", self._PRIMARY_ACCENT, self._primary_logo_b64),
-                ("Secondary Channel", self._secondary_name or "—", self._SECONDARY_ACCENT, self._secondary_logo_b64),
-            ]
-
-            for ch_label, ch_name, ch_color, ch_logo in channels_data:
-                ch_row = QWidget()
-                ch_row.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 10px;")
-                ch_layout = QHBoxLayout(ch_row)
-                ch_layout.setContentsMargins(16, 14, 16, 14)
-                ch_layout.setSpacing(14)
-
-                logo_preview = QLabel()
-                logo_preview.setFixedSize(56, 56)
-                logo_preview.setStyleSheet("background: #1a1f3d; border-radius: 28px; border: 2px solid rgba(255,255,255,0.06);")
-                logo_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                if ch_logo:
-                    try:
-                        import base64
-                        from PyQt6.QtGui import QImage, QPixmap
-                        img_data = base64.b64decode(ch_logo)
-                        qimg = QImage.fromData(img_data)
-                        pixmap = QPixmap.fromImage(qimg).scaled(52, 52, Qt.AspectRatio.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                        logo_preview.setPixmap(pixmap)
-                    except Exception:
-                        logo_preview.setText("🎨")
-                        logo_preview.setFont(QFont("Open Sans", 20))
-                        logo_preview.setStyleSheet("background: #1a1f3d; border-radius: 28px; color: rgba(255,255,255,0.3);")
-                else:
-                    logo_preview.setText("🎨")
-                    logo_preview.setFont(QFont("Open Sans", 20))
-                    logo_preview.setStyleSheet("background: #1a1f3d; border-radius: 28px; color: rgba(255,255,255,0.3);")
-                ch_layout.addWidget(logo_preview)
-
-                info_layout = QVBoxLayout()
-                info_layout.setSpacing(4)
-
-                ch_label_lbl = QLabel(ch_label)
-                ch_label_lbl.setFont(QFont("Open Sans", 11))
-                ch_label_lbl.setStyleSheet(f"color: {ch_color}; background: transparent; border: none;")
-                info_layout.addWidget(ch_label_lbl)
-
-                ch_name_lbl = QLabel(ch_name)
-                ch_name_lbl.setFont(QFont("Open Sans", 15, QFont.Weight.Bold))
-                ch_name_lbl.setStyleSheet("color: #ffffff; background: transparent; border: none;")
-                info_layout.addWidget(ch_name_lbl)
-
-                ch_genre_lbl = QLabel(self._genre or "—")
-                ch_genre_lbl.setFont(QFont("Open Sans", 11))
-                ch_genre_lbl.setStyleSheet("color: #8a8fa8; background: transparent; border: none;")
-                info_layout.addWidget(ch_genre_lbl)
-
-                ch_layout.addLayout(info_layout, 1)
-                summary_layout.addWidget(ch_row)
+            # Store reference for dynamic refresh
+            self._desc_summary_card = summary_card
 
             v.addWidget(summary_card)
 
@@ -961,11 +1017,20 @@ class ChannelWizardPage(QWidget):
             subtitle = text_secondary("Copy-paste these into your YouTube channel settings.")
             v.addWidget(subtitle)
 
-            v.addWidget(text_label("Channel Description"))
+            # Description label + refresh
+            desc_header = QHBoxLayout()
+            desc_header.addWidget(text_label("Channel Description"))
+            desc_header.addStretch()
+            desc_refresh = button_ghost("⟳")
+            desc_refresh.setFixedWidth(36)
+            desc_refresh.setToolTip("Regenerate description")
+            desc_refresh.clicked.connect(self._load_description)
+            desc_header.addWidget(desc_refresh)
+            v.addLayout(desc_header)
 
             self._desc_text = QTextEdit()
             self._desc_text.setFixedHeight(120)
-            self._desc_text.setReadOnly(True)
+            self._desc_text.setReadOnly(False)
             self._desc_text.setFont(QFont("Open Sans", 12))
             self._desc_text.setStyleSheet("""
                 QTextEdit { background: #111738; border: 1px solid rgba(116,102,241,0.2); border-radius: 8px; color: #eef4ff; padding: 12px; }
@@ -978,11 +1043,20 @@ class ChannelWizardPage(QWidget):
 
             v.addSpacing(8)
 
-            v.addWidget(text_label("Channel Keywords"))
+            # Keywords label + refresh
+            kw_header = QHBoxLayout()
+            kw_header.addWidget(text_label("Channel Keywords"))
+            kw_header.addStretch()
+            kw_refresh = button_ghost("⟳")
+            kw_refresh.setFixedWidth(36)
+            kw_refresh.setToolTip("Regenerate keywords")
+            kw_refresh.clicked.connect(self._load_description)
+            kw_header.addWidget(kw_refresh)
+            v.addLayout(kw_header)
 
             self._keywords_text = QTextEdit()
             self._keywords_text.setFixedHeight(60)
-            self._keywords_text.setReadOnly(True)
+            self._keywords_text.setReadOnly(False)
             self._keywords_text.setFont(QFont("Open Sans", 12))
             self._keywords_text.setStyleSheet("""
                 QTextEdit { background: #111738; border: 1px solid rgba(116,102,241,0.2); border-radius: 8px; color: #eef4ff; padding: 12px; }
@@ -995,11 +1069,20 @@ class ChannelWizardPage(QWidget):
 
             v.addSpacing(8)
 
-            v.addWidget(text_label("Channel Tags"))
+            # Tags label + refresh
+            tags_header = QHBoxLayout()
+            tags_header.addWidget(text_label("Channel Tags"))
+            tags_header.addStretch()
+            tags_refresh = button_ghost("⟳")
+            tags_refresh.setFixedWidth(36)
+            tags_refresh.setToolTip("Regenerate tags")
+            tags_refresh.clicked.connect(self._load_description)
+            tags_header.addWidget(tags_refresh)
+            v.addLayout(tags_header)
 
             self._tags_text = QTextEdit()
             self._tags_text.setFixedHeight(60)
-            self._tags_text.setReadOnly(True)
+            self._tags_text.setReadOnly(False)
             self._tags_text.setFont(QFont("Open Sans", 12))
             self._tags_text.setStyleSheet("""
                 QTextEdit { background: #111738; border: 1px solid rgba(116,102,241,0.2); border-radius: 8px; color: #eef4ff; padding: 12px; }
@@ -1031,11 +1114,17 @@ class ChannelWizardPage(QWidget):
         self.step_changed.emit(step)
 
         if step == 1:
-            self._on_refresh_names("both")
+            # Only generate names if user hasn't selected any yet
+            if not self._primary_name and not self._secondary_name:
+                self._on_refresh_names("both")
         elif step == 2:
-            self._on_refresh_logo("both")
+            # Only generate logos if none exist yet
+            if not self._primary_logo_b64 and not self._secondary_logo_b64:
+                self._on_refresh_logo("both")
         elif step == 3:
-            self._on_refresh_covers("both")
+            # Only generate covers if none exist yet
+            if not self._primary_covers_b64s and not self._secondary_covers_b64s:
+                self._on_refresh_covers("both")
         elif step == 4:
             self._load_description()
 
@@ -1250,6 +1339,11 @@ class ChannelWizardPage(QWidget):
             col["count_label"].setText(f"Refreshes remaining: {remaining}")
             col["refresh_btn"].setEnabled(remaining > 0)
             col["preview"].setText("Generating...")
+            col["preview"].setPixmap(QPixmap())  # Clear any existing image
+            # Start spinner animation
+            spinner = col.get("spinner")
+            if spinner:
+                spinner.start()
             name = self._primary_name if role == "primary" else self._secondary_name
             if hasattr(self, '_generate_logo_callback'):
                 self._generate_logo_callback(name, self._genre, role)
@@ -1259,22 +1353,153 @@ class ChannelWizardPage(QWidget):
         if target in ("secondary", "both"):
             _do_one("secondary")
 
+    def _on_upload_logo(self, role: str):
+        """Open file dialog for user to upload their own logo image."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Upload Logo Image",
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "rb") as f:
+                img_data = f.read()
+
+            # Validate it's a real image
+            qimg = QImage.fromData(img_data)
+            if qimg.isNull():
+                return
+
+            # Convert to base64 and set as logo
+            import base64 as _b64
+            image_b64 = _b64.b64encode(img_data).decode()
+            self.set_logo(image_b64, role)
+
+            # Store for profile creation
+            if role == "primary":
+                self._primary_logo_b64 = image_b64
+            else:
+                self._secondary_logo_b64 = image_b64
+        except Exception:
+            pass
+
     def set_logo(self, image_b64: str, role: str = "primary"):
         col = self._primary_logo_col if role == "primary" else self._secondary_logo_col
         history = self._primary_logo_history if role == "primary" else self._secondary_logo_history
+
+        # Stop the spinning animation
+        spinner = col.get("spinner")
+        if spinner:
+            spinner.stop()
 
         if image_b64:
             try:
                 img_data = base64.b64decode(image_b64)
                 qimg = QImage.fromData(img_data)
-                pixmap = QPixmap.fromImage(qimg).scaled(200, 200, Qt.AspectRatio.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                col["preview"].setPixmap(pixmap)
+                if qimg.isNull():
+                    col["preview"].setText("Preview unavailable")
+                    return
+
+                # Create circular pixmap for the logo preview
+                from PyQt6.QtGui import QPainter, QBrush, QPainterPath
+                from PyQt6.QtCore import QRectF
+
+                size = 200
+                # Scale source image to fill the circle
+                scaled_img = QPixmap.fromImage(qimg).scaled(
+                    size, size,
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                # Crop to square if needed
+                if scaled_img.width() != size or scaled_img.height() != size:
+                    x = (scaled_img.width() - size) // 2
+                    y = (scaled_img.height() - size) // 2
+                    scaled_img = scaled_img.copy(x, y, size, size)
+
+                # Create circular mask
+                circular = QPixmap(size, size)
+                circular.fill(QColor(0, 0, 0, 0))  # Transparent
+
+                painter = QPainter(circular)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                path = QPainterPath()
+                path.addEllipse(QRectF(0, 0, size, size))
+                painter.setClipPath(path)
+                painter.drawPixmap(0, 0, scaled_img)
+                painter.end()
+
+                col["preview"].setText("")
+                col["preview"].setStyleSheet("background: transparent; border-radius: 100px;")
+                col["preview"].setPixmap(circular)
                 history.append(image_b64)
                 self._update_logo_history(col["history_row"], history)
-            except Exception:
+                # Store for profile creation
+                if role == "primary":
+                    self._primary_logo_b64 = image_b64
+                else:
+                    self._secondary_logo_b64 = image_b64
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
                 col["preview"].setText("Preview unavailable")
         else:
             col["preview"].setText("Generation failed — try again")
+
+        # Enable Next button when both logos are ready
+        self._check_logos_ready()
+
+    def set_logo_retry(self, role: str = "primary"):
+        """Show a 'Retry Preview' button in the logo circle when generation failed."""
+        col = self._primary_logo_col if role == "primary" else self._secondary_logo_col
+
+        # Stop spinner
+        spinner = col.get("spinner")
+        if spinner:
+            spinner.stop()
+
+        # Show retry button inside the preview area
+        col["preview"].setText("")
+        col["preview"].setStyleSheet(
+            "background: #111738; border-radius: 100px; border: 1px dashed rgba(116,102,241,0.4);"
+        )
+
+        # Create a clickable label that looks like a button inside the circle
+        retry_text = "⟳ Retry Preview\n\nYour logo is being generated.\nTap to check if it's ready."
+        col["preview"].setText(retry_text)
+        col["preview"].setStyleSheet(
+            "background: #111738; border-radius: 100px; color: #7466F1; "
+            "font-size: 12px; border: 2px dashed rgba(116,102,241,0.4); padding: 20px;"
+        )
+        col["preview"].setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # Make the preview clickable for retry
+        def _on_retry_click(event, r=role):
+            col["preview"].setCursor(Qt.CursorShape.ArrowCursor)
+            col["preview"].setText("Loading...")
+            col["preview"].setStyleSheet(
+                "background: #111738; border-radius: 100px; color: rgba(255,255,255,0.3); font-size: 12px;"
+            )
+            # Restart spinner
+            if spinner:
+                spinner.start()
+            # Retry the API call (no new credits — API handles this)
+            name = self._primary_name if r == "primary" else self._secondary_name
+            if hasattr(self, '_generate_logo_callback'):
+                self._generate_logo_callback(name, self._genre, r)
+
+        col["preview"].mousePressEvent = _on_retry_click
+
+    def _check_logos_ready(self):
+        """Enable the logo step Next button only when both logos are set."""
+        ready = bool(self._primary_logo_b64 and self._secondary_logo_b64)
+        if hasattr(self, '_logo_next_btn'):
+            self._logo_next_btn.setEnabled(ready)
 
     def _update_logo_history(self, history_row, history: list[str]):
         while history_row.count():
@@ -1286,7 +1511,7 @@ class ChannelWizardPage(QWidget):
             try:
                 img_data = base64.b64decode(b64)
                 qimg = QImage.fromData(img_data)
-                thumb = QPixmap.fromImage(qimg).scaled(40, 40, Qt.AspectRatio.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                thumb = QPixmap.fromImage(qimg).scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 lbl = QLabel()
                 lbl.setPixmap(thumb)
                 lbl.setFixedSize(44, 44)
@@ -1334,7 +1559,7 @@ class ChannelWizardPage(QWidget):
             try:
                 img_data = base64.b64decode(b64)
                 qimg = QImage.fromData(img_data)
-                pixmap = QPixmap.fromImage(qimg).scaled(260, 65, Qt.AspectRatio.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                pixmap = QPixmap.fromImage(qimg).scaled(260, 65, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
                 container = QLabel()
                 container.setPixmap(pixmap)
@@ -1359,11 +1584,152 @@ class ChannelWizardPage(QWidget):
                 except Exception:
                     pass
 
+    def _on_upload_cover(self, role: str):
+        """Open file dialog for user to upload their own cover image."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Upload Cover Image",
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "rb") as f:
+                img_data = f.read()
+
+            qimg = QImage.fromData(img_data)
+            if qimg.isNull():
+                return
+
+            import base64 as _b64
+            image_b64 = _b64.b64encode(img_data).decode()
+
+            # Add to the covers list for this role
+            if role == "primary":
+                self._primary_covers_b64s.append(image_b64)
+                self.set_covers(self._primary_covers_b64s, "primary")
+            else:
+                self._secondary_covers_b64s.append(image_b64)
+                self.set_covers(self._secondary_covers_b64s, "secondary")
+        except Exception:
+            pass
+
+    def set_covers_retry(self, role: str = "primary"):
+        """Show retry message when cover generation fails."""
+        if role == "primary":
+            self._primary_covers_status.setText(
+                "⟳ Cover generation is taking longer than expected. Tap Regenerate to try again, or upload your own."
+            )
+            self._primary_covers_status.setStyleSheet("color: #7466F1; background: transparent; border: none;")
+            self._primary_covers_refresh_btn.setEnabled(True)
+            self._primary_covers_refresh_btn.setText("⟳ Retry Primary")
+        else:
+            self._secondary_covers_status.setText(
+                "⟳ Cover generation is taking longer than expected. Tap Regenerate to try again, or upload your own."
+            )
+            self._secondary_covers_status.setStyleSheet("color: #7466F1; background: transparent; border: none;")
+            self._secondary_covers_refresh_btn.setEnabled(True)
+            self._secondary_covers_refresh_btn.setText("⟳ Retry Secondary")
+
     # ── Description step ───────────────────────────────────
 
     def _load_description(self):
+        # Refresh the summary card with current logo/name data
+        self._refresh_description_summary()
+        # Trigger AI generation of description, keywords, tags
         if hasattr(self, '_generate_description_callback'):
             self._generate_description_callback(self._primary_name, self._genre)
+
+    def _refresh_description_summary(self):
+        """Update the description step summary card with current channel data."""
+        if not hasattr(self, '_desc_summary_card'):
+            return
+
+        # Clear and rebuild summary content
+        layout = self._desc_summary_card.layout()
+        if layout is None:
+            return
+
+        # Clear existing channel rows (keep header)
+        while layout.count() > 1:
+            item = layout.takeAt(1)
+            if item.widget():
+                item.widget().deleteLater()
+
+        channels_data = [
+            ("Primary Channel", self._primary_name or "—", self._PRIMARY_ACCENT, self._primary_logo_b64),
+            ("Secondary Channel", self._secondary_name or "—", self._SECONDARY_ACCENT, self._secondary_logo_b64),
+        ]
+
+        for ch_label, ch_name, ch_color, ch_logo in channels_data:
+            ch_row = QWidget()
+            ch_row.setStyleSheet("background: rgba(255,255,255,0.03); border-radius: 10px;")
+            ch_layout = QHBoxLayout(ch_row)
+            ch_layout.setContentsMargins(16, 14, 16, 14)
+            ch_layout.setSpacing(14)
+
+            logo_preview = QLabel()
+            logo_preview.setFixedSize(56, 56)
+            logo_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if ch_logo:
+                try:
+                    img_data = base64.b64decode(ch_logo)
+                    qimg = QImage.fromData(img_data)
+                    if not qimg.isNull():
+                        from PyQt6.QtGui import QPainter, QPainterPath
+                        from PyQt6.QtCore import QRectF
+                        scaled = QPixmap.fromImage(qimg).scaled(52, 52, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+                        if scaled.width() != 52 or scaled.height() != 52:
+                            x = (scaled.width() - 52) // 2
+                            y = (scaled.height() - 52) // 2
+                            scaled = scaled.copy(x, y, 52, 52)
+                        circular = QPixmap(52, 52)
+                        circular.fill(QColor(0, 0, 0, 0))
+                        painter = QPainter(circular)
+                        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                        path = QPainterPath()
+                        path.addEllipse(QRectF(0, 0, 52, 52))
+                        painter.setClipPath(path)
+                        painter.drawPixmap(0, 0, scaled)
+                        painter.end()
+                        logo_preview.setPixmap(circular)
+                        logo_preview.setStyleSheet("background: transparent; border-radius: 28px;")
+                    else:
+                        logo_preview.setText("🎨")
+                        logo_preview.setStyleSheet("background: #1a1f3d; border-radius: 28px; color: rgba(255,255,255,0.3);")
+                except Exception:
+                    logo_preview.setText("🎨")
+                    logo_preview.setStyleSheet("background: #1a1f3d; border-radius: 28px; color: rgba(255,255,255,0.3);")
+            else:
+                logo_preview.setText("🎨")
+                logo_preview.setFont(QFont("Open Sans", 20))
+                logo_preview.setStyleSheet("background: #1a1f3d; border-radius: 28px; color: rgba(255,255,255,0.3);")
+            ch_layout.addWidget(logo_preview)
+
+            info_layout = QVBoxLayout()
+            info_layout.setSpacing(4)
+
+            ch_label_lbl = QLabel(ch_label)
+            ch_label_lbl.setFont(QFont("Open Sans", 11))
+            ch_label_lbl.setStyleSheet(f"color: {ch_color}; background: transparent; border: none;")
+            info_layout.addWidget(ch_label_lbl)
+
+            ch_name_lbl = QLabel(ch_name)
+            ch_name_lbl.setFont(QFont("Open Sans", 15, QFont.Weight.Bold))
+            ch_name_lbl.setStyleSheet("color: #ffffff; background: transparent; border: none;")
+            info_layout.addWidget(ch_name_lbl)
+
+            ch_genre_lbl = QLabel(self._genre or "—")
+            ch_genre_lbl.setFont(QFont("Open Sans", 11))
+            ch_genre_lbl.setStyleSheet("color: #8a8fa8; background: transparent; border: none;")
+            info_layout.addWidget(ch_genre_lbl)
+
+            ch_layout.addLayout(info_layout, 1)
+            layout.addWidget(ch_row)
 
     def set_description(self, description: str, keywords: list[str], tags: list[str]):
         self._description = description
@@ -1372,10 +1738,51 @@ class ChannelWizardPage(QWidget):
         self._desc_text.setPlainText(description)
         self._keywords_text.setPlainText(", ".join(keywords))
         self._tags_text.setPlainText(", ".join(tags))
+        # Hide error/retry if visible
+        if hasattr(self, '_desc_error_label'):
+            self._desc_error_label.hide()
+        if hasattr(self, '_desc_retry_btn'):
+            self._desc_retry_btn.hide()
+
+    def set_description_error(self, message: str):
+        """Show an error message with a retry button for description generation."""
+        self._desc_text.setPlainText("")
+        self._keywords_text.setPlainText("")
+        self._tags_text.setPlainText("")
+
+        if not hasattr(self, '_desc_error_label'):
+            # Create error label + retry button dynamically (first time only)
+            self._desc_error_label = QLabel("")
+            self._desc_error_label.setStyleSheet("color: #FF7262; background: transparent; border: none; font-size: 13px;")
+            self._desc_error_label.setWordWrap(True)
+            # Insert into the description step layout
+            parent = self._desc_text.parentWidget()
+            if parent and parent.layout():
+                parent.layout().addWidget(self._desc_error_label)
+
+            self._desc_retry_btn = QPushButton("⟳ Retry Description Generation")
+            self._desc_retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._desc_retry_btn.setStyleSheet(
+                "QPushButton { background: transparent; color: #7466F1; border: 1px solid #7466F1; "
+                "border-radius: 6px; padding: 8px 16px; font-size: 13px; } "
+                "QPushButton:hover { background: rgba(116,102,241,0.1); }"
+            )
+            self._desc_retry_btn.clicked.connect(self._load_description)
+            if parent and parent.layout():
+                parent.layout().addWidget(self._desc_retry_btn)
+
+        self._desc_error_label.setText(message)
+        self._desc_error_label.show()
+        self._desc_retry_btn.show()
 
     # ── Finish ─────────────────────────────────────────────
 
     def _on_finish(self):
+        # Show loading state on the button
+        if hasattr(self, '_finish_btn'):
+            self._finish_btn.setEnabled(False)
+            self._finish_btn.setText("Creating your profiles...")
+
         if hasattr(self, '_create_profiles_callback'):
             self._create_profiles_callback(
                 primary_name=self._primary_name,
@@ -1387,7 +1794,18 @@ class ChannelWizardPage(QWidget):
                 keywords=self._keywords,
                 tags=self._tags,
             )
+
+    def on_profiles_created(self):
+        """Called by controller when both profiles are created successfully."""
+        if hasattr(self, '_finish_btn'):
+            self._finish_btn.setText("✓ Profiles Created!")
         self.completed.emit()
+
+    def on_profiles_failed(self, message: str = ""):
+        """Called by controller when profile creation fails."""
+        if hasattr(self, '_finish_btn'):
+            self._finish_btn.setEnabled(True)
+            self._finish_btn.setText("Create Both Channel Profiles →")
 
     # ── Public setters ─────────────────────────────────────
 
@@ -1422,6 +1840,8 @@ class ChannelWizardPage(QWidget):
         self._genre_combo.setCurrentIndex(0)
         self._genre_next_btn.setEnabled(False)
         self._name_next_btn.setEnabled(False)
+        if hasattr(self, '_logo_next_btn'):
+            self._logo_next_btn.setEnabled(False)
         if hasattr(self, '_custom_prompt_input'):
             self._custom_prompt_input.clear()
         if hasattr(self, '_shared_generate_label'):

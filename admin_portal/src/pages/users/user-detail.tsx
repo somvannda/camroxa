@@ -1,17 +1,16 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, CreditCard, Crown, Users, Music } from 'lucide-react';
 
-import httpClient from '@/lib/http-client';
 import {
   useUpdateUser,
   useSuspendUser,
   useReactivateUser,
   useDeleteUser,
+  useUserDetails,
 } from '@/hooks/use-users';
 import { useToast } from '@/hooks/use-toast';
 import type { User } from '@/types/models';
@@ -50,6 +49,14 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ErrorState } from '@/components/shared/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -61,15 +68,6 @@ const userEditSchema = z.object({
 });
 
 type UserEditFormValues = z.infer<typeof userEditSchema>;
-
-// --- Hook to fetch single user ---
-function useUser(id: string) {
-  return useQuery({
-    queryKey: ['users', id],
-    queryFn: () => httpClient.get<User>(`/api/v1/users/${id}`),
-    enabled: !!id,
-  });
-}
 
 // --- Status badge styling ---
 const STATUS_BADGE_CLASSES: Record<User['status'], string> = {
@@ -83,7 +81,7 @@ export default function UserDetailPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const { data: user, isLoading, isError, error, refetch } = useUser(id!);
+  const { data: user, isLoading, isError, error, refetch } = useUserDetails(id!);
 
   const updateUser = useUpdateUser();
   const suspendUser = useSuspendUser();
@@ -186,7 +184,16 @@ export default function UserDetailPage() {
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
-        <Skeleton className="h-8 w-48" />
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-8 w-48" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
         <Skeleton className="h-64 w-full" />
       </div>
     );
@@ -215,7 +222,7 @@ export default function UserDetailPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header with back button */}
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
@@ -226,42 +233,87 @@ export default function UserDetailPage() {
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <h1 className="text-2xl font-bold text-slate-100">User Details</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-100">{user.display_name}</h1>
+          <Badge variant="outline" className={STATUS_BADGE_CLASSES[user.status]}>
+            {user.status}
+          </Badge>
+          <Badge variant="outline" className="border-slate-600 text-slate-300 capitalize">
+            {user.role}
+          </Badge>
+        </div>
       </div>
+      <p className="text-slate-400 -mt-4 ml-[76px]">{user.email}</p>
 
-      {/* User info card */}
-      <Card className="border-slate-800 bg-slate-900/50">
-        <CardHeader>
-          <CardTitle className="text-slate-100">{user.display_name}</CardTitle>
-          <CardDescription className="text-slate-400">{user.email}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-slate-400">Role:</span>{' '}
-              <span className="capitalize text-slate-200">{user.role}</span>
+      {/* Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Credit Balance Card */}
+        <Card className="border-slate-800 bg-slate-900/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-slate-400">Credit Balance</CardTitle>
+            <CreditCard className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-slate-100">
+              {user.credit_balance.toLocaleString()}
             </div>
-            <div>
-              <span className="text-slate-400">Status:</span>{' '}
-              <Badge variant="outline" className={STATUS_BADGE_CLASSES[user.status]}>
-                {user.status}
-              </Badge>
+            <p className="text-xs text-slate-500 mt-1">
+              {user.total_credits_spent.toLocaleString()} spent total
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Plan Card */}
+        <Card className="border-slate-800 bg-slate-900/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-slate-400">Plan</CardTitle>
+            <Crown className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-slate-100">
+              {user.plan_name ?? <span className="text-slate-500 text-lg">No plan</span>}
             </div>
-            <div>
-              <span className="text-slate-400">Created:</span>{' '}
-              <span className="text-slate-200">
-                {new Date(user.created_at).toLocaleDateString()}
-              </span>
-            </div>
-            {user.suspension_reason && (
-              <div className="col-span-2">
-                <span className="text-slate-400">Suspension reason:</span>{' '}
-                <span className="text-yellow-300">{user.suspension_reason}</span>
-              </div>
+            {user.license_status && (
+              <p className="text-xs text-slate-500 mt-1">
+                Status: {user.license_status}
+                {user.license_expires_at && (
+                  <> · Expires {new Date(user.license_expires_at).toLocaleDateString()}</>
+                )}
+              </p>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        {/* Profiles Card */}
+        <Card className="border-slate-800 bg-slate-900/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-slate-400">Profiles</CardTitle>
+            <Users className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-slate-100">
+              {user.channel_profiles.length}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Channel profiles</p>
+          </CardContent>
+        </Card>
+
+        {/* Usage Card */}
+        <Card className="border-slate-800 bg-slate-900/50">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-slate-400">Usage</CardTitle>
+            <Music className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-slate-100">
+              {user.total_songs_generated}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Songs · {user.total_images_generated} images
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Edit form card */}
       <Card className="border-slate-800 bg-slate-900/50">
@@ -316,6 +368,82 @@ export default function UserDetailPage() {
               </Button>
             </form>
           </Form>
+        </CardContent>
+      </Card>
+
+      {/* Credit Transactions */}
+      <Card className="border-slate-800 bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="text-slate-100">Recent Transactions</CardTitle>
+          <CardDescription className="text-slate-400">
+            Last 10 credit transactions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {user.recent_transactions.length === 0 ? (
+            <p className="text-slate-500 text-sm">No transactions yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-slate-800">
+                  <TableHead className="text-slate-400">Amount</TableHead>
+                  <TableHead className="text-slate-400">Direction</TableHead>
+                  <TableHead className="text-slate-400">Reason</TableHead>
+                  <TableHead className="text-slate-400">Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {user.recent_transactions.map((tx) => (
+                  <TableRow key={tx.id} className="border-slate-800">
+                    <TableCell className={tx.amount < 0 ? 'text-red-400' : 'text-green-400'}>
+                      {tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-slate-300 capitalize">{tx.direction}</TableCell>
+                    <TableCell className="text-slate-300">{tx.reason || '—'}</TableCell>
+                    <TableCell className="text-slate-400">
+                      {tx.created_at ? new Date(tx.created_at).toLocaleString() : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Channel Profiles */}
+      <Card className="border-slate-800 bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="text-slate-100">Channel Profiles</CardTitle>
+          <CardDescription className="text-slate-400">
+            User's channel profiles
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {user.channel_profiles.length === 0 ? (
+            <p className="text-slate-500 text-sm">No channel profiles.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-slate-800">
+                  <TableHead className="text-slate-400">Name</TableHead>
+                  <TableHead className="text-slate-400">Folder</TableHead>
+                  <TableHead className="text-slate-400">Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {user.channel_profiles.map((profile) => (
+                  <TableRow key={profile.id} className="border-slate-800">
+                    <TableCell className="text-slate-200">{profile.name}</TableCell>
+                    <TableCell className="text-slate-300">{profile.folder_name || '—'}</TableCell>
+                    <TableCell className="text-slate-400">
+                      {profile.created_at ? new Date(profile.created_at).toLocaleDateString() : '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

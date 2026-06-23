@@ -1266,8 +1266,9 @@ class InitOrchestrator:
         btn_close = _make_ctrl_btn("x", "#ef4444")
         set_button_role(btn_close, "windowClose")
 
+        from .window_config import toggle_maximize as _toggle_maximize
         btn_min.clicked.connect(lambda: host.showMinimized())
-        btn_max.clicked.connect(lambda: host.showNormal() if host.isMaximized() else host.showMaximized())
+        btn_max.clicked.connect(lambda: _toggle_maximize(host))
         btn_close.clicked.connect(lambda: host.close())
 
         layout.addWidget(btn_min)
@@ -1287,7 +1288,17 @@ class InitOrchestrator:
         def _on_move(event: QMouseEvent | None) -> None:
             if event and title_bar._dragging:  # type: ignore[attr-defined]
                 if host.isMaximized():
-                    host.showNormal()
+                    from PyQt6.QtCore import QRect
+                    prev = host.property("_pre_maximize_geo")
+                    if isinstance(prev, QRect) and prev.isValid():
+                        ratio = event.position().x() / max(host.width(), 1)
+                        new_x = int(event.globalPosition().x() - ratio * prev.width())
+                        new_y = int(event.globalPosition().y() - event.position().y())
+                        host.setGeometry(new_x, new_y, prev.width(), prev.height())
+                        host.setProperty("_pre_maximize_geo", None)
+                    else:
+                        host.showNormal()
+                    title_bar._drag_pos = event.globalPosition().toPoint() - host.frameGeometry().topLeft()  # type: ignore[attr-defined]
                 host.move(event.globalPosition().toPoint() - title_bar._drag_pos)  # type: ignore[attr-defined]
                 event.accept()
 
@@ -1295,10 +1306,7 @@ class InitOrchestrator:
             title_bar._dragging = False  # type: ignore[attr-defined]
 
         def _on_double_click(event: QMouseEvent | None) -> None:
-            if host.isMaximized():
-                host.showNormal()
-            else:
-                host.showMaximized()
+            _toggle_maximize(host)
 
         title_bar.mousePressEvent = _on_press  # type: ignore[assignment]
         title_bar.mouseMoveEvent = _on_move  # type: ignore[assignment]
@@ -1390,8 +1398,9 @@ class InitOrchestrator:
         btn_close = _make_ctrl_btn("x", "#ef4444")
         set_button_role(btn_close, "windowClose")
 
+        from .window_config import toggle_maximize as _toggle_maximize_2
         btn_min.clicked.connect(lambda: host.showMinimized())
-        btn_max.clicked.connect(lambda: host.showNormal() if host.isMaximized() else host.showMaximized())
+        btn_max.clicked.connect(lambda: _toggle_maximize_2(host))
         btn_close.clicked.connect(lambda: host.close())
 
         layout.addWidget(btn_min)

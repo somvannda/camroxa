@@ -7,13 +7,15 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const PROVIDERS = ['suno', 'fal', 'openai', 'slai', 'youtube', 'facebook'] as const;
+const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'youtube', 'facebook'] as const;
 
 const PROVIDER_LABELS: Record<string, string> = {
   suno: 'Suno',
   fal: 'FAL',
   openai: 'OpenAI',
+  deepseek: 'DeepSeek',
   slai: 'Slai',
+  cala: 'CALA',
   youtube: 'YouTube',
   facebook: 'Facebook',
 };

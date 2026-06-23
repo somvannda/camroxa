@@ -79,3 +79,31 @@ class SelectionStrategy(StrEnum):
 
     ROUND_ROBIN = "round_robin"
     PRIORITY = "priority"
+
+
+class AIService(StrEnum):
+    """External AI service providers integrated with the platform."""
+
+    SUNO = "suno"
+    FAL = "fal"
+    OPENAI = "openai"
+    DEEPSEEK = "deepseek"
+    SLAI = "slai"
+    CALA = "cala"
+
+
+class OperationType(StrEnum):
+    """Categories of AI operations for pricing and usage tracking."""
+
+    MUSIC_GENERATION = "music_generation"
+    IMAGE_GENERATION = "image_generation"
+    TEXT_GENERATION = "text_generation"
+    CHANNEL_SETUP = "channel_setup"
+
+
+class ServiceAvailability(StrEnum):
+    """Operational status of an AI service based on Key Pool state."""
+
+    AVAILABLE = "available"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"

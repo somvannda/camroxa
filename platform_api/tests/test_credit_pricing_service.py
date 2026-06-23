@@ -1,7 +1,7 @@
 """Unit tests for CreditPricingService.
 
 Tests pricing CRUD operations, validation, margin computation,
-and rejection of unconfigured model operations.
+and rejection of unconfigured service operations.
 
 Requirements: 5.1, 5.2, 5.4, 5.5, 5.6, 5.7
 """
@@ -36,17 +36,17 @@ class FakeCreditPricingRepo:
 
     def seed(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None = None,
     ) -> None:
         """Seed an entry for testing."""
-        key = (model_identifier, operation_type)
+        key = (ai_service, operation_type)
         now = datetime.now(timezone.utc)
         self._entries[key] = {
             "id": uuid4(),
-            "model_identifier": model_identifier,
+            "ai_service": ai_service,
             "operation_type": operation_type,
             "credits_per_operation": credits_per_operation,
             "external_cost_cents": external_cost_cents,
@@ -57,23 +57,23 @@ class FakeCreditPricingRepo:
     async def get_all(self) -> list[dict[str, Any]]:
         return list(self._entries.values())
 
-    async def get_by_model_and_operation(
-        self, model_identifier: str, operation_type: str
+    async def get_by_service_and_operation(
+        self, ai_service: str, operation_type: str
     ) -> dict[str, Any] | None:
-        return self._entries.get((model_identifier, operation_type))
+        return self._entries.get((ai_service, operation_type))
 
     async def create(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None,
     ) -> dict[str, Any]:
-        key = (model_identifier, operation_type)
+        key = (ai_service, operation_type)
         now = datetime.now(timezone.utc)
         entry = {
             "id": uuid4(),
-            "model_identifier": model_identifier,
+            "ai_service": ai_service,
             "operation_type": operation_type,
             "credits_per_operation": credits_per_operation,
             "external_cost_cents": external_cost_cents,
@@ -85,12 +85,12 @@ class FakeCreditPricingRepo:
 
     async def update(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None,
     ) -> dict[str, Any] | None:
-        key = (model_identifier, operation_type)
+        key = (ai_service, operation_type)
         if key not in self._entries:
             return None
         self._entries[key]["credits_per_operation"] = credits_per_operation
@@ -98,8 +98,8 @@ class FakeCreditPricingRepo:
         self._entries[key]["updated_at"] = datetime.now(timezone.utc)
         return self._entries[key]
 
-    async def delete(self, model_identifier: str, operation_type: str) -> bool:
-        key = (model_identifier, operation_type)
+    async def delete(self, ai_service: str, operation_type: str) -> bool:
+        key = (ai_service, operation_type)
         if key in self._entries:
             del self._entries[key]
             return True
@@ -140,24 +140,24 @@ class TestGetAllPricing:
     async def test_returns_all_entries_with_margin(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno_v5", "music_generation", 14, 800)
-        repo.seed("fal_ai", "image_generation", 5, 200)
+        repo.seed("suno", "music_generation", 14, 800)
+        repo.seed("fal", "image_generation", 5, 200)
 
         result = await service.get_all_pricing()
         assert len(result) == 2
 
         # Check margin computation: credits - (external_cost_cents / 100)
-        suno_entry = next(e for e in result if e["model_identifier"] == "suno_v5")
+        suno_entry = next(e for e in result if e["ai_service"] == "suno")
         assert suno_entry["margin"] == 14 - (800 / 100)  # 14 - 8.0 = 6.0
 
-        fal_entry = next(e for e in result if e["model_identifier"] == "fal_ai")
+        fal_entry = next(e for e in result if e["ai_service"] == "fal")
         assert fal_entry["margin"] == 5 - (200 / 100)  # 5 - 2.0 = 3.0
 
     @pytest.mark.asyncio
     async def test_margin_is_none_when_no_external_cost(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("deepseek", "llm_generation", 3, None)
+        repo.seed("deepseek", "text_generation", 3, None)
 
         result = await service.get_all_pricing()
         assert len(result) == 1
@@ -176,20 +176,20 @@ class TestGetPrice:
     async def test_returns_credits_per_operation(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno_v5", "music_generation", 14, 800)
-        price = await service.get_price("suno_v5", "music_generation")
+        repo.seed("suno", "music_generation", 14, 800)
+        price = await service.get_price("suno", "music_generation")
         assert price == 14
 
     @pytest.mark.asyncio
     async def test_raises_external_service_error_when_not_configured(
         self, service: CreditPricingService
     ) -> None:
-        """Req 5.6: Reject generation requests for unconfigured model operations."""
+        """Req 5.6: Reject generation requests for unconfigured service operations."""
         with pytest.raises(ExternalServiceError) as exc_info:
-            await service.get_price("unknown_model", "unknown_op")
+            await service.get_price("unknown_service", "unknown_op")
 
         assert "not yet available" in exc_info.value.message
-        assert exc_info.value.details["model_identifier"] == "unknown_model"
+        assert exc_info.value.details["ai_service"] == "unknown_service"
         assert exc_info.value.details["operation_type"] == "unknown_op"
 
 
@@ -205,8 +205,8 @@ class TestSetPrice:
     async def test_creates_new_entry(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        result = await service.set_price("suno_v5", "music_generation", 14, 800)
-        assert result["model_identifier"] == "suno_v5"
+        result = await service.set_price("suno", "music_generation", 14, 800)
+        assert result["ai_service"] == "suno"
         assert result["operation_type"] == "music_generation"
         assert result["credits_per_operation"] == 14
         assert result["external_cost_cents"] == 800
@@ -216,9 +216,9 @@ class TestSetPrice:
     async def test_updates_existing_entry(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno_v5", "music_generation", 14, 800)
+        repo.seed("suno", "music_generation", 14, 800)
 
-        result = await service.set_price("suno_v5", "music_generation", 20, 900)
+        result = await service.set_price("suno", "music_generation", 20, 900)
         assert result["credits_per_operation"] == 20
         assert result["external_cost_cents"] == 900
         assert result["margin"] == 20 - (900 / 100)  # 11.0
@@ -229,7 +229,7 @@ class TestSetPrice:
     ) -> None:
         """Req 5.5: credits_per_operation must be >= 1."""
         with pytest.raises(ValidationError) as exc_info:
-            await service.set_price("suno_v5", "music", 0, 100)
+            await service.set_price("suno", "music", 0, 100)
         assert "at least 1" in exc_info.value.message
 
     @pytest.mark.asyncio
@@ -238,7 +238,7 @@ class TestSetPrice:
     ) -> None:
         """Req 5.5: credits_per_operation must be <= 10000."""
         with pytest.raises(ValidationError) as exc_info:
-            await service.set_price("suno_v5", "music", 10001, 100)
+            await service.set_price("suno", "music", 10001, 100)
         assert "not exceed 10000" in exc_info.value.message
 
     @pytest.mark.asyncio
@@ -247,7 +247,7 @@ class TestSetPrice:
     ) -> None:
         """Req 5.5: negative values rejected."""
         with pytest.raises(ValidationError):
-            await service.set_price("suno_v5", "music", -5, 100)
+            await service.set_price("suno", "music", -5, 100)
 
 
 # ---------------------------------------------------------------------------
@@ -262,19 +262,19 @@ class TestCreatePrice:
     async def test_creates_new_entry(
         self, service: CreditPricingService
     ) -> None:
-        result = await service.create_price("fal_ai", "image_generation", 5, 200)
-        assert result["model_identifier"] == "fal_ai"
+        result = await service.create_price("fal", "image_generation", 5, 200)
+        assert result["ai_service"] == "fal"
         assert result["credits_per_operation"] == 5
 
     @pytest.mark.asyncio
     async def test_raises_duplicate_error(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        """Req 5.7: Reject duplicate (model_identifier, operation_type)."""
-        repo.seed("suno_v5", "music_generation", 14, 800)
+        """Req 5.7: Reject duplicate (ai_service, operation_type)."""
+        repo.seed("suno", "music_generation", 14, 800)
 
         with pytest.raises(DuplicateError) as exc_info:
-            await service.create_price("suno_v5", "music_generation", 20, 900)
+            await service.create_price("suno", "music_generation", 20, 900)
         assert "already exists" in exc_info.value.message
 
     @pytest.mark.asyncio
@@ -282,7 +282,7 @@ class TestCreatePrice:
         self, service: CreditPricingService
     ) -> None:
         with pytest.raises(ValidationError):
-            await service.create_price("suno_v5", "music", 0, 100)
+            await service.create_price("suno", "music", 0, 100)
 
 
 # ---------------------------------------------------------------------------
@@ -297,9 +297,9 @@ class TestUpdatePrice:
     async def test_updates_existing_entry(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno_v5", "music_generation", 14, 800)
+        repo.seed("suno", "music_generation", 14, 800)
 
-        result = await service.update_price("suno_v5", "music_generation", 18, 900)
+        result = await service.update_price("suno", "music_generation", 18, 900)
         assert result["credits_per_operation"] == 18
         assert result["external_cost_cents"] == 900
 
@@ -315,9 +315,9 @@ class TestUpdatePrice:
     async def test_validates_credits(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno_v5", "music_generation", 14, 800)
+        repo.seed("suno", "music_generation", 14, 800)
         with pytest.raises(ValidationError):
-            await service.update_price("suno_v5", "music_generation", 10001, 100)
+            await service.update_price("suno", "music_generation", 10001, 100)
 
 
 # ---------------------------------------------------------------------------
@@ -332,8 +332,8 @@ class TestDeletePrice:
     async def test_deletes_existing_entry(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno_v5", "music_generation", 14, 800)
-        result = await service.delete_price("suno_v5", "music_generation")
+        repo.seed("suno", "music_generation", 14, 800)
+        result = await service.delete_price("suno", "music_generation")
         assert result is True
 
         # Verify it's gone

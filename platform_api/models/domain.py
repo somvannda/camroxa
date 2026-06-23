@@ -61,8 +61,10 @@ class Plan:
     price_cents: int = 0
     billing_cycle_days: int | None = None
     profile_allowance: int = 0
-    monthly_song_quota: int | None = None
+    monthly_song_limit: int | None = None
+    monthly_image_limit: int | None = None
     daily_song_limit_per_channel: int = 7
+    daily_image_limit_per_channel: int = 7
     is_active: bool = True
     effective_from: datetime = field(default_factory=datetime.utcnow)
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -370,3 +372,34 @@ class KeyStatusEvent:
     http_status_code: int | None = None
     response_summary: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+
+# ---------------------------------------------------------------------------
+# Usage Tracking (Credit Pricing Redesign)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class UsageRecord:
+    """Tracks daily and monthly usage per user/channel/operation."""
+
+    id: UUID = field(default_factory=uuid4)
+    user_id: UUID = field(default_factory=uuid4)
+    channel_profile_id: UUID | None = None
+    operation_type: str = ""
+    usage_date: Any = None  # date
+    daily_count: int = 0
+    monthly_count: int = 0
+    period_start_date: Any = None  # date
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass(frozen=True)
+class MarginDetails:
+    """Computed margin details for a credit pricing entry."""
+
+    sell_price_cents: int
+    profit_margin_cents: int
+    profit_margin_percent: float

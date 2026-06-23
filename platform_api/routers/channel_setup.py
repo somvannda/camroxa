@@ -2,6 +2,8 @@
 
 Provides endpoints to generate channel names, logos, covers,
 and descriptions using AI (DeepSeek LLM + SLAI image generation).
+
+Credit deduction/refund is handled centrally by CreditOperationService.
 """
 
 from __future__ import annotations
@@ -9,13 +11,19 @@ from __future__ import annotations
 import base64
 import logging
 from typing import Any
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
-from platform_api.exceptions import PlatformAPIError, ExternalServiceError, ValidationError
+from platform_api.exceptions import (
+    ExternalServiceError,
+    InsufficientCreditsError,
+    PlatformAPIError,
+    ValidationError,
+)
 from platform_api.routers.generation import GenerationServiceDep
 
 logger = logging.getLogger(__name__)
@@ -215,15 +223,15 @@ async def generate_names(
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateNamesResponse:
     """Generate AI-powered channel name suggestions based on genre."""
-    # The admin channel prompt is keyed on the music description's match_key.
-    # The onboarding genre dropdown is a music description, so prefer its
-    # match_key for the lookup and fall back to the genre name.
+    from platform_api.dependencies import get_credit_operation_service
+
+    credit_svc = get_credit_operation_service()
+
+    # Resolve prompt BEFORE charging — don't charge if no prompt available
     lookup_key = (request.match_key or request.genre or "").strip()
     prompt = await _get_channel_prompt("title", request.genre, "", match_key=lookup_key)
     if not prompt:
         if request.description:
-            # No admin preset matched, but the user supplied a custom prompt —
-            # generate from a sensible base instruction instead of failing.
             prompt = (
                 "Please provide a list of recommended YouTube channel names "
                 f"for the '{request.genre}' music genre."
@@ -237,19 +245,44 @@ async def generate_names(
 
     system = "You are a creative music branding expert. Return ONLY a JSON array of strings, no explanation."
     if request.description:
-        # Augment (do not replace) the admin preset with the user's custom prompt.
         prompt += f" Context: {request.description}"
 
-    try:
-        result = await gen.generate_chat_text(system_prompt=system, user_prompt=prompt, model="gpt-5.5")
+    async def _do_generate() -> list[str]:
         import json
+
+        result = await gen.generate_chat_text(system_prompt=system, user_prompt=prompt, model="deepseek-chat")
+
+        names: list[str] = []
         start = result.find("[")
         end = result.rfind("]") + 1
         if start >= 0 and end > start:
-            names = json.loads(result[start:end])
-        else:
-            # Fallback: split by newlines
-            names = [n.strip().strip('"').strip("'") for n in result.split("\n") if n.strip()][:10]
+            try:
+                parsed = json.loads(result[start:end])
+                if isinstance(parsed, list):
+                    names = [str(n).strip() for n in parsed if str(n).strip()]
+            except (json.JSONDecodeError, ValueError):
+                names = []
+
+        if not names:
+            raw_lines = [n.strip() for n in result.split("\n") if n.strip()]
+            for line in raw_lines:
+                cleaned = line.strip("[],\"' \t")
+                if cleaned:
+                    names.append(cleaned)
+            names = names[:10]
+
+        return names
+
+    try:
+        names, _credits_used = await credit_svc.execute_with_credits(
+            user_id=ctx.user_id,
+            ai_service="deepseek",
+            operation_type="text_generation",
+            operation=_do_generate,
+            fallback_operation_type="text_generation",
+        )
+    except InsufficientCreditsError:
+        raise
     except Exception as exc:
         logger.error("Failed to generate channel names: %s", exc)
         raise ExternalServiceError(
@@ -292,6 +325,11 @@ async def generate_logo(
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateImageResponse:
     """Generate a circular channel logo using SLAI image generation via the pool."""
+    from platform_api.dependencies import get_credit_operation_service
+
+    credit_svc = get_credit_operation_service()
+
+    # Resolve prompt BEFORE charging
     lookup_key = (request.match_key or request.genre or "").strip()
     prompt = await _get_channel_prompt("logo", request.genre, "", match_key=lookup_key)
     if not prompt:
@@ -302,21 +340,40 @@ async def generate_logo(
     prompt = prompt.replace("{channel_name}", request.channel_name)
     prompt = prompt.replace("{genre}", request.genre or "music")
 
-    try:
-        # Call the SLAI image generation directly via GenerationService's
-        # internal pool-routed method (bypasses credit pricing for now —
-        # onboarding uses trial credits with a flat deduction).
-        response = await gen._call_slai(
+    async def _do_generate() -> str:
+        import base64 as _b64
+        from platform_api.dependencies import get_cala_client, get_key_pool_service
+
+        cala = get_cala_client()
+
+        # Get API key from key pool
+        key_pool = get_key_pool_service()
+        api_key = None
+        if key_pool:
+            try:
+                api_key = await key_pool.get_key("cala")
+            except Exception:
+                pass  # Fall back to .env key
+
+        response = await cala.generate_image(
             prompt=prompt,
             width=512,
             height=512,
-            style_strength=0.7,
-            reference_image_base64=None,
-            extra_params=None,
+            api_key=api_key,
         )
-        image_bytes = gen._extract_image_bytes(response, provider="slai")
-        import base64 as _b64
-        image_b64 = _b64.b64encode(image_bytes).decode()
+        image_bytes = await gen.extract_image_bytes_async(response, provider="cala")
+        return _b64.b64encode(image_bytes).decode()
+
+    try:
+        image_b64, _credits_used = await credit_svc.execute_with_credits(
+            user_id=ctx.user_id,
+            ai_service="cala",
+            operation_type="image_generation",
+            operation=_do_generate,
+            fallback_operation_type="image_generation",
+        )
+    except InsufficientCreditsError:
+        raise
     except Exception as exc:
         logger.error("Failed to generate logo: %s", exc)
         raise ExternalServiceError(
@@ -339,6 +396,11 @@ async def generate_covers(
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateCoversResponse:
     """Generate channel cover/banner images using SLAI via the pool."""
+    from platform_api.dependencies import get_credit_operation_service
+
+    credit_svc = get_credit_operation_service()
+
+    # Resolve prompt BEFORE charging
     lookup_key = (getattr(request, 'match_key', '') or request.genre or "").strip()
     prompt = await _get_channel_prompt("cover", request.genre, "", match_key=lookup_key)
     if not prompt:
@@ -347,26 +409,50 @@ async def generate_covers(
     prompt = prompt.replace("{channel_name}", request.channel_name)
     prompt = prompt.replace("{genre}", request.genre or "music")
 
-    images = []
-    for i in range(request.count):
-        try:
-            response = await gen._call_slai(
+    async def _do_generate() -> list[str]:
+        import base64 as _b64
+        from platform_api.dependencies import get_cala_client, get_key_pool_service
+
+        cala = get_cala_client()
+
+        # Get API key from key pool
+        key_pool = get_key_pool_service()
+        api_key = None
+        if key_pool:
+            try:
+                api_key = await key_pool.get_key("cala")
+            except Exception:
+                pass  # Fall back to .env key
+
+        images: list[str] = []
+        for _i in range(request.count):
+            response = await cala.generate_image(
                 prompt=prompt,
                 width=1920,
                 height=480,
-                style_strength=0.7,
-                reference_image_base64=None,
-                extra_params=None,
+                api_key=api_key,
             )
-            image_bytes = gen._extract_image_bytes(response, provider="slai")
-            import base64 as _b64
+            image_bytes = await gen.extract_image_bytes_async(response, provider="cala")
             images.append(_b64.b64encode(image_bytes).decode())
-        except Exception as exc:
-            logger.error("Failed to generate cover %d: %s", i + 1, exc)
-            raise ExternalServiceError(
-                f"Failed to generate cover: {str(exc)}",
-                is_retryable=True,
-            )
+        return images
+
+    try:
+        images, _credits_used = await credit_svc.execute_with_credits(
+            user_id=ctx.user_id,
+            ai_service="cala",
+            operation_type="image_generation",
+            operation=_do_generate,
+            count=request.count,
+            fallback_operation_type="image_generation",
+        )
+    except InsufficientCreditsError:
+        raise
+    except Exception as exc:
+        logger.error("Failed to generate covers: %s", exc)
+        raise ExternalServiceError(
+            f"Failed to generate cover: {str(exc)}",
+            is_retryable=True,
+        )
 
     return GenerateCoversResponse(images=images)
 
@@ -383,6 +469,11 @@ async def generate_description(
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateDescriptionResponse:
     """Generate a YouTube channel description, keywords, and tags using LLM."""
+    from platform_api.dependencies import get_credit_operation_service
+
+    credit_svc = get_credit_operation_service()
+
+    # Resolve prompt BEFORE charging — don't charge if no prompt available
     system = "You are a YouTube SEO expert. Return a JSON object with three fields: 'description' (string), 'keywords' (array), and 'tags' (array). No explanation, just the JSON."
 
     prompt = await _get_channel_prompt("description", request.genre, "", match_key=request.genre)
@@ -391,24 +482,39 @@ async def generate_description(
             f"No channel prompt found for category 'Description' with match_key '{request.genre}'. Please create one in the admin portal.",
         )
 
-    try:
-        result = await gen.generate_chat_text(system_prompt=system, user_prompt=prompt, model="gpt-5.5")
+    async def _do_generate() -> GenerateDescriptionResponse:
         import json
+
+        result = await gen.generate_chat_text(system_prompt=system, user_prompt=prompt, model="deepseek-chat")
         start = result.find("{")
         end = result.rfind("}") + 1
         if start >= 0 and end > start:
-            data = json.loads(result[start:end])
+            parsed = json.loads(result[start:end])
             return GenerateDescriptionResponse(
-                description=data.get("description", ""),
-                keywords=data.get("keywords", []),
-                tags=data.get("tags", []),
+                description=parsed.get("description", ""),
+                keywords=parsed.get("keywords", []),
+                tags=parsed.get("tags", []),
             )
+        raise ValueError("LLM response did not contain valid JSON object")
+
+    try:
+        response, _credits_used = await credit_svc.execute_with_credits(
+            user_id=ctx.user_id,
+            ai_service="deepseek",
+            operation_type="text_generation",
+            operation=_do_generate,
+            fallback_operation_type="text_generation",
+        )
+    except InsufficientCreditsError:
+        raise
     except Exception as exc:
         logger.error("Failed to generate description: %s", exc)
         raise ExternalServiceError(
             f"Failed to generate description: {str(exc)}",
             is_retryable=True,
         )
+
+    return response
 
 
 @router.post(

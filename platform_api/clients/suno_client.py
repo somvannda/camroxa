@@ -67,16 +67,19 @@ class SunoClient:
         )
         self._client: httpx.AsyncClient | None = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
+    async def _get_client(self, api_key: str | None = None) -> httpx.AsyncClient:
+        key = api_key or self._api_key
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 headers={
-                    "Authorization": f"Bearer {self._api_key}",
+                    "Authorization": f"Bearer {key}",
                     "Content-Type": "application/json",
                 },
             )
+        elif api_key:
+            self._client.headers["Authorization"] = f"Bearer {key}"
         return self._client
 
     async def close(self) -> None:
@@ -94,6 +97,7 @@ class SunoClient:
         style: str,
         instrumental: bool = False,
         callback_url: str | None = None,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
         """Submit a music generation task to Suno.
 
@@ -111,7 +115,7 @@ class SunoClient:
         Raises:
             ExternalServiceError: On timeout, HTTP error, or connection failure.
         """
-        client = await self._get_client()
+        client = await self._get_client(api_key=api_key)
         payload: dict[str, Any] = {
             "model": model,
             "title": title,

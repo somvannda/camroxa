@@ -1,8 +1,8 @@
-"""Credit service implementing CreditServicePort.
+"""Credit service — single source of truth for all credit operations.
 
 Manages credit wallet operations including balance queries, atomic deductions,
 refunds, credit pack purchases, quota consumption order, admin adjustments,
-and lifetime bonus crediting.
+lifetime bonus crediting, and the deduct-execute-refund pattern for AI operations.
 
 Requirements: 6.1, 6.2, 6.3, 6.6, 6.7, 6.10, 6.11, 6.12, 6.13
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol, TypeVar
 from uuid import UUID
 
 from platform_api.exceptions import (
@@ -23,6 +23,8 @@ from platform_api.models.domain import License, Plan
 from platform_api.models.enums import LicenseStatus, PlanType
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -121,6 +123,14 @@ class CreditPackRepository(Protocol):
         ...
 
 
+class PricingServiceProtocol(Protocol):
+    """Protocol for credit pricing service used by execute_with_credits."""
+
+    async def get_price(self, ai_service: str, operation_type: str) -> int:
+        """Return credits_per_operation for an ai_service/operation combination."""
+        ...
+
+
 # ---------------------------------------------------------------------------
 # Credit Service
 # ---------------------------------------------------------------------------
@@ -146,11 +156,13 @@ class CreditService:
         license_repo: LicenseRepository,
         plan_repo: PlanRepository,
         pack_repo: CreditPackRepository | None = None,
+        pricing_service: PricingServiceProtocol | None = None,
     ) -> None:
         self._credit_repo = credit_repo
         self._license_repo = license_repo
         self._plan_repo = plan_repo
         self._pack_repo = pack_repo
+        self._pricing_service = pricing_service
 
     # ------------------------------------------------------------------
     # CreditServicePort Implementation
@@ -225,6 +237,144 @@ class CreditService:
             reason,
             ref_id,
         )
+
+    # ------------------------------------------------------------------
+    # Execute-with-Credits Pattern (deduct → execute → refund on fail)
+    # ------------------------------------------------------------------
+
+    async def execute_with_credits(
+        self,
+        user_id: UUID | str,
+        ai_service: str,
+        operation_type: str,
+        operation: Callable[[], Awaitable[T]],
+        count: int = 1,
+        fallback_operation_type: str | None = None,
+    ) -> tuple[T, int]:
+        """Execute an AI operation with automatic credit deduction and refund on failure.
+
+        This is the primary method for all credit-gated AI operations. It:
+        1. Resolves pricing (with optional channel_setup fallback)
+        2. Checks balance is sufficient
+        3. Atomically deducts credits
+        4. Executes the operation
+        5. If operation fails → automatically refunds credits
+
+        Args:
+            user_id: The user's UUID (string or UUID).
+            ai_service: AI service identifier (e.g., "deepseek", "slai", "suno").
+            operation_type: Operation type for pricing lookup
+                (e.g., "text_generation", "image_generation", "music_generation").
+            operation: Async callable that performs the actual AI operation.
+            count: Multiplier for credits (e.g., number of covers).
+            fallback_operation_type: If set, tries "channel_setup" pricing first,
+                then falls back to this type.
+
+        Returns:
+            Tuple of (operation result, total credits deducted).
+
+        Raises:
+            InsufficientCreditsError: If balance is too low (402).
+            Any exception from the operation (credits are refunded first).
+        """
+        uid = UUID(user_id) if isinstance(user_id, str) else user_id
+
+        # Step 1: Resolve pricing
+        credits_per_op = await self._resolve_pricing(
+            ai_service, operation_type, fallback_operation_type
+        )
+        if credits_per_op == 0:
+            # No pricing configured — execute without charging
+            result = await operation()
+            return result, 0
+
+        total_credits = credits_per_op * count
+
+        # Step 2: Check balance
+        balance = await self._credit_repo.get_balance(uid)
+        if balance < total_credits:
+            raise InsufficientCreditsError(
+                "Insufficient credits for this operation.",
+                details={
+                    "required_credits": total_credits,
+                    "current_balance": balance,
+                },
+            )
+
+        # Step 3: Deduct
+        success = await self._credit_repo.atomic_deduct(
+            user_id=uid,
+            amount=total_credits,
+            reason=f"{operation_type} via {ai_service}",
+        )
+        if not success:
+            current = await self._credit_repo.get_balance(uid)
+            raise InsufficientCreditsError(
+                "Insufficient credits (concurrent deduction).",
+                details={
+                    "required_credits": total_credits,
+                    "current_balance": current,
+                },
+            )
+
+        logger.info(
+            "Deducted %d credits for %s via %s (user=%s)",
+            total_credits, operation_type, ai_service, uid,
+        )
+
+        # Step 4: Execute operation
+        try:
+            result = await operation()
+            return result, total_credits
+        except Exception:
+            # Step 5: Refund on failure
+            await self._safe_refund(uid, total_credits, f"{operation_type}_failed")
+            raise
+
+    async def _resolve_pricing(
+        self,
+        ai_service: str,
+        operation_type: str,
+        fallback_operation_type: str | None,
+    ) -> int:
+        """Resolve credits_per_operation with optional channel_setup fallback.
+
+        Returns 0 if no pricing is configured (graceful degradation).
+        """
+        if self._pricing_service is None:
+            return 0
+
+        # Try channel_setup pricing first if fallback is specified
+        if fallback_operation_type:
+            try:
+                return await self._pricing_service.get_price(ai_service, "channel_setup")
+            except Exception:
+                pass
+
+        # Try the standard operation type
+        try:
+            return await self._pricing_service.get_price(ai_service, operation_type)
+        except Exception:
+            logger.warning(
+                "No credit pricing configured for ai_service=%s, operation=%s. "
+                "Skipping deduction.",
+                ai_service, operation_type,
+            )
+            return 0
+
+    async def _safe_refund(self, user_id: UUID, amount: int, reason: str) -> None:
+        """Attempt a refund, swallowing errors to avoid masking the original exception."""
+        if amount <= 0:
+            return
+        try:
+            await self._credit_repo.refund(
+                user_id=user_id,
+                amount=amount,
+                reason=f"refund:{reason}",
+            )
+            logger.info("Refunded %d credits to user %s (reason=%s)", amount, user_id, reason)
+        except Exception as refund_exc:
+            logger.error("Failed to refund %d credits to user %s: %s", amount, user_id, refund_exc)
 
     async def purchase_pack(
         self, user_id: str, pack_id: str, payment_ref: str

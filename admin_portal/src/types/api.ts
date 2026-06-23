@@ -45,10 +45,14 @@ export interface CreateOfferRequest {
 }
 
 export interface CreatePricingRequest {
-  model_identifier: string;
+  ai_service: string;
   operation_type: string;
   credits_per_operation: number;
   external_cost_cents: number;
+}
+
+export interface UpdateGlobalCreditValueRequest {
+  value: number;
 }
 
 export interface UpdateRateLimitRequest {

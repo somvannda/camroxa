@@ -42,7 +42,10 @@ import type { Plan, PlanOffer } from '@/types/models';
 const planUpdateSchema = z.object({
   price_cents: z.number().min(0, 'Price must be 0 or greater'),
   profile_allowance: z.number().min(1, 'Profile allowance must be at least 1'),
-  monthly_song_quota: z.number().min(0, 'Monthly quota must be 0 or greater'),
+  monthly_song_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_image_limit: z.number().int().min(0).max(100000).nullable(),
+  daily_song_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
+  daily_image_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
   billing_cycle_days: z.number().min(1, 'Billing cycle must be at least 1 day'),
 });
 
@@ -52,9 +55,11 @@ const createPlanSchema = z.object({
   name: z.string().min(1, 'Name is required').max(50),
   price_cents: z.number().min(0, 'Price must be 0 or greater'),
   profile_allowance: z.number().min(1, 'Must be at least 1'),
-  monthly_song_quota: z.number().min(0, 'Must be 0 or greater'),
+  monthly_song_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_image_limit: z.number().int().min(0).max(100000).nullable(),
   billing_cycle_days: z.number().min(1, 'Must be at least 1 day'),
-  daily_song_limit_per_channel: z.number().min(1, 'Must be at least 1'),
+  daily_song_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
+  daily_image_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
 });
 
 type CreatePlanFormValues = z.infer<typeof createPlanSchema>;
@@ -80,6 +85,10 @@ export default function PlansPage() {
   const [createPlanDialogOpen, setCreatePlanDialogOpen] = useState(false);
   const [createOfferDialogOpen, setCreateOfferDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [editSongUnlimited, setEditSongUnlimited] = useState(false);
+  const [editImageUnlimited, setEditImageUnlimited] = useState(false);
+  const [createSongUnlimited, setCreateSongUnlimited] = useState(false);
+  const [createImageUnlimited, setCreateImageUnlimited] = useState(false);
 
   const { data: plans, isLoading: plansLoading, isError: plansError, error: plansErr, refetch: refetchPlans } = usePlans();
   const { data: offers, isLoading: offersLoading, isError: offersError, error: offersErr, refetch: refetchOffers } = useOffers();
@@ -92,7 +101,10 @@ export default function PlansPage() {
     defaultValues: {
       price_cents: 0,
       profile_allowance: 1,
-      monthly_song_quota: 0,
+      monthly_song_limit: 0,
+      monthly_image_limit: 0,
+      daily_song_limit_per_channel: 7,
+      daily_image_limit_per_channel: 7,
       billing_cycle_days: 30,
     },
   });
@@ -103,9 +115,11 @@ export default function PlansPage() {
       name: '',
       price_cents: 0,
       profile_allowance: 1,
-      monthly_song_quota: 0,
+      monthly_song_limit: 0,
+      monthly_image_limit: 0,
       billing_cycle_days: 30,
       daily_song_limit_per_channel: 7,
+      daily_image_limit_per_channel: 7,
     },
   });
 
@@ -120,10 +134,17 @@ export default function PlansPage() {
 
   const openEditDialog = (plan: Plan) => {
     setSelectedPlan(plan);
+    const songUnlimited = plan.monthly_song_limit === null;
+    const imageUnlimited = plan.monthly_image_limit === null;
+    setEditSongUnlimited(songUnlimited);
+    setEditImageUnlimited(imageUnlimited);
     editForm.reset({
       price_cents: plan.price_cents,
       profile_allowance: plan.profile_allowance,
-      monthly_song_quota: plan.monthly_song_quota ?? 0,
+      monthly_song_limit: plan.monthly_song_limit,
+      monthly_image_limit: plan.monthly_image_limit,
+      daily_song_limit_per_channel: plan.daily_song_limit_per_channel,
+      daily_image_limit_per_channel: plan.daily_image_limit_per_channel,
       billing_cycle_days: plan.billing_cycle_days ?? 30,
     });
     setEditDialogOpen(true);
@@ -133,13 +154,16 @@ export default function PlansPage() {
     createPlan.mutate(
       {
         ...values,
-        monthly_song_quota: values.monthly_song_quota === 0 ? null : values.monthly_song_quota,
+        monthly_song_limit: createSongUnlimited ? null : values.monthly_song_limit,
+        monthly_image_limit: createImageUnlimited ? null : values.monthly_image_limit,
       },
       {
         onSuccess: () => {
           toast({ title: 'Plan created successfully' });
           setCreatePlanDialogOpen(false);
           createPlanForm.reset();
+          setCreateSongUnlimited(false);
+          setCreateImageUnlimited(false);
         },
         onError: (err) => {
           const axiosError = err as AxiosError<{ detail?: string }>;
@@ -156,7 +180,14 @@ export default function PlansPage() {
   const handleUpdatePlan = (values: PlanUpdateFormValues) => {
     if (!selectedPlan) return;
     updatePlan.mutate(
-      { id: selectedPlan.id, updates: values },
+      {
+        id: selectedPlan.id,
+        updates: {
+          ...values,
+          monthly_song_limit: editSongUnlimited ? null : values.monthly_song_limit,
+          monthly_image_limit: editImageUnlimited ? null : values.monthly_image_limit,
+        },
+      },
       {
         onSuccess: () => {
           toast({ title: 'Plan updated successfully' });
@@ -232,8 +263,10 @@ export default function PlansPage() {
                     <th className="pb-3 pr-4 font-medium">Name</th>
                     <th className="pb-3 pr-4 font-medium">Price</th>
                     <th className="pb-3 pr-4 font-medium">Profiles</th>
-                    <th className="pb-3 pr-4 font-medium">Monthly Quota</th>
-                    <th className="pb-3 pr-4 font-medium">Daily Limit</th>
+                    <th className="pb-3 pr-4 font-medium">Monthly Song Limit</th>
+                    <th className="pb-3 pr-4 font-medium">Monthly Image Limit</th>
+                    <th className="pb-3 pr-4 font-medium">Daily Song Limit</th>
+                    <th className="pb-3 pr-4 font-medium">Daily Image Limit</th>
                     <th className="pb-3 pr-4 font-medium">Status</th>
                     <th className="pb-3 font-medium">Actions</th>
                   </tr>
@@ -252,10 +285,16 @@ export default function PlansPage() {
                         {plan.profile_allowance}
                       </td>
                       <td className="py-3 pr-4 text-slate-300">
-                        {plan.monthly_song_quota ?? '∞'}
+                        {plan.monthly_song_limit ?? '∞'}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-300">
+                        {plan.monthly_image_limit ?? '∞'}
                       </td>
                       <td className="py-3 pr-4 text-slate-300">
                         {plan.daily_song_limit_per_channel}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-300">
+                        {plan.daily_image_limit_per_channel}
                       </td>
                       <td className="py-3 pr-4">
                         <Badge
@@ -397,10 +436,101 @@ export default function PlansPage() {
               />
               <FormField
                 control={editForm.control}
-                name="monthly_song_quota"
+                name="monthly_song_limit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monthly Song Quota</FormLabel>
+                    <FormLabel>Monthly Song Limit</FormLabel>
+                    <div className="flex items-center gap-3">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          disabled={editSongUnlimited}
+                          value={editSongUnlimited ? '' : (field.value ?? 0)}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          placeholder={editSongUnlimited ? 'Unlimited' : ''}
+                        />
+                      </FormControl>
+                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={editSongUnlimited}
+                          onChange={(e) => {
+                            setEditSongUnlimited(e.target.checked);
+                            if (e.target.checked) {
+                              field.onChange(null);
+                            } else {
+                              field.onChange(0);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-600"
+                        />
+                        Unlimited
+                      </label>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="monthly_image_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Monthly Image Limit</FormLabel>
+                    <div className="flex items-center gap-3">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          disabled={editImageUnlimited}
+                          value={editImageUnlimited ? '' : (field.value ?? 0)}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          placeholder={editImageUnlimited ? 'Unlimited' : ''}
+                        />
+                      </FormControl>
+                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={editImageUnlimited}
+                          onChange={(e) => {
+                            setEditImageUnlimited(e.target.checked);
+                            if (e.target.checked) {
+                              field.onChange(null);
+                            } else {
+                              field.onChange(0);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-600"
+                        />
+                        Unlimited
+                      </label>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="daily_song_limit_per_channel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily Song Limit Per Channel (1–1000)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="daily_image_limit_per_channel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily Image Limit Per Channel (1–1000)</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -515,13 +645,74 @@ export default function PlansPage() {
               />
               <FormField
                 control={createPlanForm.control}
-                name="monthly_song_quota"
+                name="monthly_song_limit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monthly Song Quota (0 = unlimited)</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
-                    </FormControl>
+                    <FormLabel>Monthly Song Limit</FormLabel>
+                    <div className="flex items-center gap-3">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          disabled={createSongUnlimited}
+                          value={createSongUnlimited ? '' : (field.value ?? 0)}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          placeholder={createSongUnlimited ? 'Unlimited' : ''}
+                        />
+                      </FormControl>
+                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={createSongUnlimited}
+                          onChange={(e) => {
+                            setCreateSongUnlimited(e.target.checked);
+                            if (e.target.checked) {
+                              field.onChange(null);
+                            } else {
+                              field.onChange(0);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-600"
+                        />
+                        Unlimited
+                      </label>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createPlanForm.control}
+                name="monthly_image_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Monthly Image Limit</FormLabel>
+                    <div className="flex items-center gap-3">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          disabled={createImageUnlimited}
+                          value={createImageUnlimited ? '' : (field.value ?? 0)}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          placeholder={createImageUnlimited ? 'Unlimited' : ''}
+                        />
+                      </FormControl>
+                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={createImageUnlimited}
+                          onChange={(e) => {
+                            setCreateImageUnlimited(e.target.checked);
+                            if (e.target.checked) {
+                              field.onChange(null);
+                            } else {
+                              field.onChange(0);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-600"
+                        />
+                        Unlimited
+                      </label>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -531,7 +722,20 @@ export default function PlansPage() {
                 name="daily_song_limit_per_channel"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Daily Song Limit Per Channel</FormLabel>
+                    <FormLabel>Daily Song Limit Per Channel (1–1000)</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createPlanForm.control}
+                name="daily_image_limit_per_channel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily Image Limit Per Channel (1–1000)</FormLabel>
                     <FormControl>
                       <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
                     </FormControl>

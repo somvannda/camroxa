@@ -28,7 +28,11 @@ from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.models.enums import TaskStatus
 from platform_api.ports.generation_port import SongDraft
 from platform_api.routers.callbacks import _get_notification_port, _get_suno_task_repo
-from platform_api.routers.generation import _get_generation_service, _get_task_lookup
+from platform_api.routers.generation import (
+    _get_enforcement_service,
+    _get_generation_service,
+    _get_task_lookup,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +51,17 @@ def mock_generation_service() -> AsyncMock:
     )
     service.submit_suno = AsyncMock(return_value=str(uuid4()))
     service.submit_image = AsyncMock(return_value=b"\x89PNG\r\n\x1a\nfakedata")
+    return service
+
+
+@pytest.fixture
+def mock_enforcement_service() -> AsyncMock:
+    """Create a mock UsageEnforcementService.
+
+    By default, check_and_deduct succeeds (returns credits deducted).
+    """
+    service = AsyncMock()
+    service.check_and_deduct = AsyncMock(return_value=10)
     return service
 
 
@@ -79,6 +94,7 @@ def mock_notification() -> AsyncMock:
 @pytest.fixture
 def app(
     mock_generation_service: AsyncMock,
+    mock_enforcement_service: AsyncMock,
     mock_task_lookup: AsyncMock,
     mock_suno_task_repo: AsyncMock,
     mock_notification: AsyncMock,
@@ -87,6 +103,7 @@ def app(
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: USER_CONTEXT
     application.dependency_overrides[_get_generation_service] = lambda: mock_generation_service
+    application.dependency_overrides[_get_enforcement_service] = lambda: mock_enforcement_service
     application.dependency_overrides[_get_task_lookup] = lambda: mock_task_lookup
     application.dependency_overrides[_get_suno_task_repo] = lambda: mock_suno_task_repo
     application.dependency_overrides[_get_notification_port] = lambda: mock_notification

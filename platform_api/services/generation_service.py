@@ -18,6 +18,8 @@ import unicodedata
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+import httpx
+
 from platform_api.exceptions import (
     ExternalServiceError,
     InsufficientCreditsError,
@@ -63,9 +65,9 @@ class CreditServiceProtocol(Protocol):
 
 
 class CreditPricingRepository(Protocol):
-    """Looks up per-model credit pricing."""
+    """Looks up per-service credit pricing."""
 
-    async def get_price(self, model_identifier: str, operation_type: str) -> int | None:
+    async def get_price(self, ai_service: str, operation_type: str) -> int | None:
         ...
 
 
@@ -236,6 +238,14 @@ def _parse_resolution(resolution: str) -> tuple[int, int] | None:
 # ---------------------------------------------------------------------------
 # Generation Service
 # ---------------------------------------------------------------------------
+
+
+class _ImageUrlResponse(Exception):
+    """Internal signal that the provider returned a URL to download instead of inline bytes."""
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(url)
 
 
 class GenerationService:
@@ -979,24 +989,11 @@ class GenerationService:
                 logger.warning("DeepSeek pool LLM failed, trying SLAI: %s", exc)
                 last_error = exc
 
-        # --- Attempt 2: SLAI pool (fallback) ---
-        if response is None and self._slai_pool_wrapper and await self._pool_has_entries("slai"):
-            try:
-                from platform_api.config import get_settings as _get_settings
-                _slai_url = _get_settings().slai_api_base_url
-                response = await self._slai_pool_wrapper.execute(
-                    lambda api_key: self._llm_client.chat_completion(
-                        messages=messages,
-                        model=model,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        api_key=api_key,
-                        base_url=_slai_url,
-                    )
-                )
-            except Exception as exc:
-                logger.warning("SLAI LLM failed: %s", exc)
-                last_error = exc
+        # --- Attempt 2: SLAI pool (fallback — skip if DeepSeek succeeded or if on text) ---
+        # NOTE: SLAI text fallback disabled due to unreliable connectivity.
+        # Re-enable once AI Service Switcher is implemented for proper routing.
+        # if response is None and self._slai_pool_wrapper and await self._pool_has_entries("slai"):
+        #     ...pass...
 
         # --- Attempt 3: OpenAI pool (legacy) ---
         if response is None and self._llm_pool_wrapper and await self._pool_has_entries("openai"):
@@ -1068,6 +1065,7 @@ class GenerationService:
                     style=style,
                     instrumental=instrumental,
                     callback_url=callback_url,
+                    api_key=api_key,
                 )
             )
         return await self._suno_client.submit_task(
@@ -1104,6 +1102,7 @@ class GenerationService:
                     height=height,
                     num_images=num_images,
                     extra_params=extra_params,
+                    api_key=api_key,
                 )
             )
         return await self._fal_client.generate_image(
@@ -1140,6 +1139,7 @@ class GenerationService:
                     style_strength=style_strength,
                     reference_image_base64=reference_image_base64,
                     extra_params=extra_params,
+                    api_key=api_key,
                 )
             )
         return await self._slai_client.generate_image(
@@ -1156,9 +1156,24 @@ class GenerationService:
         """Extract PNG image bytes from a provider response.
 
         Providers may return image data as base64 in various fields.
-        Tries common response structures.
+        Tries common response structures. For URL-based responses (like SLAI),
+        raises with a special marker so callers can download asynchronously.
         """
-        # Try common response shapes
+        # Shape 0 (SLAI): {"data": [{"url": "https://...", "cache_id": "..."}]}
+        data_list = response.get("data")
+        if isinstance(data_list, list) and data_list:
+            first_entry = data_list[0]
+            if isinstance(first_entry, dict):
+                # Check for b64_json first
+                b64 = first_entry.get("b64_json", "")
+                if b64:
+                    return base64.b64decode(b64)
+                # Check for downloadable URL
+                url = first_entry.get("url", "")
+                if url and url.startswith("http"):
+                    # Return URL as marker — caller must download
+                    raise _ImageUrlResponse(url)
+
         # Shape 1: {"images": [{"url": "data:image/png;base64,..."}]}
         images = response.get("images", [])
         if images and isinstance(images, list):
@@ -1167,7 +1182,6 @@ class GenerationService:
                 # base64 data URL
                 url = first_image.get("url", "")
                 if url.startswith("data:"):
-                    # Extract base64 portion
                     _, _, b64_data = url.partition(",")
                     if b64_data:
                         return base64.b64decode(b64_data)
@@ -1176,13 +1190,11 @@ class GenerationService:
                 if b64:
                     return base64.b64decode(b64)
             elif isinstance(first_image, str):
-                # Direct base64 string
                 return base64.b64decode(first_image)
 
         # Shape 2: {"image": "base64..."}
         image_data = response.get("image") or response.get("data")
         if image_data and isinstance(image_data, str):
-            # Could be data URL or raw base64
             if image_data.startswith("data:"):
                 _, _, b64_data = image_data.partition(",")
                 return base64.b64decode(b64_data)
@@ -1198,3 +1210,66 @@ class GenerationService:
             is_retryable=False,
             details={"provider": provider, "response_keys": list(response.keys())},
         )
+
+    async def extract_image_bytes_async(
+        self, response: dict[str, Any], *, provider: str
+    ) -> bytes:
+        """Extract image bytes, downloading from URL if needed."""
+        try:
+            return self._extract_image_bytes(response, provider=provider)
+        except _ImageUrlResponse as url_resp:
+            # Download the image from the URL with retries
+            import asyncio
+
+            max_retries = 3
+            last_exc: Exception | None = None
+
+            for attempt in range(1, max_retries + 1):
+                try:
+                    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0)) as client:
+                        # Include auth header — some providers require it for download
+                        dl_response = await client.get(
+                            url_resp.url,
+                            headers={"User-Agent": "CAMXORA/1.0"},
+                            follow_redirects=True,
+                        )
+                        dl_response.raise_for_status()
+                        content = dl_response.content
+
+                        # Validate we got actual image bytes
+                        if content and (
+                            content[:4] == b'\x89PNG'
+                            or content[:2] == b'\xff\xd8'
+                            or content[:4] == b'RIFF'
+                            or content[:4] == b'GIF8'
+                        ):
+                            return content
+
+                        # May be a JSON response with embedded URL or base64
+                        if content and content[:1] == b'{':
+                            import json
+                            try:
+                                data = json.loads(content)
+                                # Try to extract image from nested response
+                                nested = self._extract_image_bytes(data, provider=provider)
+                                return nested
+                            except Exception:
+                                pass
+
+                        # If content looks valid (>1KB), return it anyway
+                        if len(content) > 1024:
+                            return content
+
+                        raise ExternalServiceError(
+                            f"Downloaded content is not a valid image ({len(content)} bytes)",
+                            is_retryable=True,
+                        )
+                except (httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+                    last_exc = exc
+                    if attempt < max_retries:
+                        await asyncio.sleep(2.0 * attempt)
+                        continue
+                    raise ExternalServiceError(
+                        f"Failed to download image from {provider} after {max_retries} attempts: {exc}",
+                        is_retryable=True,
+                    ) from exc

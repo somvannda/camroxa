@@ -3,7 +3,7 @@
 Provides Admin endpoints for plan management: listing plans, updating
 plan configuration, and managing promotional offers.
 
-Requirements: 4.1, 4.2, 4.10, 4.12
+Requirements: 1.1, 1.2, 1.4, 4.1, 4.2, 4.10, 4.12
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.repositories.license_repo import PlanRepository
+from platform_api.services.plan_validation import validate_plan_limits
 
 # ---------------------------------------------------------------------------
 # Router
@@ -39,8 +40,10 @@ class PlanResponse(BaseModel):
     price_cents: int
     billing_cycle_days: int | None = None
     profile_allowance: int
-    monthly_song_quota: int | None = None
+    monthly_song_limit: int | None = None
+    monthly_image_limit: int | None = None
     daily_song_limit_per_channel: int
+    daily_image_limit_per_channel: int
     is_active: bool
     effective_from: datetime
     created_at: datetime
@@ -52,7 +55,10 @@ class UpdatePlanRequest(BaseModel):
 
     price_cents: int | None = Field(default=None, ge=0, description="Price in cents")
     profile_allowance: int | None = Field(default=None, ge=1, description="Max channel profiles")
-    monthly_song_quota: int | None = Field(default=None, ge=0, description="Monthly song quota (None for unlimited)")
+    monthly_song_limit: int | None = Field(default=None, ge=0, le=100_000, description="Monthly song limit (None for unlimited)")
+    monthly_image_limit: int | None = Field(default=None, ge=0, le=100_000, description="Monthly image limit (None for unlimited)")
+    daily_song_limit_per_channel: int | None = Field(default=None, ge=1, le=1_000, description="Daily song limit per channel")
+    daily_image_limit_per_channel: int | None = Field(default=None, ge=1, le=1_000, description="Daily image limit per channel")
     billing_cycle_days: int | None = Field(default=None, ge=1, description="Billing cycle in days")
     is_active: bool | None = Field(default=None, description="Whether the plan accepts new licenses")
 
@@ -83,9 +89,11 @@ class CreatePlanRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, description="Plan name (unique)")
     price_cents: int = Field(..., ge=0, description="Price in cents")
     profile_allowance: int = Field(..., ge=1, description="Max channel profiles")
-    monthly_song_quota: int | None = Field(default=None, ge=0, description="Monthly song quota (None for unlimited)")
+    monthly_song_limit: int | None = Field(default=None, ge=0, le=100_000, description="Monthly song limit (None for unlimited)")
+    monthly_image_limit: int | None = Field(default=None, ge=0, le=100_000, description="Monthly image limit (None for unlimited)")
     billing_cycle_days: int | None = Field(default=None, ge=1, description="Billing cycle in days (None for lifetime)")
-    daily_song_limit_per_channel: int = Field(default=7, ge=1, description="Daily song limit per channel")
+    daily_song_limit_per_channel: int = Field(default=7, ge=1, le=1_000, description="Daily song limit per channel")
+    daily_image_limit_per_channel: int = Field(default=7, ge=1, le=1_000, description="Daily image limit per channel")
 
 
 # ---------------------------------------------------------------------------
@@ -118,8 +126,10 @@ def _plan_to_response(plan: Any) -> PlanResponse:
         price_cents=plan.price_cents,
         billing_cycle_days=plan.billing_cycle_days,
         profile_allowance=plan.profile_allowance,
-        monthly_song_quota=plan.monthly_song_quota,
+        monthly_song_limit=plan.monthly_song_limit,
+        monthly_image_limit=plan.monthly_image_limit,
         daily_song_limit_per_channel=plan.daily_song_limit_per_channel,
+        daily_image_limit_per_channel=plan.daily_image_limit_per_channel,
         is_active=plan.is_active,
         effective_from=plan.effective_from,
         created_at=plan.created_at,
@@ -169,14 +179,27 @@ async def create_plan(
     ctx: AdminDep,
     plan_repo: PlanRepoDep,
 ) -> PlanResponse:
-    """Create a new subscription plan."""
+    """Create a new subscription plan.
+
+    Requirement 1.2: Validates plan limit fields before persisting.
+    """
+    # Validate plan limits (Requirement 1.2)
+    validate_plan_limits(
+        monthly_song_limit=request.monthly_song_limit,
+        monthly_image_limit=request.monthly_image_limit,
+        daily_song_limit_per_channel=request.daily_song_limit_per_channel,
+        daily_image_limit_per_channel=request.daily_image_limit_per_channel,
+    )
+
     plan = await plan_repo.create(
         name=request.name,
         price_cents=request.price_cents,
         profile_allowance=request.profile_allowance,
-        monthly_song_quota=request.monthly_song_quota,
+        monthly_song_limit=request.monthly_song_limit,
+        monthly_image_limit=request.monthly_image_limit,
         billing_cycle_days=request.billing_cycle_days,
         daily_song_limit_per_channel=request.daily_song_limit_per_channel,
+        daily_image_limit_per_channel=request.daily_image_limit_per_channel,
     )
     return _plan_to_response(plan)
 
@@ -199,6 +222,7 @@ async def update_plan(
 ) -> PlanResponse:
     """Update a plan's configuration fields.
 
+    Requirement 1.2: Validates plan limit fields before persisting.
     Requirement 4.2: Changes are stored with an effective date and apply
     to new subscriptions. Existing active subscriptions retain original terms.
 
@@ -211,8 +235,14 @@ async def update_plan(
         fields["price_cents"] = request.price_cents
     if request.profile_allowance is not None:
         fields["profile_allowance"] = request.profile_allowance
-    if request.monthly_song_quota is not None:
-        fields["monthly_song_quota"] = request.monthly_song_quota
+    if request.monthly_song_limit is not None:
+        fields["monthly_song_limit"] = request.monthly_song_limit
+    if request.monthly_image_limit is not None:
+        fields["monthly_image_limit"] = request.monthly_image_limit
+    if request.daily_song_limit_per_channel is not None:
+        fields["daily_song_limit_per_channel"] = request.daily_song_limit_per_channel
+    if request.daily_image_limit_per_channel is not None:
+        fields["daily_image_limit_per_channel"] = request.daily_image_limit_per_channel
     if request.billing_cycle_days is not None:
         fields["billing_cycle_days"] = request.billing_cycle_days
     if request.is_active is not None:
@@ -225,11 +255,41 @@ async def update_plan(
                 "allowed_fields": [
                     "price_cents",
                     "profile_allowance",
-                    "monthly_song_quota",
+                    "monthly_song_limit",
+                    "monthly_image_limit",
+                    "daily_song_limit_per_channel",
+                    "daily_image_limit_per_channel",
                     "billing_cycle_days",
                     "is_active",
                 ]
             },
+        )
+
+    # Validate plan limits if any limit fields are being updated (Requirement 1.2)
+    limit_fields_present = any(
+        k in fields
+        for k in (
+            "monthly_song_limit",
+            "monthly_image_limit",
+            "daily_song_limit_per_channel",
+            "daily_image_limit_per_channel",
+        )
+    )
+    if limit_fields_present:
+        # Fetch current plan to merge with partial update for validation
+        current_plan = await plan_repo.get_by_id(plan_id)
+        if current_plan is None:
+            raise NotFoundError(message="Plan not found.", details={"plan_id": str(plan_id)})
+
+        validate_plan_limits(
+            monthly_song_limit=fields.get("monthly_song_limit", current_plan.monthly_song_limit),
+            monthly_image_limit=fields.get("monthly_image_limit", current_plan.monthly_image_limit),
+            daily_song_limit_per_channel=fields.get(
+                "daily_song_limit_per_channel", current_plan.daily_song_limit_per_channel
+            ),
+            daily_image_limit_per_channel=fields.get(
+                "daily_image_limit_per_channel", current_plan.daily_image_limit_per_channel
+            ),
         )
 
     updated_plan = await plan_repo.update(plan_id, **fields)

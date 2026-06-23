@@ -648,7 +648,7 @@ class QSSGenerator:
             f"    border-right: none;\n"
             f"}}\n\n"
             f'QWidget[uiPanel="center"] {{\n'
-            f"    background: transparent;\n"
+            f"    background-color: {c.surface_base};\n"
             f"}}\n\n"
             f'QWidget[uiPanel="footer"] {{\n'
             f"    background: transparent;\n"

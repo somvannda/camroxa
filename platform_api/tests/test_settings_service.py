@@ -663,3 +663,77 @@ class TestSettingsService:
         assert result["float_setting"] == pytest.approx(3.14)
         assert result["bool_setting"] is True
         assert result["json_setting"] == {"nested": [1, 2, 3]}
+
+
+# ---------------------------------------------------------------------------
+# Tests: Global Credit Value methods
+# ---------------------------------------------------------------------------
+
+
+class TestGlobalCreditValue:
+    """Tests for SettingsService global credit value methods."""
+
+    @pytest.mark.asyncio
+    async def test_get_global_credit_value_not_configured(
+        self, service: SettingsService
+    ) -> None:
+        result = await service.get_global_credit_value()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_global_credit_value_returns_float(
+        self, service: SettingsService, pool: FakeAsyncPGPool
+    ) -> None:
+        pool.seed_system_setting("global_credit_value", "float", "0.003333")
+        result = await service.get_global_credit_value()
+        assert result == pytest.approx(0.003333)
+
+    @pytest.mark.asyncio
+    async def test_update_global_credit_value_valid(
+        self, service: SettingsService
+    ) -> None:
+        result = await service.update_global_credit_value(0.003333)
+        assert result == pytest.approx(0.003333)
+
+    @pytest.mark.asyncio
+    async def test_update_global_credit_value_persists(
+        self, service: SettingsService
+    ) -> None:
+        await service.update_global_credit_value(0.005)
+        result = await service.get_global_credit_value()
+        assert result == pytest.approx(0.005)
+
+    @pytest.mark.asyncio
+    async def test_update_global_credit_value_exactly_one(
+        self, service: SettingsService
+    ) -> None:
+        result = await service.update_global_credit_value(1.0)
+        assert result == 1.0
+
+    @pytest.mark.asyncio
+    async def test_update_global_credit_value_zero_raises(
+        self, service: SettingsService
+    ) -> None:
+        with pytest.raises(ValidationError, match="greater than 0 and at most 1.0"):
+            await service.update_global_credit_value(0.0)
+
+    @pytest.mark.asyncio
+    async def test_update_global_credit_value_negative_raises(
+        self, service: SettingsService
+    ) -> None:
+        with pytest.raises(ValidationError, match="greater than 0 and at most 1.0"):
+            await service.update_global_credit_value(-0.5)
+
+    @pytest.mark.asyncio
+    async def test_update_global_credit_value_above_one_raises(
+        self, service: SettingsService
+    ) -> None:
+        with pytest.raises(ValidationError, match="greater than 0 and at most 1.0"):
+            await service.update_global_credit_value(1.1)
+
+    @pytest.mark.asyncio
+    async def test_update_global_credit_value_small_positive(
+        self, service: SettingsService
+    ) -> None:
+        result = await service.update_global_credit_value(0.000001)
+        assert result == pytest.approx(0.000001)

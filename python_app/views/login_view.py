@@ -640,19 +640,9 @@ class LoginView(QWidget):
         except Exception:
             return False
 
-    def _is_fixed_size(self) -> bool:
-        """True when the window was pinned with setFixedSize (min == max)."""
-        return self.minimumSize() == self.maximumSize()
-
     def _on_maximize_clicked(self) -> None:
-        # The window is intentionally a fixed 1920x720 — maximizing it would
-        # fight the size constraint and glitch, so it's a no-op when fixed.
-        if self._is_fixed_size():
-            return
-        if self.isMaximized():
-            self.showNormal()
-        else:
-            self.showMaximized()
+        from python_app.app.window_config import toggle_maximize
+        toggle_maximize(self)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self._in_drag_zone(event):
@@ -665,7 +655,19 @@ class LoginView(QWidget):
     def mouseMoveEvent(self, event) -> None:
         if getattr(self, "_drag_pos", None) is not None and event.buttons() & Qt.MouseButton.LeftButton:
             if self.isMaximized():
-                self.showNormal()
+                # Restore to pre-maximize size, keeping cursor relative to window width
+                from PyQt6.QtCore import QRect
+                prev = self.property("_pre_maximize_geo")
+                if isinstance(prev, QRect) and prev.isValid():
+                    ratio = event.position().x() / max(self.width(), 1)
+                    new_x = int(event.globalPosition().x() - ratio * prev.width())
+                    new_y = int(event.globalPosition().y() - event.position().y())
+                    self.setGeometry(new_x, new_y, prev.width(), prev.height())
+                    self.setProperty("_pre_maximize_geo", None)
+                else:
+                    self.showNormal()
+                # Recalculate drag offset after resize
+                self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             self.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
         else:
@@ -676,15 +678,11 @@ class LoginView(QWidget):
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
-        # Ignore double-clicks outside the title zone, and never try to maximize
-        # a fixed-size window (that is what caused the resize glitch).
-        if not self._in_drag_zone(event) or self._is_fixed_size():
+        if not self._in_drag_zone(event):
             super().mouseDoubleClickEvent(event)
             return
-        if self.isMaximized():
-            self.showNormal()
-        else:
-            self.showMaximized()
+        from python_app.app.window_config import toggle_maximize
+        toggle_maximize(self)
 
     # ------------------------------------------------------------------
     # Internal handlers

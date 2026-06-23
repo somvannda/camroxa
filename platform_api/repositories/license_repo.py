@@ -72,8 +72,10 @@ def _row_to_plan(row: Any) -> Plan:
         price_cents=row["price_cents"],
         billing_cycle_days=row.get("billing_cycle_days"),
         profile_allowance=row["profile_allowance"],
-        monthly_song_quota=row.get("monthly_song_quota"),
+        monthly_song_limit=row.get("monthly_song_limit"),
+        monthly_image_limit=row.get("monthly_image_limit"),
         daily_song_limit_per_channel=row["daily_song_limit_per_channel"],
+        daily_image_limit_per_channel=row.get("daily_image_limit_per_channel", 7),
         is_active=row["is_active"],
         effective_from=row["effective_from"],
         created_at=row["created_at"],
@@ -417,8 +419,9 @@ class PlanRepository:
         rows = await self._pool.fetch(
             """
             SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_quota, daily_song_limit_per_channel, is_active,
-                   effective_from, created_at, updated_at
+                   monthly_song_limit, monthly_image_limit,
+                   daily_song_limit_per_channel, daily_image_limit_per_channel,
+                   is_active, effective_from, created_at, updated_at
             FROM plans
             ORDER BY price_cents ASC
             """
@@ -430,9 +433,11 @@ class PlanRepository:
         name: str,
         price_cents: int,
         profile_allowance: int,
-        monthly_song_quota: int | None = None,
+        monthly_song_limit: int | None = None,
+        monthly_image_limit: int | None = None,
         billing_cycle_days: int | None = None,
         daily_song_limit_per_channel: int = 7,
+        daily_image_limit_per_channel: int = 7,
     ) -> Plan:
         """Create a new plan.
 
@@ -440,9 +445,11 @@ class PlanRepository:
             name: Unique plan name.
             price_cents: Price in cents.
             profile_allowance: Max channel profiles allowed.
-            monthly_song_quota: Monthly song quota (None for unlimited).
+            monthly_song_limit: Monthly song limit (None for unlimited).
+            monthly_image_limit: Monthly image limit (None for unlimited).
             billing_cycle_days: Billing cycle in days (None for lifetime).
             daily_song_limit_per_channel: Daily song limit per channel.
+            daily_image_limit_per_channel: Daily image limit per channel.
 
         Returns:
             The newly created Plan domain object.
@@ -450,19 +457,23 @@ class PlanRepository:
         row = await self._pool.fetchrow(
             """
             INSERT INTO plans (name, price_cents, billing_cycle_days, profile_allowance,
-                               monthly_song_quota, daily_song_limit_per_channel,
+                               monthly_song_limit, monthly_image_limit,
+                               daily_song_limit_per_channel, daily_image_limit_per_channel,
                                is_active, effective_from, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW(), NOW())
             RETURNING id, name, price_cents, billing_cycle_days, profile_allowance,
-                      monthly_song_quota, daily_song_limit_per_channel, is_active,
-                      effective_from, created_at, updated_at
+                      monthly_song_limit, monthly_image_limit,
+                      daily_song_limit_per_channel, daily_image_limit_per_channel,
+                      is_active, effective_from, created_at, updated_at
             """,
             name,
             price_cents,
             billing_cycle_days,
             profile_allowance,
-            monthly_song_quota,
+            monthly_song_limit,
+            monthly_image_limit,
             daily_song_limit_per_channel,
+            daily_image_limit_per_channel,
         )
         return _row_to_plan(row)
 
@@ -478,8 +489,9 @@ class PlanRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_quota, daily_song_limit_per_channel, is_active,
-                   effective_from, created_at, updated_at
+                   monthly_song_limit, monthly_image_limit,
+                   daily_song_limit_per_channel, daily_image_limit_per_channel,
+                   is_active, effective_from, created_at, updated_at
             FROM plans
             WHERE id = $1
             """,
@@ -501,8 +513,9 @@ class PlanRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_quota, daily_song_limit_per_channel, is_active,
-                   effective_from, created_at, updated_at
+                   monthly_song_limit, monthly_image_limit,
+                   daily_song_limit_per_channel, daily_image_limit_per_channel,
+                   is_active, effective_from, created_at, updated_at
             FROM plans
             WHERE name = $1
             """,
@@ -548,8 +561,9 @@ class PlanRepository:
             SET {', '.join(set_parts)}
             WHERE id = ${param_idx}
             RETURNING id, name, price_cents, billing_cycle_days, profile_allowance,
-                      monthly_song_quota, daily_song_limit_per_channel, is_active,
-                      effective_from, created_at, updated_at
+                      monthly_song_limit, monthly_image_limit,
+                      daily_song_limit_per_channel, daily_image_limit_per_channel,
+                      is_active, effective_from, created_at, updated_at
         """
 
         row = await self._pool.fetchrow(query, *values)
@@ -571,7 +585,7 @@ class PlanRepository:
                 "price_cents": 7900,
                 "billing_cycle_days": 30,
                 "profile_allowance": 2,
-                "monthly_song_quota": 420,
+                "monthly_song_limit": 420,
                 "daily_song_limit_per_channel": 7,
             },
             {
@@ -579,7 +593,7 @@ class PlanRepository:
                 "price_cents": 69900,
                 "billing_cycle_days": 365,
                 "profile_allowance": 4,
-                "monthly_song_quota": 840,
+                "monthly_song_limit": 840,
                 "daily_song_limit_per_channel": 7,
             },
             {
@@ -587,7 +601,7 @@ class PlanRepository:
                 "price_cents": 149900,
                 "billing_cycle_days": None,
                 "profile_allowance": 5,
-                "monthly_song_quota": None,
+                "monthly_song_limit": None,
                 "daily_song_limit_per_channel": 7,
             },
         ]
@@ -596,7 +610,7 @@ class PlanRepository:
             await self._pool.execute(
                 """
                 INSERT INTO plans (name, price_cents, billing_cycle_days,
-                                   profile_allowance, monthly_song_quota,
+                                   profile_allowance, monthly_song_limit,
                                    daily_song_limit_per_channel, is_active,
                                    effective_from, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW(), NOW())
@@ -606,11 +620,44 @@ class PlanRepository:
                 plan_data["price_cents"],
                 plan_data["billing_cycle_days"],
                 plan_data["profile_allowance"],
-                plan_data["monthly_song_quota"],
+                plan_data["monthly_song_limit"],
                 plan_data["daily_song_limit_per_channel"],
             )
 
         logger.info("Default plans seeded (skipped existing).")
+
+    async def get_user_active_plan(self, user_id: UUID) -> Plan | None:
+        """Get the plan associated with the user's active license.
+
+        Joins plans → licenses to find the plan for the user's currently
+        active (non-expired) license. A license is considered active when
+        its status is 'active' and it has not expired.
+
+        Args:
+            user_id: The UUID of the user.
+
+        Returns:
+            The Plan domain object, or None if no active plan exists.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT p.id, p.name, p.price_cents, p.billing_cycle_days,
+                   p.profile_allowance, p.monthly_song_limit, p.monthly_image_limit,
+                   p.daily_song_limit_per_channel, p.daily_image_limit_per_channel,
+                   p.is_active, p.effective_from, p.created_at, p.updated_at
+            FROM plans p
+            INNER JOIN licenses l ON l.plan_id = p.id
+            WHERE l.user_id = $1
+              AND l.status = 'active'
+              AND (l.expires_at IS NULL OR l.expires_at > NOW())
+            ORDER BY l.activated_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None:
+            return None
+        return _row_to_plan(row)
 
     # -----------------------------------------------------------------------
     # Plan Usage Tracking

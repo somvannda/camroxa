@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     slai_api_key: str = ""
     slai_api_base_url: str = ""
 
+    cala_api_key: str = ""
+    cala_api_base_url: str = "http://localhost:3000"
+
     deepseek_api_key: str = ""
     deepseek_api_base_url: str = "https://api.deepseek.com"
 
@@ -74,8 +77,8 @@ class Settings(BaseSettings):
 
     # --- Generation Timeouts ---
     suno_timeout_seconds: int = 30
-    llm_timeout_seconds: int = 15
-    image_timeout_seconds: int = 60
+    llm_timeout_seconds: int = 60
+    image_timeout_seconds: int = 120
     callback_timeout_seconds: int = 300
 
     # --- Encryption (Key Pool) ---

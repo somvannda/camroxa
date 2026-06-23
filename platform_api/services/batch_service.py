@@ -76,7 +76,7 @@ class CreditServiceProtocol(Protocol):
 class CreditPricingProtocol(Protocol):
     """Protocol for credit pricing lookups."""
 
-    async def get_price(self, model_identifier: str, operation_type: str) -> int: ...
+    async def get_price(self, ai_service: str, operation_type: str) -> int: ...
 
 
 class GenerationServiceProtocol(Protocol):

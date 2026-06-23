@@ -27,13 +27,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
 import {
   useDescriptions,
@@ -45,13 +38,8 @@ import {
   useUpdateStructure,
   useDeleteStructure,
 } from '@/hooks/use-prompts';
-import {
-  useChannelPrompts,
-  useCreateChannelPrompt,
-  useUpdateChannelPrompt,
-  useDeleteChannelPrompt,
-} from '@/hooks/use-channel-prompts';
-import type { MusicDescription, MusicStructure, ChannelPrompt } from '@/types/models';
+import ChannelSetupTab from './channel-setup-tab';
+import type { MusicDescription, MusicStructure } from '@/types/models';
 
 // --- Validation schema ---
 
@@ -91,7 +79,7 @@ function getMatchKeyColor(matchKey: string): string {
 
 // --- Tab type ---
 
-type TabKey = 'descriptions' | 'structures' | 'channel';
+type TabKey = 'descriptions' | 'structures' | 'setup';
 
 // --- Main Page ---
 
@@ -117,16 +105,16 @@ export default function PromptsPage() {
           Music Structures
         </Button>
         <Button
-          variant={activeTab === 'channel' ? 'default' : 'outline'}
-          onClick={() => setActiveTab('channel')}
+          variant={activeTab === 'setup' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('setup')}
         >
-          Channel Prompts
+          Channel Setup
         </Button>
       </div>
 
       {activeTab === 'descriptions' && <DescriptionsTab />}
       {activeTab === 'structures' && <StructuresTab />}
-      {activeTab === 'channel' && <ChannelPromptsTab />}
+      {activeTab === 'setup' && <ChannelSetupTab />}
     </div>
   );
 }
@@ -568,350 +556,5 @@ function TableSkeleton() {
         ))}
       </div>
     </div>
-  );
-}
-
-// --- Channel Prompts Tab ---
-
-const CHANNEL_CATEGORIES = ['title', 'logo', 'cover', 'description', 'keyword', 'tag'] as const;
-
-const CATEGORY_DISPLAY_LABELS: Record<string, string> = {
-  title: 'Channel Name',
-  logo: 'Logo',
-  cover: 'Cover',
-  description: 'Description',
-  keyword: 'Keyword',
-  tag: 'Tag',
-};
-
-const channelPromptSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100, 'Max 100 characters'),
-  content: z.string().min(1, 'Content is required').max(5000, 'Max 5000 characters'),
-  category: z.string().min(1, 'Category is required'),
-  genre: z.string().max(100).optional().or(z.literal('')),
-  match_key: z.string().max(100).optional().or(z.literal('')),
-  is_active: z.boolean().optional(),
-});
-
-type ChannelPromptFormValues = z.infer<typeof channelPromptSchema>;
-
-const CATEGORY_BADGE_CLASSES: Record<string, string> = {
-  title: 'bg-purple-500/20 text-purple-300 border-purple-500/40',
-  logo: 'bg-blue-500/20 text-blue-300 border-blue-500/40',
-  cover: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
-  description: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
-  keyword: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
-  tag: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
-};
-
-function ChannelPromptsTab() {
-  const { data: prompts, isLoading, isError, refetch } = useChannelPrompts();
-  const createMutation = useCreateChannelPrompt();
-  const updateMutation = useUpdateChannelPrompt();
-  const deleteMutation = useDeleteChannelPrompt();
-
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ChannelPrompt | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ChannelPrompt | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string>('all');
-
-  const filtered = filterCategory === 'all'
-    ? (prompts ?? [])
-    : (prompts ?? []).filter(p => p.category === filterCategory);
-
-  function handleCreate() {
-    setEditingItem(null);
-    setFormOpen(true);
-  }
-
-  function handleEdit(item: ChannelPrompt) {
-    setEditingItem(item);
-    setFormOpen(true);
-  }
-
-  function handleFormSubmit(values: ChannelPromptFormValues) {
-    const payload = {
-      name: values.name,
-      content: values.content,
-      category: values.category,
-      genre: values.genre || '',
-      match_key: values.match_key || null,
-      is_active: values.is_active ?? true,
-    };
-
-    if (editingItem) {
-      updateMutation.mutate(
-        { id: editingItem.id, updates: payload },
-        { onSuccess: () => setFormOpen(false) },
-      );
-    } else {
-      createMutation.mutate(payload, {
-        onSuccess: () => setFormOpen(false),
-      });
-    }
-  }
-
-  function handleDeleteConfirm() {
-    if (!deleteTarget) return;
-    deleteMutation.mutate(deleteTarget.id, {
-      onSuccess: () => setDeleteTarget(null),
-    });
-  }
-
-  if (isLoading) return <TableSkeleton />;
-  if (isError) {
-    return (
-      <div className="text-center py-8 space-y-4">
-        <p className="text-destructive">Failed to load channel prompts.</p>
-        <Button variant="outline" onClick={() => refetch()}>Retry</Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <Select value={filterCategory} onValueChange={setFilterCategory}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="All categories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All categories</SelectItem>
-            {CHANNEL_CATEGORIES.map(c => (
-              <SelectItem key={c} value={c}>{CATEGORY_DISPLAY_LABELS[c] ?? c}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button onClick={handleCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Prompt
-        </Button>
-      </div>
-
-      <div className="border rounded-lg">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Genre</TableHead>
-              <TableHead>Match Key</TableHead>
-              <TableHead>Content</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-24" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                  No channel prompts found.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map(prompt => (
-                <TableRow key={prompt.id}>
-                  <TableCell className="font-medium">{prompt.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={CATEGORY_BADGE_CLASSES[prompt.category] ?? ''}>
-                      {CATEGORY_DISPLAY_LABELS[prompt.category] ?? prompt.category}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{prompt.genre || '—'}</TableCell>
-                  <TableCell>
-                    {prompt.match_key ? (
-                      <Badge variant="outline" className={getMatchKeyColor(prompt.match_key)}>
-                        {prompt.match_key}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate text-muted-foreground">
-                    {truncateContent(prompt.content, 60)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={prompt.is_active ? 'bg-green-500/20 text-green-300 border-green-500/40' : 'bg-gray-500/20 text-gray-400 border-gray-500/40'}>
-                      {prompt.is_active ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(prompt)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(prompt)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Form Dialog */}
-      <ChannelPromptFormDialog
-        open={formOpen}
-        onOpenChange={setFormOpen}
-        onSubmit={handleFormSubmit}
-        defaultValues={editingItem}
-        isLoading={createMutation.isPending || updateMutation.isPending}
-      />
-
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        title="Delete Channel Prompt"
-        description={`Are you sure you want to delete "${deleteTarget?.name}"? This cannot be undone.`}
-        onConfirm={handleDeleteConfirm}
-        isLoading={deleteMutation.isPending}
-      />
-    </div>
-  );
-}
-
-function ChannelPromptFormDialog({
-  open,
-  onOpenChange,
-  onSubmit,
-  defaultValues,
-  isLoading,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (values: ChannelPromptFormValues) => void;
-  defaultValues: ChannelPrompt | null;
-  isLoading: boolean;
-}) {
-  const form = useForm<ChannelPromptFormValues>({
-    resolver: zodResolver(channelPromptSchema),
-    defaultValues: defaultValues
-      ? {
-          name: defaultValues.name,
-          content: defaultValues.content,
-          category: defaultValues.category,
-          genre: defaultValues.genre,
-          match_key: defaultValues.match_key ?? '',
-          is_active: defaultValues.is_active,
-        }
-      : { name: '', content: '', category: 'title', genre: '', match_key: '', is_active: true },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{defaultValues ? 'Edit Channel Prompt' : 'Create Channel Prompt'}</DialogTitle>
-          <DialogDescription>
-            {defaultValues ? 'Update the prompt used by the onboarding wizard.' : 'Add a new prompt for channel setup generation.'}
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="cp-name">Name</Label>
-            <Input id="cp-name" placeholder="e.g., EDM Channel Title" {...form.register('name')} />
-            {form.formState.errors.name && (
-              <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cp-category">Category</Label>
-            <select
-              id="cp-category"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              {...form.register('category')}
-            >
-              {CHANNEL_CATEGORIES.map(c => (
-                <option key={c} value={c}>{CATEGORY_DISPLAY_LABELS[c] ?? c}</option>
-              ))}
-            </select>
-            {form.formState.errors.category && (
-              <p className="text-sm text-destructive">{form.formState.errors.category.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cp-genre">Genre (optional — leave empty for default)</Label>
-            <Input id="cp-genre" placeholder="e.g., EDM, Hip-Hop, Pop" {...form.register('genre')} />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Music Description (optional — link to description)</Label>
-            <DescriptionSelect
-              value={form.watch('match_key') ?? ''}
-              onChange={(val) => form.setValue('match_key', val || undefined)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cp-content">Prompt Content</Label>
-            <Textarea
-              id="cp-content"
-              rows={6}
-              placeholder="The system or user prompt used during generation..."
-              {...form.register('content')}
-            />
-            {form.formState.errors.content && (
-              <p className="text-sm text-destructive">{form.formState.errors.content.message}</p>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="cp-active"
-              className="rounded"
-              {...form.register('is_active')}
-            />
-            <Label htmlFor="cp-active">Active</Label>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              {defaultValues ? 'Save Changes' : 'Create'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function DescriptionSelect({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (matchKey: string) => void;
-}) {
-  const { data: descriptions, isLoading } = useDescriptions();
-  const items = descriptions ?? [];
-
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-full">
-        <SelectValue placeholder="None (use genre/default)" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="">None</SelectItem>
-        {items.map((d) => (
-          <SelectItem key={d.id} value={d.match_key ?? d.name}>
-            {d.name}
-            {d.match_key ? (
-              <span className="ml-2 text-muted-foreground text-xs">({d.match_key})</span>
-            ) : null}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }

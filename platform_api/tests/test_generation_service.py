@@ -74,8 +74,8 @@ class FakePricingRepo:
             ("slai", "image"): 3,
         }
 
-    async def get_price(self, model_identifier: str, operation_type: str) -> int | None:
-        return self._prices.get((model_identifier, operation_type))
+    async def get_price(self, ai_service: str, operation_type: str) -> int | None:
+        return self._prices.get((ai_service, operation_type))
 
 
 class FakeTaskRepo:

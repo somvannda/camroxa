@@ -13,7 +13,9 @@ import logging
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from platform_api.exceptions import InsufficientCreditsError, ValidationError
+import asyncpg
+
+from platform_api.exceptions import DuplicateError, InsufficientCreditsError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -484,57 +486,72 @@ class CreditRepository:
         """Return all configured pricing entries from credit_pricing table."""
         rows = await self._pool.fetch(
             """
-            SELECT id, model_identifier, operation_type, credits_per_operation,
+            SELECT id, ai_service, operation_type, credits_per_operation,
                    external_cost_cents, created_at, updated_at
             FROM credit_pricing
-            ORDER BY model_identifier, operation_type
+            ORDER BY ai_service, operation_type
             """
         )
         return [dict(r) for r in rows]
 
-    async def get_by_model_and_operation(
-        self, model_identifier: str, operation_type: str
+    async def get_by_service_and_operation(
+        self, ai_service: str, operation_type: str
     ) -> dict[str, Any] | None:
-        """Return a pricing entry for a model/operation combination."""
+        """Return a pricing entry for an ai_service/operation combination."""
         row = await self._pool.fetchrow(
             """
-            SELECT id, model_identifier, operation_type, credits_per_operation,
+            SELECT id, ai_service, operation_type, credits_per_operation,
                    external_cost_cents, created_at, updated_at
             FROM credit_pricing
-            WHERE model_identifier = $1 AND operation_type = $2
+            WHERE ai_service = $1 AND operation_type = $2
             """,
-            model_identifier,
+            ai_service,
             operation_type,
         )
         return dict(row) if row else None
 
     async def create(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None,
     ) -> dict[str, Any]:
-        """Create a new pricing entry."""
-        row = await self._pool.fetchrow(
-            """
-            INSERT INTO credit_pricing (id, model_identifier, operation_type,
-                                        credits_per_operation, external_cost_cents,
-                                        created_at, updated_at)
-            VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
-            RETURNING id, model_identifier, operation_type, credits_per_operation,
-                      external_cost_cents, created_at, updated_at
-            """,
-            model_identifier,
-            operation_type,
-            credits_per_operation,
-            external_cost_cents,
-        )
+        """Create a new pricing entry.
+
+        Raises:
+            DuplicateError: If a pricing entry already exists for the
+                (ai_service, operation_type) combination.
+        """
+        try:
+            row = await self._pool.fetchrow(
+                """
+                INSERT INTO credit_pricing (id, ai_service, operation_type,
+                                            credits_per_operation, external_cost_cents,
+                                            created_at, updated_at)
+                VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
+                RETURNING id, ai_service, operation_type, credits_per_operation,
+                          external_cost_cents, created_at, updated_at
+                """,
+                ai_service,
+                operation_type,
+                credits_per_operation,
+                external_cost_cents,
+            )
+        except asyncpg.UniqueViolationError:
+            raise DuplicateError(
+                f"Pricing already exists for ai_service '{ai_service}' "
+                f"operation '{operation_type}'.",
+                details={
+                    "ai_service": ai_service,
+                    "operation_type": operation_type,
+                },
+            )
         return dict(row)
 
     async def update(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None,
@@ -544,11 +561,11 @@ class CreditRepository:
             """
             UPDATE credit_pricing
             SET credits_per_operation = $3, external_cost_cents = $4, updated_at = NOW()
-            WHERE model_identifier = $1 AND operation_type = $2
-            RETURNING id, model_identifier, operation_type, credits_per_operation,
+            WHERE ai_service = $1 AND operation_type = $2
+            RETURNING id, ai_service, operation_type, credits_per_operation,
                       external_cost_cents, created_at, updated_at
             """,
-            model_identifier,
+            ai_service,
             operation_type,
             credits_per_operation,
             external_cost_cents,
@@ -556,15 +573,15 @@ class CreditRepository:
         return dict(row) if row else None
 
     async def delete(
-        self, model_identifier: str, operation_type: str
+        self, ai_service: str, operation_type: str
     ) -> bool:
         """Delete a pricing entry. Returns True if deleted."""
         result = await self._pool.execute(
             """
             DELETE FROM credit_pricing
-            WHERE model_identifier = $1 AND operation_type = $2
+            WHERE ai_service = $1 AND operation_type = $2
             """,
-            model_identifier,
+            ai_service,
             operation_type,
         )
         return "DELETE 1" in result

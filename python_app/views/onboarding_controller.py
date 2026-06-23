@@ -282,7 +282,7 @@ class OnboardingController:
                     f"{_API}/channel-setup/generate-logo",
                     json={"channel_name": channel_name, "genre": genre, "role": role, "match_key": match_key},
                     headers=self._headers(),
-                    timeout=60.0,
+                    timeout=300.0,
                 )
                 data = resp.json()
                 image_b64 = data.get("image_base64", "")
@@ -297,6 +297,14 @@ class OnboardingController:
             except Exception as exc:
                 logger.error("Generate logo (%s) failed: %s", role, exc)
 
+                def show_retry():
+                    self._wizard_page.set_logo_retry(role)
+
+                if self._bus:
+                    self._bus.ui_invoke.emit(show_retry)
+                else:
+                    show_retry()
+
         threading.Thread(target=work, daemon=True).start()
 
     def _api_generate_covers(self, channel_name: str, genre: str, role: str) -> None:
@@ -306,7 +314,7 @@ class OnboardingController:
                     f"{_API}/channel-setup/generate-covers",
                     json={"channel_name": channel_name, "genre": genre, "count": 3, "role": role},
                     headers=self._headers(),
-                    timeout=90.0,
+                    timeout=300.0,
                 )
                 data = resp.json()
                 images = data.get("images", [])
@@ -321,6 +329,14 @@ class OnboardingController:
             except Exception as exc:
                 logger.error("Generate covers (%s) failed: %s", role, exc)
 
+                def show_retry():
+                    self._wizard_page.set_covers_retry(role)
+
+                if self._bus:
+                    self._bus.ui_invoke.emit(show_retry)
+                else:
+                    show_retry()
+
         threading.Thread(target=work, daemon=True).start()
 
     def _api_generate_description(self, channel_name: str, genre: str) -> None:
@@ -330,16 +346,19 @@ class OnboardingController:
                     f"{_API}/channel-setup/generate-description",
                     json={"channel_name": channel_name, "genre": genre},
                     headers=self._headers(),
-                    timeout=90.0,
+                    timeout=120.0,
                 )
                 data = resp.json()
 
                 def apply():
-                    self._wizard_page.set_description(
-                        data.get("description", ""),
-                        data.get("keywords", []),
-                        data.get("tags", []),
-                    )
+                    if resp.status_code == 200:
+                        self._wizard_page.set_description(
+                            data.get("description", ""),
+                            data.get("keywords", []),
+                            data.get("tags", []),
+                        )
+                    else:
+                        self._wizard_page.set_description_error("Generation failed. Please retry.")
 
                 if self._bus:
                     self._bus.ui_invoke.emit(apply)
@@ -347,6 +366,14 @@ class OnboardingController:
                     apply()
             except Exception as exc:
                 logger.error("Generate description failed: %s", exc)
+
+                def show_error():
+                    self._wizard_page.set_description_error("Connection timed out. Please retry.")
+
+                if self._bus:
+                    self._bus.ui_invoke.emit(show_error)
+                else:
+                    show_error()
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -369,29 +396,53 @@ class OnboardingController:
         primary_covers = getattr(self._wizard_page, "_primary_covers_b64s", [])
         secondary_covers = getattr(self._wizard_page, "_secondary_covers_b64s", [])
 
-        def _create_one(name: str, logo_b64: str, role: str, covers: list[str]):
-            try:
-                resp = httpx.post(
-                    f"{_API}/channel-setup/create-profile",
-                    json={
-                        "name": name,
-                        "genre": genre,
-                        "role": role,
-                        "logo_base64": logo_b64 or None,
-                        "cover_images": covers,
-                        "description": description,
-                        "keywords": keywords,
-                        "tags": tags,
-                        "match_key": match_key,
-                    },
-                    headers=self._headers(),
-                    timeout=90.0,
-                )
-                logger.info("Create %s profile: %s — %s", role, resp.status_code, resp.json())
-            except Exception as exc:
-                logger.error("Create %s profile failed: %s", role, exc)
+        def work():
+            success_count = 0
+            errors = []
 
-        t1 = threading.Thread(target=_create_one, args=(primary_name, primary_logo_b64, "primary", primary_covers), daemon=True)
-        t2 = threading.Thread(target=_create_one, args=(secondary_name, secondary_logo_b64, "secondary", secondary_covers), daemon=True)
-        t1.start()
-        t2.start()
+            for name, logo_b64, role, covers in [
+                (primary_name, primary_logo_b64, "primary", primary_covers),
+                (secondary_name, secondary_logo_b64, "secondary", secondary_covers),
+            ]:
+                try:
+                    resp = httpx.post(
+                        f"{_API}/channel-setup/create-profile",
+                        json={
+                            "name": name,
+                            "genre": genre,
+                            "role": role,
+                            "logo_base64": logo_b64 or None,
+                            "cover_images": covers,
+                            "description": description,
+                            "keywords": keywords,
+                            "tags": tags,
+                            "match_key": match_key,
+                        },
+                        headers=self._headers(),
+                        timeout=90.0,
+                    )
+                    if resp.status_code in (200, 201):
+                        success_count += 1
+                        logger.info("Created %s profile: %s", role, resp.status_code)
+                    else:
+                        errors.append(f"{role}: {resp.status_code}")
+                        logger.error("Create %s profile failed: %s", role, resp.text[:200])
+                except Exception as exc:
+                    errors.append(f"{role}: {exc}")
+                    logger.error("Create %s profile failed: %s", role, exc)
+
+            def apply():
+                if success_count == 2:
+                    # Both profiles created — navigate to dashboard
+                    self._wizard_page.on_profiles_created()
+                else:
+                    # Something failed — allow retry
+                    msg = "; ".join(errors) if errors else "Unknown error"
+                    self._wizard_page.on_profiles_failed(msg)
+
+            if self._bus:
+                self._bus.ui_invoke.emit(apply)
+            else:
+                apply()
+
+        threading.Thread(target=work, daemon=True).start()

@@ -4,7 +4,7 @@ Provides endpoints for song draft generation, Suno music generation,
 Suno task status retrieval, and image generation. All endpoints require
 User authentication.
 
-Requirements: 11.1, 11.4, 12.1, 12.2, 12.3
+Requirements: 11.1, 11.4, 12.1, 12.2, 12.3, 4.3, 4.4, 6.1, 6.2, 6.3, 6.4
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.models.enums import TaskStatus
 from platform_api.ports.generation_port import DraftRequest, ImageRequest, SunoRequest
 from platform_api.services.generation_service import GenerationService
+from platform_api.services.usage_enforcement_service import UsageEnforcementService
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class DraftGenerationRequest(BaseModel):
     forced_title: str | None = None
     forced_album: str | None = None
     forced_opening: str | None = None
+    channel_profile_id: UUID | None = None
 
 
 class DraftGenerationResponse(BaseModel):
@@ -67,6 +69,7 @@ class SunoGenerationRequest(BaseModel):
     lyrics: str = Field(min_length=1)
     style: str = Field(min_length=1, max_length=255)
     instrumental: bool = False
+    channel_profile_id: UUID | None = None
 
 
 class SunoGenerationResponse(BaseModel):
@@ -101,6 +104,7 @@ class ImageGenerationRequest(BaseModel):
     resolution: str = Field(default="1920x1080", pattern=r"^\d+x\d+$")
     style_strength: float = Field(ge=0.0, le=1.0, default=0.6)
     base_image: str | None = None  # base64-encoded image (optional, ≤10MB)
+    channel_profile_id: UUID | None = None
 
 
 class ImageGenerationResponse(BaseModel):
@@ -121,6 +125,13 @@ async def _get_generation_service() -> GenerationService:
     )
 
 
+async def _get_enforcement_service() -> UsageEnforcementService:
+    """Placeholder dependency for UsageEnforcementService — wired in wire_dependencies.py."""
+    raise NotImplementedError(
+        "UsageEnforcementService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 class TaskLookupPort:
     """Protocol for looking up Suno task status."""
 
@@ -138,6 +149,7 @@ async def _get_task_lookup() -> TaskLookupPort:
 
 # Type aliases for dependency injection
 GenerationServiceDep = Annotated[GenerationService, Depends(_get_generation_service)]
+EnforcementServiceDep = Annotated[UsageEnforcementService, Depends(_get_enforcement_service)]
 TaskLookupDep = Annotated[TaskLookupPort, Depends(_get_task_lookup)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
@@ -157,11 +169,23 @@ async def generate_draft(
     request: DraftGenerationRequest,
     ctx: CurrentUserDep,
     generation_service: GenerationServiceDep,
+    enforcement_service: EnforcementServiceDep,
 ) -> DraftGenerationResponse:
     """Generate a song draft (title, album, lyrics) via LLM.
 
     Requirement 10.1: Forward to configured LLM provider, return generated draft.
+    Requirements 6.1–6.4: Enforce credit balance and usage quotas before generation.
     """
+    # Enforce credit balance, daily limit, and monthly limit before generation.
+    # Raises InsufficientCreditsError (402), QuotaExceededError (429),
+    # or ExternalServiceError (503) if checks fail.
+    await enforcement_service.check_and_deduct(
+        user_id=UUID(ctx.user_id),
+        channel_profile_id=request.channel_profile_id,
+        operation_type="text_generation",
+        ai_service="deepseek",
+    )
+
     draft_request = DraftRequest(
         language=request.language,
         creativity_level=request.creativity_level,
@@ -194,12 +218,24 @@ async def submit_suno(
     request: SunoGenerationRequest,
     ctx: CurrentUserDep,
     generation_service: GenerationServiceDep,
+    enforcement_service: EnforcementServiceDep,
 ) -> SunoGenerationResponse:
     """Submit a music generation request to Suno.
 
     Requirement 11.1: Forward to Suno API, return task ID.
     Performs deduplication via request hash (Requirement 11.5).
+    Requirements 6.1–6.4: Enforce credit balance and usage quotas before generation.
     """
+    # Enforce credit balance, daily limit, and monthly limit before generation.
+    # Raises InsufficientCreditsError (402), QuotaExceededError (429),
+    # or ExternalServiceError (503) if checks fail.
+    await enforcement_service.check_and_deduct(
+        user_id=UUID(ctx.user_id),
+        channel_profile_id=request.channel_profile_id,
+        operation_type="music_generation",
+        ai_service="suno",
+    )
+
     suno_request = SunoRequest(
         model=request.model,
         title=request.title,
@@ -258,12 +294,24 @@ async def generate_image(
     request: ImageGenerationRequest,
     ctx: CurrentUserDep,
     generation_service: GenerationServiceDep,
+    enforcement_service: EnforcementServiceDep,
 ) -> ImageGenerationResponse:
     """Generate a background or thumbnail image.
 
     Requirements 12.1, 12.2, 12.3: Validate request, forward to provider,
     return result as base64-encoded PNG.
+    Requirements 6.1–6.4: Enforce credit balance and usage quotas before generation.
     """
+    # Enforce credit balance, daily limit, and monthly limit before generation.
+    # Raises InsufficientCreditsError (402), QuotaExceededError (429),
+    # or ExternalServiceError (503) if checks fail.
+    await enforcement_service.check_and_deduct(
+        user_id=UUID(ctx.user_id),
+        channel_profile_id=request.channel_profile_id,
+        operation_type="image_generation",
+        ai_service=request.provider,
+    )
+
     # Decode base_image from base64 string if provided
     base_image_bytes: bytes | None = None
     if request.base_image:

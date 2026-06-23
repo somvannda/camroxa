@@ -65,16 +65,19 @@ class FalClient:
         )
         self._client: httpx.AsyncClient | None = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
+    async def _get_client(self, api_key: str | None = None) -> httpx.AsyncClient:
+        key = api_key or self._api_key
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 base_url=self._base_url,
                 timeout=self._timeout,
                 headers={
-                    "Authorization": f"Key {self._api_key}",
+                    "Authorization": f"Key {key}",
                     "Content-Type": "application/json",
                 },
             )
+        elif api_key:
+            self._client.headers["Authorization"] = f"Key {key}"
         return self._client
 
     async def close(self) -> None:
@@ -92,6 +95,7 @@ class FalClient:
         height: int = 1080,
         num_images: int = 1,
         extra_params: dict[str, Any] | None = None,
+        api_key: str | None = None,
     ) -> dict[str, Any]:
         """Generate an image using Fal AI.
 
@@ -109,7 +113,7 @@ class FalClient:
         Raises:
             ExternalServiceError: On timeout, HTTP error, or connection failure.
         """
-        client = await self._get_client()
+        client = await self._get_client(api_key=api_key)
         payload: dict[str, Any] = {
             "prompt": prompt,
             "image_size": {

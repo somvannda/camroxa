@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from python_app.app.resources import icon_path, lucide_icon_path
+from python_app.app.window_config import toggle_maximize
 from python_app.design_system.tokens import DEFAULT_DARK_THEME
 from python_app.views.helpers.style_helper import render_svg_icon
 
@@ -102,7 +103,7 @@ class CustomTitleBar(QWidget):
         self._window.showMinimized()
 
     def _on_maximize(self) -> None:
-        pass
+        toggle_maximize(self._window)
 
     def _on_close(self) -> None:
         self._window.close()
@@ -117,9 +118,20 @@ class CustomTitleBar(QWidget):
 
     def mouseMoveEvent(self, event: QMouseEvent | None) -> None:
         if event and self._dragging:
-            # If maximized, restore on drag
+            # If maximized, restore on drag (keep cursor position relative to window)
             if self._window.isMaximized():
-                self._window.showNormal()
+                from PyQt6.QtCore import QRect
+                prev = self._window.property("_pre_maximize_geo")
+                if isinstance(prev, QRect) and prev.isValid():
+                    ratio = event.position().x() / max(self._window.width(), 1)
+                    new_x = int(event.globalPosition().x() - ratio * prev.width())
+                    new_y = int(event.globalPosition().y() - event.position().y())
+                    self._window.setGeometry(new_x, new_y, prev.width(), prev.height())
+                    self._window.setProperty("_pre_maximize_geo", None)
+                else:
+                    self._window.showNormal()
+                # Recalculate drag offset after resize
+                self._drag_pos = event.globalPosition().toPoint() - self._window.frameGeometry().topLeft()
             self._window.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
 
@@ -127,7 +139,7 @@ class CustomTitleBar(QWidget):
         self._dragging = False
 
     def mouseDoubleClickEvent(self, event: QMouseEvent | None) -> None:
-        pass
+        self._on_maximize()
 
     # --- Helpers ---
 

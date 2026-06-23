@@ -1,7 +1,7 @@
-"""Credit pricing service for per-model operation pricing configuration.
+"""Credit pricing service for per-service operation pricing configuration.
 
-Provides CRUD operations for credit pricing: configure per-model pricing
-(model_identifier + operation_type unique), validate credits_per_operation
+Provides CRUD operations for credit pricing: configure per-service pricing
+(ai_service + operation_type unique), validate credits_per_operation
 in [1, 10000], store external cost, and compute margin.
 
 Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7
@@ -18,6 +18,8 @@ from platform_api.exceptions import (
     NotFoundError,
     ValidationError,
 )
+from platform_api.models.domain import MarginDetails
+from platform_api.models.enums import AIService, ServiceAvailability
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +40,15 @@ class CreditPricingRepositoryProtocol(Protocol):
         """Return all configured pricing entries."""
         ...
 
-    async def get_by_model_and_operation(
-        self, model_identifier: str, operation_type: str
+    async def get_by_service_and_operation(
+        self, ai_service: str, operation_type: str
     ) -> dict[str, Any] | None:
-        """Return a pricing entry for a model/operation combination."""
+        """Return a pricing entry for an ai_service/operation combination."""
         ...
 
     async def create(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None,
@@ -56,7 +58,7 @@ class CreditPricingRepositoryProtocol(Protocol):
 
     async def update(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None,
@@ -65,9 +67,17 @@ class CreditPricingRepositoryProtocol(Protocol):
         ...
 
     async def delete(
-        self, model_identifier: str, operation_type: str
+        self, ai_service: str, operation_type: str
     ) -> bool:
         """Delete a pricing entry. Returns True if deleted, False if not found."""
+        ...
+
+
+class KeyPoolQueryProtocol(Protocol):
+    """Protocol for querying key pool entries to determine service availability."""
+
+    async def fetch(self, query: str, *args: Any) -> list[Any]:
+        """Execute a query and return rows."""
         ...
 
 
@@ -86,8 +96,13 @@ class CreditPricingService:
         pricing_repo: Repository implementing CreditPricingRepositoryProtocol.
     """
 
-    def __init__(self, pricing_repo: CreditPricingRepositoryProtocol) -> None:
+    def __init__(
+        self,
+        pricing_repo: CreditPricingRepositoryProtocol,
+        db_pool: KeyPoolQueryProtocol | None = None,
+    ) -> None:
         self._pricing_repo = pricing_repo
+        self._db_pool = db_pool
 
     def _compute_margin(
         self, credits_per_operation: int, external_cost_cents: int | None
@@ -140,6 +155,82 @@ class CreditPricingService:
         return entry
 
     # -----------------------------------------------------------------------
+    # Margin Computation & Service Availability
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def compute_margin_details(
+        credits_per_operation: int,
+        external_cost_cents: int,
+        global_credit_value: float | None,
+    ) -> MarginDetails | None:
+        """Pure computation of sell_price, profit_margin, profit_margin_percent.
+
+        Returns None if global_credit_value is not configured.
+
+        Args:
+            credits_per_operation: Credits charged per operation.
+            external_cost_cents: External provider cost in cents.
+            global_credit_value: Dollar value of one credit, or None if not set.
+
+        Returns:
+            MarginDetails with sell_price_cents, profit_margin_cents, and
+            profit_margin_percent, or None if global_credit_value is None.
+
+        Requirements: 2.4, 3.4, 3.5
+        """
+        if global_credit_value is None:
+            return None
+        sell_price_cents = round(credits_per_operation * global_credit_value * 100)
+        profit_margin_cents = sell_price_cents - external_cost_cents
+        profit_margin_percent = (
+            round((profit_margin_cents / sell_price_cents) * 100, 2)
+            if sell_price_cents > 0
+            else 0.0
+        )
+        return MarginDetails(
+            sell_price_cents=sell_price_cents,
+            profit_margin_cents=profit_margin_cents,
+            profit_margin_percent=profit_margin_percent,
+        )
+
+    async def get_service_availability(self) -> list[dict[str, Any]]:
+        """Query Key Pool to determine each AI service's operational status.
+
+        For each provider in AIService enum values, checks api_key_entries:
+        - "available" when at least one key has status='active'
+        - "degraded" when keys exist but none has status='active'
+        - "unavailable" when no key entries exist for that provider
+
+        Returns:
+            List of dicts with keys: ai_service (str), status (ServiceAvailability).
+
+        Requirements: 4.1
+        """
+        if self._db_pool is None:
+            # No db_pool configured — return all services as unavailable
+            return [
+                {"ai_service": service.value, "status": ServiceAvailability.UNAVAILABLE}
+                for service in AIService
+            ]
+
+        results: list[dict[str, Any]] = []
+        for service in AIService:
+            rows = await self._db_pool.fetch(
+                "SELECT status FROM api_key_entries WHERE provider = $1",
+                service.value,
+            )
+            if not rows:
+                status = ServiceAvailability.UNAVAILABLE
+            elif any(row["status"] == "active" for row in rows):
+                status = ServiceAvailability.AVAILABLE
+            else:
+                status = ServiceAvailability.DEGRADED
+            results.append({"ai_service": service.value, "status": status})
+
+        return results
+
+    # -----------------------------------------------------------------------
     # Public API
     # -----------------------------------------------------------------------
 
@@ -150,21 +241,21 @@ class CreditPricingService:
         external API cost, and calculated margin.
 
         Returns:
-            List of pricing entry dicts with keys: id, model_identifier,
+            List of pricing entry dicts with keys: id, ai_service,
             operation_type, credits_per_operation, external_cost_cents, margin,
             created_at, updated_at.
         """
         entries = await self._pricing_repo.get_all()
         return [self._enrich_with_margin(e) for e in entries]
 
-    async def get_price(self, model_identifier: str, operation_type: str) -> int:
-        """Return credits_per_operation for a model/operation combination.
+    async def get_price(self, ai_service: str, operation_type: str) -> int:
+        """Return credits_per_operation for an ai_service/operation combination.
 
         Requirement 5.6: If no pricing is configured for the requested
         operation, raises ExternalServiceError to reject the generation request.
 
         Args:
-            model_identifier: The AI model identifier (e.g. "suno_v5").
+            ai_service: The AI service identifier (e.g. "suno").
             operation_type: The operation type (e.g. "music_generation").
 
         Returns:
@@ -172,17 +263,17 @@ class CreditPricingService:
 
         Raises:
             ExternalServiceError: If no pricing is configured for the
-                model/operation combination.
+                ai_service/operation combination.
         """
-        entry = await self._pricing_repo.get_by_model_and_operation(
-            model_identifier, operation_type
+        entry = await self._pricing_repo.get_by_service_and_operation(
+            ai_service, operation_type
         )
         if entry is None:
             raise ExternalServiceError(
-                f"No pricing configured for model '{model_identifier}' "
+                f"No pricing configured for ai_service '{ai_service}' "
                 f"operation '{operation_type}'. This operation is not yet available.",
                 details={
-                    "model_identifier": model_identifier,
+                    "ai_service": ai_service,
                     "operation_type": operation_type,
                 },
             )
@@ -190,23 +281,23 @@ class CreditPricingService:
 
     async def set_price(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None = None,
     ) -> dict[str, Any]:
-        """Create or update pricing for a model/operation combination.
+        """Create or update pricing for an ai_service/operation combination.
 
-        Requirement 5.1: Store model identifier, operation type,
+        Requirement 5.1: Store ai_service, operation type,
         credits-per-operation, and external cost.
         Requirement 5.5: Validate credits_per_operation in [1, 10000].
-        Requirement 5.7: Enforce unique constraint on (model_identifier, operation_type).
+        Requirement 5.7: Enforce unique constraint on (ai_service, operation_type).
 
         If the pricing entry already exists, it will be updated (Req 5.2).
         If it does not exist, a new entry is created.
 
         Args:
-            model_identifier: The AI model identifier.
+            ai_service: The AI service identifier.
             operation_type: The operation type.
             credits_per_operation: Credits charged per operation [1, 10000].
             external_cost_cents: Actual external API cost in cents (optional).
@@ -220,24 +311,24 @@ class CreditPricingService:
         self._validate_credits(credits_per_operation)
 
         # Try to update existing entry first
-        existing = await self._pricing_repo.get_by_model_and_operation(
-            model_identifier, operation_type
+        existing = await self._pricing_repo.get_by_service_and_operation(
+            ai_service, operation_type
         )
         if existing is not None:
             updated = await self._pricing_repo.update(
-                model_identifier, operation_type, credits_per_operation, external_cost_cents
+                ai_service, operation_type, credits_per_operation, external_cost_cents
             )
             if updated is None:
                 raise NotFoundError(
                     "Pricing entry not found during update.",
                     details={
-                        "model_identifier": model_identifier,
+                        "ai_service": ai_service,
                         "operation_type": operation_type,
                     },
                 )
             logger.info(
-                "Pricing updated: model=%s, op=%s, credits=%d",
-                model_identifier,
+                "Pricing updated: ai_service=%s, op=%s, credits=%d",
+                ai_service,
                 operation_type,
                 credits_per_operation,
             )
@@ -245,11 +336,11 @@ class CreditPricingService:
 
         # Create new entry
         created = await self._pricing_repo.create(
-            model_identifier, operation_type, credits_per_operation, external_cost_cents
+            ai_service, operation_type, credits_per_operation, external_cost_cents
         )
         logger.info(
-            "Pricing created: model=%s, op=%s, credits=%d",
-            model_identifier,
+            "Pricing created: ai_service=%s, op=%s, credits=%d",
+            ai_service,
             operation_type,
             credits_per_operation,
         )
@@ -257,18 +348,18 @@ class CreditPricingService:
 
     async def create_price(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None = None,
     ) -> dict[str, Any]:
-        """Create pricing for a model/operation combination (strict create).
+        """Create pricing for an ai_service/operation combination (strict create).
 
         Unlike set_price, this raises DuplicateError if the entry already exists.
         Used by the POST /credits/pricing endpoint (Req 5.7).
 
         Args:
-            model_identifier: The AI model identifier.
+            ai_service: The AI service identifier.
             operation_type: The operation type.
             credits_per_operation: Credits charged per operation [1, 10000].
             external_cost_cents: Actual external API cost in cents (optional).
@@ -283,25 +374,25 @@ class CreditPricingService:
         self._validate_credits(credits_per_operation)
 
         # Check for existing entry
-        existing = await self._pricing_repo.get_by_model_and_operation(
-            model_identifier, operation_type
+        existing = await self._pricing_repo.get_by_service_and_operation(
+            ai_service, operation_type
         )
         if existing is not None:
             raise DuplicateError(
-                f"Pricing already exists for model '{model_identifier}' "
+                f"Pricing already exists for ai_service '{ai_service}' "
                 f"operation '{operation_type}'.",
                 details={
-                    "model_identifier": model_identifier,
+                    "ai_service": ai_service,
                     "operation_type": operation_type,
                 },
             )
 
         created = await self._pricing_repo.create(
-            model_identifier, operation_type, credits_per_operation, external_cost_cents
+            ai_service, operation_type, credits_per_operation, external_cost_cents
         )
         logger.info(
-            "Pricing created: model=%s, op=%s, credits=%d",
-            model_identifier,
+            "Pricing created: ai_service=%s, op=%s, credits=%d",
+            ai_service,
             operation_type,
             credits_per_operation,
         )
@@ -309,18 +400,18 @@ class CreditPricingService:
 
     async def update_price(
         self,
-        model_identifier: str,
+        ai_service: str,
         operation_type: str,
         credits_per_operation: int,
         external_cost_cents: int | None = None,
     ) -> dict[str, Any]:
-        """Update existing pricing for a model/operation combination (strict update).
+        """Update existing pricing for an ai_service/operation combination (strict update).
 
         Unlike set_price, this raises NotFoundError if the entry does not exist.
         Used by the PUT /credits/pricing endpoint (Req 5.2).
 
         Args:
-            model_identifier: The AI model identifier.
+            ai_service: The AI service identifier.
             operation_type: The operation type.
             credits_per_operation: Credits charged per operation [1, 10000].
             external_cost_cents: Actual external API cost in cents (optional).
@@ -334,55 +425,55 @@ class CreditPricingService:
         """
         self._validate_credits(credits_per_operation)
 
-        existing = await self._pricing_repo.get_by_model_and_operation(
-            model_identifier, operation_type
+        existing = await self._pricing_repo.get_by_service_and_operation(
+            ai_service, operation_type
         )
         if existing is None:
             raise NotFoundError(
-                f"No pricing found for model '{model_identifier}' "
+                f"No pricing found for ai_service '{ai_service}' "
                 f"operation '{operation_type}'.",
                 details={
-                    "model_identifier": model_identifier,
+                    "ai_service": ai_service,
                     "operation_type": operation_type,
                 },
             )
 
         updated = await self._pricing_repo.update(
-            model_identifier, operation_type, credits_per_operation, external_cost_cents
+            ai_service, operation_type, credits_per_operation, external_cost_cents
         )
         if updated is None:
             raise NotFoundError(
                 "Pricing entry not found during update.",
                 details={
-                    "model_identifier": model_identifier,
+                    "ai_service": ai_service,
                     "operation_type": operation_type,
                 },
             )
         logger.info(
-            "Pricing updated: model=%s, op=%s, credits=%d",
-            model_identifier,
+            "Pricing updated: ai_service=%s, op=%s, credits=%d",
+            ai_service,
             operation_type,
             credits_per_operation,
         )
         return self._enrich_with_margin(updated)
 
     async def delete_price(
-        self, model_identifier: str, operation_type: str
+        self, ai_service: str, operation_type: str
     ) -> bool:
         """Delete a pricing entry.
 
         Args:
-            model_identifier: The AI model identifier.
+            ai_service: The AI service identifier.
             operation_type: The operation type.
 
         Returns:
             True if the entry was deleted, False if it did not exist.
         """
-        deleted = await self._pricing_repo.delete(model_identifier, operation_type)
+        deleted = await self._pricing_repo.delete(ai_service, operation_type)
         if deleted:
             logger.info(
-                "Pricing deleted: model=%s, op=%s",
-                model_identifier,
+                "Pricing deleted: ai_service=%s, op=%s",
+                ai_service,
                 operation_type,
             )
         return deleted

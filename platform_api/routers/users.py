@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.user_service import UserService
 
@@ -43,7 +44,45 @@ class UserProfileResponse(BaseModel):
     display_name: str
     role: str
     status: str
+    suspension_reason: str | None = None
+    credit_balance: int = 0
+    plan_name: str | None = None
+    channel_profile_count: int = 0
     created_at: datetime
+    updated_at: datetime | None = None
+
+
+class UserFullDetailResponse(BaseModel):
+    """Comprehensive user detail for admin detail page."""
+
+    # Basic info
+    id: str
+    email: str
+    display_name: str
+    role: str
+    status: str
+    suspension_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+
+    # Credits
+    credit_balance: int = 0
+    total_credits_spent: int = 0
+    recent_transactions: list[dict] = []
+
+    # Plan/License
+    plan_name: str | None = None
+    plan_id: str | None = None
+    license_status: str | None = None
+    license_activated_at: datetime | None = None
+    license_expires_at: datetime | None = None
+
+    # Profiles
+    channel_profiles: list[dict] = []
+
+    # Usage stats
+    total_songs_generated: int = 0
+    total_images_generated: int = 0
 
 
 class PaginatedUsersResponse(BaseModel):
@@ -98,7 +137,12 @@ AdminUserDep = Annotated[AuthContext, Depends(require_admin)]
 # ---------------------------------------------------------------------------
 
 
-def _user_to_response(user) -> UserProfileResponse:
+def _user_to_response(
+    user,
+    credit_balance: int = 0,
+    plan_name: str | None = None,
+    channel_profile_count: int = 0,
+) -> UserProfileResponse:
     """Convert a domain User object to the response model."""
     return UserProfileResponse(
         id=str(user.id),
@@ -106,7 +150,12 @@ def _user_to_response(user) -> UserProfileResponse:
         display_name=user.display_name,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         status=user.status.value if hasattr(user.status, "value") else str(user.status),
+        suspension_reason=getattr(user, "suspension_reason", None),
+        credit_balance=credit_balance,
+        plan_name=plan_name,
+        channel_profile_count=channel_profile_count,
         created_at=user.created_at,
+        updated_at=getattr(user, "updated_at", None),
     )
 
 
@@ -232,11 +281,189 @@ async def list_users(
         date_to=date_to,
     )
 
+    # Enrich users with extra data (credit balances, plans, profile counts)
+    user_ids = [u.id for u in users]
+    if user_ids:
+        pool = get_db_pool()
+
+        # Batch fetch credit balances
+        balance_rows = await pool.fetch(
+            "SELECT user_id, balance FROM credit_wallets WHERE user_id = ANY($1)",
+            user_ids,
+        )
+        balances = {str(row["user_id"]): row["balance"] for row in balance_rows}
+
+        # Batch fetch active plan names
+        plan_rows = await pool.fetch(
+            """
+            SELECT l.user_id, p.name as plan_name
+            FROM licenses l JOIN plans p ON l.plan_id = p.id
+            WHERE l.user_id = ANY($1) AND l.status = 'active'
+              AND (l.expires_at IS NULL OR l.expires_at > NOW())
+            """,
+            user_ids,
+        )
+        plans = {str(row["user_id"]): row["plan_name"] for row in plan_rows}
+
+        # Batch fetch profile counts
+        profile_rows = await pool.fetch(
+            "SELECT user_id, COUNT(*)::int as cnt FROM channel_profiles WHERE user_id = ANY($1) GROUP BY user_id",
+            user_ids,
+        )
+        profiles = {str(row["user_id"]): row["cnt"] for row in profile_rows}
+    else:
+        balances = {}
+        plans = {}
+        profiles = {}
+
     return PaginatedUsersResponse(
-        users=[_user_to_response(u) for u in users],
+        users=[
+            _user_to_response(
+                u,
+                credit_balance=balances.get(str(u.id), 0),
+                plan_name=plans.get(str(u.id)),
+                channel_profile_count=profiles.get(str(u.id), 0),
+            )
+            for u in users
+        ],
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.get(
+    "/{user_id}/details",
+    response_model=UserFullDetailResponse,
+    status_code=200,
+    responses={
+        403: {"description": "Forbidden — non-admin access"},
+        404: {"description": "User not found"},
+    },
+    summary="Get full user details (Admin)",
+)
+async def get_user_full_details(
+    user_id: UUID,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> UserFullDetailResponse:
+    """Return comprehensive user details for the admin detail page."""
+    user = await user_service.get_user(str(user_id))
+    if user is None:
+        from platform_api.exceptions import NotFoundError
+
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+
+    pool = get_db_pool()
+
+    # Credit balance
+    balance_row = await pool.fetchrow(
+        "SELECT balance FROM credit_wallets WHERE user_id = $1", user_id
+    )
+    credit_balance = balance_row["balance"] if balance_row else 0
+
+    # Total credits spent (sum of debit transactions)
+    spent_row = await pool.fetchrow(
+        "SELECT COALESCE(SUM(ABS(amount)), 0)::int as total FROM credit_transactions WHERE user_id = $1 AND amount < 0",
+        user_id,
+    )
+    total_credits_spent = spent_row["total"] if spent_row else 0
+
+    # Recent 10 transactions
+    tx_rows = await pool.fetch(
+        """
+        SELECT id, amount, direction, reason, created_at
+        FROM credit_transactions
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 10
+        """,
+        user_id,
+    )
+    recent_transactions = [
+        {
+            "id": str(row["id"]),
+            "amount": row["amount"],
+            "direction": row.get("direction", "debit" if row["amount"] < 0 else "credit"),
+            "reason": row.get("reason", ""),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+        for row in tx_rows
+    ]
+
+    # Active license + plan info
+    license_row = await pool.fetchrow(
+        """
+        SELECT l.plan_id, l.status as license_status, l.activated_at, l.expires_at,
+               p.name as plan_name
+        FROM licenses l
+        JOIN plans p ON l.plan_id = p.id
+        WHERE l.user_id = $1 AND l.status = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > NOW())
+        LIMIT 1
+        """,
+        user_id,
+    )
+    plan_name = license_row["plan_name"] if license_row else None
+    plan_id = str(license_row["plan_id"]) if license_row else None
+    license_status = license_row["license_status"] if license_row else None
+    license_activated_at = license_row["activated_at"] if license_row else None
+    license_expires_at = license_row["expires_at"] if license_row else None
+
+    # Channel profiles
+    profile_rows = await pool.fetch(
+        """
+        SELECT id, name, folder_name, created_at
+        FROM channel_profiles
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        """,
+        user_id,
+    )
+    channel_profiles = [
+        {
+            "id": str(row["id"]),
+            "name": row["name"],
+            "folder_name": row.get("folder_name", ""),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+        for row in profile_rows
+    ]
+
+    # Usage stats — songs generated
+    songs_row = await pool.fetchrow(
+        "SELECT COUNT(*)::int as cnt FROM suno_tasks WHERE user_id = $1",
+        user_id,
+    )
+    total_songs_generated = songs_row["cnt"] if songs_row else 0
+
+    # Usage stats — images generated
+    images_row = await pool.fetchrow(
+        "SELECT COUNT(*)::int as cnt FROM image_jobs WHERE user_id = $1",
+        user_id,
+    )
+    total_images_generated = images_row["cnt"] if images_row else 0
+
+    return UserFullDetailResponse(
+        id=str(user.id),
+        email=user.email,
+        display_name=user.display_name,
+        role=user.role.value if hasattr(user.role, "value") else str(user.role),
+        status=user.status.value if hasattr(user.status, "value") else str(user.status),
+        suspension_reason=getattr(user, "suspension_reason", None),
+        created_at=user.created_at,
+        updated_at=getattr(user, "updated_at", None),
+        credit_balance=credit_balance,
+        total_credits_spent=total_credits_spent,
+        recent_transactions=recent_transactions,
+        plan_name=plan_name,
+        plan_id=plan_id,
+        license_status=license_status,
+        license_activated_at=license_activated_at,
+        license_expires_at=license_expires_at,
+        channel_profiles=channel_profiles,
+        total_songs_generated=total_songs_generated,
+        total_images_generated=total_images_generated,
     )
 
 

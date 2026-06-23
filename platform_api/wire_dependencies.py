@@ -27,6 +27,8 @@ from platform_api.dependencies import (
     get_rate_limit_config_repo,
     get_settings_service,
     get_suno_balance_service,
+    get_usage_enforcement_service,
+    get_usage_tracking_repo,
     get_user_service,
 )
 
@@ -116,6 +118,8 @@ def wire_all_dependencies(app: FastAPI) -> None:
         _get_credit_repo as credits_get_repo,
         _get_pricing_service as credits_get_pricing,
         _get_pack_repo as credits_get_pack,
+        _get_settings_service as credits_get_settings,
+        _get_credit_service as credits_get_credit_svc,
     )
 
     async def real_credit_repo():
@@ -127,9 +131,18 @@ def wire_all_dependencies(app: FastAPI) -> None:
     async def real_pack_repo():
         return get_credit_repo()
 
+    async def real_credits_settings_service():
+        return get_settings_service()
+
+    async def real_credits_credit_service():
+        from platform_api.dependencies import get_credit_operation_service
+        return get_credit_operation_service()
+
     app.dependency_overrides[credits_get_repo] = real_credit_repo
     app.dependency_overrides[credits_get_pricing] = real_pricing_service
     app.dependency_overrides[credits_get_pack] = real_pack_repo
+    app.dependency_overrides[credits_get_settings] = real_credits_settings_service
+    app.dependency_overrides[credits_get_credit_svc] = real_credits_credit_service
 
     # --- generation.py ---
     from platform_api.routers.generation import (
