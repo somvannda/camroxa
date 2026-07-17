@@ -1,13 +1,14 @@
 """Async HTTP client for the Suno music generation API.
 
-Handles task submission, status polling, and credit balance retrieval.
-Timeout: 30 seconds per request.
+Handles task submission, status polling, lyrics generation, and credit balance
+retrieval.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 import httpx
 
@@ -18,6 +19,303 @@ logger = logging.getLogger(__name__)
 
 # Timeout for Suno API requests (seconds)
 _SUNO_TIMEOUT = 30.0
+_SUNO_LYRICS_POLL_INTERVAL_SECONDS = 2.0
+_SUNO_LYRICS_MAX_WAIT_SECONDS = 120.0
+
+SunoLyricsPollState = Literal["pending", "success", "failed"]
+SunoGeneratePollState = Literal["pending", "success", "failed"]
+
+
+@dataclass(frozen=True)
+class SunoGeneratePollResult:
+    """Parsed state from GET /api/v1/generate/record-info."""
+
+    state: SunoGeneratePollState
+    audio_url_ok: str = ""
+    audio_url_alt: str = ""
+    image_url_ok: str = ""
+    image_url_alt: str = ""
+    duration_ok: float | None = None
+    duration_alt: float | None = None
+    tags_ok: str = ""
+    tags_alt: str = ""
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class SunoLyricsPollResult:
+    """Parsed state from GET /api/v1/lyrics/record-info."""
+
+    state: SunoLyricsPollState
+    text: str = ""
+    title: str = ""
+    error: str = ""
+
+
+def extract_suno_lyrics_task_id(response: dict[str, Any]) -> str:
+    """Return taskId from POST /api/v1/lyrics response."""
+    code = int(response.get("code", 0) or 0)
+    if code != 200:
+        raise ExternalServiceError(
+            str(response.get("msg", "")).strip() or f"Suno lyrics submit failed (code {code})",
+            is_retryable=code in {429, 430, 500, 455},
+            details={"provider": "suno", "reason": "lyrics_submit_failed", "code": code},
+        )
+    data = response.get("data")
+    task_id = str(data.get("taskId", "")).strip() if isinstance(data, dict) else ""
+    if not task_id:
+        raise ExternalServiceError(
+            "Suno lyrics submit returned empty taskId.",
+            is_retryable=False,
+            details={"provider": "suno", "reason": "missing_task_id"},
+        )
+    return task_id
+
+
+def _coerce_task_id(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return str(int(value)) if float(value).is_integer() else str(value).strip()
+    return str(value).strip()
+
+
+def _task_id_from_mapping(payload: dict[str, Any]) -> str:
+    for key in ("taskId", "task_id", "id"):
+        task_id = _coerce_task_id(payload.get(key))
+        if task_id:
+            return task_id
+    nested = payload.get("response")
+    if isinstance(nested, dict):
+        for key in ("taskId", "task_id", "id"):
+            task_id = _coerce_task_id(nested.get(key))
+            if task_id:
+                return task_id
+    return ""
+
+
+def extract_suno_generate_task_id(response: dict[str, Any]) -> str:
+    """Return taskId from POST /api/v1/generate response."""
+    flat_task_id = _coerce_task_id(response.get("taskId") or response.get("task_id"))
+    if flat_task_id and "code" not in response:
+        return flat_task_id
+
+    code = int(response.get("code", 0) or 0)
+    if code != 200:
+        raise ExternalServiceError(
+            str(response.get("msg", "")).strip() or f"Suno generate failed (code {code})",
+            is_retryable=code in {429, 430, 455, 500},
+            details={"provider": "suno", "reason": "generate_submit_failed", "code": code},
+        )
+
+    data = response.get("data")
+    if isinstance(data, dict):
+        task_id = _task_id_from_mapping(data)
+        if task_id:
+            return task_id
+    elif isinstance(data, str):
+        task_id = data.strip()
+        if task_id:
+            return task_id
+
+    if flat_task_id:
+        return flat_task_id
+
+    api_message = str(response.get("msg", "")).strip()
+    raise ExternalServiceError(
+        api_message or "Suno generate returned empty taskId.",
+        is_retryable=False,
+        details={
+            "provider": "suno",
+            "reason": "missing_task_id",
+            "response": str(response)[:500],
+        },
+    )
+
+
+def parse_suno_lyrics_poll(response: dict[str, Any]) -> SunoLyricsPollResult:
+    """Parse GET /api/v1/lyrics/record-info into pending/success/failed."""
+    code = int(response.get("code", 0) or 0)
+    if code != 200:
+        return SunoLyricsPollResult(
+            state="failed",
+            error=str(response.get("msg", "")).strip() or f"Suno lyrics poll failed (code {code})",
+        )
+
+    data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    status = str(data.get("status", "")).strip().upper()
+    if status in {"", "PENDING"}:
+        return SunoLyricsPollResult(state="pending")
+
+    if status != "SUCCESS":
+        error = str(data.get("errorMessage", "")).strip()
+        return SunoLyricsPollResult(
+            state="failed",
+            error=error or f"Suno lyrics failed (status={status})",
+        )
+
+    response_block = data.get("response") if isinstance(data.get("response"), dict) else {}
+    variants = response_block.get("data") if isinstance(response_block.get("data"), list) else []
+    for variant in variants:
+        if not isinstance(variant, dict):
+            continue
+        text = str(variant.get("text", "")).strip()
+        title = str(variant.get("title", "")).strip()
+        variant_status = str(variant.get("status", "")).strip().lower()
+        if text and (not variant_status or variant_status == "complete"):
+            return SunoLyricsPollResult(state="success", text=text, title=title)
+
+    return SunoLyricsPollResult(
+        state="failed",
+        error="Suno lyrics returned no completed variants.",
+    )
+
+
+def _extract_clip_download_url(clip: dict[str, Any]) -> str:
+    """Return the best URL for downloading a finished MP3 (not stream preview)."""
+    for key in (
+        "source_audio_url",
+        "sourceAudioUrl",
+        "audio_url",
+        "audioUrl",
+    ):
+        url = str(clip.get(key, "")).strip()
+        if url:
+            return url
+    return ""
+
+
+def _extract_clip_image_url(clip: dict[str, Any]) -> str:
+    for key in (
+        "image_url",
+        "imageUrl",
+        "source_image_url",
+        "sourceImageUrl",
+        "cover_url",
+        "coverUrl",
+    ):
+        url = str(clip.get(key, "")).strip()
+        if url:
+            return url
+    return ""
+
+
+def _extract_clip_duration(clip: dict[str, Any]) -> float | None:
+    for key in ("duration", "audio_duration", "audioDuration"):
+        raw = clip.get(key)
+        if raw is None or raw == "":
+            continue
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _extract_clip_tags(clip: dict[str, Any]) -> str:
+    tags = clip.get("tags")
+    if isinstance(tags, str):
+        return tags.strip()
+    if isinstance(tags, list):
+        return ", ".join(str(item).strip() for item in tags if str(item).strip())
+    return str(clip.get("style", "") or "").strip()
+
+
+def _clip_metadata(clip: dict[str, Any]) -> tuple[str, str, float | None, str]:
+    return (
+        _extract_clip_audio_url(clip),
+        _extract_clip_image_url(clip),
+        _extract_clip_duration(clip),
+        _extract_clip_tags(clip),
+    )
+
+
+def _extract_clip_audio_url(clip: dict[str, Any]) -> str:
+    download_url = _extract_clip_download_url(clip)
+    if download_url:
+        return download_url
+    for key in (
+        "stream_audio_url",
+        "streamAudioUrl",
+        "source_stream_audio_url",
+        "sourceStreamAudioUrl",
+    ):
+        url = str(clip.get(key, "")).strip()
+        if url:
+            return url
+    return ""
+
+
+def _iter_generate_clips(data: dict[str, Any]) -> list[dict[str, Any]]:
+    clips: list[dict[str, Any]] = []
+    response_block = data.get("response")
+    if isinstance(response_block, dict):
+        nested = response_block.get("data")
+        if isinstance(nested, list):
+            clips.extend(item for item in nested if isinstance(item, dict))
+        suno_data = response_block.get("sunoData")
+        if isinstance(suno_data, list):
+            clips.extend(item for item in suno_data if isinstance(item, dict))
+    direct = data.get("data")
+    if isinstance(direct, list):
+        clips.extend(item for item in direct if isinstance(item, dict))
+    return clips
+
+
+def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult:
+    """Parse GET /api/v1/generate/record-info into pending/success/failed."""
+    code = int(response.get("code", 0) or 0)
+    if code != 200:
+        return SunoGeneratePollResult(
+            state="failed",
+            error=str(response.get("msg", "")).strip() or f"Suno generate poll failed (code {code})",
+        )
+
+    data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    status = str(data.get("status", "")).strip().upper()
+    clips = _iter_generate_clips(data)
+    audio_urls: list[str] = []
+    image_urls: list[str] = []
+    durations: list[float | None] = []
+    tags: list[str] = []
+    for clip in clips:
+        audio_url, image_url, duration, clip_tags = _clip_metadata(clip)
+        if audio_url:
+            audio_urls.append(audio_url)
+            image_urls.append(image_url)
+            durations.append(duration)
+            tags.append(clip_tags)
+
+    if audio_urls:
+        return SunoGeneratePollResult(
+            state="success",
+            audio_url_ok=audio_urls[0],
+            audio_url_alt=audio_urls[1] if len(audio_urls) > 1 else "",
+            image_url_ok=image_urls[0] if image_urls else "",
+            image_url_alt=image_urls[1] if len(image_urls) > 1 else "",
+            duration_ok=durations[0] if durations else None,
+            duration_alt=durations[1] if len(durations) > 1 else None,
+            tags_ok=tags[0] if tags else "",
+            tags_alt=tags[1] if len(tags) > 1 else "",
+        )
+
+    if status in {"FAILED", "ERROR", "FAILURE", "CANCELLED"}:
+        error = str(data.get("errorMessage", "")).strip()
+        return SunoGeneratePollResult(
+            state="failed",
+            error=error or f"Suno generate failed (status={status})",
+        )
+
+    if status in {"", "PENDING", "QUEUED", "RUNNING", "PROCESSING", "TEXT_SUCCESS", "FIRST_SUCCESS"}:
+        return SunoGeneratePollResult(state="pending")
+
+    if status in {"SUCCESS", "COMPLETE", "COMPLETED", "DONE"}:
+        return SunoGeneratePollResult(
+            state="failed",
+            error="Suno reported success but returned no audio URLs.",
+        )
+
+    return SunoGeneratePollResult(state="pending")
 
 
 def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceError:
@@ -59,34 +357,25 @@ class SunoClient:
 
     def __init__(self, settings: Settings) -> None:
         self._base_url = settings.suno_api_base_url.rstrip("/")
-        self._api_key = settings.suno_api_key
         self._callback_base_url = settings.suno_callback_base_url.rstrip("/")
         self._timeout = httpx.Timeout(
             timeout=float(settings.suno_timeout_seconds),
             connect=10.0,
         )
-        self._client: httpx.AsyncClient | None = None
 
-    async def _get_client(self, api_key: str | None = None) -> httpx.AsyncClient:
-        key = api_key or self._api_key
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                base_url=self._base_url,
-                timeout=self._timeout,
-                headers={
-                    "Authorization": f"Bearer {key}",
-                    "Content-Type": "application/json",
-                },
-            )
-        elif api_key:
-            self._client.headers["Authorization"] = f"Bearer {key}"
-        return self._client
+    def _build_client(self, api_key: str) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=self._base_url,
+            timeout=self._timeout,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+        )
 
     async def close(self) -> None:
-        """Close the underlying HTTP client."""
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-            self._client = None
+        """No persistent client — kept for lifecycle compatibility."""
+        return
 
     async def submit_task(
         self,
@@ -115,27 +404,63 @@ class SunoClient:
         Raises:
             ExternalServiceError: On timeout, HTTP error, or connection failure.
         """
-        client = await self._get_client(api_key=api_key)
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+
+        normalized_title = str(title or "").strip()
+        normalized_lyrics = str(lyrics or "").strip()
+        normalized_style = str(style or "").strip() or "Contemporary pop"
+        if not normalized_title:
+            raise ExternalServiceError(
+                "Suno requires a song title in custom mode.",
+                is_retryable=False,
+                details={"provider": "suno", "reason": "missing_title"},
+            )
+        if not instrumental and not normalized_lyrics:
+            raise ExternalServiceError(
+                "Suno requires lyrics in custom mode.",
+                is_retryable=False,
+                details={"provider": "suno", "reason": "missing_lyrics"},
+            )
+
+        callback = str(callback_url or "").strip()
+        if not callback:
+            if self._callback_base_url:
+                callback = f"{self._callback_base_url}/api/v1/callbacks/suno"
+            else:
+                callback = "https://localhost/api/v1/callbacks/suno"
+
         payload: dict[str, Any] = {
             "model": model,
-            "title": title,
-            "lyrics": lyrics,
-            "style": style,
+            "title": normalized_title,
+            "prompt": normalized_lyrics,
+            "style": normalized_style,
             "instrumental": instrumental,
+            "customMode": True,
+            "callBackUrl": callback,
         }
-        if callback_url:
-            payload["callbackUrl"] = callback_url
-        elif self._callback_base_url:
-            payload["callbackUrl"] = f"{self._callback_base_url}/api/v1/callbacks/suno"
 
+        client = self._build_client(api_key)
         try:
             response = await client.post("/api/v1/generate", json=payload)
             response.raise_for_status()
-            return response.json()
+            body = response.json()
+            task_id = extract_suno_generate_task_id(body)
+            return {"taskId": task_id, "code": body.get("code", 200), "data": body.get("data")}
+        except ExternalServiceError as exc:
+            if exc.details.get("reason") == "missing_task_id":
+                logger.warning("Suno generate response missing taskId: %s", exc.details.get("response"))
+            raise
         except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
             raise _classify_error(exc, context="submit_task") from exc
+        finally:
+            await client.aclose()
 
-    async def check_status(self, task_id: str) -> dict[str, Any]:
+    async def check_status(self, task_id: str, *, api_key: str | None = None) -> dict[str, Any]:
         """Check the status of a previously submitted Suno task.
 
         Args:
@@ -147,15 +472,23 @@ class SunoClient:
         Raises:
             ExternalServiceError: On timeout, HTTP error, or connection failure.
         """
-        client = await self._get_client()
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        client = self._build_client(api_key)
         try:
-            response = await client.get(f"/api/v1/generate/record", params={"taskId": task_id})
+            response = await client.get("/api/v1/generate/record-info", params={"taskId": task_id})
             response.raise_for_status()
             return response.json()
         except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
             raise _classify_error(exc, context=f"check_status({task_id})") from exc
+        finally:
+            await client.aclose()
 
-    async def get_credit_balance(self) -> dict[str, Any]:
+    async def get_credit_balance(self, *, api_key: str | None = None) -> dict[str, Any]:
         """Retrieve the current Suno API credit balance.
 
         Returns:
@@ -164,10 +497,122 @@ class SunoClient:
         Raises:
             ExternalServiceError: On timeout, HTTP error, or connection failure.
         """
-        client = await self._get_client()
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        client = self._build_client(api_key)
         try:
             response = await client.get("/api/v1/generate/credit")
             response.raise_for_status()
             return response.json()
         except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
             raise _classify_error(exc, context="get_credit_balance") from exc
+        finally:
+            await client.aclose()
+
+    async def submit_lyrics_task(
+        self,
+        *,
+        prompt: str,
+        callback_url: str | None = None,
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit a lyrics-only generation task (POST /api/v1/lyrics).
+
+        Suno bills ~2 API credits per lyrics job. Prompt is limited to 200 chars.
+        """
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        payload: dict[str, Any] = {
+            "prompt": str(prompt or "").strip()[:200],
+            "callBackUrl": callback_url
+            or (
+                f"{self._callback_base_url}/api/v1/callbacks/suno-lyrics"
+                if self._callback_base_url
+                else "https://localhost/callbacks/suno-lyrics"
+            ),
+        }
+        client = self._build_client(api_key)
+        try:
+            response = await client.post("/api/v1/lyrics", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_error(exc, context="submit_lyrics_task") from exc
+        finally:
+            await client.aclose()
+
+    async def check_lyrics_status(
+        self,
+        task_id: str,
+        *,
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Poll lyrics task status (GET /api/v1/lyrics/record-info)."""
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        client = self._build_client(api_key)
+        try:
+            response = await client.get(
+                "/api/v1/lyrics/record-info",
+                params={"taskId": task_id},
+            )
+            response.raise_for_status()
+            return response.json()
+        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_error(exc, context=f"check_lyrics_status({task_id})") from exc
+        finally:
+            await client.aclose()
+
+    async def generate_lyrics_blocking(
+        self,
+        *,
+        prompt: str,
+        callback_url: str | None = None,
+        api_key: str | None = None,
+        poll_interval_seconds: float = _SUNO_LYRICS_POLL_INTERVAL_SECONDS,
+        max_wait_seconds: float = _SUNO_LYRICS_MAX_WAIT_SECONDS,
+    ) -> tuple[str, str]:
+        """Submit a lyrics task and poll until completion."""
+        import asyncio
+        import time
+
+        submit_response = await self.submit_lyrics_task(
+            prompt=prompt,
+            callback_url=callback_url,
+            api_key=api_key,
+        )
+        task_id = extract_suno_lyrics_task_id(submit_response)
+        started = time.monotonic()
+        last_error = ""
+        while time.monotonic() - started < max_wait_seconds:
+            poll_response = await self.check_lyrics_status(task_id, api_key=api_key)
+            parsed = parse_suno_lyrics_poll(poll_response)
+            if parsed.state == "pending":
+                await asyncio.sleep(poll_interval_seconds)
+                continue
+            if parsed.state == "success":
+                return parsed.text, parsed.title
+            last_error = parsed.error or "Suno lyrics generation failed."
+            raise ExternalServiceError(
+                last_error,
+                is_retryable=False,
+                details={"provider": "suno", "reason": "lyrics_generation_failed"},
+            )
+
+        raise ExternalServiceError(
+            f"Suno lyrics timed out after {int(max_wait_seconds)}s.",
+            is_retryable=True,
+            details={"provider": "suno", "reason": "lyrics_timeout", "task_id": task_id},
+        )

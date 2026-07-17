@@ -8,6 +8,7 @@ Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from typing import Annotated
@@ -19,6 +20,7 @@ from pydantic import BaseModel, Field
 from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.user_service import UserService
+from platform_api.services.credit_units import units_to_credits
 
 # ---------------------------------------------------------------------------
 # Router
@@ -41,15 +43,65 @@ class UserProfileResponse(BaseModel):
 
     id: str
     email: str
+    email_confirmed: bool = False
     display_name: str
     role: str
     status: str
     suspension_reason: str | None = None
-    credit_balance: int = 0
+    credit_balance: float = 0
     plan_name: str | None = None
+    profile_allowance: int | None = None
+    profile_addon_slots: int = 0
+    profile_addon_pending: int = 0
+    effective_profile_allowance: int | None = None
+    effective_quota_channels: int | None = None
     channel_profile_count: int = 0
+    onboarding_paid: bool = False
+    pending_verification_code: str | None = None
+    verification_code_expires_at: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None
+
+
+class ChannelProfileAdminSummary(BaseModel):
+    id: str
+    name: str
+    folder_name: str | None = None
+    run_prefix: str | None = None
+    created_at: datetime | None = None
+    logo_available: bool = False
+    cover_count: int = 0
+    output_resolution: str | None = None
+    video_template_id: str | None = None
+    reel_template_id: str | None = None
+    video_template_name: str | None = None
+    video_template_updated_at: datetime | None = None
+    video_template_available: bool = False
+    reel_template_name: str | None = None
+    reel_template_updated_at: datetime | None = None
+    reel_template_available: bool = False
+    genre: str | None = None
+    role: str | None = None
+    description: str | None = None
+    visibility: str | None = None
+    publish_at: str | None = None
+    made_for_kids: bool = False
+    ai_use: bool = False
+    category: str | None = None
+    playlist: str | None = None
+    title_template: str | None = None
+    description_template: str | None = None
+    keywords: list[str] = []
+    tags: list[str] = []
+
+
+class UserOwnedPromptSummary(BaseModel):
+    id: str
+    name: str
+    content: str
+    usage_count: int = 0
+    created_at: datetime
+    updated_at: datetime
 
 
 class UserFullDetailResponse(BaseModel):
@@ -66,8 +118,8 @@ class UserFullDetailResponse(BaseModel):
     updated_at: datetime | None = None
 
     # Credits
-    credit_balance: int = 0
-    total_credits_spent: int = 0
+    credit_balance: float = 0
+    total_credits_spent: float = 0
     recent_transactions: list[dict] = []
 
     # Plan/License
@@ -78,11 +130,15 @@ class UserFullDetailResponse(BaseModel):
     license_expires_at: datetime | None = None
 
     # Profiles
-    channel_profiles: list[dict] = []
+    channel_profiles: list[ChannelProfileAdminSummary] = []
 
     # Usage stats
     total_songs_generated: int = 0
     total_images_generated: int = 0
+
+    # User-owned prompts
+    custom_descriptions: list[UserOwnedPromptSummary] = []
+    custom_structures: list[UserOwnedPromptSummary] = []
 
 
 class PaginatedUsersResponse(BaseModel):
@@ -139,21 +195,43 @@ AdminUserDep = Annotated[AuthContext, Depends(require_admin)]
 
 def _user_to_response(
     user,
-    credit_balance: int = 0,
+    credit_balance: int | float = 0,
     plan_name: str | None = None,
+    profile_allowance: int | None = None,
+    profile_addon_slots: int = 0,
+    profile_addon_pending: int = 0,
+    effective_profile_allowance: int | None = None,
+    effective_quota_channels: int | None = None,
     channel_profile_count: int = 0,
+    onboarding_paid: bool = False,
+    pending_verification_code: str | None = None,
+    verification_code_expires_at: datetime | None = None,
 ) -> UserProfileResponse:
     """Convert a domain User object to the response model."""
+    balance_display = (
+        units_to_credits(int(credit_balance))
+        if isinstance(credit_balance, int)
+        else float(credit_balance)
+    )
     return UserProfileResponse(
         id=str(user.id),
         email=user.email,
+        email_confirmed=bool(getattr(user, "email_confirmed", False)),
         display_name=user.display_name,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         status=user.status.value if hasattr(user.status, "value") else str(user.status),
         suspension_reason=getattr(user, "suspension_reason", None),
-        credit_balance=credit_balance,
+        credit_balance=balance_display,
         plan_name=plan_name,
+        profile_allowance=profile_allowance,
+        profile_addon_slots=profile_addon_slots,
+        profile_addon_pending=profile_addon_pending,
+        effective_profile_allowance=effective_profile_allowance,
+        effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
+        onboarding_paid=onboarding_paid,
+        pending_verification_code=pending_verification_code,
+        verification_code_expires_at=verification_code_expires_at,
         created_at=user.created_at,
         updated_at=getattr(user, "updated_at", None),
     )
@@ -179,7 +257,64 @@ async def get_me(
     Requirement 3 context: Users can view their own account details.
     """
     user = await user_service.get_user(UUID(ctx.user_id))
-    return _user_to_response(user)
+    pool = get_db_pool()
+    user_id = UUID(ctx.user_id)
+
+    balance_row = await pool.fetchrow(
+        "SELECT balance FROM credit_wallets WHERE user_id = $1",
+        user_id,
+    )
+    credit_balance = int(balance_row["balance"] or 0) if balance_row else 0
+
+    license_row = await pool.fetchrow(
+        """
+        SELECT p.name AS plan_name,
+               p.profile_allowance,
+               COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
+               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
+        FROM licenses l
+        JOIN plans p ON l.plan_id = p.id
+        WHERE l.user_id = $1 AND l.status = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > NOW())
+        LIMIT 1
+        """,
+        user_id,
+    )
+    plan_name = str(license_row["plan_name"]) if license_row and license_row["plan_name"] is not None else None
+    profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
+    profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
+    profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
+    effective_quota_channels = (
+        int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
+    )
+    effective_profile_allowance = (
+        int(profile_allowance or 0) + profile_addon_slots + profile_addon_pending
+        if profile_allowance is not None
+        else None
+    )
+
+    profile_row = await pool.fetchrow(
+        "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
+        user_id,
+    )
+    channel_profile_count = int(profile_row["cnt"] or 0) if profile_row else 0
+
+    from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
+
+    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+
+    return _user_to_response(
+        user,
+        credit_balance=credit_balance,
+        plan_name=plan_name,
+        profile_allowance=profile_allowance,
+        profile_addon_slots=profile_addon_slots,
+        profile_addon_pending=profile_addon_pending,
+        effective_profile_allowance=effective_profile_allowance,
+        effective_quota_channels=effective_quota_channels,
+        channel_profile_count=channel_profile_count,
+        onboarding_paid=onboarding_paid,
+    )
 
 
 @router.patch(
@@ -231,19 +366,74 @@ async def update_me(
             details={"allowed_fields": ["display_name", "password"]},
         )
 
-    # For password updates, use the repo directly since UserService
-    # only allows admin-updatable fields. We pass display_name via service.
     user_id = UUID(ctx.user_id)
+    from platform_api.dependencies import get_user_repo
 
-    if "display_name" in fields:
-        user = await user_service.update_user(user_id, display_name=fields["display_name"])
-    else:
-        # If only password, we still need to get the user and update via repo
+    user_repo = get_user_repo()
+    user = await user_repo.update(user_id, **fields)
+    if user is None:
         user = await user_service.get_user(user_id)
 
-    # Note: password_hash update would go through the repository directly
-    # in a full implementation. For now, we return the user profile.
-    return _user_to_response(user)
+    if request.password is not None:
+        from platform_api.dependencies import get_auth_service
+
+        await get_auth_service().revoke_tokens(ctx.user_id)
+
+    pool = get_db_pool()
+    balance_row = await pool.fetchrow(
+        "SELECT balance FROM credit_wallets WHERE user_id = $1",
+        user_id,
+    )
+    credit_balance = int(balance_row["balance"] or 0) if balance_row else 0
+
+    license_row = await pool.fetchrow(
+        """
+        SELECT p.name AS plan_name,
+               p.profile_allowance,
+               COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
+               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
+        FROM licenses l
+        JOIN plans p ON l.plan_id = p.id
+        WHERE l.user_id = $1 AND l.status = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > NOW())
+        LIMIT 1
+        """,
+        user_id,
+    )
+    plan_name = str(license_row["plan_name"]) if license_row and license_row["plan_name"] is not None else None
+    profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
+    profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
+    profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
+    effective_quota_channels = (
+        int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
+    )
+    effective_profile_allowance = (
+        int(profile_allowance or 0) + profile_addon_slots + profile_addon_pending
+        if profile_allowance is not None
+        else None
+    )
+
+    profile_row = await pool.fetchrow(
+        "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
+        user_id,
+    )
+    channel_profile_count = int(profile_row["cnt"] or 0) if profile_row else 0
+
+    from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
+
+    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+    return _user_to_response(
+        user,
+        credit_balance=credit_balance,
+        plan_name=plan_name,
+        profile_allowance=profile_allowance,
+        profile_addon_slots=profile_addon_slots,
+        profile_addon_pending=profile_addon_pending,
+        effective_profile_allowance=effective_profile_allowance,
+        effective_quota_channels=effective_quota_channels,
+        channel_profile_count=channel_profile_count,
+        onboarding_paid=onboarding_paid,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -311,10 +501,30 @@ async def list_users(
             user_ids,
         )
         profiles = {str(row["user_id"]): row["cnt"] for row in profile_rows}
+
+        verification_rows = await pool.fetch(
+            """
+            SELECT DISTINCT ON (user_id) user_id, code, expires_at
+            FROM email_verifications
+            WHERE user_id = ANY($1)
+              AND purpose = 'register'
+              AND used = false
+            ORDER BY user_id, created_at DESC
+            """,
+            user_ids,
+        )
+        verifications = {
+            str(row["user_id"]): {
+                "code": row["code"],
+                "expires_at": row["expires_at"],
+            }
+            for row in verification_rows
+        }
     else:
         balances = {}
         plans = {}
         profiles = {}
+        verifications = {}
 
     return PaginatedUsersResponse(
         users=[
@@ -322,7 +532,10 @@ async def list_users(
                 u,
                 credit_balance=balances.get(str(u.id), 0),
                 plan_name=plans.get(str(u.id)),
+                profile_allowance=None,
                 channel_profile_count=profiles.get(str(u.id), 0),
+                pending_verification_code=verifications.get(str(u.id), {}).get("code"),
+                verification_code_expires_at=verifications.get(str(u.id), {}).get("expires_at"),
             )
             for u in users
         ],
@@ -360,19 +573,25 @@ async def get_user_full_details(
     balance_row = await pool.fetchrow(
         "SELECT balance FROM credit_wallets WHERE user_id = $1", user_id
     )
-    credit_balance = balance_row["balance"] if balance_row else 0
+    credit_balance_units = int(balance_row["balance"] or 0) if balance_row else 0
 
-    # Total credits spent (sum of debit transactions)
+    # Total credits spent (sum of debit transactions, stored as micro-units)
     spent_row = await pool.fetchrow(
-        "SELECT COALESCE(SUM(ABS(amount)), 0)::int as total FROM credit_transactions WHERE user_id = $1 AND amount < 0",
+        """
+        SELECT COALESCE(SUM(amount), 0)::bigint as total
+        FROM credit_transactions
+        WHERE user_id = $1 AND direction = 'debit'
+        """,
         user_id,
     )
-    total_credits_spent = spent_row["total"] if spent_row else 0
+    total_credits_spent = units_to_credits(int(spent_row["total"] or 0)) if spent_row else 0.0
 
     # Recent 10 transactions
+    from platform_api.services.usage_transaction_labels import enrich_transaction_for_api
+
     tx_rows = await pool.fetch(
         """
-        SELECT id, amount, direction, reason, created_at
+        SELECT id, amount, direction, reason, ref_id, metadata, created_at
         FROM credit_transactions
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -380,16 +599,36 @@ async def get_user_full_details(
         """,
         user_id,
     )
-    recent_transactions = [
-        {
-            "id": str(row["id"]),
-            "amount": row["amount"],
-            "direction": row.get("direction", "debit" if row["amount"] < 0 else "credit"),
-            "reason": row.get("reason", ""),
-            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-        }
-        for row in tx_rows
-    ]
+    recent_transactions = []
+    for row in tx_rows:
+        enriched = enrich_transaction_for_api(
+            {
+                "id": row["id"],
+                "user_id": user_id,
+                "amount": row["amount"],
+                "direction": row.get("direction", "debit"),
+                "reason": row.get("reason", ""),
+                "ref_id": row.get("ref_id"),
+                "metadata": row.get("metadata"),
+                "created_at": row["created_at"],
+            }
+        )
+        recent_transactions.append(
+            {
+                "id": str(row["id"]),
+                "amount": enriched["amount"],
+                "amount_units": enriched["amount_units"],
+                "direction": enriched["direction"],
+                "reason": enriched["reason"],
+                "purpose": enriched["purpose"],
+                "provider": enriched.get("provider"),
+                "model": enriched.get("model"),
+                "operation": enriched.get("operation"),
+                "line_items_summary": enriched.get("line_items_summary"),
+                "ref_id": enriched.get("ref_id"),
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            }
+        )
 
     # Active license + plan info
     license_row = await pool.fetchrow(
@@ -413,22 +652,103 @@ async def get_user_full_details(
     # Channel profiles
     profile_rows = await pool.fetch(
         """
-        SELECT id, name, folder_name, created_at
+        SELECT
+            id,
+            name,
+            folder_name,
+            run_prefix,
+            created_at,
+            logo_path,
+            video_template_id,
+            reel_template_id,
+            output_resolution,
+            image_config,
+            youtube_config
         FROM channel_profiles
         WHERE user_id = $1
         ORDER BY created_at DESC
         """,
         user_id,
     )
-    channel_profiles = [
-        {
-            "id": str(row["id"]),
-            "name": row["name"],
-            "folder_name": row.get("folder_name", ""),
-            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+
+    def _as_dict(value) -> dict:
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value or "{}")
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
+    def _as_list(value) -> list:
+        return value if isinstance(value, list) else []
+
+    channel_profiles: list[ChannelProfileAdminSummary] = []
+    template_rows = await pool.fetch(
+        """
+        SELECT id, name, updated_at
+        FROM profile_video_templates
+        WHERE user_id = $1
+        """,
+        user_id,
+    )
+    templates_by_id = {
+        str(row["id"]): {
+            "name": str(row["name"]),
+            "updated_at": row["updated_at"],
         }
-        for row in profile_rows
-    ]
+        for row in template_rows
+    }
+
+    for row in profile_rows:
+        image_cfg = _as_dict(row.get("image_config"))
+        youtube_cfg = _as_dict(row.get("youtube_config"))
+        cover_paths = _as_list(image_cfg.get("cover_paths")) if isinstance(image_cfg, dict) else []
+        keywords = _as_list(youtube_cfg.get("keywords")) if isinstance(youtube_cfg, dict) else []
+        tags = _as_list(youtube_cfg.get("tags")) if isinstance(youtube_cfg, dict) else []
+        video_template_id = str(row.get("video_template_id") or "").strip() or None
+        reel_template_id = str(row.get("reel_template_id") or "").strip() or None
+        video_meta = templates_by_id.get(video_template_id or "")
+        reel_meta = templates_by_id.get(reel_template_id or "")
+        channel_profiles.append(
+            ChannelProfileAdminSummary(
+                id=str(row["id"]),
+                name=row["name"],
+                folder_name=row.get("folder_name"),
+                run_prefix=str(row.get("run_prefix") or "").strip() or None,
+                created_at=row["created_at"],
+                logo_available=bool(str(row.get("logo_path") or "").strip()),
+                cover_count=len([x for x in cover_paths if str(x or "").strip()]),
+                output_resolution=str(row.get("output_resolution") or "").strip() or None,
+                video_template_id=video_template_id,
+                reel_template_id=reel_template_id,
+                video_template_name=video_meta["name"] if video_meta else None,
+                video_template_updated_at=video_meta["updated_at"] if video_meta else None,
+                video_template_available=bool(video_meta),
+                reel_template_name=reel_meta["name"] if reel_meta else None,
+                reel_template_updated_at=reel_meta["updated_at"] if reel_meta else None,
+                reel_template_available=bool(reel_meta),
+                genre=str(image_cfg.get("genre") or "").strip() or None,
+                role=str(image_cfg.get("role") or "").strip() or None,
+                description=str(youtube_cfg.get("description") or "").strip() or None,
+                visibility=str(youtube_cfg.get("visibility") or "").strip() or None,
+                publish_at=str(youtube_cfg.get("publish_at") or "").strip() or None,
+                made_for_kids=bool(youtube_cfg.get("made_for_kids") or False),
+                ai_use=bool(youtube_cfg.get("ai_use") or False),
+                category=str(youtube_cfg.get("category") or "").strip() or None,
+                playlist=str(youtube_cfg.get("playlist") or "").strip() or None,
+                title_template=str(youtube_cfg.get("title_template") or "").strip()
+                or None,
+                description_template=str(
+                    youtube_cfg.get("description_template") or ""
+                ).strip()
+                or None,
+                keywords=[str(x).strip() for x in keywords if str(x).strip()],
+                tags=[str(x).strip() for x in tags if str(x).strip()],
+            )
+        )
 
     # Usage stats — songs generated
     songs_row = await pool.fetchrow(
@@ -444,6 +764,49 @@ async def get_user_full_details(
     )
     total_images_generated = images_row["cnt"] if images_row else 0
 
+    custom_description_rows = await pool.fetch(
+        """
+        SELECT
+            d.id,
+            d.name,
+            d.content,
+            d.created_at,
+            d.updated_at,
+            COALESCE(usage.usage_count, 0)::int AS usage_count
+        FROM music_descriptions d
+        LEFT JOIN (
+            SELECT description_id, COUNT(*)::int AS usage_count
+            FROM songs
+            WHERE description_id IS NOT NULL
+            GROUP BY description_id
+        ) usage ON usage.description_id = d.id
+        WHERE d.user_id = $1
+        ORDER BY d.name ASC
+        """,
+        user_id,
+    )
+    custom_structure_rows = await pool.fetch(
+        """
+        SELECT
+            s.id,
+            s.name,
+            s.content,
+            s.created_at,
+            s.updated_at,
+            COALESCE(usage.usage_count, 0)::int AS usage_count
+        FROM music_structures s
+        LEFT JOIN (
+            SELECT structure_id, COUNT(*)::int AS usage_count
+            FROM songs
+            WHERE structure_id IS NOT NULL
+            GROUP BY structure_id
+        ) usage ON usage.structure_id = s.id
+        WHERE s.user_id = $1
+        ORDER BY s.name ASC
+        """,
+        user_id,
+    )
+
     return UserFullDetailResponse(
         id=str(user.id),
         email=user.email,
@@ -453,7 +816,7 @@ async def get_user_full_details(
         suspension_reason=getattr(user, "suspension_reason", None),
         created_at=user.created_at,
         updated_at=getattr(user, "updated_at", None),
-        credit_balance=credit_balance,
+        credit_balance=units_to_credits(credit_balance_units),
         total_credits_spent=total_credits_spent,
         recent_transactions=recent_transactions,
         plan_name=plan_name,
@@ -464,6 +827,28 @@ async def get_user_full_details(
         channel_profiles=channel_profiles,
         total_songs_generated=total_songs_generated,
         total_images_generated=total_images_generated,
+        custom_descriptions=[
+            UserOwnedPromptSummary(
+                id=str(row["id"]),
+                name=row["name"],
+                content=row["content"],
+                usage_count=int(row["usage_count"] or 0),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in custom_description_rows
+        ],
+        custom_structures=[
+            UserOwnedPromptSummary(
+                id=str(row["id"]),
+                name=row["name"],
+                content=row["content"],
+                usage_count=int(row["usage_count"] or 0),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in custom_structure_rows
+        ],
     )
 
 

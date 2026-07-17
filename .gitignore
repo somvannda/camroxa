@@ -10,10 +10,14 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+build
+output
+.next
 *.local
 .env
 .env.*
 !.env.example
+!.env.*.example
 
 # Editor directories and files
 .vscode/*
@@ -26,14 +30,42 @@ dist-ssr
 *.sln
 *.sw?
 
-# Python app runtime artifacts
+# Python / test caches
 **/__pycache__/
 *.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+
+# Python app runtime artifacts
 python_app/debug.log
 python_app/database/video_templates_local.json.*.tmp
+camxora_python/build/
+camxora_python/dist/
+
+# Large installer vendor binaries (downloaded by prepare-installer-assets.ps1)
+camxora_python/vendor/ffmpeg/
+camxora_python/vendor/vcredist/
+
+# Rust build artifacts
+**/target/
+
+# Python packaging metadata
+*.egg-info/
+
+# Local runtime data
+uploads/
+marketplace_storage/
 
 # Database backups (contain secrets)
 *.sql
 
 # Dev environment runtime
 .dev-pids
+
+# Local deploy secrets (never commit)
+.deploy/secrets.env
+.deploy/camxora_deploy_ed25519
+.deploy/camxora_deploy_ed25519.pub
+scripts/deploy/.venv/

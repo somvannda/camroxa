@@ -1,26 +1,53 @@
-// Token storage using sessionStorage for persistence across page refreshes.
-// sessionStorage is scoped to the tab and cleared when the tab closes,
-// providing a balance between UX (survives refresh) and security (no cross-tab leakage).
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
 
-const ACCESS_TOKEN_KEY = 'admin_access_token';
-const REFRESH_TOKEN_KEY = 'admin_refresh_token';
+const ACCESS_KEY = 'camxora_admin_access_token';
+const REFRESH_KEY = 'camxora_admin_refresh_token';
+
+function readStored(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string | null): void {
+  try {
+    if (value) {
+      sessionStorage.setItem(key, value);
+    } else {
+      sessionStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage failures (private mode, etc.)
+  }
+}
 
 export function getAccessToken(): string | null {
-  return sessionStorage.getItem(ACCESS_TOKEN_KEY);
+  if (accessToken) return accessToken;
+  accessToken = readStored(ACCESS_KEY);
+  return accessToken;
 }
 
 export function getRefreshToken(): string | null {
-  return sessionStorage.getItem(REFRESH_TOKEN_KEY);
+  if (refreshToken) return refreshToken;
+  refreshToken = readStored(REFRESH_KEY);
+  return refreshToken;
 }
 
 export function setTokens(access: string, refresh: string): void {
-  sessionStorage.setItem(ACCESS_TOKEN_KEY, access);
-  sessionStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+  accessToken = access || null;
+  refreshToken = refresh || null;
+  writeStored(ACCESS_KEY, accessToken);
+  writeStored(REFRESH_KEY, refreshToken);
 }
 
 export function clearTokens(): void {
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  accessToken = null;
+  refreshToken = null;
+  writeStored(ACCESS_KEY, null);
+  writeStored(REFRESH_KEY, null);
 }
 
 /**
@@ -35,7 +62,6 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
     const payload = parts[1];
     if (!payload) return null;
 
-    // base64url → base64
     const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
     const jsonStr = atob(base64);
     return JSON.parse(jsonStr) as Record<string, unknown>;

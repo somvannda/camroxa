@@ -7,7 +7,7 @@ generation, image generation, and LLM-based song draft generation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +27,7 @@ class ImageRequest:
 
     prompt: str
     provider: str  # 'fal' or 'slai'
+    model_id: str | None = None
     resolution: str = "1920x1080"
     style_strength: float = 0.6
     base_image: bytes | None = None  # optional base64-decoded source image
@@ -40,12 +41,20 @@ class DraftRequest:
     creativity_level: int  # 0-100
     description: str
     structure: str
+    secondary_language: str | None = None
+    vocal_profile: dict[str, Any] | None = None
     avoid_titles: list[str] = field(default_factory=list)
     avoid_albums: list[str] = field(default_factory=list)
     avoid_openings: list[str] = field(default_factory=list)
     forced_title: str | None = None
     forced_album: str | None = None
     forced_opening: str | None = None
+    title_seed: str | None = None
+    album_seed: str | None = None
+    batch_id: str | None = None
+    song_number: int | None = None
+    song_id: str | None = None
+    structure_mode: str = "template"
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +73,13 @@ class GenerationServicePort(Protocol):
     (Suno, Fal AI, SLAI, DeepSeek) with credit deduction and error handling.
     """
 
-    async def submit_suno(self, user_id: str, request: SunoRequest) -> str:
+    async def submit_suno(
+        self,
+        user_id: str,
+        request: SunoRequest,
+        *,
+        skip_pricing: bool = False,
+    ) -> str:
         """Submit a music generation request to Suno.
 
         Returns the Suno-assigned task ID on successful submission.
@@ -74,7 +89,13 @@ class GenerationServicePort(Protocol):
         """
         ...
 
-    async def submit_image(self, user_id: str, request: ImageRequest) -> bytes:
+    async def submit_image(
+        self,
+        user_id: str,
+        request: ImageRequest,
+        *,
+        skip_pricing: bool = False,
+    ) -> bytes:
         """Submit an image generation request to the configured provider.
 
         Returns the generated image as PNG bytes.
@@ -83,7 +104,15 @@ class GenerationServicePort(Protocol):
         """
         ...
 
-    async def submit_draft(self, user_id: str, request: DraftRequest) -> SongDraft:
+    async def submit_draft(
+        self,
+        user_id: str,
+        request: DraftRequest,
+        *,
+        provider: str,
+        model: str,
+        skip_pricing: bool = False,
+    ) -> SongDraft:
         """Generate a song draft (title, album, lyrics) via LLM.
 
         Validates lyrics structure and title/album uniqueness against avoid lists.

@@ -1,6 +1,6 @@
 """Async HTTP client for LLM services (DeepSeek / SLAI) used for song draft generation.
 
-Handles chat completion requests with 30-second timeout.
+Handles chat completion requests with configurable per-model timeouts.
 """
 
 from __future__ import annotations
@@ -15,8 +15,18 @@ from platform_api.exceptions import ExternalServiceError
 
 logger = logging.getLogger(__name__)
 
-# Timeout for LLM requests (seconds)
-_LLM_TIMEOUT = 30.0
+# Legacy module constant — prefer settings.llm_timeout_seconds.
+_LLM_TIMEOUT = 120.0
+
+_SLAI_TEXT_MODEL_ALIASES = {
+    "mimo-v2.5-pro": "xiaomi/mimo-v2.5-pro",
+}
+
+
+def _normalize_slai_text_model(model: str) -> str:
+    from platform_api.ai.registry import resolve_text_model_id
+
+    return resolve_text_model_id("slai", model)
 
 
 def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceError:
@@ -58,12 +68,16 @@ class LlmClient:
 
     def __init__(self, settings: Settings) -> None:
         self._base_url = settings.deepseek_api_base_url.rstrip("/")
-        self._api_key = settings.deepseek_api_key
+        self._default_timeout_seconds = float(settings.llm_timeout_seconds)
         self._timeout = httpx.Timeout(
-            timeout=float(settings.llm_timeout_seconds),
+            timeout=self._default_timeout_seconds,
             connect=10.0,
         )
         self._client: httpx.AsyncClient | None = None
+
+    def _request_timeout(self, timeout_seconds: float | None) -> httpx.Timeout:
+        read_timeout = float(timeout_seconds or self._default_timeout_seconds)
+        return httpx.Timeout(timeout=read_timeout, connect=10.0)
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -71,7 +85,6 @@ class LlmClient:
                 base_url=self._base_url,
                 timeout=self._timeout,
                 headers={
-                    "Authorization": f"Bearer {self._api_key}",
                     "Content-Type": "application/json",
                 },
             )
@@ -93,6 +106,8 @@ class LlmClient:
         response_format: dict[str, str] | None = None,
         api_key: str | None = None,
         base_url: str | None = None,
+        extra_payload: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
         """Send a chat completion request to the LLM provider.
 
@@ -127,17 +142,33 @@ class LlmClient:
         }
         if response_format:
             payload["response_format"] = response_format
+        if extra_payload:
+            payload.update(extra_payload)
+
+        if base_url:
+            from platform_api.ai.registry import resolve_text_model_id
+
+            payload["model"] = resolve_text_model_id("slai", model)
+
+        if not api_key:
+            raise ExternalServiceError(
+                "LLM API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "llm"},
+            )
 
         # Per-request base_url + key override (used when SLAI pool keys route
         # through this client). Falls back to the client's default otherwise.
         if base_url:
             # One-shot request to a different endpoint
             headers = {
-                "Authorization": f"Bearer {api_key or self._api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as temp_client:
+                async with httpx.AsyncClient(
+                    timeout=self._request_timeout(timeout_seconds),
+                ) as temp_client:
                     response = await temp_client.post(
                         f"{base_url.rstrip('/')}/v1/chat/completions",
                         json=payload,
@@ -149,12 +180,14 @@ class LlmClient:
                 raise _classify_error(exc, context=f"chat_completion({model})") from exc
         else:
             client = await self._get_client()
-            request_headers = (
-                {"Authorization": f"Bearer {api_key}"} if api_key else None
-            )
+            request_headers = {"Authorization": f"Bearer {api_key}"}
+            request_timeout = self._request_timeout(timeout_seconds)
             try:
                 response = await client.post(
-                    "/v1/chat/completions", json=payload, headers=request_headers
+                    "/v1/chat/completions",
+                    json=payload,
+                    headers=request_headers,
+                    timeout=request_timeout,
                 )
                 response.raise_for_status()
                 return response.json()

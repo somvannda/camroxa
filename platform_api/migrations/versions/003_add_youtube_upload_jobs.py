@@ -10,7 +10,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE TABLE youtube_upload_jobs (
+        CREATE TABLE IF NOT EXISTS youtube_upload_jobs (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             user_id UUID NOT NULL REFERENCES users(id),
             song_id UUID REFERENCES songs(id),
@@ -26,11 +26,11 @@ def upgrade() -> None:
         )
     """)
     op.execute("""
-        CREATE INDEX idx_youtube_upload_jobs_user_id
+        CREATE INDEX IF NOT EXISTS idx_youtube_upload_jobs_user_id
         ON youtube_upload_jobs(user_id)
     """)
     op.execute("""
-        CREATE INDEX idx_youtube_upload_jobs_status
+        CREATE INDEX IF NOT EXISTS idx_youtube_upload_jobs_status
         ON youtube_upload_jobs(user_id, status)
     """)
 

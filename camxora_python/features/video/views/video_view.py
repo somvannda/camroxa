@@ -1,0 +1,3546 @@
+"""Video workspace page — Phase 9a shell with template CRUD and draft save."""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QFileDialog,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from features.video.lib.logo_spectrum_bindings import (
+    apply_logo_shape_draft_change,
+    apply_logo_size_draft_change,
+    apply_spectrum_attach_to_logo_draft_change,
+)
+from features.video.lib.spectrum_color_engine import (
+    apply_spectrum_layer_color_patch,
+    get_spectrum_layer_color_fallback,
+)
+from features.video.lib.particle_style_registry import (
+    build_builtin_particle_preset_patch,
+    build_unified_particle_preset_options,
+    is_builtin_particle_preset_key,
+    parse_pack_preset_key,
+    resolve_active_particle_preset_key,
+)
+from features.video.lib.background_style_registry import (
+    background_patch_touches_preset_fields,
+    build_unified_background_preset_options,
+    capture_background_preset,
+    is_builtin_background_preset_key,
+    resolve_background_preset_patch,
+    restore_background_preset_to_factory,
+)
+from features.video.lib.logo_style_registry import (
+    build_unified_logo_preset_options,
+    capture_logo_preset,
+    is_builtin_logo_preset_key,
+    logo_patch_touches_preset_fields,
+    resolve_logo_preset_patch,
+    restore_logo_preset_to_factory,
+)
+from features.video.lib.particle_session_presets import (
+    capture_session_particle_preset,
+    particle_patch_touches_preset_fields,
+    restore_particle_preset_to_factory,
+)
+from features.video.lib.spectrum_session_presets import (
+    capture_session_spectrum_preset,
+    get_session_spectrum_preset,
+    is_session_spectrum_preset_key,
+    restore_spectrum_preset_to_factory,
+    spectrum_patch_touches_preset_fields,
+)
+from features.video.lib.spectrum_style_registry import (
+    STACKED_LAYER_PRESETS,
+    STYLE_PRESET_PATCHES,
+    align_spectrum_layers_to_style_geometry,
+    build_spectrum_preset_template,
+    build_stacked_spectrum_preset_template,
+    build_unified_spectrum_preset_options,
+    normalize_spectrum_preset_key_for_apply,
+)
+from features.video.lib.template_draft_domains import build_draft_dirty_state
+from features.video.lib.text_editor import (
+    TextCaseMode,
+    add_text_overlay,
+    apply_text_anchor_alignment,
+    apply_text_case,
+    delete_text_overlay,
+    duplicate_text_overlay,
+    move_text_overlay,
+    resolve_selected_text_overlay_index,
+    update_text_overlay_at,
+)
+from features.video.lib.text_style_registry import (
+    apply_resolved_text_preset,
+    capture_text_preset,
+    is_builtin_text_preset_key,
+    restore_text_preset_to_factory,
+)
+from features.video.lib.text_overlay_presets import clone_text_overlays
+from features.video.lib.video_template_draft import (
+    build_video_template_draft,
+    clone_layer_records,
+    draft_snapshot,
+)
+from features.video.lib.video_template_save import build_video_workspace_template_save_patch
+from features.video.lib.effect_pack_draft_state import (
+    apply_particle_pack_as_preset,
+    apply_spectrum_pack_as_preset,
+    build_applied_effect_pack_draft_state,
+    build_cleared_effect_pack_draft_state,
+)
+from features.video.lib.effect_pack_runtime import (
+    build_effect_pack_catalog_options,
+    parse_effect_pack_catalog_value,
+    resolve_effect_pack_selection_status,
+    selection_to_value,
+)
+from features.video.export_gate import export_gate
+from features.video.services.effect_pack_service import EffectPackService
+from features.video.lib.video_workspace_diagnostics import (
+    build_video_workspace_diagnostics,
+    build_video_workspace_diagnostics_payload,
+    serialize_diagnostics_payload,
+)
+from features.video.lib.preview_edit_modes import resolve_preview_edit_modes
+from features.video.lib.pipeline_inputs import (
+    build_video_pipeline_run_key,
+    resolve_video_pipeline_inputs,
+)
+from features.video.lib.pipeline_merge import is_auto_merge_enabled_for_branch
+from features.video.lib.video_billing import consume_video_operation, refund_video_operation
+from features.video.lib.render_scene_request import (
+    PIPELINE_EXPORT_FPS,
+    build_manual_render_scene_request,
+    build_pipeline_export_output_path,
+    build_pipeline_render_scene_request,
+    normalize_export_fps,
+)
+from features.video.services.template_normalizer import TemplateNormalizer
+from features.video.services.video_local_store import VideoLocalStore
+from features.video.services.video_draft_store import (
+    clear_video_workspace_draft_snapshot,
+    read_video_workspace_draft_snapshot,
+    write_video_workspace_draft_snapshot,
+)
+from features.video.widgets.background_inspector import BackgroundInspector
+from features.video.widgets.export_queue_panel import ExportQueuePanel
+from features.video.widgets.effect_pack_selector import EffectPackSelector
+from features.video.widgets.diagnostics_panel import VideoWorkspaceDiagnosticsPanel
+from features.video.widgets.left_rail import VideoLeftRail
+from features.video.widgets.logo_inspector import LogoInspector
+from features.video.widgets.particles_inspector import ParticlesInspector
+from features.video.widgets.spectrum_inspector import SpectrumInspector
+from features.video.widgets.right_rail import VideoRightRail
+from features.video.widgets.stage_panel import VideoStagePanel
+from features.video.widgets.text_domain_inspectors import AlbumInspector, TitleInspector
+from features.video.lib.text_domain_registry import (
+    capture_text_domain_preset,
+    draft_style_snapshot,
+    is_builtin_text_domain_preset,
+    resolve_text_domain_preset_style,
+    restore_text_domain_preset,
+    style_patch_for_domain,
+)
+from features.video.lib.text_domain_runtime import (
+    measure_album_layout_bounds,
+    measure_title_layout_bounds,
+    resolve_album_display_text,
+    resolve_title_display_list,
+)
+from features.video.lib.track_display_name import format_title_marker, track_titles_from_paths
+from features.video.lib.text_domain_registry import (
+    album_settings_from_draft,
+    title_settings_from_draft,
+)
+from shared.lib.page_account_scope import account_cache_mismatch, cached_user_id
+from shared.models.desktop import (
+    VideoExportState,
+    VideoPlaybackState,
+    VideoTemplateSummary,
+    VideoWorkspaceState,
+)
+from shared.models.platform import ProgressRow
+from shared.services.platform_api import PlatformApi
+from shared.services.app_logger import log_error
+from shared.services.shell_status import emit_shell_status, restore_shell_status
+from shared.services.video_template_catalog import emit_video_template_catalog_changed
+from shared.services.video_workspace_service import get_video_workspace_service
+from shared.services.workspace_cache import WorkspaceCache
+from shared.themes.deep_blue import SUBTITLE_LABEL_ID, VIDEO_WORKSPACE_ID
+from shared.widgets.wheel_guard import guard_page_wheel_controls
+from shared.workers.data_workers import PatchSettingsWorker, VideoPatchTemplateWorker, VideoWorkspaceWorker
+from features.video.workers.manual_export_worker import ManualExportRequest, VideoManualExportWorker
+from features.video.workers.pipeline_export_worker import PipelineExportRequest, VideoPipelineExportWorker
+from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, VideoPipelineMergeWorker
+from features.video.workers.video_template_sync_worker import VideoTemplateSyncWorker
+
+LOADING_MESSAGE = "Loading video workspace..."
+
+# Left rail needs room for domain tabs + dense inspectors; right rail needs
+# room for Album/Title style controls (fill mode, glow, gradients) without clipping.
+VIDEO_RAIL_WIDTH = 420
+VIDEO_RIGHT_RAIL_WIDTH = 380
+
+# Diagnostics panel is dev-oriented; keep hidden in the default workspace UI.
+SHOW_VIDEO_WORKSPACE_DIAGNOSTICS = False
+
+EFFECT_PACK_DOMAIN_LABELS: dict[str, tuple[str, str]] = {
+    "spectrum": (
+        "Spectrum Pack",
+        "Install and preview spectrum packs in the local workspace draft.",
+    ),
+    "background": (
+        "Background Pack",
+        "Install and apply background packs to the local draft.",
+    ),
+    "logo": (
+        "Logo Pack",
+        "Install and apply logo packs to the local draft.",
+    ),
+    "particles": (
+        "Particles Pack",
+        "Install and apply particle packs to the local draft.",
+    ),
+    "album": (
+        "Album Pack",
+        "Install and apply album text packs to the local draft.",
+    ),
+    "title": (
+        "Title Pack",
+        "Install and apply title-list packs to the local draft.",
+    ),
+}
+
+
+class VideoView(QWidget):
+    def __init__(
+        self,
+        api: PlatformApi,
+        parent: QWidget | None = None,
+        *,
+        cache: WorkspaceCache | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName(VIDEO_WORKSPACE_ID)
+        self._api = api
+        self._cache = cache
+        self._store = VideoLocalStore()
+        self._workspace: VideoWorkspaceState | None = None
+        self._settings: dict[str, object] = {}
+        self._template_draft: dict | None = None
+        self._persisted_draft_snapshot = ""
+        self._template_name_draft = ""
+        self._active_particle_preset_key: str | None = None
+        self._active_spectrum_preset_key: str | None = None
+        self._active_background_preset_key: str | None = None
+        self._active_logo_preset_key: str | None = None
+        self._active_text_preset_key: str | None = None
+        self._active_album_preset_key: str | None = None
+        self._active_title_preset_key: str | None = None
+        self._spectrum_layers: list[dict] = []
+        self._selected_spectrum_layer_index = 0
+        self._selected_text_overlay_index = 0
+        self._active_domain_tab = "spectrum"
+        self._active_side_tab = "album"
+        self._preview_edit_focus = "domain"
+        self._loading = True
+        self._ever_loaded = False
+        self._loaded_user_id: str | None = None
+        self._is_error = False
+        self._saving = False
+        self._deleting = False
+        self._pending_preview_auto_play = False
+        self._worker: VideoWorkspaceWorker | None = None
+        self._patch_worker: VideoPatchTemplateWorker | None = None
+        self._template_sync_worker: VideoTemplateSyncWorker | None = None
+        self._effect_pack_service = EffectPackService()
+        self._effect_pack_catalog_items: list[dict] = []
+        self._effect_pack_busy = False
+        self._effect_pack_selectors: dict[str, EffectPackSelector] = {}
+        self._template_normalizer = TemplateNormalizer()
+        self._export_worker: VideoManualExportWorker | None = None
+        self._pipeline_export_worker: VideoPipelineExportWorker | None = None
+        self._pipeline_merge_worker: VideoPipelineMergeWorker | None = None
+        self._pipeline_merge_context: dict[str, object] | None = None
+        self._video_billing_charge: dict[str, object] = {}
+        self._merge_billing_charge: dict[str, object] = {}
+        self._settings_patch_worker: PatchSettingsWorker | None = None
+        self._resolution_save_pending = False
+        self._export_start_pending = False
+        self._pipeline_start_pending = False
+        self._stop_export_pending = False
+        self._pipeline_rows: list[ProgressRow] = []
+        self._selected_pipeline_run_key = ""
+        self._batch_queue: list[str] = []
+        self._batch_total = 0
+        self._batch_completed = 0
+        self._batch_failures = 0
+        self._batch_output_dir = ""
+        self._batch_outputs: list[str] = []
+        self._selected_pipeline_branch = "long"
+        self._preview_remount_pending = False
+        self._refresh_force_hydrate = False
+        self._diagnostics_panel: VideoWorkspaceDiagnosticsPanel | None = None
+        self._diagnostics_timer: QTimer | None = None
+        if SHOW_VIDEO_WORKSPACE_DIAGNOSTICS:
+            self._diagnostics_timer = QTimer(self)
+            self._diagnostics_timer.setInterval(2000)
+            self._diagnostics_timer.timeout.connect(self._update_diagnostics_panel)
+        self._preview_update_timer = QTimer(self)
+        self._preview_update_timer.setSingleShot(True)
+        self._preview_update_timer.setInterval(48)
+        self._preview_update_timer.timeout.connect(self._flush_preview_update)
+        self._dirty_state_timer = QTimer(self)
+        self._dirty_state_timer.setSingleShot(True)
+        self._dirty_state_timer.setInterval(120)
+        self._dirty_state_timer.timeout.connect(self._flush_dirty_state)
+        self._stage_summary_timer = QTimer(self)
+        self._stage_summary_timer.setSingleShot(True)
+        self._stage_summary_timer.setInterval(150)
+        self._stage_summary_timer.timeout.connect(self._update_stage_summary)
+        # Rebinding every inspector on each slider tick is expensive; coalesce
+        # interactive value changes and rebind once the user pauses.
+        self._inspector_rebind_timer = QTimer(self)
+        self._inspector_rebind_timer.setSingleShot(True)
+        self._inspector_rebind_timer.setInterval(200)
+        self._inspector_rebind_timer.timeout.connect(self._flush_inspector_rebind)
+        self._draft_persist_timer = QTimer(self)
+        self._draft_persist_timer.setSingleShot(True)
+        self._draft_persist_timer.setInterval(200)
+        self._draft_persist_timer.timeout.connect(self._persist_local_draft_snapshot)
+        self._hydrated_template_id = ""
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(8)
+
+        self._loading_card = QFrame()
+        self._loading_card.setObjectName("account_card")
+        loading_layout = QVBoxLayout(self._loading_card)
+        loading_label = QLabel(LOADING_MESSAGE)
+        loading_label.setObjectName(SUBTITLE_LABEL_ID)
+        loading_layout.addWidget(loading_label)
+        root.addWidget(self._loading_card)
+        if self._cache_has_mountable_workspace():
+            self._loading_card.hide()
+
+        self._content = QWidget()
+        self._content.hide()
+        content_layout = QHBoxLayout(self._content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
+        self._spectrum_inspector = SpectrumInspector()
+        self._spectrum_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._spectrum_inspector.preset_apply_requested.connect(self._apply_spectrum_preset)
+        self._spectrum_inspector.preset_restore_requested.connect(self._restore_spectrum_preset)
+        self._spectrum_inspector.stacked_preset_apply_requested.connect(self._apply_stacked_spectrum_preset)
+        self._spectrum_inspector.stacked_preset_clear_requested.connect(self._clear_stacked_spectrum_preset)
+        self._spectrum_inspector.layer_patch_requested.connect(self._patch_selected_spectrum_layer)
+        self._spectrum_inspector.layer_color_patch_requested.connect(self._patch_selected_spectrum_layer_color)
+        self._spectrum_inspector.layer_add_requested.connect(self._add_spectrum_layer)
+        self._spectrum_inspector.layer_duplicate_requested.connect(self._duplicate_spectrum_layer)
+        self._spectrum_inspector.layer_delete_requested.connect(self._delete_spectrum_layer)
+        self._spectrum_inspector.layer_selected.connect(self._select_spectrum_layer)
+
+        self._background_inspector = BackgroundInspector()
+        self._background_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._background_inspector.preset_apply_requested.connect(self._apply_background_preset)
+        self._background_inspector.preset_restore_requested.connect(self._restore_background_preset)
+        self._background_inspector.reset_transform_requested.connect(self._reset_background_transform)
+        self._background_inspector.select_background_requested.connect(self._select_background)
+
+        self._logo_inspector = LogoInspector()
+        self._logo_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._logo_inspector.preset_apply_requested.connect(self._apply_logo_preset)
+        self._logo_inspector.preset_restore_requested.connect(self._restore_logo_preset)
+        self._logo_inspector.logo_shape_apply_requested.connect(self._apply_logo_shape)
+        self._logo_inspector.logo_size_apply_requested.connect(self._apply_logo_size)
+        self._logo_inspector.spectrum_attach_toggle_requested.connect(self._toggle_spectrum_attachment)
+        self._logo_inspector.spectrum_logo_gap_requested.connect(self._set_spectrum_logo_gap)
+        self._logo_inspector.select_logo_requested.connect(self._select_logo)
+
+        self._particles_inspector = ParticlesInspector()
+        self._particles_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._particles_inspector.preset_apply_requested.connect(self._apply_particle_preset)
+        self._particles_inspector.preset_restore_requested.connect(self._restore_particle_preset)
+
+        self._domain_inspectors = {
+            "spectrum": self._spectrum_inspector,
+            "background": self._background_inspector,
+            "logo": self._logo_inspector,
+            "particles": self._particles_inspector,
+        }
+        for domain, inspector in self._domain_inspectors.items():
+            title, subtitle = EFFECT_PACK_DOMAIN_LABELS[domain]
+            selector = EffectPackSelector(
+                title=title,
+                subtitle=subtitle,
+                show_apply_combo=domain not in {"spectrum", "particles", "background", "logo"},
+            )
+            selector.apply_requested.connect(
+                lambda value, pack_domain=domain: self._apply_effect_pack(pack_domain, value)
+            )
+            selector.clear_requested.connect(
+                lambda pack_domain=domain: self._clear_effect_pack(pack_domain)
+            )
+            selector.install_requested.connect(self._install_effect_pack)
+            selector.reload_requested.connect(self._reload_effect_pack_catalog)
+            selector.toggle_enabled_requested.connect(
+                lambda pack_domain=domain: self._toggle_effect_pack_enabled(pack_domain)
+            )
+            selector.activate_requested.connect(
+                lambda pack_domain=domain: self._activate_effect_pack_version(pack_domain)
+            )
+            selector.remove_requested.connect(
+                lambda pack_domain=domain: self._remove_effect_pack_version(pack_domain)
+            )
+            inspector.mount_effect_pack_selector(selector)
+            self._effect_pack_selectors[domain] = selector
+
+        if SHOW_VIDEO_WORKSPACE_DIAGNOSTICS:
+            panel = VideoWorkspaceDiagnosticsPanel()
+            panel.remount_preview_requested.connect(self._remount_preview)
+            panel.refresh_workspace_requested.connect(self._refresh_workspace_from_diagnostics)
+            panel.reset_local_draft_requested.connect(self._reset_local_draft)
+            panel.copy_diagnostics_requested.connect(self._copy_diagnostics)
+            panel.toggled.connect(self._on_diagnostics_panel_toggled)
+            self._diagnostics_panel = panel
+
+        self._left_rail = VideoLeftRail(
+            domain_pages=self._domain_inspectors,
+            diagnostics_panel=self._diagnostics_panel,
+        )
+        self._stage = VideoStagePanel()
+        self._stage.playback_command_requested.connect(self._issue_preview_playback_command)
+        self._stage.playback_seek_requested.connect(self._seek_preview_playback)
+        self._stage.spectrum_position_changed.connect(self._on_preview_spectrum_position_changed)
+        self._stage.background_transform_changed.connect(self._on_preview_background_transform_changed)
+        self._stage.text_domain_position_changed.connect(self._on_preview_text_domain_position_changed)
+        self._stage.text_domain_box_resize_changed.connect(self._on_preview_text_domain_box_resize_changed)
+        self._stage.text_domain_box_resized.connect(self._on_preview_text_domain_box_resized)
+        self._stage.playback_state_changed.connect(self._on_preview_playback_state_changed)
+        self._stage.output_resolution_changed.connect(self._save_output_resolution)
+        self._stage.select_background_requested.connect(self._select_background)
+
+        self._album_inspector = AlbumInspector()
+        self._album_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._album_inspector.preset_apply_requested.connect(
+            lambda preset: self._apply_text_domain_preset("album", preset)
+        )
+        self._album_inspector.preset_restore_requested.connect(
+            lambda: self._restore_text_domain_preset("album")
+        )
+
+        self._title_inspector = TitleInspector()
+        self._title_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._title_inspector.preset_apply_requested.connect(
+            lambda preset: self._apply_text_domain_preset("title", preset)
+        )
+        self._title_inspector.preset_restore_requested.connect(
+            lambda: self._restore_text_domain_preset("title")
+        )
+
+        for domain, inspector in (
+            ("album", self._album_inspector),
+            ("title", self._title_inspector),
+        ):
+            pack_title, pack_subtitle = EFFECT_PACK_DOMAIN_LABELS[domain]
+            selector = EffectPackSelector(
+                title=pack_title,
+                subtitle=pack_subtitle,
+                show_apply_combo=True,
+            )
+            selector.apply_requested.connect(
+                lambda value, pack_domain=domain: self._apply_effect_pack(pack_domain, value)
+            )
+            selector.clear_requested.connect(
+                lambda pack_domain=domain: self._clear_effect_pack(pack_domain)
+            )
+            selector.install_requested.connect(self._install_effect_pack)
+            selector.reload_requested.connect(self._reload_effect_pack_catalog)
+            selector.toggle_enabled_requested.connect(
+                lambda pack_domain=domain: self._toggle_effect_pack_enabled(pack_domain)
+            )
+            selector.activate_requested.connect(
+                lambda pack_domain=domain: self._activate_effect_pack_version(pack_domain)
+            )
+            selector.remove_requested.connect(
+                lambda pack_domain=domain: self._remove_effect_pack_version(pack_domain)
+            )
+            inspector.mount_effect_pack_selector(selector)
+            self._effect_pack_selectors[domain] = selector
+
+        self._export_panel = ExportQueuePanel()
+        self._export_panel.mp3_selected.connect(self._select_preview_mp3)
+        self._export_panel.mp3_play_requested.connect(self._play_preview_mp3)
+        self._export_panel.track_order_changed.connect(self._reorder_tracks)
+        self._export_panel.select_mp3_requested.connect(self._pick_preview_mp3)
+        self._export_panel.manual_export_requested.connect(self._start_manual_export)
+        self._export_panel.stop_export_requested.connect(self._stop_active_export)
+        self._export_panel.stop_merge_requested.connect(self._stop_active_export)
+        self._export_panel.open_output_folder_requested.connect(self._open_export_output_folder)
+        self._export_panel.open_output_file_requested.connect(self._open_export_output_file)
+        self._export_panel.auto_merge_toggled.connect(self._set_auto_merge)
+        self._export_panel.shuffle_merge_toggled.connect(self._set_shuffle_merge)
+        self._export_panel.speed_mode_changed.connect(self._set_export_speed_mode)
+        self._export_panel.fps_changed.connect(self._set_export_fps)
+        self._export_panel.workers_changed.connect(self._set_export_workers)
+        # python_app layout: export queue console docks under the preview.
+        self._stage.mount_export_panel(self._export_panel)
+
+        self._right_rail = VideoRightRail(
+            tab_pages={
+                "album": self._album_inspector,
+                "title": self._title_inspector,
+            }
+        )
+        for rail, width in (
+            (self._left_rail, VIDEO_RAIL_WIDTH),
+            (self._right_rail, VIDEO_RIGHT_RAIL_WIDTH),
+        ):
+            rail.setMinimumWidth(width)
+            rail.setMaximumWidth(width)
+            policy = rail.sizePolicy()
+            policy.setHorizontalPolicy(QSizePolicy.Policy.Fixed)
+            policy.setVerticalPolicy(QSizePolicy.Policy.Expanding)
+            rail.setSizePolicy(policy)
+        content_layout.addWidget(self._left_rail, stretch=0)
+        content_layout.addWidget(self._stage, stretch=1)
+        content_layout.addWidget(self._right_rail, stretch=0)
+        self._content.hide()
+        root.addWidget(self._content, stretch=1)
+
+        self._left_rail.template_name_changed.connect(self._on_template_name_changed)
+        self._left_rail.template_selected.connect(self._on_template_selected)
+        self._left_rail.new_requested.connect(self._create_blank_template)
+        self._left_rail.save_requested.connect(self._save_template)
+        self._left_rail.delete_requested.connect(self._delete_template)
+        self._left_rail.export_requested.connect(self._export_template_for_marketplace)
+        self._left_rail.domain_tab_changed.connect(self._on_domain_tab_changed)
+        self._right_rail.side_tab_changed.connect(self._on_side_tab_changed)
+
+        # Wheel over sliders/combos scrolls the panel unless the control is
+        # focused, so casual scrolling can't change settings by accident.
+        guard_page_wheel_controls(self)
+
+        if self._try_mount_from_cache():
+            self._loading_card.hide()
+
+    def _mount_workspace(self, workspace: VideoWorkspaceState, settings: dict[str, object]) -> None:
+        self._workspace = workspace
+        self._settings = dict(settings)
+        self._loading = False
+        self._is_error = False
+        self._loading_card.hide()
+        self._content.show()
+        self._hydrate_draft_from_workspace()
+        self._refresh_effect_pack_catalog()
+        get_video_workspace_service().set_workspace_state(self._workspace)
+        self._render_workspace()
+        self._ever_loaded = True
+        self._loaded_user_id = cached_user_id(self._cache)
+        # Show export button only for admin email
+        self._update_export_button_visibility()
+
+    def _cache_has_mountable_workspace(self) -> bool:
+        settings_raw = self._cached_settings_raw()
+        return bool(settings_raw)
+
+    def _cached_settings_raw(self) -> dict[str, object]:
+        if self._cache is None:
+            return {}
+        if self._cache.has_video_workspace():
+            _workspace, settings = self._cache.snapshot_video_workspace()
+            if settings:
+                return dict(settings)
+        _me, _profiles, settings_raw, _descriptions, _structures = self._cache.snapshot_core()
+        return dict(settings_raw) if settings_raw else {}
+
+    def _try_mount_from_cache(self) -> bool:
+        if self._cache is not None and self._cache.has_video_workspace():
+            workspace, settings = self._cache.snapshot_video_workspace()
+            if workspace is not None and settings:
+                self._mount_workspace(workspace, settings)
+                return True
+        settings_raw = self._cached_settings_raw()
+        if not settings_raw:
+            return False
+        workspace = self._store.read_workspace_state(settings_raw)
+        self._mount_workspace(workspace, settings_raw)
+        if self._cache is not None:
+            self._cache.apply_video_workspace(workspace, settings_raw)
+        return True
+
+    def _text_overlays(self) -> list[dict]:
+        if not self._template_draft:
+            return []
+        overlays = self._template_draft.get("textOverlays")
+        return clone_text_overlays(overlays)
+
+    def _selected_text_overlay(self) -> dict | None:
+        overlays = self._text_overlays()
+        index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
+        if not overlays or index >= len(overlays):
+            return None
+        return overlays[index]
+
+    def _set_text_overlays(
+        self,
+        overlays: list[dict],
+        *,
+        selected_index: int,
+        defer_rebind: bool = False,
+    ) -> None:
+        if not self._template_draft:
+            return
+        self._template_draft = {**self._template_draft, "textOverlays": clone_text_overlays(overlays)}
+        self._selected_text_overlay_index = selected_index
+        self._update_inspectors(defer_rebind=defer_rebind)
+
+    def _select_text_overlay(self, index: int) -> None:
+        self._selected_text_overlay_index = max(0, index)
+        self._update_inspectors()
+
+    def _add_text_overlay(self) -> None:
+        overlays = self._text_overlays()
+        next_overlays, next_index = add_text_overlay(overlays)
+        self._set_text_overlays(next_overlays, selected_index=next_index)
+
+    def _duplicate_text_overlay(self) -> None:
+        overlays = self._text_overlays()
+        index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
+        if not overlays or index >= len(overlays):
+            return
+        next_overlays, next_index = duplicate_text_overlay(overlays, index)
+        self._set_text_overlays(next_overlays, selected_index=next_index)
+
+    def _delete_text_overlay(self) -> None:
+        overlays = self._text_overlays()
+        index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
+        if not overlays or index >= len(overlays):
+            return
+        next_overlays, next_index = delete_text_overlay(overlays, index)
+        self._set_text_overlays(next_overlays, selected_index=next_index)
+
+    def _move_text_overlay(self, direction: int) -> None:
+        overlays = self._text_overlays()
+        index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
+        if not overlays or index >= len(overlays):
+            return
+        moved = move_text_overlay(overlays, index, direction)
+        if moved is None:
+            return
+        next_overlays, next_index = moved
+        self._set_text_overlays(next_overlays, selected_index=next_index)
+
+    def _apply_text_preset(self, preset: str) -> None:
+        overlays = self._text_overlays()
+        index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
+        if (
+            is_builtin_text_preset_key(self._active_text_preset_key)
+            and self._active_text_preset_key != preset
+        ):
+            capture_text_preset(
+                self._active_text_preset_key,
+                overlays=overlays,
+                selected_index=index,
+            )
+        next_overlays, next_index = apply_resolved_text_preset(
+            overlays,
+            preset,
+            selected_index=index,
+        )
+        if is_builtin_text_preset_key(preset):
+            self._active_text_preset_key = preset
+        self._set_text_overlays(next_overlays, selected_index=next_index)
+
+    def _patch_selected_text_overlay(self, patch: dict) -> None:
+        overlays = self._text_overlays()
+        index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
+        selected = self._selected_text_overlay()
+        if not selected:
+            return
+        next_overlays = update_text_overlay_at(overlays, index, {**selected, **patch})
+        self._set_text_overlays(next_overlays, selected_index=index, defer_rebind=True)
+        if is_builtin_text_preset_key(self._active_text_preset_key):
+            capture_text_preset(
+                self._active_text_preset_key,
+                overlays=next_overlays,
+                selected_index=index,
+            )
+
+    def _apply_text_case(self, mode: str) -> None:
+        selected = self._selected_text_overlay()
+        if not selected or mode not in {"upper", "lower", "title"}:
+            return
+        case_mode: TextCaseMode = mode  # type: ignore[assignment]
+        self._patch_selected_text_overlay(
+            {"text": apply_text_case(str(selected.get("text") or ""), case_mode)}
+        )
+
+    def _apply_text_anchor_alignment(self, alignment: str) -> None:
+        selected = self._selected_text_overlay()
+        if not selected or alignment not in {"left", "center", "right"}:
+            return
+        next_anchor = apply_text_anchor_alignment(str(selected.get("anchor") or "center"), alignment)
+        self._patch_selected_text_overlay({"anchor": next_anchor})
+
+    def _on_side_tab_changed(self, tab_key: str) -> None:
+        self._active_side_tab = str(tab_key or "").strip().lower() or "album"
+        self._preview_edit_focus = "side"
+        self._update_inspectors()
+        self._flush_preview_update()
+
+    def _reset_for_account_change(self) -> None:
+        self._loaded_user_id = None
+        self._ever_loaded = False
+        self._workspace = None
+        self._template_draft = None
+        self._settings = {}
+        self._loading = True
+        self._is_error = False
+        self._loading_card.show()
+        self._content.hide()
+        get_video_workspace_service().set_workspace_state(None)
+
+    def activate_page(self) -> None:
+        if account_cache_mismatch(self._loaded_user_id, self._cache):
+            self._reset_for_account_change()
+        # Marketplace install invalidates the cached workspace; reload dropdown
+        # so newly installed templates appear without remounting the draft.
+        if (
+            self._ever_loaded
+            and self._workspace is not None
+            and self._cache is not None
+            and not self._cache.has_video_workspace()
+        ):
+            self.refresh_templates_from_store()
+            return
+        if self._ever_loaded and self._workspace is not None:
+            return
+        if self._try_mount_from_cache():
+            return
+        self.refresh_data()
+
+    def refresh_templates_from_store(self) -> None:
+        """Reload the template dropdown from disk without remounting an in-edit draft.
+
+        Used after marketplace install so newly installed templates appear immediately
+        when the Video page is already open or warm in the shell stack.
+        """
+        if self._workspace is None:
+            if self._cache is not None:
+                self._cache.invalidate_video_workspace()
+            self.refresh_data(force=True)
+            return
+
+        raw = self._store.read_templates()
+        summaries = [
+            VideoTemplateSummary(
+                id=str(item.get("id") or ""),
+                name=str(item.get("name") or "Untitled Template"),
+                kind=str(item.get("source")) if item.get("source") else None,
+                updated_at=str(item.get("updated_at") or "") or None,
+            )
+            for item in raw
+            if item.get("id")
+        ]
+        self._workspace = self._workspace.model_copy(update={"templates": summaries})
+        self._left_rail.set_templates(
+            [(item.id, item.name) for item in summaries],
+            self._workspace.template_id,
+        )
+        get_video_workspace_service().set_workspace_state(self._workspace)
+        if self._cache is not None:
+            self._cache.apply_video_workspace(self._workspace, self._settings)
+        emit_video_template_catalog_changed()
+
+    def deactivate_page(self) -> None:
+        # Flush pending local draft so leaving Video mid-edit does not drop
+        # the last ~200ms of changes across domain tabs.
+        if self._draft_persist_timer.isActive():
+            self._draft_persist_timer.stop()
+            self._persist_local_draft_snapshot()
+        if self._diagnostics_timer is not None:
+            self._diagnostics_timer.stop()
+        restore_shell_status()
+
+    def refresh_data(self, *, force: bool = False) -> None:
+        if account_cache_mismatch(self._loaded_user_id, self._cache):
+            self._reset_for_account_change()
+            force = True
+        if self._worker is not None and self._worker.isRunning():
+            return
+        if not force and self._ever_loaded and self._workspace is not None:
+            return
+
+        self._refresh_force_hydrate = force
+        if not force and not self._ever_loaded and self._try_mount_from_cache():
+            return
+
+        if not self._ever_loaded:
+            self._loading = True
+            self._loading_card.show()
+            self._content.hide()
+
+        if force and self._ever_loaded:
+            emit_shell_status("Refreshing video workspace…")
+
+        worker = VideoWorkspaceWorker(self._api, parent=self)
+        worker.succeeded.connect(self._on_loaded)
+        worker.failed.connect(self._on_failed)
+        worker.finished.connect(self._on_worker_finished)
+        self._worker = worker
+        worker.start()
+
+    def _on_worker_finished(self) -> None:
+        self._worker = None
+
+    def _on_loaded(self, payload: object) -> None:
+        if not isinstance(payload, tuple) or len(payload) != 2:
+            self._on_failed("Invalid video workspace payload.")
+            return
+        workspace, settings = payload
+        if not isinstance(workspace, VideoWorkspaceState):
+            self._on_failed("Invalid video workspace state.")
+            return
+        if not isinstance(settings, dict):
+            settings = {}
+
+        had_workspace = self._workspace is not None
+        force_hydrate = self._refresh_force_hydrate or not had_workspace
+        self._refresh_force_hydrate = False
+        self._settings = settings
+        self._loading = False
+        self._is_error = False
+        self._ever_loaded = True
+        self._loaded_user_id = cached_user_id(self._cache)
+        self._loading_card.hide()
+        self._content.show()
+
+        if force_hydrate:
+            self._workspace = workspace
+            self._hydrate_draft_from_workspace()
+            self._refresh_effect_pack_catalog()
+            get_video_workspace_service().set_workspace_state(self._workspace)
+            self._render_workspace()
+        else:
+            if not self._workspace_dirty():
+                self._workspace = workspace
+                get_video_workspace_service().set_workspace_state(self._workspace)
+                self._update_export_panel()
+                self._schedule_stage_summary_update()
+
+        if self._cache is not None and self._workspace is not None:
+            self._cache.apply_video_workspace(self._workspace, settings)
+
+        restore_shell_status()
+        if not had_workspace:
+            emit_shell_status("Video workspace loaded.")
+
+    def _on_failed(self, message: str) -> None:
+        self._loading = False
+        self._is_error = True
+        self._loading_card.show()
+        self._content.hide()
+        restore_shell_status()
+        emit_shell_status(message or "Unable to load video workspace.")
+
+    def _hydrate_draft_from_workspace(self, *, force_from_saved: bool = False) -> None:
+        if not self._workspace:
+            return
+        template_id = str(self._workspace.template_id or "")
+        if (
+            not force_from_saved
+            and template_id
+            and self._hydrated_template_id == template_id
+            and self._template_draft is not None
+        ):
+            return
+
+        template = dict(self._workspace.template)
+        persisted_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path)
+        snapshot = None
+        if template_id and not force_from_saved:
+            snapshot = read_video_workspace_draft_snapshot(
+                template_id,
+                persisted_draft,
+                self._workspace.template_name,
+            )
+
+        if snapshot:
+            self._template_draft = snapshot["draft"]
+            self._template_name_draft = str(snapshot.get("templateName") or self._workspace.template_name)
+            layers = snapshot.get("layers")
+            self._spectrum_layers = clone_layer_records(layers) if layers else clone_layer_records(template.get("layers"))
+        else:
+            self._template_draft = persisted_draft
+            self._template_name_draft = self._workspace.template_name
+            self._spectrum_layers = clone_layer_records(template.get("layers"))
+
+        # Align non-toggle geometry (gravity) from known styles; Curve/Mirror stay user-owned.
+        style_key = normalize_spectrum_preset_key_for_apply(
+            str((self._template_draft or {}).get("style") or template.get("style") or "orbit-spikes")
+        )
+        if style_key in STYLE_PRESET_PATCHES and self._spectrum_layers:
+            self._spectrum_layers = align_spectrum_layers_to_style_geometry(self._spectrum_layers, style_key)
+
+        self._hydrated_template_id = template_id
+        self._persisted_draft_snapshot = draft_snapshot(self._template_draft)
+        self._active_particle_preset_key = (
+            resolve_active_particle_preset_key(self._template_draft) if self._template_draft else None
+        )
+        style = str((self._template_draft or {}).get("style") or "").strip()
+        self._active_spectrum_preset_key = style if is_session_spectrum_preset_key(style) else None
+        layer_count = len(self._spectrum_layers)
+        self._selected_spectrum_layer_index = 0 if layer_count == 0 else min(
+            self._selected_spectrum_layer_index,
+            layer_count - 1,
+        )
+        overlays = self._template_draft.get("textOverlays") if self._template_draft else []
+        overlay_count = len(overlays) if isinstance(overlays, list) else 0
+        self._selected_text_overlay_index = 0 if overlay_count == 0 else min(
+            self._selected_text_overlay_index,
+            overlay_count - 1,
+        )
+
+    def _render_workspace(self) -> None:
+        if not self._workspace:
+            return
+        templates = [(item.id, item.name) for item in self._workspace.templates]
+        self._left_rail.set_templates(templates, self._workspace.template_id)
+        self._left_rail.set_template_name(self._template_name_draft)
+        self._stage.set_preview_context(
+            title=self._workspace.ui.preview_title,
+            notes=list(self._workspace.ui.notes),
+        )
+        self._bind_inspectors()
+        self._update_effect_pack_selectors()
+        self._flush_preview_update()
+        if self._workspace:
+            self._stage.bind_playback(self._workspace.playback)
+        self._update_export_panel()
+        self._update_stage_summary()
+        self._flush_dirty_state()
+
+    def _bind_inspectors(self) -> None:
+        if not self._template_draft:
+            return
+        self._spectrum_inspector.bind_draft(
+            self._template_draft,
+            layers=self._spectrum_layers,
+            selected_layer_index=self._selected_spectrum_layer_index,
+        )
+        self._background_inspector.bind_draft(self._template_draft)
+        self._logo_inspector.bind_draft(self._template_draft)
+        self._particles_inspector.bind_draft(self._template_draft)
+
+        track_paths = self._current_track_paths()
+        album_settings = album_settings_from_draft(self._template_draft)
+        title_settings = title_settings_from_draft(self._template_draft)
+        album_text = resolve_album_display_text(
+            album_settings,
+            pipeline_album=str(self._settings.get("lastAlbumName") or self._settings.get("album") or ""),
+        )
+        title_lines = resolve_title_display_list(title_settings, track_paths=track_paths)
+        self._album_inspector.bind_draft(
+            self._template_draft,
+            preview_lines=[album_text] if album_text else [],
+        )
+        self._title_inspector.bind_draft(
+            self._template_draft,
+            preview_lines=title_lines,
+        )
+        if bool(self._template_draft.get("titleEnabled")) and title_lines:
+            self._right_rail.set_selection_label(f"{len(title_lines)} title(s)")
+        elif bool(self._template_draft.get("albumEnabled")) and album_text:
+            self._right_rail.set_selection_label("Album ready")
+        else:
+            self._right_rail.set_selection_label("Album / Title")
+
+    def _current_track_paths(self) -> list[str]:
+        if not self._workspace:
+            return []
+        return [str(item.path) for item in (self._workspace.mp3_list or []) if str(item.path or "").strip()]
+
+    def _apply_text_domain_preset(self, domain: str, preset: str) -> None:
+        if not self._template_draft or not is_builtin_text_domain_preset(preset):
+            return
+        active_attr = "_active_album_preset_key" if domain == "album" else "_active_title_preset_key"
+        active_key = getattr(self, active_attr, None)
+        if is_builtin_text_domain_preset(active_key) and active_key != preset:
+            capture_text_domain_preset(domain, str(active_key), draft_style_snapshot(domain, self._template_draft))
+        style = resolve_text_domain_preset_style(domain, preset)
+        if not style:
+            return
+        setattr(self, active_attr, preset)
+        prefix = "album" if domain == "album" else "title"
+        # Keep CapCut box geometry (position + width) when swapping looks.
+        # Always start presets at a screen-safe 10px size (effects stay readable).
+        preserved = {
+            f"{prefix}X": self._template_draft.get(f"{prefix}X"),
+            f"{prefix}Y": self._template_draft.get(f"{prefix}Y"),
+            f"{prefix}BoxWidth": self._template_draft.get(f"{prefix}BoxWidth"),
+            f"{prefix}LetterSpacing": 0.0,
+            f"{prefix}LineSpacing": 1.2,
+            f"{prefix}FontSize": 10.0,
+        }
+        patch = {
+            f"{prefix}StylePreset": preset,
+            **style_patch_for_domain(domain, style),
+            **{k: v for k, v in preserved.items() if v is not None},
+        }
+        self._patch_template_draft(patch)
+
+    def _restore_text_domain_preset(self, domain: str) -> None:
+        if not self._template_draft:
+            return
+        active_attr = "_active_album_preset_key" if domain == "album" else "_active_title_preset_key"
+        preset = str(getattr(self, active_attr, None) or self._template_draft.get(
+            "albumStylePreset" if domain == "album" else "titleStylePreset"
+        ) or "")
+        style = restore_text_domain_preset(domain, preset)
+        if not style:
+            return
+        prefix = "album" if domain == "album" else "title"
+        self._patch_template_draft(
+            {
+                f"{prefix}StylePreset": preset,
+                **style_patch_for_domain(domain, style),
+            }
+        )
+
+    def _update_inspectors(self, *, defer_rebind: bool = False) -> None:
+        if defer_rebind:
+            self._inspector_rebind_timer.start()
+        else:
+            self._inspector_rebind_timer.stop()
+            self._bind_inspectors()
+            self._update_effect_pack_selectors()
+        self._schedule_preview_update()
+        self._schedule_dirty_state_update()
+
+    def _flush_inspector_rebind(self) -> None:
+        self._bind_inspectors()
+        self._update_effect_pack_selectors()
+
+    def _schedule_preview_update(self, *, delay_ms: int = 48) -> None:
+        self._preview_update_timer.start(max(0, int(delay_ms)))
+
+    def _flush_preview_update(self) -> None:
+        self._update_preview()
+
+    def _schedule_dirty_state_update(self, *, delay_ms: int = 120) -> None:
+        self._dirty_state_timer.start(max(0, int(delay_ms)))
+
+    def _flush_dirty_state(self) -> None:
+        self._update_dirty_state()
+        if self._diagnostics_panel is not None and self._diagnostics_panel.isChecked():
+            self._update_diagnostics_panel()
+
+    def _schedule_local_draft_persist(self, *, delay_ms: int = 200) -> None:
+        self._draft_persist_timer.start(max(0, int(delay_ms)))
+
+    def _persist_local_draft_snapshot(self) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        template_id = str(self._workspace.template_id or "")
+        if not template_id:
+            return
+        write_video_workspace_draft_snapshot(
+            template_id,
+            template_name=self._template_name_draft,
+            draft=self._template_draft,
+            layers=self._spectrum_layers,
+        )
+
+    def _schedule_stage_summary_update(self, *, delay_ms: int = 150) -> None:
+        self._stage_summary_timer.start(max(0, int(delay_ms)))
+
+    def _update_export_panel(self) -> None:
+        export_busy = (
+            self._export_start_pending
+            or self._pipeline_start_pending
+            or bool(self._export_worker and self._export_worker.isRunning())
+            or bool(self._pipeline_export_worker and self._pipeline_export_worker.isRunning())
+            or bool(self._pipeline_merge_worker and self._pipeline_merge_worker.isRunning())
+        )
+        self._export_panel.bind_workspace(
+            self._workspace,
+            busy=export_busy,
+            stop_export_pending=self._stop_export_pending,
+            speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+        )
+
+    def _selected_pipeline_row(self) -> ProgressRow | None:
+        for row in self._pipeline_rows:
+            if build_video_pipeline_run_key(row) == self._selected_pipeline_run_key:
+                return row
+        return self._pipeline_rows[0] if self._pipeline_rows else None
+
+    def _build_pipeline_export_template(self, *, track_paths: list[str] | None = None) -> dict | None:
+        if not self._workspace or not dict(self._workspace.template):
+            return None
+        template = dict(self._workspace.template)
+        saved_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path)
+        layers = clone_layer_records(template.get("layers") or [])
+        paths = [str(p) for p in (track_paths or self._current_track_paths()) if str(p or "").strip()]
+        # Per-track active highlight is applied again in the export worker.
+        return self._template_normalizer.to_renderer_dict(
+            base=template,
+            draft=saved_draft,
+            layers=layers,
+            workspace={
+                "logoPath": self._workspace.logo_path,
+                "trackPaths": paths,
+                "pipelineAlbum": str(
+                    self._settings.get("lastAlbumName") or self._settings.get("album") or ""
+                ),
+            },
+            track_paths=paths,
+            active_track_path=None,
+        )
+
+    def _start_pipeline_export(self) -> None:
+        if self._export_worker is not None and self._export_worker.isRunning():
+            return
+        if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
+            return
+        if self._pipeline_merge_worker is not None and self._pipeline_merge_worker.isRunning():
+            return
+        row = self._selected_pipeline_row()
+        if row is None:
+            emit_shell_status("Select a pipeline run before exporting.")
+            return
+        branch = "reel" if self._selected_pipeline_branch == "reel" else "long"
+        resolved = resolve_video_pipeline_inputs(row, branch)
+        run_dir = str(resolved.run_dir or "").strip()
+        background_path = str(resolved.background_path or "").strip()
+        if not run_dir or not Path(run_dir).is_dir():
+            emit_shell_status("Selected run directory is missing.")
+            return
+        if not background_path or not Path(background_path).is_file():
+            emit_shell_status("Selected branch background image is missing.")
+            return
+        if not resolved.ready:
+            emit_shell_status("Selected branch assets are not ready yet.")
+            return
+        mp3_list = self._store.list_mp3_files(run_dir)
+        if not mp3_list:
+            emit_shell_status("No MP3 files were found in the selected run directory.")
+            return
+        track_paths = [item.path for item in mp3_list]
+        template = self._build_pipeline_export_template(track_paths=track_paths)
+        if not template:
+            emit_shell_status("No active video template is loaded.")
+            return
+
+        scene = build_pipeline_render_scene_request(
+            template=template,
+            workspace={
+                "templateId": self._workspace.template_id if self._workspace else None,
+                "outputResolution": self._workspace.output_resolution if self._workspace else "1920x1080",
+                "logoPath": self._workspace.logo_path if self._workspace else "",
+                "selectedMp3Path": mp3_list[0].path,
+            },
+            run_dir=run_dir,
+            background_path=background_path,
+            branch=branch,
+            batch_id=row.meta.batch_id,
+            role=row.meta.role,
+            selected_mp3_path=mp3_list[0].path,
+            fps=self._resolve_export_fps(),
+        )
+        workers_raw = self._settings.get("videoExportWorkers", self._settings.get("perfExportWorkers", 1))
+        try:
+            worker_limit = max(1, min(10, int(workers_raw)))
+        except (TypeError, ValueError):
+            worker_limit = 1
+        started_at_ms = int(time.time() * 1000)
+        branch_label = "reel" if branch == "reel" else "long"
+        auto_merge = is_auto_merge_enabled_for_branch(self._settings, branch)
+        shuffle_merge = bool(self._settings.get("videoShuffleMerge", False))
+        if self._workspace:
+            shuffle_merge = bool(self._workspace.export.shuffle_merge)
+        # Preserve MP3 tracklist order for non-shuffle merges (python_app always shuffled).
+        ordered_mp4s = [
+            build_pipeline_export_output_path(mp3_path=item.path, output_dir=run_dir, branch=branch)
+            for item in mp3_list
+        ]
+        profile_id = str(getattr(row.meta, "profile_id", None) or "").strip() or None
+        ref_base = f"{row.meta.batch_id}:{row.meta.role}:{branch}"
+        try:
+            video_bill = consume_video_operation(
+                self._api,
+                operation_type="video",
+                count=len(mp3_list),
+                channel_profile_id=profile_id,
+                ref_id=f"video:{ref_base}",
+            )
+            self._video_billing_charge = {
+                "operation_type": "video",
+                "count": len(mp3_list),
+                "charged_credit_units": video_bill.charged_credit_units,
+                "channel_profile_id": profile_id,
+                "ref_id": f"video:{ref_base}",
+            }
+        except Exception as exc:
+            emit_shell_status(f"Video export blocked (billing): {exc}")
+            return
+        self._pipeline_merge_context = {
+            "run_dir": run_dir,
+            "branch": branch,
+            "batch_id": row.meta.batch_id,
+            "role": row.meta.role,
+            "auto_merge": auto_merge,
+            "shuffle": shuffle_merge,
+            "mp4_paths": ordered_mp4s,
+            "completed": len(mp3_list),
+            "total": len(mp3_list),
+            "profile_id": profile_id,
+            "ref_base": ref_base,
+        }
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "selected_mp3_path": mp3_list[0].path,
+                        "mp3_directory": run_dir,
+                        "mp3_list": mp3_list,
+                        "export": VideoExportState(
+                            running=True,
+                            branch=branch_label,
+                            workers=worker_limit,
+                            fps=self._resolve_export_fps(),
+                            auto_merge=auto_merge,
+                            shuffle_merge=shuffle_merge,
+                            current_status=f"Starting {branch_label} export…",
+                            output_dir=run_dir,
+                            current_output_path=None,
+                            total_jobs=len(mp3_list),
+                            completed_jobs=0,
+                            progress_percent=0,
+                            started_at_ms=started_at_ms,
+                        ),
+                    }
+                )
+            )
+
+        self._pipeline_start_pending = True
+        self._update_export_panel()
+        worker = VideoPipelineExportWorker(
+            PipelineExportRequest(
+                run_dir=run_dir,
+                background_path=background_path,
+                logo_path=str(self._workspace.logo_path if self._workspace else ""),
+                branch=branch,
+                batch_id=row.meta.batch_id,
+                role=row.meta.role,
+                template=template,
+                mp3_paths=[item.path for item in mp3_list],
+                settings=self._settings,
+                width=int(scene.output.width),
+                height=int(scene.output.height),
+                fps=int(scene.output.fps),
+                speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+            ),
+            parent=self,
+        )
+        worker.progressed.connect(self._on_pipeline_export_progress)
+        worker.succeeded.connect(self._on_pipeline_export_succeeded)
+        worker.failed.connect(self._on_pipeline_export_failed)
+        worker.finished.connect(self._on_pipeline_export_worker_finished)
+        self._pipeline_export_worker = worker
+        worker.start()
+        emit_shell_status(f"Started {branch_label} export from the selected pipeline run.")
+
+    def _stop_active_export(self) -> None:
+        self._stop_export_pending = True
+        self._batch_queue = []
+        self._update_export_panel()
+        if self._export_worker is not None and self._export_worker.isRunning():
+            self._export_worker.cancel()
+            emit_shell_status("Stopping export…")
+            return
+        if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
+            self._pipeline_export_worker.cancel()
+            emit_shell_status("Stopping pipeline export…")
+            return
+        if self._pipeline_merge_worker is not None and self._pipeline_merge_worker.isRunning():
+            self._pipeline_merge_worker.cancel()
+            emit_shell_status("Stopping video merge…")
+            return
+        self._stop_export_pending = False
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "current_status": "Export stopped.",
+                            }
+                        )
+                    }
+                )
+            )
+
+    def _publish_workspace(self, workspace: VideoWorkspaceState) -> None:
+        self._workspace = workspace
+        get_video_workspace_service().set_workspace_state(workspace)
+        self._update_export_panel()
+
+    def _select_preview_mp3(self, path: str) -> None:
+        if not path.strip():
+            return
+        self._workspace = self._store.set_mp3_path(path, settings=self._settings)
+        self._publish_workspace(self._workspace)
+        # Load the selected track into the GPU preview (required for Play / double-click).
+        self._flush_preview_update()
+        self._update_stage_summary()
+        emit_shell_status("Applied the selected preview track.")
+
+    def _play_preview_mp3(self, path: str) -> None:
+        """Double-click a track: select it and start playback when audio is ready."""
+        requested = str(path or "").strip()
+        if not requested:
+            return
+        preview = getattr(self._stage, "_preview", None)
+        already_loaded = (
+            preview is not None
+            and bool(getattr(preview, "audio_ready", False))
+            and str(getattr(preview, "audio_path", "") or "").strip().lower() == requested.lower()
+        )
+        self._pending_preview_auto_play = True
+        self._select_preview_mp3(requested)
+        if already_loaded:
+            # Same track already in the mixer — restart from the beginning now.
+            try:
+                preview.current_time = 0.0
+                preview._audio_clock_base = 0.0
+                preview._audio_clock_started_at = None
+            except Exception:
+                pass
+            self._flush_pending_preview_auto_play()
+            return
+        # Retry until mixer decode is ready (analysis can still be running).
+        self._flush_pending_preview_auto_play()
+        for delay_ms in (50, 150, 350, 700, 1200, 2000):
+            QTimer.singleShot(delay_ms, self._flush_pending_preview_auto_play)
+
+    def _flush_pending_preview_auto_play(self) -> None:
+        if not self._pending_preview_auto_play:
+            return
+        preview = getattr(self._stage, "_preview", None)
+        if preview is None:
+            return
+        audio_path = str(getattr(preview, "audio_path", "") or "").strip()
+        # Play as soon as the mixer can start — don't wait for FFT analysis.
+        if bool(getattr(preview, "audio_ready", False)) and audio_path:
+            self._pending_preview_auto_play = False
+            # Force a fresh start so double-click always audibly begins playback.
+            try:
+                import pygame
+
+                if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+                    pygame.mixer.music.stop()
+                preview.audio_playing = False
+                preview.current_time = 0.0
+                preview._audio_clock_base = 0.0
+                preview._audio_clock_started_at = None
+            except Exception:
+                pass
+            self._stage.issue_playback_command("play")
+            emit_shell_status(f"Playing: {Path(audio_path).name}")
+
+    def _reorder_tracks(self, paths: object) -> None:
+        if not isinstance(paths, list) or not paths:
+            return
+        self._workspace = self._store.set_mp3_order(
+            [str(path) for path in paths],
+            settings=self._settings,
+        )
+        self._publish_workspace(self._workspace)
+        self._update_inspectors()
+        emit_shell_status("Track order updated.")
+
+    def _patch_export_setting(self, patch: dict[str, object], status: str) -> None:
+        """Persist an export option like python_app's _persist_setting_patch."""
+        self._settings.update(patch)
+        worker = PatchSettingsWorker(self._api, dict(patch), parent=self)
+        worker.succeeded.connect(lambda *_: emit_shell_status(status))
+        worker.failed.connect(
+            lambda message: emit_shell_status(message or "Unable to save export settings.")
+        )
+        worker.start()
+
+    def _set_auto_merge(self, enabled: bool) -> None:
+        if not self._workspace:
+            return
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={"export": self._workspace.export.model_copy(update={"auto_merge": bool(enabled)})}
+            )
+        )
+        self._patch_export_setting(
+            {"autoMergeAfterVideo": bool(enabled)},
+            "Auto merge enabled." if enabled else "Auto merge disabled.",
+        )
+
+    def _set_shuffle_merge(self, enabled: bool) -> None:
+        if not self._workspace:
+            return
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={"export": self._workspace.export.model_copy(update={"shuffle_merge": bool(enabled)})}
+            )
+        )
+        self._patch_export_setting(
+            {"videoShuffleMerge": bool(enabled)},
+            "Shuffle merge enabled." if enabled else "Merge will follow track list order.",
+        )
+
+    def _set_export_speed_mode(self, mode: str) -> None:
+        normalized = str(mode or "balanced").strip() or "balanced"
+        if normalized not in {"balanced", "fast", "very_fast"}:
+            normalized = "balanced"
+        self._patch_export_setting({"videoExportSpeedMode": normalized}, "Export speed updated.")
+
+    def _resolve_export_fps(self) -> int:
+        if self._workspace:
+            return normalize_export_fps(self._workspace.export.fps)
+        return normalize_export_fps(self._settings.get("videoExportFps", PIPELINE_EXPORT_FPS))
+
+    def _set_export_fps(self, fps: int) -> None:
+        normalized = normalize_export_fps(fps)
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={"export": self._workspace.export.model_copy(update={"fps": normalized})}
+                )
+            )
+        self._patch_export_setting(
+            {"videoExportFps": normalized},
+            f"Export FPS set to {normalized}.",
+        )
+
+    def _set_export_workers(self, value: int) -> None:
+        workers = max(1, min(10, int(value or 1)))
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={"export": self._workspace.export.model_copy(update={"workers": workers})}
+                )
+            )
+        self._patch_export_setting({"videoExportWorkers": workers}, "Export workers updated.")
+
+    def _pick_preview_mp3(self) -> None:
+        # python_app "Select MP3 Folder": load every track from a directory.
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select MP3 Folder",
+            self._workspace.mp3_directory if self._workspace else "",
+        )
+        if not directory:
+            return
+        self._workspace = self._store.set_mp3_directory(directory, settings=self._settings)
+        self._publish_workspace(self._workspace)
+        self._update_inspectors()
+        self._schedule_stage_summary_update()
+        count = len(self._workspace.mp3_list)
+        emit_shell_status(f"Loaded {count} track(s) from the selected folder.")
+
+    def _build_manual_export_scene(self, *, audio_path: str = ""):
+        if not self._workspace or not self._template_draft:
+            return None
+        selected_mp3 = str(audio_path or self._workspace.selected_mp3_path or "")
+        track_paths = self._current_track_paths()
+        renderer_template = self._template_normalizer.to_renderer_dict(
+            base=dict(self._workspace.template),
+            draft=self._template_draft,
+            layers=self._spectrum_layers,
+            workspace={
+                "logoPath": self._workspace.logo_path,
+                "trackPaths": track_paths,
+                "selectedMp3Path": selected_mp3,
+                "pipelineAlbum": str(
+                    self._settings.get("lastAlbumName") or self._settings.get("album") or ""
+                ),
+            },
+            track_paths=track_paths,
+            active_track_path=selected_mp3 or None,
+        )
+        return build_manual_render_scene_request(
+            template=renderer_template,
+            template_draft=self._template_draft,
+            workspace={
+                "templateId": self._workspace.template_id,
+                "logoPath": self._workspace.logo_path,
+                "backgroundPath": self._workspace.background_path,
+                "selectedMp3Path": selected_mp3,
+                "outputResolution": self._workspace.output_resolution,
+            },
+            background_path=self._workspace.background_path,
+            selected_mp3_path=selected_mp3,
+            fps=self._resolve_export_fps(),
+        )
+
+    def _start_manual_export(self) -> None:
+        # python_app behavior: export the whole track list as one batch.
+        if self._export_worker is not None and self._export_worker.isRunning():
+            return
+        if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
+            return
+        if not self._workspace:
+            return
+        tracks = [item.path for item in self._workspace.mp3_list]
+        if not tracks and str(self._workspace.selected_mp3_path or "").strip():
+            tracks = [str(self._workspace.selected_mp3_path)]
+        if not tracks:
+            emit_shell_status("Select an MP3 folder before exporting.")
+            return
+        if not str(self._workspace.background_path or "").strip():
+            emit_shell_status("Select a background image before exporting.")
+            return
+
+        output_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Folder",
+            str(self._settings.get("videoRenderOutputDir") or ""),
+        )
+        if not output_dir:
+            return
+
+        self._batch_queue = list(tracks)
+        self._batch_total = len(tracks)
+        self._batch_completed = 0
+        self._batch_failures = 0
+        self._batch_output_dir = output_dir
+        self._batch_outputs = []
+        started_at_ms = int(time.time() * 1000)
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "export": VideoExportState(
+                        running=True,
+                        workers=max(1, int(self._workspace.export.workers or 1)),
+                        fps=self._resolve_export_fps(),
+                        auto_merge=self._workspace.export.auto_merge,
+                        shuffle_merge=self._workspace.export.shuffle_merge,
+                        current_status=f"Starting batch: {len(tracks)} track(s) → {output_dir}",
+                        output_dir=output_dir,
+                        total_jobs=self._batch_total,
+                        completed_jobs=0,
+                        progress_percent=0,
+                        started_at_ms=started_at_ms,
+                    )
+                }
+            )
+        )
+        self._start_next_batch_export()
+
+    def _start_next_batch_export(self) -> None:
+        if not self._batch_queue:
+            return
+        audio_path = self._batch_queue.pop(0)
+        scene = self._build_manual_export_scene(audio_path=audio_path)
+        if scene is None:
+            self._on_export_failed("The live preview scene is not ready yet.")
+            self._on_export_worker_finished()
+            return
+
+        from features.video.lib.render_scene_request import build_manual_export_output_path
+
+        output_path = build_manual_export_output_path(
+            audio_path=audio_path,
+            output_dir=self._batch_output_dir,
+        )
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "selected_mp3_path": audio_path,
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": True,
+                                "current_status": f"Exporting {Path(audio_path).name}…",
+                                "current_output_path": output_path,
+                            }
+                        ),
+                    }
+                )
+            )
+
+        self._export_start_pending = True
+        self._update_export_panel()
+        worker = VideoManualExportWorker(
+            ManualExportRequest(
+                scene=scene,
+                settings=self._settings,
+                speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+                output_dir=self._batch_output_dir,
+            ),
+            parent=self,
+        )
+        worker.progressed.connect(self._on_export_progress)
+        worker.succeeded.connect(self._on_export_succeeded)
+        worker.failed.connect(self._on_export_failed)
+        worker.finished.connect(self._on_export_worker_finished)
+        self._export_worker = worker
+        worker.start()
+
+    def _stop_manual_export(self) -> None:
+        self._stop_active_export()
+
+    def _batch_overall_percent(self, track_percent: int | None) -> int:
+        total = max(1, int(self._batch_total or 1))
+        track = max(0, min(100, int(track_percent or 0)))
+        overall = ((self._batch_completed + self._batch_failures) * 100 + track) / total
+        return max(0, min(100, int(round(overall))))
+
+    def _on_export_progress(self, payload: object) -> None:
+        if not isinstance(payload, dict) or not self._workspace:
+            return
+        percent = payload.get("progressPercent")
+        message = str(payload.get("message") or payload.get("status") or "Exporting…")
+        overall = (
+            self._batch_overall_percent(percent)
+            if isinstance(percent, int)
+            else self._workspace.export.progress_percent
+        )
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "export": self._workspace.export.model_copy(
+                        update={
+                            "running": True,
+                            "current_status": message,
+                            "progress_percent": overall,
+                            "completed_jobs": self._batch_completed,
+                        }
+                    )
+                }
+            )
+        )
+
+    def _on_export_succeeded(self, output_path: object) -> None:
+        self._export_start_pending = False
+        self._batch_completed += 1
+        if isinstance(output_path, str) and output_path.strip():
+            self._batch_outputs.append(output_path)
+        if not isinstance(output_path, str) or not self._workspace:
+            return
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "export": self._workspace.export.model_copy(
+                        update={
+                            "current_status": f"Exported {Path(output_path).name}",
+                            "current_output_path": None,
+                            "last_output_path": output_path,
+                            "progress_percent": self._batch_overall_percent(0),
+                            "completed_jobs": self._batch_completed,
+                        }
+                    )
+                }
+            )
+        )
+
+    def _on_export_failed(self, message: str) -> None:
+        self._export_start_pending = False
+        self._batch_failures += 1
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "current_status": message or "Track export failed.",
+                            }
+                        )
+                    }
+                )
+            )
+        emit_shell_status(message or "Track export failed.")
+        log_error(message or "Track export failed.", category="video")
+
+    def _on_export_worker_finished(self) -> None:
+        # Batch chaining lives here so the finished worker is fully released
+        # before the next one starts (python_app keeps going after failures).
+        self._export_start_pending = False
+        self._export_worker = None
+        if self._stop_export_pending:
+            self._batch_queue = []
+            self._finalize_batch_export(stopped=True)
+            return
+        if self._batch_queue:
+            self._start_next_batch_export()
+            return
+        self._finalize_batch_export(stopped=False)
+        self._update_export_panel()
+
+    def _finalize_batch_export(self, *, stopped: bool) -> None:
+        if not self._workspace:
+            return
+        completed = self._batch_completed
+        total = max(1, int(self._batch_total or 1))
+        failures = self._batch_failures
+        if stopped:
+            self._stop_export_pending = False
+            message = f"Export stopped · {completed}/{total} video(s) finished."
+        elif failures:
+            message = f"Export complete · {completed}/{total} video(s), {failures} failed."
+        else:
+            message = f"Export complete · {completed}/{total} video(s)."
+
+        auto_merge = bool(self._workspace.export.auto_merge)
+        if not stopped and auto_merge and completed >= 2 and self._batch_output_dir:
+            shuffle_merge = bool(self._workspace.export.shuffle_merge)
+            self._pipeline_merge_context = {
+                "run_dir": self._batch_output_dir,
+                "branch": "long",
+                "batch_id": f"manual-{int(time.time())}",
+                "role": "PRIMARY",
+                "auto_merge": True,
+                "completed": completed,
+                "total": total,
+                # Track-list order by default; optional shuffle matches python_app.
+                "mp4_paths": list(self._batch_outputs),
+                "shuffle": shuffle_merge,
+            }
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": True,
+                                "merge_running": True,
+                                "current_status": "Merging video outputs…",
+                                "progress_percent": 100,
+                                "completed_jobs": completed,
+                            }
+                        )
+                    }
+                )
+            )
+            self._start_pipeline_merge()
+            return
+
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "export": self._workspace.export.model_copy(
+                        update={
+                            "running": False,
+                            "current_status": message,
+                            "current_output_path": None,
+                            "progress_percent": 100 if not stopped else self._workspace.export.progress_percent,
+                            "completed_jobs": completed,
+                        }
+                    )
+                }
+            )
+        )
+        emit_shell_status(message)
+
+    def _on_pipeline_export_progress(self, payload: object) -> None:
+        if not isinstance(payload, dict) or not self._workspace:
+            return
+        completed = payload.get("completedJobs")
+        total = payload.get("totalJobs")
+        percent = payload.get("progressPercent")
+        message = str(payload.get("message") or payload.get("status") or "Exporting…")
+        current_path = str(payload.get("currentMp3Path") or "")
+        output_path = str(payload.get("outputPath") or "")
+        updates: dict[str, object] = {
+            "running": True,
+            "current_status": message,
+        }
+        if isinstance(completed, int):
+            updates["completed_jobs"] = completed
+        if isinstance(total, int):
+            updates["total_jobs"] = total
+        if isinstance(percent, int):
+            updates["progress_percent"] = percent
+        if current_path:
+            updates["current_output_path"] = output_path or None
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "selected_mp3_path": current_path or self._workspace.selected_mp3_path,
+                    "export": self._workspace.export.model_copy(update=updates),
+                }
+            )
+        )
+
+    def _on_pipeline_export_succeeded(self, payload: object) -> None:
+        self._pipeline_start_pending = False
+        if not isinstance(payload, dict) or not self._workspace:
+            return
+
+        message = str(payload.get("message") or "Pipeline export completed.")
+        last_output = str(payload.get("lastOutputPath") or "").strip() or None
+        completed = int(payload.get("completed") or self._workspace.export.total_jobs or 0)
+        total = int(payload.get("total") or self._workspace.export.total_jobs or completed)
+        merge_context = dict(self._pipeline_merge_context or {})
+        merge_context["completed"] = completed
+        merge_context["total"] = total
+        self._pipeline_merge_context = merge_context
+
+        if merge_context.get("auto_merge"):
+            branch_label = "reel" if str(merge_context.get("branch") or "") == "reel" else "long"
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": True,
+                                "merge_running": True,
+                                "current_status": f"Merging {branch_label} video outputs…",
+                                "current_output_path": None,
+                                "last_output_path": last_output,
+                                "progress_percent": 100,
+                                "completed_jobs": completed,
+                                "total_jobs": total,
+                            }
+                        )
+                    }
+                )
+            )
+            self._start_pipeline_merge()
+            return
+
+        self._stop_export_pending = False
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "export": self._workspace.export.model_copy(
+                        update={
+                            "running": False,
+                            "merge_running": False,
+                            "current_status": message,
+                            "current_output_path": None,
+                            "last_output_path": last_output,
+                            "progress_percent": 100,
+                            "completed_jobs": completed,
+                            "total_jobs": total,
+                        }
+                    )
+                }
+            )
+        )
+        emit_shell_status(message)
+
+    def _start_pipeline_merge(self) -> None:
+        context = dict(self._pipeline_merge_context or {})
+        run_dir = str(context.get("run_dir") or "").strip()
+        branch = str(context.get("branch") or "long").strip()
+        if not run_dir:
+            self._on_pipeline_merge_failed("Pipeline merge context is missing a run directory.")
+            return
+        profile_id = str(context.get("profile_id") or "").strip() or None
+        ref_base = str(context.get("ref_base") or "")
+        try:
+            merge_bill = consume_video_operation(
+                self._api,
+                operation_type="video_merge",
+                count=1,
+                channel_profile_id=profile_id,
+                ref_id=f"video_merge:{ref_base}",
+            )
+            self._merge_billing_charge = {
+                "operation_type": "video_merge",
+                "count": 1,
+                "charged_credit_units": merge_bill.charged_credit_units,
+                "channel_profile_id": profile_id,
+                "ref_id": f"video_merge:{ref_base}",
+            }
+        except Exception as exc:
+            emit_shell_status(f"Merge blocked (billing): {exc}")
+            if self._workspace:
+                self._publish_workspace(
+                    self._workspace.model_copy(
+                        update={
+                            "export": self._workspace.export.model_copy(
+                                update={
+                                    "running": False,
+                                    "merge_running": False,
+                                    "current_status": f"Export complete; merge blocked (billing): {exc}",
+                                }
+                            )
+                        }
+                    )
+                )
+            return
+        mp4_paths = tuple(str(path) for path in (context.get("mp4_paths") or []) if str(path).strip())
+        worker = VideoPipelineMergeWorker(
+            PipelineMergeRequest(
+                run_dir=run_dir,
+                branch=branch,
+                batch_id=str(context.get("batch_id") or ""),
+                role=str(context.get("role") or ""),
+                ffmpeg_path=str(self._settings.get("ffmpegPath") or "ffmpeg"),
+                completed=int(context.get("completed") or 0),
+                total=int(context.get("total") or 0),
+                mp4_paths=mp4_paths,
+                shuffle=bool(context.get("shuffle", True)),
+            ),
+            parent=self,
+        )
+        worker.progressed.connect(self._on_pipeline_merge_progress)
+        worker.succeeded.connect(self._on_pipeline_merge_succeeded)
+        worker.failed.connect(self._on_pipeline_merge_failed)
+        worker.finished.connect(self._on_pipeline_merge_worker_finished)
+        self._pipeline_merge_worker = worker
+        worker.start()
+
+    def _on_pipeline_merge_progress(self, payload: object) -> None:
+        if not isinstance(payload, dict) or not self._workspace:
+            return
+        message = str(payload.get("message") or "Merging video outputs…")
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "export": self._workspace.export.model_copy(
+                        update={
+                            "running": True,
+                            "merge_running": True,
+                            "current_status": message,
+                        }
+                    )
+                }
+            )
+        )
+
+    def _on_pipeline_merge_succeeded(self, payload: object) -> None:
+        self._stop_export_pending = False
+        if not isinstance(payload, dict) or not self._workspace:
+            return
+        message = str(payload.get("message") or "Pipeline merge completed.")
+        merged_output = str(payload.get("mergedOutputPath") or "").strip() or None
+        completed = int(payload.get("completed") or self._workspace.export.completed_jobs or 0)
+        total = int(payload.get("total") or self._workspace.export.total_jobs or completed)
+        self._publish_workspace(
+            self._workspace.model_copy(
+                update={
+                    "export": self._workspace.export.model_copy(
+                        update={
+                            "running": False,
+                            "merge_running": False,
+                            "auto_merge": False,
+                            "current_status": message,
+                            "current_output_path": None,
+                            "last_merged_output_path": merged_output,
+                            "progress_percent": 100,
+                            "completed_jobs": completed,
+                            "total_jobs": total,
+                        }
+                    )
+                }
+            )
+        )
+        emit_shell_status(message)
+
+    def _on_pipeline_merge_failed(self, message: str) -> None:
+        self._stop_export_pending = False
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "merge_running": False,
+                                "auto_merge": False,
+                                "current_status": message or "Video merge failed.",
+                            }
+                        )
+                    }
+                )
+            )
+        emit_shell_status(message or "Video merge failed.")
+        log_error(message or "Video merge failed.", category="video")
+
+    def _on_pipeline_merge_worker_finished(self) -> None:
+        self._pipeline_merge_worker = None
+        self._pipeline_merge_context = None
+        self._update_export_panel()
+
+    def _on_pipeline_export_failed(self, message: str) -> None:
+        self._pipeline_start_pending = False
+        self._stop_export_pending = False
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "current_status": message or "Pipeline export failed.",
+                            }
+                        )
+                    }
+                )
+            )
+        emit_shell_status(message or "Pipeline export failed.")
+        log_error(message or "Pipeline export failed.", category="video")
+
+    def _on_pipeline_export_worker_finished(self) -> None:
+        self._pipeline_start_pending = False
+        self._stop_export_pending = False
+        self._pipeline_export_worker = None
+        self._update_export_panel()
+
+    def _open_export_output_folder(self) -> None:
+        if not self._workspace:
+            return
+        export = self._workspace.export
+        folder = str(export.output_dir or "").strip()
+        if not folder:
+            current = str(export.current_output_path or export.last_output_path or "").strip()
+            folder = str(Path(current).parent) if current else ""
+        if folder and Path(folder).is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+
+    def _open_export_output_file(self) -> None:
+        if not self._workspace:
+            return
+        export = self._workspace.export
+        target = str(export.current_output_path or export.last_output_path or "").strip()
+        if target and Path(target).is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(target))
+
+    def _update_preview(self) -> None:
+        if not self._workspace or not self._template_draft or self._loading:
+            return
+        track_paths = self._current_track_paths()
+        active_track = str(self._workspace.selected_mp3_path or "")
+        renderer_template = self._template_normalizer.to_renderer_dict(
+            base=dict(self._workspace.template),
+            draft=self._template_draft,
+            layers=self._spectrum_layers,
+            workspace={
+                "logoPath": self._workspace.logo_path,
+                "trackPaths": track_paths,
+                "selectedMp3Path": active_track,
+                "pipelineAlbum": str(
+                    self._settings.get("lastAlbumName") or self._settings.get("album") or ""
+                ),
+            },
+            track_paths=track_paths,
+            active_track_path=active_track or None,
+        )
+        aspect = self._workspace.preview_aspect_ratio
+        background_edit, spectrum_position_edit, text_domain_edit = resolve_preview_edit_modes(
+            self._active_domain_tab,
+            self._active_side_tab,
+            edit_focus=self._preview_edit_focus,
+        )
+        self._stage.set_preview_edit_modes(
+            background=background_edit,
+            spectrum_position=spectrum_position_edit,
+            text_domain=text_domain_edit,
+        )
+        self._sync_text_drag_overlay(text_domain_edit)
+        self._stage.set_renderer_preview(
+            template=renderer_template,
+            background_path=self._workspace.background_path,
+            logo_path=self._workspace.logo_path,
+            mp3_path=self._workspace.selected_mp3_path,
+            aspect_width=int(aspect.width),
+            aspect_height=int(aspect.height),
+        )
+        self._schedule_stage_summary_update()
+
+    def _sync_text_drag_overlay(self, text_domain: str) -> None:
+        """Keep transparent drag catcher in sync with Album/Title draft (GPU draws text)."""
+        if not self._template_draft:
+            return
+        key = str(text_domain or "").strip().lower()
+        if key not in {"album", "title"}:
+            self._stage.bind_text_drag_overlay(
+                domain="",
+                enabled=False,
+                lines=[],
+                anchor="top-left",
+                x=0.0,
+                y=0.0,
+                font_family="Arial",
+                font_size=36.0,
+                bold=False,
+                italic=False,
+                color="#ffffff",
+                box_width=0.0,
+                line_spacing=1.2,
+                letter_spacing=0.0,
+                content_width=0.0,
+                content_height=0.0,
+            )
+            return
+        track_paths = self._current_track_paths()
+        if key == "album":
+            settings = album_settings_from_draft(self._template_draft)
+            text = resolve_album_display_text(
+                settings,
+                pipeline_album=str(self._settings.get("lastAlbumName") or self._settings.get("album") or ""),
+            )
+            lines = [text] if text else []
+            style = settings.get("style") if isinstance(settings.get("style"), dict) else {}
+            bounds = measure_album_layout_bounds(text, style) if text else {"contentWidth": 0.0, "contentHeight": 0.0}
+            self._stage.bind_text_drag_overlay(
+                domain="album",
+                enabled=bool(settings.get("enabled")) and bool(lines),
+                lines=lines,
+                anchor="top-left",
+                x=float(style.get("x", 0) or 0),
+                y=float(style.get("y", 0) or 0),
+                font_family=str(style.get("fontFamily") or "Arial"),
+                font_size=float(style.get("fontSize", 10) or 10),
+                bold=bool(style.get("bold", False)),
+                italic=bool(style.get("italic", False)),
+                color=str(style.get("color") or "#ffffff"),
+                render_base_height=float(self._template_draft.get("renderBaseHeight") or 450.0),
+                box_width=float(style.get("boxWidth", 0) or 0),
+                line_spacing=float(style.get("lineSpacing", 1.2) or 1.2),
+                letter_spacing=float(style.get("letterSpacing", 0) or 0),
+                content_width=float(bounds.get("contentWidth", 0) or 0),
+                content_height=float(bounds.get("contentHeight", 0) or 0),
+            )
+            return
+        settings = title_settings_from_draft(self._template_draft)
+        titles = resolve_title_display_list(settings, track_paths=track_paths)
+        style = settings.get("style") if isinstance(settings.get("style"), dict) else {}
+        # Show numbered lines so the ghost matches the GPU title list.
+        lines: list[str] = []
+        list_style = str(settings.get("listStyle") or "numbered")
+        indent = str(settings.get("numberIndent") or "aligned")
+        for index, title in enumerate(titles[:24]):
+            marker = format_title_marker(index, list_style, total=len(titles), indent=indent)
+            lines.append(f"{marker}{title}".strip() if not marker else f"{marker}{title}")
+        bounds = (
+            measure_title_layout_bounds(
+                titles,
+                list_style=str(settings.get("listStyle") or "number"),
+                layout=str(settings.get("layout") or "column"),
+                style=style,
+                number_indent=indent,
+            )
+            if titles
+            else {"contentWidth": 0.0, "contentHeight": 0.0}
+        )
+        self._stage.bind_text_drag_overlay(
+            domain="title",
+            enabled=bool(settings.get("enabled")) and bool(lines),
+            lines=lines,
+            anchor="top-left",
+            x=float(style.get("x", 0) or 0),
+            y=float(style.get("y", 0) or 0),
+            font_family=str(style.get("fontFamily") or "Arial"),
+            font_size=float(style.get("fontSize", 10) or 10),
+            bold=bool(style.get("bold", False)),
+            italic=bool(style.get("italic", False)),
+            color=str(style.get("color") or "#ffffff"),
+            render_base_height=float(self._template_draft.get("renderBaseHeight") or 450.0),
+            box_width=float(style.get("boxWidth", 0) or 0),
+            line_spacing=float(style.get("lineSpacing", 1.2) or 1.2),
+            letter_spacing=float(style.get("letterSpacing", 0) or 0),
+            content_width=float(bounds.get("contentWidth", 0) or 0),
+            content_height=float(bounds.get("contentHeight", 0) or 0),
+        )
+
+    def _update_stage_summary(self) -> None:
+        if not self._workspace:
+            return
+        background_path = str(self._workspace.background_path or "").strip()
+        background_source = "Manual preview background" if background_path else "No background attached"
+
+        logo_path = str(self._workspace.logo_path or "").strip()
+        track_path = str(self._workspace.selected_mp3_path or "").strip()
+        run_directory = str(self._workspace.mp3_directory or "").strip()
+
+        track_detail = ""
+        if track_path:
+            parent = str(Path(track_path).parent)
+            track_detail = f"{Path(track_path).name} · {parent}"
+
+        self._right_rail.bind_asset_summary(
+            background_path=background_path,
+            background_source_label=background_source,
+            logo_path=logo_path,
+            track_path=track_path,
+            track_detail=track_detail,
+            run_directory=run_directory,
+        )
+        self._stage.bind_output_resolution(
+            self._workspace.output_resolution,
+            pending=self._resolution_save_pending,
+        )
+        self._stage.set_current_track(track_path)
+
+    def _save_output_resolution(self, resolution: str) -> None:
+        if not self._workspace:
+            return
+        normalized = str(resolution or "").strip()
+        if not normalized or normalized == self._workspace.output_resolution:
+            return
+        if self._settings_patch_worker is not None and self._settings_patch_worker.isRunning():
+            return
+
+        self._resolution_save_pending = True
+        self._workspace = self._store.set_output_resolution(normalized, settings=self._settings)
+        self._settings["outputResolution"] = normalized
+        self._settings["imageResolution"] = normalized
+        self._update_stage_summary()
+        self._update_preview()
+
+        worker = PatchSettingsWorker(
+            self._api,
+            {"outputResolution": normalized, "imageResolution": normalized},
+            parent=self,
+        )
+        worker.succeeded.connect(self._on_output_resolution_saved)
+        worker.failed.connect(self._on_output_resolution_save_failed)
+        worker.finished.connect(lambda: setattr(self, "_settings_patch_worker", None))
+        self._settings_patch_worker = worker
+        worker.start()
+
+    def _on_output_resolution_saved(self, _payload: object) -> None:
+        self._resolution_save_pending = False
+        if self._workspace:
+            self._update_stage_summary()
+        emit_shell_status("Output resolution updated.")
+
+    def _on_output_resolution_save_failed(self, message: str) -> None:
+        self._resolution_save_pending = False
+        if self._workspace:
+            self._update_stage_summary()
+        emit_shell_status(message or "Unable to update output resolution right now.")
+
+    def _issue_preview_playback_command(self, command: str) -> None:
+        self._stage.issue_playback_command(command)
+
+    def _seek_preview_playback(self, time_sec: float) -> None:
+        self._stage.seek_preview(time_sec)
+
+    def _on_preview_playback_state_changed(self, payload: object) -> None:
+        if not isinstance(payload, dict) or not self._workspace:
+            return
+        playback = VideoPlaybackState(
+            is_playing=bool(payload.get("isPlaying")),
+            is_ready=bool(payload.get("isReady")),
+            is_loading=bool(payload.get("isLoading")),
+            current_time_sec=float(payload.get("currentTimeSec") or 0.0),
+            duration_sec=float(payload.get("durationSec") or 0.0),
+        )
+        self._workspace = self._workspace.model_copy(update={"playback": playback})
+        self._stage.sync_playback_transport(playback)
+        # Double-click auto-play: start once mixer decode is ready.
+        if self._pending_preview_auto_play and playback.is_ready:
+            self._flush_pending_preview_auto_play()
+
+    def _on_preview_spectrum_position_changed(self, x: int, y: int) -> None:
+        if not self._template_draft:
+            return
+        pos_cfg = self._template_draft.get("position") if isinstance(self._template_draft.get("position"), dict) else {}
+        anchor = str(pos_cfg.get("anchor") or self._template_draft.get("anchor") or "center")
+        self._patch_template_draft({"anchor": anchor, "positionX": int(x), "positionY": int(y)})
+
+    def _on_preview_text_domain_position_changed(self, domain: str, x: float, y: float) -> None:
+        """Persist Album/Title offsets after GPU real-time drag ends."""
+        if not self._template_draft:
+            return
+        key = str(domain or "").strip().lower()
+        if key == "album":
+            patch = {"albumX": float(x), "albumY": float(y)}
+        elif key == "title":
+            patch = {"titleX": float(x), "titleY": float(y)}
+        else:
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        self._inspector_rebind_timer.start()
+        self._schedule_dirty_state_update()
+        self._schedule_local_draft_persist()
+        # Quiet resync so inject_text_domains matches the baked GPU position.
+        self._schedule_preview_update(delay_ms=60)
+
+    def _text_domain_box_patch(self, domain: str, patch: object) -> dict:
+        """Map overlay resize patch → draft keys."""
+        if not isinstance(patch, dict):
+            return {}
+        key = str(domain or "").strip().lower()
+        if key not in {"album", "title"}:
+            return {}
+        prefix = "album" if key == "album" else "title"
+        out: dict = {}
+        if "boxWidth" in patch:
+            out[f"{prefix}BoxWidth"] = float(max(0.0, min(2000.0, float(patch["boxWidth"]))))
+        if "fontSize" in patch:
+            out[f"{prefix}FontSize"] = float(max(5.0, min(200.0, float(patch["fontSize"]))))
+        if "letterSpacing" in patch:
+            out[f"{prefix}LetterSpacing"] = float(max(-20.0, min(40.0, float(patch["letterSpacing"]))))
+        if "lineSpacing" in patch:
+            out[f"{prefix}LineSpacing"] = float(max(0.8, min(2.5, float(patch["lineSpacing"]))))
+        if "x" in patch:
+            out[f"{prefix}X"] = float(max(-2000.0, min(2000.0, float(patch["x"]))))
+        if "y" in patch:
+            out[f"{prefix}Y"] = float(max(-2000.0, min(2000.0, float(patch["y"]))))
+        return out
+
+    def _on_preview_text_domain_box_resize_changed(self, domain: str, patch: object) -> None:
+        """Live CapCut reflow while resizing — update draft + GPU, skip heavy persist."""
+        if not self._template_draft:
+            return
+        out = self._text_domain_box_patch(domain, patch)
+        if not out:
+            return
+        self._template_draft = {**self._template_draft, **out}
+        # Immediate preview so wrap/scale track the handle (~30 fps throttled upstream).
+        self._flush_preview_update()
+
+    def _on_preview_text_domain_box_resized(self, domain: str, patch: object) -> None:
+        """Persist CapCut-like box transform after resize (wrap and/or scale)."""
+        out = self._text_domain_box_patch(domain, patch)
+        if not out:
+            return
+        self._patch_template_draft(out)
+        self._schedule_local_draft_persist()
+        self._schedule_dirty_state_update()
+        self._flush_preview_update()
+
+    def _on_preview_background_transform_changed(self, offset_x: float, offset_y: float, scale: float) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        template = dict(self._workspace.template)
+        background_settings = template.get("backgroundSettings")
+        background_settings = dict(background_settings) if isinstance(background_settings, dict) else {}
+        background_settings.update(
+            {
+                "userOffsetX": float(offset_x),
+                "userOffsetY": float(offset_y),
+                "userScale": float(scale),
+            }
+        )
+        template["backgroundSettings"] = background_settings
+        self._workspace = self._workspace.model_copy(update={"template": template})
+        self._template_draft = {
+            **self._template_draft,
+            "backgroundUserScale": float(scale),
+        }
+        self._schedule_dirty_state_update()
+
+    def _select_background(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select background image",
+            self._workspace.background_path if self._workspace else "",
+            "Images (*.png *.jpg *.jpeg *.webp)",
+        )
+        if not path:
+            return
+        self._workspace = self._store.set_background_path(path, settings=self._settings)
+        self._publish_workspace(self._workspace)
+        self._update_preview()
+        emit_shell_status("Applied the selected background image.")
+
+    def _effect_pack_selection(self, domain: str) -> dict[str, str] | None:
+        if not self._template_draft:
+            return None
+        effect_packs = self._template_draft.get("effectPacks")
+        if not isinstance(effect_packs, dict):
+            return None
+        entry = effect_packs.get(domain)
+        if not isinstance(entry, dict):
+            return None
+        pack_id = str(entry.get("packId") or "").strip()
+        version = str(entry.get("version") or "").strip()
+        if not pack_id or not version:
+            return None
+        return {"packId": pack_id, "version": version}
+
+    def _effect_pack_status(self, domain: str) -> dict:
+        return resolve_effect_pack_selection_status(
+            domain,
+            self._effect_pack_selection(domain),
+            self._effect_pack_catalog_items,
+        )
+
+    def _refresh_effect_pack_catalog(self) -> None:
+        catalog = self._effect_pack_service.list_catalog()
+        items = catalog.get("items")
+        self._effect_pack_catalog_items = items if isinstance(items, list) else []
+        self._update_effect_pack_selectors()
+
+    def _update_effect_pack_selectors(self) -> None:
+        for domain, selector in self._effect_pack_selectors.items():
+            status = self._effect_pack_status(domain)
+            options = build_effect_pack_catalog_options(domain, self._effect_pack_catalog_items)
+            selector.bind_state(
+                options=options,
+                selected_value=selection_to_value(status.get("selection")),
+                status=status,
+                busy=self._effect_pack_busy,
+            )
+        self._update_spectrum_preset_options()
+        self._update_particle_preset_options()
+        self._update_background_preset_options()
+        self._update_logo_preset_options()
+
+    def _update_spectrum_preset_options(self) -> None:
+        options = build_unified_spectrum_preset_options(self._effect_pack_catalog_items)
+        self._spectrum_inspector.set_preset_options(options)
+
+    def _update_particle_preset_options(self) -> None:
+        options = build_unified_particle_preset_options(self._effect_pack_catalog_items)
+        self._particles_inspector.set_preset_options(options)
+
+    def _update_background_preset_options(self) -> None:
+        options = build_unified_background_preset_options(self._effect_pack_catalog_items)
+        self._background_inspector.set_preset_options(options)
+
+    def _update_logo_preset_options(self) -> None:
+        options = build_unified_logo_preset_options(self._effect_pack_catalog_items)
+        self._logo_inspector.set_preset_options(options)
+
+    def _resolve_effect_pack_catalog_item(self, domain: str, value: str) -> dict | None:
+        selection = parse_effect_pack_catalog_value(value)
+        if not selection:
+            return None
+        for item in self._effect_pack_catalog_items:
+            if (
+                item.get("domain") == domain
+                and item.get("packId") == selection.get("packId")
+                and item.get("version") == selection.get("version")
+                and item.get("status") in {"ready", "available"}
+            ):
+                return item
+        return None
+
+    def _apply_effect_pack(self, domain: str, value: str) -> None:
+        if not self._template_draft or not self._workspace:
+            return
+        item = self._resolve_effect_pack_catalog_item(domain, value)
+        if not item:
+            emit_shell_status(f"Selected {domain} pack is unavailable.")
+            return
+        result = build_applied_effect_pack_draft_state(
+            current_draft=self._template_draft,
+            current_template=dict(self._workspace.template),
+            logo_path=self._workspace.logo_path,
+            domain=domain,
+            item=item,
+        )
+        self._template_draft = result["nextDraft"]
+        if domain == "spectrum":
+            next_layers = result.get("nextLayers")
+            if isinstance(next_layers, list):
+                self._spectrum_layers = clone_layer_records(next_layers)
+            self._selected_spectrum_layer_index = 0
+            emit_shell_status(f"Previewing {item.get('name')} ({item.get('version')}) in the local workspace draft.")
+        else:
+            emit_shell_status(f"Applied {item.get('name')} ({item.get('version')}) to the local {domain} draft.")
+        self._update_inspectors()
+        self._update_dirty_state()
+
+    def _clear_effect_pack(self, domain: str) -> None:
+        if not self._template_draft or not self._workspace:
+            return
+        if domain == "spectrum":
+            self._template_draft = build_video_template_draft(
+                dict(self._workspace.template),
+                logo_path=self._workspace.logo_path,
+            )
+            self._spectrum_layers = clone_layer_records(self._workspace.template.get("layers"))
+            self._selected_spectrum_layer_index = 0
+            emit_shell_status("Restored the saved spectrum pack selection.")
+        else:
+            result = build_cleared_effect_pack_draft_state(
+                current_draft=self._template_draft,
+                domain=domain,
+            )
+            self._template_draft = result["nextDraft"]
+            emit_shell_status(f"Cleared the local {domain} pack reference.")
+        self._update_inspectors()
+        self._update_dirty_state()
+
+    def _install_effect_pack(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select effect pack zip",
+            "",
+            "Zip archives (*.zip)",
+        )
+        if not path:
+            return
+        self._effect_pack_busy = True
+        self._update_effect_pack_selectors()
+        result = self._effect_pack_service.install_from_file(path)
+        self._effect_pack_busy = False
+        if not result.get("ok"):
+            emit_shell_status(str(result.get("error") or "Unable to install effect pack."))
+            self._update_effect_pack_selectors()
+            return
+        item = result.get("item")
+        if isinstance(item, dict):
+            emit_shell_status(
+                f"Installed {item.get('name')} ({item.get('version')}) for {item.get('domain')}."
+            )
+        self._refresh_effect_pack_catalog()
+
+    def _reload_effect_pack_catalog(self) -> None:
+        self._effect_pack_busy = True
+        self._update_effect_pack_selectors()
+        self._refresh_effect_pack_catalog()
+        self._effect_pack_busy = False
+        self._update_effect_pack_selectors()
+        emit_shell_status("Reloaded the local effect pack catalog.")
+
+    def _toggle_effect_pack_enabled(self, domain: str) -> None:
+        item = self._effect_pack_status(domain).get("item")
+        if not isinstance(item, dict):
+            return
+        pack_id = str(item.get("packId") or "")
+        enabled = not bool(item.get("enabled"))
+        self._effect_pack_busy = True
+        self._update_effect_pack_selectors()
+        result = self._effect_pack_service.set_enabled(pack_id, enabled=enabled)
+        self._effect_pack_busy = False
+        if not result.get("ok"):
+            emit_shell_status(str(result.get("error") or "Unable to update effect pack state."))
+            self._update_effect_pack_selectors()
+            return
+        label = "Enabled" if enabled else "Disabled"
+        emit_shell_status(f"{label} {item.get('name')} ({item.get('version')}).")
+        self._refresh_effect_pack_catalog()
+
+    def _activate_effect_pack_version(self, domain: str) -> None:
+        item = self._effect_pack_status(domain).get("item")
+        if not isinstance(item, dict):
+            return
+        pack_id = str(item.get("packId") or "")
+        version = str(item.get("version") or "")
+        self._effect_pack_busy = True
+        self._update_effect_pack_selectors()
+        result = self._effect_pack_service.activate_version(pack_id, version)
+        self._effect_pack_busy = False
+        if not result.get("ok"):
+            emit_shell_status(str(result.get("error") or "Unable to activate effect pack version."))
+            self._update_effect_pack_selectors()
+            return
+        emit_shell_status(f"Activated {item.get('name')} ({item.get('version')}).")
+        self._refresh_effect_pack_catalog()
+
+    def _remove_effect_pack_version(self, domain: str) -> None:
+        item = self._effect_pack_status(domain).get("item")
+        if not isinstance(item, dict):
+            return
+        pack_id = str(item.get("packId") or "")
+        version = str(item.get("version") or "")
+        self._effect_pack_busy = True
+        self._update_effect_pack_selectors()
+        result = self._effect_pack_service.remove_version(pack_id, version)
+        self._effect_pack_busy = False
+        if not result.get("ok"):
+            emit_shell_status(str(result.get("error") or "Unable to remove effect pack version."))
+            self._update_effect_pack_selectors()
+            return
+        emit_shell_status(f"Removed {item.get('name')} ({item.get('version')}).")
+        self._refresh_effect_pack_catalog()
+
+    def _set_spectrum_layers(
+        self,
+        layers: list[dict],
+        *,
+        selected_index: int,
+        defer_rebind: bool = False,
+    ) -> None:
+        self._spectrum_layers = clone_layer_records(layers)
+        self._selected_spectrum_layer_index = selected_index
+        self._remember_active_spectrum_preset_session()
+        self._update_inspectors(defer_rebind=defer_rebind)
+        self._schedule_dirty_state_update()
+
+    def _select_spectrum_layer(self, index: int) -> None:
+        self._selected_spectrum_layer_index = max(0, index)
+        self._update_inspectors()
+
+    def _patch_selected_spectrum_layer(self, patch: dict) -> None:
+        layers = clone_layer_records(self._spectrum_layers)
+        if not layers:
+            layers = [{}]
+        index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
+        current = layers[index] if isinstance(layers[index], dict) else {}
+        layers[index] = {**current, **patch}
+        self._set_spectrum_layers(layers, selected_index=index, defer_rebind=True)
+
+    def _patch_selected_spectrum_layer_color(self, patch: dict) -> None:
+        layers = clone_layer_records(self._spectrum_layers)
+        if not layers:
+            layers = [{}]
+        index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
+        current = layers[index] if isinstance(layers[index], dict) else {}
+        layers[index] = apply_spectrum_layer_color_patch(
+            current,
+            patch,
+            get_spectrum_layer_color_fallback(index),
+        )
+        self._set_spectrum_layers(layers, selected_index=index)
+
+    def _add_spectrum_layer(self) -> None:
+        layers = clone_layer_records(self._spectrum_layers)
+        index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1)) if layers else 0
+        basis = dict(layers[index]) if layers and isinstance(layers[index], dict) else {}
+        layers.append({**basis, "name": "New Ring"})
+        self._set_spectrum_layers(layers, selected_index=len(layers) - 1)
+
+    def _duplicate_spectrum_layer(self) -> None:
+        layers = clone_layer_records(self._spectrum_layers)
+        if not layers:
+            return
+        index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
+        basis = dict(layers[index]) if isinstance(layers[index], dict) else {}
+        name = str(basis.get("name") or "").strip()
+        layers.append({**basis, "name": f"{name} Copy" if name else "Layer Copy"})
+        self._set_spectrum_layers(layers, selected_index=len(layers) - 1)
+
+    def _delete_spectrum_layer(self) -> None:
+        layers = clone_layer_records(self._spectrum_layers)
+        if len(layers) < 2:
+            return
+        index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
+        layers.pop(index)
+        self._set_spectrum_layers(layers, selected_index=max(0, index - 1))
+
+    def _patch_template_draft(self, patch: dict) -> None:
+        if not self._template_draft:
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        if particle_patch_touches_preset_fields(patch):
+            self._remember_active_particle_preset_session()
+        if spectrum_patch_touches_preset_fields(patch):
+            self._remember_active_spectrum_preset_session()
+        if background_patch_touches_preset_fields(patch):
+            self._remember_active_background_preset_session()
+        if logo_patch_touches_preset_fields(patch):
+            self._remember_active_logo_preset_session()
+        # The control that emitted the patch already shows the new value;
+        # rebind the rest once the user pauses instead of on every tick.
+        self._update_inspectors(defer_rebind=True)
+        if {"particlesEnabled", "spectrumEnabled", "backgroundEnabled", "logoEnabled"} & set(patch.keys()):
+            self._flush_preview_update()
+
+    def _remember_active_particle_preset_session(self) -> None:
+        if not self._template_draft:
+            return
+        # Prefer the last applied/tracked preset. If the dropdown still shows a
+        # built-in look (common after tweaks break exact factory match), treat
+        # that selection as the session slot so edits are not lost.
+        active = self._active_particle_preset_key
+        if not is_builtin_particle_preset_key(active):
+            active = resolve_active_particle_preset_key(self._template_draft)
+        if not is_builtin_particle_preset_key(active):
+            active = self._particles_inspector.selected_preset_key()
+        if not is_builtin_particle_preset_key(active):
+            return
+        self._active_particle_preset_key = active
+        capture_session_particle_preset(active, self._template_draft)
+
+    def _remember_active_spectrum_preset_session(self) -> None:
+        if not self._template_draft:
+            return
+        active = self._active_spectrum_preset_key
+        if not is_session_spectrum_preset_key(active):
+            active = self._spectrum_inspector.selected_preset_key()
+        if not is_session_spectrum_preset_key(active):
+            style = str(self._template_draft.get("style") or "").strip()
+            active = style if is_session_spectrum_preset_key(style) else None
+        if not is_session_spectrum_preset_key(active):
+            return
+        self._active_spectrum_preset_key = active
+        capture_session_spectrum_preset(active, self._template_draft, self._spectrum_layers)
+
+    def _remember_active_background_preset_session(self) -> None:
+        if not self._template_draft:
+            return
+        active = self._active_background_preset_key
+        if not is_builtin_background_preset_key(active):
+            active = self._background_inspector.selected_preset_key()
+        if not is_builtin_background_preset_key(active):
+            return
+        self._active_background_preset_key = active
+        capture_background_preset(active, self._template_draft)
+
+    def _remember_active_logo_preset_session(self) -> None:
+        if not self._template_draft:
+            return
+        active = self._active_logo_preset_key
+        if not is_builtin_logo_preset_key(active):
+            active = self._logo_inspector.selected_preset_key()
+        if not is_builtin_logo_preset_key(active):
+            return
+        self._active_logo_preset_key = active
+        capture_logo_preset(active, self._template_draft)
+
+    def _reset_background_transform(self) -> None:
+        if self._workspace:
+            template = dict(self._workspace.template)
+            background_settings = template.get("backgroundSettings")
+            background_settings = dict(background_settings) if isinstance(background_settings, dict) else {}
+            background_settings.update(
+                {
+                    "userOffsetX": 0.0,
+                    "userOffsetY": 0.0,
+                    "userScale": 1.0,
+                }
+            )
+            template["backgroundSettings"] = background_settings
+            self._workspace = self._workspace.model_copy(update={"template": template})
+        self._patch_template_draft({"backgroundUserScale": 1})
+        self._update_preview()
+
+    def _apply_logo_shape(self, logo_shape: str) -> None:
+        if not self._template_draft:
+            return
+        self._template_draft = apply_logo_shape_draft_change(self._template_draft, logo_shape)
+        self._update_inspectors()
+        self._update_dirty_state()
+
+    def _apply_logo_size(self, logo_size_step: float) -> None:
+        if not self._template_draft:
+            return
+        self._template_draft = apply_logo_size_draft_change(self._template_draft, logo_size_step)
+        self._update_inspectors()
+        self._update_dirty_state()
+
+    def _toggle_spectrum_attachment(self, attach: bool) -> None:
+        if not self._template_draft:
+            return
+        self._template_draft = apply_spectrum_attach_to_logo_draft_change(self._template_draft, attach)
+        self._update_inspectors()
+        self._update_dirty_state()
+
+    def _set_spectrum_logo_gap(self, gap: float) -> None:
+        self._patch_template_draft({"spectrumLogoGap": gap})
+
+    def _select_logo(self) -> None:
+        if not self._template_draft:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select logo",
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp)",
+        )
+        if not path:
+            return
+        self._workspace = self._store.set_logo_path(path, settings=self._settings)
+        self._template_draft = {**self._template_draft, "logoPath": path}
+        self._publish_workspace(self._workspace)
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._update_preview()
+        emit_shell_status("Applied the selected logo.")
+
+    def _apply_particle_preset(self, preset_key: str) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        # Keep the previous preset's latest tweaks for this app session.
+        previous = self._active_particle_preset_key
+        if not is_builtin_particle_preset_key(previous):
+            # Combo already moved to the new value; use the inspector's
+            # remembered previous selection when active tracking was empty.
+            previous = self._particles_inspector.previous_preset_key()
+        if is_builtin_particle_preset_key(previous) and previous != preset_key:
+            capture_session_particle_preset(previous, self._template_draft)
+
+        pack_selection = parse_pack_preset_key(preset_key)
+        if pack_selection:
+            item = self._resolve_effect_pack_catalog_item(
+                "particles",
+                f"{pack_selection['packId']}::{pack_selection['version']}",
+            )
+            if not item:
+                emit_shell_status("Selected particle pack is unavailable.")
+                return
+            result = apply_particle_pack_as_preset(
+                current_draft=self._template_draft,
+                current_template=dict(self._workspace.template),
+                logo_path=self._workspace.logo_path,
+                item=item,
+            )
+            self._template_draft = result["nextDraft"]
+            self._active_particle_preset_key = None
+            self._update_inspectors()
+            self._update_dirty_state()
+            self._flush_preview_update()
+            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            return
+
+        patch = build_builtin_particle_preset_patch(preset_key)
+        if not patch:
+            emit_shell_status("Unable to apply that particle preset.")
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        self._active_particle_preset_key = preset_key
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._flush_preview_update()
+
+    def _apply_background_preset(self, preset_key: str) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        previous = self._active_background_preset_key
+        if not is_builtin_background_preset_key(previous):
+            previous = self._background_inspector.previous_preset_key()
+        if is_builtin_background_preset_key(previous) and previous != preset_key:
+            capture_background_preset(previous, self._template_draft)
+
+        pack_selection = parse_pack_preset_key(preset_key)
+        if pack_selection:
+            item = self._resolve_effect_pack_catalog_item(
+                "background",
+                f"{pack_selection['packId']}::{pack_selection['version']}",
+            )
+            if not item:
+                emit_shell_status("Selected background pack is unavailable.")
+                return
+            result = build_applied_effect_pack_draft_state(
+                current_draft=self._template_draft,
+                current_template=dict(self._workspace.template),
+                logo_path=self._workspace.logo_path,
+                domain="background",
+                item=item,
+            )
+            self._template_draft = result["nextDraft"]
+            self._active_background_preset_key = None
+            self._update_inspectors()
+            self._update_dirty_state()
+            self._flush_preview_update()
+            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            return
+
+        patch = resolve_background_preset_patch(preset_key)
+        if not patch:
+            emit_shell_status("Unable to apply that background preset.")
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        self._active_background_preset_key = preset_key
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._flush_preview_update()
+
+    def _apply_logo_preset(self, preset_key: str) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        previous = self._active_logo_preset_key
+        if not is_builtin_logo_preset_key(previous):
+            previous = self._logo_inspector.previous_preset_key()
+        if is_builtin_logo_preset_key(previous) and previous != preset_key:
+            capture_logo_preset(previous, self._template_draft)
+
+        pack_selection = parse_pack_preset_key(preset_key)
+        if pack_selection:
+            item = self._resolve_effect_pack_catalog_item(
+                "logo",
+                f"{pack_selection['packId']}::{pack_selection['version']}",
+            )
+            if not item:
+                emit_shell_status("Selected logo pack is unavailable.")
+                return
+            result = build_applied_effect_pack_draft_state(
+                current_draft=self._template_draft,
+                current_template=dict(self._workspace.template),
+                logo_path=self._workspace.logo_path,
+                domain="logo",
+                item=item,
+            )
+            self._template_draft = result["nextDraft"]
+            self._active_logo_preset_key = None
+            self._update_inspectors()
+            self._update_dirty_state()
+            self._flush_preview_update()
+            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            return
+
+        patch = resolve_logo_preset_patch(preset_key)
+        if not patch:
+            emit_shell_status("Unable to apply that logo preset.")
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        self._active_logo_preset_key = preset_key
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._flush_preview_update()
+
+    def _apply_spectrum_preset(self, preset_key: str) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        previous = self._active_spectrum_preset_key
+        if not is_session_spectrum_preset_key(previous):
+            previous = self._spectrum_inspector.previous_preset_key()
+        if is_session_spectrum_preset_key(previous) and previous != preset_key:
+            capture_session_spectrum_preset(previous, self._template_draft, self._spectrum_layers)
+
+        pack_selection = parse_pack_preset_key(preset_key)
+        if pack_selection:
+            item = self._resolve_effect_pack_catalog_item(
+                "spectrum",
+                f"{pack_selection['packId']}::{pack_selection['version']}",
+            )
+            if not item:
+                emit_shell_status("Selected spectrum pack is unavailable.")
+                return
+            result = apply_spectrum_pack_as_preset(
+                current_draft=self._template_draft,
+                current_template=dict(self._workspace.template),
+                logo_path=self._workspace.logo_path,
+                item=item,
+            )
+            self._template_draft = result["nextDraft"]
+            next_layers = result.get("nextLayers")
+            if isinstance(next_layers, list):
+                self._spectrum_layers = clone_layer_records(next_layers)
+            self._selected_spectrum_layer_index = 0
+            self._active_spectrum_preset_key = None
+            self._update_inspectors()
+            self._update_dirty_state()
+            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            return
+
+        session = get_session_spectrum_preset(preset_key)
+        if session is not None:
+            self._template_draft = {**self._template_draft, **session["draft"]}
+            layers = clone_layer_records(session["layers"])
+            style_key = normalize_spectrum_preset_key_for_apply(
+                str(self._template_draft.get("style") or preset_key)
+            )
+            if style_key in STYLE_PRESET_PATCHES:
+                layers = align_spectrum_layers_to_style_geometry(layers, style_key)
+            self._spectrum_layers = layers
+            self._selected_spectrum_layer_index = min(
+                max(0, self._selected_spectrum_layer_index),
+                max(0, len(self._spectrum_layers) - 1),
+            )
+            self._active_spectrum_preset_key = preset_key
+            self._update_inspectors()
+            self._update_dirty_state()
+            return
+
+        base_template = {**dict(self._workspace.template), **self._template_draft, "layers": self._spectrum_layers}
+        # Single styles replace the whole stack (python_app look); avoids ring+horizontal leftovers.
+        patched = build_spectrum_preset_template(base_template, preset_key, replace_stack=True)
+        self._template_draft = {**self._template_draft, "style": patched.get("style", preset_key)}
+        self._spectrum_layers = clone_layer_records(patched.get("layers"))
+        self._selected_spectrum_layer_index = 0
+        self._active_spectrum_preset_key = preset_key
+        self._update_inspectors()
+        self._update_dirty_state()
+
+    def _apply_stacked_spectrum_preset(self, preset_key: str) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        previous = self._active_spectrum_preset_key
+        if not is_session_spectrum_preset_key(previous):
+            previous = self._spectrum_inspector.previous_preset_key()
+        if is_session_spectrum_preset_key(previous) and previous != preset_key:
+            capture_session_spectrum_preset(previous, self._template_draft, self._spectrum_layers)
+
+        session = get_session_spectrum_preset(preset_key)
+        if session is not None:
+            self._template_draft = {**self._template_draft, **session["draft"]}
+            layers = clone_layer_records(session["layers"])
+            style_key = normalize_spectrum_preset_key_for_apply(
+                str(self._template_draft.get("style") or session["draft"].get("style") or "ignition-flare")
+            )
+            layers = align_spectrum_layers_to_style_geometry(layers, style_key)
+            self._spectrum_layers = layers
+            self._selected_spectrum_layer_index = 0
+            self._active_spectrum_preset_key = preset_key
+            self._update_inspectors()
+            self._update_dirty_state()
+            emit_shell_status(f"Restored stacked preset: {preset_key.replace('-', ' ').title()}.")
+            return
+
+        base_template = {**dict(self._workspace.template), **self._template_draft}
+        patched = build_stacked_spectrum_preset_template(base_template, preset_key)
+        if not patched:
+            emit_shell_status("Unable to apply that stacked spectrum preset.")
+            return
+        self._template_draft = {**self._template_draft, "style": patched.get("style", preset_key)}
+        self._spectrum_layers = clone_layer_records(patched.get("layers"))
+        self._selected_spectrum_layer_index = 0
+        self._active_spectrum_preset_key = preset_key
+        self._update_inspectors()
+        self._update_dirty_state()
+        emit_shell_status(f"Applied stacked preset: {preset_key.replace('-', ' ').title()}.")
+
+    def _clear_stacked_spectrum_preset(self) -> None:
+        if not self._workspace:
+            return
+        if len(self._spectrum_layers) > 1:
+            self._spectrum_layers = [dict(self._spectrum_layers[0])]
+        else:
+            base_template = {**dict(self._workspace.template), **(self._template_draft or {})}
+            patched = build_spectrum_preset_template(
+                base_template,
+                str((self._template_draft or {}).get("style") or "orbit-spikes"),
+            )
+            if patched and isinstance(patched.get("layers"), list) and patched["layers"]:
+                self._spectrum_layers = clone_layer_records(patched["layers"][:1])
+        self._selected_spectrum_layer_index = 0
+        self._update_inspectors()
+        self._update_dirty_state()
+        emit_shell_status("Cleared stacked spectrum layers.")
+
+    def _restore_particle_preset(self) -> None:
+        if not self._template_draft:
+            return
+        key = self._active_particle_preset_key
+        if not is_builtin_particle_preset_key(key):
+            key = self._particles_inspector.selected_preset_key()
+        if not is_builtin_particle_preset_key(key):
+            emit_shell_status("No active particle preset to restore.")
+            return
+        patch = restore_particle_preset_to_factory(key)
+        if not patch:
+            emit_shell_status("Unable to restore that particle preset.")
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        self._active_particle_preset_key = key
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._flush_preview_update()
+        emit_shell_status(f"Restored particle preset '{key}' to factory defaults.")
+
+    def _restore_spectrum_preset(self) -> None:
+        if not self._workspace or not self._template_draft:
+            return
+        key = self._active_spectrum_preset_key
+        if not is_session_spectrum_preset_key(key):
+            key = self._spectrum_inspector.selected_preset_key()
+        if not is_session_spectrum_preset_key(key):
+            emit_shell_status("No active spectrum preset to restore.")
+            return
+        restore_spectrum_preset_to_factory(key)
+        base_template = {**dict(self._workspace.template), **self._template_draft, "layers": self._spectrum_layers}
+        if key in STACKED_LAYER_PRESETS:
+            patched = build_stacked_spectrum_preset_template(base_template, key)
+            if not patched:
+                emit_shell_status("Unable to restore that stacked spectrum preset.")
+                return
+        else:
+            patched = build_spectrum_preset_template(base_template, key, replace_stack=True)
+        self._template_draft = {**self._template_draft, "style": patched.get("style", key)}
+        self._spectrum_layers = clone_layer_records(patched.get("layers"))
+        self._selected_spectrum_layer_index = 0
+        self._active_spectrum_preset_key = key
+        self._update_inspectors()
+        self._update_dirty_state()
+        emit_shell_status(f"Restored spectrum preset '{key}' to factory defaults.")
+
+    def _restore_background_preset(self) -> None:
+        if not self._template_draft:
+            return
+        key = self._active_background_preset_key
+        if not is_builtin_background_preset_key(key):
+            key = self._background_inspector.selected_preset_key()
+        if not is_builtin_background_preset_key(key):
+            emit_shell_status("No active background preset to restore.")
+            return
+        patch = restore_background_preset_to_factory(key)
+        if not patch:
+            emit_shell_status("Unable to restore that background preset.")
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        self._active_background_preset_key = key
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._flush_preview_update()
+        emit_shell_status(f"Restored background preset '{key}' to factory defaults.")
+
+    def _restore_logo_preset(self) -> None:
+        if not self._template_draft:
+            return
+        key = self._active_logo_preset_key
+        if not is_builtin_logo_preset_key(key):
+            key = self._logo_inspector.selected_preset_key()
+        if not is_builtin_logo_preset_key(key):
+            emit_shell_status("No active logo preset to restore.")
+            return
+        patch = restore_logo_preset_to_factory(key)
+        if not patch:
+            emit_shell_status("Unable to restore that logo preset.")
+            return
+        self._template_draft = {**self._template_draft, **patch}
+        self._active_logo_preset_key = key
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._flush_preview_update()
+        emit_shell_status(f"Restored logo preset '{key}' to factory defaults.")
+
+    def _restore_text_preset(self) -> None:
+        """Restore the active text preset to factory. Call if a text inspector emits preset_restore_requested."""
+        if not self._template_draft:
+            return
+        key = self._active_text_preset_key
+        if not is_builtin_text_preset_key(key):
+            emit_shell_status("No active text preset to restore.")
+            return
+        restore_text_preset_to_factory(key)
+        overlays = self._text_overlays()
+        index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
+        next_overlays, next_index = apply_resolved_text_preset(overlays, key, selected_index=index)
+        self._set_text_overlays(next_overlays, selected_index=next_index)
+        emit_shell_status(f"Restored text preset '{key}' to factory defaults.")
+
+    def _persisted_draft(self) -> dict | None:
+        if not self._workspace:
+            return None
+        return build_video_template_draft(dict(self._workspace.template), logo_path=self._workspace.logo_path)
+
+    def _workspace_dirty(self) -> bool:
+        if not self._template_draft:
+            return False
+        name_dirty = self._template_name_draft.strip() != str(self._workspace.template_name if self._workspace else "").strip()
+        draft_dirty = draft_snapshot(self._template_draft) != self._persisted_draft_snapshot
+        layers = clone_layer_records(self._workspace.template.get("layers") if self._workspace else [])
+        layers_dirty = json.dumps(self._spectrum_layers, sort_keys=True) != json.dumps(layers, sort_keys=True)
+        return name_dirty or draft_dirty or layers_dirty
+
+    def _update_dirty_state(self) -> None:
+        persisted = self._persisted_draft()
+        dirty_map = build_draft_dirty_state(
+            self._template_draft,
+            persisted,
+            spectrum_dirty=json.dumps(self._spectrum_layers, sort_keys=True)
+            != json.dumps(clone_layer_records(self._workspace.template.get("layers") if self._workspace else []), sort_keys=True),
+        )
+        tab_dirty = bool(dirty_map.get(self._active_domain_tab, False))
+        workspace_dirty = self._workspace_dirty()
+        self._left_rail.set_dirty_state(
+            workspace_dirty=workspace_dirty,
+            active_tab=self._active_domain_tab,
+            tab_dirty=tab_dirty,
+        )
+        self._left_rail.set_save_enabled(workspace_dirty and bool(self._template_name_draft.strip()) and not self._saving)
+        self._left_rail.set_busy(saving=self._saving, deleting=self._deleting)
+        self._schedule_local_draft_persist()
+
+    def _on_diagnostics_panel_toggled(self, expanded: bool) -> None:
+        if self._diagnostics_timer is None:
+            return
+        if expanded:
+            self._update_diagnostics_panel()
+            if not self._diagnostics_timer.isActive():
+                self._diagnostics_timer.start()
+            return
+        self._diagnostics_timer.stop()
+
+    def _update_diagnostics_panel(self) -> None:
+        if self._diagnostics_panel is None or not self._diagnostics_panel.isChecked():
+            return
+        persisted = self._persisted_draft()
+        spectrum_dirty = json.dumps(self._spectrum_layers, sort_keys=True) != json.dumps(
+            clone_layer_records(self._workspace.template.get("layers") if self._workspace else []),
+            sort_keys=True,
+        )
+        dirty_map = build_draft_dirty_state(
+            self._template_draft,
+            persisted,
+            spectrum_dirty=spectrum_dirty,
+        )
+        workspace_dirty = self._workspace_dirty()
+        selected_row = self._selected_pipeline_row()
+        branch = "reel" if self._selected_pipeline_branch == "reel" else "long"
+        pipeline_inputs = resolve_video_pipeline_inputs(selected_row, branch) if selected_row else None
+        lifecycle = self._stage.preview_lifecycle_snapshot()
+        if not self._stage.gpu_preview_available():
+            lifecycle = {
+                "status": "unsupported",
+                "message": "GPU preview dependencies are not available in this environment.",
+            }
+        diagnostics = build_video_workspace_diagnostics(
+            workspace=self._workspace,
+            template_name_draft=self._template_name_draft,
+            workspace_dirty=workspace_dirty,
+            draft_dirty_map=dirty_map,
+            active_domain_tab=self._active_domain_tab,
+            saving=self._saving,
+            playback=self._workspace.playback if self._workspace else None,
+            preview_track_path=str(self._workspace.selected_mp3_path if self._workspace else ""),
+            pipeline_branch=self._selected_pipeline_branch,
+            pipeline_inputs=pipeline_inputs,
+            preview_lifecycle_status=str(lifecycle.get("status") or "running"),
+            preview_lifecycle_message=str(lifecycle.get("message") or ""),
+            preview_remount_pending=self._preview_remount_pending,
+            gpu_preview_available=self._stage.gpu_preview_available(),
+            performance=self._stage.performance_snapshot(),
+            export_gate_active=int(export_gate.active),
+            export_gate_limit=int(export_gate.limit),
+        )
+        self._diagnostics_panel.bind(diagnostics)
+        self._diagnostics_payload = build_video_workspace_diagnostics_payload(
+            workspace=self._workspace,
+            template_name_draft=self._template_name_draft,
+            active_domain_tab=self._active_domain_tab,
+            workspace_dirty=workspace_dirty,
+            draft_dirty_map=dirty_map,
+            playback=self._workspace.playback if self._workspace else None,
+            preview_track_path=str(self._workspace.selected_mp3_path if self._workspace else ""),
+            pipeline_branch=self._selected_pipeline_branch,
+            pipeline_inputs=pipeline_inputs,
+            preview_runtime_nonce=self._stage.preview_runtime_nonce(),
+            preview_lifecycle_status=str(lifecycle.get("status") or "running"),
+            preview_lifecycle_message=str(lifecycle.get("message") or ""),
+            performance=self._stage.performance_snapshot(),
+            export_gate_active=int(export_gate.active),
+            export_gate_limit=int(export_gate.limit),
+            diagnostics=diagnostics,
+        )
+
+    def _remount_preview(self) -> None:
+        self._preview_remount_pending = True
+        if SHOW_VIDEO_WORKSPACE_DIAGNOSTICS:
+            self._update_diagnostics_panel()
+        self._stage.remount_preview()
+        self._update_preview()
+        self._preview_remount_pending = False
+        if SHOW_VIDEO_WORKSPACE_DIAGNOSTICS:
+            self._update_diagnostics_panel()
+        emit_shell_status("Remounted the GPU preview surface.")
+
+    def _refresh_workspace_from_diagnostics(self) -> None:
+        self.refresh_data(force=True)
+        emit_shell_status("Video workspace diagnostics refreshed.")
+
+    def _reset_local_draft(self) -> None:
+        if not self._workspace_dirty():
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Reset local draft",
+            "Discard unsaved local draft changes and restore the saved template?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        template_id = str(self._workspace.template_id or "")
+        if template_id:
+            clear_video_workspace_draft_snapshot(template_id)
+        self._hydrated_template_id = ""
+        self._hydrate_draft_from_workspace(force_from_saved=True)
+        self._persist_local_draft_snapshot()
+        self._render_workspace()
+        emit_shell_status("Reset the local Video workspace draft back to the saved template.")
+
+    def _copy_diagnostics(self) -> None:
+        payload = getattr(self, "_diagnostics_payload", None)
+        if not isinstance(payload, dict):
+            self._update_diagnostics_panel()
+            payload = getattr(self, "_diagnostics_payload", {})
+        text = serialize_diagnostics_payload(payload if isinstance(payload, dict) else {})
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is None:
+            emit_shell_status("Clipboard access is not available.")
+            return
+        clipboard.setText(text)
+        emit_shell_status("Copied Video diagnostics to the clipboard.")
+
+    def _on_template_name_changed(self, value: str) -> None:
+        self._template_name_draft = value
+        self._update_dirty_state()
+
+    def _on_domain_tab_changed(self, tab_key: str) -> None:
+        self._active_domain_tab = tab_key
+        self._preview_edit_focus = "domain"
+        self._flush_preview_update()
+        self._schedule_dirty_state_update()
+
+    def _on_template_selected(self, template_id: str) -> None:
+        if not self._workspace or template_id == self._workspace.template_id or self._saving:
+            return
+        if self._workspace_dirty():
+            confirm = QMessageBox.question(
+                self,
+                "Switch template",
+                "You have unsaved changes. Switch template anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                self._left_rail.set_templates(
+                    [(item.id, item.name) for item in self._workspace.templates],
+                    self._workspace.template_id,
+                )
+                return
+        self._workspace = self._store.set_template(template_id)
+        self._hydrated_template_id = ""
+        self._hydrate_draft_from_workspace()
+        self._render_workspace()
+        emit_shell_status("Applied the selected template.")
+
+    def _create_blank_template(self) -> None:
+        if self._saving or self._deleting:
+            return
+        if self._workspace and self._workspace_dirty():
+            confirm = QMessageBox.question(
+                self,
+                "Create new template",
+                "You have unsaved changes. Create a new blank template anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+        name = self._template_name_draft.strip() or "Untitled Template"
+        if self._workspace and any(item.name == name for item in self._workspace.templates):
+            name = f"{name} copy"
+        self._workspace = self._store.create_blank_template(name=name, settings=self._settings)
+        self._hydrated_template_id = ""
+        self._hydrate_draft_from_workspace(force_from_saved=True)
+        self._render_workspace()
+        self._update_preview()
+        if self._cache is not None and self._workspace is not None:
+            self._cache.apply_video_workspace(self._workspace, self._settings)
+        emit_video_template_catalog_changed()
+        emit_shell_status(f"Created blank template: {self._workspace.template_name}.")
+
+    def _save_template(self) -> None:
+        if not self._workspace or not self._template_draft or self._patch_worker is not None:
+            return
+        name = self._template_name_draft.strip()
+        if not name:
+            emit_shell_status("Template name is required before saving.")
+            return
+        if not self._workspace.template_id:
+            # Keep the in-memory draft the user already edited; only create the catalog row.
+            draft = dict(self._template_draft)
+            layers = list(self._spectrum_layers)
+            self._workspace = self._store.create_blank_template(name=name, settings=self._settings)
+            self._template_draft = draft
+            self._spectrum_layers = layers
+            self._template_name_draft = name
+        patch = build_video_workspace_template_save_patch(
+            template=dict(self._workspace.template),
+            draft=self._template_draft,
+            template_name=name,
+            layers=self._spectrum_layers,
+        )
+        self._saving = True
+        self._update_dirty_state()
+        worker = VideoPatchTemplateWorker(self._store, patch, settings=self._settings, parent=self)
+        worker.succeeded.connect(self._on_save_succeeded)
+        worker.failed.connect(self._on_save_failed)
+        worker.finished.connect(self._on_patch_worker_finished)
+        self._patch_worker = worker
+        worker.start()
+
+    def _on_save_succeeded(self, workspace: object) -> None:
+        if isinstance(workspace, VideoWorkspaceState):
+            self._workspace = workspace
+            self._hydrated_template_id = ""
+            self._hydrate_draft_from_workspace(force_from_saved=True)
+            self._persist_local_draft_snapshot()
+            self._render_workspace()
+            self._schedule_template_server_sync()
+            if self._cache is not None:
+                self._cache.apply_video_workspace(self._workspace, self._settings)
+            emit_video_template_catalog_changed()
+        self._saving = False
+        self._update_dirty_state()
+        emit_shell_status("Saved the current workspace draft into the selected template.")
+
+    def _schedule_template_server_sync(self) -> None:
+        if not self._workspace or self._template_sync_worker is not None:
+            return
+        patch = build_video_workspace_template_save_patch(
+            template=dict(self._workspace.template),
+            draft=self._template_draft or {},
+            template_name=self._template_name_draft.strip(),
+            layers=self._spectrum_layers,
+        )
+        profiles: list = []
+        if self._cache is not None:
+            _me, profiles, _settings, _descriptions, _structures = self._cache.snapshot_core()
+        worker = VideoTemplateSyncWorker(
+            self._api,
+            workspace=self._workspace,
+            save_patch=patch,
+            profiles=[item for item in profiles if isinstance(item, dict) or hasattr(item, "id")],
+            parent=self,
+        )
+        worker.succeeded.connect(self._on_template_sync_succeeded)
+        worker.failed.connect(self._on_template_sync_failed)
+        worker.finished.connect(self._on_template_sync_finished)
+        self._template_sync_worker = worker
+        worker.start()
+
+    def _on_template_sync_succeeded(self, message: str) -> None:
+        if message.strip():
+            emit_shell_status(message)
+
+    def _on_template_sync_failed(self, message: str) -> None:
+        emit_shell_status(message or "Saved locally; server sync failed.")
+
+    def _on_template_sync_finished(self) -> None:
+        self._template_sync_worker = None
+
+    def _on_save_failed(self, message: str) -> None:
+        self._saving = False
+        self._update_dirty_state()
+        emit_shell_status(message or "Unable to save template.")
+
+    def _on_patch_worker_finished(self) -> None:
+        self._patch_worker = None
+
+    def _delete_template(self) -> None:
+        if not self._workspace or not self._workspace.template_id or self._deleting:
+            return
+        template_name = self._workspace.template_name
+        confirm = QMessageBox.warning(
+            self,
+            "Delete template",
+            f"Delete “{template_name}”? This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self._deleting = True
+        self._update_dirty_state()
+        self._workspace = self._store.delete_template(self._workspace.template_id)
+        self._hydrate_draft_from_workspace()
+        self._render_workspace()
+        self._deleting = False
+        self._update_dirty_state()
+        if self._cache is not None and self._workspace is not None:
+            self._cache.apply_video_workspace(self._workspace, self._settings)
+        emit_video_template_catalog_changed()
+        emit_shell_status(f"Deleted {template_name}.")
+
+    # ─── Export for Marketplace (admin-only) ──────────────────────────────
+
+    _MARKETPLACE_ADMIN_EMAIL = "somvannda@gmail.com"
+
+    def _update_export_button_visibility(self) -> None:
+        """Show the Export button only if the logged-in user is the marketplace admin."""
+        email = ""
+        if self._cache and self._cache.me:
+            email = str(self._cache.me.email or "").strip().lower()
+        self._left_rail.set_export_visible(email == self._MARKETPLACE_ADMIN_EMAIL)
+
+    def _export_template_for_marketplace(self) -> None:
+        """Export the current template as a marketplace-ready zip bundle.
+
+        Creates a zip containing:
+        - manifest.json (name, description, version, author, kind, tags)
+        - template.json (the full template payload)
+        - preview.png (placeholder or captured preview)
+        """
+        import io
+        import json
+        import zipfile
+        from pathlib import Path
+
+        from PySide6.QtWidgets import QFileDialog, QInputDialog
+
+        if not self._workspace or not self._workspace.template:
+            emit_shell_status("No template loaded to export.")
+            return
+
+        template_name = self._workspace.template_name or "Untitled"
+        template_json = dict(self._workspace.template)
+
+        # Prompt for version
+        version, ok = QInputDialog.getText(
+            self, "Export Template", "Version:", text="1.0.0"
+        )
+        if not ok or not version.strip():
+            return
+        version = version.strip()
+
+        # Prompt for description
+        description, ok = QInputDialog.getText(
+            self, "Export Template", "Description:", text=f"{template_name} video template"
+        )
+        if not ok:
+            return
+        description = description.strip() or f"{template_name} video template"
+
+        # Prompt for kind
+        kind_options = ["video", "reel"]
+        kind, ok = QInputDialog.getItem(
+            self, "Export Template", "Kind:", kind_options, 0, False
+        )
+        if not ok:
+            return
+
+        # Ask for save location
+        default_filename = f"{template_name.replace(' ', '_').lower()}_{version}.zip"
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Marketplace Bundle",
+            default_filename,
+            "Zip Files (*.zip)",
+        )
+        if not save_path:
+            return
+
+        # Build manifest
+        manifest = {
+            "name": template_name,
+            "description": description,
+            "version": version,
+            "author": "Camxora",
+            "kind": kind,
+            "tags": [],
+        }
+
+        # Build the zip in memory then write to disk
+        try:
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+                zf.writestr("template.json", json.dumps(template_json, indent=2, ensure_ascii=False))
+                # Generate a minimal 1x1 PNG as placeholder preview
+                zf.writestr("preview.png", _minimal_png())
+
+            Path(save_path).write_bytes(buf.getvalue())
+            emit_shell_status(f"Exported marketplace bundle → {Path(save_path).name}")
+        except Exception as exc:
+            emit_shell_status(f"Export failed: {exc}")
+
+
+def _minimal_png() -> bytes:
+    """Return a valid 1x1 transparent PNG for placeholder preview."""
+    import struct
+    import zlib
+
+    def _chunk(chunk_type: bytes, data: bytes) -> bytes:
+        raw = chunk_type + data
+        return struct.pack(">I", len(data)) + raw + struct.pack(">I", zlib.crc32(raw) & 0xFFFFFFFF)
+
+    signature = b"\x89PNG\r\n\x1a\n"
+    ihdr_data = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+    ihdr = _chunk(b"IHDR", ihdr_data)
+    raw_pixels = b"\x00" + b"\x00\x00\x00\x00"  # filter byte + 1 RGBA pixel (transparent)
+    idat = _chunk(b"IDAT", zlib.compress(raw_pixels))
+    iend = _chunk(b"IEND", b"")
+    return signature + ihdr + idat + iend

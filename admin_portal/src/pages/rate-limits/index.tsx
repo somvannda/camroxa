@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import { AxiosError } from 'axios';
 import { useForm } from 'react-hook-form';
@@ -31,7 +32,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRateLimits, useUpdateRateLimit } from '@/hooks/use-rate-limits';
+import { useRateLimits, useSlaiImageProviderConfig, useUpdateRateLimit, useUpdateSlaiImageProviderConfig } from '@/hooks/use-rate-limits';
 import { toast } from '@/hooks/use-toast';
 import type { RateLimitConfig } from '@/types/models';
 
@@ -51,6 +52,17 @@ const rateLimitSchema = z.object({
 
 type RateLimitFormValues = z.infer<typeof rateLimitSchema>;
 
+const slaiImageProviderSchema = z.object({
+  min_interval_seconds: z.number().min(0).max(120),
+  max_concurrent: z.number().int().min(1).max(8),
+  provider_retries: z.number().int().min(1).max(20),
+  retry_base_delay_seconds: z.number().min(0).max(120),
+  retry_max_delay_seconds: z.number().min(1).max(300),
+  fallback_provider_retries: z.number().int().min(1).max(5),
+});
+
+type SlaiImageProviderFormValues = z.infer<typeof slaiImageProviderSchema>;
+
 // --- Component ---
 
 export default function RateLimitsPage() {
@@ -65,6 +77,13 @@ export default function RateLimitsPage() {
     refetch,
   } = useRateLimits();
   const updateRateLimit = useUpdateRateLimit();
+  const {
+    data: slaiConfig,
+    isLoading: slaiLoading,
+    isError: slaiError,
+    refetch: refetchSlaiConfig,
+  } = useSlaiImageProviderConfig();
+  const updateSlaiConfig = useUpdateSlaiImageProviderConfig();
 
   const form = useForm<RateLimitFormValues>({
     resolver: zodResolver(rateLimitSchema),
@@ -74,6 +93,30 @@ export default function RateLimitsPage() {
       window_seconds: 60,
     },
   });
+
+  const slaiForm = useForm<SlaiImageProviderFormValues>({
+    resolver: zodResolver(slaiImageProviderSchema),
+    defaultValues: {
+      min_interval_seconds: 5,
+      max_concurrent: 1,
+      provider_retries: 5,
+      retry_base_delay_seconds: 5,
+      retry_max_delay_seconds: 45,
+      fallback_provider_retries: 1,
+    },
+  });
+
+  React.useEffect(() => {
+    if (!slaiConfig) return;
+    slaiForm.reset({
+      min_interval_seconds: slaiConfig.min_interval_seconds,
+      max_concurrent: slaiConfig.max_concurrent,
+      provider_retries: slaiConfig.provider_retries,
+      retry_base_delay_seconds: slaiConfig.retry_base_delay_seconds,
+      retry_max_delay_seconds: slaiConfig.retry_max_delay_seconds,
+      fallback_provider_retries: slaiConfig.fallback_provider_retries,
+    });
+  }, [slaiConfig, slaiForm]);
 
   const openEditDialog = (config: RateLimitConfig) => {
     setSelectedConfig(config);
@@ -101,6 +144,26 @@ export default function RateLimitsPage() {
           title: 'Error',
           description:
             axiosError.response?.data?.detail ?? 'Failed to update rate limit',
+          variant: 'destructive',
+        });
+      },
+    });
+  };
+
+  const handleSlaiConfigSave = (values: SlaiImageProviderFormValues) => {
+    updateSlaiConfig.mutate(values, {
+      onSuccess: () => {
+        toast({
+          title: 'SLAI image settings saved',
+          description: 'Throttling and retry policy applied immediately.',
+        });
+      },
+      onError: (err) => {
+        const axiosError = err as AxiosError<{ detail?: string }>;
+        toast({
+          title: 'Error',
+          description:
+            axiosError.response?.data?.detail ?? 'Failed to save SLAI image settings',
           variant: 'destructive',
         });
       },
@@ -179,6 +242,151 @@ export default function RateLimitsPage() {
                 </p>
               )}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">SLAI Image Provider (cheapest-first)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-sm text-slate-400">
+            Controls how aggressively the platform uses SLAI before falling back to FAL or OpenAI.
+            Lower concurrency and higher retries keep costs down under parallel image jobs.
+          </p>
+          {slaiLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : slaiError ? (
+            <ErrorState
+              message="Failed to load SLAI image provider settings"
+              onRetry={() => refetchSlaiConfig()}
+            />
+          ) : (
+            <Form {...slaiForm}>
+              <form
+                onSubmit={slaiForm.handleSubmit(handleSlaiConfigSave)}
+                className="grid gap-4 md:grid-cols-2"
+              >
+                <FormField
+                  control={slaiForm.control}
+                  name="min_interval_seconds"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Min interval between SLAI calls (seconds)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={slaiForm.control}
+                  name="max_concurrent"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Max concurrent SLAI image calls</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={slaiForm.control}
+                  name="provider_retries"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SLAI retries before fallback</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={slaiForm.control}
+                  name="retry_base_delay_seconds"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Retry base delay (seconds)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={slaiForm.control}
+                  name="retry_max_delay_seconds"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Retry max delay (seconds)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={slaiForm.control}
+                  name="fallback_provider_retries"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fallback provider retries (FAL/OpenAI)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="md:col-span-2">
+                  <Button type="submit" disabled={updateSlaiConfig.isPending}>
+                    {updateSlaiConfig.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Save SLAI Settings
+                  </Button>
+                </div>
+              </form>
+            </Form>
           )}
         </CardContent>
       </Card>

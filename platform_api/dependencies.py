@@ -150,6 +150,13 @@ def get_audit_repo():
     return AuditRepository(db=get_db_pool())
 
 
+def get_client_log_repo():
+    """Dependency that returns the ClientLogRepository instance."""
+    from platform_api.repositories.client_log_repo import ClientLogRepository
+
+    return ClientLogRepository(db=get_db_pool())
+
+
 def get_rate_limit_config_repo():
     """Dependency that returns the RateLimitConfigRepository instance."""
     from platform_api.repositories.rate_limit_repo import RateLimitConfigRepository
@@ -266,6 +273,34 @@ def get_credit_pricing_service():
     return CreditPricingService(pricing_repo=get_credit_repo(), db_pool=get_db_pool())
 
 
+def get_credit_pack_service():
+    """Dependency that returns the CreditPackService instance."""
+    from platform_api.services.credit_pack_service import CreditPackService
+
+    return CreditPackService(pack_repo=get_credit_repo())
+
+
+def get_model_cost_repo():
+    from platform_api.repositories.model_cost_repo import ModelCostRepository
+
+    return ModelCostRepository(pool=get_db_pool())
+
+
+def get_model_cost_service():
+    from platform_api.services.model_cost_service import ModelCostService
+
+    return ModelCostService(repo=get_model_cost_repo())
+
+
+def get_pricing_generator_service():
+    from platform_api.services.pricing_generator_service import PricingGeneratorService
+
+    return PricingGeneratorService(
+        model_cost_repo=get_model_cost_repo(),
+        pricing_repo=get_credit_repo(),
+    )
+
+
 def get_usage_tracking_repo():
     """Dependency that returns the UsageTrackingRepository instance."""
     from platform_api.repositories.usage_tracking_repo import UsageTrackingRepository
@@ -283,6 +318,7 @@ def get_usage_enforcement_service():
         plan_repo=get_plan_repo(),
         pricing_repo=get_credit_repo(),
         redis=get_redis(),
+        license_repo=get_license_repo(),
     )
 
 
@@ -310,13 +346,14 @@ def get_generation_service():
 
     return GenerationService(
         credit_service=get_credit_service(),
-        pricing_repo=get_credit_repo(),
+        pricing_repo=get_credit_pricing_service(),
         task_repo=get_batch_repo(),
         llm_client=get_llm_client(),
         suno_client=get_suno_client(),
         fal_client=get_fal_client(),
         slai_client=get_slai_client(),
         key_pool_service=get_key_pool_service(),
+        ai_routing_service=get_ai_routing_service(),
     )
 
 
@@ -330,6 +367,41 @@ def get_batch_service():
         pricing_service=get_credit_pricing_service(),
         generation_service=get_generation_service(),
         profile_repo=get_profile_repo(),
+        ai_routing_service=get_ai_routing_service(),
+        prompt_service=get_prompt_service(),
+        settings_service=get_settings_service(),
+        enforcement_service=get_usage_enforcement_service(),
+        image_job_service=get_image_job_service(),
+        image_sample_rotation=get_image_sample_rotation_service(),
+    )
+
+
+def get_image_sample_repo():
+    from platform_api.repositories.image_sample_repo import ImageSampleRepository
+
+    return ImageSampleRepository(pool=get_db_pool())
+
+
+def get_image_sample_rotation_service():
+    from platform_api.services.image_sample_rotation import ImageSampleRotationService
+
+    return ImageSampleRotationService(
+        repo=get_image_sample_repo(),
+        pack_repo=get_image_sample_pack_repo(),
+    )
+
+
+def get_image_job_service():
+    from platform_api.services.image_job_service import ImageJobService
+
+    return ImageJobService(
+        repo=get_batch_repo(),
+        settings_service=get_settings_service(),
+        settings_repo=get_settings_repo(),
+        routing_service=get_ai_routing_service(),
+        enforcement_service=get_usage_enforcement_service(),
+        generation_service=get_generation_service(),
+        image_sample_rotation=get_image_sample_rotation_service(),
     )
 
 
@@ -340,6 +412,30 @@ def get_settings_service():
     return SettingsService(settings_repo=get_settings_repo())
 
 
+def get_invitation_code_encryption():
+    """Dependency that returns the encryption helper for invitation codes."""
+    from platform_api.services.key_encryption import KeyEncryption
+
+    settings = get_settings()
+    if not settings.encryption_master_key:
+        logger.warning(
+            "PLATFORM_ENCRYPTION_MASTER_KEY not set — invitation code display will be limited to hints."
+        )
+        return None
+
+    return KeyEncryption(master_key=settings.encryption_master_key)
+
+
+def get_invitation_code_service():
+    """Dependency that returns the InvitationCodeService instance."""
+    from platform_api.services.invitation_code_service import InvitationCodeService
+
+    return InvitationCodeService(
+        pool=get_db_pool(),
+        encryption=get_invitation_code_encryption(),
+    )
+
+
 def get_audit_service():
     """Dependency that returns the AuditService instance."""
     from platform_api.services.audit_service import AuditService
@@ -347,14 +443,24 @@ def get_audit_service():
     return AuditService(audit_repo=get_audit_repo())
 
 
+def get_client_log_service():
+    """Dependency that returns the ClientLogService instance."""
+    from platform_api.services.client_log_service import ClientLogService
+
+    return ClientLogService(repo=get_client_log_repo())
+
+
 def get_notification_service():
     """Dependency that returns the NotificationService instance."""
     from platform_api.services.notification_service import (
-        ConnectionRegistry,
+        PGNotificationQueueRepository,
         NotificationService,
     )
 
-    return NotificationService(registry=_connection_registry)
+    return NotificationService(
+        registry=_connection_registry,
+        queue_repo=PGNotificationQueueRepository(pool=get_db_pool()),
+    )
 
 
 def get_suno_balance_service():
@@ -409,6 +515,63 @@ def get_key_pool_service():
     )
 
 
+def get_youtube_oauth_app_repo():
+    """Dependency that returns the YouTube OAuth app repository instance."""
+    from platform_api.repositories.youtube_oauth_app_repo import YouTubeOAuthAppRepository
+
+    return YouTubeOAuthAppRepository(db=get_db_pool())
+
+
+def get_youtube_oauth_encryption():
+    """Dependency that returns the encryption helper for YouTube OAuth secrets."""
+    from platform_api.services.key_encryption import KeyEncryption
+
+    settings = get_settings()
+    if not settings.encryption_master_key:
+        logger.warning(
+            "PLATFORM_ENCRYPTION_MASTER_KEY not set — YouTube OAuth app secret storage unavailable."
+        )
+        return None
+
+    return KeyEncryption(master_key=settings.encryption_master_key)
+
+
+def get_youtube_connection_repo():
+    """Dependency that returns the YouTube connection repository instance."""
+    from platform_api.repositories.youtube_connection_repo import YouTubeConnectionRepository
+
+    return YouTubeConnectionRepository(db=get_db_pool())
+
+
+def get_image_sample_pack_repo():
+    from platform_api.repositories.image_sample_pack_repo import ImageSamplePackRepository
+
+    return ImageSamplePackRepository(db=get_db_pool())
+
+
+def get_image_sample_pack_service():
+    from platform_api.config import get_settings
+    from platform_api.services.image_sample_pack_service import ImageSamplePackService
+
+    return ImageSamplePackService(
+        storage_root=get_settings().sample_pack_storage_path,
+        repo=get_image_sample_pack_repo(),
+    )
+
+
+def get_youtube_connection_service():
+    """Dependency that returns the backend-mediated YouTube connection service."""
+    from platform_api.services.youtube_connection_service import YouTubeConnectionService
+
+    return YouTubeConnectionService(
+        db=get_db_pool(),
+        oauth_app_repo=get_youtube_oauth_app_repo(),
+        connection_repo=get_youtube_connection_repo(),
+        encryption=get_youtube_oauth_encryption(),
+        settings_service=get_settings_service(),
+    )
+
+
 # ---------------------------------------------------------------------------
 # ConnectionRegistry singleton (lives for the lifetime of the process)
 # ---------------------------------------------------------------------------
@@ -455,3 +618,34 @@ def get_channel_prompt_service():
     from platform_api.services.channel_prompt_service import ChannelPromptService
 
     return ChannelPromptService(repo=get_channel_prompt_repo())
+
+
+def get_reset_service():
+    """Dependency that returns the ResetService instance.
+
+    Wires together pool, redis, audit_service, and backup_dir from settings
+    for the admin user-data reset/backup/restore functionality.
+    """
+    from platform_api.services.reset_service import ResetService
+
+    settings = get_settings()
+    return ResetService(
+        pool=get_db_pool(),
+        redis=get_redis(),
+        audit_service=get_audit_service(),
+        backup_dir=settings.backup_dir,
+    )
+
+
+def get_ai_routing_service():
+    """Dependency that returns the AIRoutingService instance."""
+    from platform_api.services.ai_routing_service import AIRoutingService
+
+    key_pool_svc = get_key_pool_service()
+    if key_pool_svc is None:
+        return None
+
+    return AIRoutingService(
+        settings_repo=get_settings_repo(),
+        key_pool_service=key_pool_svc,
+    )

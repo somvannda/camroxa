@@ -132,6 +132,8 @@ CREATE TABLE IF NOT EXISTS batches (
     creativity_level INTEGER NOT NULL DEFAULT 50 CHECK (creativity_level BETWEEN 0 AND 100),
     pairing_mode VARCHAR(20) NOT NULL DEFAULT 'match_key',
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    auto_gen_image BOOLEAN NOT NULL DEFAULT false,
+    auto_gsuno BOOLEAN NOT NULL DEFAULT false,
     ok_run_dir VARCHAR(500),
     alt_run_dir VARCHAR(500),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -189,6 +191,9 @@ CREATE TABLE IF NOT EXISTS image_jobs (
     provider VARCHAR(20),
     resolution VARCHAR(20) DEFAULT '1920x1080',
     style_strength NUMERIC(3,2) DEFAULT 0.6,
+    input_image_path TEXT,
+    style_reference_path TEXT,
+    source_job_id UUID,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     attempt_count INTEGER NOT NULL DEFAULT 0,
     output_image_path VARCHAR(500),
@@ -196,6 +201,48 @@ CREATE TABLE IF NOT EXISTS image_jobs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS image_sample_packs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category TEXT NOT NULL,
+    name TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_value TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    version_label TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_sample_packs_category_sort
+    ON image_sample_packs(category, sort_order, lower(name));
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_image_sample_packs_category_name
+    ON image_sample_packs(category, lower(name));
+
+CREATE TABLE IF NOT EXISTS batch_channel_assets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    batch_id UUID NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profile_id UUID NOT NULL REFERENCES channel_profiles(id) ON DELETE CASCADE,
+    role VARCHAR(10) NOT NULL,
+    run_dir TEXT,
+    source_mode TEXT NOT NULL DEFAULT 'manual',
+    background_16x9_path TEXT,
+    background_9x16_path TEXT,
+    thumbnail_16x9_path TEXT,
+    thumbnail_9x16_path TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_batch_channel_assets_triplet
+    ON batch_channel_assets(batch_id, profile_id, role);
+
+CREATE INDEX IF NOT EXISTS idx_batch_channel_assets_user_batch
+    ON batch_channel_assets(user_id, batch_id);
 
 -- Application Settings
 CREATE TABLE IF NOT EXISTS user_settings (

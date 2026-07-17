@@ -164,21 +164,36 @@ class FakeAsyncPGPool:
                 "ref_id": args[4] if len(args) <= 7 else args[5],
                 "pack_id": args[5] if len(args) > 7 else None,
                 "payment_ref": args[6] if len(args) > 7 else None,
+                "metadata": None,
                 "created_at": datetime.now(timezone.utc),
             }
             # Parse direction from query if it's hardcoded
             if "'debit'" in q:
                 txn["direction"] = "debit"
+                txn["reason"] = args[3] if len(args) > 3 else ""
+                txn["ref_id"] = args[4] if len(args) > 4 else None
+                if len(args) > 5:
+                    txn["metadata"] = args[5]
             elif "'credit'" in q:
                 txn["direction"] = "credit"
             elif "'refund'" in q:
                 txn["direction"] = "refund"
+                txn["reason"] = args[3] if len(args) > 3 else ""
+                txn["ref_id"] = args[4] if len(args) > 4 else None
+                if len(args) > 5:
+                    txn["metadata"] = args[5]
             elif len(args) > 3 and isinstance(args[3], str) and args[3] in ("credit", "debit", "refund"):
                 txn["direction"] = args[3]
                 txn["reason"] = args[4] if len(args) > 4 else ""
                 txn["ref_id"] = args[5] if len(args) > 5 else None
-                txn["pack_id"] = args[6] if len(args) > 6 else None
-                txn["payment_ref"] = args[7] if len(args) > 7 else None
+                # record_ledger_entry: metadata at $7; record_transaction: pack_id at $7
+                if "metadata" in q and len(args) > 6:
+                    txn["metadata"] = args[6]
+                    txn["pack_id"] = None
+                    txn["payment_ref"] = None
+                else:
+                    txn["pack_id"] = args[6] if len(args) > 6 else None
+                    txn["payment_ref"] = args[7] if len(args) > 7 else None
 
             self._transactions.append(txn)
             return "INSERT 0 1"
@@ -523,3 +538,42 @@ class TestRecordTransaction:
     ) -> None:
         with pytest.raises(ValidationError):
             await repo.record_transaction(user_id, -10, "debit", "test")
+
+
+class TestRecordLedgerEntry:
+    """Zero-amount plan-allowance rows must still insert."""
+
+    async def test_allows_zero_amount_with_metadata(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 100)
+        txn_id = await repo.record_ledger_entry(
+            user_id,
+            0,
+            "debit",
+            "lyric via slai",
+            metadata={
+                "billing": "plan_allowance",
+                "list_credit_units": 216,
+                "charged_credit_units": 0,
+                "coverage": "song_package",
+            },
+        )
+        assert isinstance(txn_id, UUID)
+        assert pool._wallets[user_id] == 100
+        assert len(pool._transactions) == 1
+        assert pool._transactions[0]["amount"] == 0
+        assert pool._transactions[0]["direction"] == "debit"
+
+    async def test_atomic_deduct_still_rejects_zero(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 100)
+        with pytest.raises(ValidationError):
+            await repo.atomic_deduct(user_id, 0, "should_fail")
+
+    async def test_rejects_negative_amount(
+        self, repo: CreditRepository, user_id: UUID
+    ) -> None:
+        with pytest.raises(ValidationError):
+            await repo.record_ledger_entry(user_id, -1, "debit", "bad")

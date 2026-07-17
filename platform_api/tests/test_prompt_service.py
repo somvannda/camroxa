@@ -41,14 +41,39 @@ class FakePromptRepository:
     async def get_description_by_id(self, desc_id: UUID) -> MusicDescription | None:
         return self._descriptions.get(desc_id)
 
-    async def get_description_by_name(self, name: str) -> MusicDescription | None:
+    async def get_description_by_name(
+        self, name: str, *, user_id: UUID | None = None
+    ) -> MusicDescription | None:
         for d in self._descriptions.values():
-            if d.name == name:
+            if d.name != name:
+                continue
+            if user_id is None and d.user_id is None:
+                return d
+            if user_id is not None and d.user_id == user_id:
                 return d
         return None
 
     async def list_descriptions(self) -> list[MusicDescription]:
-        return sorted(self._descriptions.values(), key=lambda d: d.name)
+        return sorted(
+            [d for d in self._descriptions.values() if d.user_id is None],
+            key=lambda d: d.name,
+        )
+
+    async def list_descriptions_for_user(self, user_id: UUID) -> list[MusicDescription]:
+        return sorted(
+            [d for d in self._descriptions.values() if d.user_id == user_id],
+            key=lambda d: d.name,
+        )
+
+    async def list_descriptions_workspace(self, user_id: UUID) -> list[MusicDescription]:
+        return sorted(
+            [
+                d
+                for d in self._descriptions.values()
+                if d.user_id is None or d.user_id == user_id
+            ],
+            key=lambda d: d.name,
+        )
 
     async def update_description(
         self, desc_id: UUID, **fields
@@ -68,6 +93,21 @@ class FakePromptRepository:
             return True
         return False
 
+    async def count_description_usage(self, desc_id: UUID) -> int:
+        return 0
+
+    async def list_description_usage_by_user(self, desc_id: UUID) -> list[dict]:
+        return []
+
+    async def list_description_usage_by_profile(self, desc_id: UUID) -> list[dict]:
+        return []
+
+    async def list_description_usage_by_day(self, desc_id: UUID) -> list[dict]:
+        return []
+
+    async def map_description_usage_counts(self) -> dict[UUID, int]:
+        return {}
+
     # --- Structures ---
 
     async def create_structure(self, struct: MusicStructure) -> MusicStructure:
@@ -79,14 +119,39 @@ class FakePromptRepository:
     async def get_structure_by_id(self, struct_id: UUID) -> MusicStructure | None:
         return self._structures.get(struct_id)
 
-    async def get_structure_by_name(self, name: str) -> MusicStructure | None:
+    async def get_structure_by_name(
+        self, name: str, *, user_id: UUID | None = None
+    ) -> MusicStructure | None:
         for s in self._structures.values():
-            if s.name == name:
+            if s.name != name:
+                continue
+            if user_id is None and s.user_id is None:
+                return s
+            if user_id is not None and s.user_id == user_id:
                 return s
         return None
 
     async def list_structures(self) -> list[MusicStructure]:
-        return sorted(self._structures.values(), key=lambda s: s.name)
+        return sorted(
+            [s for s in self._structures.values() if s.user_id is None],
+            key=lambda s: s.name,
+        )
+
+    async def list_structures_for_user(self, user_id: UUID) -> list[MusicStructure]:
+        return sorted(
+            [s for s in self._structures.values() if s.user_id == user_id],
+            key=lambda s: s.name,
+        )
+
+    async def list_structures_workspace(self, user_id: UUID) -> list[MusicStructure]:
+        return sorted(
+            [
+                s
+                for s in self._structures.values()
+                if s.user_id is None or s.user_id == user_id
+            ],
+            key=lambda s: s.name,
+        )
 
     async def update_structure(
         self, struct_id: UUID, **fields
@@ -106,13 +171,36 @@ class FakePromptRepository:
             return True
         return False
 
+    async def count_structure_usage(self, struct_id: UUID) -> int:
+        return 0
+
+    async def list_structure_usage_by_user(self, struct_id: UUID) -> list[dict]:
+        return []
+
+    async def list_structure_usage_by_profile(self, struct_id: UUID) -> list[dict]:
+        return []
+
+    async def list_structure_usage_by_day(self, struct_id: UUID) -> list[dict]:
+        return []
+
+    async def map_structure_usage_counts(self) -> dict[UUID, int]:
+        return {}
+
     # --- matchKey lookups ---
 
     async def get_descriptions_with_match_key(self) -> list[MusicDescription]:
-        return [d for d in self._descriptions.values() if d.match_key is not None]
+        return [
+            d
+            for d in self._descriptions.values()
+            if d.match_key is not None and d.user_id is None
+        ]
 
     async def get_structures_with_match_key(self) -> list[MusicStructure]:
-        return [s for s in self._structures.values() if s.match_key is not None]
+        return [
+            s
+            for s in self._structures.values()
+            if s.match_key is not None and s.user_id is None
+        ]
 
     async def get_matched_pairs(
         self,

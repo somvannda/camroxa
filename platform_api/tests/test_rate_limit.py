@@ -180,6 +180,36 @@ class TestResolveEndpointType:
     def test_case_insensitive(self) -> None:
         assert resolve_endpoint_type("/API/V1/Generation/Suno") == "suno"
 
+    def test_batch_create_is_llm(self) -> None:
+        assert resolve_endpoint_type("/api/v1/batches") == "llm"
+
+    def test_batch_retry_draft_is_llm(self) -> None:
+        assert (
+            resolve_endpoint_type(
+                "/api/v1/batches/b1/songs/s1/retry-draft"
+            )
+            == "llm"
+        )
+
+    def test_batch_retry_suno_is_suno(self) -> None:
+        assert (
+            resolve_endpoint_type(
+                "/api/v1/batches/b1/songs/s1/retry-suno"
+            )
+            == "suno"
+        )
+
+    def test_channel_setup_llm_paths(self) -> None:
+        assert resolve_endpoint_type("/api/v1/channel-setup/generate-names") == "llm"
+        assert (
+            resolve_endpoint_type("/api/v1/channel-setup/generate-description")
+            == "llm"
+        )
+
+    def test_channel_setup_image_paths(self) -> None:
+        assert resolve_endpoint_type("/api/v1/channel-setup/generate-logo") == "image"
+        assert resolve_endpoint_type("/api/v1/channel-setup/generate-covers") == "image"
+
 
 # ---------------------------------------------------------------------------
 # Tests for check_rate_limit (core sliding window algorithm)
@@ -516,3 +546,73 @@ class TestRateLimiter:
 
         # Default endpoint still has capacity
         await limiter.check(other_request, "user1")
+
+
+# ---------------------------------------------------------------------------
+# Tests for enforce helpers used by AI routers
+# ---------------------------------------------------------------------------
+
+
+class TestEnforceRateLimitHelpers:
+    """Wiring helpers should no-op without a configured limiter, then enforce."""
+
+    async def test_enforce_rate_limit_noop_when_unconfigured(self) -> None:
+        from platform_api.middleware import rate_limit as rl
+
+        previous = rl._rate_limiter
+        rl._rate_limiter = None
+        try:
+            request = MagicMock()
+            request.url.path = "/api/v1/generation/draft"
+            await rl.enforce_rate_limit(request, "user1")
+        finally:
+            rl._rate_limiter = previous
+
+    async def test_enforce_rate_limit_uses_configured_limiter(
+        self, fake_redis: FakeRedis
+    ) -> None:
+        from platform_api.middleware import rate_limit as rl
+        from platform_api.middleware.rate_limit import configure_rate_limiter
+
+        previous = rl._rate_limiter
+        try:
+            limiter = configure_rate_limiter(
+                redis=fake_redis,  # type: ignore[arg-type]
+                config_repo=FakeConfigRepo(
+                    configs={
+                        "llm": RateLimitConfig(max_requests=1, window_seconds=60),
+                    }
+                ),
+            )
+            request = MagicMock()
+            request.url.path = "/api/v1/generation/draft"
+            await rl.enforce_rate_limit(request, "user-wire")
+            with pytest.raises(HTTPException) as exc_info:
+                await rl.enforce_rate_limit(request, "user-wire")
+            assert exc_info.value.status_code == 429
+            assert limiter is rl._rate_limiter
+        finally:
+            rl._rate_limiter = previous
+
+    async def test_enforce_rate_limit_for_endpoint_onboarding_image(
+        self, fake_redis: FakeRedis
+    ) -> None:
+        from platform_api.middleware import rate_limit as rl
+        from platform_api.middleware.rate_limit import configure_rate_limiter
+
+        previous = rl._rate_limiter
+        try:
+            configure_rate_limiter(
+                redis=fake_redis,  # type: ignore[arg-type]
+                config_repo=FakeConfigRepo(
+                    configs={
+                        "image": RateLimitConfig(max_requests=1, window_seconds=60),
+                    }
+                ),
+            )
+            await rl.enforce_rate_limit_for_endpoint("user-onboard", "image")
+            with pytest.raises(HTTPException) as exc_info:
+                await rl.enforce_rate_limit_for_endpoint("user-onboard", "image")
+            assert exc_info.value.status_code == 429
+        finally:
+            rl._rate_limiter = previous

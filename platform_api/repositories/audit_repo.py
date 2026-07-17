@@ -8,12 +8,50 @@ Requirements: 20.1, 20.2, 20.3, 20.4
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 from uuid import UUID
 
 from platform_api.models.domain import AuditLog
+from platform_api.utils.datetime_utils import utc_now
+
+
+def _coerce_uuid(value: Any) -> UUID | None:
+    """Normalize asyncpg/Python UUID values to stdlib UUID."""
+    if value is None:
+        return None
+    if isinstance(value, UUID):
+        return value
+    return UUID(str(value))
+
+
+def _coerce_metadata(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {"raw": value}
+        return parsed if isinstance(parsed, dict) else {"raw": parsed}
+    return {"raw": value}
+
+
+def _coerce_datetime(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    if isinstance(value, str):
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    return utc_now()
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +74,8 @@ class AuditQueryFilters:
     actor_id: str | None = None
     action_type: str | None = None
     resource_type: str | None = None
+    outcome: str | None = None
+    endpoint_path: str | None = None
     from_date: datetime | None = None
     to_date: datetime | None = None
 
@@ -115,7 +155,7 @@ class AuditRepository:
             INSERT INTO audit_logs (id, actor_id, action_type, target_resource,
                                     outcome, credit_impact, source_ip, client_id,
                                     endpoint_path, metadata, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)
             """,
             str(entry.id),
             str(entry.actor_id) if entry.actor_id else None,
@@ -171,6 +211,16 @@ class AuditRepository:
                 conditions.append(f"target_resource LIKE ${param_idx}")
                 params.append(f"{filters.resource_type}%")
 
+            if filters.outcome:
+                param_idx += 1
+                conditions.append(f"outcome = ${param_idx}")
+                params.append(filters.outcome)
+
+            if filters.endpoint_path:
+                param_idx += 1
+                conditions.append(f"endpoint_path ILIKE ${param_idx}")
+                params.append(f"%{filters.endpoint_path}%")
+
             if filters.from_date:
                 param_idx += 1
                 conditions.append(f"created_at >= ${param_idx}")
@@ -217,11 +267,11 @@ class AuditRepository:
     @staticmethod
     def _row_to_audit_log(row: dict[str, Any]) -> AuditLog:
         """Convert a database row dict to an AuditLog domain object."""
-        from uuid import UUID as _UUID
+        metadata = _coerce_metadata(row.get("metadata"))
 
         return AuditLog(
-            id=_UUID(row["id"]) if isinstance(row["id"], str) else row["id"],
-            actor_id=_UUID(row["actor_id"]) if row.get("actor_id") else None,
+            id=_coerce_uuid(row["id"]),
+            actor_id=_coerce_uuid(row.get("actor_id")),
             action_type=row.get("action_type", ""),
             target_resource=row.get("target_resource"),
             outcome=row.get("outcome", "success"),
@@ -229,6 +279,6 @@ class AuditRepository:
             source_ip=row.get("source_ip"),
             client_id=row.get("client_id"),
             endpoint_path=row.get("endpoint_path"),
-            metadata=row.get("metadata"),
-            created_at=row.get("created_at", datetime.utcnow()),
+            metadata=metadata,
+            created_at=_coerce_datetime(row.get("created_at")),
         )

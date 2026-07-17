@@ -91,6 +91,27 @@ class UsageTrackingRepository:
         )
         return row if row is not None else 0
 
+    async def get_account_daily_count(
+        self,
+        user_id: UUID,
+        operation_type: str,
+        usage_date: date,
+    ) -> int:
+        """Sum daily usage across all channels for account-wide daily caps."""
+        row = await self._pool.fetchval(
+            """
+            SELECT COALESCE(SUM(daily_count), 0)
+            FROM usage_tracking
+            WHERE user_id = $1
+              AND operation_type = $2
+              AND usage_date = $3
+            """,
+            user_id,
+            operation_type,
+            usage_date,
+        )
+        return int(row) if row is not None else 0
+
     async def get_monthly_count(
         self,
         user_id: UUID,
@@ -148,6 +169,25 @@ class UsageTrackingRepository:
             usage_date: The date of the usage event.
             period_start: The start date of the current billing period.
         """
+        await self._increment_usage_count(
+            user_id=user_id,
+            channel_profile_id=channel_profile_id,
+            operation_type=operation_type,
+            usage_date=usage_date,
+            period_start=period_start,
+            count=1,
+        )
+
+    async def _increment_usage_count(
+        self,
+        *,
+        user_id: UUID,
+        channel_profile_id: UUID | None,
+        operation_type: str,
+        usage_date: date,
+        period_start: date,
+        count: int,
+    ) -> None:
         new_id = uuid4()
         await self._pool.execute(
             """
@@ -156,12 +196,12 @@ class UsageTrackingRepository:
                 usage_date, daily_count, monthly_count,
                 period_start_date, created_at, updated_at
             ) VALUES (
-                $1, $2, $3, $4, $5, 1, 1, $6, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $6, $7, NOW(), NOW()
             )
             ON CONFLICT (user_id, channel_profile_id, operation_type, usage_date)
             DO UPDATE SET
-                daily_count = usage_tracking.daily_count + 1,
-                monthly_count = usage_tracking.monthly_count + 1,
+                daily_count = usage_tracking.daily_count + EXCLUDED.daily_count,
+                monthly_count = usage_tracking.monthly_count + EXCLUDED.monthly_count,
                 updated_at = NOW()
             """,
             new_id,
@@ -169,5 +209,164 @@ class UsageTrackingRepository:
             channel_profile_id,
             operation_type,
             usage_date,
+            count,
             period_start,
         )
+
+    async def decrement_usage(
+        self,
+        user_id: UUID,
+        channel_profile_id: UUID | None,
+        operation_type: str,
+        usage_date: date,
+        *,
+        count: int = 1,
+    ) -> None:
+        """Reverse a prior usage increment (e.g. after a failed image generation)."""
+        await self._pool.execute(
+            """
+            UPDATE usage_tracking
+            SET daily_count = GREATEST(0, daily_count - $5),
+                monthly_count = GREATEST(0, monthly_count - $5),
+                updated_at = NOW()
+            WHERE user_id = $1
+              AND channel_profile_id IS NOT DISTINCT FROM $2
+              AND operation_type = $3
+              AND usage_date = $4
+            """,
+            user_id,
+            channel_profile_id,
+            operation_type,
+            usage_date,
+            count,
+        )
+
+    async def try_increment_usage(
+        self,
+        user_id: UUID,
+        channel_profile_id: UUID | None,
+        operation_type: str,
+        usage_date: date,
+        period_start: date,
+        *,
+        daily_limit: int,
+        monthly_limit: int | None,
+        allow_monthly_overage: bool,
+        count: int = 1,
+        account_daily: bool = False,
+    ) -> bool:
+        """Atomically increment usage only when daily/monthly limits allow it.
+
+        When ``account_daily`` is True (video / video_merge), the daily check uses
+        the sum of daily_count across all channel rows for this user/op/date.
+        """
+        if count <= 0:
+            return True
+
+        acquire = getattr(self._pool, "acquire", None)
+        if acquire is None:
+            await self._increment_usage_count(
+                user_id=user_id,
+                channel_profile_id=channel_profile_id,
+                operation_type=operation_type,
+                usage_date=usage_date,
+                period_start=period_start,
+                count=count,
+            )
+            return True
+
+        async with acquire() as conn:
+            async with conn.transaction():
+                if account_daily:
+                    daily_count = int(
+                        await conn.fetchval(
+                            """
+                            SELECT COALESCE(SUM(daily_count), 0)
+                            FROM usage_tracking
+                            WHERE user_id = $1
+                              AND operation_type = $2
+                              AND usage_date = $3
+                            """,
+                            user_id,
+                            operation_type,
+                            usage_date,
+                        )
+                        or 0
+                    )
+                else:
+                    row = await conn.fetchrow(
+                        """
+                        SELECT daily_count
+                        FROM usage_tracking
+                        WHERE user_id = $1
+                          AND channel_profile_id IS NOT DISTINCT FROM $2
+                          AND operation_type = $3
+                          AND usage_date = $4
+                        FOR UPDATE
+                        """,
+                        user_id,
+                        channel_profile_id,
+                        operation_type,
+                        usage_date,
+                    )
+                    daily_count = int(row["daily_count"]) if row is not None else 0
+                if daily_count + count > daily_limit:
+                    return False
+
+                if monthly_limit is not None:
+                    if monthly_limit == 0:
+                        return False
+                    monthly_sum = await conn.fetchval(
+                        """
+                        SELECT COALESCE(SUM(monthly_count), 0)
+                        FROM usage_tracking
+                        WHERE user_id = $1
+                          AND operation_type = $2
+                          AND period_start_date = $3
+                        """,
+                        user_id,
+                        operation_type,
+                        period_start,
+                    )
+                    monthly_sum = int(monthly_sum or 0)
+                    if operation_type == "background_image":
+                        thumb_sum = await conn.fetchval(
+                            """
+                            SELECT COALESCE(SUM(monthly_count), 0)
+                            FROM usage_tracking
+                            WHERE user_id = $1
+                              AND operation_type = 'thumbnail_image'
+                              AND period_start_date = $2
+                            """,
+                            user_id,
+                            period_start,
+                        )
+                        monthly_sum += int(thumb_sum or 0)
+                    if monthly_sum + count > monthly_limit and not allow_monthly_overage:
+                        return False
+
+                new_id = uuid4()
+                await conn.execute(
+                    """
+                    INSERT INTO usage_tracking (
+                        id, user_id, channel_profile_id, operation_type,
+                        usage_date, daily_count, monthly_count,
+                        period_start_date, created_at, updated_at
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $6, $7, NOW(), NOW()
+                    )
+                    ON CONFLICT (user_id, channel_profile_id, operation_type, usage_date)
+                    DO UPDATE SET
+                        daily_count = usage_tracking.daily_count + EXCLUDED.daily_count,
+                        monthly_count = usage_tracking.monthly_count + EXCLUDED.monthly_count,
+                        updated_at = NOW()
+                    """,
+                    new_id,
+                    user_id,
+                    channel_profile_id,
+                    operation_type,
+                    usage_date,
+                    count,
+                    period_start,
+                )
+                return True

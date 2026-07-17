@@ -21,13 +21,19 @@ from httpx import ASGITransport, AsyncClient
 from platform_api.exceptions import ForbiddenError
 from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, require_admin
-from platform_api.models.domain import AuditLog
+from platform_api.models.domain import AuditLog, User
+from platform_api.models.enums import UserRole, UserStatus
 from platform_api.repositories.audit_repo import PaginatedAuditResult
 from platform_api.repositories.rate_limit_repo import RateLimitConfigRecord
+from platform_api.repositories.youtube_oauth_app_repo import YouTubeOAuthAppRecord
 from platform_api.routers.admin import (
     _get_audit_service,
+    _get_user_repo,
     _get_rate_limit_repo,
+    _get_settings_repo,
     _get_suno_balance_service,
+    _get_youtube_oauth_app_repo,
+    _get_youtube_oauth_encryption,
 )
 
 # ---------------------------------------------------------------------------
@@ -36,6 +42,11 @@ from platform_api.routers.admin import (
 
 ADMIN_CONTEXT = AuthContext(user_id=str(uuid4()), email="admin@example.com", role="admin")
 NOW = datetime(2024, 6, 15, 10, 30, 0)
+
+
+class FakeEncryption:
+    def encrypt(self, plaintext: str) -> bytes:
+        return f"enc::{plaintext}".encode()
 
 
 # ---------------------------------------------------------------------------
@@ -81,10 +92,58 @@ def mock_rate_limit_repo() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_youtube_oauth_repo() -> AsyncMock:
+    repo = AsyncMock()
+    repo.list_all = AsyncMock(return_value=[])
+    repo.create = AsyncMock(
+        return_value=YouTubeOAuthAppRecord(
+            id=str(uuid4()),
+            name="Main Google App",
+            client_id="client-123",
+            encrypted_client_secret=b"enc::secret",
+            is_default=True,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    )
+    repo.update = AsyncMock(
+        return_value=YouTubeOAuthAppRecord(
+            id=str(uuid4()),
+            name="Updated Google App",
+            client_id="client-456",
+            encrypted_client_secret=b"enc::new-secret",
+            is_default=False,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    )
+    repo.delete = AsyncMock(return_value=True)
+    return repo
+
+
+@pytest.fixture
+def mock_settings_repo() -> AsyncMock:
+    repo = AsyncMock()
+    repo.get_system_setting = AsyncMock(return_value=None)
+    repo.upsert_system_settings = AsyncMock()
+    return repo
+
+
+@pytest.fixture
+def mock_user_repo() -> AsyncMock:
+    repo = AsyncMock()
+    repo.get_by_id = AsyncMock(return_value=None)
+    return repo
+
+
+@pytest.fixture
 def app(
     mock_audit_service: AsyncMock,
     mock_suno_balance_service: AsyncMock,
     mock_rate_limit_repo: AsyncMock,
+    mock_settings_repo: AsyncMock,
+    mock_youtube_oauth_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
 ):
     """Create a test app with admin auth and all admin service overrides."""
     application = create_app()
@@ -92,6 +151,10 @@ def app(
     application.dependency_overrides[_get_audit_service] = lambda: mock_audit_service
     application.dependency_overrides[_get_suno_balance_service] = lambda: mock_suno_balance_service
     application.dependency_overrides[_get_rate_limit_repo] = lambda: mock_rate_limit_repo
+    application.dependency_overrides[_get_settings_repo] = lambda: mock_settings_repo
+    application.dependency_overrides[_get_youtube_oauth_app_repo] = lambda: mock_youtube_oauth_repo
+    application.dependency_overrides[_get_youtube_oauth_encryption] = lambda: FakeEncryption()
+    application.dependency_overrides[_get_user_repo] = lambda: mock_user_repo
     yield application
     application.dependency_overrides.clear()
 
@@ -109,12 +172,19 @@ def non_admin_app(
     mock_audit_service: AsyncMock,
     mock_suno_balance_service: AsyncMock,
     mock_rate_limit_repo: AsyncMock,
+    mock_settings_repo: AsyncMock,
+    mock_youtube_oauth_repo: AsyncMock,
+    mock_user_repo: AsyncMock,
 ):
     """Create a test app where the user is NOT an admin."""
     application = create_app()
     application.dependency_overrides[_get_audit_service] = lambda: mock_audit_service
     application.dependency_overrides[_get_suno_balance_service] = lambda: mock_suno_balance_service
     application.dependency_overrides[_get_rate_limit_repo] = lambda: mock_rate_limit_repo
+    application.dependency_overrides[_get_settings_repo] = lambda: mock_settings_repo
+    application.dependency_overrides[_get_youtube_oauth_app_repo] = lambda: mock_youtube_oauth_repo
+    application.dependency_overrides[_get_youtube_oauth_encryption] = lambda: FakeEncryption()
+    application.dependency_overrides[_get_user_repo] = lambda: mock_user_repo
 
     def _reject_non_admin():
         raise ForbiddenError("You do not have permission to perform this action.")
@@ -190,10 +260,20 @@ class TestGetAuditLog:
         assert data["total_pages"] == 0
 
     async def test_returns_entries(
-        self, client: AsyncClient, mock_audit_service: AsyncMock
+        self, client: AsyncClient, mock_audit_service: AsyncMock, mock_user_repo: AsyncMock
     ) -> None:
         """Returns audit log entries with pagination metadata."""
         actor_id = uuid4()
+        mock_user_repo.get_by_id.return_value = User(
+            id=actor_id,
+            email="operator@example.com",
+            password_hash="hashed",
+            display_name="Operations Admin",
+            role=UserRole.ADMIN,
+            status=UserStatus.ACTIVE,
+            created_at=NOW,
+            updated_at=NOW,
+        )
         entry = AuditLog(
             id=uuid4(),
             actor_id=actor_id,
@@ -221,10 +301,47 @@ class TestGetAuditLog:
         entry_data = data["entries"][0]
         assert entry_data["action_type"] == "auth.login"
         assert entry_data["actor_id"] == str(actor_id)
+        assert entry_data["actor_email"] == "operator@example.com"
+        assert entry_data["actor_display_name"] == "Operations Admin"
+        assert entry_data["actor_role"] == "admin"
+        assert entry_data["actor_label"] == "Operations Admin"
         assert entry_data["target_resource"] == "user:abc123"
         assert entry_data["outcome"] == "success"
         assert entry_data["source_ip"] == "192.168.1.1"
+        assert entry_data["credits_involved"] is False
+        assert entry_data["credit_summary"] == "No recorded credit involvement."
         assert entry_data["metadata"] == {"browser": "chrome"}
+
+    async def test_returns_credit_context_fields(
+        self, client: AsyncClient, mock_audit_service: AsyncMock
+    ) -> None:
+        """Returns derived credit context for audit entries."""
+        entry = AuditLog(
+            id=uuid4(),
+            actor_id=None,
+            action_type="credit.purchase",
+            target_resource="credit_wallet:user-1",
+            outcome="success",
+            credit_impact=25,
+            source_ip="192.168.1.1",
+            client_id="admin-portal",
+            endpoint_path="/api/v1/credits/purchase",
+            metadata={"reason": "monthly pack", "payment_ref": "pay_123"},
+            created_at=NOW,
+        )
+        mock_audit_service.query.return_value = PaginatedAuditResult(
+            entries=[entry], total=1, page=1, page_size=50
+        )
+
+        response = await client.get("/api/v1/admin/audit-log")
+        assert response.status_code == 200
+        entry_data = response.json()["entries"][0]
+        assert entry_data["actor_label"] == "System"
+        assert entry_data["credits_involved"] is True
+        assert entry_data["credit_direction"] == "debit"
+        assert entry_data["credit_reason"] == "monthly pack"
+        assert entry_data["payment_reference"] == "pay_123"
+        assert entry_data["credit_summary"] == "Deducted 25 credits. Reason: monthly pack."
 
     async def test_passes_filters(
         self, client: AsyncClient, mock_audit_service: AsyncMock
@@ -236,6 +353,8 @@ class TestGetAuditLog:
                 "actor_id": "user-123",
                 "action_type": "generation.suno",
                 "resource_type": "batch",
+                "outcome": "failure",
+                "endpoint_path": "/api/v1/generation",
                 "from_date": "2024-01-01T00:00:00",
                 "to_date": "2024-12-31T23:59:59",
                 "page": 2,
@@ -247,6 +366,8 @@ class TestGetAuditLog:
             actor_id="user-123",
             action_type="generation.suno",
             resource_type="batch",
+            outcome="failure",
+            endpoint_path="/api/v1/generation",
             from_date=datetime(2024, 1, 1, 0, 0, 0),
             to_date=datetime(2024, 12, 31, 23, 59, 59),
             page=2,
@@ -262,6 +383,8 @@ class TestGetAuditLog:
             actor_id=None,
             action_type=None,
             resource_type=None,
+            outcome=None,
+            endpoint_path=None,
             from_date=None,
             to_date=None,
             page=1,
@@ -393,4 +516,123 @@ class TestUpdateRateLimits:
             "/api/v1/admin/rate-limits",
             json={"endpoint_type": "suno", "max_requests": 20, "window_seconds": 120},
         )
+        assert response.status_code == 403
+
+
+class TestSlaiImageProviderConfig:
+    async def test_get_returns_defaults_when_unset(
+        self, client: AsyncClient, mock_settings_repo: AsyncMock
+    ) -> None:
+        mock_settings_repo.get_system_setting.return_value = None
+        response = await client.get("/api/v1/admin/rate-limits/slai-image-provider")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["min_interval_seconds"] == 5.0
+        assert data["max_concurrent"] == 1
+        assert data["provider_retries"] == 5
+
+    async def test_put_persists_settings(
+        self, client: AsyncClient, mock_settings_repo: AsyncMock
+    ) -> None:
+        payload = {
+            "min_interval_seconds": 8.0,
+            "max_concurrent": 2,
+            "provider_retries": 7,
+            "retry_base_delay_seconds": 6.0,
+            "retry_max_delay_seconds": 60.0,
+            "fallback_provider_retries": 2,
+        }
+        response = await client.put(
+            "/api/v1/admin/rate-limits/slai-image-provider",
+            json=payload,
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider_retries"] == 7
+        mock_settings_repo.upsert_system_settings.assert_awaited_once()
+
+    async def test_non_admin_rejected(self, non_admin_client: AsyncClient) -> None:
+        response = await non_admin_client.get(
+            "/api/v1/admin/rate-limits/slai-image-provider"
+        )
+        assert response.status_code == 403
+
+
+class TestYouTubeOAuthApps:
+    async def test_lists_apps(
+        self, client: AsyncClient, mock_youtube_oauth_repo: AsyncMock
+    ) -> None:
+        app_id = str(uuid4())
+        mock_youtube_oauth_repo.list_all.return_value = [
+            YouTubeOAuthAppRecord(
+                id=app_id,
+                name="Studio Google App",
+                client_id="client-123",
+                encrypted_client_secret=b"enc::secret",
+                is_default=True,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        ]
+
+        response = await client.get("/api/v1/admin/youtube-oauth-apps")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["apps"]) == 1
+        assert data["apps"][0]["id"] == app_id
+        assert data["apps"][0]["name"] == "Studio Google App"
+        assert data["apps"][0]["client_id"] == "client-123"
+        assert data["apps"][0]["has_client_secret"] is True
+        assert data["apps"][0]["created_at"] == NOW.isoformat()
+        assert data["apps"][0]["updated_at"] == NOW.isoformat()
+
+    async def test_creates_app(
+        self, client: AsyncClient, mock_youtube_oauth_repo: AsyncMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/admin/youtube-oauth-apps",
+            json={
+                "name": "Main Google App",
+                "client_id": "client-123",
+                "client_secret": "secret-value",
+                "is_default": True,
+            },
+        )
+        assert response.status_code == 200
+        mock_youtube_oauth_repo.create.assert_called_once()
+        call_kwargs = mock_youtube_oauth_repo.create.call_args.kwargs
+        assert call_kwargs["name"] == "Main Google App"
+        assert call_kwargs["client_id"] == "client-123"
+        assert call_kwargs["encrypted_client_secret"] == b"enc::secret-value"
+        assert call_kwargs["is_default"] is True
+
+    async def test_updates_app(
+        self, client: AsyncClient, mock_youtube_oauth_repo: AsyncMock
+    ) -> None:
+        response = await client.patch(
+            "/api/v1/admin/youtube-oauth-apps/app-123",
+            json={
+                "name": "Updated Google App",
+                "client_secret": "new-secret",
+                "is_default": False,
+            },
+        )
+        assert response.status_code == 200
+        mock_youtube_oauth_repo.update.assert_called_once()
+        call_args = mock_youtube_oauth_repo.update.call_args
+        assert call_args.args[0] == "app-123"
+        assert call_args.kwargs["name"] == "Updated Google App"
+        assert call_args.kwargs["encrypted_client_secret"] == b"enc::new-secret"
+        assert call_args.kwargs["is_default"] is False
+
+    async def test_deletes_app(
+        self, client: AsyncClient, mock_youtube_oauth_repo: AsyncMock
+    ) -> None:
+        response = await client.delete("/api/v1/admin/youtube-oauth-apps/app-123")
+        assert response.status_code == 200
+        assert response.json()["message"] == "YouTube OAuth app deleted."
+        mock_youtube_oauth_repo.delete.assert_called_once_with("app-123")
+
+    async def test_non_admin_rejected(self, non_admin_client: AsyncClient) -> None:
+        response = await non_admin_client.get("/api/v1/admin/youtube-oauth-apps")
         assert response.status_code == 403

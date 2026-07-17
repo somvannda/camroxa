@@ -1,0 +1,86 @@
+@import "../../../shared/theme/camxora.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
+  input.camxora-temporal-input {
+    min-width: 0;
+    padding-right: 3rem;
+    color-scheme: dark;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.8' stroke='rgba(125,211,252,0.9)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M8.25 2.25v3m7.5-3v3M3.75 8.25h16.5M5.25 4.5h13.5A1.5 1.5 0 0 1 20.25 6v12.75a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V6a1.5 1.5 0 0 1 1.5-1.5Z' /%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.95rem center;
+    background-size: 1rem 1rem;
+  }
+
+  input.camxora-temporal-input::-webkit-calendar-picker-indicator {
+    position: absolute;
+    right: 0.85rem;
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
+    cursor: pointer;
+    opacity: 0;
+  }
+
+  input.camxora-temporal-input::-webkit-clear-button,
+  input.camxora-temporal-input::-webkit-inner-spin-button {
+    display: none;
+  }
+
+  input.camxora-temporal-input::-webkit-datetime-edit,
+  input.camxora-temporal-input::-webkit-date-and-time-value {
+    color: hsl(var(--foreground));
+  }
+
+  input.camxora-temporal-input::-webkit-datetime-edit-text,
+  input.camxora-temporal-input::-webkit-datetime-edit-month-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-day-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-year-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-hour-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-minute-field {
+    padding-inline: 0;
+    color: hsl(var(--foreground));
+  }
+
+  input.camxora-temporal-input:invalid::-webkit-datetime-edit {
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  .camxora-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(96, 165, 250, 0.72) rgba(17, 23, 56, 0.82);
+  }
+
+  .camxora-scrollbar::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .camxora-scrollbar::-webkit-scrollbar-track {
+    border-radius: 9999px;
+    background: rgba(17, 23, 56, 0.82);
+  }
+
+  .camxora-scrollbar::-webkit-scrollbar-thumb {
+    border: 2px solid rgba(17, 23, 56, 0.82);
+    border-radius: 9999px;
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.95), rgba(59, 130, 246, 0.95));
+  }
+
+  .camxora-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(167, 139, 250, 1), rgba(96, 165, 250, 1));
+  }
+}

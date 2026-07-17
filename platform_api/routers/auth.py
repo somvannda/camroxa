@@ -12,9 +12,10 @@ import string
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
+from platform_api.config import get_settings
 from platform_api.exceptions import (
     AuthenticationError,
     DuplicateError,
@@ -25,6 +26,7 @@ from platform_api.models.domain import User
 from platform_api.models.enums import UserRole, UserStatus
 from platform_api.models.schemas import LoginRequest, TokenResponse
 from platform_api.services.auth_service import AuthService
+from platform_api.services.invitation_code_service import InvitationCodeService
 from platform_api.services.lockout import AccountLockout
 
 # ---------------------------------------------------------------------------
@@ -32,6 +34,10 @@ from platform_api.services.lockout import AccountLockout
 # ---------------------------------------------------------------------------
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+USER_ACCESS_TOKEN_COOKIE_NAME = "camxora_access_token"
+USER_REFRESH_TOKEN_COOKIE_NAME = "camxora_refresh_token"
+ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
+ADMIN_REFRESH_TOKEN_COOKIE_NAME = "camxora_admin_refresh_token"
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +48,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class RefreshRequest(BaseModel):
     """Body for the token refresh endpoint."""
 
-    refresh_token: str = Field(..., min_length=1)
+    refresh_token: str | None = Field(default=None, min_length=1)
 
 
 class RegisterRequest(BaseModel):
@@ -51,6 +57,21 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1, max_length=200)
     display_name: str = Field(..., min_length=1, max_length=200)
+    invitation_code: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class SignupModeResponse(BaseModel):
+    mode: str
+
+
+class ValidateInvitationRequest(BaseModel):
+    invitation_code: str = Field(..., min_length=1, max_length=64)
+
+
+class ValidateInvitationResponse(BaseModel):
+    ok: bool = True
+    code_hint: str | None = None
+    label: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -103,6 +124,13 @@ async def _get_lockout() -> AccountLockout:
     )
 
 
+async def _get_invitation_code_service() -> InvitationCodeService:
+    """Placeholder dependency for InvitationCodeService."""
+    raise NotImplementedError(
+        "InvitationCodeService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 async def _get_current_user_id(authorization: Annotated[str, Header()]) -> str:
     """Extract user_id from Bearer token in Authorization header.
 
@@ -120,9 +148,76 @@ async def _get_current_user_id(authorization: Annotated[str, Header()]) -> str:
     )
 
 
+def _resolve_cookie_names(request: Request | None) -> tuple[str, str]:
+    portal_context = (
+        request.headers.get("X-Portal-Context", "").strip().lower()
+        if request is not None
+        else ""
+    )
+    if portal_context == "admin":
+        return ADMIN_ACCESS_TOKEN_COOKIE_NAME, ADMIN_REFRESH_TOKEN_COOKIE_NAME
+    return USER_ACCESS_TOKEN_COOKIE_NAME, USER_REFRESH_TOKEN_COOKIE_NAME
+
+
+def _set_auth_cookies(
+    response: Response,
+    token_response: TokenResponse,
+    request: Request | None = None,
+) -> None:
+    settings = get_settings()
+    secure = not settings.debug
+    access_cookie_name, refresh_cookie_name = _resolve_cookie_names(request)
+    response.set_cookie(
+        access_cookie_name,
+        token_response.access_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=token_response.expires_in,
+        path="/",
+    )
+    response.set_cookie(
+        refresh_cookie_name,
+        token_response.refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        path="/",
+    )
+
+
+def _clear_auth_cookies(response: Response, request: Request | None = None) -> None:
+    settings = get_settings()
+    secure = not settings.debug
+    access_cookie_name, refresh_cookie_name = _resolve_cookie_names(request)
+    response.delete_cookie(access_cookie_name, path="/", httponly=True, secure=secure, samesite="lax")
+    response.delete_cookie(refresh_cookie_name, path="/", httponly=True, secure=secure, samesite="lax")
+
+
+async def _set_session_for_user(
+    auth_service: AuthService,
+    user: User,
+    response: Response,
+    http_request: Request,
+) -> None:
+    """Issue auth cookies for a user who just registered or re-registered."""
+    token_pair = await auth_service.issue_token_pair_for_user(user)
+    token_response = TokenResponse(
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
+        token_type="bearer",
+        expires_in=token_pair.expires_in,
+    )
+    _set_auth_cookies(response, token_response, http_request)
+
+
 # Type aliases for dependency injection
 AuthServiceDep = Annotated[AuthService, Depends(_get_auth_service)]
 LockoutDep = Annotated[AccountLockout, Depends(_get_lockout)]
+InvitationCodeServiceDep = Annotated[
+    InvitationCodeService, Depends(_get_invitation_code_service)
+]
 CurrentUserIdDep = Annotated[str, Depends(_get_current_user_id)]
 
 
@@ -209,6 +304,8 @@ async def login(
     request: LoginRequest,
     auth_service: AuthServiceDep,
     lockout: LockoutDep,
+    response: Response,
+    http_request: Request,
 ) -> TokenResponse:
     """Authenticate a user and return a JWT token pair.
 
@@ -230,12 +327,14 @@ async def login(
     # Success — reset failure counter
     await lockout.reset_failures(request.email)
 
-    return TokenResponse(
+    token_response = TokenResponse(
         access_token=token_pair.access_token,
         refresh_token=token_pair.refresh_token,
         token_type="bearer",
         expires_in=token_pair.expires_in,
     )
+    _set_auth_cookies(response, token_response, http_request)
+    return token_response
 
 
 @router.post(
@@ -251,6 +350,9 @@ async def login(
 async def register(
     request: RegisterRequest,
     auth_service: AuthServiceDep,
+    invitation_code_service: InvitationCodeServiceDep,
+    response: Response,
+    http_request: Request,
 ) -> UserResponse:
     """Register a new user account.
 
@@ -270,6 +372,19 @@ async def register(
         raise ValidationError(
             message="Validation failed.",
             details={"fields": errors},
+        )
+
+    signup_mode = await invitation_code_service.get_signup_mode()
+    normalized_invitation_code = (
+        request.invitation_code.strip().upper()
+        if isinstance(request.invitation_code, str) and request.invitation_code.strip()
+        else None
+    )
+
+    if signup_mode == "invite_only" and not normalized_invitation_code:
+        raise ValidationError(
+            message="Invitation code is required.",
+            details={"fields": [{"field": "invitation_code", "message": "Invitation code is required."}]},
         )
 
     # Check email uniqueness via the auth service's user repository
@@ -313,6 +428,9 @@ async def register(
             code=code,
             display_name=request.display_name or "there",
         )
+        refreshed_user = await auth_service._user_repo.get_by_email(request.email)
+        if refreshed_user is not None:
+            await _set_session_for_user(auth_service, refreshed_user, response, http_request)
         return UserResponse(
             id=str(existing_user.id),
             email=existing_user.email,
@@ -329,13 +447,54 @@ async def register(
         status=UserStatus.ACTIVE,
     )
 
-    # Persist the user via the user repository
-    created_user = await auth_service._user_repo.create(user)
+    from platform_api.dependencies import get_db_pool
 
+    pool = get_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            created_user = await auth_service._user_repo.create(user, conn=conn)
+            if signup_mode == "invite_only" and normalized_invitation_code:
+                await invitation_code_service.consume_invitation_code(
+                    conn=conn,
+                    code=normalized_invitation_code,
+                    user_id=created_user.id,
+                )
+
+    await _set_session_for_user(auth_service, created_user, response, http_request)
     return UserResponse(
         id=str(created_user.id),
         email=created_user.email,
         display_name=created_user.display_name,
+    )
+
+
+@router.get(
+    "/signup-mode",
+    response_model=SignupModeResponse,
+    status_code=200,
+    summary="Get current signup access mode",
+)
+async def get_signup_mode(
+    invitation_code_service: InvitationCodeServiceDep,
+) -> SignupModeResponse:
+    return SignupModeResponse(mode=await invitation_code_service.get_signup_mode())
+
+
+@router.post(
+    "/validate-invitation",
+    response_model=ValidateInvitationResponse,
+    status_code=200,
+    summary="Validate invitation code for invite-only signup",
+)
+async def validate_invitation(
+    request: ValidateInvitationRequest,
+    invitation_code_service: InvitationCodeServiceDep,
+) -> ValidateInvitationResponse:
+    result = await invitation_code_service.validate_invitation_code(request.invitation_code)
+    return ValidateInvitationResponse(
+        ok=True,
+        code_hint=result.get("code_hint"),
+        label=result.get("label"),
     )
 
 
@@ -349,22 +508,33 @@ async def register(
     summary="Refresh an access token",
 )
 async def refresh(
-    request: RefreshRequest,
+    request: RefreshRequest | None,
+    http_request: Request,
     auth_service: AuthServiceDep,
+    response: Response,
 ) -> TokenResponse:
     """Issue a new token pair using a valid refresh token.
 
     The old refresh token is revoked (rotated). If the refresh token is
     invalid or expired, returns 401.
     """
-    token_pair = await auth_service.refresh_token(request.refresh_token)
+    refresh_token = request.refresh_token if request and request.refresh_token else None
+    if not refresh_token:
+        _, refresh_cookie_name = _resolve_cookie_names(http_request)
+        refresh_token = http_request.cookies.get(refresh_cookie_name)
+    if not refresh_token:
+        raise AuthenticationError("Refresh token is required.")
 
-    return TokenResponse(
+    token_pair = await auth_service.refresh_token(refresh_token)
+
+    token_response = TokenResponse(
         access_token=token_pair.access_token,
         refresh_token=token_pair.refresh_token,
         token_type="bearer",
         expires_in=token_pair.expires_in,
     )
+    _set_auth_cookies(response, token_response, http_request)
+    return token_response
 
 
 @router.post(
@@ -378,12 +548,15 @@ async def refresh(
 async def logout(
     auth_service: AuthServiceDep,
     current_user_id: CurrentUserIdDep,
+    response: Response,
+    request: Request,
 ) -> dict[str, str]:
     """Revoke all refresh tokens for the authenticated user.
 
     Requires a valid Bearer token in the Authorization header.
     """
     await auth_service.revoke_tokens(current_user_id)
+    _clear_auth_cookies(response, request)
     return {"message": "Successfully logged out."}
 
 
@@ -418,7 +591,7 @@ async def send_verification(
 
     # Look up user by email
     user_row = await pool.fetchrow(
-        "SELECT id, display_name FROM users WHERE LOWER(email) = LOWER($1)",
+        "SELECT id, display_name, email_confirmed FROM users WHERE LOWER(email) = LOWER($1)",
         request.email,
     )
     if user_row is None:
@@ -430,6 +603,13 @@ async def send_verification(
 
     user_id = user_row["id"]
     display_name = user_row["display_name"] or "there"
+    if bool(user_row["email_confirmed"]):
+        return VerificationResponse(
+            message="Email already verified.",
+            email=request.email,
+            is_verified=True,
+        )
+
     code = _generate_code()
     settings = __import__("platform_api.config", fromlist=["get_settings"]).get_settings()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.email_verification_expire_minutes)
@@ -511,63 +691,14 @@ async def verify_email(
         code_row["id"],
     )
 
-    # Mark email as confirmed
+    # Mark email as confirmed — payment is required before onboarding AI access.
     await pool.execute(
         "UPDATE users SET email_confirmed = true WHERE id = $1",
         user_id,
     )
 
-    # Grant 50 trial credits on first email verification
-    wallet = await pool.fetchrow(
-        "SELECT balance FROM credit_wallets WHERE user_id = $1",
-        user_id,
-    )
-    if wallet is not None and int(wallet["balance"]) == 0:
-        await pool.execute(
-            """UPDATE credit_wallets SET balance = balance + 50 WHERE user_id = $1""",
-            user_id,
-        )
-        await pool.execute(
-            """INSERT INTO credit_transactions (user_id, amount, direction, reason)
-               VALUES ($1, 50, 'credit', 'onboarding_trial')""",
-            user_id,
-        )
-
-    # Assign a Trial license if user doesn't already have one
-    existing_license = await pool.fetchrow(
-        "SELECT id FROM licenses WHERE user_id = $1 AND status = 'active'",
-        user_id,
-    )
-    if existing_license is None:
-        # Find the Trial plan (auto-created if missing)
-        trial_plan = await pool.fetchrow(
-            "SELECT id FROM plans WHERE LOWER(name) = 'trial' AND is_active = true",
-        )
-        if trial_plan is None:
-            # Create a Trial plan: free, no expiry, 2 profiles, 10 songs/month
-            import uuid as _uuid
-            trial_plan_id = _uuid.uuid4()
-            await pool.execute(
-                """INSERT INTO plans (id, name, price_cents, billing_cycle_days, profile_allowance, monthly_song_quota, daily_song_limit_per_channel)
-                   VALUES ($1, 'Trial', 0, NULL, 2, 10, 3)""",
-                trial_plan_id,
-            )
-        else:
-            trial_plan_id = trial_plan["id"]
-
-        # Create and assign a trial license
-        import uuid as _uuid
-        import secrets
-        license_id = _uuid.uuid4()
-        license_key = f"TRIAL-{secrets.token_hex(12).upper()}"
-        await pool.execute(
-            """INSERT INTO licenses (id, license_key, plan_id, user_id, status, activated_at)
-               VALUES ($1, $2, $3, $4, 'active', NOW())""",
-            license_id, license_key, trial_plan_id, user_id,
-        )
-
     return VerificationResponse(
-        message="Email verified successfully. 50 trial credits added!",
+        message="Email verified successfully. Choose a plan and complete payment to continue.",
         email=request.email,
         is_verified=True,
     )

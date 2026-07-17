@@ -2,20 +2,17 @@ import axios, {
   type AxiosError,
   type InternalAxiosRequestConfig,
 } from 'axios';
-import {
-  getAccessToken,
-  getRefreshToken,
-  setTokens,
-  clearTokens,
-} from '@/lib/auth';
-
-// --- Axios instance ---
+import { resolveApiBaseUrl } from '@/lib/api-base';
+import { clearTokens, getAccessToken, setTokens } from '@/lib/auth';
 
 const apiClient = axios.create({
-  baseURL: (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost:8000',
+  baseURL: resolveApiBaseUrl(),
+  withCredentials: true,
 });
 
-// --- Helpers ---
+const ADMIN_HEADERS = {
+  'X-Portal-Context': 'admin',
+} as const;
 
 /** Endpoints that should NOT receive the Authorization header. */
 const PUBLIC_ENDPOINTS = ['/auth/login', '/auth/refresh', '/auth/register'];
@@ -25,30 +22,29 @@ function isPublicEndpoint(url: string | undefined): boolean {
   return PUBLIC_ENDPOINTS.some((ep) => url.includes(ep));
 }
 
-// --- Request interceptor ---
-
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (!isPublicEndpoint(config.url)) {
+    config.withCredentials = true;
+    const headers = config.headers ?? new axios.AxiosHeaders();
+    if (typeof headers.set === 'function') {
+      headers.set('X-Portal-Context', 'admin');
       const token = getAccessToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+      if (token && !isPublicEndpoint(config.url)) {
+        headers.set('Authorization', `Bearer ${token}`);
       }
+    } else {
+      config.headers = new axios.AxiosHeaders({
+        ...(config.headers ?? {}),
+        ...ADMIN_HEADERS,
+      });
     }
+    config.headers = headers;
     return config;
   },
   (error: AxiosError) => Promise.reject(error),
 );
 
-// --- Response interceptor (401 refresh logic) ---
-
-/** Flag to prevent infinite refresh loops. */
 let isRefreshing = false;
-
-/**
- * Queue of requests that arrived while a token refresh was in progress.
- * They will be retried (or rejected) once the refresh completes.
- */
 let pendingRequests: Array<{
   resolve: (token: string) => void;
   reject: (error: unknown) => void;
@@ -65,6 +61,33 @@ function processPendingRequests(token: string | null, error?: unknown): void {
   pendingRequests = [];
 }
 
+async function refreshAccessToken(): Promise<string> {
+  if (isRefreshing) {
+    return new Promise<string>((resolve, reject) => {
+      pendingRequests.push({ resolve, reject });
+    });
+  }
+
+  isRefreshing = true;
+  try {
+    const { data } = await apiClient.post<{
+      access_token: string;
+      refresh_token: string;
+    }>('/api/v1/auth/refresh', {});
+
+    setTokens(data.access_token, data.refresh_token);
+    processPendingRequests(data.access_token);
+    return data.access_token;
+  } catch (refreshError) {
+    processPendingRequests(null, refreshError);
+    clearTokens();
+    window.location.href = '/login';
+    throw refreshError;
+  } finally {
+    isRefreshing = false;
+  }
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
@@ -72,7 +95,12 @@ apiClient.interceptors.response.use(
       | (InternalAxiosRequestConfig & { _retry?: boolean })
       | undefined;
 
-    // Only handle 401 and avoid retrying public or already-retried requests
+    if (error.response?.status === 403 && originalRequest?.url?.includes('/api/v1/admin/')) {
+      clearTokens();
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
     if (
       error.response?.status !== 401 ||
       !originalRequest ||
@@ -82,49 +110,21 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // If a refresh is already in flight, queue this request
-    if (isRefreshing) {
-      return new Promise<string>((resolve, reject) => {
-        pendingRequests.push({ resolve, reject });
-      }).then((newToken) => {
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
-        return apiClient(originalRequest);
-      });
+    // No session yet (login page bootstrap): do not spam /auth/refresh.
+    if (!getAccessToken()) {
+      return Promise.reject(error);
     }
 
     originalRequest._retry = true;
-    isRefreshing = true;
 
     try {
-      const refresh = getRefreshToken();
-      if (!refresh) {
-        throw new Error('No refresh token available');
-      }
-
-      const { data } = await apiClient.post<{
-        access_token: string;
-        refresh_token: string;
-      }>('/api/v1/auth/refresh', { refresh_token: refresh });
-
-      setTokens(data.access_token, data.refresh_token);
-      processPendingRequests(data.access_token);
-
-      // Retry the original request with the new token
-      originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
+      await refreshAccessToken();
       return apiClient(originalRequest);
     } catch (refreshError) {
-      processPendingRequests(null, refreshError);
-      clearTokens();
-      // Redirect to login page
-      window.location.href = '/login';
       return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
     }
   },
 );
-
-// --- Typed HTTP client methods ---
 
 export interface HttpClient {
   get<T>(url: string, params?: Record<string, unknown>): Promise<T>;
@@ -134,10 +134,7 @@ export interface HttpClient {
   delete<T>(url: string): Promise<T>;
 }
 
-async function get<T>(
-  url: string,
-  params?: Record<string, unknown>,
-): Promise<T> {
+async function get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
   const response = await apiClient.get<T>(url, { params });
   return response.data;
 }
@@ -166,13 +163,8 @@ const httpClient: HttpClient = { get, post, put, patch, delete: del };
 
 export default httpClient;
 
-/** Export the raw Axios instance for advanced use cases (e.g., file uploads). */
 export { apiClient };
 
-/**
- * Reset interceptor state — useful for testing.
- * @internal
- */
 export function _resetRefreshState(): void {
   isRefreshing = false;
   pendingRequests = [];

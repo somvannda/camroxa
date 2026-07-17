@@ -1,0 +1,1 @@
+journalctl -u camxora-api --since "2026-07-15 22:19:00" --until "2026-07-15 22:50:00" --no-pager 2>/dev/null | grep -iE "Traceback|UndefinedColumn|email_confirmed|ProgrammingError|Internal Server" | tail -25

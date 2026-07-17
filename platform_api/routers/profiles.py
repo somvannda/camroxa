@@ -8,6 +8,8 @@ Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8
 
 from __future__ import annotations
 
+import base64
+from pathlib import Path
 from datetime import datetime
 from typing import Annotated, Any, Protocol
 from uuid import UUID
@@ -60,6 +62,8 @@ class CreateProfileRequest(BaseModel):
     output_resolution: str = "1920x1080"
     image_config: dict[str, Any] = Field(default_factory=dict)
     youtube_config: dict[str, Any] = Field(default_factory=dict)
+    logo_base64: str | None = None
+    cover_images: list[str] = Field(default_factory=list)
 
 
 class UpdateProfileRequest(BaseModel):
@@ -74,6 +78,8 @@ class UpdateProfileRequest(BaseModel):
     output_resolution: str | None = None
     image_config: dict[str, Any] | None = None
     youtube_config: dict[str, Any] | None = None
+    logo_base64: str | None = None
+    cover_images: list[str] | None = None
 
 
 class ProfileStatsResponse(BaseModel):
@@ -147,6 +153,66 @@ def _profile_to_response(profile) -> ProfileResponse:
     )
 
 
+def _uploads_root() -> Path:
+    return (Path(__file__).resolve().parents[2] / "uploads").resolve()
+
+
+def _save_profile_logo(*, user_id: str, profile_id: str, image_base64: str) -> str:
+    logo_dir = (_uploads_root() / "logos" / user_id).resolve()
+    logo_dir.mkdir(parents=True, exist_ok=True)
+    logo_path = logo_dir / f"{profile_id}-logo.png"
+    logo_path.write_bytes(base64.b64decode(image_base64))
+    return str(Path("uploads") / "logos" / user_id / f"{profile_id}-logo.png")
+
+
+def _save_profile_covers(*, user_id: str, profile_id: str, cover_images: list[str]) -> list[str]:
+    covers_dir = (_uploads_root() / "covers" / user_id).resolve()
+    covers_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths: list[str] = []
+    for index, cover_b64 in enumerate(cover_images[:5]):
+        if not str(cover_b64 or "").strip():
+            continue
+        cover_path = covers_dir / f"{profile_id}-cover-{index}.png"
+        cover_path.write_bytes(base64.b64decode(cover_b64))
+        saved_paths.append(str(Path("uploads") / "covers" / user_id / f"{profile_id}-cover-{index}.png"))
+    return saved_paths
+
+
+async def _apply_profile_media_updates(
+    *,
+    profile,
+    user_id: UUID,
+    request_logo_base64: str | None,
+    request_cover_images: list[str] | None,
+    profile_service: ProfileService,
+):
+    update_fields: dict[str, Any] = {}
+    if request_logo_base64 and request_logo_base64.strip():
+        update_fields["logo_path"] = _save_profile_logo(
+            user_id=str(user_id),
+            profile_id=str(profile.id),
+            image_base64=request_logo_base64.strip(),
+        )
+
+    if request_cover_images:
+        current_image_config = dict(profile.image_config or {})
+        current_image_config["cover_paths"] = _save_profile_covers(
+            user_id=str(user_id),
+            profile_id=str(profile.id),
+            cover_images=request_cover_images,
+        )
+        update_fields["image_config"] = current_image_config
+
+    if not update_fields:
+        return profile
+
+    return await profile_service.update_profile(
+        user_id=user_id,
+        profile_id=profile.id,
+        **update_fields,
+    )
+
+
 # ---------------------------------------------------------------------------
 # User Endpoints (authenticated)
 # ---------------------------------------------------------------------------
@@ -199,6 +265,21 @@ async def create_profile(
         image_config=request.image_config,
         youtube_config=request.youtube_config,
     )
+    profile = await _apply_profile_media_updates(
+        profile=profile,
+        user_id=UUID(ctx.user_id),
+        request_logo_base64=request.logo_base64,
+        request_cover_images=request.cover_images,
+        profile_service=profile_service,
+    )
+    from platform_api.services.workspace_notifications import notify_workspace_changed
+
+    await notify_workspace_changed(
+        ctx.user_id,
+        source="profiles.create",
+        scope="profile",
+        extra={"profile_id": str(profile.id)},
+    )
     return _profile_to_response(profile)
 
 
@@ -236,14 +317,43 @@ async def update_profile(
     if request.output_resolution is not None:
         fields["output_resolution"] = request.output_resolution
     if request.image_config is not None:
-        fields["image_config"] = request.image_config
+        # Merge with existing image_config to preserve server-side keys like cover_paths
+        existing_profile = await profile_service.get_profile(
+            user_id=UUID(ctx.user_id), profile_id=profile_id
+        )
+        existing_image_config = dict(getattr(existing_profile, "image_config", {}) or {})
+        merged_image_config = {**existing_image_config, **request.image_config}
+        fields["image_config"] = merged_image_config
     if request.youtube_config is not None:
-        fields["youtube_config"] = request.youtube_config
+        # Merge with existing youtube_config to preserve server-side keys
+        if "image_config" not in fields:
+            existing_profile = await profile_service.get_profile(
+                user_id=UUID(ctx.user_id), profile_id=profile_id
+            )
+        existing_youtube_config = dict(getattr(existing_profile, "youtube_config", {}) or {})
+        merged_youtube_config = {**existing_youtube_config, **request.youtube_config}
+        fields["youtube_config"] = merged_youtube_config
 
     profile = await profile_service.update_profile(
         user_id=UUID(ctx.user_id),
         profile_id=profile_id,
         **fields,
+    )
+    profile = await _apply_profile_media_updates(
+        profile=profile,
+        user_id=UUID(ctx.user_id),
+        request_logo_base64=request.logo_base64,
+        request_cover_images=request.cover_images,
+        profile_service=profile_service,
+    )
+    from platform_api.services.workspace_notifications import notify_workspace_changed
+
+    scope = "youtube" if request.youtube_config is not None else "profile"
+    await notify_workspace_changed(
+        ctx.user_id,
+        source="profiles.update",
+        scope=scope,
+        extra={"profile_id": str(profile_id)},
     )
     return _profile_to_response(profile)
 
@@ -267,6 +377,14 @@ async def delete_profile(
     await profile_service.delete_profile(
         user_id=UUID(ctx.user_id),
         profile_id=profile_id,
+    )
+    from platform_api.services.workspace_notifications import notify_workspace_changed
+
+    await notify_workspace_changed(
+        ctx.user_id,
+        source="profiles.delete",
+        scope="profiles",
+        extra={"profile_id": str(profile_id)},
     )
     return {"message": f"Profile {profile_id} has been deleted."}
 

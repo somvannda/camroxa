@@ -27,11 +27,19 @@ from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.models.enums import TaskStatus
 from platform_api.ports.generation_port import SongDraft
-from platform_api.routers.callbacks import _get_notification_port, _get_suno_task_repo
+from platform_api.routers.callbacks import (
+    _get_batch_service as _get_callback_batch_service,
+    _get_image_job_service,
+    _get_notification_port,
+    _get_suno_task_repo,
+)
 from platform_api.routers.generation import (
     _get_enforcement_service,
     _get_generation_service,
     _get_task_lookup,
+    _get_ai_routing_service,
+    _get_prompt_service,
+    _get_profile_service,
 )
 
 
@@ -43,25 +51,44 @@ USER_CONTEXT = AuthContext(user_id=str(uuid4()), email="user@example.com", role=
 
 
 @pytest.fixture
+def mock_enforcement_service() -> AsyncMock:
+    """Create a mock UsageEnforcementService.
+
+    By default, check_and_deduct / deduct_for_operation succeed.
+    """
+    from types import SimpleNamespace
+
+    service = AsyncMock()
+    service.check_and_deduct = AsyncMock(return_value=10)
+    service.deduct_for_operation = AsyncMock(return_value=0)
+    service.refund_failed_operation = AsyncMock()
+    service.resolve_max_credits = AsyncMock(return_value=5)
+    service.preflight_quotas_and_balance = AsyncMock()
+    service.reserve_and_hold_before_provider = AsyncMock(
+        return_value=SimpleNamespace(held_units=0, plan_covered=True)
+    )
+    service.finalize_held_operation = AsyncMock(return_value=0)
+    return service
+
+
+@pytest.fixture
 def mock_generation_service() -> AsyncMock:
     """Create a mock GenerationService."""
+    from types import SimpleNamespace
+
     service = AsyncMock()
     service.submit_draft = AsyncMock(
         return_value=SongDraft(title="Test Song", album="Test Album", lyrics="[Verse]\nLyrics here")
     )
     service.submit_suno = AsyncMock(return_value=str(uuid4()))
     service.submit_image = AsyncMock(return_value=b"\x89PNG\r\n\x1a\nfakedata")
-    return service
-
-
-@pytest.fixture
-def mock_enforcement_service() -> AsyncMock:
-    """Create a mock UsageEnforcementService.
-
-    By default, check_and_deduct succeeds (returns credits deducted).
-    """
-    service = AsyncMock()
-    service.check_and_deduct = AsyncMock(return_value=10)
+    service.submit_image_outcome = AsyncMock(
+        return_value=SimpleNamespace(
+            image_bytes=b"\x89PNG\r\n\x1a\nfakedata",
+            provider="fal",
+            sub_model="flux-pro",
+        )
+    )
     return service
 
 
@@ -92,21 +119,81 @@ def mock_notification() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_callback_batch_service() -> AsyncMock:
+    service = AsyncMock()
+    service.handle_suno_task_update = AsyncMock(return_value=[])
+    return service
+
+
+@pytest.fixture
+def mock_image_job_service() -> AsyncMock:
+    svc = AsyncMock()
+    svc.run_pending_jobs = AsyncMock(return_value=0)
+    return svc
+
+
+@pytest.fixture
+def mock_ai_routing_service() -> AsyncMock:
+    """Create a mock AIRoutingService.
+
+    Returns a RoutingResult with default fal provider for image operations.
+    """
+    from platform_api.services.ai_routing_service import RoutingResult
+
+    service = AsyncMock()
+    routing = RoutingResult(
+        provider="fal",
+        sub_model="flux-pro",
+        service_type="image_generation",
+    )
+    service.resolve = AsyncMock(return_value=routing)
+    service.resolve_image_chain = AsyncMock(return_value=[routing])
+    return service
+
+
+@pytest.fixture
+def mock_prompt_service() -> AsyncMock:
+    service = AsyncMock()
+    description = type("Description", (), {"content": "Full hidden admin description"})()
+    structure = type("Structure", (), {"content": "[Verse]\n[Chorus]\n[Bridge]"})()
+    service.get_description_for_access = AsyncMock(return_value=description)
+    service.get_structure_for_access = AsyncMock(return_value=structure)
+    return service
+
+
+@pytest.fixture
+def mock_profile_service() -> AsyncMock:
+    service = AsyncMock()
+    service.require_owned_profile = AsyncMock(return_value=None)
+    return service
+
+
+@pytest.fixture
 def app(
     mock_generation_service: AsyncMock,
     mock_enforcement_service: AsyncMock,
     mock_task_lookup: AsyncMock,
     mock_suno_task_repo: AsyncMock,
     mock_notification: AsyncMock,
+    mock_callback_batch_service: AsyncMock,
+    mock_image_job_service: AsyncMock,
+    mock_ai_routing_service: AsyncMock,
+    mock_prompt_service: AsyncMock,
+    mock_profile_service: AsyncMock,
 ):
     """Create a test app with all dependencies overridden."""
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: USER_CONTEXT
     application.dependency_overrides[_get_generation_service] = lambda: mock_generation_service
     application.dependency_overrides[_get_enforcement_service] = lambda: mock_enforcement_service
+    application.dependency_overrides[_get_ai_routing_service] = lambda: mock_ai_routing_service
+    application.dependency_overrides[_get_prompt_service] = lambda: mock_prompt_service
+    application.dependency_overrides[_get_profile_service] = lambda: mock_profile_service
     application.dependency_overrides[_get_task_lookup] = lambda: mock_task_lookup
     application.dependency_overrides[_get_suno_task_repo] = lambda: mock_suno_task_repo
     application.dependency_overrides[_get_notification_port] = lambda: mock_notification
+    application.dependency_overrides[_get_callback_batch_service] = lambda: mock_callback_batch_service
+    application.dependency_overrides[_get_image_job_service] = lambda: mock_image_job_service
     yield application
     application.dependency_overrides.clear()
 
@@ -147,6 +234,51 @@ class TestGenerateDraft:
         assert "lyrics" in data
         mock_generation_service.submit_draft.assert_awaited_once()
 
+    async def test_split_bills_lyric_title_album(
+        self,
+        client: AsyncClient,
+        mock_enforcement_service: AsyncMock,
+        mock_generation_service: AsyncMock,
+    ) -> None:
+        """Direct draft path bills each LLM slot like batch (H5)."""
+        response = await client.post(
+            "/api/v1/generation/draft",
+            json={
+                "language": "en",
+                "creativity_level": 75,
+                "description": "Upbeat pop song about summer",
+                "structure": "[Verse]\n[Chorus]\n[Verse]\n[Chorus]",
+            },
+        )
+        assert response.status_code == 200
+        assert mock_enforcement_service.deduct_for_operation.await_count == 3
+        ops = [
+            call.args[2]
+            for call in mock_enforcement_service.deduct_for_operation.await_args_list
+        ]
+        assert ops == ["lyric", "title", "album"]
+        mock_generation_service.submit_draft.assert_awaited_once()
+
+    async def test_forced_title_skips_title_slot(
+        self,
+        client: AsyncClient,
+        mock_enforcement_service: AsyncMock,
+    ) -> None:
+        response = await client.post(
+            "/api/v1/generation/draft",
+            json={
+                "description": "Rock ballad",
+                "structure": "[Verse]\n[Chorus]",
+                "forced_title": "My Forced Title",
+            },
+        )
+        assert response.status_code == 200
+        ops = [
+            call.args[2]
+            for call in mock_enforcement_service.deduct_for_operation.await_args_list
+        ]
+        assert ops == ["lyric", "album"]
+
     async def test_with_avoid_lists(
         self, client: AsyncClient, mock_generation_service: AsyncMock
     ) -> None:
@@ -163,24 +295,61 @@ class TestGenerateDraft:
         )
         assert response.status_code == 200
 
+    async def test_resolves_hidden_prompt_content_from_ids(
+        self,
+        client: AsyncClient,
+        mock_generation_service: AsyncMock,
+        mock_prompt_service: AsyncMock,
+    ) -> None:
+        response = await client.post(
+            "/api/v1/generation/draft",
+            json={
+                "description_id": str(uuid4()),
+                "structure_id": str(uuid4()),
+            },
+        )
+        assert response.status_code == 200
+
+        _, draft_request = mock_generation_service.submit_draft.await_args.args[:2]
+        assert draft_request.description == "Full hidden admin description"
+        assert draft_request.structure == "[Verse]\n[Chorus]\n[Bridge]"
+        mock_prompt_service.get_description_for_access.assert_awaited_once()
+        mock_prompt_service.get_structure_for_access.assert_awaited_once()
+
     async def test_missing_description(self, client: AsyncClient) -> None:
-        """Missing required 'description' returns 422."""
+        """Missing description source returns 422."""
         response = await client.post(
             "/api/v1/generation/draft",
             json={"structure": "[Verse]"},
         )
         assert response.status_code == 422
 
+    async def test_missing_structure(self, client: AsyncClient) -> None:
+        """Missing structure source returns 422."""
+        response = await client.post(
+            "/api/v1/generation/draft",
+            json={"description": "Test song"},
+        )
+        assert response.status_code == 422
+
+    async def test_invalid_structure_without_headers(self, client: AsyncClient) -> None:
+        """Structure without bracket headers returns 422."""
+        response = await client.post(
+            "/api/v1/generation/draft",
+            json={"description": "Test song", "structure": "Verse / Chorus / Bridge"},
+        )
+        assert response.status_code == 422
+
     async def test_insufficient_credits(
-        self, client: AsyncClient, mock_generation_service: AsyncMock
+        self, client: AsyncClient, mock_enforcement_service: AsyncMock
     ) -> None:
-        """InsufficientCreditsError from service returns 402."""
-        mock_generation_service.submit_draft.side_effect = InsufficientCreditsError(
-            details={"required": 10}
+        """InsufficientCreditsError from enforcement returns 402."""
+        mock_enforcement_service.deduct_for_operation.side_effect = (
+            InsufficientCreditsError(details={"required": 10})
         )
         response = await client.post(
             "/api/v1/generation/draft",
-            json={"description": "Test", "structure": ""},
+            json={"description": "Test", "structure": "[Verse]\n[Chorus]\n[Bridge]\n[Outro]"},
         )
         assert response.status_code == 402
 
@@ -348,7 +517,7 @@ class TestGenerateImage:
         # Should be valid base64
         decoded = base64.b64decode(data["image_base64"])
         assert len(decoded) > 0
-        mock_generation_service.submit_image.assert_awaited_once()
+        mock_generation_service.submit_image_outcome.assert_awaited_once()
 
     async def test_with_base_image(
         self, client: AsyncClient, mock_generation_service: AsyncMock
@@ -429,6 +598,7 @@ class TestSunoCallback:
         client: AsyncClient,
         mock_suno_task_repo: AsyncMock,
         mock_notification: AsyncMock,
+        mock_callback_batch_service: AsyncMock,
     ) -> None:
         """Valid callback with recognized task updates status and pushes notification."""
         task_id = uuid4()
@@ -436,6 +606,8 @@ class TestSunoCallback:
         mock_suno_task_repo.find_by_external_id.return_value = {
             "id": task_id,
             "user_id": user_id,
+            "song_id": str(uuid4()),
+            "batch_id": str(uuid4()),
             "status": TaskStatus.PENDING.value,
         }
 
@@ -457,6 +629,7 @@ class TestSunoCallback:
             audio_url_alt="https://cdn.suno.ai/alt.mp3",
         )
         mock_notification.push.assert_awaited_once()
+        mock_callback_batch_service.handle_suno_task_update.assert_awaited_once()
 
     async def test_unrecognized_task_id(
         self,
@@ -507,6 +680,7 @@ class TestSunoCallback:
         client: AsyncClient,
         mock_suno_task_repo: AsyncMock,
         mock_notification: AsyncMock,
+        mock_callback_batch_service: AsyncMock,
     ) -> None:
         """FAILED status is properly stored."""
         task_id = uuid4()
@@ -514,6 +688,8 @@ class TestSunoCallback:
         mock_suno_task_repo.find_by_external_id.return_value = {
             "id": task_id,
             "user_id": user_id,
+            "song_id": str(uuid4()),
+            "batch_id": str(uuid4()),
             "status": TaskStatus.PENDING.value,
         }
 
@@ -528,12 +704,14 @@ class TestSunoCallback:
             audio_url_ok=None,
             audio_url_alt=None,
         )
+        mock_callback_batch_service.handle_suno_task_update.assert_awaited_once()
 
     async def test_nested_data_payload(
         self,
         client: AsyncClient,
         mock_suno_task_repo: AsyncMock,
         mock_notification: AsyncMock,
+        mock_callback_batch_service: AsyncMock,
     ) -> None:
         """Handles nested data field format from Suno."""
         task_id = uuid4()
@@ -541,6 +719,8 @@ class TestSunoCallback:
         mock_suno_task_repo.find_by_external_id.return_value = {
             "id": task_id,
             "user_id": user_id,
+            "song_id": str(uuid4()),
+            "batch_id": str(uuid4()),
             "status": TaskStatus.PENDING.value,
         }
 
@@ -558,3 +738,4 @@ class TestSunoCallback:
         assert response.status_code == 200
         mock_suno_task_repo.find_by_external_id.assert_awaited_once_with("ext-nested-789")
         mock_suno_task_repo.update_status.assert_awaited_once()
+        mock_callback_batch_service.handle_suno_task_update.assert_awaited_once()

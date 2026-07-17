@@ -99,7 +99,7 @@ This plan implements a Python FastAPI backend service that centralizes authentic
 - [x] 5. License and plan management
   - [x] 5.1 Implement license and plan repositories
     - Create `repositories/license_repo.py` with CRUD for licenses, license key generation, assignment, revocation, status queries, active license lookup, plan usage tracking
-    - Create plan seeding logic for default plans (Monthly $79/30-day, Yearly $699/365-day, Lifetime $1499 one-time) as configurable database records
+    - Plans are Admin-managed only (live `plans` table via Admin Portal); do not seed Monthly/Yearly/Lifetime defaults in code or scripts
     - _Requirements: 4.1, 4.3, 4.4_
 
   - [x] 5.2 Implement license service

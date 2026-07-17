@@ -6,7 +6,7 @@
 - TypeScript (admin portal)
 - Target OS: Windows (desktop app)
 
-## Desktop App (`python_app/`)
+## Desktop App (`camxora_python/`)
 
 | Category | Technology |
 |----------|-----------|
@@ -50,10 +50,10 @@
 ### Desktop App
 ```bash
 # Run the app
-python -m python_app
+python -m camxora_python
 
 # Run tests
-cd python_app
+cd camxora_python
 pytest tests/ -q
 
 # Type check

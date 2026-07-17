@@ -1,0 +1,11 @@
+[
+  {
+    "id": "legacy-layer",
+    "thickness": 42,
+    "opacity": 1,
+    "color": {
+      "mode": "solid",
+      "solidColor": "#64e5ff"
+    }
+  }
+]

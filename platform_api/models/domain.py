@@ -7,7 +7,7 @@ All entities use UUID primary keys and track creation/update timestamps.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -43,6 +43,7 @@ class User:
     email_confirmed: bool = False
     suspension_reason: str | None = None
     deleted_at: datetime | None = None
+    token_version: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -63,8 +64,17 @@ class Plan:
     profile_allowance: int = 0
     monthly_song_limit: int | None = None
     monthly_image_limit: int | None = None
+    monthly_draft_limit: int | None = None
+    monthly_video_limit: int | None = None
+    monthly_merge_limit: int | None = None
     daily_song_limit_per_channel: int = 7
-    daily_image_limit_per_channel: int = 7
+    daily_image_limit_per_channel: int = 2
+    daily_draft_limit_per_channel: int = 300
+    # Account-wide daily caps (not per-channel) — matches 10×30 / 1×30 product math.
+    daily_video_limit: int = 10
+    daily_merge_limit: int = 1
+    included_wallet_credits: int = 0
+    plan_kind: str = "subscription"
     is_active: bool = True
     effective_from: datetime = field(default_factory=datetime.utcnow)
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -83,6 +93,10 @@ class License:
     activated_at: datetime | None = None
     expires_at: datetime | None = None
     revoked_at: datetime | None = None
+    profile_addon_slots: int = 0
+    profile_addon_pending: int = 0
+    pending_plan_id: UUID | None = None
+    pending_plan_effective_at: datetime | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -126,6 +140,7 @@ class CreditTransaction:
     ref_id: str | None = None
     pack_id: UUID | None = None
     payment_ref: str | None = None
+    metadata: dict[str, Any] | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -160,24 +175,29 @@ class ChannelProfile:
 
 @dataclass
 class MusicDescription:
-    """An admin-managed song description (genre/mood/energy)."""
+    """A song description (genre/mood/energy), global or user-owned."""
 
     id: UUID = field(default_factory=uuid4)
     name: str = ""
     content: str = ""
     match_key: str | None = None
+    vocal_profile: dict[str, Any] | None = None
+    is_active: bool = True
+    user_id: UUID | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
 
 @dataclass
 class MusicStructure:
-    """An admin-managed song structure (section headers)."""
+    """A song structure (section headers), global or user-owned."""
 
     id: UUID = field(default_factory=uuid4)
     name: str = ""
     content: str = ""
     match_key: str | None = None
+    is_active: bool = True
+    user_id: UUID | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -270,6 +290,9 @@ class ImageJob:
     provider: str | None = None
     resolution: str = "1920x1080"
     style_strength: float = 0.6
+    input_image_path: str | None = None
+    style_reference_path: str | None = None
+    source_job_id: UUID | None = None
     status: TaskStatus = TaskStatus.PENDING
     attempt_count: int = 0
     output_image_path: str | None = None
@@ -288,11 +311,38 @@ class Batch:
     alt_profile_id: UUID | None = None
     song_count: int = 1
     language: str = "en"
+    secondary_language: str | None = None
     creativity_level: int = 50
     pairing_mode: str = "match_key"
     status: str = "pending"
+    auto_gen_image: bool = False
+    auto_gsuno: bool = False
+    planned_from_date: date | None = None
+    planned_to_date: date | None = None
     ok_run_dir: str | None = None
     alt_run_dir: str | None = None
+    ok_album: str | None = None
+    alt_album: str | None = None
+    structure_mode: str = "template"
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class BatchChannelAssets:
+    """Resolved four-file asset manifest for one batch/profile/role run."""
+
+    id: UUID = field(default_factory=uuid4)
+    batch_id: UUID = field(default_factory=uuid4)
+    user_id: UUID = field(default_factory=uuid4)
+    profile_id: UUID = field(default_factory=uuid4)
+    role: ChannelRole = ChannelRole.OK
+    run_dir: str | None = None
+    source_mode: str = "manual"
+    background_16x9_path: str | None = None
+    background_9x16_path: str | None = None
+    thumbnail_16x9_path: str | None = None
+    thumbnail_9x16_path: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 

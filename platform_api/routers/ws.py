@@ -128,21 +128,16 @@ def _extract_token(websocket: WebSocket) -> str | None:
     """Extract access token from WebSocket connection query params or headers.
 
     Looks for the token in:
-    1. Query parameter: ?token=<access_token>
-    2. Authorization header: Bearer <access_token>
-
-    Returns:
-        The token string, or None if not found.
+    1. Authorization header: Bearer <access_token>
+    2. Query parameter: ?token=<access_token> (legacy desktop clients)
     """
-    # Try query parameter first
-    token = websocket.query_params.get("token")
-    if token:
-        return token
-
-    # Try Authorization header
     auth_header = websocket.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
         return auth_header[7:].strip()
+
+    token = websocket.query_params.get("token")
+    if token:
+        return token
 
     return None
 

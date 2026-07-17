@@ -1,0 +1,16 @@
+[
+  {
+    "id": "live-layer",
+    "name": "Live Edit Layer",
+    "thickness": 55,
+    "opacity": 0.9,
+    "glow": 24,
+    "barWidth": 4,
+    "color": {
+      "mode": "gradient",
+      "solidColor": "#ffffff",
+      "gradientColors": ["#00ffcc", "#0066ff"],
+      "gradientDirection": "left-to-right"
+    }
+  }
+]

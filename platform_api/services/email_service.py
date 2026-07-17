@@ -72,6 +72,13 @@ def _build_verification_email(
     msg["Subject"] = f"Verify your CAMXORA account — {code}"
     msg["From"] = f"{from_name} <{from_address}>"
     msg["To"] = ""  # Set by caller
+    plain = (
+        f"Hey {display_name},\n\n"
+        f"Your CAMXORA verification code is: {code}\n\n"
+        "This code expires in 15 minutes.\n"
+        "If you didn't create an account, you can ignore this email.\n"
+    )
+    msg.attach(MIMEText(plain, "plain", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
     return msg
 

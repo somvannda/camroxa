@@ -150,15 +150,20 @@ _CATEGORY_DESCRIPTIONS = {
 
 
 async def _call_deepseek(prompt: str, system: str = "") -> str:
-    """Call DeepSeek LLM API directly."""
+    """Call DeepSeek LLM API via Key Pool only."""
+    from platform_api.dependencies import get_key_pool_service
+    from platform_api.exceptions import NoAvailableKeysError
     from platform_api.config import get_settings
 
     settings = get_settings()
-    api_key = settings.deepseek_api_key
-    base_url = settings.deepseek_api_base_url.rstrip("/")
+    key_pool = get_key_pool_service()
 
-    if not api_key:
-        raise ValueError("DeepSeek API key not configured")
+    if key_pool is None:
+        raise NoAvailableKeysError("deepseek", {})
+
+    api_key = await key_pool.get_key("deepseek")
+
+    base_url = settings.deepseek_api_base_url.rstrip("/")
 
     messages = []
     if system:
@@ -186,6 +191,22 @@ async def generate_channel_prompt(
     genre = request.genre or "music"
     desc = _CATEGORY_DESCRIPTIONS.get(category, category)
 
+    # Categories that require {channel_name} in the generated prompt
+    # "title" generates the channel name itself, so it doesn't need {channel_name}
+    requires_channel_name = category in ("logo", "cover", "description", "keyword", "tag")
+
+    if requires_channel_name:
+        channel_name_instruction = (
+            "- MUST include {channel_name} as a placeholder for the channel's name — this is mandatory\n"
+            "- The prompt should reference {channel_name} naturally (e.g., 'for channel {channel_name}')\n"
+        )
+        channel_name_system_note = "- ALWAYS include {channel_name} as a template variable — this is mandatory\n"
+    else:
+        channel_name_instruction = (
+            "- Do NOT include {channel_name} — this prompt generates the name itself\n"
+        )
+        channel_name_system_note = ""
+
     system = (
         "You are an expert YouTube channel branding consultant and prompt engineer. "
         "Your job is to generate a high-quality system/user prompt that will be used "
@@ -193,7 +214,8 @@ async def generate_channel_prompt(
         "The generated prompt should:\n"
         "- Be specific to the music genre provided\n"
         "- Include clear instructions for the AI that will consume it\n"
-        "- Support template variables like {channel_name} and {genre} where appropriate\n"
+        f"{channel_name_system_note}"
+        "- Support template variables like {genre} where appropriate\n"
         "- Be detailed enough to produce professional results\n"
         "- NOT include any explanation, just the prompt text itself"
     )
@@ -204,14 +226,18 @@ async def generate_channel_prompt(
         f"Requirements:\n"
         f"- The prompt will be used by an AI to generate the actual {desc}\n"
         f"- It should instruct the AI to create something professional and genre-appropriate\n"
-        f"- Use {{channel_name}} as a placeholder for the channel name (where applicable)\n"
-        f"- Use {{genre}} as a placeholder for the genre (where applicable)\n"
+        f"{channel_name_instruction}"
+        f"- Use {{genre}} as a placeholder for the genre\n"
         f"- Return ONLY the prompt text, no labels or explanations\n"
     )
 
     content = await _call_deepseek(user, system)
     # Strip any wrapping quotes the LLM might add
     content = content.strip().strip('"').strip("'")
+
+    # Ensure {channel_name} is present for categories that require it
+    if requires_channel_name and "{channel_name}" not in content:
+        content = content + "\n\nChannel name: {channel_name}"
 
     return GeneratePromptResponse(content=content, category=category)
 

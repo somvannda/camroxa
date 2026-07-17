@@ -9,11 +9,12 @@ Requirements: 20.1, 20.2, 20.3, 20.4
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 from platform_api.models.domain import AuditLog
+from platform_api.utils.datetime_utils import format_utc_iso, utc_now
 from platform_api.repositories.audit_repo import (
     AuditQueryFilters,
     AuditRepository,
@@ -71,14 +72,22 @@ class AuditService:
         """
         from uuid import UUID
 
-        # Resolve timestamp
+        # Resolve timestamp (always timezone-aware UTC for TIMESTAMPTZ storage)
         if timestamp is None:
-            created_at = datetime.utcnow()
+            created_at = utc_now()
         elif isinstance(timestamp, str):
-            # Parse ISO 8601 string
-            created_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00")).replace(tzinfo=None)
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            created_at = (
+                parsed.replace(tzinfo=timezone.utc)
+                if parsed.tzinfo is None
+                else parsed.astimezone(timezone.utc)
+            )
         else:
-            created_at = timestamp
+            created_at = (
+                timestamp.replace(tzinfo=timezone.utc)
+                if timestamp.tzinfo is None
+                else timestamp.astimezone(timezone.utc)
+            )
 
         entry = AuditLog(
             id=uuid4(),
@@ -108,6 +117,8 @@ class AuditService:
         actor_id: str | None = None,
         action_type: str | None = None,
         resource_type: str | None = None,
+        outcome: str | None = None,
+        endpoint_path: str | None = None,
         from_date: datetime | None = None,
         to_date: datetime | None = None,
         page: int = 1,
@@ -131,6 +142,8 @@ class AuditService:
             actor_id=actor_id,
             action_type=action_type,
             resource_type=resource_type,
+            outcome=outcome,
+            endpoint_path=endpoint_path,
             from_date=from_date,
             to_date=to_date,
         )

@@ -6,7 +6,7 @@ from `dependencies.py`.
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, Request
 
 from platform_api.dependencies import (
     get_auth_service,
@@ -17,18 +17,23 @@ from platform_api.dependencies import (
     get_credit_pricing_service,
     get_credit_repo,
     get_generation_service,
+    get_image_job_service,
     get_key_pool_service,
     get_license_repo,
+    get_invitation_code_service,
     get_lockout,
     get_notification_service,
     get_plan_repo,
     get_profile_service,
     get_prompt_service,
     get_rate_limit_config_repo,
+    get_reset_service,
     get_settings_service,
+    get_image_sample_pack_repo,
     get_suno_balance_service,
     get_usage_enforcement_service,
     get_usage_tracking_repo,
+    get_user_repo,
     get_user_service,
 )
 
@@ -39,6 +44,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
     # --- auth.py ---
     from platform_api.routers.auth import (
         _get_auth_service as auth_get_auth,
+        _get_invitation_code_service as auth_get_invitation_code_service,
         _get_lockout as auth_get_lockout,
         _get_current_user_id as auth_get_current_user_id,
     )
@@ -49,16 +55,28 @@ def wire_all_dependencies(app: FastAPI) -> None:
     async def real_lockout():
         return get_lockout()
 
-    async def real_current_user_id(authorization: str = Header(...)) -> str:
+    async def real_invitation_code_service():
+        return get_invitation_code_service()
+
+    async def real_current_user_id(
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ) -> str:
         from platform_api.exceptions import AuthenticationError
-        if not authorization.startswith("Bearer "):
+        from platform_api.middleware.auth import _resolve_access_cookie_name
+        token: str | None = None
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization[len("Bearer "):]
+        else:
+            token = request.cookies.get(_resolve_access_cookie_name(request))
+        if not token:
             raise AuthenticationError("Missing or invalid Authorization header.")
-        token = authorization[len("Bearer "):]
         auth_svc = get_auth_service()
         payload = await auth_svc.validate_token(token)
         return payload.user_id
 
     app.dependency_overrides[auth_get_auth] = real_auth_service
+    app.dependency_overrides[auth_get_invitation_code_service] = real_invitation_code_service
     app.dependency_overrides[auth_get_lockout] = real_lockout
     app.dependency_overrides[auth_get_current_user_id] = real_current_user_id
 
@@ -75,6 +93,13 @@ def wire_all_dependencies(app: FastAPI) -> None:
         _get_audit_service as admin_get_audit,
         _get_suno_balance_service as admin_get_suno,
         _get_rate_limit_repo as admin_get_rate_limit,
+        _get_settings_repo as admin_get_settings_repo,
+        _get_credit_repo as admin_get_credit_repo,
+        _get_user_repo as admin_get_user_repo,
+        _get_batch_repo as admin_get_batch_repo,
+        _get_youtube_oauth_app_repo as admin_get_youtube_oauth_repo,
+        _get_youtube_oauth_encryption as admin_get_youtube_oauth_encryption,
+        _get_reset_service as admin_get_reset_service,
     )
 
     async def real_admin_audit():
@@ -86,9 +111,81 @@ def wire_all_dependencies(app: FastAPI) -> None:
     async def real_admin_rate_limit():
         return get_rate_limit_config_repo()
 
+    async def real_admin_settings_repo():
+        from platform_api.dependencies import get_settings_repo
+
+        return get_settings_repo()
+
+    async def real_admin_credit_repo():
+        return get_credit_repo()
+
+    async def real_admin_user_repo():
+        return get_user_repo()
+
+    async def real_admin_batch_repo():
+        return get_batch_repo()
+
+    async def real_admin_youtube_oauth_repo():
+        from platform_api.dependencies import get_youtube_oauth_app_repo
+
+        return get_youtube_oauth_app_repo()
+
+    async def real_admin_youtube_oauth_encryption():
+        from platform_api.dependencies import get_youtube_oauth_encryption
+
+        return get_youtube_oauth_encryption()
+
     app.dependency_overrides[admin_get_audit] = real_admin_audit
     app.dependency_overrides[admin_get_suno] = real_admin_suno
     app.dependency_overrides[admin_get_rate_limit] = real_admin_rate_limit
+    app.dependency_overrides[admin_get_settings_repo] = real_admin_settings_repo
+    app.dependency_overrides[admin_get_credit_repo] = real_admin_credit_repo
+    app.dependency_overrides[admin_get_user_repo] = real_admin_user_repo
+    app.dependency_overrides[admin_get_batch_repo] = real_admin_batch_repo
+    app.dependency_overrides[admin_get_youtube_oauth_repo] = real_admin_youtube_oauth_repo
+    app.dependency_overrides[
+        admin_get_youtube_oauth_encryption
+    ] = real_admin_youtube_oauth_encryption
+
+    async def real_admin_reset_service():
+        return get_reset_service()
+
+    app.dependency_overrides[admin_get_reset_service] = real_admin_reset_service
+
+    # --- admin_invitations.py ---
+    from platform_api.routers.admin_invitations import (
+        _get_invitation_code_service as admin_invitations_get_service,
+    )
+
+    async def real_admin_invitation_code_service():
+        return get_invitation_code_service()
+
+    app.dependency_overrides[
+        admin_invitations_get_service
+    ] = real_admin_invitation_code_service
+
+    # --- client_logs.py ---
+    from platform_api.routers.client_logs import (
+        _get_client_log_service as client_logs_get_svc,
+    )
+    from platform_api.dependencies import get_client_log_service
+
+    async def real_client_log_service():
+        return get_client_log_service()
+
+    app.dependency_overrides[client_logs_get_svc] = real_client_log_service
+
+    # --- youtube.py ---
+    from platform_api.routers.youtube import (
+        _get_youtube_connection_service as youtube_get_service,
+    )
+
+    async def real_youtube_connection_service():
+        from platform_api.dependencies import get_youtube_connection_service
+
+        return get_youtube_connection_service()
+
+    app.dependency_overrides[youtube_get_service] = real_youtube_connection_service
 
     # --- batch.py ---
     from platform_api.routers.batch import _get_batch_service as batch_get_svc
@@ -98,10 +195,28 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[batch_get_svc] = real_batch_service
 
+    # --- image_jobs.py ---
+    from platform_api.routers.image_jobs import (
+        _get_batch_service as image_jobs_get_batch_svc,
+        _get_image_job_service as image_jobs_get_svc,
+    )
+    from platform_api.routers.music_downloads import (
+        _get_batch_service as music_downloads_get_batch_svc,
+    )
+
+    async def real_image_job_service():
+        return get_image_job_service()
+
+    app.dependency_overrides[image_jobs_get_svc] = real_image_job_service
+    app.dependency_overrides[image_jobs_get_batch_svc] = real_batch_service
+    app.dependency_overrides[music_downloads_get_batch_svc] = real_batch_service
+
     # --- callbacks.py ---
     from platform_api.routers.callbacks import (
         _get_suno_task_repo as cb_get_task_repo,
         _get_notification_port as cb_get_notif,
+        _get_batch_service as cb_get_batch_service,
+        _get_image_job_service as cb_get_image_jobs,
     )
 
     async def real_suno_task_repo():
@@ -110,16 +225,52 @@ def wire_all_dependencies(app: FastAPI) -> None:
     async def real_notification_port():
         return get_notification_service()
 
+    async def real_callback_batch_service():
+        return get_batch_service()
+
     app.dependency_overrides[cb_get_task_repo] = real_suno_task_repo
     app.dependency_overrides[cb_get_notif] = real_notification_port
+    app.dependency_overrides[cb_get_batch_service] = real_callback_batch_service
+    app.dependency_overrides[cb_get_image_jobs] = real_image_job_service
+
+    # --- image_sample_packs.py ---
+    from platform_api.routers.image_sample_packs import (
+        _get_image_sample_pack_repo as image_packs_get_repo,
+    )
+
+    async def real_image_packs_repo():
+        return get_image_sample_pack_repo()
+
+    app.dependency_overrides[image_packs_get_repo] = real_image_packs_repo
+
+    # --- admin_image_sample_packs.py ---
+    from platform_api.routers.admin_image_sample_packs import (
+        _get_image_sample_pack_repo as admin_image_packs_get_repo,
+    )
+
+    app.dependency_overrides[admin_image_packs_get_repo] = real_image_packs_repo
+
+    from platform_api.routers.admin_image_sample_packs import (
+        _get_image_sample_pack_service as admin_image_packs_get_service,
+    )
+    from platform_api.dependencies import get_image_sample_pack_service
+
+    async def real_image_sample_pack_service():
+        return get_image_sample_pack_service()
+
+    app.dependency_overrides[admin_image_packs_get_service] = real_image_sample_pack_service
 
     # --- credits.py ---
     from platform_api.routers.credits import (
         _get_credit_repo as credits_get_repo,
         _get_pricing_service as credits_get_pricing,
+        _get_credit_pack_service as credits_get_pack_service,
         _get_pack_repo as credits_get_pack,
         _get_settings_service as credits_get_settings,
         _get_credit_service as credits_get_credit_svc,
+        _get_ai_routing_service as credits_get_ai_routing,
+        _get_model_cost_service as credits_get_model_cost,
+        _get_pricing_generator_service as credits_get_pricing_generator,
     )
 
     async def real_credit_repo():
@@ -127,6 +278,10 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     async def real_pricing_service():
         return get_credit_pricing_service()
+
+    async def real_credit_pack_service():
+        from platform_api.dependencies import get_credit_pack_service
+        return get_credit_pack_service()
 
     async def real_pack_repo():
         return get_credit_repo()
@@ -138,16 +293,35 @@ def wire_all_dependencies(app: FastAPI) -> None:
         from platform_api.dependencies import get_credit_operation_service
         return get_credit_operation_service()
 
+    async def real_credits_ai_routing_service():
+        from platform_api.dependencies import get_ai_routing_service
+        return get_ai_routing_service()
+
+    async def real_model_cost_service():
+        from platform_api.dependencies import get_model_cost_service
+        return get_model_cost_service()
+
+    async def real_pricing_generator_service():
+        from platform_api.dependencies import get_pricing_generator_service
+        return get_pricing_generator_service()
+
     app.dependency_overrides[credits_get_repo] = real_credit_repo
     app.dependency_overrides[credits_get_pricing] = real_pricing_service
+    app.dependency_overrides[credits_get_pack_service] = real_credit_pack_service
     app.dependency_overrides[credits_get_pack] = real_pack_repo
     app.dependency_overrides[credits_get_settings] = real_credits_settings_service
     app.dependency_overrides[credits_get_credit_svc] = real_credits_credit_service
+    app.dependency_overrides[credits_get_ai_routing] = real_credits_ai_routing_service
+    app.dependency_overrides[credits_get_model_cost] = real_model_cost_service
+    app.dependency_overrides[credits_get_pricing_generator] = real_pricing_generator_service
 
     # --- generation.py ---
     from platform_api.routers.generation import (
         _get_generation_service as gen_get_svc,
         _get_task_lookup as gen_get_task,
+        _get_ai_routing_service as gen_get_ai_routing,
+        _get_prompt_service as gen_get_prompt_svc,
+        _get_profile_service as gen_get_profile_svc,
     )
 
     async def real_generation_service():
@@ -156,13 +330,34 @@ def wire_all_dependencies(app: FastAPI) -> None:
     async def real_task_lookup():
         return get_batch_repo()
 
+    async def real_gen_ai_routing_service():
+        from platform_api.dependencies import get_ai_routing_service
+        svc = get_ai_routing_service()
+        if svc is None:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="AI routing service unavailable. Key pool is not configured.",
+            )
+        return svc
+
+    async def real_gen_prompt_service():
+        return get_prompt_service()
+
+    async def real_gen_profile_service():
+        return get_profile_service()
+
     app.dependency_overrides[gen_get_svc] = real_generation_service
     app.dependency_overrides[gen_get_task] = real_task_lookup
+    app.dependency_overrides[gen_get_ai_routing] = real_gen_ai_routing_service
+    app.dependency_overrides[gen_get_prompt_svc] = real_gen_prompt_service
+    app.dependency_overrides[gen_get_profile_svc] = real_gen_profile_service
 
     # --- licenses.py ---
     from platform_api.routers.licenses import (
         _get_license_repo as lic_get_repo,
         _get_plan_repo as lic_get_plan,
+        _get_credit_repo as lic_get_credit,
     )
 
     async def real_license_repo():
@@ -173,6 +368,11 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[lic_get_repo] = real_license_repo
     app.dependency_overrides[lic_get_plan] = real_lic_plan_repo
+
+    async def real_lic_credit_repo():
+        return get_credit_repo()
+
+    app.dependency_overrides[lic_get_credit] = real_lic_credit_repo
 
     # --- plans.py ---
     from platform_api.routers.plans import _get_plan_repo as plans_get_repo
@@ -236,3 +436,66 @@ def wire_all_dependencies(app: FastAPI) -> None:
         return get_channel_prompt_service()
 
     app.dependency_overrides[cp_get_svc] = real_channel_prompt_service
+
+    # --- ai_routing.py ---
+    from platform_api.routers.ai_routing import _get_ai_routing_service as ai_routing_get_svc
+
+    async def real_ai_routing_service():
+        from platform_api.dependencies import get_ai_routing_service
+        svc = get_ai_routing_service()
+        if svc is None:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="AI routing service unavailable. Key pool is not configured.",
+            )
+        return svc
+
+    app.dependency_overrides[ai_routing_get_svc] = real_ai_routing_service
+
+    # --- marketplace.py ---
+    from platform_api.routers.marketplace import (
+        _get_marketplace_service as marketplace_get_svc,
+    )
+
+    async def real_marketplace_service():
+        from platform_api.dependencies import get_db_pool
+        from platform_api.repositories.marketplace_repo import MarketplaceRepository
+        from platform_api.services.marketplace_service import MarketplaceService
+        from platform_api.config import get_settings as _get_settings
+
+        settings = _get_settings()
+        pool = get_db_pool()
+        repo = MarketplaceRepository(pool=pool)
+        return MarketplaceService(repo=repo, storage_path=settings.marketplace_storage_path)
+
+    app.dependency_overrides[marketplace_get_svc] = real_marketplace_service
+
+    # --- channel_setup.py (ai routing) ---
+    from platform_api.routers.channel_setup import _get_ai_routing_service as cs_get_ai_routing
+
+    async def real_cs_ai_routing_service():
+        from platform_api.dependencies import get_ai_routing_service
+        svc = get_ai_routing_service()
+        if svc is None:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="AI routing service unavailable. Key pool is not configured.",
+            )
+        return svc
+
+    app.dependency_overrides[cs_get_ai_routing] = real_cs_ai_routing_service
+
+    # --- streaming_public.py / streaming_admin.py ---
+    from platform_api.routers.streaming_public import _get_catalog_service as streaming_public_catalog
+    from platform_api.routers.streaming_admin import _get_catalog_service as streaming_admin_catalog
+    from platform_api.services.streaming_catalog_service import StreamingCatalogService
+
+    async def real_streaming_catalog_service() -> StreamingCatalogService:
+        from platform_api.dependencies import get_db_pool
+
+        return StreamingCatalogService(get_db_pool())
+
+    app.dependency_overrides[streaming_public_catalog] = real_streaming_catalog_service
+    app.dependency_overrides[streaming_admin_catalog] = real_streaming_catalog_service

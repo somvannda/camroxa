@@ -1,0 +1,49 @@
+"""Shared helpers for draining pending image job queues."""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from platform_api.services import image_progress_log as image_log
+
+if TYPE_CHECKING:
+    from platform_api.services.image_job_service import ImageJobService
+
+logger = logging.getLogger(__name__)
+
+
+async def run_image_jobs_until_empty(
+    service: ImageJobService,
+    *,
+    user_id: str,
+    batch_id: str,
+) -> None:
+    """Run pending image jobs for a batch until the queue is drained."""
+    image_log.log_runner_started(user_id=user_id, batch_id=batch_id)
+    total_ran = 0
+    try:
+        for iteration in range(1, 51):
+            ran = await service.run_pending_jobs(
+                user_id=user_id,
+                batch_id=batch_id,
+                limit=50,
+            )
+            image_log.log_runner_iteration(
+                batch_id=batch_id,
+                iteration=iteration,
+                ran=ran,
+            )
+            if ran <= 0:
+                break
+            total_ran += ran
+    except Exception as exc:
+        message = str(exc) or exc.__class__.__name__
+        image_log.log_runner_crashed(user_id=user_id, batch_id=batch_id, error=message)
+        logger.exception(
+            "Image job runner crashed for user %s batch=%s",
+            user_id,
+            batch_id,
+        )
+        return
+    image_log.log_runner_finished(batch_id=batch_id, total_ran=total_ran)

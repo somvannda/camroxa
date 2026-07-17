@@ -13,18 +13,47 @@ Requirements: 15.1, 19.4, 20.2
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, require_admin
+from platform_api.utils.datetime_utils import format_utc_iso
+from platform_api.models.enums import UserRole
+from platform_api.models.reset_models import (
+    BackupListResponse,
+    BackupMetadataResponse,
+    ResetRequest,
+    ResetResponse,
+    RestoreRequest,
+    RestoreResponse,
+)
+from platform_api.repositories.credit_repo import CreditRepository
 from platform_api.repositories.rate_limit_repo import (
     RateLimitConfigRepository,
 )
+from platform_api.repositories.user_repo import UserRepository
 from platform_api.services.audit_service import AuditService
+from platform_api.services.billing_config_service import (
+    CUTLUY_API_BASE_URL_KEY,
+    CUTLUY_PAYMENT_LINK_ID_KEY,
+    CUTLUY_SECRET_KEY_SETTING,
+    CUTLUY_WEBHOOK_SECRET_KEY,
+    mask_secret_value,
+    normalize_cutluy_payment_link_id,
+    resolve_cutluy_config,
+)
+from platform_api.services.credit_units import units_to_credits
+from platform_api.services.key_encryption import KeyEncryption
+from platform_api.services.reset_service import ResetService
 from platform_api.services.suno_balance_service import SunoBalanceService
+from platform_api.services.usage_transaction_labels import enrich_transaction_for_api
+from platform_api.repositories.youtube_oauth_app_repo import YouTubeOAuthAppRepository
 
 # ---------------------------------------------------------------------------
 # Router
@@ -59,6 +88,55 @@ async def _get_rate_limit_repo() -> RateLimitConfigRepository:
     )
 
 
+async def _get_settings_repo():
+    """Placeholder dependency for SettingsRepository — override in tests or dependencies.py."""
+    raise NotImplementedError(
+        "SettingsRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_youtube_oauth_app_repo() -> YouTubeOAuthAppRepository:
+    """Placeholder dependency for YouTubeOAuthAppRepository."""
+    raise NotImplementedError(
+        "YouTubeOAuthAppRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_youtube_oauth_encryption() -> KeyEncryption | None:
+    """Placeholder dependency for YouTube OAuth secret encryption."""
+    raise NotImplementedError(
+        "YouTube OAuth encryption dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_credit_repo() -> CreditRepository:
+    """Placeholder dependency for CreditRepository — override in tests or dependencies.py."""
+    raise NotImplementedError(
+        "CreditRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_user_repo() -> UserRepository:
+    """Placeholder dependency for UserRepository — override in tests or dependencies.py."""
+    raise NotImplementedError(
+        "UserRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_batch_repo():
+    """Placeholder dependency for BatchRepository — override in tests or dependencies.py."""
+    raise NotImplementedError(
+        "BatchRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_reset_service() -> ResetService:
+    """Placeholder dependency for ResetService — override in tests or dependencies.py."""
+    raise NotImplementedError(
+        "ResetService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Type aliases for dependency injection
 # ---------------------------------------------------------------------------
@@ -67,6 +145,17 @@ AdminDep = Annotated[AuthContext, Depends(require_admin)]
 AuditServiceDep = Annotated[AuditService, Depends(_get_audit_service)]
 SunoBalanceDep = Annotated[SunoBalanceService, Depends(_get_suno_balance_service)]
 RateLimitRepoDep = Annotated[RateLimitConfigRepository, Depends(_get_rate_limit_repo)]
+SettingsRepoDep = Annotated[Any, Depends(_get_settings_repo)]
+YouTubeOAuthAppRepoDep = Annotated[
+    YouTubeOAuthAppRepository, Depends(_get_youtube_oauth_app_repo)
+]
+YouTubeOAuthEncryptionDep = Annotated[
+    KeyEncryption | None, Depends(_get_youtube_oauth_encryption)
+]
+CreditRepoDep = Annotated[CreditRepository, Depends(_get_credit_repo)]
+UserRepoDep = Annotated[UserRepository, Depends(_get_user_repo)]
+BatchRepoDep = Annotated[Any, Depends(_get_batch_repo)]
+ResetServiceDep = Annotated[ResetService, Depends(_get_reset_service)]
 
 
 # ---------------------------------------------------------------------------
@@ -79,10 +168,20 @@ class AuditLogEntry(BaseModel):
 
     id: str
     actor_id: str | None = None
+    actor_email: str | None = None
+    actor_display_name: str | None = None
+    actor_role: str | None = None
+    actor_label: str | None = None
     action_type: str
     target_resource: str | None = None
     outcome: str
     credit_impact: int = 0
+    credits_involved: bool = False
+    credit_summary: str = "No recorded credit involvement."
+    credit_direction: str | None = None
+    credit_reason: str | None = None
+    credit_reference: str | None = None
+    payment_reference: str | None = None
     source_ip: str | None = None
     client_id: str | None = None
     endpoint_path: str | None = None
@@ -98,6 +197,116 @@ class AuditLogResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class UsageLineItemResponse(BaseModel):
+    operation: str
+    provider: str | None = None
+    model: str | None = None
+    amount_units: int | None = None
+    amount: float | None = None
+
+
+class UsageEntryResponse(BaseModel):
+    id: str
+    user_id: str
+    user_email: str
+    user_display_name: str
+    amount: float
+    amount_units: int
+    direction: str
+    reason: str
+    purpose: str
+    provider: str | None = None
+    model: str | None = None
+    operation: str | None = None
+    category: str | None = None
+    line_items_summary: str | None = None
+    line_items: list[UsageLineItemResponse] = Field(default_factory=list)
+    ref_id: str | None = None
+    batch_id: str | None = None
+    song_id: str | None = None
+    batch_index: int | None = None
+    attempts_used: int | None = None
+    llm_calls_title: int | None = None
+    llm_calls_album: int | None = None
+    llm_calls_lyric: int | None = None
+    source: str | None = None
+    billing: str | None = None
+    list_credit_units: int | None = None
+    charged_credit_units: int | None = None
+    coverage: str | None = None
+    metadata: dict[str, Any] | None = None
+    legacy: bool = False
+    created_at: str | None = None
+
+
+class UsageFiltersResponse(BaseModel):
+    providers: list[str] = Field(default_factory=list)
+    operations: list[str] = Field(default_factory=list)
+
+
+class UsageSummaryResponse(BaseModel):
+    billable_events: int = 0
+    credit_cost: float = 0
+    refund_total: float = 0
+    refund_events: int = 0
+    net_credit_cost: float = 0
+    wallet_charged: float = 0
+    plan_included_list: float = 0
+    plan_allowance_events: int = 0
+    plan_draft_list: float = 0
+    plan_song_list: float = 0
+    plan_image_list: float = 0
+    platform_absorb_events: int = 0
+    platform_absorb_list: float = 0
+    subscription_revenue_cents: int = 0
+    subscription_payment_count: int = 0
+    by_operation: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class UsageListResponse(BaseModel):
+    items: list[UsageEntryResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    summary: UsageSummaryResponse
+
+
+class AdminBatchSongSummary(BaseModel):
+    id: str
+    batch_index: int
+    title: str | None = None
+    album: str | None = None
+    status: str
+
+
+class AdminBatchSummaryResponse(BaseModel):
+    id: str
+    user_id: str
+    user_email: str = ""
+    user_display_name: str = ""
+    status: str
+    song_count: int
+    language: str = "en"
+    created_at: str | None = None
+    updated_at: str | None = None
+    songs: list[AdminBatchSongSummary] = Field(default_factory=list)
+
+
+class AdminSongSummaryResponse(BaseModel):
+    id: str
+    batch_id: str
+    batch_index: int
+    user_id: str
+    user_email: str = ""
+    user_display_name: str = ""
+    title: str | None = None
+    album: str | None = None
+    status: str
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class SunoBalanceResponse(BaseModel):
@@ -141,6 +350,211 @@ class RateLimitUpdateResponse(BaseModel):
     updated_at: str | None = None
 
 
+class SlaiImageProviderConfigResponse(BaseModel):
+    """SLAI image throttling and retry settings (admin-managed)."""
+
+    min_interval_seconds: float = Field(ge=0.0, le=120.0)
+    max_concurrent: int = Field(ge=1, le=8)
+    provider_retries: int = Field(ge=1, le=20)
+    retry_base_delay_seconds: float = Field(ge=0.0, le=120.0)
+    retry_max_delay_seconds: float = Field(ge=1.0, le=300.0)
+    fallback_provider_retries: int = Field(ge=1, le=5)
+
+
+class YouTubeOAuthAppEntry(BaseModel):
+    """Metadata for a stored YouTube OAuth application."""
+
+    id: str
+    name: str
+    client_id: str
+    is_default: bool
+    has_client_secret: bool = True
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class YouTubeOAuthAppsResponse(BaseModel):
+    """List response for admin-managed YouTube OAuth apps."""
+
+    apps: list[YouTubeOAuthAppEntry]
+
+
+class CreateYouTubeOAuthAppRequest(BaseModel):
+    """Create a new YouTube OAuth app."""
+
+    name: str = Field(..., min_length=1, max_length=120)
+    client_id: str = Field(..., min_length=1, max_length=2048)
+    client_secret: str = Field(..., min_length=1, max_length=4096)
+    is_default: bool = False
+
+
+class UpdateYouTubeOAuthAppRequest(BaseModel):
+    """Update an existing YouTube OAuth app."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    client_id: str | None = Field(default=None, min_length=1, max_length=2048)
+    client_secret: str | None = Field(default=None, min_length=1, max_length=4096)
+    is_default: bool | None = None
+
+
+def _format_iso_timestamp(value: datetime | None) -> str | None:
+    return format_utc_iso(value)
+
+
+def _normalize_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _normalize_role(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, UserRole):
+        return value.value
+    return _normalize_text(getattr(value, "value", value))
+
+
+def _extract_credit_context(entry) -> tuple[bool, str, str | None, str | None, str | None, str | None]:
+    metadata = entry.metadata if isinstance(entry.metadata, dict) else {}
+    reason = _normalize_text(
+        metadata.get("credit_reason")
+        or metadata.get("reason")
+        or metadata.get("usage_reason")
+    )
+    reference = _normalize_text(
+        metadata.get("ref_id")
+        or metadata.get("reference_id")
+        or metadata.get("batch_id")
+        or metadata.get("song_id")
+    )
+    payment_reference = _normalize_text(
+        metadata.get("payment_ref")
+        or metadata.get("payment_reference")
+        or metadata.get("checkout_session_id")
+    )
+
+    impact = int(entry.credit_impact or 0)
+    action_type = entry.action_type or ""
+    target_resource = entry.target_resource or ""
+    credits_involved = False
+    direction: str | None = None
+    summary: str
+
+    if impact > 0:
+        credits_involved = True
+        direction = "debit"
+        summary = f"Deducted {impact} credits."
+    elif impact < 0:
+        credits_involved = True
+        direction = "refund"
+        summary = f"Refunded {abs(impact)} credits."
+    elif action_type.startswith("credit.redeem"):
+        credits_involved = True
+        direction = "credit"
+        summary = "Redeem code credited wallet."
+    elif action_type.startswith("credit.pack"):
+        credits_involved = True
+        direction = "credit"
+        summary = "Credit pack purchase credited wallet."
+    elif action_type.startswith("credit.purchase"):
+        credits_involved = True
+        direction = "credit"
+        summary = "Credit purchase activity recorded."
+    elif action_type.startswith("credit.adjust"):
+        credits_involved = True
+        direction = "adjustment"
+        summary = "Credit adjustment activity recorded."
+    elif action_type.startswith("credit.pricing"):
+        credits_involved = True
+        summary = "Credit pricing configuration changed."
+    elif target_resource.startswith("credit"):
+        credits_involved = True
+        summary = "Credit-related resource activity recorded."
+    else:
+        summary = "No recorded credit involvement."
+
+    if reason:
+        summary = f"{summary} Reason: {reason}."
+    elif payment_reference:
+        summary = f"{summary} Payment reference captured."
+    elif reference:
+        summary = f"{summary} Reference: {reference}."
+
+    return (
+        credits_involved,
+        summary,
+        direction,
+        reason,
+        reference,
+        payment_reference,
+    )
+
+
+async def _resolve_actor_lookup(entries: list[Any], user_repo: UserRepository) -> dict[str, dict[str, str | None]]:
+    actor_ids: list[UUID] = []
+    seen: set[UUID] = set()
+
+    for entry in entries:
+        if not entry.actor_id:
+            continue
+        try:
+            actor_uuid = UUID(str(entry.actor_id))
+        except (TypeError, ValueError):
+            continue
+        if actor_uuid in seen:
+            continue
+        seen.add(actor_uuid)
+        actor_ids.append(actor_uuid)
+
+    if not actor_ids:
+        return {}
+
+    users = await asyncio.gather(*(user_repo.get_by_id(actor_id) for actor_id in actor_ids))
+    lookup: dict[str, dict[str, str | None]] = {}
+
+    for actor_uuid, user in zip(actor_ids, users):
+        actor_key = str(actor_uuid)
+        if user is None:
+            lookup[actor_key] = {
+                "actor_email": None,
+                "actor_display_name": None,
+                "actor_role": None,
+                "actor_label": actor_key,
+            }
+            continue
+
+        actor_email = _normalize_text(getattr(user, "email", None))
+        actor_display_name = _normalize_text(getattr(user, "display_name", None))
+        actor_role = _normalize_role(getattr(user, "role", None))
+        actor_label = actor_display_name or actor_email or actor_key
+
+        lookup[actor_key] = {
+            "actor_email": actor_email,
+            "actor_display_name": actor_display_name,
+            "actor_role": actor_role,
+            "actor_label": actor_label,
+        }
+
+    return lookup
+
+
+def _to_youtube_oauth_app_entry(record) -> YouTubeOAuthAppEntry:
+    return YouTubeOAuthAppEntry(
+        id=record.id,
+        name=record.name,
+        client_id=record.client_id,
+        is_default=record.is_default,
+        has_client_secret=bool(record.encrypted_client_secret),
+        created_at=_format_iso_timestamp(record.created_at),
+        updated_at=_format_iso_timestamp(record.updated_at),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -177,9 +591,12 @@ async def get_suno_balance(
 async def get_audit_log(
     ctx: AdminDep,
     audit_service: AuditServiceDep,
+    user_repo: UserRepoDep,
     actor_id: str | None = Query(default=None, description="Filter by actor UUID"),
     action_type: str | None = Query(default=None, description="Filter by action type"),
     resource_type: str | None = Query(default=None, description="Filter by resource type prefix"),
+    outcome: str | None = Query(default=None, description="Filter by outcome"),
+    endpoint_path: str | None = Query(default=None, description="Filter by endpoint path"),
     from_date: datetime | None = Query(default=None, description="Filter from date (ISO 8601)"),
     to_date: datetime | None = Query(default=None, description="Filter to date (ISO 8601)"),
     page: int = Query(default=1, ge=1, description="Page number (1-based)"),
@@ -195,30 +612,53 @@ async def get_audit_log(
         actor_id=actor_id,
         action_type=action_type,
         resource_type=resource_type,
+        outcome=outcome,
+        endpoint_path=endpoint_path,
         from_date=from_date,
         to_date=to_date,
         page=page,
         page_size=page_size,
     )
 
-    entries = [
-        AuditLogEntry(
-            id=str(entry.id),
-            actor_id=str(entry.actor_id) if entry.actor_id else None,
-            action_type=entry.action_type,
-            target_resource=entry.target_resource,
-            outcome=entry.outcome,
-            credit_impact=entry.credit_impact,
-            source_ip=entry.source_ip,
-            client_id=entry.client_id,
-            endpoint_path=entry.endpoint_path,
-            metadata=entry.metadata,
-            created_at=entry.created_at.isoformat() + "Z"
-            if entry.created_at
-            else "",
+    actor_lookup = await _resolve_actor_lookup(result.entries, user_repo)
+    entries: list[AuditLogEntry] = []
+    for entry in result.entries:
+        actor_key = str(entry.actor_id) if entry.actor_id else None
+        actor_data = actor_lookup.get(actor_key, {}) if actor_key else {}
+        (
+            credits_involved,
+            credit_summary,
+            credit_direction,
+            credit_reason,
+            credit_reference,
+            payment_reference,
+        ) = _extract_credit_context(entry)
+
+        entries.append(
+            AuditLogEntry(
+                id=str(entry.id),
+                actor_id=actor_key,
+                actor_email=actor_data.get("actor_email"),
+                actor_display_name=actor_data.get("actor_display_name"),
+                actor_role=actor_data.get("actor_role"),
+                actor_label=actor_data.get("actor_label") if actor_key else "System",
+                action_type=entry.action_type,
+                target_resource=entry.target_resource,
+                outcome=entry.outcome,
+                credit_impact=entry.credit_impact,
+                credits_involved=credits_involved,
+                credit_summary=credit_summary,
+                credit_direction=credit_direction,
+                credit_reason=credit_reason,
+                credit_reference=credit_reference,
+                payment_reference=payment_reference,
+                source_ip=entry.source_ip,
+                client_id=entry.client_id,
+                endpoint_path=entry.endpoint_path,
+                metadata=entry.metadata,
+                created_at=_format_iso_timestamp(entry.created_at) or "",
+            )
         )
-        for entry in result.entries
-    ]
 
     return AuditLogResponse(
         entries=entries,
@@ -226,6 +666,282 @@ async def get_audit_log(
         page=result.page,
         page_size=result.page_size,
         total_pages=result.total_pages,
+    )
+
+
+def _usage_entry_to_response(row: dict[str, Any]) -> UsageEntryResponse:
+    enriched = enrich_transaction_for_api(row)
+    line_items_raw = enriched.get("line_items") or []
+    line_items: list[UsageLineItemResponse] = []
+    for item in line_items_raw:
+        if not isinstance(item, dict):
+            continue
+        amount_units = item.get("amount_units")
+        line_items.append(
+            UsageLineItemResponse(
+                operation=str(item.get("operation") or ""),
+                provider=item.get("provider"),
+                model=item.get("model") or item.get("sub_model"),
+                amount_units=int(amount_units) if isinstance(amount_units, (int, float)) else None,
+                amount=units_to_credits(int(amount_units))
+                if isinstance(amount_units, (int, float))
+                else None,
+            )
+        )
+
+    created_at = enriched.get("created_at")
+    return UsageEntryResponse(
+        id=str(enriched["id"]),
+        user_id=str(enriched["user_id"]),
+        user_email=str(enriched.get("user_email") or ""),
+        user_display_name=str(enriched.get("user_display_name") or ""),
+        amount=float(enriched["amount"]),
+        amount_units=int(enriched["amount_units"]),
+        direction=str(enriched.get("direction") or "debit"),
+        reason=str(enriched.get("reason") or ""),
+        purpose=str(enriched.get("purpose") or ""),
+        provider=enriched.get("provider"),
+        model=enriched.get("model"),
+        operation=enriched.get("operation"),
+        category=enriched.get("category"),
+        line_items_summary=enriched.get("line_items_summary"),
+        line_items=line_items,
+        ref_id=enriched.get("ref_id"),
+        batch_id=enriched.get("batch_id"),
+        song_id=enriched.get("song_id"),
+        batch_index=enriched.get("batch_index"),
+        attempts_used=enriched.get("attempts_used"),
+        llm_calls_title=enriched.get("llm_calls_title"),
+        llm_calls_album=enriched.get("llm_calls_album"),
+        llm_calls_lyric=enriched.get("llm_calls_lyric"),
+        source=enriched.get("source"),
+        billing=enriched.get("billing"),
+        list_credit_units=int(enriched["list_credit_units"])
+        if isinstance(enriched.get("list_credit_units"), (int, float))
+        else None,
+        charged_credit_units=int(enriched["charged_credit_units"])
+        if isinstance(enriched.get("charged_credit_units"), (int, float))
+        else None,
+        coverage=enriched.get("coverage"),
+        metadata=enriched.get("metadata"),
+        legacy=bool(enriched.get("legacy")),
+        created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+    )
+
+
+@router.get(
+    "/usage/filters",
+    response_model=UsageFiltersResponse,
+    summary="List provider and operation filter options for usage",
+)
+async def get_usage_filters(
+    ctx: AdminDep,
+    credit_repo: CreditRepoDep,
+) -> UsageFiltersResponse:
+    del ctx
+    options = await credit_repo.get_usage_filter_options()
+    return UsageFiltersResponse(
+        providers=options.get("providers", []),
+        operations=options.get("operations", []),
+    )
+
+
+@router.get(
+    "/usage",
+    response_model=UsageListResponse,
+    summary="List credit usage transactions across all users",
+)
+async def get_usage(
+    ctx: AdminDep,
+    credit_repo: CreditRepoDep,
+    user_id: str | None = Query(default=None, description="Filter by user UUID"),
+    provider: str | None = Query(default=None, description="Filter by provider"),
+    operation: str | None = Query(default=None, description="Filter by operation type"),
+    direction: str | None = Query(default=None, description="debit, credit, or refund"),
+    reason: str | None = Query(default=None, description="Filter by reason substring"),
+    from_date: datetime | None = Query(default=None, description="Filter from date (ISO 8601)"),
+    to_date: datetime | None = Query(default=None, description="Filter to date (ISO 8601)"),
+    page: int = Query(default=1, ge=1, description="Page number (1-based)"),
+    page_size: int = Query(default=50, ge=1, le=200, description="Entries per page (max 200)"),
+) -> UsageListResponse:
+    """Return paginated credit usage with user, provider, model, and purpose details."""
+    del ctx
+    from uuid import UUID
+
+    parsed_user_id = UUID(user_id) if user_id else None
+    rows, total, summary_raw = await credit_repo.list_admin_usage(
+        page=page,
+        page_size=page_size,
+        user_id=parsed_user_id,
+        provider=provider,
+        operation=operation,
+        direction=direction,
+        reason=reason,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+    debit_units = int(summary_raw.get("debit_units") or 0)
+    refund_units = int(summary_raw.get("refund_units") or 0)
+    wallet_charged_units = int(summary_raw.get("wallet_charged_units") or 0)
+    plan_included_list_units = int(summary_raw.get("plan_included_list_units") or 0)
+    by_operation_raw = summary_raw.get("by_operation") or []
+    by_operation: list[dict[str, Any]] = []
+    for row in by_operation_raw:
+        if not isinstance(row, dict):
+            continue
+        by_operation.append(
+            {
+                "operation": str(row.get("operation") or "unknown"),
+                "provider": str(row.get("provider") or ""),
+                "model": str(row.get("model") or ""),
+                "events": int(row.get("events") or 0),
+                "wallet_charged": units_to_credits(int(row.get("wallet_charged_units") or 0)),
+                "plan_included_list": units_to_credits(
+                    int(row.get("plan_included_list_units") or 0)
+                ),
+            }
+        )
+
+    # Subscription cash uses date/user filters only (not ledger op/provider filters).
+    sub_cash = await credit_repo.sum_fulfilled_subscription_revenue(
+        user_id=parsed_user_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+    summary = UsageSummaryResponse(
+        billable_events=int(summary_raw.get("billable_events") or 0),
+        credit_cost=units_to_credits(debit_units),
+        refund_total=units_to_credits(refund_units),
+        refund_events=int(summary_raw.get("refund_events") or 0),
+        net_credit_cost=units_to_credits(max(debit_units - refund_units, 0)),
+        wallet_charged=units_to_credits(wallet_charged_units),
+        plan_included_list=units_to_credits(plan_included_list_units),
+        plan_allowance_events=int(summary_raw.get("plan_allowance_events") or 0),
+        plan_draft_list=units_to_credits(
+            int(summary_raw.get("plan_draft_list_units") or 0)
+        ),
+        plan_song_list=units_to_credits(
+            int(summary_raw.get("plan_song_list_units") or 0)
+        ),
+        plan_image_list=units_to_credits(
+            int(summary_raw.get("plan_image_list_units") or 0)
+        ),
+        platform_absorb_events=int(summary_raw.get("platform_absorb_events") or 0),
+        platform_absorb_list=units_to_credits(
+            int(summary_raw.get("platform_absorb_list_units") or 0)
+        ),
+        subscription_revenue_cents=int(
+            sub_cash.get("subscription_revenue_cents") or 0
+        ),
+        subscription_payment_count=int(
+            sub_cash.get("subscription_payment_count") or 0
+        ),
+        by_operation=by_operation,
+    )
+    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+
+    return UsageListResponse(
+        items=[_usage_entry_to_response(row) for row in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        summary=summary,
+    )
+
+
+@router.get(
+    "/batches/{batch_id}",
+    response_model=AdminBatchSummaryResponse,
+    summary="Get batch summary for admin usage tracing",
+)
+async def get_admin_batch_summary(
+    batch_id: str,
+    ctx: AdminDep,
+    batch_repo: BatchRepoDep,
+) -> AdminBatchSummaryResponse:
+    """Return batch and per-song status for tracing credit usage."""
+    del ctx
+    from uuid import UUID
+
+    from platform_api.dependencies import get_user_repo
+
+    try:
+        parsed_batch_id = UUID(batch_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid batch ID.") from exc
+
+    batch = await batch_repo.get_batch_by_id(parsed_batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+
+    user = await get_user_repo().get_by_id(batch.user_id)
+    songs = await batch_repo.get_songs_by_batch(parsed_batch_id)
+
+    return AdminBatchSummaryResponse(
+        id=str(batch.id),
+        user_id=str(batch.user_id),
+        user_email=str(user.email if user else ""),
+        user_display_name=str(user.display_name if user else ""),
+        status=batch.status,
+        song_count=batch.song_count,
+        language=batch.language,
+        created_at=batch.created_at.isoformat() if batch.created_at else None,
+        updated_at=batch.updated_at.isoformat() if batch.updated_at else None,
+        songs=[
+            AdminBatchSongSummary(
+                id=str(song.id),
+                batch_index=song.batch_index,
+                title=song.title,
+                album=song.album,
+                status=song.status,
+            )
+            for song in songs
+        ],
+    )
+
+
+@router.get(
+    "/songs/{song_id}",
+    response_model=AdminSongSummaryResponse,
+    summary="Get song summary for admin usage tracing",
+)
+async def get_admin_song_summary(
+    song_id: str,
+    ctx: AdminDep,
+    batch_repo: BatchRepoDep,
+) -> AdminSongSummaryResponse:
+    """Return song details for tracing a draft charge."""
+    del ctx
+    from uuid import UUID
+
+    from platform_api.dependencies import get_user_repo
+
+    try:
+        parsed_song_id = UUID(song_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid song ID.") from exc
+
+    song = await batch_repo.get_song_by_id(parsed_song_id)
+    if song is None:
+        raise HTTPException(status_code=404, detail="Song not found.")
+
+    user = await get_user_repo().get_by_id(song.user_id)
+
+    return AdminSongSummaryResponse(
+        id=str(song.id),
+        batch_id=str(song.batch_id),
+        batch_index=song.batch_index,
+        user_id=str(song.user_id),
+        user_email=str(user.email if user else ""),
+        user_display_name=str(user.display_name if user else ""),
+        title=song.title,
+        album=song.album,
+        status=song.status,
+        created_at=song.created_at.isoformat() if song.created_at else None,
+        updated_at=song.updated_at.isoformat() if song.updated_at else None,
     )
 
 
@@ -289,6 +1005,42 @@ async def update_rate_limits(
     )
 
 
+@router.get(
+    "/rate-limits/slai-image-provider",
+    response_model=SlaiImageProviderConfigResponse,
+    summary="Get SLAI image provider throttling configuration",
+)
+async def get_slai_image_provider_config(
+    ctx: AdminDep,
+    settings_repo: SettingsRepoDep,
+) -> SlaiImageProviderConfigResponse:
+    """Return admin-managed SLAI image rate limit and retry settings."""
+    from platform_api.services.slai_image_config_service import load_slai_image_provider_config
+
+    config = await load_slai_image_provider_config(settings_repo)
+    return SlaiImageProviderConfigResponse(**config.to_dict())
+
+
+@router.put(
+    "/rate-limits/slai-image-provider",
+    response_model=SlaiImageProviderConfigResponse,
+    summary="Update SLAI image provider throttling configuration",
+)
+async def update_slai_image_provider_config(
+    request: SlaiImageProviderConfigResponse,
+    ctx: AdminDep,
+    settings_repo: SettingsRepoDep,
+) -> SlaiImageProviderConfigResponse:
+    """Persist SLAI image throttling settings and apply them immediately."""
+    from platform_api.services.slai_image_config_service import save_slai_image_provider_config
+
+    config = await save_slai_image_provider_config(
+        settings_repo,
+        request.model_dump(exclude={"updated_at"}),
+    )
+    return SlaiImageProviderConfigResponse(**config.to_dict())
+
+
 # ---------------------------------------------------------------------------
 # System Settings (API Keys, Model Config)
 # ---------------------------------------------------------------------------
@@ -305,6 +1057,64 @@ class SystemSettingEntry(BaseModel):
 class SystemSettingsResponse(BaseModel):
     """Response for system settings list."""
     settings: list[SystemSettingEntry]
+
+
+class CutluyBillingConfigResponse(BaseModel):
+    """Admin view of CutLuy credentials without exposing the full secret."""
+
+    api_base_url: str
+    payment_link_id: str = ""
+    secret_key_configured: bool = False
+    secret_key_masked: str = ""
+    secret_source: str | None = None
+    webhook_secret_configured: bool = False
+    webhook_secret_masked: str = ""
+    webhook_secret_source: str | None = None
+
+
+class UpdateCutluyBillingConfigRequest(BaseModel):
+    """Update CutLuy billing credentials stored in system_settings."""
+
+    api_base_url: str = Field(default="https://cutluy.com", min_length=8, max_length=255)
+    payment_link_id: str = Field(default="", max_length=255)
+    secret_key: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Leave blank to keep the current secret.",
+    )
+    webhook_secret: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="CutLuy Dashboard → Webhooks signing secret. Leave blank to keep.",
+    )
+
+
+async def _upsert_system_setting_value(
+    pool: Any,
+    *,
+    key: str,
+    value: str,
+    value_type: str = "string",
+) -> None:
+    await pool.execute(
+        """
+        INSERT INTO system_settings (key, value, value_type, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (key) DO UPDATE
+        SET value = EXCLUDED.value,
+            value_type = EXCLUDED.value_type,
+            updated_at = NOW()
+        """,
+        key,
+        value,
+        value_type,
+    )
+
+
+def _mask_system_setting_value(key: str, value: str) -> str:
+    if key in {CUTLUY_SECRET_KEY_SETTING, CUTLUY_WEBHOOK_SECRET_KEY}:
+        return mask_secret_value(value)
+    return value
 
 
 class UpsertSettingRequest(BaseModel):
@@ -329,13 +1139,92 @@ async def get_system_settings(ctx: AdminDep) -> SystemSettingsResponse:
     settings = [
         SystemSettingEntry(
             key=row["key"],
-            value=row["value"],
+            value=_mask_system_setting_value(row["key"], str(row["value"] or "")),
             value_type=row["value_type"],
             updated_at=row["updated_at"].isoformat() + "Z" if row["updated_at"] else None,
         )
         for row in rows
     ]
     return SystemSettingsResponse(settings=settings)
+
+
+@router.get(
+    "/billing/cutluy-config",
+    response_model=CutluyBillingConfigResponse,
+    summary="Get CutLuy billing credentials (Admin)",
+)
+async def get_cutluy_billing_config(ctx: AdminDep) -> CutluyBillingConfigResponse:
+    """Return CutLuy API settings for the admin payment tab without exposing the full secret."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    cutluy = await resolve_cutluy_config(pool)
+    return CutluyBillingConfigResponse(
+        api_base_url=cutluy.api_base_url,
+        payment_link_id=cutluy.payment_link_id or "",
+        secret_key_configured=bool(cutluy.secret_key),
+        secret_key_masked=mask_secret_value(cutluy.secret_key),
+        secret_source=cutluy.secret_source if cutluy.secret_key else None,
+        webhook_secret_configured=bool(cutluy.webhook_secret),
+        webhook_secret_masked=mask_secret_value(cutluy.webhook_secret),
+        webhook_secret_source=cutluy.webhook_secret_source if cutluy.webhook_secret else None,
+    )
+
+
+@router.put(
+    "/billing/cutluy-config",
+    response_model=CutluyBillingConfigResponse,
+    summary="Update CutLuy billing credentials (Admin)",
+)
+async def update_cutluy_billing_config(
+    request: UpdateCutluyBillingConfigRequest,
+    ctx: AdminDep,
+) -> CutluyBillingConfigResponse:
+    """Store CutLuy credentials in system_settings (no .env edit required)."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    api_base_url = request.api_base_url.strip().rstrip("/") or "https://cutluy.com"
+    payment_link_id = normalize_cutluy_payment_link_id(request.payment_link_id.strip()) or ""
+
+    await _upsert_system_setting_value(
+        pool,
+        key=CUTLUY_API_BASE_URL_KEY,
+        value=api_base_url,
+    )
+    await _upsert_system_setting_value(
+        pool,
+        key=CUTLUY_PAYMENT_LINK_ID_KEY,
+        value=payment_link_id,
+    )
+
+    secret_input = (request.secret_key or "").strip()
+    if secret_input:
+        await _upsert_system_setting_value(
+            pool,
+            key=CUTLUY_SECRET_KEY_SETTING,
+            value=secret_input,
+        )
+
+    webhook_input = (request.webhook_secret or "").strip()
+    if webhook_input:
+        await _upsert_system_setting_value(
+            pool,
+            key=CUTLUY_WEBHOOK_SECRET_KEY,
+            value=webhook_input,
+        )
+
+    cutluy = await resolve_cutluy_config(pool)
+    return CutluyBillingConfigResponse(
+        api_base_url=cutluy.api_base_url,
+        payment_link_id=cutluy.payment_link_id or "",
+        secret_key_configured=bool(cutluy.secret_key),
+        secret_key_masked=mask_secret_value(cutluy.secret_key),
+        secret_source=cutluy.secret_source if cutluy.secret_key else None,
+        webhook_secret_configured=bool(cutluy.webhook_secret),
+        webhook_secret_masked=mask_secret_value(cutluy.webhook_secret),
+        webhook_secret_source=cutluy.webhook_secret_source if cutluy.webhook_secret else None,
+    )
 
 
 @router.put(
@@ -349,6 +1238,16 @@ async def upsert_system_setting(
 ) -> SystemSettingEntry:
     """Create or update a system setting. Used for API keys, model configs, etc."""
     from platform_api.dependencies import get_db_pool
+
+    if request.key == CUTLUY_SECRET_KEY_SETTING:
+        incoming = request.value.strip()
+        masked = mask_secret_value(incoming)
+        if not incoming or incoming == masked or "••••" in incoming:
+            raise HTTPException(
+                status_code=400,
+                detail="Use Admin Settings → Payment → CutLuy to update the API secret.",
+            )
+
     pool = get_db_pool()
     row = await pool.fetchrow(
         """
@@ -363,7 +1262,7 @@ async def upsert_system_setting(
     )
     return SystemSettingEntry(
         key=row["key"],
-        value=row["value"],
+        value=_mask_system_setting_value(row["key"], str(row["value"] or "")),
         value_type=row["value_type"],
         updated_at=row["updated_at"].isoformat() + "Z" if row["updated_at"] else None,
     )
@@ -380,3 +1279,481 @@ async def delete_system_setting(key: str, ctx: AdminDep) -> dict[str, str]:
     pool = get_db_pool()
     await pool.execute("DELETE FROM system_settings WHERE key = $1", key)
     return {"message": f"Setting '{key}' deleted."}
+
+
+@router.get(
+    "/youtube-oauth-apps",
+    response_model=YouTubeOAuthAppsResponse,
+    summary="Get all admin-managed YouTube OAuth apps",
+)
+async def list_youtube_oauth_apps(
+    ctx: AdminDep,
+    repo: YouTubeOAuthAppRepoDep,
+) -> YouTubeOAuthAppsResponse:
+    """Return all admin-managed YouTube OAuth apps without exposing secrets."""
+    apps = await repo.list_all()
+    return YouTubeOAuthAppsResponse(
+        apps=[_to_youtube_oauth_app_entry(app) for app in apps]
+    )
+
+
+@router.post(
+    "/youtube-oauth-apps",
+    response_model=YouTubeOAuthAppEntry,
+    summary="Create a YouTube OAuth app",
+)
+async def create_youtube_oauth_app(
+    request: CreateYouTubeOAuthAppRequest,
+    ctx: AdminDep,
+    repo: YouTubeOAuthAppRepoDep,
+    encryption: YouTubeOAuthEncryptionDep,
+) -> YouTubeOAuthAppEntry:
+    """Create a new admin-managed YouTube OAuth app with encrypted secret storage."""
+    if encryption is None:
+        raise HTTPException(
+            status_code=503,
+            detail="YouTube OAuth storage unavailable. Set PLATFORM_ENCRYPTION_MASTER_KEY first.",
+        )
+    record = await repo.create(
+        name=request.name.strip(),
+        client_id=request.client_id.strip(),
+        encrypted_client_secret=encryption.encrypt(request.client_secret.strip()),
+        is_default=request.is_default,
+    )
+    if record is None:
+        raise HTTPException(status_code=500, detail="Unable to create YouTube OAuth app.")
+    return _to_youtube_oauth_app_entry(record)
+
+
+@router.patch(
+    "/youtube-oauth-apps/{app_id}",
+    response_model=YouTubeOAuthAppEntry,
+    summary="Update a YouTube OAuth app",
+)
+async def update_youtube_oauth_app(
+    app_id: str,
+    request: UpdateYouTubeOAuthAppRequest,
+    ctx: AdminDep,
+    repo: YouTubeOAuthAppRepoDep,
+    encryption: YouTubeOAuthEncryptionDep,
+) -> YouTubeOAuthAppEntry:
+    """Update YouTube OAuth app metadata and optionally replace the secret."""
+    encrypted_client_secret = None
+    if request.client_secret is not None:
+        if encryption is None:
+            raise HTTPException(
+                status_code=503,
+                detail="YouTube OAuth storage unavailable. Set PLATFORM_ENCRYPTION_MASTER_KEY first.",
+            )
+        encrypted_client_secret = encryption.encrypt(request.client_secret.strip())
+
+    record = await repo.update(
+        app_id,
+        name=request.name.strip() if request.name is not None else None,
+        client_id=request.client_id.strip() if request.client_id is not None else None,
+        encrypted_client_secret=encrypted_client_secret,
+        is_default=request.is_default,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="YouTube OAuth app not found.")
+    return _to_youtube_oauth_app_entry(record)
+
+
+@router.delete(
+    "/youtube-oauth-apps/{app_id}",
+    status_code=200,
+    summary="Delete a YouTube OAuth app",
+)
+async def delete_youtube_oauth_app(
+    app_id: str,
+    ctx: AdminDep,
+    repo: YouTubeOAuthAppRepoDep,
+) -> dict[str, str]:
+    """Delete an admin-managed YouTube OAuth app."""
+    deleted = await repo.delete(app_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="YouTube OAuth app not found.")
+    return {"message": "YouTube OAuth app deleted."}
+
+
+# ---------------------------------------------------------------------------
+# Admin Overview (Dashboard Stats)
+# ---------------------------------------------------------------------------
+
+
+class AdminOverviewResponse(BaseModel):
+    """Aggregated counts for the admin dashboard."""
+    total_users: int = 0
+    total_admins: int = 0
+    active_users: int = 0
+    suspended_users: int = 0
+    deleted_users: int = 0
+    new_users_7d: int = 0
+    new_users_30d: int = 0
+    users_with_profiles: int = 0
+    users_with_active_license: int = 0
+    active_licenses: int = 0
+    total_songs: int = 0
+    total_images: int = 0
+
+
+@router.get(
+    "/overview",
+    response_model=AdminOverviewResponse,
+    summary="Get admin dashboard overview stats",
+)
+async def get_admin_overview(ctx: AdminDep) -> AdminOverviewResponse:
+    """Return aggregated platform counts for the admin dashboard."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+
+    overview_row = await pool.fetchrow(
+        """
+        SELECT
+            COUNT(*)::bigint AS total_users,
+            COUNT(*) FILTER (WHERE role = 'admin')::bigint AS total_admins,
+            COUNT(*) FILTER (WHERE status = 'active')::bigint AS active_users,
+            COUNT(*) FILTER (WHERE status = 'suspended')::bigint AS suspended_users,
+            COUNT(*) FILTER (WHERE status = 'deleted' OR deleted_at IS NOT NULL)::bigint AS deleted_users,
+            COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::bigint AS new_users_7d,
+            COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')::bigint AS new_users_30d
+        FROM users
+        """
+    ) or {}
+
+    users_with_profiles = await pool.fetchval(
+        """
+        SELECT COUNT(DISTINCT user_id)
+        FROM channel_profiles
+        """
+    ) or 0
+    users_with_active_license = await pool.fetchval(
+        """
+        SELECT COUNT(DISTINCT user_id)
+        FROM licenses
+        WHERE status = 'active' AND user_id IS NOT NULL
+        """
+    ) or 0
+    active_licenses = await pool.fetchval(
+        "SELECT COUNT(*) FROM licenses WHERE status = 'active'"
+    ) or 0
+    total_songs = await pool.fetchval("SELECT COUNT(*) FROM songs") or 0
+    total_images = await pool.fetchval("SELECT COUNT(*) FROM image_jobs") or 0
+
+    return AdminOverviewResponse(
+        total_users=int(overview_row.get("total_users", 0) or 0),
+        total_admins=int(overview_row.get("total_admins", 0) or 0),
+        active_users=int(overview_row.get("active_users", 0) or 0),
+        suspended_users=int(overview_row.get("suspended_users", 0) or 0),
+        deleted_users=int(overview_row.get("deleted_users", 0) or 0),
+        new_users_7d=int(overview_row.get("new_users_7d", 0) or 0),
+        new_users_30d=int(overview_row.get("new_users_30d", 0) or 0),
+        users_with_profiles=int(users_with_profiles),
+        users_with_active_license=int(users_with_active_license),
+        active_licenses=int(active_licenses),
+        total_songs=int(total_songs),
+        total_images=int(total_images),
+    )
+
+
+# ---------------------------------------------------------------------------
+# User Data Reset / Backup / Restore
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/user-data/reset",
+    response_model=ResetResponse,
+    summary="Reset all user data (destructive, requires password)",
+)
+async def reset_user_data(
+    request: ResetRequest,
+    ctx: AdminDep,
+    reset_service: ResetServiceDep,
+) -> ResetResponse | JSONResponse:
+    """Wipe all user data after password re-verification.
+
+    Creates a backup before deletion. Returns HTTP 207 if Redis flush fails
+    after a successful DB commit (partial success).
+
+    Requirements: 1.1, 1.2, 1.3, 5.1, 7.1, 7.2, 7.3, 7.4
+    """
+    from platform_api.dependencies import get_db_pool, get_redis
+    from platform_api.services.admin_password import verify_admin_password
+
+    admin_id = str(ctx.user_id)
+
+    # Verify admin password (raises AuthenticationError or RateLimitExceededError)
+    await verify_admin_password(
+        admin_id=admin_id,
+        password=request.password,
+        pool=get_db_pool(),
+        redis=get_redis(),
+    )
+
+    # Execute the reset operation
+    result = await reset_service.execute_reset(admin_id)
+
+    # Determine status and HTTP code
+    status = "success" if result.redis_flushed else "partial"
+    response_data = ResetResponse(
+        status=status,
+        backup_filename=result.backup_filename,
+        tables_cleared=result.tables_cleared,
+        record_counts=result.record_counts,
+        total_records_deleted=result.total_records_deleted,
+        redis_flushed=result.redis_flushed,
+        redis_error=result.redis_error,
+    )
+
+    if not result.redis_flushed:
+        # HTTP 207 Multi-Status for partial success
+        return JSONResponse(
+            status_code=207,
+            content=response_data.model_dump(),
+        )
+
+    return response_data
+
+
+@router.get(
+    "/user-data/backups",
+    response_model=BackupListResponse,
+    summary="List available user data backups",
+)
+async def list_user_data_backups(
+    ctx: AdminDep,
+    reset_service: ResetServiceDep,
+) -> BackupListResponse:
+    """Return available backup files sorted newest-first, max 100.
+
+    Requirements: 4.1, 7.1, 7.2, 7.3, 7.4
+    """
+    backups = await reset_service.list_backups()
+
+    return BackupListResponse(
+        backups=[
+            BackupMetadataResponse(
+                filename=b.filename,
+                created_at=b.created_at.isoformat(),
+                file_size_bytes=b.file_size_bytes,
+                total_records=b.total_records,
+                tables=b.tables,
+                actor_id=b.actor_id,
+            )
+            for b in backups
+        ]
+    )
+
+
+@router.post(
+    "/user-data/restore",
+    response_model=RestoreResponse,
+    summary="Restore user data from a backup (requires password)",
+)
+async def restore_user_data(
+    request: RestoreRequest,
+    ctx: AdminDep,
+    reset_service: ResetServiceDep,
+) -> RestoreResponse:
+    """Restore user data from a backup file after password re-verification.
+
+    Inserts records with ON CONFLICT DO NOTHING semantics (skips existing PKs).
+
+    Requirements: 1.1, 1.2, 1.3, 5.1, 5.3, 7.1, 7.2, 7.3, 7.4
+    """
+    from platform_api.dependencies import get_db_pool, get_redis
+    from platform_api.services.admin_password import verify_admin_password
+
+    admin_id = str(ctx.user_id)
+
+    # Verify admin password (raises AuthenticationError or RateLimitExceededError)
+    await verify_admin_password(
+        admin_id=admin_id,
+        password=request.password,
+        pool=get_db_pool(),
+        redis=get_redis(),
+    )
+
+    # Execute the restore operation
+    try:
+        result = await reset_service.execute_restore(
+            request.backup_filename, admin_id
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Backup not found.")
+
+    return RestoreResponse(
+        status="success",
+        backup_filename=result.backup_filename,
+        records_restored=result.records_restored,
+        records_skipped=result.records_skipped,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Desktop notifications & software updates
+# ---------------------------------------------------------------------------
+
+
+class SoftwareUpdateConfigResponse(BaseModel):
+    version: str
+    download_url: str
+    mandatory: bool
+    release_notes: str
+    published_at: str | None = None
+
+
+class UpdateSoftwareUpdateConfigRequest(BaseModel):
+    version: str = Field(..., min_length=1, max_length=64)
+    download_url: str = Field(default="", max_length=2048)
+    mandatory: bool = False
+    release_notes: str = Field(default="", max_length=4000)
+
+
+class PublishSoftwareUpdateResponse(BaseModel):
+    recipients: int
+    version: str
+    published_at: str
+
+
+class SendPushNotificationRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
+    message: str = Field(..., min_length=1, max_length=2000)
+
+
+class SendPushNotificationResponse(BaseModel):
+    recipients: int
+    title: str
+    notification_id: str
+    created_at: str
+
+
+class PushNotificationHistoryEntry(BaseModel):
+    id: str
+    title: str
+    message: str
+    created_at: str
+    recipients: int
+
+
+class PushNotificationHistoryResponse(BaseModel):
+    items: list[PushNotificationHistoryEntry]
+
+
+@router.get(
+    "/desktop/software-update",
+    response_model=SoftwareUpdateConfigResponse,
+    summary="Get desktop software update configuration (Admin)",
+)
+async def get_desktop_software_update_config(ctx: AdminDep) -> SoftwareUpdateConfigResponse:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.desktop_notification_admin_service import get_software_update_config
+
+    config = await get_software_update_config(get_db_pool())
+    return SoftwareUpdateConfigResponse(
+        version=config.version,
+        download_url=config.download_url,
+        mandatory=config.mandatory,
+        release_notes=config.release_notes,
+        published_at=config.published_at,
+    )
+
+
+@router.put(
+    "/desktop/software-update",
+    response_model=SoftwareUpdateConfigResponse,
+    summary="Save desktop software update configuration (Admin)",
+)
+async def update_desktop_software_update_config(
+    request: UpdateSoftwareUpdateConfigRequest,
+    ctx: AdminDep,
+) -> SoftwareUpdateConfigResponse:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.desktop_notification_admin_service import save_software_update_config
+
+    config = await save_software_update_config(
+        get_db_pool(),
+        version=request.version.strip(),
+        download_url=request.download_url.strip(),
+        mandatory=request.mandatory,
+        release_notes=request.release_notes.strip(),
+    )
+    return SoftwareUpdateConfigResponse(
+        version=config.version,
+        download_url=config.download_url,
+        mandatory=config.mandatory,
+        release_notes=config.release_notes,
+        published_at=config.published_at,
+    )
+
+
+@router.post(
+    "/desktop/software-update/publish",
+    response_model=PublishSoftwareUpdateResponse,
+    summary="Publish desktop software update notification (Admin)",
+)
+async def publish_desktop_software_update(ctx: AdminDep) -> PublishSoftwareUpdateResponse:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.desktop_notification_admin_service import publish_software_update
+
+    try:
+        config, recipients = await publish_software_update(get_db_pool())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PublishSoftwareUpdateResponse(
+        recipients=recipients,
+        version=config.version,
+        published_at=config.published_at or datetime.utcnow().isoformat() + "Z",
+    )
+
+
+@router.get(
+    "/desktop/push-notifications/history",
+    response_model=PushNotificationHistoryResponse,
+    summary="List recent desktop push notification broadcasts (Admin)",
+)
+async def get_desktop_push_notification_history(ctx: AdminDep) -> PushNotificationHistoryResponse:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.desktop_notification_admin_service import list_push_notification_history
+
+    items = await list_push_notification_history(get_db_pool())
+    return PushNotificationHistoryResponse(
+        items=[
+            PushNotificationHistoryEntry(
+                id=item.id,
+                title=item.title,
+                message=item.message,
+                created_at=item.created_at,
+                recipients=item.recipients,
+            )
+            for item in items
+        ]
+    )
+
+
+@router.post(
+    "/desktop/push-notifications",
+    response_model=SendPushNotificationResponse,
+    summary="Broadcast a desktop push notification message (Admin)",
+)
+async def send_desktop_push_notification(
+    request: SendPushNotificationRequest,
+    ctx: AdminDep,
+) -> SendPushNotificationResponse:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.desktop_notification_admin_service import send_push_notification
+
+    history_item, recipients = await send_push_notification(
+        get_db_pool(),
+        title=request.title.strip(),
+        message=request.message.strip(),
+    )
+    return SendPushNotificationResponse(
+        recipients=recipients,
+        title=history_item.title,
+        notification_id=history_item.id,
+        created_at=history_item.created_at,
+    )

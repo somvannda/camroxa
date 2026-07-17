@@ -8,7 +8,7 @@ Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 1.5
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID, uuid4
@@ -39,6 +39,8 @@ class FakeCreditRepo:
         self._balances: dict[UUID | str, int] = {}
         self._default_balance = balance
         self.deduct_calls: list[tuple[UUID, int, str]] = []
+        self.refund_calls: list[dict[str, Any]] = []
+        self.ledger_calls: list[dict[str, Any]] = []
         self.deduct_should_fail: bool = False
 
     def set_balance(self, user_id: UUID, balance: int) -> None:
@@ -53,6 +55,7 @@ class FakeCreditRepo:
         amount: int,
         reason: str,
         ref_id: str | None = None,
+        **kwargs: Any,
     ) -> bool:
         self.deduct_calls.append((user_id, amount, reason))
         if self.deduct_should_fail:
@@ -63,6 +66,59 @@ class FakeCreditRepo:
         self._balances[user_id] = balance - amount
         return True
 
+    async def refund(
+        self,
+        user_id: UUID,
+        amount: int,
+        reason: str,
+        ref_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        self.refund_calls.append(
+            {
+                "user_id": user_id,
+                "amount": amount,
+                "reason": reason,
+                "ref_id": ref_id,
+                "metadata": metadata,
+            }
+        )
+        balance = self._balances.get(user_id, self._default_balance)
+        self._balances[user_id] = balance + amount
+        self.ledger_calls.append(
+            {
+                "user_id": user_id,
+                "amount": amount,
+                "direction": "refund",
+                "reason": reason,
+                "ref_id": ref_id,
+                "metadata": metadata,
+            }
+        )
+        return self._balances[user_id]
+
+    async def record_ledger_entry(
+        self,
+        user_id: UUID,
+        amount: int,
+        direction: str,
+        reason: str,
+        *,
+        ref_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> UUID:
+        self.ledger_calls.append(
+            {
+                "user_id": user_id,
+                "amount": amount,
+                "direction": direction,
+                "reason": reason,
+                "ref_id": ref_id,
+                "metadata": metadata,
+            }
+        )
+        return uuid4()
+
 
 class FakeUsageRepo:
     """In-memory fake for UsageTrackingRepositoryProtocol."""
@@ -71,6 +127,7 @@ class FakeUsageRepo:
         self._daily: dict[tuple[UUID, UUID | None, str, date], int] = {}
         self._monthly: dict[tuple[UUID, str, date], int] = {}
         self.increment_calls: list[dict[str, Any]] = []
+        self.decrement_calls: list[dict[str, Any]] = []
 
     def set_daily_count(
         self,
@@ -125,45 +182,105 @@ class FakeUsageRepo:
         key_m = (user_id, operation_type, period_start)
         self._monthly[key_m] = self._monthly.get(key_m, 0) + 1
 
+    async def decrement_usage(
+        self,
+        user_id: UUID,
+        channel_profile_id: UUID | None,
+        operation_type: str,
+        usage_date: date,
+        *,
+        count: int = 1,
+    ) -> None:
+        self.decrement_calls.append(
+            {
+                "user_id": user_id,
+                "channel_profile_id": channel_profile_id,
+                "operation_type": operation_type,
+                "usage_date": usage_date,
+                "count": count,
+            }
+        )
+        key_d = (user_id, channel_profile_id, operation_type, usage_date)
+        self._daily[key_d] = max(0, self._daily.get(key_d, 0) - count)
+        # Approximate monthly reverse using today's year-month start if known.
+        for key_m in list(self._monthly.keys()):
+            if key_m[0] == user_id and key_m[1] == operation_type:
+                self._monthly[key_m] = max(0, self._monthly[key_m] - count)
+                break
+
 
 class FakePlanRepo:
     """In-memory fake for PlanRepositoryProtocol."""
 
-    def __init__(self, plan: Plan | None = None) -> None:
+    def __init__(
+        self,
+        plan: Plan | None = None,
+        *,
+        activated_at: datetime | None = None,
+    ) -> None:
         self._plans: dict[UUID, Plan | None] = {}
         self._default_plan = plan
+        self._activation: dict[UUID, datetime | None] = {}
+        self._default_activation = activated_at
 
-    def set_plan(self, user_id: UUID, plan: Plan | None) -> None:
+    def set_plan(
+        self,
+        user_id: UUID,
+        plan: Plan | None,
+        *,
+        activated_at: datetime | None = None,
+    ) -> None:
         self._plans[user_id] = plan
+        if activated_at is not None:
+            self._activation[user_id] = activated_at
 
     async def get_user_active_plan(self, user_id: UUID) -> Plan | None:
         if user_id in self._plans:
             return self._plans[user_id]
         return self._default_plan
 
+    async def get_user_active_subscription_context(self, user_id: UUID):
+        from platform_api.services.billing_period_service import ActiveSubscriptionContext
+
+        plan = await self.get_user_active_plan(user_id)
+        if plan is None:
+            return None
+        activated_at = self._activation.get(user_id, self._default_activation)
+        return ActiveSubscriptionContext(
+            plan=plan,
+            license_id=uuid4(),
+            activated_at=activated_at,
+        )
+
 
 class FakePricingRepo:
     """In-memory fake for CreditPricingRepositoryProtocol."""
 
     def __init__(self) -> None:
-        self._entries: dict[tuple[str, str], dict[str, Any]] = {}
+        self._entries: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     def seed(
         self,
         ai_service: str,
         operation_type: str,
         credits_per_operation: int,
+        *,
+        sub_model: str = "",
     ) -> None:
-        self._entries[(ai_service, operation_type)] = {
+        self._entries[(ai_service, operation_type, sub_model)] = {
             "ai_service": ai_service,
             "operation_type": operation_type,
+            "sub_model": sub_model,
             "credits_per_operation": credits_per_operation,
         }
 
     async def get_by_service_and_operation(
-        self, ai_service: str, operation_type: str
+        self,
+        ai_service: str,
+        operation_type: str,
+        sub_model: str = "",
     ) -> dict[str, Any] | None:
-        return self._entries.get((ai_service, operation_type))
+        return self._entries.get((ai_service, operation_type, sub_model))
 
 
 class FakeRedis:
@@ -201,8 +318,10 @@ class FakeRedis:
 def _make_plan(
     daily_song: int = 7,
     daily_image: int = 7,
-    monthly_song: int | None = 420,
-    monthly_image: int | None = 100,
+    daily_draft: int = 300,
+    monthly_song: int | None = 300,
+    monthly_image: int | None = 60,
+    monthly_draft: int | None = 900,
     billing_cycle_days: int | None = 30,
     name: str = "monthly",
 ) -> Plan:
@@ -214,8 +333,10 @@ def _make_plan(
         profile_allowance=2,
         monthly_song_limit=monthly_song,
         monthly_image_limit=monthly_image,
+        monthly_draft_limit=monthly_draft,
         daily_song_limit_per_channel=daily_song,
         daily_image_limit_per_channel=daily_image,
+        daily_draft_limit_per_channel=daily_draft,
         is_active=True,
         effective_from=datetime.now(timezone.utc),
         created_at=datetime.now(timezone.utc),
@@ -280,7 +401,7 @@ async def test_check_and_deduct_success(
     usage_repo: FakeUsageRepo,
     redis: FakeRedis,
 ) -> None:
-    """Successful deduction returns credits_per_operation and increments counters."""
+    """Monthly subscribers consume plan quota without wallet deduction."""
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 500)
@@ -289,11 +410,11 @@ async def test_check_and_deduct_success(
         user_id, channel_id, "music_generation", "suno"
     )
 
-    assert result == 10
-    assert credit_repo.deduct_calls[-1] == (user_id, 10, "music_generation via suno")
+    assert result == 0
+    assert credit_repo.deduct_calls == []
     assert len(usage_repo.increment_calls) == 1
     assert usage_repo.increment_calls[0]["user_id"] == user_id
-    assert usage_repo.increment_calls[0]["operation_type"] == "music_generation"
+    assert usage_repo.increment_calls[0]["operation_type"] == "music"
 
 
 @pytest.mark.asyncio
@@ -341,10 +462,12 @@ async def test_no_pricing_raises_external_service_error(
 async def test_insufficient_credits_raises_402(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
+    plan_repo: FakePlanRepo,
 ) -> None:
     """Balance below credits_per_operation raises InsufficientCreditsError."""
     user_id = uuid4()
     credit_repo.set_balance(user_id, 5)  # needs 10 for music
+    plan_repo.set_plan(user_id, None)  # wallet billing only
 
     with pytest.raises(InsufficientCreditsError) as exc_info:
         await service.check_and_deduct(
@@ -359,11 +482,16 @@ async def test_insufficient_credits_raises_402(
 async def test_race_condition_deduction_failure(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
+    plan_repo: FakePlanRepo,
 ) -> None:
     """Race condition during atomic_deduct raises InsufficientCreditsError."""
     user_id = uuid4()
     credit_repo.set_balance(user_id, 500)
     credit_repo.deduct_should_fail = True
+    plan_repo.set_plan(
+        user_id,
+        _make_plan(monthly_song=None, monthly_image=None, billing_cycle_days=None, name="lifetime"),
+    )
 
     with pytest.raises(InsufficientCreditsError, match="concurrent"):
         await service.check_and_deduct(
@@ -387,7 +515,7 @@ async def test_daily_quota_exceeded_raises_429(
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 500)
     today = date.today()
-    usage_repo.set_daily_count(user_id, channel_id, "music_generation", today, 7)
+    usage_repo.set_daily_count(user_id, channel_id, "music", today, 7)
 
     with pytest.raises(QuotaExceededError) as exc_info:
         await service.check_and_deduct(
@@ -411,7 +539,7 @@ async def test_daily_image_limit_uses_image_field(
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 500)
     today = date.today()
-    usage_repo.set_daily_count(user_id, channel_id, "image_generation", today, 7)
+    usage_repo.set_daily_count(user_id, channel_id, "background_image", today, 7)
 
     with pytest.raises(QuotaExceededError) as exc_info:
         await service.check_and_deduct(
@@ -427,27 +555,25 @@ async def test_daily_image_limit_uses_image_field(
 
 
 @pytest.mark.asyncio
-async def test_monthly_quota_exceeded_raises_429(
+async def test_monthly_quota_exceeded_uses_wallet_for_subscription(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
     usage_repo: FakeUsageRepo,
 ) -> None:
-    """Reaching monthly limit raises QuotaExceededError with MONTHLY_QUOTA_EXCEEDED."""
+    """Subscription users at monthly limit can continue via wallet credits."""
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 5000)
     today = date.today()
     period_start = today.replace(day=1)
-    usage_repo.set_monthly_count(user_id, "music_generation", period_start, 420)
+    usage_repo.set_monthly_count(user_id, "music", period_start, 420)
 
-    with pytest.raises(QuotaExceededError) as exc_info:
-        await service.check_and_deduct(
-            user_id, channel_id, "music_generation", "suno"
-        )
+    result = await service.check_and_deduct(
+        user_id, channel_id, "music_generation", "suno"
+    )
 
-    assert exc_info.value.details["error_code"] == "MONTHLY_QUOTA_EXCEEDED"
-    assert exc_info.value.details["limit"] == 420
-    assert exc_info.value.details["current_usage"] == 420
+    assert result == 10
+    assert credit_repo.deduct_calls[-1] == (user_id, 10, "music_generation via suno")
 
 
 @pytest.mark.asyncio
@@ -501,14 +627,131 @@ async def test_text_generation_skips_monthly_check(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
 ) -> None:
-    """Text generation always skips monthly limit check."""
+    """Text generation on subscription uses plan quota without wallet charge."""
     user_id = uuid4()
     credit_repo.set_balance(user_id, 500)
 
     result = await service.check_and_deduct(
         user_id, None, "text_generation", "deepseek"
     )
-    assert result == 2
+    assert result == 0
+    assert credit_repo.deduct_calls == []
+
+
+@pytest.mark.asyncio
+async def test_subscription_monthly_exhausted_without_wallet_raises_402(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+) -> None:
+    """When monthly quota is exhausted and wallet is empty, raise InsufficientCreditsError."""
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 0)
+    today = date.today()
+    period_start = today.replace(day=1)
+    usage_repo.set_monthly_count(user_id, "music", period_start, 420)
+
+    with pytest.raises(InsufficientCreditsError):
+        await service.check_and_deduct(
+            user_id, channel_id, "music_generation", "suno"
+        )
+
+
+@pytest.mark.asyncio
+async def test_subscription_monthly_exhausted_uses_wallet(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+) -> None:
+    """When monthly quota is exhausted, subscription users pay from wallet."""
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+    today = date.today()
+    period_start = today.replace(day=1)
+    usage_repo.set_monthly_count(user_id, "music", period_start, 420)
+
+    result = await service.check_and_deduct(
+        user_id, channel_id, "music_generation", "suno"
+    )
+
+    assert result == 10
+    assert credit_repo.deduct_calls[-1] == (user_id, 10, "music_generation via suno")
+
+
+@pytest.mark.asyncio
+async def test_preflight_batch_subscription_covers_without_wallet(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+) -> None:
+    """Batch preflight passes for subscribers when quota covers the batch."""
+    user_id = uuid4()
+    credit_repo.set_balance(user_id, 0)
+
+    await service.preflight_batch_cost(
+        user_id,
+        song_count=5,
+        total_wallet_cost=500,
+        image_jobs=0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_preflight_batch_requires_wallet_when_quota_exhausted(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+) -> None:
+    """Batch preflight requires wallet balance when monthly song quota is exhausted."""
+    user_id = uuid4()
+    credit_repo.set_balance(user_id, 5)
+    today = date.today()
+    period_start = today.replace(day=1)
+    usage_repo.set_monthly_count(user_id, "music", period_start, 420)
+
+    with pytest.raises(InsufficientCreditsError):
+        await service.preflight_batch_cost(
+            user_id,
+            song_count=1,
+            total_wallet_cost=100,
+            image_jobs=0,
+        )
+
+
+@pytest.mark.asyncio
+async def test_quota_period_follows_license_activation_not_calendar_month(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    plan_repo: FakePlanRepo,
+) -> None:
+    """Quota is tracked on the activation-aligned billing window, not calendar month."""
+    activated = datetime.now(timezone.utc) - timedelta(days=10)
+    period_start = activated.date()
+    calendar_start = date.today().replace(day=1)
+    if calendar_start == period_start:
+        pytest.skip("Activation date aligns with calendar month in this test run")
+
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+    quarterly_plan = _make_plan(
+        monthly_song=50,
+        billing_cycle_days=90,
+        name="3-month",
+    )
+    plan_repo.set_plan(user_id, quarterly_plan, activated_at=activated)
+
+    usage_repo.set_monthly_count(user_id, "music", calendar_start, 999)
+
+    result = await service.check_and_deduct(
+        user_id, channel_id, "music_generation", "suno"
+    )
+
+    assert result == 0
+    assert credit_repo.deduct_calls == []
+    assert usage_repo.increment_calls[-1]["period_start"] == period_start
 
 
 # ---------------------------------------------------------------------------
@@ -528,7 +771,7 @@ async def test_redis_cache_hit(
     credit_repo.set_balance(user_id, 500)
     today = date.today()
     cache_key = UsageEnforcementService._daily_cache_key(
-        user_id, channel_id, "music_generation", today
+        user_id, channel_id, "music", today
     )
     # Pre-populate cache with count that would exceed limit
     await redis.set(cache_key, "7")
@@ -558,7 +801,7 @@ async def test_redis_ttl_set_on_increment(
     )
 
     cache_key = UsageEnforcementService._daily_cache_key(
-        user_id, channel_id, "music_generation", today
+        user_id, channel_id, "music", today
     )
     assert cache_key in redis._ttls
     assert redis._ttls[cache_key] == DAILY_CACHE_TTL_SECONDS
@@ -640,3 +883,299 @@ class TestDailyCacheKey:
         )
         expected = f"daily_usage:{user_id}:none:text_generation:2024-01-01"
         assert key == expected
+
+
+# ---------------------------------------------------------------------------
+# Song package accounting (Model A)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_suno_music_increments_song_quota_and_ledger_zero(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    pricing_repo: FakePricingRepo,
+) -> None:
+    """One Suno music call burns +1 song package and writes plan_allowance ledger."""
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+
+    result = await service.check_and_deduct(user_id, channel_id, "music", "suno")
+
+    assert result == 0
+    assert credit_repo.deduct_calls == []
+    assert len(usage_repo.increment_calls) == 1
+    assert usage_repo.increment_calls[0]["operation_type"] == "music"
+    assert len(credit_repo.ledger_calls) == 1
+    ledger = credit_repo.ledger_calls[0]
+    assert ledger["amount"] == 0
+    assert ledger["direction"] == "debit"
+    assert ledger["metadata"]["billing"] == "plan_allowance"
+    assert ledger["metadata"]["list_credit_units"] == 10
+    assert ledger["metadata"]["charged_credit_units"] == 0
+    assert ledger["metadata"]["coverage"] == "song_package"
+
+
+@pytest.mark.asyncio
+async def test_lyric_under_plan_increments_draft_not_song(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    pricing_repo: FakePricingRepo,
+) -> None:
+    """Lyric burns draft meter (+1 draft), not song; ledger amount 0."""
+    pricing_repo.seed("slai", "lyric", 216)
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+
+    result = await service.check_and_deduct(user_id, channel_id, "lyric", "slai")
+
+    assert result == 0
+    assert credit_repo.deduct_calls == []
+    assert len(usage_repo.increment_calls) == 1
+    assert usage_repo.increment_calls[0]["operation_type"] == "draft"
+    assert len(credit_repo.ledger_calls) == 1
+    ledger = credit_repo.ledger_calls[0]
+    assert ledger["amount"] == 0
+    assert ledger["metadata"]["billing"] == "plan_allowance"
+    assert ledger["metadata"]["coverage"] == "draft_allowance"
+    assert ledger["metadata"]["list_credit_units"] == 216
+    assert ledger["metadata"]["operation"] == "lyric"
+
+
+@pytest.mark.asyncio
+async def test_title_and_album_under_plan_bump_draft_meter(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    pricing_repo: FakePricingRepo,
+) -> None:
+    pricing_repo.seed("openai", "title", 32)
+    pricing_repo.seed("openai", "album", 176)
+    user_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+
+    await service.check_and_deduct(user_id, None, "title", "openai")
+    await service.check_and_deduct(user_id, None, "album", "openai")
+
+    assert len(usage_repo.increment_calls) == 2
+    assert all(c["operation_type"] == "draft" for c in usage_repo.increment_calls)
+    assert len(credit_repo.ledger_calls) == 2
+    assert all(c["amount"] == 0 for c in credit_repo.ledger_calls)
+
+
+@pytest.mark.asyncio
+async def test_draft_daily_enforced_against_draft_pool(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    pricing_repo: FakePricingRepo,
+    plan_repo: FakePlanRepo,
+) -> None:
+    """Draft ops use the hard daily draft pool and increment it."""
+    pricing_repo.seed("slai", "lyric", 216)
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+    plan_repo.set_plan(user_id, _make_plan(daily_draft=7))
+    today = date.today()
+    usage_repo.set_daily_count(user_id, channel_id, "draft", today, 7)
+
+    with pytest.raises(QuotaExceededError) as exc_info:
+        await service.check_and_deduct(user_id, channel_id, "lyric", "slai")
+
+    assert exc_info.value.details["error_code"] == "DAILY_QUOTA_EXCEEDED"
+    assert usage_repo.increment_calls == []
+    assert credit_repo.ledger_calls == []
+
+
+@pytest.mark.asyncio
+async def test_check_and_deduct_plan_path_writes_ledger_for_music_generation(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+) -> None:
+    user_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+    await service.check_and_deduct(user_id, uuid4(), "music_generation", "suno")
+    assert credit_repo.ledger_calls[-1]["metadata"]["billing"] == "plan_allowance"
+
+
+@pytest.mark.asyncio
+async def test_refund_suno_failure_releases_song_quota_and_keeps_cogs_ledger(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+) -> None:
+    """After music deduct, Suno failure returns the song unit; COGS debit stays."""
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+
+    charged = await service.deduct_for_operation(
+        user_id, channel_id, "music", "suno"
+    )
+    assert charged == 0
+    assert len(usage_repo.increment_calls) == 1
+    assert usage_repo.increment_calls[0]["operation_type"] == "music"
+    debit_ledger = credit_repo.ledger_calls[-1]
+    assert debit_ledger["metadata"]["billing"] == "plan_allowance"
+    assert debit_ledger["direction"] == "debit"
+
+    await service.refund_failed_operation(
+        user_id,
+        channel_id,
+        "music",
+        "suno",
+        charged_credit_units=charged,
+        reason="suno_generation_failed",
+        prior_ledger_recorded=True,
+    )
+
+    assert len(usage_repo.decrement_calls) == 1
+    assert usage_repo.decrement_calls[0]["operation_type"] == "music"
+    refund_row = credit_repo.ledger_calls[-1]
+    assert refund_row["direction"] == "refund"
+    assert refund_row["amount"] == 0
+    assert refund_row["metadata"]["outcome"] == "failed"
+    assert refund_row["metadata"]["billing"] == "platform_absorb"
+    assert refund_row["metadata"]["platform_absorbed_cost"] is True
+    assert refund_row["metadata"]["list_credit_units"] == 10
+    # Original plan_allowance debit still present for owner COGS.
+    assert credit_repo.ledger_calls[0]["metadata"]["billing"] == "plan_allowance"
+
+
+@pytest.mark.asyncio
+async def test_refund_suno_failure_refunds_wallet_when_charged(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    plan_repo: FakePlanRepo,
+) -> None:
+    """Wallet-billed music failure returns both song quota and wallet credits."""
+    plan_repo.set_plan(uuid4(), None)  # ensure no default pollution
+    # Replace active plan with None for this user
+    user_id = uuid4()
+    channel_id = uuid4()
+    plan_repo.set_plan(user_id, None)
+    credit_repo.set_balance(user_id, 500)
+
+    charged = await service.deduct_for_operation(
+        user_id, channel_id, "music", "suno"
+    )
+    assert charged == 10
+    assert await credit_repo.get_balance(user_id) == 490
+
+    await service.refund_failed_operation(
+        user_id,
+        channel_id,
+        "music",
+        "suno",
+        charged_credit_units=charged,
+        reason="suno_generation_failed",
+        prior_ledger_recorded=True,
+    )
+
+    assert await credit_repo.get_balance(user_id) == 500
+    assert credit_repo.refund_calls[-1]["amount"] == 10
+    assert credit_repo.refund_calls[-1]["metadata"]["outcome"] == "failed"
+    assert len(usage_repo.decrement_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_refund_image_failure_releases_quota_and_writes_cogs_debit(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    pricing_repo: FakePricingRepo,
+) -> None:
+    """Image reserve-then-fail path releases quota and records platform-absorb COGS."""
+    pricing_repo.seed("fal", "background_image", 50)
+    user_id = uuid4()
+    channel_id = uuid4()
+    credit_repo.set_balance(user_id, 500)
+
+    await service.reserve_operation_quota(
+        user_id=user_id,
+        channel_profile_id=channel_id,
+        operation_type="background_image",
+    )
+    # FakeUsageRepo.increment is used via try_increment absence — reserve falls
+    # back to enforce + increment when try_increment is missing.
+    assert usage_repo.increment_calls[-1]["operation_type"] == "background_image"
+
+    await service.refund_failed_operation(
+        user_id,
+        channel_id,
+        "background_image",
+        "fal",
+        charged_credit_units=0,
+        reason="image_generation_failed",
+        prior_ledger_recorded=False,
+    )
+
+    assert usage_repo.decrement_calls[-1]["operation_type"] == "background_image"
+    cogs = credit_repo.ledger_calls[-1]
+    assert cogs["direction"] == "debit"
+    assert cogs["amount"] == 0
+    assert cogs["metadata"]["billing"] == "platform_absorb"
+    assert cogs["metadata"]["outcome"] == "failed"
+    assert cogs["metadata"]["list_credit_units"] == 50
+    assert cogs["metadata"]["platform_absorbed_cost"] is True
+
+
+@pytest.mark.asyncio
+async def test_fail_absorb_budget_blocks_after_daily_limit(
+    service: UsageEnforcementService,
+    redis: FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H2: after N platform_absorb events, further AI reservation is blocked."""
+    from platform_api.exceptions import QuotaExceededError
+
+    monkeypatch.setattr(
+        "platform_api.services.usage_enforcement_service._daily_fail_absorb_budget",
+        lambda: 2,
+    )
+    user_id = uuid4()
+    channel_id = uuid4()
+
+    await service.record_fail_absorb(user_id)
+    await service.record_fail_absorb(user_id)
+    assert await service.get_fail_absorb_count(user_id) == 2
+
+    with pytest.raises(QuotaExceededError) as exc_info:
+        await service.enforce_fail_absorb_budget(user_id)
+    assert exc_info.value.details["error_code"] == "FAIL_BUDGET_EXCEEDED"
+
+    with pytest.raises(QuotaExceededError):
+        await service.reserve_operation_quota(
+            user_id=user_id,
+            channel_profile_id=channel_id,
+            operation_type="background_image",
+        )
+
+
+@pytest.mark.asyncio
+async def test_refund_records_fail_absorb_counter(
+    service: UsageEnforcementService,
+    credit_repo: FakeCreditRepo,
+    pricing_repo: FakePricingRepo,
+    redis: FakeRedis,
+) -> None:
+    user_id = uuid4()
+    channel_id = uuid4()
+    pricing_repo.seed("fal", "background_image", 50)
+
+    await service.refund_failed_operation(
+        user_id,
+        channel_id,
+        "background_image",
+        "fal",
+        charged_credit_units=0,
+        reason="image_generation_failed",
+        prior_ledger_recorded=False,
+    )
+    assert await service.get_fail_absorb_count(user_id) == 1

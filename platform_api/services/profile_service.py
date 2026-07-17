@@ -14,6 +14,10 @@ from uuid import UUID, uuid4
 
 from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
 from platform_api.models.domain import ChannelProfile, License, Plan
+from platform_api.services.profile_folder import resolve_profile_folder_name
+from platform_api.services.subscription_entitlement_service import (
+    effective_profile_creation_allowance,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +38,7 @@ _DEFAULT_PROFILE_LIMITS: dict[str, int] = {
 _NO_LICENSE_LIMIT: int = 1
 
 # Maximum profiles any user can have (even with purchased expansion slots).
-_MAX_PROFILE_LIMIT: int = 20
+_MAX_PROFILE_LIMIT: int = 10
 
 # Maximum profile name length (requirement 8.2).
 _MAX_NAME_LENGTH: int = 100
@@ -126,8 +130,10 @@ class ProfileService:
             # Shouldn't happen, but fallback
             return _NO_LICENSE_LIMIT
 
-        # Use the plan's configured profile_allowance
-        limit = plan.profile_allowance
+        # Use plan allowance plus active and pending add-on slots for creation limits.
+        addon_slots = int(getattr(license_obj, "profile_addon_slots", 0) or 0)
+        addon_pending = int(getattr(license_obj, "profile_addon_pending", 0) or 0)
+        limit = effective_profile_creation_allowance(plan, addon_slots, addon_pending)
         if limit <= 0:
             # Fallback to defaults by plan name
             limit = _DEFAULT_PROFILE_LIMITS.get(plan.name, _NO_LICENSE_LIMIT)
@@ -205,7 +211,7 @@ class ProfileService:
             id=uuid4(),
             user_id=user_id,
             name=name,
-            folder_name=config.get("folder_name"),
+            folder_name=resolve_profile_folder_name(name, config.get("folder_name")),
             run_prefix=config.get("run_prefix"),
             logo_path=config.get("logo_path"),
             video_template_id=config.get("video_template_id"),
@@ -220,6 +226,55 @@ class ProfileService:
             "Created profile '%s' (id=%s) for user %s.", name, created.id, user_id
         )
         return created
+
+    async def ensure_profile_capacity(self, user_id: UUID) -> None:
+        """Raise when the user has reached their plan profile allowance."""
+        current_count = await self._profile_repo.count_for_user(user_id)
+        max_allowed = await self._get_profile_limit(user_id)
+        if current_count >= max_allowed:
+            raise ValidationError(
+                "Profile limit exceeded.",
+                details={
+                    "current_count": current_count,
+                    "max_allowed": max_allowed,
+                    "upgrade_path": "Purchase additional profile slots",
+                    "error_code": "profile-limit-exceeded",
+                },
+            )
+
+    async def require_owned_profile(
+        self, user_id: UUID, profile_id: UUID | None
+    ) -> None:
+        """Validate that a channel profile belongs to the user when provided."""
+        if profile_id is None:
+            return
+        profile = await self._profile_repo.get_by_id_for_user(profile_id, user_id)
+        if profile is None:
+            raise NotFoundError(
+                "Channel profile not found.",
+                details={"profile_id": str(profile_id)},
+            )
+
+    async def get_profile(self, user_id: UUID, profile_id: UUID) -> ChannelProfile:
+        """Get a single profile belonging to the user.
+
+        Args:
+            user_id: The UUID of the owning user.
+            profile_id: The UUID of the profile.
+
+        Returns:
+            The ChannelProfile.
+
+        Raises:
+            NotFoundError: If the profile does not exist or belongs to another user.
+        """
+        profile = await self._profile_repo.get_by_id(profile_id)
+        if profile is None or profile.user_id != user_id:
+            raise NotFoundError(
+                f"Profile {profile_id} not found.",
+                details={"profile_id": str(profile_id), "user_id": str(user_id)},
+            )
+        return profile
 
     async def update_profile(
         self, user_id: UUID, profile_id: UUID, **fields: Any
@@ -268,6 +323,17 @@ class ProfileService:
                     details={"name": new_name, "user_id": str(user_id)},
                 )
             fields["name"] = new_name
+
+        if "folder_name" in fields:
+            name_for_folder = str(fields.get("name") or "").strip()
+            if not name_for_folder:
+                existing_profile = await self._profile_repo.get_by_id_for_user(profile_id, user_id)
+                if existing_profile is not None:
+                    name_for_folder = str(existing_profile.name or "").strip()
+            fields["folder_name"] = resolve_profile_folder_name(
+                name_for_folder,
+                fields.get("folder_name"),
+            )
 
         updated = await self._profile_repo.update(profile_id, user_id, **fields)
         if updated is None:

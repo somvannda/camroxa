@@ -8,7 +8,6 @@ Requirements: 4.1, 4.3, 4.4
 
 from __future__ import annotations
 
-import logging
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Protocol
@@ -17,7 +16,13 @@ from uuid import UUID
 from platform_api.models.domain import License, Plan
 from platform_api.models.enums import LicenseStatus
 
-logger = logging.getLogger(__name__)
+_LICENSE_SELECT = """
+    id, license_key, plan_id, user_id, status,
+    activated_at, expires_at, revoked_at,
+    profile_addon_slots, profile_addon_pending,
+    pending_plan_id, pending_plan_effective_at,
+    created_at
+"""
 
 
 class AsyncPGPool(Protocol):
@@ -60,6 +65,10 @@ def _row_to_license(row: Any) -> License:
         activated_at=row.get("activated_at"),
         expires_at=row.get("expires_at"),
         revoked_at=row.get("revoked_at"),
+        profile_addon_slots=int(row.get("profile_addon_slots") or 0),
+        profile_addon_pending=int(row.get("profile_addon_pending") or 0),
+        pending_plan_id=row.get("pending_plan_id"),
+        pending_plan_effective_at=row.get("pending_plan_effective_at"),
         created_at=row["created_at"],
     )
 
@@ -74,8 +83,16 @@ def _row_to_plan(row: Any) -> Plan:
         profile_allowance=row["profile_allowance"],
         monthly_song_limit=row.get("monthly_song_limit"),
         monthly_image_limit=row.get("monthly_image_limit"),
+        monthly_draft_limit=row.get("monthly_draft_limit"),
+        monthly_video_limit=row.get("monthly_video_limit"),
+        monthly_merge_limit=row.get("monthly_merge_limit"),
         daily_song_limit_per_channel=row["daily_song_limit_per_channel"],
-        daily_image_limit_per_channel=row.get("daily_image_limit_per_channel", 7),
+        daily_image_limit_per_channel=row.get("daily_image_limit_per_channel", 2),
+        daily_draft_limit_per_channel=int(row.get("daily_draft_limit_per_channel") or 300),
+        daily_video_limit=int(row.get("daily_video_limit") or 10),
+        daily_merge_limit=int(row.get("daily_merge_limit") or 1),
+        included_wallet_credits=int(row.get("included_wallet_credits") or 0),
+        plan_kind=str(row.get("plan_kind") or "subscription"),
         is_active=row["is_active"],
         effective_from=row["effective_from"],
         created_at=row["created_at"],
@@ -121,7 +138,8 @@ class LicenseRepository:
             INSERT INTO licenses (license_key, plan_id, status, created_at)
             VALUES ($1, $2, 'unassigned', NOW())
             RETURNING id, license_key, plan_id, user_id, status,
-                      activated_at, expires_at, revoked_at, created_at
+                      activated_at, expires_at, revoked_at,
+                      profile_addon_slots, profile_addon_pending, created_at
             """,
             license_key,
             plan_id,
@@ -138,9 +156,8 @@ class LicenseRepository:
             The License domain object, or None if no matching license exists.
         """
         row = await self._pool.fetchrow(
-            """
-            SELECT id, license_key, plan_id, user_id, status,
-                   activated_at, expires_at, revoked_at, created_at
+            f"""
+            SELECT {_LICENSE_SELECT}
             FROM licenses
             WHERE id = $1
             """,
@@ -160,9 +177,8 @@ class LicenseRepository:
             The License domain object, or None if no matching license exists.
         """
         row = await self._pool.fetchrow(
-            """
-            SELECT id, license_key, plan_id, user_id, status,
-                   activated_at, expires_at, revoked_at, created_at
+            f"""
+            SELECT {_LICENSE_SELECT}
             FROM licenses
             WHERE license_key = $1
             """,
@@ -202,7 +218,8 @@ class LicenseRepository:
                 expires_at = $4
             WHERE id = $1
             RETURNING id, license_key, plan_id, user_id, status,
-                      activated_at, expires_at, revoked_at, created_at
+                      activated_at, expires_at, revoked_at,
+                      profile_addon_slots, profile_addon_pending, created_at
             """,
             license_id,
             user_id,
@@ -210,6 +227,94 @@ class LicenseRepository:
             expires_at,
         )
         return _row_to_license(row)
+
+    async def change_plan(
+        self, license_id: UUID, plan_id: UUID, plan: Plan
+    ) -> License | None:
+        """Switch an existing license to a new plan without revoking add-on fields."""
+        now = datetime.now(timezone.utc)
+        expires_at: datetime | None = None
+        if plan.billing_cycle_days is not None:
+            expires_at = now + timedelta(days=plan.billing_cycle_days)
+
+        row = await self._pool.fetchrow(
+            """
+            UPDATE licenses
+            SET plan_id = $2,
+                status = 'active',
+                activated_at = $3,
+                expires_at = $4,
+                revoked_at = NULL
+            WHERE id = $1
+            RETURNING id, license_key, plan_id, user_id, status,
+                      activated_at, expires_at, revoked_at,
+                      profile_addon_slots, profile_addon_pending, created_at
+            """,
+            license_id,
+            plan_id,
+            now,
+            expires_at,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
+    async def schedule_pending_plan(
+        self,
+        license_id: UUID,
+        pending_plan_id: UUID,
+        *,
+        effective_at: datetime,
+    ) -> License | None:
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE licenses
+            SET pending_plan_id = $2,
+                pending_plan_effective_at = $3
+            WHERE id = $1
+            RETURNING {_LICENSE_SELECT.strip()}
+            """,
+            license_id,
+            pending_plan_id,
+            effective_at,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
+    async def clear_pending_plan(self, license_id: UUID) -> License | None:
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE licenses
+            SET pending_plan_id = NULL,
+                pending_plan_effective_at = NULL
+            WHERE id = $1
+            RETURNING {_LICENSE_SELECT.strip()}
+            """,
+            license_id,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
+    async def apply_pending_plan_if_due(self, license_id: UUID, plan_repo: Any) -> License | None:
+        license_obj = await self.get_by_id(license_id)
+        if license_obj is None or license_obj.pending_plan_id is None:
+            return license_obj
+        effective_at = license_obj.pending_plan_effective_at
+        if effective_at is None:
+            return license_obj
+        now = datetime.now(timezone.utc)
+        effective = effective_at if effective_at.tzinfo else effective_at.replace(tzinfo=timezone.utc)
+        if effective > now:
+            return license_obj
+        pending_plan = await plan_repo.get_by_id(license_obj.pending_plan_id)
+        if pending_plan is None:
+            return await self.clear_pending_plan(license_id)
+        updated = await self.change_plan(license_id, pending_plan.id, pending_plan)
+        if updated is None:
+            return None
+        return await self.clear_pending_plan(license_id)
 
     async def revoke(self, license_id: UUID) -> bool:
         """Revoke a license by setting status to 'revoked' and revoked_at to now.
@@ -243,10 +348,25 @@ class LicenseRepository:
         Returns:
             The active License, or None if no valid license exists.
         """
-        row = await self._pool.fetchrow(
+        stale_rows = await self._pool.fetch(
             """
-            SELECT id, license_key, plan_id, user_id, status,
-                   activated_at, expires_at, revoked_at, created_at
+            SELECT id FROM licenses
+            WHERE user_id = $1
+              AND status = 'active'
+              AND pending_plan_id IS NOT NULL
+              AND pending_plan_effective_at IS NOT NULL
+              AND pending_plan_effective_at <= NOW()
+            """,
+            user_id,
+        )
+        if stale_rows:
+            plan_repo = PlanRepository(self._pool)
+            for stale in stale_rows:
+                await self.apply_pending_plan_if_due(stale["id"], plan_repo)
+
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT {_LICENSE_SELECT}
             FROM licenses
             WHERE user_id = $1
               AND status = 'active'
@@ -321,9 +441,8 @@ class LicenseRepository:
             List of License domain objects.
         """
         rows = await self._pool.fetch(
-            """
-            SELECT id, license_key, plan_id, user_id, status,
-                   activated_at, expires_at, revoked_at, created_at
+            f"""
+            SELECT {_LICENSE_SELECT}
             FROM licenses
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -331,6 +450,96 @@ class LicenseRepository:
             user_id,
         )
         return [_row_to_license(row) for row in rows]
+
+    async def set_profile_addon_slots(self, license_id: UUID, slots: int) -> License | None:
+        """Set active profile add-on slots (multiples of 2 channels)."""
+        if slots < 0 or slots > 8:
+            raise ValueError("profile_addon_slots must be between 0 and 8.")
+        if slots % 2 != 0:
+            raise ValueError("profile_addon_slots must be a multiple of 2.")
+
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE licenses
+            SET profile_addon_slots = $2
+            WHERE id = $1
+            RETURNING {_LICENSE_SELECT}
+            """,
+            license_id,
+            slots,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
+    async def set_profile_addon_pending(self, license_id: UUID, pending: int) -> License | None:
+        """Set pending profile add-on slots awaiting onboarding."""
+        if pending < 0 or pending > 8:
+            raise ValueError("profile_addon_pending must be between 0 and 8.")
+        if pending % 2 != 0:
+            raise ValueError("profile_addon_pending must be a multiple of 2.")
+
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE licenses
+            SET profile_addon_pending = $2
+            WHERE id = $1
+            RETURNING {_LICENSE_SELECT}
+            """,
+            license_id,
+            pending,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
+    async def add_profile_addon_pending(self, license_id: UUID, add_channels: int) -> License | None:
+        """Increment pending add-on slots (payment or admin grant)."""
+        license_obj = await self.get_by_id(license_id)
+        if license_obj is None:
+            return None
+        new_pending = int(license_obj.profile_addon_pending or 0) + int(add_channels)
+        return await self.set_profile_addon_pending(license_id, new_pending)
+
+    async def add_profile_addon_slots(self, license_id: UUID, add_channels: int) -> License | None:
+        """Increment active profile add-on slots by the given channel count."""
+        license_obj = await self.get_by_id(license_id)
+        if license_obj is None:
+            return None
+        new_slots = int(license_obj.profile_addon_slots or 0) + int(add_channels)
+        return await self.set_profile_addon_slots(license_id, new_slots)
+
+    async def activate_profile_addon_pending(
+        self, license_id: UUID, channels: int = 2
+    ) -> License | None:
+        """Move pending add-on slots to active after onboarding completes."""
+        if channels <= 0 or channels % 2 != 0:
+            raise ValueError("Activation must be in multiples of 2 channels.")
+
+        license_obj = await self.get_by_id(license_id)
+        if license_obj is None:
+            return None
+
+        pending = int(license_obj.profile_addon_pending or 0)
+        if pending < channels:
+            raise ValueError("Not enough pending add-on slots to activate.")
+
+        active = int(license_obj.profile_addon_slots or 0)
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE licenses
+            SET profile_addon_slots = $2,
+                profile_addon_pending = $3
+            WHERE id = $1
+            RETURNING {_LICENSE_SELECT}
+            """,
+            license_id,
+            active + channels,
+            pending - channels,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
 
     async def revoke_all_for_user(self, user_id: UUID) -> int:
         """Revoke all active licenses for a user.
@@ -370,9 +579,8 @@ class LicenseRepository:
                 "SELECT COUNT(*) FROM licenses WHERE status = $1", status
             )
             rows = await self._pool.fetch(
-                """
-                SELECT id, license_key, plan_id, user_id, status,
-                       activated_at, expires_at, revoked_at, created_at
+                f"""
+                SELECT {_LICENSE_SELECT}
                 FROM licenses WHERE status = $1
                 ORDER BY created_at DESC LIMIT $2 OFFSET $3
                 """,
@@ -381,9 +589,8 @@ class LicenseRepository:
         else:
             count = await self._pool.fetchval("SELECT COUNT(*) FROM licenses")
             rows = await self._pool.fetch(
-                """
-                SELECT id, license_key, plan_id, user_id, status,
-                       activated_at, expires_at, revoked_at, created_at
+                f"""
+                SELECT {_LICENSE_SELECT}
                 FROM licenses ORDER BY created_at DESC LIMIT $1 OFFSET $2
                 """,
                 page_size, offset,
@@ -398,10 +605,11 @@ class LicenseRepository:
 
 
 class PlanRepository:
-    """Repository for plan CRUD operations and default seeding.
+    """Repository for plan CRUD operations.
 
-    Manages subscription plan configurations (Monthly, Yearly, Lifetime)
-    and provides plan usage tracking for quota consumption.
+    Reads and writes subscription plan rows from the ``plans`` table.
+    Plans are created and managed only via Admin Portal — this repo does
+    not bootstrap or seed default tiers.
 
     Args:
         pool: An asyncpg connection pool instance.
@@ -419,14 +627,44 @@ class PlanRepository:
         rows = await self._pool.fetch(
             """
             SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_limit, monthly_image_limit,
+                   monthly_song_limit, monthly_image_limit, monthly_draft_limit,
+                   monthly_video_limit, monthly_merge_limit,
                    daily_song_limit_per_channel, daily_image_limit_per_channel,
+                   daily_draft_limit_per_channel,
+                   daily_video_limit, daily_merge_limit,
+                   included_wallet_credits, plan_kind,
                    is_active, effective_from, created_at, updated_at
             FROM plans
-            ORDER BY price_cents ASC
+            ORDER BY plan_kind ASC, price_cents ASC
             """
         )
         return [_row_to_plan(row) for row in rows]
+
+    async def get_subscriber_counts(self, plan_ids: list[UUID]) -> dict[UUID, int]:
+        """Return assigned-license counts for the given plans.
+
+        A plan is considered to have subscribers if it has license rows that
+        are assigned to a user (`user_id IS NOT NULL`), regardless of current
+        license status. This keeps historical subscriptions from being deleted
+        along with the plan record.
+        """
+        if not plan_ids:
+            return {}
+
+        rows = await self._pool.fetch(
+            """
+            SELECT plan_id, COUNT(*)::int AS subscriber_count
+            FROM licenses
+            WHERE plan_id = ANY($1::uuid[])
+              AND user_id IS NOT NULL
+            GROUP BY plan_id
+            """,
+            plan_ids,
+        )
+        return {
+            row["plan_id"]: int(row["subscriber_count"] or 0)
+            for row in rows
+        }
 
     async def create(
         self,
@@ -435,35 +673,36 @@ class PlanRepository:
         profile_allowance: int,
         monthly_song_limit: int | None = None,
         monthly_image_limit: int | None = None,
+        monthly_draft_limit: int | None = None,
+        monthly_video_limit: int | None = None,
+        monthly_merge_limit: int | None = None,
         billing_cycle_days: int | None = None,
         daily_song_limit_per_channel: int = 7,
         daily_image_limit_per_channel: int = 7,
+        daily_draft_limit_per_channel: int = 300,
+        daily_video_limit: int = 10,
+        daily_merge_limit: int = 1,
+        plan_kind: str = "subscription",
     ) -> Plan:
-        """Create a new plan.
-
-        Args:
-            name: Unique plan name.
-            price_cents: Price in cents.
-            profile_allowance: Max channel profiles allowed.
-            monthly_song_limit: Monthly song limit (None for unlimited).
-            monthly_image_limit: Monthly image limit (None for unlimited).
-            billing_cycle_days: Billing cycle in days (None for lifetime).
-            daily_song_limit_per_channel: Daily song limit per channel.
-            daily_image_limit_per_channel: Daily image limit per channel.
-
-        Returns:
-            The newly created Plan domain object.
-        """
+        """Create a new plan."""
         row = await self._pool.fetchrow(
             """
             INSERT INTO plans (name, price_cents, billing_cycle_days, profile_allowance,
-                               monthly_song_limit, monthly_image_limit,
+                               monthly_song_limit, monthly_image_limit, monthly_draft_limit,
+                               monthly_video_limit, monthly_merge_limit,
                                daily_song_limit_per_channel, daily_image_limit_per_channel,
+                               daily_draft_limit_per_channel,
+                               daily_video_limit, daily_merge_limit,
+                               plan_kind,
                                is_active, effective_from, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, true, NOW(), NOW(), NOW())
             RETURNING id, name, price_cents, billing_cycle_days, profile_allowance,
-                      monthly_song_limit, monthly_image_limit,
+                      monthly_song_limit, monthly_image_limit, monthly_draft_limit,
+                      monthly_video_limit, monthly_merge_limit,
                       daily_song_limit_per_channel, daily_image_limit_per_channel,
+                      daily_draft_limit_per_channel,
+                      daily_video_limit, daily_merge_limit,
+                      included_wallet_credits, plan_kind,
                       is_active, effective_from, created_at, updated_at
             """,
             name,
@@ -472,8 +711,15 @@ class PlanRepository:
             profile_allowance,
             monthly_song_limit,
             monthly_image_limit,
+            monthly_draft_limit,
+            monthly_video_limit,
+            monthly_merge_limit,
             daily_song_limit_per_channel,
             daily_image_limit_per_channel,
+            daily_draft_limit_per_channel,
+            daily_video_limit,
+            daily_merge_limit,
+            plan_kind,
         )
         return _row_to_plan(row)
 
@@ -489,8 +735,12 @@ class PlanRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_limit, monthly_image_limit,
+                   monthly_song_limit, monthly_image_limit, monthly_draft_limit,
+                   monthly_video_limit, monthly_merge_limit,
                    daily_song_limit_per_channel, daily_image_limit_per_channel,
+                   daily_draft_limit_per_channel,
+                   daily_video_limit, daily_merge_limit,
+                   included_wallet_credits, plan_kind,
                    is_active, effective_from, created_at, updated_at
             FROM plans
             WHERE id = $1
@@ -513,8 +763,12 @@ class PlanRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_limit, monthly_image_limit,
+                   monthly_song_limit, monthly_image_limit, monthly_draft_limit,
+                   monthly_video_limit, monthly_merge_limit,
                    daily_song_limit_per_channel, daily_image_limit_per_channel,
+                   daily_draft_limit_per_channel,
+                   daily_video_limit, daily_merge_limit,
+                   included_wallet_credits, plan_kind,
                    is_active, effective_from, created_at, updated_at
             FROM plans
             WHERE name = $1
@@ -561,8 +815,12 @@ class PlanRepository:
             SET {', '.join(set_parts)}
             WHERE id = ${param_idx}
             RETURNING id, name, price_cents, billing_cycle_days, profile_allowance,
-                      monthly_song_limit, monthly_image_limit,
+                      monthly_song_limit, monthly_image_limit, monthly_draft_limit,
+                      monthly_video_limit, monthly_merge_limit,
                       daily_song_limit_per_channel, daily_image_limit_per_channel,
+                      daily_draft_limit_per_channel,
+                      daily_video_limit, daily_merge_limit,
+                      included_wallet_credits, plan_kind,
                       is_active, effective_from, created_at, updated_at
         """
 
@@ -571,60 +829,90 @@ class PlanRepository:
             return None
         return _row_to_plan(row)
 
-    async def seed_defaults(self) -> None:
-        """Insert default plans if they don't already exist.
+    async def delete_if_no_subscribers(self, plan_id: UUID) -> bool:
+        """Delete a plan only when it has never been assigned to a user.
 
-        Creates the three standard plans:
-        - Monthly: $79/30-day cycle, 2 profiles, 420 monthly songs
-        - Yearly: $699/365-day cycle, 4 profiles, 840 monthly songs
-        - Lifetime: $1499 one-time, 5 profiles, unlimited songs
+        Before deleting the plan record, this removes dependent promotional
+        offers and unassigned license inventory for that plan.
+
+        Returns:
+            True if the plan was deleted, False if it was not found.
+
+        Raises:
+            ValidationError: If the plan has one or more subscribed users.
         """
-        defaults = [
-            {
-                "name": "monthly",
-                "price_cents": 7900,
-                "billing_cycle_days": 30,
-                "profile_allowance": 2,
-                "monthly_song_limit": 420,
-                "daily_song_limit_per_channel": 7,
-            },
-            {
-                "name": "yearly",
-                "price_cents": 69900,
-                "billing_cycle_days": 365,
-                "profile_allowance": 4,
-                "monthly_song_limit": 840,
-                "daily_song_limit_per_channel": 7,
-            },
-            {
-                "name": "lifetime",
-                "price_cents": 149900,
-                "billing_cycle_days": None,
-                "profile_allowance": 5,
-                "monthly_song_limit": None,
-                "daily_song_limit_per_channel": 7,
-            },
-        ]
+        from platform_api.exceptions import ValidationError
 
-        for plan_data in defaults:
-            await self._pool.execute(
+        subscriber_count = int(
+            await self._pool.fetchval(
                 """
-                INSERT INTO plans (name, price_cents, billing_cycle_days,
-                                   profile_allowance, monthly_song_limit,
-                                   daily_song_limit_per_channel, is_active,
-                                   effective_from, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, true, NOW(), NOW(), NOW())
-                ON CONFLICT (name) DO NOTHING
+                SELECT COUNT(*)::int
+                FROM licenses
+                WHERE plan_id = $1
+                  AND user_id IS NOT NULL
                 """,
-                plan_data["name"],
-                plan_data["price_cents"],
-                plan_data["billing_cycle_days"],
-                plan_data["profile_allowance"],
-                plan_data["monthly_song_limit"],
-                plan_data["daily_song_limit_per_channel"],
+                plan_id,
+            )
+            or 0
+        )
+        if subscriber_count > 0:
+            raise ValidationError(
+                message="Cannot permanently delete a plan that has subscribed users.",
+                details={
+                    "plan_id": str(plan_id),
+                    "subscriber_count": subscriber_count,
+                },
             )
 
-        logger.info("Default plans seeded (skipped existing).")
+        await self._pool.execute("DELETE FROM plan_offers WHERE plan_id = $1", plan_id)
+        await self._pool.execute(
+            "DELETE FROM licenses WHERE plan_id = $1 AND user_id IS NULL",
+            plan_id,
+        )
+        deleted_id = await self._pool.fetchval(
+            "DELETE FROM plans WHERE id = $1 RETURNING id",
+            plan_id,
+        )
+        return deleted_id is not None
+
+    async def get_user_active_subscription_context(
+        self, user_id: UUID
+    ) -> "ActiveSubscriptionContext | None":
+        """Return active license + plan context for quota period calculations."""
+        from platform_api.services.billing_period_service import ActiveSubscriptionContext
+
+        row = await self._pool.fetchrow(
+            """
+            SELECT p.id, p.name, p.price_cents, p.billing_cycle_days,
+                   p.profile_allowance, p.monthly_song_limit, p.monthly_image_limit,
+                   p.monthly_draft_limit,
+                   p.monthly_video_limit, p.monthly_merge_limit,
+                   p.daily_song_limit_per_channel, p.daily_image_limit_per_channel,
+                   p.daily_draft_limit_per_channel,
+                   p.daily_video_limit, p.daily_merge_limit,
+                   p.included_wallet_credits,
+                   p.is_active, p.effective_from, p.created_at, p.updated_at,
+                   l.id AS license_id, l.activated_at,
+                   l.profile_addon_slots, l.profile_addon_pending
+            FROM plans p
+            INNER JOIN licenses l ON l.plan_id = p.id
+            WHERE l.user_id = $1
+              AND l.status = 'active'
+              AND (l.expires_at IS NULL OR l.expires_at > NOW())
+            ORDER BY l.activated_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None:
+            return None
+        return ActiveSubscriptionContext(
+            plan=_row_to_plan(row),
+            license_id=row["license_id"],
+            activated_at=row.get("activated_at"),
+            profile_addon_slots=int(row.get("profile_addon_slots") or 0),
+            profile_addon_pending=int(row.get("profile_addon_pending") or 0),
+        )
 
     async def get_user_active_plan(self, user_id: UUID) -> Plan | None:
         """Get the plan associated with the user's active license.
@@ -643,7 +931,12 @@ class PlanRepository:
             """
             SELECT p.id, p.name, p.price_cents, p.billing_cycle_days,
                    p.profile_allowance, p.monthly_song_limit, p.monthly_image_limit,
+                   p.monthly_draft_limit,
+                   p.monthly_video_limit, p.monthly_merge_limit,
                    p.daily_song_limit_per_channel, p.daily_image_limit_per_channel,
+                   p.daily_draft_limit_per_channel,
+                   p.daily_video_limit, p.daily_merge_limit,
+                   p.included_wallet_credits,
                    p.is_active, p.effective_from, p.created_at, p.updated_at
             FROM plans p
             INNER JOIN licenses l ON l.plan_id = p.id
@@ -734,6 +1027,35 @@ class PlanRepository:
             period_start,
         )
         return result if result is not None else 0
+
+    async def sync_songs_used_for_period(
+        self,
+        user_id: UUID,
+        license_id: UUID,
+        period_start: date,
+        period_end: date,
+        songs_used: int,
+    ) -> None:
+        """Keep plan_usage aligned with authoritative usage_tracking for admin reporting."""
+        await self.get_or_create_usage(
+            user_id=user_id,
+            license_id=license_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
+        await self._pool.execute(
+            """
+            UPDATE plan_usage
+            SET songs_used = $4
+            WHERE user_id = $1
+              AND license_id = $2
+              AND period_start = $3
+            """,
+            user_id,
+            license_id,
+            period_start,
+            max(0, int(songs_used)),
+        )
 
     async def get_current_usage(self, user_id: UUID, license_id: UUID) -> int:
         """Get the songs_used count for the current billing period.

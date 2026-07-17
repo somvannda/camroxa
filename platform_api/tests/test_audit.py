@@ -178,6 +178,25 @@ class TestAuditRepository:
         assert db._rows[0]["actor_id"] is None
 
     @pytest.mark.asyncio
+    async def test_insert_casts_metadata_to_jsonb(self) -> None:
+        """Insert uses explicit jsonb casting so metadata is stored as an object, not a JSON string."""
+        db = AsyncMock()
+        repo = AuditRepository(db)
+        entry = AuditLog(
+            id=uuid4(),
+            actor_id=uuid4(),
+            action_type="auth.login",
+            outcome="success",
+            metadata={"http_method": "POST"},
+            created_at=datetime.utcnow(),
+        )
+
+        await repo.insert(entry)
+
+        query = db.execute.await_args.args[0]
+        assert "$10::jsonb" in query
+
+    @pytest.mark.asyncio
     async def test_query_default_pagination(self, repo: AuditRepository, db: FakeDatabase) -> None:
         """Query returns default page size of 50 with page metadata."""
         # Insert 3 entries
@@ -272,6 +291,28 @@ class TestAuditRepository:
         result = await repo.query(filters=filters)
 
         assert result.total == 2
+
+    @pytest.mark.asyncio
+    async def test_query_parses_stringified_json_metadata(
+        self, repo: AuditRepository, db: FakeDatabase
+    ) -> None:
+        """Query normalizes JSONB strings into dict metadata for API consumers."""
+        entry = AuditLog(
+            id=uuid4(),
+            action_type="auth.login",
+            outcome="success",
+            metadata={"http_method": "POST", "status_code": 200},
+            created_at=datetime.utcnow(),
+        )
+        await repo.insert(entry)
+        db._rows[0]["metadata"] = '{"http_method": "POST", "status_code": 200}'
+
+        result = await repo.query()
+
+        assert result.entries[0].metadata == {
+            "http_method": "POST",
+            "status_code": 200,
+        }
 
     @pytest.mark.asyncio
     async def test_query_filter_by_resource_type(self, repo: AuditRepository, db: FakeDatabase) -> None:

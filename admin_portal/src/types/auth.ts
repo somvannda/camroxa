@@ -11,6 +11,4 @@ export interface AuthContextValue {
   adminEmail: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  getAccessToken: () => string | null;
-  setTokens: (access: string, refresh: string) => void;
 }

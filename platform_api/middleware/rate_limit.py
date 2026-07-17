@@ -236,9 +236,9 @@ def resolve_endpoint_type(path: str) -> str:
     """Determine the endpoint type from the request path.
 
     Maps request paths to rate limit endpoint types:
-      - /generation/suno or /api/v1/generation/suno → "suno"
-      - /generation/image → "image"
-      - /generation/draft → "llm"
+      - /generation/suno, /batches/.../retry-suno → "suno"
+      - /generation/image, channel-setup logo/covers → "image"
+      - /generation/draft, POST /batches, retry-draft, channel-setup LLM → "llm"
       - Everything else → "default"
 
     Args:
@@ -254,14 +254,25 @@ def resolve_endpoint_type(path: str) -> str:
     if normalized.startswith("api/v1/"):
         normalized = normalized[7:]
 
-    if normalized.startswith("generation/suno"):
+    if normalized.startswith("generation/suno") or normalized.endswith("retry-suno"):
         return "suno"
-    elif normalized.startswith("generation/image"):
+
+    if (
+        normalized.startswith("generation/image")
+        or normalized.startswith("channel-setup/generate-logo")
+        or normalized.startswith("channel-setup/generate-covers")
+    ):
         return "image"
-    elif normalized.startswith("generation/draft"):
+
+    if (
+        normalized.startswith("generation/draft")
+        or normalized == "batches"
+        or normalized.endswith("retry-draft")
+        or normalized.startswith("channel-setup/generate-")
+    ):
         return "llm"
-    else:
-        return "default"
+
+    return "default"
 
 
 # ---------------------------------------------------------------------------
@@ -430,3 +441,20 @@ def get_rate_limiter() -> RateLimiter:
             "Rate limiter not configured. Call configure_rate_limiter() at startup."
         )
     return _rate_limiter
+
+
+async def enforce_rate_limit(request: Request, user_id: str) -> None:
+    """Enforce rate limit for the current request when a limiter is configured.
+
+    No-ops when the limiter has not been configured yet (common in unit tests).
+    """
+    if _rate_limiter is None:
+        return
+    await _rate_limiter.check(request, user_id)
+
+
+async def enforce_rate_limit_for_endpoint(user_id: str, endpoint_type: str) -> None:
+    """Enforce rate limit for a known endpoint type when a limiter is configured."""
+    if _rate_limiter is None:
+        return
+    await _rate_limiter.check_for_endpoint(user_id, endpoint_type)

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AxiosError } from 'axios';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ErrorState } from '@/components/shared/error-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,7 +34,11 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Skeleton } from '@/components/ui/skeleton';
-import { usePlans, useCreatePlan, useUpdatePlan, useOffers, useCreateOffer } from '@/hooks/use-plans';
+import { usePlans, useCreatePlan, useUpdatePlan, useDeletePlan, useOffers, useCreateOffer, usePlanTermDiscounts } from '@/hooks/use-plans';
+import { billingTermQuotes, formatChannelPlanName, formatUsd, linearPlanMonthlyCents } from '@/lib/plan-tier-pricing';
+import { ChannelPricingSection } from '@/pages/plans/channel-pricing-section';
+import { PlanPricingPreview, SmartPlanPriceCalculator } from '@/pages/plans/plan-pricing-preview';
+import { SubscriptionPlansSection } from '@/pages/plans/subscription-plans-section';
 import { toast } from '@/hooks/use-toast';
 import type { Plan, PlanOffer } from '@/types/models';
 
@@ -44,8 +49,14 @@ const planUpdateSchema = z.object({
   profile_allowance: z.number().min(1, 'Profile allowance must be at least 1'),
   monthly_song_limit: z.number().int().min(0).max(100000).nullable(),
   monthly_image_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_draft_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_video_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_merge_limit: z.number().int().min(0).max(100000).nullable(),
   daily_song_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
   daily_image_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
+  daily_draft_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(10000, 'Max is 10000'),
+  daily_video_limit: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
+  daily_merge_limit: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
   billing_cycle_days: z.number().min(1, 'Billing cycle must be at least 1 day'),
 });
 
@@ -57,9 +68,15 @@ const createPlanSchema = z.object({
   profile_allowance: z.number().min(1, 'Must be at least 1'),
   monthly_song_limit: z.number().int().min(0).max(100000).nullable(),
   monthly_image_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_draft_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_video_limit: z.number().int().min(0).max(100000).nullable(),
+  monthly_merge_limit: z.number().int().min(0).max(100000).nullable(),
   billing_cycle_days: z.number().min(1, 'Must be at least 1 day'),
   daily_song_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
   daily_image_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
+  daily_draft_limit_per_channel: z.number().int().min(1, 'Must be at least 1').max(10000, 'Max is 10000'),
+  daily_video_limit: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
+  daily_merge_limit: z.number().int().min(1, 'Must be at least 1').max(1000, 'Max is 1000'),
 });
 
 type CreatePlanFormValues = z.infer<typeof createPlanSchema>;
@@ -74,8 +91,32 @@ type CreateOfferFormValues = z.infer<typeof createOfferSchema>;
 
 // --- Helpers ---
 
-function formatPrice(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+function applyBillingTerm(
+  monthlyCents: number,
+  term: 'monthly' | 'semi' | 'annual',
+  discounts?: { semiAnnualDiscountPercent?: number; annualDiscountPercent?: number },
+): { price_cents: number; billing_cycle_days: number } {
+  const quotes = billingTermQuotes(monthlyCents, discounts);
+  if (term === 'semi') {
+    return { price_cents: quotes[1]?.totalCents ?? monthlyCents, billing_cycle_days: 180 };
+  }
+  if (term === 'annual') {
+    return { price_cents: quotes[2]?.totalCents ?? monthlyCents, billing_cycle_days: 365 };
+  }
+  return { price_cents: monthlyCents, billing_cycle_days: 30 };
+}
+
+function monthlyEquivalentFromPlan(
+  priceCents: number,
+  billingCycleDays: number,
+  discounts?: { semiAnnualDiscountPercent?: number; annualDiscountPercent?: number },
+): number {
+  const semi = (discounts?.semiAnnualDiscountPercent ?? 15) / 100;
+  const annual = (discounts?.annualDiscountPercent ?? 25) / 100;
+  if (billingCycleDays === 30) return priceCents;
+  if (billingCycleDays === 180) return Math.round(priceCents / 6 / (1 - semi));
+  if (billingCycleDays === 365) return Math.round(priceCents / 12 / (1 - annual));
+  return Math.round((priceCents / billingCycleDays) * 30);
 }
 
 // --- Component ---
@@ -85,16 +126,53 @@ export default function PlansPage() {
   const [createPlanDialogOpen, setCreatePlanDialogOpen] = useState(false);
   const [createOfferDialogOpen, setCreateOfferDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+  const [deletePlanTarget, setDeletePlanTarget] = useState<Plan | null>(null);
   const [editSongUnlimited, setEditSongUnlimited] = useState(false);
   const [editImageUnlimited, setEditImageUnlimited] = useState(false);
+  const [editDraftUnlimited, setEditDraftUnlimited] = useState(false);
   const [createSongUnlimited, setCreateSongUnlimited] = useState(false);
   const [createImageUnlimited, setCreateImageUnlimited] = useState(false);
+  const [createDraftUnlimited, setCreateDraftUnlimited] = useState(false);
+  const [createSemiDiscountPercent, setCreateSemiDiscountPercent] = useState(15);
+  const [createAnnualDiscountPercent, setCreateAnnualDiscountPercent] = useState(25);
 
   const { data: plans, isLoading: plansLoading, isError: plansError, error: plansErr, refetch: refetchPlans } = usePlans();
   const { data: offers, isLoading: offersLoading, isError: offersError, error: offersErr, refetch: refetchOffers } = useOffers();
+  const { data: termDiscounts } = usePlanTermDiscounts();
   const createPlan = useCreatePlan();
   const updatePlan = useUpdatePlan();
+  const deletePlan = useDeletePlan();
   const createOffer = useCreateOffer();
+  const subscriptionPlans = plans?.filter((plan) => plan.plan_kind !== 'profile_addon') ?? [];
+  const twoChannelBasePlan = subscriptionPlans
+    .filter(
+      (plan) =>
+        plan.is_active &&
+        plan.profile_allowance === 2 &&
+        plan.billing_cycle_days === 30,
+    )
+    .sort((a, b) => a.price_cents - b.price_cents)[0];
+  const blockPriceCents = twoChannelBasePlan?.price_cents ?? 7900;
+
+  useEffect(() => {
+    if (!termDiscounts) return;
+    setCreateSemiDiscountPercent(termDiscounts.semi_annual_discount_percent);
+    setCreateAnnualDiscountPercent(termDiscounts.annual_discount_percent);
+  }, [termDiscounts]);
+
+  const handleTogglePlanActive = useCallback(
+    (plan: Plan) => {
+      updatePlan.mutate(
+        { id: plan.id, updates: { is_active: !plan.is_active } },
+        {
+          onSuccess: () => {
+            toast({ title: plan.is_active ? 'Plan deactivated' : 'Plan activated' });
+          },
+        },
+      );
+    },
+    [updatePlan],
+  );
 
   const editForm = useForm<PlanUpdateFormValues>({
     resolver: zodResolver(planUpdateSchema),
@@ -103,8 +181,14 @@ export default function PlansPage() {
       profile_allowance: 1,
       monthly_song_limit: 0,
       monthly_image_limit: 0,
-      daily_song_limit_per_channel: 7,
-      daily_image_limit_per_channel: 7,
+      monthly_draft_limit: 0,
+      monthly_video_limit: 300,
+      monthly_merge_limit: 30,
+      daily_song_limit_per_channel: 10,
+      daily_image_limit_per_channel: 2,
+      daily_draft_limit_per_channel: 21,
+      daily_video_limit: 10,
+      daily_merge_limit: 1,
       billing_cycle_days: 30,
     },
   });
@@ -115,11 +199,17 @@ export default function PlansPage() {
       name: '',
       price_cents: 0,
       profile_allowance: 1,
-      monthly_song_limit: 0,
-      monthly_image_limit: 0,
+      monthly_song_limit: 300,
+      monthly_image_limit: 120,
+      monthly_draft_limit: 1260,
+      monthly_video_limit: 300,
+      monthly_merge_limit: 30,
       billing_cycle_days: 30,
-      daily_song_limit_per_channel: 7,
-      daily_image_limit_per_channel: 7,
+      daily_song_limit_per_channel: 10,
+      daily_image_limit_per_channel: 2,
+      daily_draft_limit_per_channel: 21,
+      daily_video_limit: 10,
+      daily_merge_limit: 1,
     },
   });
 
@@ -132,19 +222,36 @@ export default function PlansPage() {
     },
   });
 
+  const openCreatePlanDialog = useCallback(() => {
+    createPlanForm.reset();
+    if (termDiscounts) {
+      setCreateSemiDiscountPercent(termDiscounts.semi_annual_discount_percent);
+      setCreateAnnualDiscountPercent(termDiscounts.annual_discount_percent);
+    }
+    setCreatePlanDialogOpen(true);
+  }, [createPlanForm, termDiscounts]);
+
   const openEditDialog = (plan: Plan) => {
     setSelectedPlan(plan);
     const songUnlimited = plan.monthly_song_limit === null;
     const imageUnlimited = plan.monthly_image_limit === null;
+    const draftUnlimited = plan.monthly_draft_limit === null;
     setEditSongUnlimited(songUnlimited);
     setEditImageUnlimited(imageUnlimited);
+    setEditDraftUnlimited(draftUnlimited);
     editForm.reset({
       price_cents: plan.price_cents,
       profile_allowance: plan.profile_allowance,
       monthly_song_limit: plan.monthly_song_limit,
       monthly_image_limit: plan.monthly_image_limit,
+      monthly_draft_limit: plan.monthly_draft_limit,
+      monthly_video_limit: plan.monthly_video_limit,
+      monthly_merge_limit: plan.monthly_merge_limit,
       daily_song_limit_per_channel: plan.daily_song_limit_per_channel,
       daily_image_limit_per_channel: plan.daily_image_limit_per_channel,
+      daily_draft_limit_per_channel: plan.daily_draft_limit_per_channel ?? 300,
+      daily_video_limit: plan.daily_video_limit ?? 10,
+      daily_merge_limit: plan.daily_merge_limit ?? 1,
       billing_cycle_days: plan.billing_cycle_days ?? 30,
     });
     setEditDialogOpen(true);
@@ -156,6 +263,8 @@ export default function PlansPage() {
         ...values,
         monthly_song_limit: createSongUnlimited ? null : values.monthly_song_limit,
         monthly_image_limit: createImageUnlimited ? null : values.monthly_image_limit,
+        monthly_draft_limit: createDraftUnlimited ? null : values.monthly_draft_limit,
+        daily_draft_limit_per_channel: values.daily_draft_limit_per_channel,
       },
       {
         onSuccess: () => {
@@ -186,6 +295,8 @@ export default function PlansPage() {
           ...values,
           monthly_song_limit: editSongUnlimited ? null : values.monthly_song_limit,
           monthly_image_limit: editImageUnlimited ? null : values.monthly_image_limit,
+          monthly_draft_limit: editDraftUnlimited ? null : values.monthly_draft_limit,
+          daily_draft_limit_per_channel: values.daily_draft_limit_per_channel,
         },
       },
       {
@@ -224,6 +335,30 @@ export default function PlansPage() {
     });
   };
 
+  const handleDeletePlan = () => {
+    if (!deletePlanTarget) return;
+    deletePlan.mutate(deletePlanTarget.id, {
+      onSuccess: () => {
+        toast({ title: 'Plan permanently deleted' });
+        setDeletePlanTarget(null);
+      },
+      onError: (err) => {
+        const axiosError = err as AxiosError<{
+          detail?: string;
+          error?: { message?: string };
+        }>;
+        toast({
+          title: 'Error',
+          description:
+            axiosError.response?.data?.error?.message ??
+            axiosError.response?.data?.detail ??
+            'Failed to delete plan',
+          variant: 'destructive',
+        });
+      },
+    });
+  };
+
   if (plansError && !plans) {
     return (
       <div className="p-6">
@@ -240,116 +375,16 @@ export default function PlansPage() {
     <div className="p-6 space-y-8">
       <h1 className="text-2xl font-bold text-slate-100">Plans</h1>
 
-      {/* Section 1: Plans */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Subscription Plans</CardTitle>
-          <Button size="sm" onClick={() => { createPlanForm.reset(); setCreatePlanDialogOpen(true); }}>
-            Create Plan
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {plansLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-700 text-left text-slate-400">
-                    <th className="pb-3 pr-4 font-medium">Name</th>
-                    <th className="pb-3 pr-4 font-medium">Price</th>
-                    <th className="pb-3 pr-4 font-medium">Profiles</th>
-                    <th className="pb-3 pr-4 font-medium">Monthly Song Limit</th>
-                    <th className="pb-3 pr-4 font-medium">Monthly Image Limit</th>
-                    <th className="pb-3 pr-4 font-medium">Daily Song Limit</th>
-                    <th className="pb-3 pr-4 font-medium">Daily Image Limit</th>
-                    <th className="pb-3 pr-4 font-medium">Status</th>
-                    <th className="pb-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {plans?.map((plan) => (
-                    <tr
-                      key={plan.id}
-                      className="border-b border-slate-800 hover:bg-slate-800/50"
-                    >
-                      <td className="py-3 pr-4 text-slate-200">{plan.name}</td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {formatPrice(plan.price_cents)}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {plan.profile_allowance}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {plan.monthly_song_limit ?? '∞'}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {plan.monthly_image_limit ?? '∞'}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {plan.daily_song_limit_per_channel}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {plan.daily_image_limit_per_channel}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Badge
-                          variant="outline"
-                          className={
-                            plan.is_active
-                              ? 'border-green-500/30 bg-green-500/10 text-green-400'
-                              : 'border-red-500/30 bg-red-500/10 text-red-400'
-                          }
-                        >
-                          {plan.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </td>
-                      <td className="py-3">
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openEditDialog(plan)}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className={plan.is_active
-                              ? 'border-red-500/30 text-red-400 hover:bg-red-500/10'
-                              : 'border-green-500/30 text-green-400 hover:bg-green-500/10'
-                            }
-                            onClick={() => {
-                              updatePlan.mutate(
-                                { id: plan.id, updates: { is_active: !plan.is_active } },
-                                {
-                                  onSuccess: () => {
-                                    toast({ title: plan.is_active ? 'Plan deactivated' : 'Plan activated' });
-                                  },
-                                },
-                              );
-                            }}
-                          >
-                            {plan.is_active ? 'Deactivate' : 'Activate'}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {plans?.length === 0 && (
-                <p className="py-8 text-center text-slate-400">No plans found.</p>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <ChannelPricingSection />
+
+      <SubscriptionPlansSection
+        plans={subscriptionPlans}
+        isLoading={plansLoading}
+        onCreatePlan={openCreatePlanDialog}
+        onEditPlan={openEditDialog}
+        onToggleActive={handleTogglePlanActive}
+        onDeletePlan={setDeletePlanTarget}
+      />
 
       {/* Section 2: Promotional Offers */}
       <Card>
@@ -391,7 +426,7 @@ export default function PlansPage() {
 
       {/* Edit Plan Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Plan</DialogTitle>
             <DialogDescription>
@@ -400,6 +435,7 @@ export default function PlansPage() {
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(handleUpdatePlan)} className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={editForm.control}
                 name="price_cents"
@@ -422,7 +458,7 @@ export default function PlansPage() {
                 name="profile_allowance"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Profile Allowance</FormLabel>
+                    <FormLabel>Channels</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -439,7 +475,10 @@ export default function PlansPage() {
                 name="monthly_song_limit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monthly Song Limit</FormLabel>
+                    <FormLabel>Suno packages / period</FormLabel>
+                    <p className="text-xs text-slate-400">
+                      1 package = Primary + Secondary channel (2 tracks).
+                    </p>
                     <div className="flex items-center gap-3">
                       <FormControl>
                         <Input
@@ -467,6 +506,9 @@ export default function PlansPage() {
                         Unlimited
                       </label>
                     </div>
+                    {!editSongUnlimited && field.value != null && (
+                      <p className="text-xs text-slate-500">≈ {Number(field.value) * 2} tracks / period</p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -476,7 +518,8 @@ export default function PlansPage() {
                 name="monthly_image_limit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monthly Image Limit</FormLabel>
+                    <FormLabel>Image Limit (per billing period)</FormLabel>
+                    <p className="text-xs text-slate-400">Account BG+TH pool.</p>
                     <div className="flex items-center gap-3">
                       <FormControl>
                         <Input
@@ -493,6 +536,44 @@ export default function PlansPage() {
                           checked={editImageUnlimited}
                           onChange={(e) => {
                             setEditImageUnlimited(e.target.checked);
+                            if (e.target.checked) {
+                              field.onChange(null);
+                            } else {
+                              field.onChange(0);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-600"
+                        />
+                        Unlimited
+                      </label>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="monthly_draft_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Draft Limit (per billing period)</FormLabel>
+                    <p className="text-xs text-slate-400">Lyric, title, or album calls (shared pool).</p>
+                    <div className="flex items-center gap-3">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          disabled={editDraftUnlimited}
+                          value={editDraftUnlimited ? '' : (field.value ?? 0)}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          placeholder={editDraftUnlimited ? 'Unlimited' : ''}
+                        />
+                      </FormControl>
+                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={editDraftUnlimited}
+                          onChange={(e) => {
+                            setEditDraftUnlimited(e.target.checked);
                             if (e.target.checked) {
                               field.onChange(null);
                             } else {
@@ -530,7 +611,8 @@ export default function PlansPage() {
                 name="daily_image_limit_per_channel"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Daily Image Limit Per Channel (1–1000)</FormLabel>
+                    <FormLabel>Daily images per channel (1–1000)</FormLabel>
+                    <p className="text-xs text-slate-400">2 = 1 background + 1 thumbnail per channel. A 2-channel plan allows 4 images/day account-wide.</p>
                     <FormControl>
                       <Input
                         type="number"
@@ -544,10 +626,10 @@ export default function PlansPage() {
               />
               <FormField
                 control={editForm.control}
-                name="billing_cycle_days"
+                name="daily_draft_limit_per_channel"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Billing Cycle (days)</FormLabel>
+                    <FormLabel>Daily Draft Limit Per Channel (1–10000)</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -558,6 +640,122 @@ export default function PlansPage() {
                     <FormMessage />
                   </FormItem>
                 )}
+              />
+                            <FormField
+                control={editForm.control}
+                name="monthly_video_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Videos / period (account)</FormLabel>
+                    <p className="text-xs text-slate-400">Local track exports (3 credits overage).</p>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        value={field.value ?? 0}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="monthly_merge_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Merges / period (account)</FormLabel>
+                    <p className="text-xs text-slate-400">Auto-merge concat (10 credits overage).</p>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        value={field.value ?? 0}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="daily_video_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily video limit (account-wide)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="daily_merge_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily merge limit (account-wide)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+<FormField
+                control={editForm.control}
+                name="billing_cycle_days"
+                render={({ field }) => (
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Billing cycle (days)</FormLabel>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          className="max-w-[140px]"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      {(['monthly', 'semi', 'annual'] as const).map((term) => (
+                        <Button
+                          key={term}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const monthly = monthlyEquivalentFromPlan(
+                              editForm.getValues('price_cents'),
+                              editForm.getValues('billing_cycle_days'),
+                            );
+                            const applied = applyBillingTerm(monthly, term);
+                            editForm.setValue('price_cents', applied.price_cents);
+                            editForm.setValue('billing_cycle_days', applied.billing_cycle_days);
+                          }}
+                        >
+                          {term === 'monthly' ? 'Monthly' : term === 'semi' ? '6 mo' : 'Annual'}
+                        </Button>
+                      ))}
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              </div>
+              <PlanPricingPreview
+                priceCents={editForm.watch('price_cents')}
+                profileAllowance={editForm.watch('profile_allowance')}
+                billingCycleDays={editForm.watch('billing_cycle_days')}
+                blockPriceCents={blockPriceCents}
               />
               <DialogFooter>
                 <Button
@@ -582,11 +780,11 @@ export default function PlansPage() {
 
       {/* Create Plan Dialog */}
       <Dialog open={createPlanDialogOpen} onOpenChange={setCreatePlanDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Plan</DialogTitle>
             <DialogDescription>
-              Create a new subscription plan (Monthly, Yearly, or Lifetime).
+              Create a subscription plan row. Use term buttons to derive 6-month or annual checkout prices.
             </DialogDescription>
           </DialogHeader>
           <Form {...createPlanForm}>
@@ -598,7 +796,21 @@ export default function PlansPage() {
                   <FormItem>
                     <FormLabel>Plan Name</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., Monthly, Yearly, Lifetime" />
+                      <Input {...field} placeholder="e.g., Monthly 6-channel" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                control={createPlanForm.control}
+                name="profile_allowance"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Channels</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -609,7 +821,7 @@ export default function PlansPage() {
                 name="price_cents"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Price (cents)</FormLabel>
+                    <FormLabel>Checkout price (cents)</FormLabel>
                     <FormControl>
                       <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
                     </FormControl>
@@ -618,27 +830,162 @@ export default function PlansPage() {
                 )}
               />
               <FormField
+                control={createPlanForm.control}
+                name="monthly_video_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Videos / period (account)</FormLabel>
+                    <p className="text-xs text-slate-400">Local track exports (3 credits overage).</p>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        value={field.value ?? 0}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createPlanForm.control}
+                name="monthly_merge_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Merges / period (account)</FormLabel>
+                    <p className="text-xs text-slate-400">Auto-merge concat (10 credits overage).</p>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        value={field.value ?? 0}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createPlanForm.control}
+                name="daily_video_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily video limit (account-wide)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createPlanForm.control}
+                name="daily_merge_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily merge limit (account-wide)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+<FormField
                 control={createPlanForm.control}
                 name="billing_cycle_days"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Billing Cycle (days) — 30 for Monthly, 365 for Yearly</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="profile_allowance"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Profile Allowance</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
-                    </FormControl>
+                  <FormItem className="md:col-span-2">
+                    <FormLabel>Billing term &amp; discounts</FormLabel>
+                    <p className="mb-3 text-xs text-slate-500">
+                      Loaded from saved billing term discounts on this page. Adjust there first, or tweak here
+                      for one-off calculator preview before creating the row.
+                    </p>
+                    <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-1 text-sm">
+                        <span className="text-slate-400">6-month discount (%)</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={createSemiDiscountPercent}
+                          onChange={(e) => setCreateSemiDiscountPercent(Number(e.target.value))}
+                        />
+                      </label>
+                      <label className="space-y-1 text-sm">
+                        <span className="text-slate-400">Annual discount (%)</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={createAnnualDiscountPercent}
+                          onChange={(e) => setCreateAnnualDiscountPercent(Number(e.target.value))}
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          className="max-w-[140px]"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      {(['monthly', 'semi', 'annual'] as const).map((term) => (
+                        <Button
+                          key={term}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const monthly = linearPlanMonthlyCents(
+                              blockPriceCents,
+                              createPlanForm.getValues('profile_allowance'),
+                            );
+                            const applied = applyBillingTerm(monthly, term, {
+                              semiAnnualDiscountPercent: createSemiDiscountPercent,
+                              annualDiscountPercent: createAnnualDiscountPercent,
+                            });
+                            createPlanForm.setValue('price_cents', applied.price_cents);
+                            createPlanForm.setValue('billing_cycle_days', applied.billing_cycle_days);
+                            createPlanForm.setValue(
+                              'name',
+                              formatChannelPlanName(
+                                createPlanForm.getValues('profile_allowance'),
+                                applied.billing_cycle_days,
+                              ),
+                            );
+                          }}
+                        >
+                          {term === 'monthly' ? 'Monthly' : term === 'semi' ? '6 Months' : 'Annual'}
+                        </Button>
+                      ))}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          createPlanForm.setValue(
+                            'name',
+                            formatChannelPlanName(
+                              createPlanForm.getValues('profile_allowance'),
+                              createPlanForm.getValues('billing_cycle_days'),
+                            ),
+                          );
+                        }}
+                      >
+                        Use suggested name
+                      </Button>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -648,7 +995,11 @@ export default function PlansPage() {
                 name="monthly_song_limit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monthly Song Limit</FormLabel>
+                    <FormLabel>Suno packages / period</FormLabel>
+                    <p className="text-xs text-slate-400">
+                      1 package = Primary + Secondary channel (2 tracks). Standard Monthly: 300
+                      packages → 600 tracks.
+                    </p>
                     <div className="flex items-center gap-3">
                       <FormControl>
                         <Input
@@ -685,7 +1036,7 @@ export default function PlansPage() {
                 name="monthly_image_limit"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monthly Image Limit</FormLabel>
+                    <FormLabel>Image Limit (per billing period)</FormLabel>
                     <div className="flex items-center gap-3">
                       <FormControl>
                         <Input
@@ -719,6 +1070,47 @@ export default function PlansPage() {
               />
               <FormField
                 control={createPlanForm.control}
+                name="monthly_draft_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Draft Limit (per billing period)</FormLabel>
+                    <p className="text-xs text-slate-400">
+                      1 draft = one lyric, title, or album call. Standard Monthly: 1260
+                      (~630/channel).
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <FormControl>
+                        <Input
+                          type="number"
+                          disabled={createDraftUnlimited}
+                          value={createDraftUnlimited ? '' : (field.value ?? 0)}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          placeholder={createDraftUnlimited ? 'Unlimited' : ''}
+                        />
+                      </FormControl>
+                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={createDraftUnlimited}
+                          onChange={(e) => {
+                            setCreateDraftUnlimited(e.target.checked);
+                            if (e.target.checked) {
+                              field.onChange(null);
+                            } else {
+                              field.onChange(0);
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-600"
+                        />
+                        Unlimited
+                      </label>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={createPlanForm.control}
                 name="daily_song_limit_per_channel"
                 render={({ field }) => (
                   <FormItem>
@@ -735,13 +1127,51 @@ export default function PlansPage() {
                 name="daily_image_limit_per_channel"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Daily Image Limit Per Channel (1–1000)</FormLabel>
+                    <FormLabel>Daily images per channel (1–1000)</FormLabel>
+                    <p className="text-xs text-slate-400">2 = 1 background + 1 thumbnail per channel. A 2-channel plan allows 4 images/day account-wide.</p>
                     <FormControl>
                       <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
+              />
+              <FormField
+                control={createPlanForm.control}
+                name="daily_draft_limit_per_channel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Daily Draft Limit Per Channel (1–10000)</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              </div>
+              <SmartPlanPriceCalculator
+                blockPriceCents={blockPriceCents}
+                profileAllowance={createPlanForm.watch('profile_allowance')}
+                billingCycleDays={createPlanForm.watch('billing_cycle_days')}
+                semiAnnualDiscountPercent={createSemiDiscountPercent}
+                annualDiscountPercent={createAnnualDiscountPercent}
+                onApplyPrice={(priceCents, billingCycleDays) => {
+                  createPlanForm.setValue('price_cents', priceCents);
+                  createPlanForm.setValue('billing_cycle_days', billingCycleDays);
+                  createPlanForm.setValue(
+                    'name',
+                    formatChannelPlanName(createPlanForm.getValues('profile_allowance'), billingCycleDays),
+                  );
+                }}
+              />
+              <PlanPricingPreview
+                priceCents={createPlanForm.watch('price_cents')}
+                profileAllowance={createPlanForm.watch('profile_allowance')}
+                billingCycleDays={createPlanForm.watch('billing_cycle_days')}
+                blockPriceCents={blockPriceCents}
+                semiAnnualDiscountPercent={createSemiDiscountPercent}
+                annualDiscountPercent={createAnnualDiscountPercent}
               />
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setCreatePlanDialogOpen(false)} disabled={createPlan.isPending}>Cancel</Button>
@@ -833,6 +1263,23 @@ export default function PlansPage() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deletePlanTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeletePlanTarget(null);
+        }}
+        title="Delete plan permanently?"
+        description={
+          deletePlanTarget
+            ? `This will permanently delete "${deletePlanTarget.name}" and remove its unassigned licenses and offers. This cannot be undone.`
+            : ''
+        }
+        onConfirm={handleDeletePlan}
+        variant="destructive"
+        confirmText="Delete Permanently"
+        isLoading={deletePlan.isPending}
+      />
     </div>
   );
 }
@@ -852,7 +1299,7 @@ function OfferCard({ offer }: { offer: PlanOffer }) {
             Plan: <span className="font-medium text-slate-200">{offer.plan_id}</span>
           </p>
           <p className="text-sm text-slate-300">
-            Promo Price: <span className="font-medium text-slate-200">{formatPrice(offer.promo_price_cents)}</span>
+            Promo Price: <span className="font-medium text-slate-200">{formatUsd(offer.promo_price_cents)}</span>
           </p>
         </div>
         <Badge

@@ -1,0 +1,78 @@
+"""Image view smoke tests."""
+
+from __future__ import annotations
+
+import pytest
+from PySide6.QtWidgets import QApplication, QPushButton
+
+from features.image.views.image_view import LOADING_MESSAGE, ImageView
+from shared.models.auth import ProfileResponse, UserMeResponse
+from shared.models.platform import ImageJobsListResponse, MusicHistoryListResponse, ProgressListResponse, UserSettingsResponse
+from shared.services.platform_api import PlatformApi
+from shared.workers.data_workers import ImageWorkspacePayload
+
+
+@pytest.fixture(scope="session")
+def qapp() -> QApplication:
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
+
+
+def _payload() -> ImageWorkspacePayload:
+    return ImageWorkspacePayload(
+        me=UserMeResponse(
+            id="user-1",
+            email="user@example.com",
+            email_confirmed=True,
+            display_name="User",
+            credit_balance=50,
+        ),
+        profiles=[ProfileResponse(id="profile-ok", user_id="u1", name="OK Channel")],
+        progress=ProgressListResponse(summary="0"),
+        image_jobs=ImageJobsListResponse(items=[]),
+        settings=UserSettingsResponse.model_validate(
+            {
+                "imageBackgroundPrompt": "My base background prompt",
+                "imageThumbnailPrompt": "My base thumbnail prompt",
+            }
+        ),
+        music_history=MusicHistoryListResponse(
+            batches=[
+                __import__("shared.models.platform", fromlist=["MusicHistoryBatch"]).MusicHistoryBatch(
+                    batch_id="batch-1",
+                    from_date="2026-06-28",
+                    to_date="2026-06-28",
+                    created_at="2026-06-28T00:00:00Z",
+                    updated_at="2026-06-28T00:00:00Z",
+                )
+            ],
+            summary="1 batches loaded",
+        ),
+    )
+
+
+def test_loading_state(qapp: QApplication) -> None:
+    view = ImageView(PlatformApi())
+    view.show()
+    assert not view._loading_card.isHidden()
+
+
+def test_loaded_binds_content(qapp: QApplication) -> None:
+    view = ImageView(PlatformApi())
+    view.show()
+    view._on_loaded(_payload())
+    assert not view._content.isHidden()
+    assert view._controls_card.background_prompt() == "My base background prompt"
+    assert view._background_preview is not None
+
+
+def test_layout_labels_and_no_generate_cta(qapp: QApplication) -> None:
+    view = ImageView(PlatformApi())
+    view.show()
+    view._on_loaded(_payload())
+    buttons = view.findChildren(QPushButton)
+    labels = {button.text() for button in buttons}
+    assert "Clear Queue" in labels
+    assert not any("Generate now" in label for label in labels)

@@ -14,7 +14,7 @@ import random
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
-from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
+from platform_api.exceptions import DuplicateError, ForbiddenError, NotFoundError, ValidationError
 from platform_api.models.domain import MusicDescription, MusicStructure
 
 logger = logging.getLogger(__name__)
@@ -39,21 +39,39 @@ class PromptRepositoryPort(Protocol):
 
     async def create_description(self, desc: MusicDescription) -> MusicDescription: ...
     async def get_description_by_id(self, desc_id: UUID) -> MusicDescription | None: ...
-    async def get_description_by_name(self, name: str) -> MusicDescription | None: ...
+    async def get_description_by_name(
+        self, name: str, *, user_id: UUID | None = None
+    ) -> MusicDescription | None: ...
     async def list_descriptions(self) -> list[MusicDescription]: ...
+    async def list_descriptions_for_user(self, user_id: UUID) -> list[MusicDescription]: ...
+    async def list_descriptions_workspace(self, user_id: UUID) -> list[MusicDescription]: ...
     async def update_description(
         self, desc_id: UUID, **fields: Any
     ) -> MusicDescription | None: ...
     async def delete_description(self, desc_id: UUID) -> bool: ...
+    async def count_description_usage(self, desc_id: UUID) -> int: ...
+    async def list_description_usage_by_user(self, desc_id: UUID) -> list[dict[str, Any]]: ...
+    async def list_description_usage_by_profile(self, desc_id: UUID) -> list[dict[str, Any]]: ...
+    async def list_description_usage_by_day(self, desc_id: UUID) -> list[dict[str, Any]]: ...
+    async def map_description_usage_counts(self) -> dict[UUID, int]: ...
 
     async def create_structure(self, struct: MusicStructure) -> MusicStructure: ...
     async def get_structure_by_id(self, struct_id: UUID) -> MusicStructure | None: ...
-    async def get_structure_by_name(self, name: str) -> MusicStructure | None: ...
+    async def get_structure_by_name(
+        self, name: str, *, user_id: UUID | None = None
+    ) -> MusicStructure | None: ...
     async def list_structures(self) -> list[MusicStructure]: ...
+    async def list_structures_for_user(self, user_id: UUID) -> list[MusicStructure]: ...
+    async def list_structures_workspace(self, user_id: UUID) -> list[MusicStructure]: ...
     async def update_structure(
         self, struct_id: UUID, **fields: Any
     ) -> MusicStructure | None: ...
     async def delete_structure(self, struct_id: UUID) -> bool: ...
+    async def count_structure_usage(self, struct_id: UUID) -> int: ...
+    async def list_structure_usage_by_user(self, struct_id: UUID) -> list[dict[str, Any]]: ...
+    async def list_structure_usage_by_profile(self, struct_id: UUID) -> list[dict[str, Any]]: ...
+    async def list_structure_usage_by_day(self, struct_id: UUID) -> list[dict[str, Any]]: ...
+    async def map_structure_usage_counts(self) -> dict[UUID, int]: ...
 
     async def get_descriptions_with_match_key(self) -> list[MusicDescription]: ...
     async def get_structures_with_match_key(self) -> list[MusicStructure]: ...
@@ -151,6 +169,52 @@ class PromptService:
             )
         return content
 
+    @staticmethod
+    def _owner_label(user_id: UUID | None, *, user_email: str | None = None) -> str:
+        if user_id is None:
+            return "camxora"
+        return user_email or str(user_id)
+
+    async def _require_global_description(self, desc_id: UUID) -> MusicDescription:
+        desc = await self.get_description(desc_id)
+        if desc.user_id is not None:
+            raise ForbiddenError(
+                "User-owned descriptions cannot be modified from the admin prompts catalog.",
+                details={"description_id": str(desc_id)},
+            )
+        return desc
+
+    async def _require_global_structure(self, struct_id: UUID) -> MusicStructure:
+        struct = await self.get_structure(struct_id)
+        if struct.user_id is not None:
+            raise ForbiddenError(
+                "User-owned structures cannot be modified from the admin prompts catalog.",
+                details={"structure_id": str(struct_id)},
+            )
+        return struct
+
+    async def _require_user_description(
+        self, desc_id: UUID, user_id: UUID
+    ) -> MusicDescription:
+        desc = await self.get_description(desc_id)
+        if desc.user_id != user_id:
+            raise ForbiddenError(
+                "You do not have permission to access this description.",
+                details={"description_id": str(desc_id)},
+            )
+        return desc
+
+    async def _require_user_structure(
+        self, struct_id: UUID, user_id: UUID
+    ) -> MusicStructure:
+        struct = await self.get_structure(struct_id)
+        if struct.user_id != user_id:
+            raise ForbiddenError(
+                "You do not have permission to access this structure.",
+                details={"structure_id": str(struct_id)},
+            )
+        return struct
+
     # -----------------------------------------------------------------------
     # Music Description CRUD
     # -----------------------------------------------------------------------
@@ -160,6 +224,8 @@ class PromptService:
         name: str,
         content: str,
         match_key: str | None = None,
+        vocal_profile: dict[str, Any] | None = None,
+        is_active: bool = True,
     ) -> MusicDescription:
         """Create a new song description.
 
@@ -180,9 +246,18 @@ class PromptService:
         """
         name = self._validate_name(name, "description")
         content = self._validate_content(content, "description")
+        from platform_api.ai.purposes.vocal_profile import validate_vocal_profile_payload
+
+        try:
+            validated_profile = validate_vocal_profile_payload(vocal_profile)
+        except ValueError as exc:
+            raise ValidationError(
+                str(exc),
+                details={"field": "vocal_profile"},
+            ) from exc
 
         # Check uniqueness
-        existing = await self._prompt_repo.get_description_by_name(name)
+        existing = await self._prompt_repo.get_description_by_name(name, user_id=None)
         if existing is not None:
             raise DuplicateError(
                 f"A description named '{name}' already exists.",
@@ -194,6 +269,8 @@ class PromptService:
             name=name,
             content=content,
             match_key=match_key.strip() if match_key else None,
+            vocal_profile=validated_profile,
+            is_active=bool(is_active),
         )
 
         created = await self._prompt_repo.create_description(desc)
@@ -220,11 +297,14 @@ class PromptService:
             ValidationError: If name or content validation fails.
             DuplicateError: If the new name conflicts with another.
         """
+        await self._require_global_description(desc_id)
+
         # Validate name if provided
         if "name" in fields:
             fields["name"] = self._validate_name(fields["name"], "description")
-            # Check uniqueness of new name
-            existing = await self._prompt_repo.get_description_by_name(fields["name"])
+            existing = await self._prompt_repo.get_description_by_name(
+                fields["name"], user_id=None
+            )
             if existing is not None and existing.id != desc_id:
                 raise DuplicateError(
                     f"A description named '{fields['name']}' already exists.",
@@ -239,6 +319,18 @@ class PromptService:
         if "match_key" in fields:
             mk = fields["match_key"]
             fields["match_key"] = mk.strip() if mk else None
+        if "is_active" in fields:
+            fields["is_active"] = bool(fields["is_active"])
+        if "vocal_profile" in fields:
+            from platform_api.ai.purposes.vocal_profile import validate_vocal_profile_payload
+
+            try:
+                fields["vocal_profile"] = validate_vocal_profile_payload(fields["vocal_profile"])
+            except ValueError as exc:
+                raise ValidationError(
+                    str(exc),
+                    details={"field": "vocal_profile"},
+                ) from exc
 
         updated = await self._prompt_repo.update_description(desc_id, **fields)
         if updated is None:
@@ -262,6 +354,7 @@ class PromptService:
         Raises:
             NotFoundError: If the description does not exist.
         """
+        await self._require_global_description(desc_id)
         deleted = await self._prompt_repo.delete_description(desc_id)
         if not deleted:
             raise NotFoundError(
@@ -290,9 +383,144 @@ class PromptService:
             )
         return desc
 
+    async def get_description_for_access(
+        self, desc_id: UUID, user_id: UUID
+    ) -> MusicDescription:
+        """Return a description if the user may use it during generation."""
+        desc = await self.get_description(desc_id)
+        if not desc.is_active:
+            raise NotFoundError(
+                f"Description {desc_id} not found.",
+                details={"description_id": str(desc_id)},
+            )
+        if desc.user_id is None or desc.user_id == user_id:
+            return desc
+        raise ForbiddenError(
+            "You do not have permission to use this description.",
+            details={"description_id": str(desc_id)},
+        )
+
+    async def get_structure_for_access(
+        self, struct_id: UUID, user_id: UUID
+    ) -> MusicStructure:
+        """Return a structure if the user may use it during generation."""
+        struct = await self.get_structure(struct_id)
+        if not struct.is_active:
+            raise NotFoundError(
+                f"Structure {struct_id} not found.",
+                details={"structure_id": str(struct_id)},
+            )
+        if struct.user_id is None or struct.user_id == user_id:
+            return struct
+        raise ForbiddenError(
+            "You do not have permission to use this structure.",
+            details={"structure_id": str(struct_id)},
+        )
+
     async def list_descriptions(self) -> list[MusicDescription]:
-        """List all descriptions ordered by name ascending."""
+        """List global descriptions ordered by name ascending."""
         return await self._prompt_repo.list_descriptions()
+
+    async def list_descriptions_workspace(self, user_id: UUID) -> list[MusicDescription]:
+        """List global plus user-owned descriptions for workspace selectors."""
+        return await self._prompt_repo.list_descriptions_workspace(user_id)
+
+    async def list_user_descriptions(self, user_id: UUID) -> list[MusicDescription]:
+        """List descriptions owned by the given user."""
+        return await self._prompt_repo.list_descriptions_for_user(user_id)
+
+    async def create_user_description(
+        self,
+        user_id: UUID,
+        name: str,
+        content: str,
+    ) -> MusicDescription:
+        """Create a user-owned description."""
+        name = self._validate_name(name, "description")
+        content = self._validate_content(content, "description")
+
+        existing = await self._prompt_repo.get_description_by_name(name, user_id=user_id)
+        if existing is not None:
+            raise DuplicateError(
+                f"You already have a description named '{name}'.",
+                details={"name": name},
+            )
+
+        desc = MusicDescription(
+            id=uuid4(),
+            name=name,
+            content=content,
+            match_key=None,
+            user_id=user_id,
+        )
+        created = await self._prompt_repo.create_description(desc)
+        logger.info("Created user description '%s' for user %s.", name, user_id)
+        return created
+
+    async def update_user_description(
+        self, desc_id: UUID, user_id: UUID, **fields: Any
+    ) -> MusicDescription:
+        """Update a user-owned description."""
+        existing = await self._require_user_description(desc_id, user_id)
+        if not existing.is_active:
+            raise NotFoundError(
+                f"Description {desc_id} not found.",
+                details={"description_id": str(desc_id)},
+            )
+
+        if "name" in fields:
+            fields["name"] = self._validate_name(fields["name"], "description")
+            conflict = await self._prompt_repo.get_description_by_name(
+                fields["name"], user_id=user_id
+            )
+            if conflict is not None and conflict.id != desc_id:
+                raise DuplicateError(
+                    f"You already have a description named '{fields['name']}'.",
+                    details={"name": fields["name"]},
+                )
+
+        if "content" in fields:
+            fields["content"] = self._validate_content(fields["content"], "description")
+
+        fields.pop("match_key", None)
+        fields.pop("user_id", None)
+
+        updated = await self._prompt_repo.update_description(desc_id, **fields)
+        if updated is None:
+            raise NotFoundError(
+                f"Description {desc_id} not found.",
+                details={"description_id": str(desc_id)},
+            )
+        logger.info("Updated user description %s for user %s.", desc_id, user_id)
+        return updated
+
+    async def delete_user_description(self, desc_id: UUID, user_id: UUID) -> None:
+        """Archive a user-owned description (soft delete)."""
+        await self._require_user_description(desc_id, user_id)
+        archived = await self._prompt_repo.archive_description(desc_id)
+        if not archived:
+            raise NotFoundError(
+                f"Description {desc_id} not found.",
+                details={"description_id": str(desc_id)},
+            )
+        logger.info("Archived user description %s for user %s.", desc_id, user_id)
+
+    async def get_description_usage(self, desc_id: UUID) -> dict[str, Any]:
+        """Return usage analytics for a description."""
+        desc = await self.get_description(desc_id)
+        return {
+            "prompt_id": str(desc.id),
+            "prompt_name": desc.name,
+            "owner_label": self._owner_label(desc.user_id),
+            "usage_count": await self._prompt_repo.count_description_usage(desc.id),
+            "users": await self._prompt_repo.list_description_usage_by_user(desc.id),
+            "profiles": await self._prompt_repo.list_description_usage_by_profile(desc.id),
+            "by_day": await self._prompt_repo.list_description_usage_by_day(desc.id),
+        }
+
+    async def list_description_usage_summaries(self) -> dict[UUID, int]:
+        """Return usage counts keyed by description ID."""
+        return await self._prompt_repo.map_description_usage_counts()
 
     # -----------------------------------------------------------------------
     # Music Structure CRUD
@@ -303,6 +531,7 @@ class PromptService:
         name: str,
         content: str,
         match_key: str | None = None,
+        is_active: bool = True,
     ) -> MusicStructure:
         """Create a new song structure.
 
@@ -325,7 +554,7 @@ class PromptService:
         content = self._validate_content(content, "structure")
 
         # Check uniqueness
-        existing = await self._prompt_repo.get_structure_by_name(name)
+        existing = await self._prompt_repo.get_structure_by_name(name, user_id=None)
         if existing is not None:
             raise DuplicateError(
                 f"A structure named '{name}' already exists.",
@@ -337,6 +566,7 @@ class PromptService:
             name=name,
             content=content,
             match_key=match_key.strip() if match_key else None,
+            is_active=bool(is_active),
         )
 
         created = await self._prompt_repo.create_structure(struct)
@@ -363,11 +593,14 @@ class PromptService:
             ValidationError: If name or content validation fails.
             DuplicateError: If the new name conflicts with another.
         """
+        await self._require_global_structure(struct_id)
+
         # Validate name if provided
         if "name" in fields:
             fields["name"] = self._validate_name(fields["name"], "structure")
-            # Check uniqueness of new name
-            existing = await self._prompt_repo.get_structure_by_name(fields["name"])
+            existing = await self._prompt_repo.get_structure_by_name(
+                fields["name"], user_id=None
+            )
             if existing is not None and existing.id != struct_id:
                 raise DuplicateError(
                     f"A structure named '{fields['name']}' already exists.",
@@ -382,6 +615,8 @@ class PromptService:
         if "match_key" in fields:
             mk = fields["match_key"]
             fields["match_key"] = mk.strip() if mk else None
+        if "is_active" in fields:
+            fields["is_active"] = bool(fields["is_active"])
 
         updated = await self._prompt_repo.update_structure(struct_id, **fields)
         if updated is None:
@@ -405,6 +640,7 @@ class PromptService:
         Raises:
             NotFoundError: If the structure does not exist.
         """
+        await self._require_global_structure(struct_id)
         deleted = await self._prompt_repo.delete_structure(struct_id)
         if not deleted:
             raise NotFoundError(
@@ -434,8 +670,109 @@ class PromptService:
         return struct
 
     async def list_structures(self) -> list[MusicStructure]:
-        """List all structures ordered by name ascending."""
+        """List global structures ordered by name ascending."""
         return await self._prompt_repo.list_structures()
+
+    async def list_structures_workspace(self, user_id: UUID) -> list[MusicStructure]:
+        """List global plus user-owned structures for workspace selectors."""
+        return await self._prompt_repo.list_structures_workspace(user_id)
+
+    async def list_user_structures(self, user_id: UUID) -> list[MusicStructure]:
+        """List structures owned by the given user."""
+        return await self._prompt_repo.list_structures_for_user(user_id)
+
+    async def create_user_structure(
+        self,
+        user_id: UUID,
+        name: str,
+        content: str,
+    ) -> MusicStructure:
+        """Create a user-owned structure."""
+        name = self._validate_name(name, "structure")
+        content = self._validate_content(content, "structure")
+
+        existing = await self._prompt_repo.get_structure_by_name(name, user_id=user_id)
+        if existing is not None:
+            raise DuplicateError(
+                f"You already have a structure named '{name}'.",
+                details={"name": name},
+            )
+
+        struct = MusicStructure(
+            id=uuid4(),
+            name=name,
+            content=content,
+            match_key=None,
+            user_id=user_id,
+        )
+        created = await self._prompt_repo.create_structure(struct)
+        logger.info("Created user structure '%s' for user %s.", name, user_id)
+        return created
+
+    async def update_user_structure(
+        self, struct_id: UUID, user_id: UUID, **fields: Any
+    ) -> MusicStructure:
+        """Update a user-owned structure."""
+        existing = await self._require_user_structure(struct_id, user_id)
+        if not existing.is_active:
+            raise NotFoundError(
+                f"Structure {struct_id} not found.",
+                details={"structure_id": str(struct_id)},
+            )
+
+        if "name" in fields:
+            fields["name"] = self._validate_name(fields["name"], "structure")
+            conflict = await self._prompt_repo.get_structure_by_name(
+                fields["name"], user_id=user_id
+            )
+            if conflict is not None and conflict.id != struct_id:
+                raise DuplicateError(
+                    f"You already have a structure named '{fields['name']}'.",
+                    details={"name": fields["name"]},
+                )
+
+        if "content" in fields:
+            fields["content"] = self._validate_content(fields["content"], "structure")
+
+        fields.pop("match_key", None)
+        fields.pop("user_id", None)
+
+        updated = await self._prompt_repo.update_structure(struct_id, **fields)
+        if updated is None:
+            raise NotFoundError(
+                f"Structure {struct_id} not found.",
+                details={"structure_id": str(struct_id)},
+            )
+        logger.info("Updated user structure %s for user %s.", struct_id, user_id)
+        return updated
+
+    async def delete_user_structure(self, struct_id: UUID, user_id: UUID) -> None:
+        """Archive a user-owned structure (soft delete)."""
+        await self._require_user_structure(struct_id, user_id)
+        archived = await self._prompt_repo.archive_structure(struct_id)
+        if not archived:
+            raise NotFoundError(
+                f"Structure {struct_id} not found.",
+                details={"structure_id": str(struct_id)},
+            )
+        logger.info("Archived user structure %s for user %s.", struct_id, user_id)
+
+    async def get_structure_usage(self, struct_id: UUID) -> dict[str, Any]:
+        """Return usage analytics for a structure."""
+        struct = await self.get_structure(struct_id)
+        return {
+            "prompt_id": str(struct.id),
+            "prompt_name": struct.name,
+            "owner_label": self._owner_label(struct.user_id),
+            "usage_count": await self._prompt_repo.count_structure_usage(struct.id),
+            "users": await self._prompt_repo.list_structure_usage_by_user(struct.id),
+            "profiles": await self._prompt_repo.list_structure_usage_by_profile(struct.id),
+            "by_day": await self._prompt_repo.list_structure_usage_by_day(struct.id),
+        }
+
+    async def list_structure_usage_summaries(self) -> dict[UUID, int]:
+        """Return usage counts keyed by structure ID."""
+        return await self._prompt_repo.map_structure_usage_counts()
 
     # -----------------------------------------------------------------------
     # matchKey Pairing Logic (Requirement 9.6)

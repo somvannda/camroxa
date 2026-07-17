@@ -58,7 +58,6 @@ class FalClient:
 
     def __init__(self, settings: Settings) -> None:
         self._base_url = settings.fal_api_base_url.rstrip("/")
-        self._api_key = settings.fal_api_key
         self._timeout = httpx.Timeout(
             timeout=float(settings.image_timeout_seconds),
             connect=10.0,
@@ -66,7 +65,13 @@ class FalClient:
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self, api_key: str | None = None) -> httpx.AsyncClient:
-        key = api_key or self._api_key
+        if not api_key:
+            raise ExternalServiceError(
+                "Fal API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "fal"},
+            )
+        key = api_key
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 base_url=self._base_url,
@@ -76,8 +81,6 @@ class FalClient:
                     "Content-Type": "application/json",
                 },
             )
-        elif api_key:
-            self._client.headers["Authorization"] = f"Key {key}"
         return self._client
 
     async def close(self) -> None:

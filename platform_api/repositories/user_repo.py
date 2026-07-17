@@ -55,6 +55,7 @@ def _row_to_user(row: Any) -> User:
         email_confirmed=row.get("email_confirmed", False),
         suspension_reason=row.get("suspension_reason"),
         deleted_at=row.get("deleted_at"),
+        token_version=int(row.get("token_version", 0) or 0),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -85,7 +86,7 @@ class UserRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, email, password_hash, display_name, role, status,
-                   email_confirmed, suspension_reason, deleted_at, created_at, updated_at
+                   email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
             FROM users
             WHERE id = $1
             """,
@@ -107,7 +108,7 @@ class UserRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, email, password_hash, display_name, role, status,
-                   email_confirmed, suspension_reason, deleted_at, created_at, updated_at
+                   email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
             FROM users
             WHERE LOWER(email) = LOWER($1)
             """,
@@ -135,7 +136,24 @@ class UserRepository:
         )
         return result
 
-    async def create(self, user: User) -> User:
+    async def get_auth_state(self, user_id: str) -> dict[str, Any] | None:
+        """Return auth-critical user state for token/session validation."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT status, token_version
+            FROM users
+            WHERE id = $1
+            """,
+            UUID(user_id),
+        )
+        if row is None:
+            return None
+        return {
+            "status": str(row["status"]),
+            "token_version": int(row["token_version"] or 0),
+        }
+
+    async def create(self, user: User, *, conn: Any | None = None) -> User:
         """Insert a new user and initialize their credit wallet.
 
         Creates a row in both the ``users`` table and ``credit_wallets`` table
@@ -147,15 +165,40 @@ class UserRepository:
         Returns:
             The persisted User with server-assigned timestamps.
         """
-        async with self._pool.acquire() as conn:
-            async with conn.transaction():
-                row = await conn.fetchrow(
+        if conn is not None:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO users (id, email, password_hash, display_name, role, status,
+                                   email_confirmed, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, false, NOW(), NOW())
+                RETURNING id, email, password_hash, display_name, role, status,
+                          email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
+                """,
+                user.id,
+                user.email,
+                user.password_hash,
+                user.display_name,
+                user.role.value,
+                user.status.value,
+            )
+            await conn.execute(
+                """
+                INSERT INTO credit_wallets (user_id, balance, updated_at)
+                VALUES ($1, 0, NOW())
+                """,
+                user.id,
+            )
+            return _row_to_user(row)
+
+        async with self._pool.acquire() as acquired:
+            async with acquired.transaction():
+                row = await acquired.fetchrow(
                     """
                     INSERT INTO users (id, email, password_hash, display_name, role, status,
                                        email_confirmed, created_at, updated_at)
                     VALUES ($1, $2, $3, $4, $5, $6, false, NOW(), NOW())
                     RETURNING id, email, password_hash, display_name, role, status,
-                              email_confirmed, suspension_reason, deleted_at, created_at, updated_at
+                              email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
                     """,
                     user.id,
                     user.email,
@@ -164,8 +207,7 @@ class UserRepository:
                     user.role.value,
                     user.status.value,
                 )
-                # Initialize credit wallet with zero balance
-                await conn.execute(
+                await acquired.execute(
                     """
                     INSERT INTO credit_wallets (user_id, balance, updated_at)
                     VALUES ($1, 0, NOW())
@@ -211,13 +253,25 @@ class UserRepository:
             SET {', '.join(set_parts)}
             WHERE id = ${param_idx}
             RETURNING id, email, password_hash, display_name, role, status,
-                      email_confirmed, suspension_reason, deleted_at, created_at, updated_at
+                      email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
         """
 
         row = await self._pool.fetchrow(query, *values)
         if row is None:
             return None
         return _row_to_user(row)
+
+    async def increment_token_version(self, user_id: UUID) -> None:
+        """Invalidate all previously issued access tokens for the user."""
+        await self._pool.execute(
+            """
+            UPDATE users
+            SET token_version = token_version + 1,
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            user_id,
+        )
 
     async def list_paginated(
         self,
@@ -294,7 +348,7 @@ class UserRepository:
 
         data_query = f"""
             SELECT DISTINCT u.id, u.email, u.password_hash, u.display_name,
-                   u.role, u.status, u.suspension_reason, u.deleted_at,
+                   u.role, u.status, u.email_confirmed, u.suspension_reason, u.deleted_at,
                    u.created_at, u.updated_at
             FROM users u
             {join_clause}

@@ -1,0 +1,19 @@
+{
+  "style": "straight-bars",
+  "layers": [
+    {
+      "id": "legacy-layer",
+      "thickness": 42,
+      "opacity": 1,
+      "color": {
+        "mode": "solid",
+        "solidColor": "#64e5ff"
+      }
+    }
+  ],
+  "audioSettings": {
+    "sensitivity": 1.45,
+    "smoothing": 0.72
+  },
+  "spectrumEnabled": true
+}

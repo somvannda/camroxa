@@ -1,7 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import httpClient from '@/lib/http-client';
 import type { CreatePromptRequest } from '@/types/api';
-import type { MusicDescription, MusicStructure } from '@/types/models';
+import type {
+  AdminUserOwnedPrompt,
+  MusicDescription,
+  MusicStructure,
+  PromptUsageResponse,
+} from '@/types/models';
 
 // --- Descriptions ---
 
@@ -23,10 +28,18 @@ export function useCreateDescription() {
   });
 }
 
+export function useUserOwnedDescriptions() {
+  return useQuery({
+    queryKey: ['descriptions', 'user-prompts'],
+    queryFn: () =>
+      httpClient.get<AdminUserOwnedPrompt[]>('/api/v1/prompts/descriptions/user-prompts'),
+  });
+}
+
 export function useUpdateDescription() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; updates: CreatePromptRequest }) =>
+    mutationFn: (data: { id: string; updates: Partial<CreatePromptRequest> }) =>
       httpClient.put<MusicDescription>(
         `/api/v1/prompts/descriptions/${data.id}`,
         data.updates,
@@ -66,10 +79,18 @@ export function useCreateStructure() {
   });
 }
 
+export function useUserOwnedStructures() {
+  return useQuery({
+    queryKey: ['structures', 'user-prompts'],
+    queryFn: () =>
+      httpClient.get<AdminUserOwnedPrompt[]>('/api/v1/prompts/structures/user-prompts'),
+  });
+}
+
 export function useUpdateStructure() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; updates: CreatePromptRequest }) =>
+    mutationFn: (data: { id: string; updates: Partial<CreatePromptRequest> }) =>
       httpClient.put<MusicStructure>(
         `/api/v1/prompts/structures/${data.id}`,
         data.updates,
@@ -86,5 +107,23 @@ export function useDeleteStructure() {
       httpClient.delete(`/api/v1/prompts/structures/${id}`),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['structures'] }),
+  });
+}
+
+export function useDescriptionUsage(id: string | null) {
+  return useQuery({
+    queryKey: ['description-usage', id],
+    enabled: Boolean(id),
+    queryFn: () =>
+      httpClient.get<PromptUsageResponse>(`/api/v1/prompts/descriptions/${id}/usage`),
+  });
+}
+
+export function useStructureUsage(id: string | null) {
+  return useQuery({
+    queryKey: ['structure-usage', id],
+    enabled: Boolean(id),
+    queryFn: () =>
+      httpClient.get<PromptUsageResponse>(`/api/v1/prompts/structures/${id}/usage`),
   });
 }

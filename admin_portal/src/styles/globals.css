@@ -4,26 +4,26 @@
 
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
+    --background: 224 43% 7%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 224 39% 10%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 224 39% 9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    --primary: 267 84% 68%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 223 27% 18%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --muted: 223 27% 18%;
+    --muted-foreground: 215 20.2% 68%;
+    --accent: 224 30% 16%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 72% 52%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --radius: 0.5rem;
+    --border: 223 25% 20%;
+    --input: 223 25% 20%;
+    --ring: 267 84% 68%;
+    --radius: 0.9rem;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -36,7 +36,83 @@
   * {
     @apply border-border;
   }
+
+  html {
+    scrollbar-color: rgba(168, 85, 247, 0.55) rgba(15, 23, 42, 0.65);
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 28%),
+      radial-gradient(circle at top right, rgba(168, 85, 247, 0.14), transparent 24%),
+      linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 1));
+    min-height: 100vh;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.72);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 2px solid rgba(15, 23, 42, 0.72);
+    border-radius: 9999px;
+    background: linear-gradient(180deg, rgba(217, 70, 239, 0.88), rgba(99, 102, 241, 0.88));
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(232, 121, 249, 0.95), rgba(129, 140, 248, 0.95));
+  }
+
+  input.camxora-temporal-input {
+    position: relative;
+    min-width: 0;
+    padding-right: 3rem;
+    color-scheme: dark;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.8' stroke='rgba(196,181,253,0.92)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M8.25 2.25v3m7.5-3v3M3.75 8.25h16.5M5.25 4.5h13.5A1.5 1.5 0 0 1 20.25 6v12.75a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5V6a1.5 1.5 0 0 1 1.5-1.5Z' /%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.95rem center;
+    background-size: 1rem 1rem;
+  }
+
+  input.camxora-temporal-input::-webkit-calendar-picker-indicator {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 3rem;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0;
+  }
+
+  input.camxora-temporal-input::-webkit-clear-button,
+  input.camxora-temporal-input::-webkit-inner-spin-button {
+    display: none;
+  }
+
+  input.camxora-temporal-input::-webkit-datetime-edit,
+  input.camxora-temporal-input::-webkit-date-and-time-value {
+    color: rgb(241 245 249);
+  }
+
+  input.camxora-temporal-input::-webkit-datetime-edit-text,
+  input.camxora-temporal-input::-webkit-datetime-edit-month-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-day-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-year-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-hour-field,
+  input.camxora-temporal-input::-webkit-datetime-edit-minute-field {
+    padding-inline: 0;
+    color: rgb(248 250 252);
+  }
+
+  input.camxora-temporal-input:invalid::-webkit-datetime-edit {
+    color: rgb(148 163 184);
   }
 }

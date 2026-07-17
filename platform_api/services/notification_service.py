@@ -253,8 +253,8 @@ class NotificationService:
     async def push(self, user_id: str, event: str, payload: dict) -> None:
         """Push a notification to all connected WebSocket clients for a user.
 
-        If the user has no active connections, the notification is silently
-        dropped. Use `queue()` for guaranteed delivery.
+        If the user has no active connections and a queue repository is
+        configured, the notification is queued for later delivery.
 
         The message format sent over WebSocket is JSON:
             {"event": "<event_type>", "payload": {...}}
@@ -262,10 +262,12 @@ class NotificationService:
         connections = await self._registry.get_connections(user_id)
         if not connections:
             logger.debug(
-                "No active connections for user %s. Notification dropped (event=%s).",
+                "No active connections for user %s. Queueing notification (event=%s).",
                 user_id,
                 event,
             )
+            if self._queue_repo is not None:
+                await self.queue(user_id, event, payload)
             return
 
         message = json.dumps({"event": event, "payload": payload})

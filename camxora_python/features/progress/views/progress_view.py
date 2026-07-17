@@ -1,0 +1,616 @@
+"""Progress page — operational pipeline view with standard theme widgets."""
+
+from __future__ import annotations
+
+from PySide6.QtCore import QDate, Qt, QTimer
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDateEdit,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
+
+from features.progress.widgets.download_queue_card import DownloadQueueCard
+from features.progress.widgets.error_banner import ProgressErrorBanner
+from features.progress.widgets.operational_rows_card import EffectiveProgressRow, OperationalRowsCard
+from features.progress.widgets.progress_detail_card import ProgressDetailCard
+from features.progress.widgets.stats_row import ProgressStatsRow
+from shared.lib.formatting import today_ymd
+from shared.lib.manual_asset_paths import ManualAssetInspection, manual_inspection_key, normalize_image_source_mode
+from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, progress_runtime_key
+from shared.lib.music_download_utils import filter_actionable_pending_downloads
+from shared.models.platform import (
+    PendingMusicDownloadItem,
+    PendingMusicDownloadsResponse,
+    ProgressFilters,
+    ProgressRow,
+    UserSettingsResponse,
+)
+from shared.services.file_service import ensure_directory, open_path
+from shared.services.platform_api import PlatformApi
+from shared.themes.deep_blue import SUBTITLE_LABEL_ID
+from shared.widgets.pollable_page import PollablePageMixin
+from shared.workers.data_workers import (
+    BatchRetryDraftsWorker,
+    BatchRetrySunoWorker,
+    ImageRetryJobsWorker,
+    ManualInspectionWorker,
+    PendingDownloadsWorker,
+    SettingsWorker,
+    SyncManualImageWorker,
+    WorkflowLoadResult,
+    WorkflowLoadWorker,
+)
+
+DEFAULT_POLL_MS = 12_000
+ACTIVE_POLL_MS = 4_000
+PENDING_DOWNLOADS_POLL_MS = 5_000
+
+HELPER_TEXT = (
+    "Operational pipeline view for monitoring failures, waiting rows, and recovery actions."
+)
+SUMMARY_SUFFIX = (
+    "Desktop MP3 downloading, converter truth, and merger truth now read the real "
+    "desktop runtime when local outputs exist."
+)
+MANUAL_MODE_TEXT = (
+    "Manual image mode is active. This page is the recovery handoff for missing "
+    "`background-16x9`, `background-9x16`, `thumbnail-16x9`, and `thumbnail-9x16` "
+    "assets before video work continues."
+)
+
+STAGE_OPTIONS = (
+    ("All stages", "all"),
+    ("Music", "music"),
+    ("Image", "image"),
+    ("Converter", "converter"),
+    ("Merger", "merger"),
+    ("YouTube", "youtube"),
+    ("Done", "done"),
+    ("Error", "error"),
+)
+
+
+class ProgressView(PollablePageMixin, QScrollArea):
+    """Operational progress table with filters, runtime overlay, and recovery actions."""
+
+    poll_interval_ms = DEFAULT_POLL_MS
+
+    def __init__(self, api: PlatformApi, parent: QWidget | None = None) -> None:
+        QScrollArea.__init__(self, parent)
+        self._init_pollable()
+        self._api = api
+        self._worker: WorkflowLoadWorker | None = None
+        self._pending_worker: PendingDownloadsWorker | None = None
+        self._settings_worker: SettingsWorker | None = None
+        self._inspection_worker: ManualInspectionWorker | None = None
+        self._sync_worker: SyncManualImageWorker | None = None
+        self._image_retry_worker: ImageRetryJobsWorker | None = None
+        self._draft_retry_worker: BatchRetryDraftsWorker | None = None
+        self._suno_retry_worker: BatchRetrySunoWorker | None = None
+        self._rows: list[ProgressRow] = []
+        self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
+        self._manual_inspections: dict[str, ManualAssetInspection] = {}
+        self._pending_downloads: list[PendingMusicDownloadItem] = []
+        self._image_source_mode = "ai"
+        self._loading = True
+        self._is_error = False
+        self._ever_loaded = False
+        self._syncing_batch_id = ""
+        self._pending_timer = QTimer(self)
+        self._pending_timer.setInterval(PENDING_DOWNLOADS_POLL_MS)
+        self._pending_timer.timeout.connect(self._refresh_pending_downloads)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+        container = QWidget()
+        root = QVBoxLayout(container)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+
+        filter_card = QFrame()
+        filter_card.setObjectName("account_card")
+        filter_layout = QVBoxLayout(filter_card)
+        filter_layout.setContentsMargins(16, 16, 16, 16)
+        filter_layout.setSpacing(8)
+
+        filter_title = QLabel("Filters")
+        filter_title.setObjectName(SUBTITLE_LABEL_ID)
+        filter_layout.addWidget(filter_title)
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+        self._from_date = QDateEdit()
+        self._from_date.setCalendarPopup(True)
+        self._from_date.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
+        self._to_date = QDateEdit()
+        self._to_date.setCalendarPopup(True)
+        self._to_date.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
+        self._active_only = QCheckBox("Active only")
+        self._limit = QComboBox()
+        self._limit.addItems(["10", "25", "50"])
+        self._limit.setCurrentText("25")
+        self._stage_filter = QComboBox()
+        for label, _value in STAGE_OPTIONS:
+            self._stage_filter.addItem(label)
+        self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.clicked.connect(self.refresh_data)
+        toolbar.addWidget(QLabel("From"))
+        toolbar.addWidget(self._from_date)
+        toolbar.addWidget(QLabel("To"))
+        toolbar.addWidget(self._to_date)
+        toolbar.addWidget(self._active_only)
+        toolbar.addWidget(QLabel("Limit"))
+        toolbar.addWidget(self._limit)
+        toolbar.addWidget(QLabel("Stage"))
+        toolbar.addWidget(self._stage_filter)
+        toolbar.addWidget(self._refresh_btn)
+        toolbar.addStretch()
+        filter_layout.addLayout(toolbar)
+        root.addWidget(filter_card)
+
+        helper = QLabel(HELPER_TEXT)
+        helper.setObjectName(SUBTITLE_LABEL_ID)
+        helper.setWordWrap(True)
+        helper.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        root.addWidget(helper)
+
+        self._summary_label = QLabel("Loading progress rows...")
+        self._summary_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._summary_label.setWordWrap(True)
+        root.addWidget(self._summary_label)
+
+        self._manual_banner = QLabel(MANUAL_MODE_TEXT)
+        self._manual_banner.setObjectName(SUBTITLE_LABEL_ID)
+        self._manual_banner.setWordWrap(True)
+        self._manual_banner.hide()
+        root.addWidget(self._manual_banner)
+
+        self._stats_row = ProgressStatsRow()
+        root.addWidget(self._stats_row, 0)
+
+        self._meta_label = QLabel("")
+        self._meta_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._meta_label.setWordWrap(True)
+        root.addWidget(self._meta_label)
+
+        self._error_banner = ProgressErrorBanner()
+        self._error_banner.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self._error_banner.hide()
+        root.addWidget(self._error_banner, 0)
+
+        self._rows_card = OperationalRowsCard()
+        self._rows_card.open_folder_requested.connect(self._open_manual_folder)
+        self._rows_card.open_run_folder_requested.connect(self._open_manual_folder)
+        self._rows_card.sync_manual_requested.connect(self._sync_manual_assets)
+        self._rows_card.retry_images_requested.connect(self._retry_images)
+        self._rows_card.enqueue_images_requested.connect(self._enqueue_images)
+        self._rows_card.retry_drafts_requested.connect(self._retry_failed_drafts)
+        self._rows_card.retry_suno_requested.connect(self._retry_failed_suno)
+        self._rows_card.row_selected.connect(self._on_row_selected)
+
+        self._detail_card = ProgressDetailCard()
+        self._detail_card.open_folder_requested.connect(self._open_manual_folder)
+        self._detail_card.open_run_folder_requested.connect(self._open_manual_folder)
+        self._detail_card.sync_manual_requested.connect(self._sync_manual_assets)
+
+        self._rows_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._rows_splitter.setChildrenCollapsible(False)
+        self._rows_splitter.setStyleSheet(
+            "QSplitter::handle { background: transparent; }"
+        )
+        self._rows_splitter.addWidget(self._wrap_splitter_panel(self._rows_card, right=10))
+        self._rows_splitter.addWidget(self._wrap_splitter_panel(self._detail_card, left=10))
+        self._rows_splitter.setStretchFactor(0, 4)
+        self._rows_splitter.setStretchFactor(1, 1)
+        self._rows_splitter.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        root.addWidget(self._rows_splitter, 1)
+
+        self._download_queue = DownloadQueueCard()
+        self._download_queue.hide()
+        root.addWidget(self._download_queue, 0)
+
+        self._from_date.dateChanged.connect(lambda *_: self._on_filters_changed())
+        self._to_date.dateChanged.connect(lambda *_: self._on_filters_changed())
+        self._active_only.stateChanged.connect(lambda *_: self._on_filters_changed())
+        self._limit.currentTextChanged.connect(lambda *_: self._on_filters_changed())
+        self._stage_filter.currentTextChanged.connect(lambda *_: self._render_table())
+
+        self.setWidget(container)
+        self._container = container
+        self._enter_loading_state()
+
+    @staticmethod
+    def _wrap_splitter_panel(widget: QWidget, *, left: int = 0, right: int = 0) -> QWidget:
+        wrap = QWidget()
+        layout = QHBoxLayout(wrap)
+        layout.setContentsMargins(left, 0, right, 0)
+        layout.setSpacing(0)
+        layout.addWidget(widget)
+        return wrap
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if hasattr(self, "_container"):
+            self._container.setMinimumHeight(max(self.viewport().height(), 480))
+
+    def activate_page(self) -> None:
+        self._refresh_settings()
+        self._refresh_pending_downloads()
+        self._pending_timer.start()
+        PollablePageMixin.activate_page(self)
+
+    def deactivate_page(self) -> None:
+        self._pending_timer.stop()
+        PollablePageMixin.deactivate_page(self)
+
+    def _on_filters_changed(self) -> None:
+        interval = ACTIVE_POLL_MS if self._active_only.isChecked() else DEFAULT_POLL_MS
+        self._poll_timer.setInterval(interval)
+        self.refresh_data()
+
+    def _current_filters(self) -> ProgressFilters:
+        return ProgressFilters(
+            limit=int(self._limit.currentText()),
+            active_only=self._active_only.isChecked(),
+            from_date=self._from_date.date().toString("yyyy-MM-dd"),
+            to_date=self._to_date.date().toString("yyyy-MM-dd"),
+        )
+
+    def _current_stage_filter(self) -> str:
+        label = self._stage_filter.currentText()
+        for option_label, value in STAGE_OPTIONS:
+            if option_label == label:
+                return value
+        return "all"
+
+    def refresh_data(self) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            return
+        if not self._ever_loaded:
+            self._loading = True
+            self._rows_card.show_loading()
+        self._refresh_btn.setEnabled(False)
+        worker = WorkflowLoadWorker(self._api, self._current_filters(), self)
+        worker.succeeded.connect(self._on_loaded)
+        worker.failed.connect(self._on_failed)
+        worker.finished.connect(self._on_worker_finished)
+        self._worker = worker
+        worker.start()
+
+    def _on_worker_finished(self) -> None:
+        self._worker = None
+        self._refresh_btn.setEnabled(True)
+
+    def _refresh_settings(self) -> None:
+        if self._settings_worker is not None and self._settings_worker.isRunning():
+            return
+        worker = SettingsWorker(self._api, self)
+        worker.succeeded.connect(self._on_settings_loaded)
+        worker.finished.connect(lambda: setattr(self, "_settings_worker", None))
+        self._settings_worker = worker
+        worker.start()
+
+    def _on_settings_loaded(self, payload: object) -> None:
+        if not isinstance(payload, UserSettingsResponse):
+            return
+        self._image_source_mode = normalize_image_source_mode(payload.image_source_mode)
+        manual_mode = self._image_source_mode == "manual"
+        self._manual_banner.setVisible(manual_mode)
+        self._rows_card.set_manual_mode(manual_mode)
+        self._detail_card.set_manual_mode(manual_mode)
+        if manual_mode and self._rows:
+            self._refresh_manual_inspections()
+        else:
+            self._manual_inspections = {}
+            self._rows_card.set_manual_inspections({})
+            self._detail_card.set_manual_inspections({})
+        self._render_table()
+
+    def _refresh_pending_downloads(self) -> None:
+        if self._pending_worker is not None and self._pending_worker.isRunning():
+            return
+        worker = PendingDownloadsWorker(self._api, limit=12, parent=self)
+        worker.succeeded.connect(self._on_pending_loaded)
+        worker.finished.connect(lambda: setattr(self, "_pending_worker", None))
+        self._pending_worker = worker
+        worker.start()
+
+    def _on_pending_loaded(self, payload: object) -> None:
+        if not isinstance(payload, PendingMusicDownloadsResponse):
+            return
+        self._pending_downloads = filter_actionable_pending_downloads(payload.items)
+        self._download_queue.set_items(self._pending_downloads)
+        self._update_meta_label(len(self._filtered_effective_rows()))
+
+    def _refresh_manual_inspections(self) -> None:
+        if self._image_source_mode != "manual" or not self._rows:
+            self._manual_inspections = {}
+            self._rows_card.set_manual_inspections({})
+            self._detail_card.set_manual_inspections({})
+            self._render_table()
+            return
+        if self._inspection_worker is not None and self._inspection_worker.isRunning():
+            return
+        worker = ManualInspectionWorker(self._rows, self)
+        worker.succeeded.connect(self._on_manual_inspections_loaded)
+        worker.finished.connect(lambda: setattr(self, "_inspection_worker", None))
+        self._inspection_worker = worker
+        worker.start()
+
+    def _on_manual_inspections_loaded(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        self._manual_inspections = payload
+        self._rows_card.set_manual_inspections(payload)
+        self._detail_card.set_manual_inspections(payload)
+        self._update_stats()
+        self._render_table()
+
+    def _on_row_selected(self, entry: object) -> None:
+        if isinstance(entry, EffectiveProgressRow):
+            self._detail_card.set_entry(entry)
+        else:
+            self._detail_card.set_entry(None)
+
+    def _enter_loading_state(self) -> None:
+        self._loading = True
+        self._is_error = False
+        self._error_banner.hide()
+        self._summary_label.setText("Loading progress rows...")
+        self._rows_card.show_loading()
+        self._stats_row.set_summary_counts(active=0, converter=0, waiting=0, failed=0)
+        self._update_meta_label(0)
+
+    def _on_failed(self, _message: str) -> None:
+        self._loading = False
+        self._is_error = True
+        self._error_banner.show()
+        if self._rows:
+            self._render()
+            return
+        self._rows = []
+        self._runtime_by_key = {}
+        self._manual_inspections = {}
+        self._summary_label.setText(f"Unable to load progress rows. {_message}")
+        self._rows_card.show_empty()
+        self._stats_row.set_summary_counts(active=0, converter=0, waiting=0, failed=0)
+        self._update_meta_label(0)
+
+    def _on_loaded(self, payload: object) -> None:
+        if not isinstance(payload, WorkflowLoadResult):
+            return
+        self._loading = False
+        self._is_error = False
+        self._ever_loaded = True
+        self._error_banner.hide()
+        self._rows = payload.response.rows
+        self._runtime_by_key = payload.runtime_by_key
+        self._summary_label.setText(f"{payload.response.summary} {SUMMARY_SUFFIX}")
+        self._render()
+        self._refresh_manual_inspections()
+
+    def _effective_rows(self) -> list[EffectiveProgressRow]:
+        entries: list[EffectiveProgressRow] = []
+        for row in self._rows:
+            key = progress_runtime_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
+            runtime = self._runtime_by_key.get(key)
+            entries.append(
+                EffectiveProgressRow(
+                    row=row,
+                    effective_status=runtime.status if runtime else row.status,
+                    effective_converter=runtime.converter if runtime else row.converter,
+                    effective_merge=runtime.merge if runtime else row.merge,
+                    effective_stage=runtime.stage if runtime else row.stage,
+                    effective_notes=runtime.notes if runtime else row.notes,
+                    effective_converter_percent=runtime.converter_percent if runtime else None,
+                    effective_merge_percent=runtime.merge_percent if runtime else None,
+                )
+            )
+        return entries
+
+    def _filtered_effective_rows(self) -> list[EffectiveProgressRow]:
+        stage = self._current_stage_filter()
+        entries = self._effective_rows()
+        if stage == "all":
+            return entries
+        return [entry for entry in entries if entry.effective_stage.lower() == stage]
+
+    def _render(self) -> None:
+        self._update_stats()
+        self._render_table()
+
+    def _render_table(self) -> None:
+        filtered = self._filtered_effective_rows()
+        if self._loading:
+            self._rows_card.show_loading()
+            return
+        if not filtered:
+            self._rows_card.show_empty()
+        else:
+            self._rows_card.set_syncing_batch_id(self._syncing_batch_id)
+            self._detail_card.set_syncing_batch_id(self._syncing_batch_id)
+            self._rows_card.set_rows(filtered)
+        self._update_meta_label(len(filtered))
+
+    def _update_meta_label(self, visible_count: int) -> None:
+        stage_label = self._stage_filter.currentText()
+        row_suffix = "" if visible_count == 1 else "s"
+        pending_count = len(self._pending_downloads)
+        pending_suffix = "" if pending_count == 1 else "s"
+        self._meta_label.setText(
+            f"{visible_count} visible row{row_suffix} · "
+            f"{pending_count} pending desktop download{pending_suffix} · "
+            f"{stage_label}"
+        )
+
+    def _update_stats(self) -> None:
+        entries = self._effective_rows()
+        active = sum(
+            1 for entry in entries if entry.effective_stage.lower() not in {"done", "error"}
+        )
+        converter = sum(
+            1
+            for entry in entries
+            if entry.effective_stage.lower() in {"converter", "merger"}
+        )
+        failed = sum(
+            1
+            for entry in entries
+            if entry.effective_stage.lower() == "error"
+            or entry.effective_status.lower() == "failed"
+        )
+        waiting = 0
+        if self._image_source_mode == "manual":
+            waiting = sum(
+                1
+                for entry in entries
+                if entry.effective_stage.lower() == "image"
+                and (
+                    inspection := self._manual_inspections.get(
+                        manual_inspection_key(
+                            entry.row.meta.batch_id,
+                            entry.row.meta.profile_id,
+                            entry.row.meta.role,
+                        )
+                    )
+                )
+                and not inspection.ready
+            )
+        self._stats_row.set_summary_counts(
+            active=active,
+            converter=converter,
+            waiting=waiting,
+            failed=failed,
+        )
+
+    def _open_manual_folder(self, directory: str) -> None:
+        if not directory:
+            return
+        ensure_directory(directory)
+        open_path(directory)
+
+    def _sync_manual_assets(self, batch_id: str) -> None:
+        if not batch_id or self._sync_worker is not None and self._sync_worker.isRunning():
+            return
+        self._syncing_batch_id = batch_id
+        self._rows_card.set_syncing_batch_id(batch_id)
+        self._detail_card.set_syncing_batch_id(batch_id)
+        self._render_table()
+        worker = SyncManualImageWorker(self._api, batch_id, self)
+        worker.succeeded.connect(lambda _payload: self.refresh_data())
+        worker.failed.connect(lambda _message: self._clear_sync_state())
+        worker.finished.connect(self._clear_sync_state)
+        self._sync_worker = worker
+        worker.start()
+
+    def _retry_images(self, batch_id: str) -> None:
+        if not batch_id:
+            self._show_retry_notice("Missing batch id for image retry.")
+            return
+        if self._image_source_mode == "manual":
+            self._show_retry_notice("Image retry is not available in manual image mode.")
+            return
+        if self._image_retry_worker is not None and self._image_retry_worker.isRunning():
+            self._show_retry_notice("An image retry is already in progress.")
+            return
+        from shared.services.app_logger import log_info
+
+        log_info(f"Progress image retry requested for batch {batch_id}.", category="image")
+        self._error_banner.hide()
+        worker = ImageRetryJobsWorker(
+            self._api,
+            batch_id=batch_id,
+            parent=self,
+        )
+        worker.succeeded.connect(self._on_image_retry_succeeded)
+        worker.failed.connect(self._on_image_retry_failed)
+        worker.finished.connect(lambda: setattr(self, "_image_retry_worker", None))
+        self._image_retry_worker = worker
+        worker.start()
+
+    def _enqueue_images(self, batch_id: str) -> None:
+        if not batch_id:
+            self._show_retry_notice("Missing batch id for image enqueue.")
+            return
+        if self._image_source_mode == "manual":
+            self._show_retry_notice("Image enqueue is not available in manual image mode.")
+            return
+        if self._image_retry_worker is not None and self._image_retry_worker.isRunning():
+            self._show_retry_notice("An image job is already in progress.")
+            return
+        from shared.services.app_logger import log_info
+        from shared.workers.data_workers import EnqueueImageJobsWorker
+
+        log_info(f"Progress image enqueue requested for batch {batch_id}.", category="image")
+        self._error_banner.hide()
+        worker = EnqueueImageJobsWorker(self._api, [batch_id], parent=self)
+        worker.succeeded.connect(lambda _payload: self.refresh_data())
+        worker.failed.connect(self._on_image_retry_failed)
+        worker.finished.connect(lambda: setattr(self, "_image_retry_worker", None))
+        self._image_retry_worker = worker
+        worker.start()
+
+    def _on_image_retry_succeeded(self, payload: object) -> None:
+        from shared.models.platform import ImageJobsRetryResponse
+
+        updated = 0
+        if isinstance(payload, ImageJobsRetryResponse):
+            updated = int(payload.updated or 0)
+        if updated > 0:
+            self._error_banner.hide()
+        else:
+            self._show_retry_notice(
+                "No failed image jobs were reset. They may already be pending or running."
+            )
+        self.refresh_data()
+
+    def _on_image_retry_failed(self, message: str) -> None:
+        detail = str(message or "").strip() or "Unable to retry image jobs."
+        self._show_retry_notice(detail)
+
+    def _show_retry_notice(self, message: str) -> None:
+        self._error_banner.set_message(message)
+        self._error_banner.show()
+
+    def _retry_failed_drafts(self, batch_id: str, song_ids: list[str]) -> None:
+        if not batch_id or not song_ids:
+            return
+        if self._draft_retry_worker is not None and self._draft_retry_worker.isRunning():
+            return
+        worker = BatchRetryDraftsWorker(self._api, batch_id, song_ids, parent=self)
+        worker.succeeded.connect(lambda _count: self.refresh_data())
+        worker.failed.connect(lambda _message: None)
+        worker.finished.connect(lambda: setattr(self, "_draft_retry_worker", None))
+        self._draft_retry_worker = worker
+        worker.start()
+
+    def _retry_failed_suno(self, batch_id: str, song_ids: list[str]) -> None:
+        if not batch_id or not song_ids:
+            return
+        if self._suno_retry_worker is not None and self._suno_retry_worker.isRunning():
+            return
+        worker = BatchRetrySunoWorker(self._api, batch_id, song_ids, parent=self)
+        worker.succeeded.connect(lambda _count: self.refresh_data())
+        worker.failed.connect(lambda _message: None)
+        worker.finished.connect(lambda: setattr(self, "_suno_retry_worker", None))
+        self._suno_retry_worker = worker
+        worker.start()
+
+    def _clear_sync_state(self) -> None:
+        self._syncing_batch_id = ""
+        self._sync_worker = None
+        self._rows_card.set_syncing_batch_id("")
+        self._detail_card.set_syncing_batch_id("")
+        self._render_table()

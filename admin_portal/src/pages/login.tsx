@@ -46,13 +46,28 @@ export default function LoginPage() {
       await login(values.email, values.password);
       navigate('/dashboard');
     } catch (error) {
-      let message = 'Login failed. Please try again.';
+      let message = 'Incorrect email or password.';
+      if (error instanceof Error && !(error instanceof AxiosError) && error.message.trim()) {
+        message = error.message.trim();
+      }
       if (error instanceof AxiosError && error.response?.data) {
-        const data = error.response.data;
-        if (typeof data.detail === 'string') {
-          message = data.detail;
-        } else if (typeof data.message === 'string') {
-          message = data.message;
+        const data = error.response.data as {
+          detail?: unknown;
+          message?: unknown;
+          error?: { message?: unknown; detail?: unknown } | string;
+        };
+        const nested =
+          data.error && typeof data.error === 'object'
+            ? data.error.message ?? data.error.detail
+            : undefined;
+        const candidate = nested ?? data.message ?? data.detail ?? data.error;
+        if (typeof candidate === 'string' && candidate.trim()) {
+          const text = candidate.trim();
+          message =
+            text.toLowerCase() === 'invalid credentials' ||
+            text.toLowerCase() === 'invalid credentials.'
+              ? 'Incorrect email or password.'
+              : text;
         }
       }
       toast({

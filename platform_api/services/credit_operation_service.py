@@ -49,7 +49,12 @@ class CreditRepoProtocol(Protocol):
 class PricingServiceProtocol(Protocol):
     """Subset of CreditPricingService used by CreditOperationService."""
 
-    async def get_price(self, ai_service: str, operation_type: str) -> int: ...
+    async def get_price(
+        self,
+        ai_service: str,
+        operation_type: str,
+        sub_model: str | None = None,
+    ) -> int: ...
 
 
 # ---------------------------------------------------------------------------
@@ -173,11 +178,71 @@ class CreditOperationService:
             )
             raise
 
+    async def execute_with_credits_resolved(
+        self,
+        user_id: UUID,
+        operation_type: str,
+        operation: Callable[[], Awaitable[tuple[T, str, str | None]]],
+        *,
+        fallback_operation_type: str | None = None,
+    ) -> tuple[T, int]:
+        """Execute an operation, then charge credits for the provider/model that succeeded.
+
+        Unlike ``execute_with_credits``, pricing is resolved from the ``ai_service``
+        and ``sub_model`` returned by the operation (e.g. after provider fallback).
+        """
+        result, ai_service, sub_model = await operation()
+
+        credits_per_op = await self._resolve_pricing(
+            ai_service,
+            operation_type,
+            fallback_operation_type,
+            sub_model=sub_model,
+        )
+        if credits_per_op == 0:
+            return result, 0
+
+        balance = await self._credit_repo.get_balance(user_id)
+        if balance < credits_per_op:
+            raise InsufficientCreditsError(
+                "Insufficient credits for this operation.",
+                details={
+                    "required_credits": credits_per_op,
+                    "current_balance": balance,
+                },
+            )
+
+        success = await self._credit_repo.atomic_deduct(
+            user_id=user_id,
+            amount=credits_per_op,
+            reason=f"{operation_type} via {ai_service}",
+        )
+        if not success:
+            current = await self._credit_repo.get_balance(user_id)
+            raise InsufficientCreditsError(
+                "Insufficient credits (concurrent deduction).",
+                details={
+                    "required_credits": credits_per_op,
+                    "current_balance": current,
+                },
+            )
+
+        logger.info(
+            "Deducted %d credits for %s via %s (user=%s)",
+            credits_per_op,
+            operation_type,
+            ai_service,
+            user_id,
+        )
+        return result, credits_per_op
+
     async def _resolve_pricing(
         self,
         ai_service: str,
         operation_type: str,
         fallback_operation_type: str | None,
+        *,
+        sub_model: str | None = None,
     ) -> int:
         """Resolve credits_per_operation with optional channel_setup fallback.
 
@@ -186,20 +251,25 @@ class CreditOperationService:
         # Try channel_setup pricing first if fallback is specified
         if fallback_operation_type:
             try:
-                return await self._pricing_service.get_price(ai_service, "channel_setup")
+                return await self._pricing_service.get_price(
+                    ai_service, "channel_setup", sub_model
+                )
             except Exception:
                 pass
 
         # Try the standard operation type
         try:
-            return await self._pricing_service.get_price(ai_service, operation_type)
+            return await self._pricing_service.get_price(
+                ai_service, operation_type, sub_model
+            )
         except Exception:
             # No pricing configured — graceful degradation
             logger.warning(
-                "No credit pricing configured for ai_service=%s, operation=%s. "
+                "No credit pricing configured for ai_service=%s, operation=%s, model=%s. "
                 "Skipping deduction.",
                 ai_service,
                 operation_type,
+                sub_model,
             )
             return 0
 

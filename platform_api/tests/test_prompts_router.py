@@ -10,6 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
+from platform_api import dependencies as dependencies_module
 from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext
 from platform_api.models.domain import MusicDescription, MusicStructure
@@ -30,12 +31,14 @@ def _make_description(
     name: str = "Epic Rock",
     content: str = "High energy rock with driving guitars",
     match_key: str | None = None,
+    is_active: bool = True,
 ) -> MusicDescription:
     return MusicDescription(
         id=uuid4(),
         name=name,
         content=content,
         match_key=match_key,
+        is_active=is_active,
         created_at=NOW,
         updated_at=NOW,
     )
@@ -45,12 +48,14 @@ def _make_structure(
     name: str = "Verse-Chorus",
     content: str = "[Verse]\n[Chorus]\n[Verse]\n[Chorus]\n[Bridge]\n[Chorus]",
     match_key: str | None = None,
+    is_active: bool = True,
 ) -> MusicStructure:
     return MusicStructure(
         id=uuid4(),
         name=name,
         content=content,
         match_key=match_key,
+        is_active=is_active,
         created_at=NOW,
         updated_at=NOW,
     )
@@ -61,10 +66,12 @@ def mock_prompt_service() -> AsyncMock:
     """Create a mock prompt service."""
     service = AsyncMock()
     service.list_descriptions = AsyncMock(return_value=[])
+    service.list_description_usage_summaries = AsyncMock(return_value={})
     service.create_description = AsyncMock(side_effect=lambda **kw: _make_description(**kw))
     service.update_description = AsyncMock(side_effect=lambda desc_id, **kw: _make_description(**kw))
     service.delete_description = AsyncMock(return_value=None)
     service.list_structures = AsyncMock(return_value=[])
+    service.list_structure_usage_summaries = AsyncMock(return_value={})
     service.create_structure = AsyncMock(side_effect=lambda **kw: _make_structure(**kw))
     service.update_structure = AsyncMock(side_effect=lambda struct_id, **kw: _make_structure(**kw))
     service.delete_structure = AsyncMock(return_value=None)
@@ -173,6 +180,7 @@ class TestCreateDescription:
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Chill Lofi"
+        assert data["is_active"] is True
         mock_prompt_service.create_description.assert_awaited_once()
 
     async def test_create_without_match_key(
@@ -348,6 +356,7 @@ class TestCreateStructure:
             },
         )
         assert response.status_code == 201
+        assert response.json()["is_active"] is True
         mock_prompt_service.create_structure.assert_awaited_once()
 
     async def test_create_duplicate_name(
@@ -427,3 +436,59 @@ class TestDeleteStructure:
         struct_id = uuid4()
         response = await client.delete(f"/api/v1/prompts/structures/{struct_id}")
         assert response.status_code == 404
+
+
+class _FakePublicPool:
+    def __init__(self, rows):
+        self._rows = rows
+        self.last_query = ""
+
+    async def fetch(self, query: str, *args):
+        self.last_query = query
+        return self._rows
+
+
+class TestPublicPromptVisibility:
+    async def test_descriptions_public_only_returns_active_rows(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pool = _FakePublicPool(
+            [
+                {"id": uuid4(), "name": "Ready Genre", "match_key": "ready"},
+            ]
+        )
+        monkeypatch.setattr(
+            dependencies_module,
+            "get_db_pool",
+            lambda: pool,
+        )
+
+        response = await client.get("/api/v1/prompts/descriptions/public")
+
+        assert response.status_code == 200
+        assert "is_active = TRUE" in pool.last_query
+        assert response.json() == [
+            {"id": response.json()[0]["id"], "name": "Ready Genre", "match_key": "ready"}
+        ]
+
+    async def test_structures_public_only_returns_active_rows(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pool = _FakePublicPool(
+            [
+                {"id": uuid4(), "name": "Ready Structure"},
+            ]
+        )
+        monkeypatch.setattr(
+            dependencies_module,
+            "get_db_pool",
+            lambda: pool,
+        )
+
+        response = await client.get("/api/v1/prompts/structures/public")
+
+        assert response.status_code == 200
+        assert "is_active = TRUE" in pool.last_query
+        assert response.json() == [
+            {"id": response.json()[0]["id"], "name": "Ready Structure"}
+        ]

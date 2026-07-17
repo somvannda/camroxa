@@ -1,0 +1,46 @@
+[
+  {
+    "id": "base-layer",
+    "blur": 30.0,
+    "glow": 100.0,
+    "name": "Base Ring",
+    "color": {
+      "mode": "gradient",
+      "solidColor": "#ffffff",
+      "gradientColors": ["#ff4500", "#ff1493"],
+      "gradientDirection": "diagonal"
+    },
+    "curved": true,
+    "gravity": "bottom",
+    "opacity": 1.0,
+    "barWidth": 2.0,
+    "mirrored": true,
+    "rotation": 0.0,
+    "thickness": 41.0,
+    "blend_mode": "normal",
+    "fillCircle": true,
+    "radiusOffset": 0.0
+  },
+  {
+    "id": "layer-1779789404142-2",
+    "blur": 0.0,
+    "glow": 0.0,
+    "name": "Layer 2",
+    "color": {
+      "mode": "solid",
+      "solidColor": "#ffffff",
+      "gradientColors": ["#ff8800", "#ff0000"],
+      "gradientDirection": "radial"
+    },
+    "curved": true,
+    "gravity": "bottom",
+    "opacity": 1.0,
+    "barWidth": 1.0,
+    "mirrored": true,
+    "rotation": 0.0,
+    "thickness": 65.0,
+    "blend_mode": "normal",
+    "fillCircle": true,
+    "radiusOffset": 4.0
+  }
+]

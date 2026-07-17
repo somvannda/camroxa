@@ -1,0 +1,18 @@
+appId: com.camxora.desktop
+productName: CAMXORA
+directories:
+  output: release
+  buildResources: public
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: public/app.ico
+    to: app.ico
+win:
+  icon: public/app.ico
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

@@ -48,3 +48,25 @@ export function useRevokeLicense() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['licenses'] }),
   });
 }
+
+export function useUpdateProfileAddonSlots() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      id: string;
+      profile_addon_pending?: number;
+      profile_addon_slots?: number;
+      add_channels?: number;
+    }) =>
+      httpClient.patch(`/api/v1/licenses/${data.id}/profile-addon-slots`, {
+        ...(data.profile_addon_pending !== undefined
+          ? { profile_addon_pending: data.profile_addon_pending }
+          : {}),
+        ...(data.profile_addon_slots !== undefined
+          ? { profile_addon_slots: data.profile_addon_slots }
+          : {}),
+        ...(data.add_channels !== undefined ? { add_channels: data.add_channels } : {}),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['licenses'] }),
+  });
+}

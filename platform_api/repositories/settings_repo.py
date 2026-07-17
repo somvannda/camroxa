@@ -299,7 +299,7 @@ class SettingsRepository:
                         serialized,
                     )
 
-        logger.info(
+        logger.debug(
             "Upserted %d user settings for user %s.", len(validated), user_id
         )
 

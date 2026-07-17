@@ -15,7 +15,7 @@ The API also serves as the data layer for a future web admin portal (user/licens
 - **User**: A registered individual who authenticates with the Platform_API to access generation services
 - **Admin**: A User with elevated privileges who manages other users, licenses, credits, and system configuration
 - **License**: A software entitlement that grants a User access to the Desktop_App, associated with a specific Plan type
-- **Plan**: A subscription tier determining a User's profile allowance, song quota, and credit allocation (Monthly at $79/month, Yearly at $699/year, or Lifetime at $1,499 one-time); all pricing parameters are Admin-configurable
+- **Plan**: A subscription tier determining a User's profile allowance, song quota, and credit allocation; all plan rows (name, pricing, quotas, billing cycle) are created and managed only by Admins in the Admin Portal against the live `plans` table — the API never seeds or hardcodes default tiers
 - **Credit_Wallet**: A unified per-User credit balance that can be spent on any AI model operation through the Platform_API; Lifetime users and users who exhaust their plan quota purchase credit packs into this wallet
 - **Credit_Pack**: An Admin-configurable bundle of song credits available for purchase (Starter $49/500 songs, Creator $149/2,000 songs, Agency $699/10,000 songs); pricing and quantities are adjustable by Admin at any time
 - **Credit_Pricing**: An Admin-configurable setting per AI model that defines how many wallet credits are charged to the user per operation (set higher than the actual external API cost to generate profit margin)
@@ -25,7 +25,7 @@ The API also serves as the data layer for a future web admin portal (user/licens
 - **Song_Draft**: A generated song containing title, album name, and structured lyrics produced by an LLM provider before submission to Suno
 - **Suno_Task**: A record tracking a music generation request submitted to the Suno API, including task ID, status, audio URLs, and download state
 - **Image_Job**: A record tracking a background or thumbnail image generation request submitted to Fal AI or SLAI
-- **Batch**: A group of songs generated together in a single run, tied to a profile pair (OK channel + Alt channel) and a run date
+- **Batch**: A group of songs generated together in a single run, tied to a profile pair (Primary channel + Secondary channel) and a run date
 - **Auth_Service**: The authentication and authorization subsystem of the Platform_API responsible for token issuance, validation, and role enforcement
 - **Callback_Endpoint**: A public URL endpoint on the Platform_API that receives completion notifications from external AI services (replacing the desktop app's local ngrok tunnel)
 
@@ -77,22 +77,25 @@ The API also serves as the data layer for a future web admin portal (user/licens
 
 #### Acceptance Criteria
 
-1. THE Platform_API SHALL support Admin-configurable Plan types with the following default configurations stored in a plans table that Admins can update at any time without code changes:
-   - **Monthly Plan**: $79/month, 2 Channel_Profiles, 420 songs/month quota (7 songs/day/channel), 30-day billing cycle, AI generation included within quota
-   - **Yearly Plan**: $699/year, 4 Channel_Profiles, 840 songs/month quota (7 songs/day/channel), 365-day billing cycle, AI generation included within quota
-   - **Lifetime Plan**: $1,499 one-time, unlimited Channel_Profiles, lifetime software access, all future updates; does NOT include unlimited AI generation — user must purchase credit packs for all generation
+1. THE Platform_API SHALL store Plans only as Admin-managed rows in the `plans` table. Plans are created via the Admin Portal (or Admin API); the API SHALL NOT bootstrap or seed default Monthly/Yearly/Lifetime tiers. Example product configurations an Admin may create include:
+   - Monthly-style: recurring billing cycle, limited Channel_Profiles, included monthly song package quota, AI generation within quota
+   - Yearly-style: longer billing cycle, higher profile/song allowances
+   - Lifetime-style: one-time purchase, no monthly song package (wallet credits for generation)
 2. WHEN an Admin updates a Plan's configuration (price, profile allowance, song quota, or billing cycle), THE Platform_API SHALL store the change with an effective date and apply it to all new subscriptions from that date forward; existing active subscriptions SHALL retain their original terms until renewal
 3. WHEN an Admin creates a new License, THE Platform_API SHALL generate a unique license key and store it with the specified Plan type, pricing tier, and activation parameters; for Monthly and Yearly plans, THE Platform_API SHALL set the expiration period based on the plan's billing cycle from activation date
 4. WHEN a License is assigned to a User who has no active License of the same Plan type, THE Platform_API SHALL associate the license key with the User account and activate the corresponding Plan with the profile allowance and song quota defined by the Plan configuration
 5. WHEN the Desktop_App starts and the User authenticates, THE Platform_API SHALL validate the User's license status and return the active Plan details including: plan type, total profile allowance, monthly song quota, songs remaining in current period, credit wallet balance, and subscription expiration date (if applicable)
-6. THE Platform_API SHALL enforce daily song generation limits per channel (configurable, default 7 songs/day/channel) and monthly song generation limits per plan; IF a User exceeds the daily or monthly quota, THEN THE Platform_API SHALL reject generation requests with a quota-exceeded error indicating the limit, current usage, and reset time
+6. THE Platform_API SHALL enforce daily song package limits per channel (configurable, default 7 songs/day/channel) and monthly song package limits per plan; IF a User exceeds the daily hard cap or a Lifetime/hard monthly cap, THEN THE Platform_API SHALL reject generation requests with a quota-exceeded error indicating the limit, current usage, and reset time. FOR Monthly and Yearly plans, monthly song packages use soft overage (wallet) once the included monthly allowance is exhausted, while daily song packages remain a hard cap.
 7. WHEN an Admin revokes a License, THE Platform_API SHALL mark the license as revoked, deactivate the associated Plan for that User, and recalculate the User's total profile allowance (existing Channel_Profiles exceeding the new limit SHALL be preserved but no new profiles may be created until under the limit)
 8. WHILE a License is expired (Monthly or Yearly plan past its billing cycle expiration date), THE Platform_API SHALL reject generation requests from that User and return a license-expired error indicating the expiration date and renewal options
 9. IF an Admin attempts to assign a License to a User who already has an active License of that same Plan type, THEN THE Platform_API SHALL reject the assignment with a duplicate-license error indicating the existing active license
 10. THE Platform_API SHALL support a launch offer configuration: Admins can set a promotional price and a maximum redemption count (e.g., first 50 customers get Lifetime at $999 instead of $1,499); WHEN the redemption count is reached, THE Platform_API SHALL automatically revert to the standard price for new purchases
 11. THE Platform_API SHALL store all plan pricing, quotas, and profile allowances as Admin-editable configuration records (not hardcoded), enabling changes to any pricing parameter through Admin API endpoints without requiring code deployment
 12. WHEN an Admin deactivates a Plan (sets is_active to false), THE Platform_API SHALL prevent new license creation and assignment for that Plan type; existing active licenses on the deactivated Plan SHALL continue operating normally until expiration or revocation; WHEN an Admin reactivates a Plan (sets is_active to true), THE Platform_API SHALL resume allowing new license creation and assignment for that Plan type
-
+13. FOR Monthly and Yearly plans, THE Platform_API SHALL treat each song allowance unit as a **song package**: lyric + title + album + Suno music generation (Primary + Secondary channel tracks from one Suno submission), including internal LLM/Suno retries for that song. Only a successful Suno ``music`` billing event SHALL consume (+1) the monthly/daily song package counter; lyric/title/album SHALL NOT increment song quota while the package remains available
+14. THE Admin plan configuration form SHALL expose song and image package allowances (and daily caps) only — it SHALL NOT add separate lyric/title/album quota fields (per-op list prices remain in Credit Pricing)
+15. WHEN album-level image generation is enabled for a batch, THE Platform_API SHALL count image quota as **1 background + 1 thumbnail per channel per batch** (not per song), when both image types are requested for that channel
+16. THE Platform_API SHALL always write a usage ledger row (`credit_transactions`) for every billable operation: plan-covered ops SHALL use amount=0, direction=debit, metadata `billing=plan_allowance`, `list_credit_units` (configured list price), `charged_credit_units=0`, and `coverage` (`song_package` or `image_allowance`); wallet-charged ops SHALL use `billing=wallet` with `charged_credit_units` equal to the deducted amount
 ### Requirement 5: Credit Pricing Configuration
 
 **User Story:** As an Admin, I want to configure the credit cost charged to users for each AI model operation, so that I can set prices above the actual external API cost and generate profit margins.
@@ -127,8 +130,9 @@ The API also serves as the data layer for a future web admin portal (user/licens
 9. THE Desktop_App SHALL display the User's Credit_Wallet balance in a persistent header or toolbar area visible on all primary screens without requiring navigation or scrolling
 10. IF a credit pack purchase would cause the User's Credit_Wallet balance to exceed 10,000,000 credits, THEN THE Platform_API SHALL reject the purchase and return an error indicating the maximum wallet balance would be exceeded
 11. WHEN a Lifetime plan is activated for a User, THE Platform_API SHALL credit 1,000 bonus song credits to the User's Credit_Wallet as a one-time grant and record it as a "lifetime_bonus" transaction
-12. FOR Monthly and Yearly plan users, THE Platform_API SHALL first consume the plan's included monthly song quota before deducting from the Credit_Wallet; WHEN the monthly quota is exhausted, subsequent generation requests SHALL deduct from the Credit_Wallet
+12. FOR Monthly and Yearly plan users, THE Platform_API SHALL first consume the plan's included monthly **song package** / image allowances before deducting from the Credit_Wallet; WHEN the monthly package allowance is exhausted, subsequent generation requests SHALL deduct from the Credit_Wallet (soft monthly overage). Lyric/title/album remain covered while song packages remain in the period; only Suno ``music`` burns a song package unit
 13. FOR Lifetime plan users, THE Platform_API SHALL deduct from the Credit_Wallet for all generation requests; IF the wallet balance is zero, THEN THE Platform_API SHALL reject generation requests with an error indicating available credit packs for purchase
+14. WHEN a User views Usages (wallet/transaction history), THE Platform_API SHALL include plan-allowance ledger rows (amount 0) alongside wallet charges so finance and users can see every operation with list credit units when present
 
 ### Requirement 7: Credit Deduction on Generation
 
@@ -136,13 +140,13 @@ The API also serves as the data layer for a future web admin portal (user/licens
 
 #### Acceptance Criteria
 
-1. WHEN a User submits a Suno music generation request, THE Platform_API SHALL atomically deduct the Admin-configured Suno credit price (e.g., 14 credits per song pair) from the User's Credit_Wallet before forwarding the request to the Suno API, such that concurrent requests from the same User cannot overdraw the balance below zero
-2. WHEN a User submits an image generation request (background or thumbnail), THE Platform_API SHALL atomically deduct the Admin-configured image credit price from the User's Credit_Wallet before forwarding the request
-3. WHEN a User submits a song draft generation request (LLM lyrics/title/album), THE Platform_API SHALL atomically deduct the Admin-configured LLM credit price from the User's Credit_Wallet before forwarding the request
-4. IF the User's Credit_Wallet balance is insufficient for the configured price of the requested operation, THEN THE Platform_API SHALL reject the request with an insufficient-credits error indicating the required amount and current balance
-5. WHEN a credit deduction is performed, THE Platform_API SHALL record the transaction with User identifier, AI model, operation type, credits charged, batch ID (if applicable), and timestamp
-6. IF the Platform_API fails to deliver the request to the external AI service (network error, connection timeout, or the external service returns a non-retryable error), THEN THE Platform_API SHALL refund the charged credits to the User's Credit_Wallet and record the refund transaction with the failure reason
-7. IF a generation request has been forwarded to an external AI service and no response or callback is received within a configurable timeout period (default 300 seconds), THEN THE Platform_API SHALL treat the request as failed, refund the charged credits to the User's Credit_Wallet, and record the refund transaction
+1. WHEN a User submits a Suno music generation request and no subscription song package remains (or the user is Lifetime), THE Platform_API SHALL atomically deduct the Admin-configured Suno credit price (e.g., 14 credits per song pair) from the User's Credit_Wallet before forwarding the request to the Suno API, such that concurrent requests from the same User cannot overdraw the balance below zero. WHEN a Monthly/Yearly song package remains, THE Platform_API SHALL consume one song package unit and record a plan_allowance ledger row (amount 0) instead of charging the wallet
+2. WHEN a User submits an image generation request (background or thumbnail) and no image allowance remains (or Lifetime), THE Platform_API SHALL atomically deduct the Admin-configured image credit price from the User's Credit_Wallet before forwarding the request. WHEN image allowance remains on a subscription, THE Platform_API SHALL consume the image allowance and record a plan_allowance ledger row
+3. WHEN a User submits a song draft slot (LLM lyric/title/album) while a song package remains on Monthly/Yearly, THE Platform_API SHALL NOT increment the song package counter and SHALL record a plan_allowance ledger row with list_credit_units; WHEN no song package remains, THE Platform_API SHALL deduct the Admin-configured LLM list price from the Credit_Wallet
+4. IF the User's Credit_Wallet balance is insufficient for the configured price of the requested operation (when wallet billing applies), THEN THE Platform_API SHALL reject the request with an insufficient-credits error indicating the required amount and current balance
+5. WHEN a credit deduction or plan-allowance coverage is performed, THE Platform_API SHALL record the transaction with User identifier, AI model, operation type, list and charged credit units, billing mode, batch ID (if applicable), and timestamp
+6. IF the Platform_API fails to deliver the request to the external AI service (network error, connection timeout, or the external service returns a non-retryable error), THEN THE Platform_API SHALL refund the charged credits to the User's Credit_Wallet (wallet-billed ops only) and record the refund transaction with the failure reason
+7. IF a generation request has been forwarded to an external AI service and no response or callback is received within a configurable timeout period (default 300 seconds), THEN THE Platform_API SHALL treat the request as failed, refund the charged credits to the User's Credit_Wallet (wallet-billed ops only), and record the refund transaction
 
 ### Requirement 8: Channel Profile Management
 
@@ -195,10 +199,10 @@ The API also serves as the data layer for a future web admin portal (user/licens
 
 1. WHEN a User submits a Suno generation request with model version (V5 or V5_5), title, lyrics, style, and instrumental flag, THE Platform_API SHALL forward the request to the Suno API within 30 seconds and return the Suno-assigned task ID to the caller
 2. THE Platform_API SHALL provide a public Callback_Endpoint URL that replaces the Desktop_App's local ngrok callback, receiving Suno completion notifications
-3. WHEN the Callback_Endpoint receives a Suno completion notification containing a recognized task ID, THE Platform_API SHALL update the corresponding Suno_Task record with status (SUCCESS or FAILED), audio URLs (OK track and Alt track), and push a WebSocket notification to the User's connected clients
+3. WHEN the Callback_Endpoint receives a Suno completion notification containing a recognized task ID, THE Platform_API SHALL update the corresponding Suno_Task record with status (SUCCESS or FAILED), audio URLs (Primary channel track and Secondary channel track), and push a WebSocket notification to the User's connected clients
 4. WHEN a User requests the status of a Suno_Task, THE Platform_API SHALL return the current status (PENDING, SUCCESS, or FAILED), audio URLs if status is SUCCESS, and download state (downloaded_ok, downloaded_alt flags)
 5. THE Platform_API SHALL detect duplicate requests by computing a SHA-256 hash of the normalized request fields (model + title + lyrics + style + instrumental); IF a Suno_Task with the same hash already exists for the same User, THEN THE Platform_API SHALL return the existing task ID and current status without resubmitting to Suno
-6. WHEN Suno audio URLs become available in a Suno_Task record, THE Platform_API SHALL store the OK track URL and Alt track URL in the Suno_Task record and mark the task status as SUCCESS
+6. WHEN Suno audio URLs become available in a Suno_Task record, THE Platform_API SHALL store the Primary channel track URL and Secondary channel track URL in the Suno_Task record and mark the task status as SUCCESS
 7. IF the Suno API returns an error or does not respond within 30 seconds when the Platform_API forwards a generation request, THEN THE Platform_API SHALL return an error response indicating whether the failure is retryable (timeout, rate limit, 5xx) or permanent (4xx validation error), and SHALL NOT create a Suno_Task record
 8. IF the Callback_Endpoint receives a notification with an unrecognized task ID or malformed payload, THEN THE Platform_API SHALL discard the notification and log the event without affecting existing Suno_Task records
 

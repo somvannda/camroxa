@@ -9,14 +9,14 @@ Requirements: 9.1, 9.2, 9.3
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated
+from datetime import date, datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from platform_api.middleware.auth import AuthContext, require_admin
+from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.prompt_service import PromptService
 
 # ---------------------------------------------------------------------------
@@ -38,6 +38,10 @@ class DescriptionResponse(BaseModel):
     name: str
     content: str
     match_key: str | None = None
+    vocal_profile: dict[str, Any] | None = None
+    is_active: bool = True
+    owner_label: str = "camxora"
+    usage_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -48,6 +52,8 @@ class CreateDescriptionRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=5000)
     match_key: str | None = None
+    vocal_profile: dict[str, Any] | None = None
+    is_active: bool = True
 
 
 class UpdateDescriptionRequest(BaseModel):
@@ -56,6 +62,8 @@ class UpdateDescriptionRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     content: str | None = Field(default=None, min_length=1, max_length=5000)
     match_key: str | None = None
+    vocal_profile: dict[str, Any] | None = None
+    is_active: bool | None = None
 
 
 class StructureResponse(BaseModel):
@@ -65,6 +73,9 @@ class StructureResponse(BaseModel):
     name: str
     content: str
     match_key: str | None = None
+    is_active: bool = True
+    owner_label: str = "camxora"
+    usage_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -75,6 +86,7 @@ class CreateStructureRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=5000)
     match_key: str | None = None
+    is_active: bool = True
 
 
 class UpdateStructureRequest(BaseModel):
@@ -83,6 +95,92 @@ class UpdateStructureRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     content: str | None = Field(default=None, min_length=1, max_length=5000)
     match_key: str | None = None
+    is_active: bool | None = None
+
+
+class UserPromptRequest(BaseModel):
+    """Request body for user-owned prompt create/update."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
+class UserDescriptionResponse(BaseModel):
+    """Full user-owned description for settings editing."""
+
+    id: str
+    name: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserStructureResponse(BaseModel):
+    """Full user-owned structure for settings editing."""
+
+    id: str
+    name: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminUserOwnedPromptResponse(BaseModel):
+    """Admin-facing list row for user-owned prompts."""
+
+    id: str
+    user_id: str
+    user_email: str
+    user_display_name: str
+    name: str
+    content: str
+    is_active: bool = True
+    usage_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkspacePromptOption(BaseModel):
+    """Selector option for Settings/Music — never exposes camxora content."""
+
+    id: str
+    name: str
+    match_key: str | None = None
+    is_owned: bool = False
+    vocal_mode: str | None = None
+    default_secondary_language: str | None = None
+
+
+class PromptUsageByUser(BaseModel):
+    user_id: str
+    user_email: str
+    user_display_name: str
+    usage_count: int
+    last_used_at: datetime | None = None
+
+
+class PromptUsageByProfile(BaseModel):
+    profile_id: str
+    profile_name: str
+    user_email: str
+    user_display_name: str
+    usage_count: int
+    last_used_at: datetime | None = None
+
+
+class PromptUsageByDay(BaseModel):
+    usage_date: date
+    usage_count: int
+
+
+class PromptUsageResponse(BaseModel):
+    prompt_id: str
+    prompt_name: str
+    owner_label: str
+    usage_count: int
+    users: list[PromptUsageByUser]
+    profiles: list[PromptUsageByProfile]
+    by_day: list[PromptUsageByDay]
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +198,7 @@ async def _get_prompt_service() -> PromptService:
 # Type aliases for dependency injection
 PromptServiceDep = Annotated[PromptService, Depends(_get_prompt_service)]
 AdminUserDep = Annotated[AuthContext, Depends(require_admin)]
+CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
 # ---------------------------------------------------------------------------
@@ -107,28 +206,123 @@ AdminUserDep = Annotated[AuthContext, Depends(require_admin)]
 # ---------------------------------------------------------------------------
 
 
-def _description_to_response(desc) -> DescriptionResponse:
+def _description_to_response(desc, *, usage_count: int = 0) -> DescriptionResponse:
     """Convert a MusicDescription domain object to the response model."""
     return DescriptionResponse(
         id=str(desc.id),
         name=desc.name,
         content=desc.content,
         match_key=desc.match_key,
+        vocal_profile=desc.vocal_profile,
+        is_active=desc.is_active,
+        owner_label="camxora" if desc.user_id is None else "user",
+        usage_count=usage_count,
         created_at=desc.created_at,
         updated_at=desc.updated_at,
     )
 
 
-def _structure_to_response(struct) -> StructureResponse:
+def _structure_to_response(struct, *, usage_count: int = 0) -> StructureResponse:
     """Convert a MusicStructure domain object to the response model."""
     return StructureResponse(
         id=str(struct.id),
         name=struct.name,
         content=struct.content,
         match_key=struct.match_key,
+        is_active=struct.is_active,
+        owner_label="camxora" if struct.user_id is None else "user",
+        usage_count=usage_count,
         created_at=struct.created_at,
         updated_at=struct.updated_at,
     )
+
+
+def _user_description_to_response(desc) -> UserDescriptionResponse:
+    return UserDescriptionResponse(
+        id=str(desc.id),
+        name=desc.name,
+        content=desc.content,
+        created_at=desc.created_at,
+        updated_at=desc.updated_at,
+    )
+
+
+def _user_structure_to_response(struct) -> UserStructureResponse:
+    return UserStructureResponse(
+        id=str(struct.id),
+        name=struct.name,
+        content=struct.content,
+        created_at=struct.created_at,
+        updated_at=struct.updated_at,
+    )
+
+
+def _workspace_description_option(desc) -> WorkspacePromptOption:
+    from platform_api.ai.purposes.vocal_profile import parse_vocal_profile
+
+    profile = parse_vocal_profile(getattr(desc, "vocal_profile", None))
+    return WorkspacePromptOption(
+        id=str(desc.id),
+        name=desc.name,
+        match_key=desc.match_key,
+        is_owned=desc.user_id is not None,
+        vocal_mode=profile.mode if profile is not None else "monolingual",
+        default_secondary_language=profile.secondary_language if profile and profile.is_bilingual else None,
+    )
+
+
+def _workspace_structure_option(struct) -> WorkspacePromptOption:
+    return WorkspacePromptOption(
+        id=str(struct.id),
+        name=struct.name,
+        is_owned=struct.user_id is not None,
+    )
+
+
+def _usage_users_to_response(rows: list[dict]) -> list[PromptUsageByUser]:
+    return [
+        PromptUsageByUser(
+            user_id=str(row["user_id"]),
+            user_email=str(row.get("email") or ""),
+            user_display_name=str(row.get("display_name") or ""),
+            usage_count=int(row.get("usage_count") or 0),
+            last_used_at=row.get("last_used_at"),
+        )
+        for row in rows
+    ]
+
+
+def _usage_profiles_to_response(rows: list[dict]) -> list[PromptUsageByProfile]:
+    return [
+        PromptUsageByProfile(
+            profile_id=str(row["profile_id"]),
+            profile_name=str(row.get("profile_name") or ""),
+            user_email=str(row.get("user_email") or ""),
+            user_display_name=str(row.get("user_display_name") or ""),
+            usage_count=int(row.get("usage_count") or 0),
+            last_used_at=row.get("last_used_at"),
+        )
+        for row in rows
+    ]
+
+
+def _usage_days_to_response(rows: list[dict]) -> list[PromptUsageByDay]:
+    result: list[PromptUsageByDay] = []
+    for row in rows:
+        usage_date = row.get("usage_date")
+        if isinstance(usage_date, datetime):
+            usage_date = usage_date.date()
+        elif isinstance(usage_date, str):
+            usage_date = date.fromisoformat(usage_date)
+        if not isinstance(usage_date, date):
+            continue
+        result.append(
+            PromptUsageByDay(
+                usage_date=usage_date,
+                usage_count=int(row.get("usage_count") or 0),
+            )
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -146,12 +340,68 @@ async def list_descriptions(
     ctx: AdminUserDep,
     prompt_service: PromptServiceDep,
 ) -> list[DescriptionResponse]:
-    """Return all song descriptions ordered by name ascending.
-
-    Requirement 9.1: Admin manages song descriptions.
-    """
+    """Return global song descriptions ordered by name ascending."""
     descriptions = await prompt_service.list_descriptions()
-    return [_description_to_response(d) for d in descriptions]
+    usage_counts = await prompt_service.list_description_usage_summaries()
+    return [
+        _description_to_response(d, usage_count=usage_counts.get(d.id, 0))
+        for d in descriptions
+    ]
+
+
+@router.get(
+    "/descriptions/user-prompts",
+    response_model=list[AdminUserOwnedPromptResponse],
+    status_code=200,
+    summary="List all user-owned descriptions (Admin)",
+)
+async def list_user_owned_descriptions(
+    ctx: AdminUserDep,
+) -> list[AdminUserOwnedPromptResponse]:
+    """Return all user-owned descriptions with owner info and usage counts."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    rows = await pool.fetch(
+        """
+        SELECT
+            d.id,
+            d.user_id,
+            u.email AS user_email,
+            u.display_name AS user_display_name,
+            d.name,
+            d.content,
+            d.is_active,
+            COALESCE(usage.usage_count, 0)::int AS usage_count,
+            d.created_at,
+            d.updated_at
+        FROM music_descriptions d
+        JOIN users u ON u.id = d.user_id
+        LEFT JOIN (
+            SELECT description_id, COUNT(*)::int AS usage_count
+            FROM songs
+            WHERE description_id IS NOT NULL
+            GROUP BY description_id
+        ) usage ON usage.description_id = d.id
+        WHERE d.user_id IS NOT NULL
+        ORDER BY d.is_active DESC, usage_count DESC, d.updated_at DESC, u.email ASC, d.name ASC
+        """
+    )
+    return [
+        AdminUserOwnedPromptResponse(
+            id=str(row["id"]),
+            user_id=str(row["user_id"]),
+            user_email=str(row.get("user_email") or ""),
+            user_display_name=str(row.get("user_display_name") or ""),
+            name=str(row["name"]),
+            content=str(row["content"]),
+            is_active=bool(row.get("is_active", True)),
+            usage_count=int(row.get("usage_count") or 0),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+        for row in rows
+    ]
 
 
 @router.post(
@@ -174,6 +424,8 @@ async def create_description(
         name=request.name,
         content=request.content,
         match_key=request.match_key,
+        vocal_profile=request.vocal_profile,
+        is_active=request.is_active,
     )
     return _description_to_response(desc)
 
@@ -204,6 +456,10 @@ async def update_description(
     # match_key can be explicitly set to None to clear it
     if "match_key" in request.model_fields_set:
         fields["match_key"] = request.match_key
+    if "is_active" in request.model_fields_set:
+        fields["is_active"] = request.is_active
+    if "vocal_profile" in request.model_fields_set:
+        fields["vocal_profile"] = request.vocal_profile
 
     desc = await prompt_service.update_description(description_id, **fields)
     return _description_to_response(desc)
@@ -243,12 +499,68 @@ async def list_structures(
     ctx: AdminUserDep,
     prompt_service: PromptServiceDep,
 ) -> list[StructureResponse]:
-    """Return all song structures ordered by name ascending.
-
-    Requirement 9.2: Admin manages song structures.
-    """
+    """Return global song structures ordered by name ascending."""
     structures = await prompt_service.list_structures()
-    return [_structure_to_response(s) for s in structures]
+    usage_counts = await prompt_service.list_structure_usage_summaries()
+    return [
+        _structure_to_response(s, usage_count=usage_counts.get(s.id, 0))
+        for s in structures
+    ]
+
+
+@router.get(
+    "/structures/user-prompts",
+    response_model=list[AdminUserOwnedPromptResponse],
+    status_code=200,
+    summary="List all user-owned structures (Admin)",
+)
+async def list_user_owned_structures(
+    ctx: AdminUserDep,
+) -> list[AdminUserOwnedPromptResponse]:
+    """Return all user-owned structures with owner info and usage counts."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    rows = await pool.fetch(
+        """
+        SELECT
+            s.id,
+            s.user_id,
+            u.email AS user_email,
+            u.display_name AS user_display_name,
+            s.name,
+            s.content,
+            s.is_active,
+            COALESCE(usage.usage_count, 0)::int AS usage_count,
+            s.created_at,
+            s.updated_at
+        FROM music_structures s
+        JOIN users u ON u.id = s.user_id
+        LEFT JOIN (
+            SELECT structure_id, COUNT(*)::int AS usage_count
+            FROM songs
+            WHERE structure_id IS NOT NULL
+            GROUP BY structure_id
+        ) usage ON usage.structure_id = s.id
+        WHERE s.user_id IS NOT NULL
+        ORDER BY s.is_active DESC, usage_count DESC, s.updated_at DESC, u.email ASC, s.name ASC
+        """
+    )
+    return [
+        AdminUserOwnedPromptResponse(
+            id=str(row["id"]),
+            user_id=str(row["user_id"]),
+            user_email=str(row.get("user_email") or ""),
+            user_display_name=str(row.get("user_display_name") or ""),
+            name=str(row["name"]),
+            content=str(row["content"]),
+            is_active=bool(row.get("is_active", True)),
+            usage_count=int(row.get("usage_count") or 0),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+        for row in rows
+    ]
 
 
 @router.post(
@@ -271,6 +583,7 @@ async def create_structure(
         name=request.name,
         content=request.content,
         match_key=request.match_key,
+        is_active=request.is_active,
     )
     return _structure_to_response(struct)
 
@@ -301,6 +614,8 @@ async def update_structure(
     # match_key can be explicitly set to None to clear it
     if "match_key" in request.model_fields_set:
         fields["match_key"] = request.match_key
+    if "is_active" in request.model_fields_set:
+        fields["is_active"] = request.is_active
 
     struct = await prompt_service.update_structure(structure_id, **fields)
     return _structure_to_response(struct)
@@ -326,6 +641,243 @@ async def delete_structure(
 
 
 # ---------------------------------------------------------------------------
+# Usage analytics (Admin-only)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/descriptions/{description_id}/usage",
+    response_model=PromptUsageResponse,
+    status_code=200,
+    summary="Get description usage breakdown (Admin)",
+)
+async def get_description_usage(
+    description_id: UUID,
+    ctx: AdminUserDep,
+    prompt_service: PromptServiceDep,
+) -> PromptUsageResponse:
+    """Return how many songs used this description and by which users."""
+    usage = await prompt_service.get_description_usage(description_id)
+    return PromptUsageResponse(
+        prompt_id=usage["prompt_id"],
+        prompt_name=usage["prompt_name"],
+        owner_label=usage["owner_label"],
+        usage_count=usage["usage_count"],
+        users=_usage_users_to_response(usage["users"]),
+        profiles=_usage_profiles_to_response(usage["profiles"]),
+        by_day=_usage_days_to_response(usage["by_day"]),
+    )
+
+
+@router.get(
+    "/structures/{structure_id}/usage",
+    response_model=PromptUsageResponse,
+    status_code=200,
+    summary="Get structure usage breakdown (Admin)",
+)
+async def get_structure_usage(
+    structure_id: UUID,
+    ctx: AdminUserDep,
+    prompt_service: PromptServiceDep,
+) -> PromptUsageResponse:
+    """Return how many songs used this structure and by which users."""
+    usage = await prompt_service.get_structure_usage(structure_id)
+    return PromptUsageResponse(
+        prompt_id=usage["prompt_id"],
+        prompt_name=usage["prompt_name"],
+        owner_label=usage["owner_label"],
+        usage_count=usage["usage_count"],
+        users=_usage_users_to_response(usage["users"]),
+        profiles=_usage_profiles_to_response(usage["profiles"]),
+        by_day=_usage_days_to_response(usage["by_day"]),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Workspace selectors (authenticated users)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/descriptions/workspace",
+    response_model=list[WorkspacePromptOption],
+    status_code=200,
+    summary="List selectable descriptions for Settings/Music",
+)
+async def list_descriptions_workspace(
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> list[WorkspacePromptOption]:
+    """Return camxora description names plus the current user's own names."""
+    descriptions = await prompt_service.list_descriptions_workspace(UUID(ctx.user_id))
+    return [_workspace_description_option(item) for item in descriptions]
+
+
+@router.get(
+    "/structures/workspace",
+    response_model=list[WorkspacePromptOption],
+    status_code=200,
+    summary="List selectable structures for Settings/Music",
+)
+async def list_structures_workspace(
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> list[WorkspacePromptOption]:
+    """Return camxora structure names plus the current user's own names."""
+    structures = await prompt_service.list_structures_workspace(UUID(ctx.user_id))
+    return [_workspace_structure_option(item) for item in structures]
+
+
+# ---------------------------------------------------------------------------
+# User-owned prompts (authenticated users)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/me/descriptions",
+    response_model=list[UserDescriptionResponse],
+    status_code=200,
+    summary="List current user's descriptions",
+)
+async def list_my_descriptions(
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> list[UserDescriptionResponse]:
+    """Return full content for descriptions owned by the current user."""
+    descriptions = await prompt_service.list_user_descriptions(UUID(ctx.user_id))
+    return [_user_description_to_response(item) for item in descriptions]
+
+
+@router.post(
+    "/me/descriptions",
+    response_model=UserDescriptionResponse,
+    status_code=201,
+    summary="Create a user-owned description",
+)
+async def create_my_description(
+    request: UserPromptRequest,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> UserDescriptionResponse:
+    """Create a description owned by the current user."""
+    desc = await prompt_service.create_user_description(
+        UUID(ctx.user_id),
+        name=request.name,
+        content=request.content,
+    )
+    return _user_description_to_response(desc)
+
+
+@router.put(
+    "/me/descriptions/{description_id}",
+    response_model=UserDescriptionResponse,
+    status_code=200,
+    summary="Update a user-owned description",
+)
+async def update_my_description(
+    description_id: UUID,
+    request: UserPromptRequest,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> UserDescriptionResponse:
+    """Update a description owned by the current user."""
+    desc = await prompt_service.update_user_description(
+        description_id,
+        UUID(ctx.user_id),
+        name=request.name,
+        content=request.content,
+    )
+    return _user_description_to_response(desc)
+
+
+@router.delete(
+    "/me/descriptions/{description_id}",
+    status_code=200,
+    summary="Archive a user-owned description",
+)
+async def delete_my_description(
+    description_id: UUID,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> dict[str, str]:
+    """Archive a description owned by the current user (hidden from UI, kept for usage history)."""
+    await prompt_service.delete_user_description(description_id, UUID(ctx.user_id))
+    return {"message": f"Description {description_id} has been archived."}
+
+
+@router.get(
+    "/me/structures",
+    response_model=list[UserStructureResponse],
+    status_code=200,
+    summary="List current user's structures",
+)
+async def list_my_structures(
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> list[UserStructureResponse]:
+    """Return full content for structures owned by the current user."""
+    structures = await prompt_service.list_user_structures(UUID(ctx.user_id))
+    return [_user_structure_to_response(item) for item in structures]
+
+
+@router.post(
+    "/me/structures",
+    response_model=UserStructureResponse,
+    status_code=201,
+    summary="Create a user-owned structure",
+)
+async def create_my_structure(
+    request: UserPromptRequest,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> UserStructureResponse:
+    """Create a structure owned by the current user."""
+    struct = await prompt_service.create_user_structure(
+        UUID(ctx.user_id),
+        name=request.name,
+        content=request.content,
+    )
+    return _user_structure_to_response(struct)
+
+
+@router.put(
+    "/me/structures/{structure_id}",
+    response_model=UserStructureResponse,
+    status_code=200,
+    summary="Update a user-owned structure",
+)
+async def update_my_structure(
+    structure_id: UUID,
+    request: UserPromptRequest,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> UserStructureResponse:
+    """Update a structure owned by the current user."""
+    struct = await prompt_service.update_user_structure(
+        structure_id,
+        UUID(ctx.user_id),
+        name=request.name,
+        content=request.content,
+    )
+    return _user_structure_to_response(struct)
+
+
+@router.delete(
+    "/me/structures/{structure_id}",
+    status_code=200,
+    summary="Archive a user-owned structure",
+)
+async def delete_my_structure(
+    structure_id: UUID,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> dict[str, str]:
+    """Archive a structure owned by the current user (hidden from UI, kept for usage history)."""
+    await prompt_service.delete_user_structure(structure_id, UUID(ctx.user_id))
+    return {"message": f"Structure {structure_id} has been archived."}
+
+
+# ---------------------------------------------------------------------------
 # Public endpoint (no admin required) — used by onboarding wizard
 # ---------------------------------------------------------------------------
 
@@ -336,6 +888,13 @@ class PublicDescriptionResponse(BaseModel):
     id: str
     name: str
     match_key: str | None = None
+
+
+class PublicStructureResponse(BaseModel):
+    """Public structure response (for Settings selectors)."""
+
+    id: str
+    name: str
 
 
 @router.get(
@@ -353,13 +912,50 @@ async def list_descriptions_public() -> list[PublicDescriptionResponse]:
 
     pool = get_db_pool()
     rows = await pool.fetch(
-        "SELECT id, name, match_key FROM music_descriptions ORDER BY name"
+        """
+        SELECT id, name, match_key
+        FROM music_descriptions
+        WHERE user_id IS NULL AND is_active = TRUE
+        ORDER BY name
+        """
     )
     return [
         PublicDescriptionResponse(
             id=str(r["id"]),
             name=r["name"],
             match_key=r.get("match_key"),
+        )
+        for r in rows
+    ]
+
+
+@router.get(
+    "/structures/public",
+    response_model=list[PublicStructureResponse],
+    status_code=200,
+    summary="List music structures (public, names only)",
+)
+async def list_structures_public() -> list[PublicStructureResponse]:
+    """List all music structures without requiring admin role.
+
+    Used by the Electron Settings route to provide a safe selector-only
+    surface sourced from the same Admin Portal-managed prompt tables.
+    """
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, name
+        FROM music_structures
+        WHERE user_id IS NULL AND is_active = TRUE
+        ORDER BY name
+        """
+    )
+    return [
+        PublicStructureResponse(
+            id=str(r["id"]),
+            name=r["name"],
         )
         for r in rows
     ]

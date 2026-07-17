@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Protocol
+from uuid import UUID
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 
 from platform_api.exceptions import (
     AuthenticationError,
@@ -42,6 +44,10 @@ class UserLookupRepository(Protocol):
         """Return the user's current status ('active', 'suspended', 'deleted') or None."""
         ...
 
+    async def get_auth_state(self, user_id: str) -> dict[str, Any] | None:
+        """Return auth-critical fields such as status and token version."""
+        ...
+
 
 class LicenseLookupRepository(Protocol):
     """Protocol for checking active license status."""
@@ -56,6 +62,25 @@ class CreditLookupRepository(Protocol):
 
     async def get_balance(self, user_id: str) -> int:
         """Return the user's current credit wallet balance."""
+        ...
+
+
+class PlanQuotaLookupRepository(Protocol):
+    """Protocol for subscription quota lookups in auth middleware."""
+
+    async def get_user_active_subscription_context(self, user_id: UUID) -> Any | None:
+        ...
+
+    async def get_user_active_plan(self, user_id: UUID) -> Any | None:
+        ...
+
+
+class UsageQuotaLookupRepository(Protocol):
+    """Protocol for usage_tracking reads in auth middleware."""
+
+    async def get_monthly_count(
+        self, user_id: UUID, operation_type: str, period_start: date
+    ) -> int:
         ...
 
 
@@ -96,6 +121,20 @@ _auth_service: AuthService | None = None
 _user_repo: UserLookupRepository | None = None
 _license_repo: LicenseLookupRepository | None = None
 _credit_repo: CreditLookupRepository | None = None
+_plan_repo: PlanQuotaLookupRepository | None = None
+_usage_repo: UsageQuotaLookupRepository | None = None
+USER_ACCESS_TOKEN_COOKIE_NAME = "camxora_access_token"
+ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
+
+
+def _resolve_access_cookie_name(request: Request | None) -> str:
+    if request is None:
+        return USER_ACCESS_TOKEN_COOKIE_NAME
+
+    portal_context = request.headers.get("X-Portal-Context", "").strip().lower()
+    if portal_context == "admin" or "/api/v1/admin" in str(request.url.path):
+        return ADMIN_ACCESS_TOKEN_COOKIE_NAME
+    return USER_ACCESS_TOKEN_COOKIE_NAME
 
 
 def configure_auth_dependencies(
@@ -104,6 +143,8 @@ def configure_auth_dependencies(
     user_repo: UserLookupRepository,
     license_repo: LicenseLookupRepository | None = None,
     credit_repo: CreditLookupRepository | None = None,
+    plan_repo: PlanQuotaLookupRepository | None = None,
+    usage_repo: UsageQuotaLookupRepository | None = None,
 ) -> None:
     """Configure the auth middleware with service/repository instances.
 
@@ -114,12 +155,16 @@ def configure_auth_dependencies(
         user_repo: Repository for user status lookups.
         license_repo: Repository for license checks (optional, for generation endpoints).
         credit_repo: Repository for credit balance checks (optional, for generation endpoints).
+        plan_repo: Repository for subscription quota checks (optional, quota-only subscribers).
+        usage_repo: Repository for usage_tracking reads (optional, quota-only subscribers).
     """
-    global _auth_service, _user_repo, _license_repo, _credit_repo
+    global _auth_service, _user_repo, _license_repo, _credit_repo, _plan_repo, _usage_repo
     _auth_service = auth_service
     _user_repo = user_repo
     _license_repo = license_repo
     _credit_repo = credit_repo
+    _plan_repo = plan_repo
+    _usage_repo = usage_repo
 
 
 def _get_auth_service() -> AuthService:
@@ -166,8 +211,17 @@ def _extract_bearer_token(authorization: str) -> str:
     return token
 
 
+def _bind_auth_context_to_request(request: Request | None, context: AuthContext) -> None:
+    """Expose the authenticated user to later middleware such as audit logging."""
+    if request is None:
+        return
+    request.state.auth_context = context
+    request.state.user_id = context.user_id
+
+
 async def get_current_user(
-    authorization: str = Header(..., alias="Authorization"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    request: Request = None,
 ) -> AuthContext:
     """FastAPI dependency that validates the JWT and enforces steps 1-2 of the authorization chain.
 
@@ -188,26 +242,42 @@ async def get_current_user(
         ForbiddenError: If the user's account is suspended (403).
     """
     # Step 1: Token validity → 401
-    token = _extract_bearer_token(authorization)
+    token: str | None = None
+    if authorization:
+        token = _extract_bearer_token(authorization)
+    else:
+        cookie_name = _resolve_access_cookie_name(request)
+        token = request.cookies.get(cookie_name) if request is not None else None
+        if not token:
+            raise AuthenticationError("Missing authorization credentials.")
+
     auth_service = _get_auth_service()
 
     payload: TokenPayload = await auth_service.validate_token(token)
 
     # Step 2: Account suspension → 403
     user_repo = _get_user_repo()
-    status = await user_repo.get_status(payload.user_id)
+    auth_state = await user_repo.get_auth_state(payload.user_id)
 
-    if status is None:
+    if auth_state is None:
         raise AuthenticationError("User not found.")
+
+    status = str(auth_state.get("status") or "")
+    token_version = int(auth_state.get("token_version") or 0)
+
+    if payload.token_version != token_version:
+        raise AuthenticationError("Session has been revoked. Please sign in again.")
 
     if status == "suspended":
         raise ForbiddenError("Account suspended")
 
-    return AuthContext(
+    context = AuthContext(
         user_id=payload.user_id,
         email=payload.email,
         role=payload.role,
     )
+    _bind_auth_context_to_request(request, context)
+    return context
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +420,7 @@ async def check_credit_balance(user_id: str, required_credits: int) -> None:
 
 async def require_generation_access(
     authorization: str = Header(..., alias="Authorization"),
+    request: Request = None,
 ) -> AuthContext:
     """FastAPI dependency combining all 4 authorization chain steps for generation endpoints.
 
@@ -368,7 +439,7 @@ async def require_generation_access(
         AuthContext (passed all 4 checks).
     """
     # Steps 1-2: Token + suspension (via get_current_user)
-    context = await get_current_user(authorization)
+    context = await get_current_user(authorization=authorization, request=request)
 
     # Step 3: License check
     if _license_repo is None:
@@ -379,15 +450,28 @@ async def require_generation_access(
     if not has_license:
         raise LicenseExpiredError()
 
-    # Step 4: Credit balance check (minimum 1 credit)
+    # Step 4: Credit balance or subscription quota
     if _credit_repo is None:
         raise RuntimeError(
             "Credit repository not configured. Call configure_auth_dependencies() with credit_repo."
         )
     balance = await _credit_repo.get_balance(context.user_id)
-    if balance < 1:
-        raise InsufficientCreditsError(
-            details={"balance": balance, "required": 1},
-        )
+    if balance >= 1:
+        return context
 
-    return context
+    if _plan_repo is not None and _usage_repo is not None:
+        from platform_api.services.quota_display_service import user_has_generation_capacity
+
+        has_capacity = await user_has_generation_capacity(
+            user_id=UUID(context.user_id),
+            credit_repo=_credit_repo,
+            plan_repo=_plan_repo,
+            usage_repo=_usage_repo,
+            min_credits=1,
+        )
+        if has_capacity:
+            return context
+
+    raise InsufficientCreditsError(
+        details={"balance": balance, "required": 1},
+    )

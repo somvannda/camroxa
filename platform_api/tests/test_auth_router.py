@@ -28,6 +28,15 @@ def mock_auth_service() -> AsyncMock:
     service = AsyncMock()
     service._user_repo = AsyncMock()
     service._user_repo.get_by_email = AsyncMock(return_value=None)
+    service._user_repo.create = AsyncMock(
+        return_value=User(
+            id=uuid4(),
+            email="new@example.com",
+            display_name="New User",
+            role=UserRole.USER,
+            status=UserStatus.ACTIVE,
+        )
+    )
     service.authenticate = AsyncMock(
         return_value=TokenPair(
             access_token="access.token.here",
@@ -165,7 +174,9 @@ class TestRegister:
     ) -> None:
         """Duplicate email returns 409."""
         mock_auth_service._user_repo.get_by_email.return_value = User(
-            email="existing@example.com"
+            email="existing@example.com",
+            display_name="Existing User",
+            email_confirmed=True,
         )
 
         response = await client.post(

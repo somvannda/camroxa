@@ -30,14 +30,22 @@ def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceErro
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
         is_retryable = status == 429 or status >= 500
+        details: dict[str, Any] = {
+            "provider": "slai",
+            "status_code": status,
+            "reason": exc.response.text[:500] if exc.response.text else "",
+        }
+        if status == 429:
+            retry_after = exc.response.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    details["retry_after_seconds"] = float(retry_after)
+                except ValueError:
+                    pass
         return ExternalServiceError(
             f"SLAI error {status}: {context}",
             is_retryable=is_retryable,
-            details={
-                "provider": "slai",
-                "status_code": status,
-                "reason": exc.response.text[:500] if exc.response.text else "",
-            },
+            details=details,
         )
 
     return ExternalServiceError(
@@ -58,7 +66,6 @@ class SlaiClient:
 
     def __init__(self, settings: Settings) -> None:
         self._base_url = settings.slai_api_base_url.rstrip("/")
-        self._api_key = settings.slai_api_key
         self._timeout = httpx.Timeout(
             timeout=float(settings.image_timeout_seconds),
             connect=15.0,
@@ -91,7 +98,13 @@ class SlaiClient:
         Raises:
             ExternalServiceError: On permanent failure after retries.
         """
-        key = api_key or self._api_key
+        if not api_key:
+            raise ExternalServiceError(
+                "SLAI API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "slai"},
+            )
+        key = api_key
 
         # Determine aspect ratio
         if width == height:
@@ -102,7 +115,6 @@ class SlaiClient:
             aspect_ratio = "16:9"
 
         payload: dict[str, Any] = {
-            "model": "cgpt-web/gpt-5.5-pro",
             "prompt": prompt,
             "aspect_ratio": aspect_ratio,
             "response_format": "url",
@@ -114,6 +126,9 @@ class SlaiClient:
 
         if extra_params:
             payload.update(extra_params)
+
+        if "model" not in payload:
+            payload["model"] = "slai/gpt-image-2"
 
         url = f"{self._base_url}/v1/images/generations"
 

@@ -50,12 +50,27 @@ const UsersPage = React.lazy(() => import('@/pages/users/index'));
 const UserDetailPage = React.lazy(() => import('@/pages/users/user-detail'));
 const LicensesPage = React.lazy(() => import('@/pages/licenses/index'));
 const PlansPage = React.lazy(() => import('@/pages/plans/index'));
+const RedeemCodesPage = React.lazy(() => import('@/pages/redeem-codes/index'));
+const InvitationsPage = React.lazy(() => import('@/pages/invitations/index'));
+const BlogPostsPage = React.lazy(() => import('@/pages/blog-posts/index'));
 const CreditsPage = React.lazy(() => import('@/pages/credits/index'));
 const PromptsPage = React.lazy(() => import('@/pages/prompts/index'));
 const RateLimitsPage = React.lazy(() => import('@/pages/rate-limits/index'));
 const AuditLogPage = React.lazy(() => import('@/pages/audit-log/index'));
+const UsagePage = React.lazy(() => import('@/pages/usage/index'));
+const FinancePage = React.lazy(() => import('@/pages/finance/index'));
+const BatchDetailPage = React.lazy(() => import('@/pages/batches/detail'));
+const SongDetailPage = React.lazy(() => import('@/pages/songs/detail'));
+const ClientLogsPage = React.lazy(() => import('@/pages/client-logs/index'));
 const SettingsPage = React.lazy(() => import('@/pages/settings/index'));
+const DesktopNotificationsPage = React.lazy(() => import('@/pages/desktop-notifications/index'));
+const SoftwareUpdatesPage = React.lazy(() => import('@/pages/software-updates/index'));
 const KeyPoolPage = React.lazy(() => import('@/pages/key-pool/index'));
+const ContentPoolsPage = React.lazy(() => import('@/pages/content-pools/index'));
+const ImageSamplePacksPage = React.lazy(() => import('@/pages/image-sample-packs/index'));
+const MarketplacePage = React.lazy(() => import('@/pages/marketplace/index'));
+const StreamingCatalogPage = React.lazy(() => import('@/pages/streaming/catalog'));
+const StreamingUploadJobsPage = React.lazy(() => import('@/pages/streaming/upload-jobs'));
 
 function LoadingFallback() {
   return (
@@ -72,7 +87,12 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <AuthProvider>
             <Suspense fallback={<LoadingFallback />}>
               <Routes>
@@ -87,12 +107,27 @@ function App() {
                     <Route path="/users/:id" element={<UserDetailPage />} />
                     <Route path="/licenses" element={<LicensesPage />} />
                     <Route path="/plans" element={<PlansPage />} />
+                    <Route path="/redeem-codes" element={<RedeemCodesPage />} />
+                    <Route path="/invitations" element={<InvitationsPage />} />
+                    <Route path="/blog-posts" element={<BlogPostsPage />} />
                     <Route path="/credits" element={<CreditsPage />} />
                     <Route path="/prompts" element={<PromptsPage />} />
                     <Route path="/rate-limits" element={<RateLimitsPage />} />
                     <Route path="/audit-log" element={<AuditLogPage />} />
+                    <Route path="/usage" element={<UsagePage />} />
+                    <Route path="/finance" element={<FinancePage />} />
+                    <Route path="/batches/:batchId" element={<BatchDetailPage />} />
+                    <Route path="/songs/:songId" element={<SongDetailPage />} />
+                    <Route path="/client-logs" element={<ClientLogsPage />} />
+                    <Route path="/desktop-notifications" element={<DesktopNotificationsPage />} />
+                    <Route path="/software-updates" element={<SoftwareUpdatesPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/key-pool" element={<KeyPoolPage />} />
+                    <Route path="/content-pools" element={<ContentPoolsPage />} />
+                    <Route path="/image-sample-packs" element={<ImageSamplePacksPage />} />
+                    <Route path="/marketplace" element={<MarketplacePage />} />
+                    <Route path="/streaming" element={<StreamingCatalogPage />} />
+                    <Route path="/streaming/upload-jobs" element={<StreamingUploadJobsPage />} />
                   </Route>
                 </Route>
 

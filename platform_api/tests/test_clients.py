@@ -163,8 +163,8 @@ class TestClientInstantiation:
         client = LlmClient(settings)
         assert client._base_url == "https://deepseek.example.com"
         assert client._api_key == "test-deepseek-key"
-        # Default llm_timeout_seconds is 30
-        assert client._timeout.read == 30.0
+        # Default llm_timeout_seconds is 120
+        assert client._timeout.read == 120.0
 
 
 # ---------------------------------------------------------------------------

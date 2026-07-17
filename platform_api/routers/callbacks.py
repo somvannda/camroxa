@@ -9,17 +9,20 @@ Requirements: 11.2, 11.3, 11.6, 11.8
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
 from typing import Annotated, Any, Protocol
 from uuid import UUID
-
 from fastapi import APIRouter, Depends, Header, Request, Response
 from pydantic import BaseModel
 
 from platform_api.config import get_settings
 from platform_api.models.enums import TaskStatus
+from platform_api.services.batch_service import BatchService
+from platform_api.services.image_job_service import ImageJobService
+from platform_api.services.image_job_runner import run_image_jobs_until_empty
 
 logger = logging.getLogger(__name__)
 
@@ -110,17 +113,38 @@ async def _get_notification_port() -> NotificationPort:
     )
 
 
+async def _get_batch_service() -> BatchService:
+    """Placeholder dependency for BatchService callback handoff."""
+    raise NotImplementedError(
+        "BatchService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+async def _get_image_job_service() -> ImageJobService:
+    """Placeholder dependency for ImageJobService callback auto-run."""
+    raise NotImplementedError(
+        "ImageJobService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 # Type aliases
 SunoTaskRepoDep = Annotated[SunoTaskRepository, Depends(_get_suno_task_repo)]
 NotificationDep = Annotated[NotificationPort, Depends(_get_notification_port)]
+BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
+ImageJobServiceDep = Annotated[ImageJobService, Depends(_get_image_job_service)]
 
 
 # ---------------------------------------------------------------------------
 # HMAC / IP Validation Helpers
 # ---------------------------------------------------------------------------
 
-# Allowed IP ranges for Suno callbacks (configurable via settings in production)
-_SUNO_ALLOWED_IPS: set[str] = set()
+
+def _configured_allowed_ips() -> set[str]:
+    """Return the configured Suno callback IP allowlist (may be empty)."""
+    settings = get_settings()
+    raw = (getattr(settings, "suno_callback_allowed_ips", "") or "").strip()
+    if not raw:
+        return set()
+    return {part.strip() for part in raw.split(",") if part.strip()}
 
 
 def _validate_hmac_signature(
@@ -147,7 +171,12 @@ def _validate_hmac_signature(
         hashlib.sha256,
     ).hexdigest()
 
-    return hmac.compare_digest(expected, signature)
+    # Accept either bare hex or sha256=<hex> forms.
+    provided = signature.strip()
+    if provided.lower().startswith("sha256="):
+        provided = provided.split("=", 1)[1].strip()
+
+    return hmac.compare_digest(expected, provided)
 
 
 def _validate_callback_request(
@@ -155,27 +184,35 @@ def _validate_callback_request(
     body: bytes,
     signature: str | None,
 ) -> bool:
-    """Validate callback request via HMAC signature or IP allowlist.
+    """Validate callback request via HMAC (preferred) or IP allowlist.
 
-    Returns True if either validation method succeeds.
-    Falls back to accepting all requests if no HMAC secret is configured
-    and no IP allowlist is set (development mode).
+    Security rules:
+    - When HMAC secret is configured, a valid HMAC is **required**. Invalid or
+      missing signatures are rejected — no fallthrough to IP / debug accept.
+    - When HMAC is not configured, IP allowlist may authorize the request.
+    - Open accept (no HMAC, no IP) is allowed only when ``debug=true``.
     """
     settings = get_settings()
-    hmac_secret = getattr(settings, "suno_callback_hmac_secret", "")
+    hmac_secret = (getattr(settings, "suno_callback_hmac_secret", "") or "").strip()
+    allowed_ips = _configured_allowed_ips()
 
-    # Try HMAC validation first
-    if hmac_secret and signature:
+    # HMAC configured → fail closed on signature (no IP/debug fallthrough).
+    if hmac_secret:
         if _validate_hmac_signature(body, signature, hmac_secret):
             return True
+        logger.warning(
+            "Suno callback rejected: HMAC secret is configured but signature is "
+            "missing or invalid. IP=%s",
+            client_ip,
+        )
+        return False
 
-    # Try IP allowlist
-    if _SUNO_ALLOWED_IPS and client_ip:
-        if client_ip in _SUNO_ALLOWED_IPS:
-            return True
+    # No HMAC: IP allowlist is the only non-debug auth path.
+    if allowed_ips and client_ip and client_ip in allowed_ips:
+        return True
 
-    # Development fallback: accept if no security is configured
-    if not hmac_secret and not _SUNO_ALLOWED_IPS:
+    # Development fallback only when debug is on and neither auth method is set.
+    if settings.debug and not allowed_ips:
         logger.warning(
             "Callback accepted without HMAC or IP validation (dev mode). "
             "Configure PLATFORM_SUNO_CALLBACK_HMAC_SECRET for production."
@@ -185,12 +222,25 @@ def _validate_callback_request(
     return False
 
 
+def _is_terminal_success_status(status: str | None) -> bool:
+    """Return True when a stored task/song status is already SUCCESS."""
+    if not status:
+        return False
+    return str(status).strip().upper() in {
+        "SUCCESS",
+        "COMPLETE",
+        "COMPLETED",
+        "DONE",
+        "SUNO_SUCCESS",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Callback Processing Logic
 # ---------------------------------------------------------------------------
 
 
-def _extract_task_id_from_payload(payload: SunoCallbackPayload) -> str | None:
+def _extract_task_id_from_payload(payload: SunoCallbackPayload) -> str:
     """Extract the Suno task ID from the callback payload.
 
     Handles multiple payload formats from Suno API.
@@ -203,9 +253,17 @@ def _extract_task_id_from_payload(payload: SunoCallbackPayload) -> str | None:
 
     # Nested in data field
     if payload.data and isinstance(payload.data, dict):
-        return payload.data.get("task_id") or payload.data.get("taskId")
+        task_id = payload.data.get("task_id") or payload.data.get("taskId")
+        if task_id:
+            return str(task_id).strip()
 
-    return None
+    return ""
+
+
+def _extract_task_id_from_raw(raw_payload: dict[str, Any]) -> str:
+    from platform_api.services.suno_audio_resolver import extract_callback_task_id
+
+    return extract_callback_task_id(raw_payload)
 
 
 def _extract_status_from_payload(payload: SunoCallbackPayload) -> TaskStatus | None:
@@ -213,6 +271,13 @@ def _extract_status_from_payload(payload: SunoCallbackPayload) -> TaskStatus | N
     status_str = payload.status
     if payload.data and isinstance(payload.data, dict):
         status_str = status_str or payload.data.get("status")
+        callback_type = str(
+            payload.data.get("callbackType") or payload.data.get("callback_type") or ""
+        ).lower()
+        if callback_type == "complete":
+            return TaskStatus.SUCCESS
+        if callback_type in {"failed", "error"}:
+            return TaskStatus.FAILED
 
     if not status_str:
         return None
@@ -225,8 +290,16 @@ def _extract_status_from_payload(payload: SunoCallbackPayload) -> TaskStatus | N
     return None
 
 
+def _extract_status_from_raw(raw_payload: dict[str, Any]) -> TaskStatus | None:
+    from platform_api.services.suno_audio_resolver import callback_indicates_success
+
+    if callback_indicates_success(raw_payload):
+        return TaskStatus.SUCCESS
+    return _extract_status_from_payload(SunoCallbackPayload.model_validate(raw_payload))
+
+
 def _extract_audio_urls(payload: SunoCallbackPayload) -> tuple[str | None, str | None]:
-    """Extract OK and Alt track audio URLs from the callback payload.
+    """Extract Primary and Secondary channel track audio URLs from the callback payload.
 
     Returns:
         Tuple of (audio_url_ok, audio_url_alt).
@@ -239,21 +312,45 @@ def _extract_audio_urls(payload: SunoCallbackPayload) -> tuple[str | None, str |
         audio_ok = audio_ok or payload.data.get("audio_url_ok") or payload.data.get("audioUrlOk")
         audio_alt = audio_alt or payload.data.get("audio_url_alt") or payload.data.get("audioUrlAlt")
 
-        # Single audio_url might be the OK track
+        # Single audio_url might be the Primary channel track
         if not audio_ok and payload.data.get("audio_url"):
             audio_ok = payload.data["audio_url"]
 
-    # Fallback to top-level audio_url as OK track
+        nested_clips = payload.data.get("data")
+        if isinstance(nested_clips, list):
+            from platform_api.clients.suno_client import _extract_clip_download_url
+
+            clip_urls = [
+                _extract_clip_download_url(item)
+                for item in nested_clips
+                if isinstance(item, dict)
+            ]
+            clip_urls = [url for url in clip_urls if url]
+            if clip_urls:
+                audio_ok = audio_ok or clip_urls[0]
+                if len(clip_urls) > 1:
+                    audio_alt = audio_alt or clip_urls[1]
+
+    # Fallback to top-level audio_url as Primary channel track
     if not audio_ok and payload.audio_url:
         audio_ok = payload.audio_url
 
     return audio_ok, audio_alt
 
 
+def _extract_audio_urls_from_raw(raw_payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    from platform_api.services.suno_audio_resolver import extract_callback_download_urls
+
+    parsed = extract_callback_download_urls(raw_payload)
+    if parsed.audio_url_ok or parsed.audio_url_alt:
+        return parsed.audio_url_ok or None, parsed.audio_url_alt or None
+    payload = SunoCallbackPayload.model_validate(raw_payload)
+    return _extract_audio_urls(payload)
+
+
 # ---------------------------------------------------------------------------
 # Endpoint
 # ---------------------------------------------------------------------------
-
 
 @router.post(
     "/suno",
@@ -265,6 +362,8 @@ async def suno_callback(
     request: Request,
     task_repo: SunoTaskRepoDep,
     notification: NotificationDep,
+    batch_service: BatchServiceDep,
+    image_job_service: ImageJobServiceDep,
     x_signature: str | None = Header(default=None, alias="X-Signature"),
 ) -> Response:
     """Receive and process Suno completion notifications.
@@ -306,7 +405,7 @@ async def suno_callback(
         return Response(status_code=200, content="OK")
 
     # --- Extract Task ID ---
-    external_task_id = _extract_task_id_from_payload(payload)
+    external_task_id = _extract_task_id_from_raw(raw_payload) or _extract_task_id_from_payload(payload)
     if not external_task_id:
         # No task ID in payload (Req 11.8)
         logger.warning(
@@ -325,7 +424,7 @@ async def suno_callback(
         return Response(status_code=200, content="OK")
 
     # --- Extract status and audio URLs ---
-    new_status = _extract_status_from_payload(payload)
+    new_status = _extract_status_from_raw(raw_payload) or _extract_status_from_payload(payload)
     if new_status is None:
         logger.warning(
             "Suno callback for task_id=%s: could not determine status. Ignoring.",
@@ -333,7 +432,25 @@ async def suno_callback(
         )
         return Response(status_code=200, content="OK")
 
-    audio_url_ok, audio_url_alt = _extract_audio_urls(payload)
+    # Guard: never downgrade SUCCESS → FAILED (blocks refund farming).
+    current_status = task_data.get("status")
+    if (
+        new_status == TaskStatus.FAILED
+        and _is_terminal_success_status(
+            current_status.value if hasattr(current_status, "value") else current_status
+        )
+    ):
+        logger.warning(
+            "Suno callback ignored SUCCESS→FAILED downgrade for task_id=%s "
+            "(current=%s). Refund path will not run.",
+            external_task_id,
+            current_status,
+        )
+        return Response(status_code=200, content="OK")
+
+    audio_url_ok, audio_url_alt = _extract_audio_urls_from_raw(raw_payload)
+    if not audio_url_ok and not audio_url_alt:
+        audio_url_ok, audio_url_alt = _extract_audio_urls(payload)
 
     # --- Update Task Record (Req 11.3, 11.6) ---
     task_id = UUID(str(task_data["id"]))
@@ -345,6 +462,53 @@ async def suno_callback(
         audio_url_ok=audio_url_ok,
         audio_url_alt=audio_url_alt,
     )
+
+    if new_status == TaskStatus.SUCCESS and (audio_url_ok or audio_url_alt):
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.services.streaming_upload_service import StreamingUploadService
+
+            StreamingUploadService(get_db_pool()).schedule_suno_streaming_upload(suno_task_id=task_id)
+        except Exception as exc:
+            logger.warning("Failed to schedule streaming upload for task %s: %s", task_id, exc)
+
+    song_id_value = task_data.get("song_id")
+    batch_id_value = task_data.get("batch_id")
+    auto_run_images = False
+    parsed_batch_id: UUID | None = None
+    if batch_id_value:
+        parsed_batch_id = UUID(str(batch_id_value))
+        try:
+            batch = await batch_service.get_batch_for_user(
+                batch_id=parsed_batch_id,
+                user_id=UUID(user_id),
+            )
+            auto_run_images = bool(batch and getattr(batch, "auto_gen_image", False))
+        except Exception:
+            auto_run_images = False
+
+    if song_id_value and batch_id_value:
+        try:
+            await batch_service.handle_suno_task_update(
+                song_id=UUID(str(song_id_value)),
+                batch_id=UUID(str(batch_id_value)),
+                status=new_status,
+            )
+        except Exception as exc:
+            logger.error(
+                "Batch callback handoff failed for task_id=%s: %s",
+                task_id,
+                str(exc)[:200],
+            )
+
+    if auto_run_images and parsed_batch_id is not None:
+        asyncio.create_task(
+            run_image_jobs_until_empty(
+                image_job_service,
+                user_id=user_id,
+                batch_id=str(parsed_batch_id),
+            )
+        )
 
     logger.info(
         "Suno callback processed: task_id=%s, external_id=%s, status=%s",

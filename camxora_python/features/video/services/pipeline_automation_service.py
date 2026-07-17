@@ -1,0 +1,502 @@
+"""Headless pipeline video export + merge for shell automation."""
+
+from __future__ import annotations
+
+import time
+from pathlib import Path
+from typing import Any
+
+from PySide6.QtCore import QObject
+
+from features.video.lib.desktop_video_automation import AutoVideoCandidate
+from features.video.lib.pipeline_merge import is_auto_merge_enabled_for_branch
+from features.video.lib.video_billing import consume_video_operation, refund_video_operation
+from features.video.lib.render_scene_request import (
+    PIPELINE_EXPORT_FPS,
+    build_pipeline_export_output_path,
+    build_pipeline_render_scene_request,
+    normalize_export_fps,
+)
+from features.video.lib.video_template_draft import build_video_template_draft, clone_layer_records
+from features.video.services.template_normalizer import TemplateNormalizer
+from features.video.services.video_local_store import VideoLocalStore
+from features.video.workers.pipeline_export_worker import PipelineExportRequest, VideoPipelineExportWorker
+from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, VideoPipelineMergeWorker
+from shared.models.desktop import VideoExportState, VideoWorkspaceState
+from shared.services.platform_api import PlatformApi
+from shared.services.shell_status import emit_shell_status
+from shared.services.video_workspace_service import get_video_workspace_service
+
+
+class PipelineAutomationService(QObject):
+    """Runs pipeline export/merge without requiring the Video page to be open."""
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._store = VideoLocalStore()
+        self._normalizer = TemplateNormalizer()
+        self._settings: dict[str, Any] = {}
+        self._export_worker: VideoPipelineExportWorker | None = None
+        self._merge_worker: VideoPipelineMergeWorker | None = None
+        self._merge_context: dict[str, Any] = {}
+        self._busy = False
+        self._video_charge: dict[str, Any] = {}
+        self._merge_charge: dict[str, Any] = {}
+        self._api = PlatformApi()
+
+    def is_busy(self) -> bool:
+        return self._busy or bool(
+            (self._export_worker is not None and self._export_worker.isRunning())
+            or (self._merge_worker is not None and self._merge_worker.isRunning())
+        )
+
+    def start(self, candidate: AutoVideoCandidate, *, settings: dict[str, Any]) -> bool:
+        if self.is_busy():
+            return False
+        self._settings = dict(settings or {})
+        workspace = self._store.set_template(candidate.template_id)
+        if candidate.branch == "long" and candidate.output_resolution:
+            workspace = self._store.set_output_resolution(
+                candidate.output_resolution,
+                settings=self._settings,
+            )
+        run_dir = str(candidate.run_dir or "").strip()
+        background_path = str(candidate.background_path or "").strip()
+        if not run_dir or not Path(run_dir).is_dir():
+            emit_shell_status("Auto-video skipped: run directory is missing.")
+            return False
+        if not background_path or not Path(background_path).is_file():
+            emit_shell_status("Auto-video skipped: branch background image is missing.")
+            return False
+
+        mp3_list = self._store.list_mp3_files(run_dir)
+        if not mp3_list:
+            emit_shell_status("Auto-video skipped: no MP3 files in run directory.")
+            return False
+
+        track_paths = [item.path for item in mp3_list]
+        template = self._build_renderer_template(workspace, track_paths=track_paths)
+        if not template:
+            emit_shell_status("Auto-video skipped: no video template is loaded.")
+            return False
+
+        branch = "reel" if candidate.branch == "reel" else "long"
+        scene = build_pipeline_render_scene_request(
+            template=template,
+            workspace={
+                "templateId": workspace.template_id,
+                "outputResolution": workspace.output_resolution,
+                "logoPath": workspace.logo_path,
+                "selectedMp3Path": mp3_list[0].path,
+            },
+            run_dir=run_dir,
+            background_path=background_path,
+            branch=branch,
+            batch_id=candidate.batch_id,
+            role=candidate.role,
+            selected_mp3_path=mp3_list[0].path,
+            fps=self._resolve_export_fps(workspace),
+        )
+        workers_raw = self._settings.get("videoExportWorkers", self._settings.get("perfExportWorkers", 1))
+        try:
+            worker_limit = max(1, min(10, int(workers_raw)))
+        except (TypeError, ValueError):
+            worker_limit = 1
+
+        auto_merge = is_auto_merge_enabled_for_branch(self._settings, branch)
+        shuffle_merge = bool(self._settings.get("videoShuffleMerge", False))
+        ordered_mp4s = [
+            build_pipeline_export_output_path(mp3_path=item.path, output_dir=run_dir, branch=branch)
+            for item in mp3_list
+        ]
+        profile_id = str(getattr(candidate, "profile_id", None) or "").strip() or None
+        ref_base = f"{candidate.batch_id}:{candidate.role}:{branch}"
+        try:
+            video_bill = consume_video_operation(
+                self._api,
+                operation_type="video",
+                count=len(mp3_list),
+                channel_profile_id=profile_id,
+                ref_id=f"video:{ref_base}",
+            )
+            self._video_charge = {
+                "operation_type": "video",
+                "count": len(mp3_list),
+                "charged_credit_units": video_bill.charged_credit_units,
+                "channel_profile_id": profile_id,
+                "ref_id": f"video:{ref_base}",
+            }
+        except Exception as exc:
+            emit_shell_status(f"Auto-video blocked (billing): {exc}")
+            return False
+
+        self._merge_context = {
+            "run_dir": run_dir,
+            "branch": branch,
+            "batch_id": candidate.batch_id,
+            "role": candidate.role,
+            "auto_merge": auto_merge,
+            "shuffle": shuffle_merge,
+            "mp4_paths": ordered_mp4s,
+            "completed": len(mp3_list),
+            "total": len(mp3_list),
+            "profile_id": profile_id,
+            "ref_base": ref_base,
+        }
+
+        branch_label = "Reel" if branch == "reel" else "Long"
+        started_at_ms = int(time.time() * 1000)
+        export_state = VideoExportState(
+            running=True,
+            branch=branch_label,
+            workers=worker_limit,
+            fps=self._resolve_export_fps(workspace),
+            auto_merge=auto_merge,
+            shuffle_merge=shuffle_merge,
+            current_status=f"Starting {branch_label} auto-export…",
+            output_dir=run_dir,
+            total_jobs=len(mp3_list),
+            completed_jobs=0,
+            progress_percent=0,
+            started_at_ms=started_at_ms,
+        )
+        self._publish_workspace(workspace.model_copy(update={"export": export_state}))
+        self._busy = True
+
+        worker = VideoPipelineExportWorker(
+            PipelineExportRequest(
+                run_dir=run_dir,
+                background_path=background_path,
+                logo_path=str(workspace.logo_path or ""),
+                branch=branch,
+                batch_id=candidate.batch_id,
+                role=candidate.role,
+                template=template,
+                mp3_paths=track_paths,
+                settings=self._settings,
+                width=int(scene.output.width),
+                height=int(scene.output.height),
+                fps=int(scene.output.fps),
+                speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+            ),
+            parent=self,
+        )
+        worker.progressed.connect(self._on_export_progress)
+        worker.succeeded.connect(self._on_export_succeeded)
+        worker.failed.connect(self._on_export_failed)
+        worker.finished.connect(self._on_export_finished)
+        self._export_worker = worker
+        worker.start()
+        emit_shell_status(f"Auto-video started {branch_label.lower()} export for {Path(run_dir).name}.")
+        return True
+
+    def _build_renderer_template(
+        self,
+        workspace: VideoWorkspaceState,
+        *,
+        track_paths: list[str],
+    ) -> dict | None:
+        if not dict(workspace.template):
+            return None
+        template = dict(workspace.template)
+        saved_draft = build_video_template_draft(template, logo_path=workspace.logo_path)
+        layers = clone_layer_records(template.get("layers") or [])
+        return self._normalizer.to_renderer_dict(
+            base=template,
+            draft=saved_draft,
+            layers=layers,
+            workspace={
+                "logoPath": workspace.logo_path,
+                "trackPaths": track_paths,
+                "pipelineAlbum": str(
+                    self._settings.get("lastAlbumName") or self._settings.get("album") or ""
+                ),
+            },
+            track_paths=track_paths,
+            active_track_path=None,
+        )
+
+    def _resolve_export_fps(self, workspace: VideoWorkspaceState) -> int:
+        return normalize_export_fps(
+            workspace.export.fps or self._settings.get("videoExportFps", PIPELINE_EXPORT_FPS)
+        )
+
+    def _publish_workspace(self, workspace: VideoWorkspaceState) -> None:
+        get_video_workspace_service().set_workspace_state(workspace)
+
+    def _current_workspace(self) -> VideoWorkspaceState | None:
+        return get_video_workspace_service().get_workspace_state()
+
+    def _on_export_progress(self, payload: object) -> None:
+        workspace = self._current_workspace()
+        if not isinstance(payload, dict) or workspace is None:
+            return
+        updates: dict[str, object] = {
+            "running": True,
+            "current_status": str(payload.get("message") or payload.get("status") or "Exporting…"),
+        }
+        for key, export_key in (
+            ("completedJobs", "completed_jobs"),
+            ("totalJobs", "total_jobs"),
+            ("progressPercent", "progress_percent"),
+        ):
+            value = payload.get(key)
+            if isinstance(value, int):
+                updates[export_key] = value
+        output_path = str(payload.get("outputPath") or "").strip()
+        if output_path:
+            updates["current_output_path"] = output_path
+        self._publish_workspace(
+            workspace.model_copy(update={"export": workspace.export.model_copy(update=updates)})
+        )
+
+    def _on_export_succeeded(self, payload: object) -> None:
+        workspace = self._current_workspace()
+        if not isinstance(payload, dict) or workspace is None:
+            self._busy = False
+            return
+
+        message = str(payload.get("message") or "Auto-video export completed.")
+        last_output = str(payload.get("lastOutputPath") or "").strip() or None
+        completed = int(payload.get("completed") or workspace.export.total_jobs or 0)
+        total = int(payload.get("total") or workspace.export.total_jobs or completed)
+        merge_context = dict(self._merge_context)
+        merge_context["completed"] = completed
+        merge_context["total"] = total
+        self._merge_context = merge_context
+
+        if merge_context.get("auto_merge"):
+            branch_label = "reel" if str(merge_context.get("branch") or "") == "reel" else "long"
+            self._publish_workspace(
+                workspace.model_copy(
+                    update={
+                        "export": workspace.export.model_copy(
+                            update={
+                                "running": True,
+                                "merge_running": True,
+                                "current_status": f"Merging {branch_label} video outputs…",
+                                "last_output_path": last_output,
+                                "progress_percent": 100,
+                                "completed_jobs": completed,
+                                "total_jobs": total,
+                            }
+                        )
+                    }
+                )
+            )
+            self._start_merge()
+            return
+
+        self._busy = False
+        self._publish_workspace(
+            workspace.model_copy(
+                update={
+                    "export": workspace.export.model_copy(
+                        update={
+                            "running": False,
+                            "merge_running": False,
+                            "current_status": message,
+                            "last_output_path": last_output,
+                            "progress_percent": 100,
+                            "completed_jobs": completed,
+                            "total_jobs": total,
+                        }
+                    )
+                }
+            )
+        )
+        emit_shell_status(message)
+
+    def _start_merge(self) -> None:
+        context = dict(self._merge_context)
+        run_dir = str(context.get("run_dir") or "").strip()
+        branch = str(context.get("branch") or "long").strip()
+        if not run_dir:
+            self._on_merge_failed("Auto-merge skipped: run directory is missing.")
+            return
+        profile_id = str(context.get("profile_id") or "").strip() or None
+        ref_base = str(context.get("ref_base") or "")
+        try:
+            merge_bill = consume_video_operation(
+                self._api,
+                operation_type="video_merge",
+                count=1,
+                channel_profile_id=profile_id,
+                ref_id=f"video_merge:{ref_base}",
+            )
+            self._merge_charge = {
+                "operation_type": "video_merge",
+                "count": 1,
+                "charged_credit_units": merge_bill.charged_credit_units,
+                "channel_profile_id": profile_id,
+                "ref_id": f"video_merge:{ref_base}",
+            }
+        except Exception as exc:
+            self._busy = False
+            workspace = self._current_workspace()
+            message = f"Export complete; auto-merge blocked (billing): {exc}"
+            if workspace is not None:
+                self._publish_workspace(
+                    workspace.model_copy(
+                        update={
+                            "export": workspace.export.model_copy(
+                                update={
+                                    "running": False,
+                                    "merge_running": False,
+                                    "current_status": message,
+                                }
+                            )
+                        }
+                    )
+                )
+            emit_shell_status(message)
+            return
+        worker = VideoPipelineMergeWorker(
+            PipelineMergeRequest(
+                run_dir=run_dir,
+                branch=branch,
+                batch_id=str(context.get("batch_id") or ""),
+                role=str(context.get("role") or ""),
+                ffmpeg_path=str(self._settings.get("ffmpegPath") or "ffmpeg"),
+                completed=int(context.get("completed") or 0),
+                total=int(context.get("total") or 0),
+                mp4_paths=tuple(str(path) for path in (context.get("mp4_paths") or []) if str(path).strip()),
+                shuffle=bool(context.get("shuffle", True)),
+            ),
+            parent=self,
+        )
+        worker.progressed.connect(self._on_merge_progress)
+        worker.succeeded.connect(self._on_merge_succeeded)
+        worker.failed.connect(self._on_merge_failed)
+        worker.finished.connect(self._on_merge_finished)
+        self._merge_worker = worker
+        worker.start()
+
+    def _refund_video_charge(self, reason: str) -> None:
+        charge = dict(self._video_charge or {})
+        if not charge:
+            return
+        try:
+            refund_video_operation(
+                self._api,
+                operation_type=str(charge.get("operation_type") or "video"),
+                charged_credit_units=int(charge.get("charged_credit_units") or 0),
+                count=int(charge.get("count") or 1),
+                channel_profile_id=charge.get("channel_profile_id"),
+                ref_id=str(charge.get("ref_id") or "") or None,
+                reason=reason,
+            )
+        except Exception:
+            pass
+        self._video_charge = {}
+
+    def _refund_merge_charge(self, reason: str) -> None:
+        charge = dict(self._merge_charge or {})
+        if not charge:
+            return
+        try:
+            refund_video_operation(
+                self._api,
+                operation_type=str(charge.get("operation_type") or "video_merge"),
+                charged_credit_units=int(charge.get("charged_credit_units") or 0),
+                count=int(charge.get("count") or 1),
+                channel_profile_id=charge.get("channel_profile_id"),
+                ref_id=str(charge.get("ref_id") or "") or None,
+                reason=reason,
+            )
+        except Exception:
+            pass
+        self._merge_charge = {}
+
+    def _on_merge_progress(self, payload: object) -> None:
+        workspace = self._current_workspace()
+        if not isinstance(payload, dict) or workspace is None:
+            return
+        message = str(payload.get("message") or "Merging video outputs…")
+        self._publish_workspace(
+            workspace.model_copy(
+                update={
+                    "export": workspace.export.model_copy(
+                        update={
+                            "running": True,
+                            "merge_running": True,
+                            "current_status": message,
+                        }
+                    )
+                }
+            )
+        )
+
+    def _on_merge_succeeded(self, payload: object) -> None:
+        workspace = self._current_workspace()
+        self._busy = False
+        self._video_charge = {}
+        self._merge_charge = {}
+        if not isinstance(payload, dict) or workspace is None:
+            return
+        message = str(payload.get("message") or "Auto-merge completed.")
+        merged_output = str(payload.get("mergedOutputPath") or "").strip() or None
+        self._publish_workspace(
+            workspace.model_copy(
+                update={
+                    "export": workspace.export.model_copy(
+                        update={
+                            "running": False,
+                            "merge_running": False,
+                            "auto_merge": False,
+                            "current_status": message,
+                            "last_merged_output_path": merged_output,
+                            "progress_percent": 100,
+                        }
+                    )
+                }
+            )
+        )
+        emit_shell_status(message)
+
+    def _on_merge_failed(self, message: str) -> None:
+        self._refund_merge_charge(message or "Auto-merge failed.")
+        workspace = self._current_workspace()
+        self._busy = False
+        if workspace is not None:
+            self._publish_workspace(
+                workspace.model_copy(
+                    update={
+                        "export": workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "merge_running": False,
+                                "auto_merge": False,
+                                "current_status": message or "Auto-merge failed.",
+                            }
+                        )
+                    }
+                )
+            )
+        emit_shell_status(message or "Auto-merge failed.")
+
+    def _on_export_failed(self, message: str) -> None:
+        self._refund_video_charge(message or "Auto-video export failed.")
+        workspace = self._current_workspace()
+        self._busy = False
+        if workspace is not None:
+            self._publish_workspace(
+                workspace.model_copy(
+                    update={
+                        "export": workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "merge_running": False,
+                                "current_status": message or "Auto-video export failed.",
+                            }
+                        )
+                    }
+                )
+            )
+        emit_shell_status(message or "Auto-video export failed.")
+
+    def _on_export_finished(self) -> None:
+        self._export_worker = None
+
+    def _on_merge_finished(self) -> None:
+        self._merge_worker = None

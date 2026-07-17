@@ -1,18 +1,33 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
   KeyRound,
   CreditCard,
+  TicketPercent,
   Coins,
   Music,
   Gauge,
   ScrollText,
+  FileText,
+  BarChart3,
+  DollarSign,
+  UserPlus,
+  Newspaper,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
   KeySquare,
+  Library,
+  Image,
+  Sparkles,
+  Store,
+  Radio,
+  UploadCloud,
+  Bell,
+  Download,
+  LogOut,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -23,6 +38,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useAuth } from '@/hooks/use-auth';
 
 interface NavItem {
   label: string;
@@ -35,11 +51,24 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Users', path: '/users', icon: Users },
   { label: 'Subscriptions', path: '/licenses', icon: KeyRound },
   { label: 'Plans', path: '/plans', icon: CreditCard },
+  { label: 'Redeem Codes', path: '/redeem-codes', icon: TicketPercent },
+  { label: 'Invitations', path: '/invitations', icon: UserPlus },
+  { label: 'Blog Posts', path: '/blog-posts', icon: Newspaper },
   { label: 'Credits', path: '/credits', icon: Coins },
+  { label: 'Usage', path: '/usage', icon: BarChart3 },
+  { label: 'Finance', path: '/finance', icon: DollarSign },
   { label: 'Music Prompts', path: '/prompts', icon: Music },
+  { label: 'Music Streaming', path: '/streaming', icon: Radio },
+  { label: 'Streaming Jobs', path: '/streaming/upload-jobs', icon: UploadCloud },
   { label: 'Rate Limits', path: '/rate-limits', icon: Gauge },
   { label: 'Key Pool', path: '/key-pool', icon: KeySquare },
+  { label: 'Content Pools', path: '/content-pools', icon: Library },
+  { label: 'Image Packs', path: '/image-sample-packs', icon: Image },
+  { label: 'Marketplace', path: '/marketplace', icon: Store },
   { label: 'Audit Log', path: '/audit-log', icon: ScrollText },
+  { label: 'Client Logs', path: '/client-logs', icon: FileText },
+  { label: 'Desktop Notifications', path: '/desktop-notifications', icon: Bell },
+  { label: 'Software Updates', path: '/software-updates', icon: Download },
   { label: 'Settings', path: '/settings', icon: Settings },
 ];
 
@@ -50,27 +79,36 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'flex flex-col h-full bg-slate-900 border-r border-slate-800 transition-all duration-200',
-        collapsed ? 'w-16' : 'w-60'
+        'flex h-full flex-col border-r border-white/10 bg-slate-950/80 backdrop-blur-xl transition-all duration-200',
+        collapsed ? 'w-16' : 'w-60',
       )}
     >
-      {/* Header */}
       <div
         className={cn(
-          'flex items-center h-14 px-3',
+          'flex h-16 items-center px-3',
           collapsed ? 'justify-center' : 'justify-between'
         )}
       >
         {!collapsed && (
-          <span className="text-sm font-semibold text-slate-200 truncate">
-            Admin Portal
-          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-violet-300/20 bg-gradient-to-br from-fuchsia-600/28 via-violet-500/24 to-indigo-500/24 text-violet-100">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-100">Admin Portal</div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                  Control center
+                </div>
+              </div>
+            </div>
+          </div>
         )}
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setCollapsed((prev) => !prev)}
-          className="h-8 w-8 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+          className="h-9 w-9 text-slate-400 hover:bg-slate-800/80 hover:text-white"
         >
           {collapsed ? (
             <PanelLeftOpen className="h-4 w-4" />
@@ -80,26 +118,38 @@ export function Sidebar() {
         </Button>
       </div>
 
-      <Separator className="bg-slate-800" />
+      <Separator className="bg-white/8" />
 
-      {/* Navigation Items */}
-      <nav className="flex-1 flex flex-col gap-1 p-2 overflow-y-auto">
+      <nav className="flex flex-1 flex-col gap-0.5 p-2 overflow-y-auto">
         {NAV_ITEMS.map((item) => {
-          const isActive = location.pathname.startsWith(item.path);
+          const isActive =
+            item.path === '/streaming'
+              ? location.pathname === '/streaming'
+              : location.pathname === item.path ||
+                location.pathname.startsWith(`${item.path}/`);
           const Icon = item.icon;
 
           const linkContent = (
             <Link
               to={item.path}
               className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-150',
                 isActive
-                  ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800',
+                  ? 'bg-gradient-to-r from-fuchsia-600/18 via-violet-500/16 to-indigo-500/16 text-white shadow-[inset_0_0_0_1px_rgba(167,139,250,0.24)]'
+                  : 'text-slate-400 hover:bg-slate-900/90 hover:text-slate-100',
                 collapsed && 'justify-center px-0'
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              <div
+                className={cn(
+                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
+                  isActive
+                    ? 'text-violet-200'
+                    : 'text-slate-500'
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+              </div>
               {!collapsed && <span className="truncate">{item.label}</span>}
             </Link>
           );
@@ -118,6 +168,48 @@ export function Sidebar() {
           return <div key={item.path}>{linkContent}</div>;
         })}
       </nav>
+
+      <Separator className="bg-white/8" />
+
+      <div className="p-2">
+        <LogoutButton collapsed={collapsed} />
+      </div>
     </aside>
   );
+}
+
+function LogoutButton({ collapsed }: { collapsed: boolean }) {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
+
+  const content = (
+    <button
+      onClick={handleLogout}
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-red-400 transition-all duration-150 hover:bg-red-950/40 hover:text-red-300',
+        collapsed && 'justify-center px-0'
+      )}
+    >
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md">
+        <LogOut className="h-3.5 w-3.5" />
+      </div>
+      {!collapsed && <span>Logout</span>}
+    </button>
+  );
+
+  if (collapsed) {
+    return (
+      <Tooltip delayDuration={0}>
+        <TooltipTrigger asChild>{content}</TooltipTrigger>
+        <TooltipContent side="right"><p>Logout</p></TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return content;
 }

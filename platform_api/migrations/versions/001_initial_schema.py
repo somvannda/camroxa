@@ -214,6 +214,8 @@ def upgrade() -> None:
                 CHECK (creativity_level BETWEEN 0 AND 100),
             pairing_mode VARCHAR(20) NOT NULL DEFAULT 'match_key',
             status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            auto_gen_image BOOLEAN NOT NULL DEFAULT false,
+            auto_gsuno BOOLEAN NOT NULL DEFAULT false,
             ok_run_dir VARCHAR(500),
             alt_run_dir VARCHAR(500),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

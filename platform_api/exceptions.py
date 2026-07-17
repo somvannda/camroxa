@@ -219,3 +219,76 @@ class DuplicateKeyLabelError(PlatformAPIError):
             f"Label '{label}' already exists for provider '{provider}'.",
             details={"provider": provider, "label": label},
         )
+
+
+# ---------------------------------------------------------------------------
+# Reset Operation Errors
+# ---------------------------------------------------------------------------
+
+
+class ResetError(PlatformAPIError):
+    """Base error for reset operations (500)."""
+
+    status_code = 500
+    error_code = "RESET_ERROR"
+
+    def __init__(
+        self,
+        message: str = "An error occurred during the reset operation.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+
+
+class BackupCreationError(ResetError):
+    """Backup write failed — reset must be aborted (500)."""
+
+    error_code = "BACKUP_CREATION_ERROR"
+
+    def __init__(
+        self,
+        message: str = "Backup creation failed, reset aborted.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+
+
+class ResetExecutionError(ResetError):
+    """Database deletion failed — transaction rolled back (500)."""
+
+    error_code = "RESET_EXECUTION_ERROR"
+
+    def __init__(self, table: str, detail: str) -> None:
+        super().__init__(
+            f"Operation failed: {table} - {detail}. Transaction rolled back.",
+            details={"table": table, "detail": detail},
+        )
+
+
+class RestoreExecutionError(ResetError):
+    """Restore insert failed — transaction rolled back (500)."""
+
+    error_code = "RESTORE_EXECUTION_ERROR"
+
+    def __init__(self, table: str, detail: str) -> None:
+        super().__init__(
+            f"Operation failed: {table} - {detail}. Transaction rolled back.",
+            details={"table": table, "detail": detail},
+        )
+
+
+class RateLimitExceededError(ResetError):
+    """Too many failed password attempts (429)."""
+
+    status_code = 429
+    error_code = "RATE_LIMIT_EXCEEDED"
+
+    def __init__(
+        self,
+        message: str = "Too many failed attempts. Try again in 15 minutes.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)

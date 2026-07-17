@@ -14,7 +14,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("""
-        CREATE TABLE channel_prompts (
+        CREATE TABLE IF NOT EXISTS channel_prompts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             name VARCHAR(100) NOT NULL,
             content TEXT NOT NULL
@@ -28,10 +28,10 @@ def upgrade() -> None:
         )
     """)
     op.execute("""
-        CREATE INDEX idx_channel_prompts_category ON channel_prompts(category)
+        CREATE INDEX IF NOT EXISTS idx_channel_prompts_category ON channel_prompts(category)
     """)
     op.execute("""
-        CREATE INDEX idx_channel_prompts_genre ON channel_prompts(genre)
+        CREATE INDEX IF NOT EXISTS idx_channel_prompts_genre ON channel_prompts(genre)
     """)
 
 

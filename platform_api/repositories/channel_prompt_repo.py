@@ -88,7 +88,7 @@ class ChannelPromptRepository:
             row = await self._pool.fetchrow(
                 f"""SELECT {_SELECT_COLS} FROM channel_prompts
                     WHERE category = $1 AND match_key = $2 AND is_active = true
-                    ORDER BY name ASC LIMIT 1""",
+                    ORDER BY RANDOM() LIMIT 1""",
                 category,
                 match_key,
             )
@@ -100,7 +100,7 @@ class ChannelPromptRepository:
             row = await self._pool.fetchrow(
                 f"""SELECT {_SELECT_COLS} FROM channel_prompts
                     WHERE category = $1 AND genre = $2 AND is_active = true
-                    ORDER BY name ASC LIMIT 1""",
+                    ORDER BY RANDOM() LIMIT 1""",
                 category,
                 genre,
             )
@@ -111,7 +111,7 @@ class ChannelPromptRepository:
         row = await self._pool.fetchrow(
             f"""SELECT {_SELECT_COLS} FROM channel_prompts
                 WHERE category = $1 AND genre = '' AND is_active = true
-                ORDER BY name ASC LIMIT 1""",
+                ORDER BY RANDOM() LIMIT 1""",
             category,
         )
         return _row_to_channel_prompt(row) if row else None

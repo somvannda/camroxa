@@ -63,14 +63,14 @@ class TestTokenExtraction:
         token = _extract_token(ws)
         assert token == "my-jwt-token"
 
-    def test_query_params_takes_precedence(self) -> None:
-        """Query parameter token takes precedence over header."""
+    def test_authorization_header_takes_precedence(self) -> None:
+        """Authorization header takes precedence over query token (S2)."""
         ws = MagicMock()
         ws.query_params = {"token": "query-token"}
         ws.headers = {"authorization": "Bearer header-token"}
 
         token = _extract_token(ws)
-        assert token == "query-token"
+        assert token == "header-token"
 
     def test_no_token_returns_none(self) -> None:
         """Returns None when no token is available."""
@@ -109,7 +109,9 @@ class TestWebSocketEndpoint:
                 user_id="user-123",
                 email="test@example.com",
                 role="user",
+                iat=1_700_000_000,
                 exp=9999999999,
+                token_version=0,
             )
         )
         self.registry = ConnectionRegistry()

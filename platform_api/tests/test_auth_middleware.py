@@ -8,6 +8,7 @@ Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6, 16.7
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -43,10 +44,12 @@ def mock_auth_service():
     service = AsyncMock()
     service.validate_token = AsyncMock(
         return_value=TokenPayload(
-            user_id="user-123",
+            user_id="00000000-0000-0000-0000-000000000123",
             email="test@example.com",
             role="user",
+            iat=1_700_000_000,
             exp=9999999999,
+            token_version=0,
         )
     )
     return service
@@ -56,7 +59,7 @@ def mock_auth_service():
 def mock_user_repo():
     """Return a mock user repository that returns 'active' status."""
     repo = AsyncMock()
-    repo.get_status = AsyncMock(return_value="active")
+    repo.get_auth_state = AsyncMock(return_value={"status": "active", "token_version": 0})
     return repo
 
 
@@ -76,14 +79,31 @@ def mock_credit_repo():
     return repo
 
 
+@pytest.fixture
+def mock_plan_repo():
+    repo = AsyncMock()
+    repo.get_user_active_subscription_context = AsyncMock(return_value=None)
+    repo.get_user_active_plan = AsyncMock(return_value=None)
+    return repo
+
+
+@pytest.fixture
+def mock_usage_repo():
+    repo = AsyncMock()
+    repo.get_monthly_count = AsyncMock(return_value=0)
+    return repo
+
+
 @pytest.fixture(autouse=True)
-def configure_deps(mock_auth_service, mock_user_repo, mock_license_repo, mock_credit_repo):
+def configure_deps(mock_auth_service, mock_user_repo, mock_license_repo, mock_credit_repo, mock_plan_repo, mock_usage_repo):
     """Configure auth dependencies for all tests in this module."""
     configure_auth_dependencies(
         auth_service=mock_auth_service,
         user_repo=mock_user_repo,
         license_repo=mock_license_repo,
         credit_repo=mock_credit_repo,
+        plan_repo=mock_plan_repo,
+        usage_repo=mock_usage_repo,
     )
     yield
     # Reset to None after tests
@@ -92,6 +112,8 @@ def configure_deps(mock_auth_service, mock_user_repo, mock_license_repo, mock_cr
         user_repo=mock_user_repo,
         license_repo=None,
         credit_repo=None,
+        plan_repo=None,
+        usage_repo=None,
     )
 
 
@@ -163,11 +185,21 @@ class TestGetCurrentUser:
 
     async def test_valid_token_active_user(self, mock_auth_service, mock_user_repo) -> None:
         ctx = await get_current_user("Bearer valid-token")
-        assert ctx.user_id == "user-123"
+        assert ctx.user_id == "00000000-0000-0000-0000-000000000123"
         assert ctx.email == "test@example.com"
         assert ctx.role == "user"
         mock_auth_service.validate_token.assert_awaited_once_with("valid-token")
-        mock_user_repo.get_status.assert_awaited_once_with("user-123")
+        mock_user_repo.get_auth_state.assert_awaited_once_with("00000000-0000-0000-0000-000000000123")
+
+    async def test_binds_context_to_request_state(self) -> None:
+        request = SimpleNamespace(
+            state=SimpleNamespace(),
+            cookies={},
+            headers={},
+        )
+        ctx = await get_current_user("Bearer valid-token", request=request)
+        assert request.state.user_id == "00000000-0000-0000-0000-000000000123"
+        assert request.state.auth_context == ctx
 
     async def test_invalid_token_raises_401(self, mock_auth_service) -> None:
         mock_auth_service.validate_token.side_effect = AuthenticationError("Invalid token.")
@@ -184,18 +216,18 @@ class TestGetCurrentUser:
             await get_current_user("")
 
     async def test_suspended_user_raises_403(self, mock_user_repo) -> None:
-        mock_user_repo.get_status.return_value = "suspended"
+        mock_user_repo.get_auth_state.return_value = {"status": "suspended", "token_version": 0}
         with pytest.raises(ForbiddenError, match="Account suspended"):
             await get_current_user("Bearer valid-token")
 
     async def test_deleted_user_is_not_suspended(self, mock_user_repo) -> None:
         # Deleted users are not found — treated as auth error
-        mock_user_repo.get_status.return_value = None
+        mock_user_repo.get_auth_state.return_value = None
         with pytest.raises(AuthenticationError, match="User not found"):
             await get_current_user("Bearer valid-token")
 
     async def test_user_not_found_raises_401(self, mock_user_repo) -> None:
-        mock_user_repo.get_status.return_value = None
+        mock_user_repo.get_auth_state.return_value = None
         with pytest.raises(AuthenticationError):
             await get_current_user("Bearer valid-token")
 
@@ -297,10 +329,10 @@ class TestRequireGenerationAccess:
 
     async def test_all_checks_pass(self, mock_auth_service, mock_user_repo, mock_license_repo, mock_credit_repo) -> None:
         ctx = await require_generation_access("Bearer valid-token")
-        assert ctx.user_id == "user-123"
+        assert ctx.user_id == "00000000-0000-0000-0000-000000000123"
         assert ctx.role == "user"
         mock_auth_service.validate_token.assert_awaited_once()
-        mock_user_repo.get_status.assert_awaited_once()
+        mock_user_repo.get_auth_state.assert_awaited_once()
         mock_license_repo.has_active_license.assert_awaited_once()
         mock_credit_repo.get_balance.assert_awaited_once()
 
@@ -314,7 +346,7 @@ class TestRequireGenerationAccess:
         self, mock_user_repo, mock_license_repo
     ) -> None:
         """Step 2: Suspension check fails before license is checked (Req 16.4)."""
-        mock_user_repo.get_status.return_value = "suspended"
+        mock_user_repo.get_auth_state.return_value = {"status": "suspended", "token_version": 0}
         with pytest.raises(ForbiddenError, match="Account suspended"):
             await require_generation_access("Bearer valid-token")
         # License should NOT be checked since suspension fails first
@@ -330,11 +362,27 @@ class TestRequireGenerationAccess:
         # Credit should NOT be checked since license fails first
         mock_credit_repo.get_balance.assert_not_awaited()
 
-    async def test_step4_insufficient_credits_raises_402(self, mock_credit_repo) -> None:
-        """Step 4: Credit balance check fails last."""
+    async def test_step4_insufficient_credits_raises_402(self, mock_credit_repo, mock_plan_repo, mock_usage_repo) -> None:
+        """Step 4: Credit balance check fails last when quota is also unavailable."""
         mock_credit_repo.get_balance.return_value = 0
-        with pytest.raises(InsufficientCreditsError):
-            await require_generation_access("Bearer valid-token")
+        with patch(
+            "platform_api.services.quota_display_service.get_plan_quota_remaining",
+            new=AsyncMock(return_value=None),
+        ):
+            with pytest.raises(InsufficientCreditsError):
+                await require_generation_access("Bearer valid-token")
+
+    async def test_step4_quota_only_subscriber_passes_with_zero_wallet(
+        self, mock_credit_repo, mock_plan_repo, mock_usage_repo
+    ) -> None:
+        """Quota-only subscribers with remaining plan allowance pass step 4."""
+        mock_credit_repo.get_balance.return_value = 0
+        with patch(
+            "platform_api.services.quota_display_service.get_plan_quota_remaining",
+            new=AsyncMock(return_value=12),
+        ):
+            ctx = await require_generation_access("Bearer valid-token")
+            assert ctx.user_id == "00000000-0000-0000-0000-000000000123"
 
     async def test_authorization_order_is_strict(
         self, mock_auth_service, mock_user_repo, mock_license_repo, mock_credit_repo
@@ -342,12 +390,12 @@ class TestRequireGenerationAccess:
         """All checks should fail in order: 401 → 403(suspension) → 403(license) → 402."""
         # When token is invalid, nothing else is checked
         mock_auth_service.validate_token.side_effect = AuthenticationError("Bad")
-        mock_user_repo.get_status.return_value = "suspended"
+        mock_user_repo.get_auth_state.return_value = {"status": "suspended", "token_version": 0}
         mock_license_repo.has_active_license.return_value = False
         mock_credit_repo.get_balance.return_value = 0
 
         with pytest.raises(AuthenticationError):
             await require_generation_access("Bearer bad")
-        mock_user_repo.get_status.assert_not_awaited()
+        mock_user_repo.get_auth_state.assert_not_awaited()
         mock_license_repo.has_active_license.assert_not_awaited()
         mock_credit_repo.get_balance.assert_not_awaited()

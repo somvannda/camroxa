@@ -1,0 +1,9 @@
+@import "../../../shared/theme/camxora.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-background text-foreground;
+}

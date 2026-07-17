@@ -6,7 +6,7 @@ These schemas handle HTTP-layer validation and serialization.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -84,15 +84,19 @@ class DraftGenerationRequest(BaseModel):
     """Submit a song draft generation request to the LLM provider."""
 
     language: str = Field(default="en", max_length=20)
+    secondary_language: str | None = Field(default=None, max_length=20)
     creativity_level: int = Field(ge=0, le=100, default=50)
     description_id: str | None = None
     structure_id: str | None = None
+    structure_mode: str = Field(default="template", pattern=r"^(template|ai_free)$")
     avoid_titles: list[str] = Field(default_factory=list, max_length=200)
     avoid_albums: list[str] = Field(default_factory=list, max_length=200)
     avoid_openings: list[str] = Field(default_factory=list, max_length=200)
     forced_title: str | None = None
     forced_album: str | None = None
     forced_opening: str | None = None
+    title_seed: str | None = None
+    album_seed: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -105,10 +109,30 @@ class BatchCreateRequest(BaseModel):
 
     ok_profile_id: str
     alt_profile_id: str
+    description_id: str | None = None
+    structure_id: str | None = None
+    structure_mode: str = Field(default="template", pattern=r"^(template|ai_free)$")
+    shuffle_structure: bool = False
+    auto_gen_image: bool = False
+    auto_gsuno: bool = False
     song_count: int = Field(ge=1, le=50)
     language: str = Field(default="en")
+    secondary_language: str | None = Field(default=None, max_length=20)
     creativity_level: int = Field(ge=0, le=100, default=50)
     pairing_mode: str = Field(default="match_key")
+    from_date: date
+    to_date: date
+    ok_run_dir: str | None = None
+    alt_run_dir: str | None = None
+    album: str | None = Field(default=None, max_length=120)
+
+    @field_validator("to_date")
+    @classmethod
+    def validate_date_range(cls, value: date, info) -> date:
+        from_date = info.data.get("from_date")
+        if from_date is not None and value < from_date:
+            raise ValueError("to_date must be on or after from_date")
+        return value
 
 
 class BatchCreateResponse(BaseModel):
@@ -117,6 +141,81 @@ class BatchCreateResponse(BaseModel):
     batch_id: str
     status: str
     song_count: int
+    from_date: date
+    to_date: date
+    planned_days: int
+    ok_run_dir: str | None = None
+    alt_run_dir: str | None = None
+
+
+class MusicPlanPreflightRequest(BaseModel):
+    """Validate an entire music automation plan before creating batches."""
+
+    ok_profile_ids: list[str] = Field(min_length=1)
+    alt_profile_ids: list[str] = Field(min_length=1)
+    from_date: date
+    to_date: date
+    song_count: int = Field(ge=1, le=50)
+    auto_gen_image: bool = False
+    auto_gsuno: bool = False
+
+    @field_validator("to_date")
+    @classmethod
+    def validate_plan_date_range(cls, value: date, info) -> date:
+        from_date = info.data.get("from_date")
+        if from_date is not None and value < from_date:
+            raise ValueError("to_date must be on or after from_date")
+        return value
+
+
+class MusicPlanPreflightResponse(BaseModel):
+    """Whether the user can run the requested music automation plan."""
+
+    can_generate: bool
+    reason: str | None = None
+    batch_count: int = 0
+    total_songs: int = 0
+    total_wallet_cost: int = 0
+    wallet_balance: int = 0
+    covered_by_subscription: bool = False
+    songs_remaining: int | None = None
+    images_remaining: int | None = None
+    drafts_remaining: int | None = None
+    credit_shortfall: int | None = None
+
+
+class ChannelDailyQuotaResponse(BaseModel):
+    """Per-channel daily quota usage for one profile."""
+
+    profile_id: str
+    profile_name: str
+    daily_songs_used: int
+    daily_songs_limit: int
+    daily_songs_remaining: int
+    daily_images_used: int
+    daily_images_limit: int
+    daily_images_remaining: int
+
+
+class QuotaStatusResponse(BaseModel):
+    """Monthly and per-channel daily quota snapshot."""
+
+    songs_remaining: int | None = None
+    songs_quota: int | None = None
+    images_remaining: int | None = None
+    images_quota: int | None = None
+    drafts_remaining: int | None = None
+    drafts_quota: int | None = None
+    videos_remaining: int | None = None
+    videos_quota: int | None = None
+    merges_remaining: int | None = None
+    merges_quota: int | None = None
+    daily_videos_remaining: int | None = None
+    daily_videos_limit: int | None = None
+    daily_merges_remaining: int | None = None
+    daily_merges_limit: int | None = None
+    wallet_balance: int = 0
+    channels: list[ChannelDailyQuotaResponse] = Field(default_factory=list)
 
 
 class BatchStatusResponse(BaseModel):
@@ -132,6 +231,71 @@ class BatchStatusResponse(BaseModel):
     suno_failed: int
     audio_downloaded: int
     images_completed: int
+    ok_run_dir: str | None = None
+    alt_run_dir: str | None = None
+
+
+class SongRetryResponse(BaseModel):
+    """Response returned after retrying a failed song step."""
+
+    batch_id: str
+    song_id: str
+    status: str
+    title: str | None = None
+    album: str | None = None
+
+
+class MusicHistorySongResponse(BaseModel):
+    """Read-only song summary used by the music history surface."""
+
+    song_id: str
+    batch_index: int
+    title: str | None = None
+    album: str | None = None
+    lyrics: str | None = None
+    description_id: str | None = None
+    description_name: str | None = None
+    structure_id: str | None = None
+    structure_name: str | None = None
+    output_dir_ok: str | None = None
+    output_dir_alt: str | None = None
+    status: str
+    suno_status: str | None = None
+    youtube_status: str | None = None
+    downloaded_ok: bool = False
+    downloaded_alt: bool = False
+    image_jobs_completed: int = 0
+    image_jobs_total: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class MusicHistoryBatchResponse(BaseModel):
+    """Read-only batch summary with nested songs for music history."""
+
+    batch_id: str
+    status: str
+    song_count: int
+    from_date: date | None = None
+    to_date: date | None = None
+    planned_days: int
+    ok_profile_id: str | None = None
+    ok_profile_name: str | None = None
+    alt_profile_id: str | None = None
+    alt_profile_name: str | None = None
+    ok_album: str | None = None
+    alt_album: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    songs: list[MusicHistorySongResponse] = Field(default_factory=list)
+
+
+class MusicHistoryListResponse(BaseModel):
+    """Top-level response for the music history endpoint."""
+
+    batches: list[MusicHistoryBatchResponse] = Field(default_factory=list)
+    summary: str
+    updated_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -273,13 +437,102 @@ class RecentActivity(BaseModel):
 class DashboardStatsResponse(BaseModel):
     """Aggregated dashboard statistics for the current user."""
 
-    credits_spent: int = 0
-    credits_remaining: int = 0
-    credits_total: int = 0
+    credits_spent: float = 0
+    credits_remaining: float = 0
+    credits_total: float = 0
     songs_generated: int = 0
     songs_remaining: int | None = None
     songs_quota: int | None = None
+    images_remaining: int | None = None
+    images_quota: int | None = None
+    drafts_remaining: int | None = None
+    drafts_quota: int | None = None
     images_generated: int = 0
     videos_generated: int = 0
+    videos_uploaded: int = 0
     usage_by_day: list[DailyUsage] = []
     recent_activity: list[RecentActivity] = []
+
+
+class PublicStatsResponse(BaseModel):
+    """Public aggregated platform statistics for marketing surfaces."""
+
+    updated_at: datetime
+    users_total: int = 0
+    profiles_total: int = 0
+    batches_total: int = 0
+    songs_total: int = 0
+    images_total: int = 0
+    videos_total: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Progress / Workflow Schemas
+# ---------------------------------------------------------------------------
+
+
+class ProgressRowMeta(BaseModel):
+    """Supplemental row metadata for progress/workflow views."""
+
+    batch_id: str
+    profile_id: str
+    role: str
+    run_dir: str | None = None
+    source_mode: str | None = None
+    background_16x9_path: str | None = None
+    background_9x16_path: str | None = None
+    thumbnail_16x9_path: str | None = None
+    thumbnail_9x16_path: str | None = None
+    long_ready: bool = False
+    reel_ready: bool = False
+    expected: int = 0
+    saved: int = 0
+    download_ready: int = 0
+    download_pending: int = 0
+    bg_ready: int = 0
+    bg_total: int = 0
+    th_ready: int = 0
+    th_total: int = 0
+    bg_status: str = "PENDING"
+    th_status: str = "PENDING"
+    youtube_status: str = ""
+    youtube_url: str | None = None
+    youtube_success: int = 0
+    youtube_pending: int = 0
+    youtube_failed: int = 0
+    music_started_at: datetime | None = None
+    music_updated_at: datetime | None = None
+    image_started_at: datetime | None = None
+    image_updated_at: datetime | None = None
+    youtube_created_at: datetime | None = None
+    youtube_updated_at: datetime | None = None
+    updated_at: datetime | None = None
+    draft_failed_song_ids: list[str] = Field(default_factory=list)
+    suno_failed_song_ids: list[str] = Field(default_factory=list)
+
+
+class ProgressRow(BaseModel):
+    """Single row shown in the progress/workflow surfaces."""
+
+    batch: str
+    run_date: str
+    channel: str
+    album: str | None = None
+    status: str
+    music: str
+    image: str
+    converter: str
+    merge: str
+    youtube: str
+    stage: str
+    notes: str
+    updated: str
+    meta: ProgressRowMeta
+
+
+class ProgressListResponse(BaseModel):
+    """List response for aggregated progress/workflow rows."""
+
+    rows: list[ProgressRow] = []
+    summary: str = "Ready"
+    updated_at: datetime

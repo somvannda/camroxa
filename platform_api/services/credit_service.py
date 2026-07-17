@@ -30,8 +30,10 @@ T = TypeVar("T")
 # Constants
 # ---------------------------------------------------------------------------
 
-MAX_WALLET_BALANCE = 10_000_000
-LIFETIME_BONUS_CREDITS = 1_000
+from platform_api.services.credit_units import CREDIT_SCALE, MAX_CREDIT_UNITS
+
+MAX_WALLET_BALANCE = MAX_CREDIT_UNITS
+LIFETIME_BONUS_CREDITS = 1_000 * CREDIT_SCALE
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +54,7 @@ class CreditRepository(Protocol):
         amount: int,
         reason: str,
         ref_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> bool:
         """Atomically deduct credits. Returns True on success."""
         ...
@@ -74,8 +77,18 @@ class CreditRepository(Protocol):
         amount: int,
         reason: str,
         ref_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> int:
         """Refund credits and return new balance."""
+        ...
+
+    async def patch_transaction_metadata(
+        self,
+        user_id: UUID,
+        ref_id: str,
+        patch: dict[str, Any],
+    ) -> bool:
+        """Merge metadata onto an existing transaction."""
         ...
 
 
@@ -126,7 +139,12 @@ class CreditPackRepository(Protocol):
 class PricingServiceProtocol(Protocol):
     """Protocol for credit pricing service used by execute_with_credits."""
 
-    async def get_price(self, ai_service: str, operation_type: str) -> int:
+    async def get_price(
+        self,
+        ai_service: str,
+        operation_type: str,
+        sub_model: str | None = None,
+    ) -> int:
         """Return credits_per_operation for an ai_service/operation combination."""
         ...
 
@@ -179,7 +197,14 @@ class CreditService:
         """
         return await self._credit_repo.get_balance(UUID(user_id))
 
-    async def deduct(self, user_id: str, amount: int, reason: str, ref_id: str) -> bool:
+    async def deduct(
+        self,
+        user_id: str,
+        amount: int,
+        reason: str,
+        ref_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
         """Atomically deduct credits from a user's wallet.
 
         Args:
@@ -187,6 +212,7 @@ class CreditService:
             amount: The number of credits to deduct (must be positive).
             reason: Description of the deduction reason.
             ref_id: Reference identifier for the operation.
+            metadata: Optional structured usage metadata for admin auditing.
 
         Returns:
             True if the deduction succeeded (sufficient balance).
@@ -202,9 +228,17 @@ class CreditService:
             amount=amount,
             reason=reason,
             ref_id=ref_id,
+            metadata=metadata,
         )
 
-    async def refund(self, user_id: str, amount: int, reason: str, ref_id: str) -> None:
+    async def refund(
+        self,
+        user_id: str,
+        amount: int,
+        reason: str,
+        ref_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         """Refund credits to a user's wallet.
 
         Used when an external service call fails after credits were deducted.
@@ -229,13 +263,29 @@ class CreditService:
             amount=amount,
             reason=reason,
             ref_id=ref_id,
+            metadata=metadata,
         )
-        logger.info(
+        logger.debug(
             "Refunded %d credits to user %s (reason=%s, ref=%s)",
             amount,
             user_id,
             reason,
             ref_id,
+        )
+
+    async def patch_transaction_metadata(
+        self,
+        user_id: str,
+        ref_id: str,
+        patch: dict[str, Any],
+    ) -> bool:
+        """Merge audit fields onto an existing wallet transaction."""
+        if not ref_id or not patch:
+            return False
+        return await self._credit_repo.patch_transaction_metadata(
+            UUID(user_id),
+            ref_id,
+            patch,
         )
 
     # ------------------------------------------------------------------
@@ -317,7 +367,7 @@ class CreditService:
                 },
             )
 
-        logger.info(
+        logger.debug(
             "Deducted %d credits for %s via %s (user=%s)",
             total_credits, operation_type, ai_service, uid,
         )
@@ -372,7 +422,7 @@ class CreditService:
                 amount=amount,
                 reason=f"refund:{reason}",
             )
-            logger.info("Refunded %d credits to user %s (reason=%s)", amount, user_id, reason)
+            logger.debug("Refunded %d credits to user %s (reason=%s)", amount, user_id, reason)
         except Exception as refund_exc:
             logger.error("Failed to refund %d credits to user %s: %s", amount, user_id, refund_exc)
 
@@ -453,6 +503,17 @@ class CreditService:
             credits_to_add,
             new_balance,
         )
+        from platform_api.services.credit_audit_service import log_wallet_credit_event
+
+        await log_wallet_credit_event(
+            actor_id=user_id,
+            user_id=user_id,
+            action_type="credit.pack.purchase",
+            amount_units=credits_to_add,
+            reason="credit_pack_purchase",
+            payment_ref=payment_ref,
+            metadata={"pack_id": pack_id, "new_balance_units": new_balance},
+        )
         return new_balance
 
     # ------------------------------------------------------------------
@@ -508,7 +569,8 @@ class CreditService:
             if plan.monthly_song_quota is not None and plan.monthly_song_quota > 0:
                 # Compute current billing period
                 period_start, period_end = self._compute_billing_period(
-                    license_record
+                    license_record,
+                    billing_cycle_days=plan.billing_cycle_days,
                 )
 
                 # Ensure usage record exists
@@ -707,44 +769,19 @@ class CreditService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _compute_billing_period(license_record: License) -> tuple[date, date]:
-        """Compute the current billing period start and end dates.
+    def _compute_billing_period(
+        license_record: License,
+        *,
+        billing_cycle_days: int | None = None,
+    ) -> tuple[date, date]:
+        """Compute the current billing period start and end dates."""
+        from platform_api.services.billing_period_service import compute_billing_period
 
-        Based on the license's activated_at date and the plan's billing cycle.
-        For simplicity, uses 30-day periods from activation date.
-
-        Args:
-            license_record: The active license for the user.
-
-        Returns:
-            Tuple of (period_start, period_end) as date objects.
-        """
-        if license_record.activated_at is None:
-            # Fallback: use today as period start
-            today = date.today()
-            return today, today
-
-        activation = license_record.activated_at
-        if isinstance(activation, datetime):
-            activation_date = activation.date()
-        else:
-            activation_date = activation
-
-        today = date.today()
-
-        # Calculate how many full periods have elapsed since activation
-        days_since_activation = (today - activation_date).days
-        # Default to 30-day billing period
-        period_length = 30
-        periods_elapsed = days_since_activation // period_length
-
-        period_start = activation_date
-        for _ in range(periods_elapsed):
-            period_start = _add_days(period_start, period_length)
-
-        period_end = _add_days(period_start, period_length - 1)
-
-        return period_start, period_end
+        period = compute_billing_period(
+            activated_at=license_record.activated_at,
+            billing_cycle_days=billing_cycle_days or 30,
+        )
+        return period.start, period.end
 
 
 # ---------------------------------------------------------------------------

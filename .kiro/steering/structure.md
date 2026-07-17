@@ -2,7 +2,7 @@
 
 ```
 MusicGenerator/
-├── python_app/              # Desktop application (PyQt6)
+├── camxora_python/          # Desktop application (PyQt6) [formerly python_app/]
 │   ├── app/                 # Application shell & main window
 │   │   ├── bootstrap.py     # Entry point (QApplication setup, theme)
 │   │   ├── main_window.py   # Main window (being decomposed)
@@ -70,7 +70,7 @@ MusicGenerator/
 
 ## Architecture Patterns
 
-### Desktop App — Coordinator Pattern
+### Desktop App (`camxora_python/`) — Coordinator Pattern
 - Features are isolated into `features/<name>/coordinator.py`
 - Coordinators receive dependencies via constructor injection (Protocol-based ports)
 - No direct Qt imports in coordinators — UI interaction through callable ports

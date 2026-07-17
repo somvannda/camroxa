@@ -52,22 +52,6 @@ Before implementing ANY new feature:
 - [ ] Review existing API endpoints and patterns
 - [ ] Look at similar pages to understand established patterns
 
-## File Editing Best Practices
-
-**Use `strReplace` for:**
-- Small, targeted changes (single line or function)
-- Import statement fixes
-- Configuration value updates
-- Bug fixes in specific code sections
-
-**Use `fsWrite` for:**
-- New files (components, modules, scripts)
-- Complete file rewrites
-- New documentation files
-
-**Use `fsAppend` for:**
-- Adding to existing files (new functions or sections)
-- Extending configurations
 
 ## Testing Before Delivery
 

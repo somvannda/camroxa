@@ -38,6 +38,10 @@ class UserRepository(Protocol):
         """Return the user with the given email, or None if not found."""
         ...
 
+    async def increment_token_version(self, user_id: UUID) -> None:
+        """Invalidate all existing access tokens for the user."""
+        ...
+
 
 class RefreshTokenRepository(Protocol):
     """Protocol for refresh token persistence (refresh_tokens table)."""
@@ -124,6 +128,10 @@ class AuthService:
 
         return await self._issue_token_pair(user)
 
+    async def issue_token_pair_for_user(self, user: User) -> TokenPair:
+        """Issue a fresh access/refresh token pair for an already-authenticated user record."""
+        return await self._issue_token_pair(user)
+
     async def refresh_token(self, refresh_token: str) -> TokenPair:
         """Issue a new token pair using a valid refresh token.
 
@@ -144,7 +152,25 @@ class AuthService:
             raise AuthenticationError("Refresh token not found.")
 
         if stored.get("revoked_at") is not None:
-            raise AuthenticationError("Refresh token has been revoked.")
+            # Phase 3 / H8: reuse of a rotated refresh token → revoke all sessions.
+            reuse_user_id = stored.get("user_id")
+            if reuse_user_id is not None:
+                try:
+                    await self.revoke_tokens(str(reuse_user_id))
+                    logger.warning(
+                        "Refresh token reuse detected for user %s — all sessions revoked.",
+                        reuse_user_id,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to revoke sessions after refresh reuse for %s: %s",
+                        reuse_user_id,
+                        exc,
+                    )
+            raise AuthenticationError(
+                "Refresh token reuse detected. All sessions have been revoked. Please sign in again.",
+                details={"error_code": "REFRESH_TOKEN_REUSE"},
+            )
 
         expires_at = stored.get("expires_at")
         if expires_at is not None:
@@ -180,6 +206,7 @@ class AuthService:
         Used on logout, account suspension, or password change.
         """
         await self._refresh_token_repo.revoke_all_for_user(UUID(user_id))
+        await self._user_repo.increment_token_version(UUID(user_id))
         logger.info("Revoked all refresh tokens for user %s", user_id)
 
     # ------------------------------------------------------------------
@@ -215,6 +242,7 @@ class AuthService:
             "user_id": str(user.id),
             "email": user.email,
             "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+            "token_version": int(getattr(user, "token_version", 0) or 0),
             "exp": access_exp,
             "iat": now,
             "type": "access",
@@ -231,6 +259,7 @@ class AuthService:
             "user_id": str(user.id),
             "email": user.email,
             "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+            "token_version": int(getattr(user, "token_version", 0) or 0),
             "exp": refresh_exp,
             "iat": now,
             "type": "refresh",
@@ -292,7 +321,9 @@ class AuthService:
             user_id=payload["user_id"],
             email=payload["email"],
             role=payload["role"],
+            iat=int(payload["iat"]),
             exp=payload["exp"],
+            token_version=int(payload.get("token_version", 0) or 0),
         )
 
     @staticmethod

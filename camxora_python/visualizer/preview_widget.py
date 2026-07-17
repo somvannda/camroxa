@@ -1,0 +1,1959 @@
+"""Live GPU preview widget — PySide6 port of python_app SpectrumPreview."""
+
+
+import time
+import threading
+from pathlib import Path
+import numpy as np
+
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+from PySide6.QtCore import Signal, QTimer, QByteArray, Qt, QRectF, QSize, QMetaObject, Slot
+from PySide6.QtGui import QPainter, QColor, QPen, QFont
+
+import moderngl
+from visualizer.gpu_render import (
+    _compile,
+    _compile_particle_quads,
+    _compute_visible_logo_radius_ratio,
+    _quad_vao,
+    _render_particle_styled_quads,
+    _resolve_attached_layer_base_offset,
+    _resolve_export_spectrum_style,
+    _resolve_particle_style_index,
+    _resolve_spectrum_layer_radius,
+    ParticleSystem,
+    ParticleConfig,
+)
+from visualizer._spectrum_fast import resolve_bar_pixel_width
+from features.video.lib.particle_color_engine import (
+    build_particle_rgba_rows,
+    extract_particle_color_model,
+    palette_colors_to_rgb_tuple,
+)
+from visualizer.audio import AudioAnalyzer
+from visualizer.contracts import PreviewConfig
+from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+
+
+LOG_PATH = Path(__file__).parent.parent / "debug.log"
+
+def _fmt_time(sec: float) -> str:
+    s = max(0.0, float(sec))
+    mm = int(s // 60)
+    ss = int(s % 60)
+    return f'{mm:02d}:{ss:02d}'
+
+def _get_anchor_coords(anchor: str, offset_x: float, offset_y: float, w: int, h: int) -> tuple[float, float]:
+    a = str(anchor).lower().strip()
+    if 'left' in a:
+        cx = 0.0
+    elif 'right' in a:
+        cx = float(w)
+    else:
+        cx = float(w) * 0.5
+    if 'top' in a:
+        cy = float(h)
+    elif 'bottom' in a:
+        cy = 0.0
+    else:
+        cy = float(h) * 0.5
+    return (cx + float(offset_x), cy - float(offset_y))
+
+
+def _text_quad_center_offset(anchor: str, tw: float, th: float) -> tuple[float, float]:
+    """Shift from anchor point to texture-quad center (shader centers on text_px).
+
+    Left/right pin that edge so title-list numbers share one vertical line.
+    Top/bottom pin that edge so list rows stack without vertical drift/overlap.
+    """
+    a = str(anchor or "").lower().strip()
+    half_w = float(tw) * 0.5
+    half_h = float(th) * 0.5
+    # OpenGL Y-up: top of a centered quad is at cy + half_h.
+    if "left" in a:
+        ox = half_w
+    elif "right" in a:
+        ox = -half_w
+    else:
+        ox = 0.0
+    if "top" in a:
+        oy = -half_h
+    elif "bottom" in a:
+        oy = half_h
+    else:
+        oy = 0.0
+    return (ox, oy)
+
+def _smooth_env(prev: float, target: float, smoothing: float) -> float:
+    s = float(max(0.0, min(0.99, smoothing)))
+    t = float(max(0.0, min(1.0, target)))
+    return float(float(prev) * s + t * (1.0 - s))
+
+class _QtGLContextLoader:
+
+    def __init__(self, qt_context):
+        self._qt_context = qt_context
+
+    def load_opengl_function(self, name):
+        if self._qt_context is None:
+            return 0
+        try:
+            qb = QByteArray(name if isinstance(name, (bytes, bytearray)) else str(name).encode('ascii'))
+            addr = self._qt_context.getProcAddress(qb)
+        except Exception:
+            try:
+                addr = self._qt_context.getProcAddress(str(name))
+            except Exception:
+                return 0
+        return int(addr) if addr else 0
+    load = load_opengl_function
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def release(self):
+        return None
+
+class AspectRatioBox(QWidget):
+
+    def __init__(self, child: QWidget, ratio_w: int=16, ratio_h: int=9, parent=None):
+        super().__init__(parent)
+        self._child = child
+        self._overlay: QWidget | None = None
+        self._ratio = float(ratio_w) / float(ratio_h)
+        self._child.setParent(self)
+
+    def _apply_child_geometry(self) -> None:
+        w = max(1, int(self.width()))
+        h = max(1, int(self.height()))
+        target_w = int(min(w, int(round(h * self._ratio))))
+        target_h = int(min(h, int(round(w / self._ratio))))
+        if target_w / float(self._ratio) <= h:
+            cw, ch = (target_w, int(round(target_w / self._ratio)))
+        else:
+            cw, ch = (int(round(target_h * self._ratio)), target_h)
+        x = (w - cw) // 2
+        y = (h - ch) // 2
+        self._child.setGeometry(x, y, cw, ch)
+        if self._overlay is not None:
+            self._overlay.setGeometry(x, y, cw, ch)
+            self._overlay.raise_()
+
+    def set_overlay(self, overlay: QWidget | None) -> None:
+        """Optional CapCut-style UI layer stacked exactly on the preview surface."""
+        if self._overlay is not None and self._overlay is not overlay:
+            self._overlay.setParent(None)
+        self._overlay = overlay
+        if overlay is not None:
+            overlay.setParent(self)
+            overlay.raise_()
+        self._apply_child_geometry()
+        self.update()
+
+    def replace_child(self, child: QWidget) -> None:
+        if self._child is not None:
+            self._child.setParent(None)
+            self._child.deleteLater()
+        self._child = child
+        child.setParent(self)
+        if self._overlay is not None:
+            self._overlay.raise_()
+        self._apply_child_geometry()
+        self.update()
+
+    def set_ratio(self, ratio_w: int, ratio_h: int) -> None:
+        try:
+            w = max(1, int(ratio_w))
+            h = max(1, int(ratio_h))
+            self._ratio = float(w) / float(h)
+        except Exception:
+            self._ratio = 16.0 / 9.0
+        self.updateGeometry()
+        self._apply_child_geometry()
+        self.update()
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, w: int) -> int:
+        width = max(1, int(w))
+        return int(round(width / self._ratio))
+
+    def sizeHint(self):
+        from PySide6.QtCore import QSize
+        w = 480
+        return QSize(w, self.heightForWidth(w))
+
+    def resizeEvent(self, ev):
+        self._apply_child_geometry()
+        super().resizeEvent(ev)
+
+class VideoSpectrumPreview(QOpenGLWidget):
+    position_changed = Signal(int, int)
+    background_transform_changed = Signal(float, float, float)
+    playback_state_changed = Signal(object)
+    text_domain_position_changed = Signal(str, float, float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.ctx = None
+        self._gl_ready = False
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(1000 // 60)
+        self.template = normalize_renderer_template(default_renderer_template())
+        self.audio_path = None
+        self.bg_path = None
+        self.logo_path = None
+        self._logo_rgba_cache = None
+        self.analyzer = None
+        self.current_time = 0.0
+        self.particles = None
+        import pygame
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+        except Exception:
+            pass
+        self.audio_playing = False
+        self.audio_loading = False
+        self.audio_ready = False
+        self.analysis_loading = False
+        self.audio_error = ''
+        self._audio_clock_base = 0.0
+        self._audio_clock_started_at = None
+        self._audio_duration_sec = 0.0
+        self._audio_duration_cache: dict[str, float] = {}
+        self._audio_load_seq = 0
+        self._audio_load_lock = threading.Lock()
+        self.fft_log = np.zeros(64, dtype=np.float32)
+        self.fft_smoothed = np.zeros(64, dtype=np.float32)
+        self.shake_state_x = 0.0
+        self.shake_state_y = 0.0
+        self.bg_shake_state_x = 0.0
+        self.bg_shake_state_y = 0.0
+        self.p_bass_fast = 0.0
+        self.p_bass_slow = 0.0
+        self.p_kick_env = 0.0
+        self.bg_audio_env = 0.0
+        self.logo_audio_env = 0.0
+        self.particle_audio_env = 0.0
+        self.p_trigger_env = 0.0
+        self.dt = 1.0 / 60.0
+        self._frame_counter = 0
+        self._screen_fbo = None
+        self._particles_wh = (0, 0)
+        self._text_cache_keys: list[str | None] = []
+        self._text_textures: list[any] = []
+        self._text_sizes: list[tuple[int, int]] = []
+        self._dragging = False
+        self._drag_last = None
+        self._bg_edit_mode = False
+        self._spectrum_position_edit_mode = False
+        self._text_domain_edit_mode = ""  # "album" | "title" | ""
+        # GPU real-time drag: paint-time screen offset only (no template rebuild).
+        self._text_drag_domain = ""
+        self._text_drag_dx = 0.0
+        self._text_drag_dy = 0.0
+        self._bg_tex_size = (1.0, 1.0)
+        self._perf_last_paint_at = 0.0
+        self._perf_frame_ms = 0.0
+        self._perf_fps = 0.0
+        self._log(f"[{time.strftime('%H:%M:%S')}] SpectrumPreview init")
+
+    def _frame_metrics(self) -> tuple[int, int, int, int]:
+        lw = max(1, int(self.width()))
+        lh = max(1, int(self.height()))
+        dpr = float(max(1.0, float(self.devicePixelRatioF() or 1.0)))
+        vw = max(1, int(round(lw * dpr)))
+        vh = max(1, int(round(lh * dpr)))
+        return lw, lh, vw, vh
+
+    def _particle_settings(self) -> dict:
+        ps = self.template.get("particlesSettings") if isinstance(self.template.get("particlesSettings"), dict) else {}
+        if not ps and isinstance(self.template.get("particles"), dict):
+            return dict(self.template.get("particles") or {})
+        return dict(ps)
+
+    def _ensure_particle_system(self, width: int, height: int) -> None:
+        w = max(1, int(width))
+        h = max(1, int(height))
+        if getattr(self, "particles", None) is None or tuple(getattr(self, "_particles_wh", (0, 0))) != (w, h):
+            self.particles = ParticleSystem(
+                ParticleConfig(
+                    enabled=True,
+                    max_count=400,
+                    spawn_rate=40,
+                    lifetime_sec=1.6,
+                    spawn_radius=0.0,
+                    size=2.0,
+                    opacity=0.35,
+                    color=(255, 255, 255),
+                    speed=120.0,
+                ),
+                width=w,
+                height=h,
+                rng_seed=1,
+            )
+            self._particles_wh = (w, h)
+
+    def _prepare_particle_audio(
+        self,
+        *,
+        bass: float,
+        kick_pow: float,
+        ps: dict,
+        onset: float = 0.0,
+        beat: float = 0.0,
+    ) -> None:
+        ps_smooth = float(max(0.0, min(0.99, float(ps.get("smoothing", 0.65)))))
+        # Match Electron: sustain from bass/kick plus onset/beat so react color
+        # still flashes when band energy is flat but the track hits.
+        particle_audio_raw = float(
+            max(
+                0.0,
+                min(
+                    1.0,
+                    max(kick_pow, bass, float(onset) * 0.9, float(beat) * 0.95),
+                ),
+            )
+        )
+        self.particle_audio_env = _smooth_env(self.particle_audio_env, particle_audio_raw, ps_smooth)
+        spawn_trigger = str(ps.get("spawnTrigger", "both") or "both")
+        kick_like = float(max(kick_pow, float(beat)))
+        bass_like = float(max(bass, float(onset) * 0.85, particle_audio_raw * 0.65))
+        if spawn_trigger == "kick":
+            trig_raw = kick_like
+        elif spawn_trigger == "bass":
+            trig_raw = bass_like
+        else:
+            trig_raw = float(max(kick_like, bass_like))
+        trig_raw = float(max(0.0, min(1.0, trig_raw)))
+        self.p_trigger_env = _smooth_env(self.p_trigger_env, trig_raw, ps_smooth)
+
+    def _resolve_particle_spawn_rate(self, *, ps: dict, ps_spawn: float, prb: float) -> float:
+        spawn_mode = str(ps.get("spawnMode", "always") or "always")
+        spawn_threshold = float(max(0.0, min(1.0, float(ps.get("spawnThreshold", 0.15) or 0.15))))
+        if spawn_mode == "reactiveOnly" and self.p_trigger_env < spawn_threshold:
+            # Preview should never go fully silent while particles are enabled.
+            return float(max(12.0, ps_spawn * 0.12))
+        rate = ps_spawn * float(0.2 + self.particle_audio_env * (1.1 + prb * 2.8))
+        return float(max(12.0, rate))
+
+    def _draw_particle_batch(
+        self,
+        *,
+        pts: np.ndarray,
+        colors_rgba: np.ndarray,
+        pt_size: float,
+        pt_style: int,
+        w: int,
+        h: int,
+    ) -> None:
+        if pts.shape[0] <= 0 or self.ctx is None or not hasattr(self, "particle_quad_vbo"):
+            return
+        self._use_qt_framebuffer()
+        _, _, vw, vh = self._frame_metrics()
+        self.ctx.viewport = (0, 0, vw, vh)
+        self.ctx.disable(moderngl.DEPTH_TEST)
+        self.ctx.disable(moderngl.CULL_FACE)
+        style_scale = {0: 1.0, 1: 2.0, 2: 1.5, 3: 1.5, 4: 2.0}.get(int(pt_style), 1.0)
+        base_px = float(max(2.5, pt_size)) * style_scale
+        _render_particle_styled_quads(
+            self.ctx,
+            prog_particle_quads=self.prog_particle_quads,
+            particle_quad_vbo=self.particle_quad_vbo,
+            vao_particle_quads=self.vao_particle_quads,
+            pts=pts,
+            colors_rgba=colors_rgba,
+            pt_style=int(pt_style),
+            w=w,
+            h=h,
+            pt_size=base_px,
+        )
+
+    def _finish_particles_frame(
+        self,
+        *,
+        w: int,
+        h: int,
+        sf: float,
+        logo_visual_radius: float,
+        bass: float,
+        kick_pow: float,
+        feats: dict,
+        logo_enabled: bool = True,
+    ) -> None:
+        if self.ctx is None or not hasattr(self, "vao_particle_quads"):
+            return
+        ps = self._particle_settings()
+        ps_enabled = bool(ps.get("enabled", True))
+        self._ensure_particle_system(w, h)
+        if not getattr(self, "particles", None):
+            return
+
+        if not ps_enabled:
+            self.particles.update_cfg(
+                ParticleConfig(
+                    enabled=False,
+                    max_count=0,
+                    spawn_rate=0.0,
+                    lifetime_sec=1.0,
+                    spawn_radius=0.0,
+                    size=1.0,
+                    opacity=0.0,
+                    color=(255, 255, 255),
+                    speed=1.0,
+                )
+            )
+            self.particles.update(self.dt, feats)
+            return
+
+        ps_count = int(ps.get("maxCount", 400))
+        ps_spawn = float(ps.get("spawnRate", 40.0))
+        ps_life = float(ps.get("lifetimeSec", 1.6))
+        ps_speed = float(ps.get("speed", 15.0))
+        ps_react = float(ps.get("reactivity", 0.0))
+        ps_size = float(ps.get("size", 2.0))
+        ps_op = float(ps.get("opacity", 0.35))
+        ps_col = (255, 255, 255)
+        try:
+            col_hex = str(ps.get("color", "#ffffff"))
+            if col_hex.startswith("#") and len(col_hex) == 7:
+                ps_col = (int(col_hex[1:3], 16), int(col_hex[3:5], 16), int(col_hex[5:7], 16))
+        except Exception:
+            ps_col = (255, 255, 255)
+        prb = float(max(0.0, min(1.0, ps_react)))
+        color_model = extract_particle_color_model(ps)
+        palette_rgb = palette_colors_to_rgb_tuple(list(color_model.get("paletteColors") or []))
+        # Audio envelopes are prepared once per paintGL frame; do not smooth again here
+        # or react-color flashes get double-damped into invisibility.
+        spawn_rate = float(max(0.0, min(20000.0, self._resolve_particle_spawn_rate(ps=ps, ps_spawn=ps_spawn, prb=prb))))
+        if logo_enabled:
+            spawn_radius = float(max(0.0, logo_visual_radius + max(2.0 * sf, ps_size * sf)))
+        else:
+            spawn_radius = float(max(min(w, h) * 0.22, ps_size * sf * 6.0))
+        speed_boost = float(18.0 + self.particle_audio_env * (50.0 + prb * 130.0))
+        speed2 = float(max(0.0, min(2500.0, ps_speed * speed_boost * sf)))
+        self.particles.update_cfg(
+            ParticleConfig(
+                enabled=True,
+                max_count=ps_count,
+                spawn_rate=spawn_rate,
+                lifetime_sec=ps_life,
+                spawn_radius=spawn_radius,
+                size=ps_size * sf,
+                opacity=ps_op,
+                color=ps_col,
+                speed=speed2,
+                size_jitter=float(ps.get("sizeJitter", 0.0) or 0.0),
+                drift=float(ps.get("drift", 0.0) or 0.0),
+                swirl=float(ps.get("swirl", 0.0) or 0.0),
+                spawn_area=str(ps.get("spawnArea", "centerRing") or "centerRing"),
+                travel_mode=str(ps.get("travelMode", "spawnFlow") or "spawnFlow"),
+                color_mode=str(color_model.get("mode") or "solid"),
+                palette_colors=palette_rgb,
+            )
+        )
+        self.particles.update(self.dt, feats)
+
+        pos = self.particles._pos if hasattr(self.particles, "_pos") else np.zeros((0, 2), dtype=np.float32)
+        if pos.shape[0] <= 0 and spawn_rate > 0.0:
+            self.particles.update(0.35, feats)
+            pos = self.particles._pos if hasattr(self.particles, "_pos") else np.zeros((0, 2), dtype=np.float32)
+        if pos.shape[0] <= 0:
+            return
+
+        p = pos.astype(np.float32)
+        xs2 = p[:, 0] / float(w) * 2.0 - 1.0
+        # Particle sim is top-left (y down). OpenGL NDC is y-up — flip Y so
+        # Bottom Arc + Rise Up appear at the bottom and travel upward.
+        ys2 = 1.0 - (p[:, 1] / float(h) * 2.0)
+        sz = self.particles._size.astype(np.float32) if hasattr(self.particles, "_size") else np.ones((p.shape[0],), dtype=np.float32)
+        pts = np.column_stack([xs2, ys2, sz]).astype(np.float32)
+        particle_rgbs = self.particles._rgb if hasattr(self.particles, "_rgb") else None
+        colors_rgba = build_particle_rgba_rows(
+            settings=ps,
+            particle_rgbs=particle_rgbs,
+            reactive_env=float(getattr(self, "particle_audio_env", 0.0) or 0.0),
+            trigger_env=float(getattr(self, "p_trigger_env", 0.0) or 0.0),
+        )
+        variant = str(ps.get("variant", "classic") or "classic")
+        style = str(ps.get("style", "dot") or "dot")
+        pt_style = _resolve_particle_style_index(variant, style)
+        pt_size = float(max(1.0, ps_size * (2.0 if style == "bokeh" else 1.5) * sf))
+        self._draw_particle_batch(
+            pts=pts,
+            colors_rgba=colors_rgba,
+            pt_size=pt_size,
+            pt_style=pt_style,
+            w=w,
+            h=h,
+        )
+
+    def _log(self, msg):
+        try:
+            print(msg, flush=True)
+        except Exception:
+            pass
+        try:
+            LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(LOG_PATH, 'a', encoding='utf-8') as f:
+                f.write(msg + '\n')
+        except Exception:
+            pass
+
+    def _use_qt_framebuffer(self):
+        if not self.ctx:
+            return
+        try:
+            self.makeCurrent()
+            qt_fbo = int(self.defaultFramebufferObject())
+            if not self._screen_fbo or int(getattr(self._screen_fbo, "glo", 0) or 0) != qt_fbo:
+                self._screen_fbo = self.ctx.detect_framebuffer(qt_fbo)
+            self._screen_fbo.use()
+            return
+        except Exception:
+            pass
+        try:
+            self.makeCurrent()
+            from OpenGL import GL
+            GL.glBindFramebuffer(GL.GL_DRAW_FRAMEBUFFER, int(self.defaultFramebufferObject()))
+        except Exception:
+            return
+
+    def on_position_changed(self, position):
+        self.current_time = position / 1000.0
+
+    def _mark_playback_started(self, start_sec: float | None=None):
+        base = float(self.current_time if start_sec is None else start_sec)
+        self._audio_clock_base = max(0.0, base)
+        self._audio_clock_started_at = time.perf_counter()
+        self.current_time = self._audio_clock_base
+
+    def _mark_playback_paused(self):
+        if self._audio_clock_started_at is not None:
+            elapsed = max(0.0, time.perf_counter() - self._audio_clock_started_at)
+            self._audio_clock_base = max(0.0, self._audio_clock_base + elapsed)
+        self._audio_clock_started_at = None
+        self.current_time = self._audio_clock_base
+
+    def _mark_playback_stopped(self):
+        self._audio_clock_base = 0.0
+        self._audio_clock_started_at = None
+        self.current_time = 0.0
+
+    def _sync_current_time_from_clock(self):
+        if self._audio_clock_started_at is None:
+            self.current_time = max(0.0, self._audio_clock_base)
+            return
+        elapsed = max(0.0, time.perf_counter() - self._audio_clock_started_at)
+        self.current_time = max(0.0, self._audio_clock_base + elapsed)
+
+    def _audio_duration_cache_key(self, path: str) -> str:
+        try:
+            stat = os.stat(path)
+            return f'{path}|{int(stat.st_mtime_ns)}|{int(stat.st_size)}'
+        except Exception:
+            return str(path or '').strip()
+
+    def set_template(self, tpl: dict):
+        # Don't clobber live GPU drag offset with a full rebuild mid-drag.
+        if self._text_drag_domain in {"album", "title"} and (
+            abs(self._text_drag_dx) > 1e-06 or abs(self._text_drag_dy) > 1e-06
+        ):
+            return
+        self.template = normalize_renderer_template(tpl)
+        self.update()
+
+    def configure(self, config: PreviewConfig) -> None:
+        """Apply a PreviewConfig DTO to set up the preview widget.
+
+        This is the DTO-based entry point for configuring the preview.
+        It sets the template, background, and logo from the DTO fields.
+        """
+        self.template = normalize_renderer_template(config.template)
+        if config.background_path:
+            self.load_background(config.background_path)
+        if config.logo_path:
+            self.load_logo(config.logo_path)
+
+    def set_bg_edit_mode(self, enabled: bool) -> None:
+        self._bg_edit_mode = bool(enabled)
+
+    def set_spectrum_position_edit_mode(self, enabled: bool) -> None:
+        self._spectrum_position_edit_mode = bool(enabled)
+
+    def set_edit_modes(
+        self,
+        *,
+        background: bool = False,
+        spectrum_position: bool = False,
+        text_domain: str = "",
+    ) -> None:
+        self._bg_edit_mode = bool(background)
+        self._spectrum_position_edit_mode = bool(spectrum_position)
+        domain = str(text_domain or "").strip().lower()
+        self._text_domain_edit_mode = domain if domain in {"album", "title"} else ""
+        if not self._text_domain_edit_mode:
+            self._text_drag_domain = ""
+            self._text_drag_dx = 0.0
+            self._text_drag_dy = 0.0
+        self.update()
+
+    def set_text_drag_offset(self, domain: str, dx: float, dy: float) -> None:
+        """Apply live widget-pixel offset in paintGL (GPU real-time drag)."""
+        key = str(domain or "").strip().lower()
+        if key not in {"album", "title"}:
+            self._text_drag_domain = ""
+            self._text_drag_dx = 0.0
+            self._text_drag_dy = 0.0
+            self.update()
+            return
+        self._text_drag_domain = key
+        self._text_drag_dx = float(dx)
+        self._text_drag_dy = float(dy)
+        self.update()
+
+    def _text_drag_source(self) -> str:
+        if self._text_drag_domain == "album":
+            return "albumText"
+        if self._text_drag_domain == "title":
+            return "titleText"
+        return ""
+
+    def _is_text_domain_dragging(self) -> bool:
+        return bool(
+            self._text_drag_domain in {"album", "title"}
+            and (abs(self._text_drag_dx) > 1e-06 or abs(self._text_drag_dy) > 1e-06)
+        )
+
+    def apply_text_domain_position(self, domain: str, nx: float, ny: float) -> None:
+        """Bake committed coords into template after overlay release."""
+        key = str(domain or "").strip().lower()
+        if key not in {"album", "title"}:
+            return
+        block_key = "albumText" if key == "album" else "titleText"
+        source = block_key
+        block = self.template.get(block_key)
+        block = dict(block) if isinstance(block, dict) else {}
+        style = block.get("style")
+        style = dict(style) if isinstance(style, dict) else {}
+        old_x = float(style.get("x", block.get("x", 0.0)) or 0.0)
+        old_y = float(style.get("y", block.get("y", 0.0)) or 0.0)
+        style["x"] = float(nx)
+        style["y"] = float(ny)
+        block["style"] = style
+        self.template[block_key] = block
+        overlays = self.template.get("textOverlays")
+        if isinstance(overlays, list):
+            delta_x = float(nx) - old_x
+            delta_y = float(ny) - old_y
+            if abs(delta_x) > 1e-09 or abs(delta_y) > 1e-09:
+                for o in overlays:
+                    if isinstance(o, dict) and str(o.get("source") or "") == source:
+                        o["x"] = float(o.get("x", 0) or 0) + delta_x
+                        o["y"] = float(o.get("y", 0) or 0) + delta_y
+        self._text_drag_dx = 0.0
+        self._text_drag_dy = 0.0
+        self._text_drag_domain = ""
+        self.update()
+
+    def performance_snapshot(self) -> dict:
+        return {
+            "frameMs": float(self._perf_frame_ms),
+            "fps": float(self._perf_fps),
+            "frameCounter": int(self._frame_counter),
+            "glReady": bool(getattr(self, "_gl_ready", False)),
+        }
+
+    def preview_lifecycle_snapshot(self) -> dict:
+        if not getattr(self, "_gl_ready", False):
+            if self.audio_loading or self.analysis_loading:
+                return {"status": "initializing", "message": "Preview is loading audio analysis and GPU resources."}
+            return {"status": "initializing", "message": "Preview GPU surface is initializing."}
+        if str(self.audio_error or "").strip():
+            return {"status": "error", "message": str(self.audio_error)}
+        if not str(self.bg_path or "").strip() or not str(self.audio_path or "").strip():
+            return {
+                "status": "fallback-active",
+                "message": "Attach a background image and preview MP3 for full stage validation.",
+            }
+        return {"status": "running", "message": "GPU preview compositor is running."}
+
+    def playback_snapshot(self) -> dict:
+        return {
+            "isPlaying": bool(self.audio_playing),
+            "isReady": bool(self.audio_ready),
+            "isLoading": bool(self.audio_loading or self.analysis_loading),
+            "currentTimeSec": float(max(0.0, self.current_time)),
+            "durationSec": float(max(0.0, self._audio_duration_sec)),
+        }
+
+    def _emit_playback_state(self) -> None:
+        # load_audio runs on a worker thread — marshal UI signal to the GUI thread.
+        try:
+            ok = QMetaObject.invokeMethod(
+                self,
+                "_emit_playback_state_on_gui",
+                Qt.ConnectionType.QueuedConnection,
+            )
+            if ok:
+                return
+        except Exception:
+            pass
+        self.playback_state_changed.emit(self.playback_snapshot())
+
+    @Slot()
+    def _emit_playback_state_on_gui(self) -> None:
+        self.playback_state_changed.emit(self.playback_snapshot())
+
+    def play_preview(self) -> None:
+        if not str(self.audio_path or "").strip():
+            return
+        import pygame
+
+        if not self.audio_ready:
+            return
+        try:
+            duration = float(max(0.0, self._audio_duration_sec))
+            # After a track ends (or near the end), Play should restart from 0.
+            at_end = duration > 0.05 and float(self.current_time) >= (duration - 0.08)
+            if at_end or float(self.current_time) < 0.0:
+                self.current_time = 0.0
+                self._audio_clock_base = 0.0
+                self._audio_clock_started_at = None
+            if not pygame.mixer.music.get_busy():
+                start = float(max(0.0, self.current_time))
+                if duration > 0:
+                    start = min(start, max(0.0, duration - 0.05))
+                pygame.mixer.music.play(start=start)
+            else:
+                pygame.mixer.music.unpause()
+        except Exception as exc:
+            self.audio_error = str(exc)
+            self._emit_playback_state()
+            return
+        self.audio_playing = True
+        self._mark_playback_started(self.current_time)
+        self._emit_playback_state()
+
+    def pause_preview(self) -> None:
+        import pygame
+
+        try:
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.pause()
+        except Exception:
+            pass
+        self.audio_playing = False
+        self._mark_playback_paused()
+        self._emit_playback_state()
+
+    def stop_preview(self) -> None:
+        import pygame
+
+        try:
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
+        self.audio_playing = False
+        self._mark_playback_stopped()
+        self._emit_playback_state()
+
+    def seek_preview(self, time_sec: float) -> None:
+        import pygame
+
+        target = float(max(0.0, time_sec))
+        if self._audio_duration_sec > 0:
+            target = min(target, float(self._audio_duration_sec))
+        was_playing = bool(self.audio_playing)
+        try:
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
+        self.current_time = target
+        self._audio_clock_base = target
+        self._audio_clock_started_at = None
+        if was_playing and self.audio_ready and str(self.audio_path or "").strip():
+            try:
+                pygame.mixer.music.play(start=target)
+                self.audio_playing = True
+                self._mark_playback_started(target)
+            except Exception:
+                self.audio_playing = False
+        self._emit_playback_state()
+
+    def issue_playback_command(self, command: dict) -> None:
+        command_type = str((command or {}).get("type") or "").strip().lower()
+        if command_type == "play":
+            self.play_preview()
+        elif command_type == "pause":
+            self.pause_preview()
+        elif command_type == "stop":
+            self.stop_preview()
+        elif command_type == "seek":
+            self.seek_preview(float((command or {}).get("timeSec") or 0.0))
+
+    def mousePressEvent(self, ev):
+        # Album/Title drag is handled by TextDragOverlay (CapCut-style UI layer).
+        if ev.button() == Qt.MouseButton.LeftButton and (
+            self._bg_edit_mode or self._spectrum_position_edit_mode
+        ):
+            self._dragging = True
+            self._drag_last = (float(ev.position().x()), float(ev.position().y()))
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            self.grabMouse()
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseReleaseEvent(self, ev):
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._dragging = False
+            self._drag_last = None
+            self.releaseMouse()
+            self.unsetCursor()
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if not self._dragging or not self._drag_last:
+            super().mouseMoveEvent(ev)
+            return
+        x0, y0 = self._drag_last
+        x1 = float(ev.position().x())
+        y1 = float(ev.position().y())
+        dx = x1 - x0
+        dy = y1 - y0
+        self._drag_last = (x1, y1)
+        if bool(getattr(self, "_bg_edit_mode", False)):
+            bg = self.template.get("backgroundSettings", {}) if isinstance(self.template.get("backgroundSettings"), dict) else {}
+            ox = float(bg.get("userOffsetX", 0.0) or 0.0) + float(dx)
+            oy = float(bg.get("userOffsetY", 0.0) or 0.0) + float(dy)
+            self.template["backgroundSettings"] = {**bg, "userOffsetX": float(ox), "userOffsetY": float(oy)}
+            self.background_transform_changed.emit(float(ox), float(oy), float(bg.get("userScale", 1.0) or 1.0))
+            ev.accept()
+            return
+        if not bool(getattr(self, "_spectrum_position_edit_mode", False)):
+            super().mouseMoveEvent(ev)
+            return
+        base_h = float(self.template.get('renderBaseHeight', 450.0))
+        base_h = float(max(1.0, min(4000.0, base_h)))
+        sf = float(max(1.0, self.height())) / base_h
+        if sf <= 1e-06:
+            return
+        pos_cfg = self.template.get('position', {}) if isinstance(self.template.get('position'), dict) else {}
+        nx = int(round(float(pos_cfg.get('x', 0.0)) + float(dx) / sf))
+        ny = int(round(float(pos_cfg.get('y', 0.0)) + float(dy) / sf))
+        nx = int(max(-1000, min(1000, nx)))
+        ny = int(max(-1000, min(1000, ny)))
+        self.template['position'] = {**pos_cfg, 'x': nx, 'y': ny}
+        self.position_changed.emit(nx, ny)
+        ev.accept()
+
+    def wheelEvent(self, ev):
+        if bool(getattr(self, "_bg_edit_mode", False)):
+            try:
+                delta = float(ev.angleDelta().y())
+            except Exception:
+                delta = 0.0
+            if abs(delta) > 1e-06:
+                bg = self.template.get("backgroundSettings", {}) if isinstance(self.template.get("backgroundSettings"), dict) else {}
+                cur = float(bg.get("userScale", 1.0) or 1.0)
+                factor = 1.0 + (delta / 1200.0)
+                nxt = float(max(0.05, min(20.0, cur * factor)))
+                self.template["backgroundSettings"] = {**bg, "userScale": nxt}
+                self.background_transform_changed.emit(float(bg.get("userOffsetX", 0.0) or 0.0), float(bg.get("userOffsetY", 0.0) or 0.0), float(nxt))
+                ev.accept()
+                return
+        super().wheelEvent(ev)
+
+    def load_audio(self, path):
+        requested_path = str(path or '').strip()
+        previous_path = str(self.audio_path or '').strip()
+        self._audio_load_seq += 1
+        load_seq = int(self._audio_load_seq)
+        self.audio_path = requested_path
+        self._mark_playback_stopped()
+        self.audio_playing = False
+        self.audio_loading = True
+        self.audio_ready = False
+        self.analysis_loading = False
+        self.audio_error = ''
+        self._audio_duration_sec = 0.0
+        self.analyzer = None
+        self._log(f"[{time.strftime('%H:%M:%S')}] Audio load request #{load_seq}: new={requested_path} previous={previous_path or '<none>'}")
+
+        def analyze():
+            import pygame
+            active_path = requested_path
+            with self._audio_load_lock:
+                if load_seq != self._audio_load_seq:
+                    self._log(f"[{time.strftime('%H:%M:%S')}] Audio load stale before decode #{load_seq}: {active_path}")
+                    return
+                try:
+                    pygame.mixer.music.load(active_path)
+                    cache_key = self._audio_duration_cache_key(active_path)
+                    decoded_duration = float(self._audio_duration_cache.get(cache_key, 0.0) or 0.0)
+                except Exception as e:
+                    if load_seq != self._audio_load_seq:
+                        self._log(f"[{time.strftime('%H:%M:%S')}] Audio load failed on stale request #{load_seq}: {e}")
+                        return
+                    self.audio_ready = False
+                    self.audio_error = str(e)
+                    self.audio_loading = False
+                    self.analysis_loading = False
+                    self._log(f"[{time.strftime('%H:%M:%S')}] Audio load failed #{load_seq}: {active_path} error={e}")
+                    return
+                if load_seq != self._audio_load_seq:
+                    self._log(f"[{time.strftime('%H:%M:%S')}] Audio decode ignored for stale request #{load_seq}: {active_path}")
+                    return
+                self._audio_duration_sec = decoded_duration
+                self.audio_ready = True
+                self.audio_error = ''
+                self.audio_loading = False
+                self.analysis_loading = True
+                self._log(f"[{time.strftime('%H:%M:%S')}] Audio decode ready #{load_seq}: {active_path} duration={self._audio_duration_sec:.2f}s")
+                self._emit_playback_state()
+            try:
+                cache_key = self._audio_duration_cache_key(active_path)
+                cached_analyzer = getattr(self, '_audio_analyzer_cache', {}).get(cache_key)
+                if cached_analyzer:
+                    analyzer = cached_analyzer
+                else:
+                    from visualizer.audio import AudioAnalyzer
+                    analyzer = AudioAnalyzer(active_path, fps=60, point_count=1024)
+                    if not hasattr(self, '_audio_analyzer_cache'):
+                        self._audio_analyzer_cache = {}
+                        self._audio_analyzer_cache_order = []
+                    self._audio_analyzer_cache[cache_key] = analyzer
+                    if cache_key in self._audio_analyzer_cache_order:
+                        self._audio_analyzer_cache_order.remove(cache_key)
+                    self._audio_analyzer_cache_order.append(cache_key)
+                    if len(self._audio_analyzer_cache_order) > 5:
+                        oldest = self._audio_analyzer_cache_order.pop(0)
+                        self._audio_analyzer_cache.pop(oldest, None)
+            except Exception as e:
+                if load_seq != self._audio_load_seq:
+                    self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis failed on stale request #{load_seq}: {e}")
+                    return
+                self.analyzer = None
+                self._audio_duration_sec = 0.0
+                self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis failed #{load_seq}: {active_path} error={e}")
+            else:
+                if load_seq != self._audio_load_seq:
+                    self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis ignored for stale request #{load_seq}: {active_path}")
+                    return
+                self.analyzer = analyzer
+                self._audio_duration_sec = float(getattr(analyzer.info, 'duration_sec', 0.0) or 0.0)
+                if self._audio_duration_sec > 0:
+                    self._audio_duration_cache[self._audio_duration_cache_key(active_path)] = self._audio_duration_sec
+                self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis ready #{load_seq}: {active_path} duration={self._audio_duration_sec:.2f}s")
+                self._emit_playback_state()
+            finally:
+                if load_seq == self._audio_load_seq:
+                    self.analysis_loading = False
+        t = threading.Thread(target=analyze, daemon=True)
+        t.start()
+
+    def load_background(self, path):
+        p = str(path or "").strip()
+        if not p or not Path(p).exists():
+            self.bg_path = ""
+            self._log(f"[{time.strftime('%H:%M:%S')}] Background cleared")
+            if self.ctx:
+                self.makeCurrent()
+                if hasattr(self, "tex_bg"):
+                    try:
+                        self.tex_bg.release()
+                    except Exception:
+                        pass
+                self.tex_bg = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
+                self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self._bg_tex_size = (1.0, 1.0)
+            return
+        self.bg_path = p
+        self._log(f"[{time.strftime('%H:%M:%S')}] Background selected: {p}")
+        if self.ctx:
+            self.makeCurrent()
+            from PIL import Image
+            img = Image.open(p).convert('RGBA')
+            arr = np.array(img, dtype=np.uint8)
+            arr = np.flipud(arr)
+            if hasattr(self, 'tex_bg'):
+                self.tex_bg.release()
+            self.tex_bg = self.ctx.texture((img.width, img.height), 4, arr.tobytes())
+            self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            self._bg_tex_size = (float(max(1, int(img.width))), float(max(1, int(img.height))))
+
+    def load_logo(self, path):
+        p = str(path or "").strip()
+        if not p or not Path(p).exists():
+            self.logo_path = ""
+            self._logo_rgba_cache = None
+            self._log(f"[{time.strftime('%H:%M:%S')}] Logo cleared")
+            if self.ctx:
+                self.makeCurrent()
+                if hasattr(self, "tex_logo"):
+                    try:
+                        self.tex_logo.release()
+                    except Exception:
+                        pass
+                self.tex_logo = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
+                self.tex_logo.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            return
+        self.logo_path = p
+        self._log(f"[{time.strftime('%H:%M:%S')}] Logo selected: {p}")
+        if self.ctx:
+            self.makeCurrent()
+            from PIL import Image
+            img = Image.open(p).convert('RGBA')
+            arr = np.array(img, dtype=np.uint8)
+            arr = np.flipud(arr)
+            self._logo_rgba_cache = arr
+            if hasattr(self, 'tex_logo'):
+                self.tex_logo.release()
+            self.tex_logo = self.ctx.texture((img.width, img.height), 4, arr.tobytes())
+            self.tex_logo.filter = (moderngl.LINEAR, moderngl.LINEAR)
+
+    def _ensure_text_texture(self, idx: int, overlay: dict, sf: float) -> tuple[any, tuple[int, int]]:
+        if not self.ctx:
+            return (None, (0, 0))
+        text = str((overlay or {}).get("text", "") or "").strip()
+        if not text:
+            return (None, (0, 0))
+        while len(self._text_cache_keys) <= idx:
+            self._text_cache_keys.append(None)
+            self._text_textures.append(None)
+            self._text_sizes.append((0, 0))
+        # Template units are authored against renderBaseHeight; scale 1:1 with preview height.
+        scale = float(max(0.05, min(16.0, float(sf or 1.0))))
+        size_px = float((overlay or {}).get("sizePx", 46.0) if "sizePx" in (overlay or {}) else 46.0)
+        size_px = float(max(5.0, min(200.0, size_px)))
+        col = str((overlay or {}).get("color", "#ffffff") or "#ffffff").strip()
+        scol = str((overlay or {}).get("strokeColor", "#000000") or "#000000").strip()
+        sw = float((overlay or {}).get("strokeWidth", 2.0) if "strokeWidth" in (overlay or {}) else 2.0)
+        sh = float((overlay or {}).get("shadow", 0.4) if "shadow" in (overlay or {}) else 0.4)
+        font_family = str((overlay or {}).get("fontFamily", "arial") or "arial").strip().lower()
+        bold = bool((overlay or {}).get("bold", False))
+        italic = bool((overlay or {}).get("italic", False))
+        letter_spacing = float((overlay or {}).get("letterSpacing", 0.0) if "letterSpacing" in (overlay or {}) else 0.0)
+        line_spacing = float((overlay or {}).get("lineSpacing", 1.15) if "lineSpacing" in (overlay or {}) else 1.15)
+        align = str((overlay or {}).get("align", "left") or "left")
+        box_width = float((overlay or {}).get("boxWidth", 0.0) if "boxWidth" in (overlay or {}) else 0.0)
+        fill_mode = str((overlay or {}).get("fillMode", "solid") or "solid")
+        gradient_colors = (overlay or {}).get("gradientColors") if isinstance((overlay or {}).get("gradientColors"), list) else []
+        gradient_direction = str((overlay or {}).get("gradientDirection", "vertical") or "vertical")
+        glow_amt = float((overlay or {}).get("glow", 0.0) if "glow" in (overlay or {}) else 0.0)
+        glow_color = str((overlay or {}).get("glowColor", "#ff4fd8") or "#ff4fd8")
+        glow_blur = float((overlay or {}).get("glowBlur", 8.0) if "glowBlur" in (overlay or {}) else 8.0)
+        glow_mode = str((overlay or {}).get("glowMode", "solid") or "solid")
+        glow_gradient_colors = (
+            (overlay or {}).get("glowGradientColors")
+            if isinstance((overlay or {}).get("glowGradientColors"), list)
+            else []
+        )
+        glow_gradient_direction = str(
+            (overlay or {}).get("glowGradientDirection", "horizontal") or "horizontal"
+        )
+        shadow_blur = float((overlay or {}).get("shadowBlur", 0.0) if "shadowBlur" in (overlay or {}) else 0.0)
+        extrude_depth = float((overlay or {}).get("extrudeDepth", 0.0) if "extrudeDepth" in (overlay or {}) else 0.0)
+        extrude_color = str((overlay or {}).get("extrudeColor", "#1a1a1a") or "#1a1a1a")
+        grad_key = ",".join(str(c) for c in gradient_colors)
+        glow_grad_key = ",".join(str(c) for c in glow_gradient_colors)
+        # Include scale so maximize / resize rebuilds the raster (same look at any size).
+        key = (
+            f"{text}|{size_px:.2f}|{col}|{scol}|{sw:.2f}|{sh:.2f}|{font_family}|{int(bold)}|{int(italic)}"
+            f"|{letter_spacing:.2f}|{line_spacing:.2f}|{align}|{box_width:.1f}|{fill_mode}|{grad_key}|{gradient_direction}"
+            f"|{glow_amt:.2f}|{glow_color}|{glow_blur:.2f}|{glow_mode}|{glow_grad_key}|{glow_gradient_direction}"
+            f"|{shadow_blur:.2f}|{extrude_depth:.2f}|{extrude_color}|sf:{scale:.4f}"
+        )
+        if self._text_cache_keys[idx] == key and self._text_textures[idx] is not None:
+            return (self._text_textures[idx], self._text_sizes[idx])
+        from visualizer.gpu_render import _render_text_rgba
+
+        arr, tw, th = _render_text_rgba(
+            text,
+            size_px * scale,
+            col,
+            scol,
+            sw * scale,
+            sh,
+            font_family=font_family,
+            bold=bold,
+            italic=italic,
+            letter_spacing=letter_spacing * scale,
+            line_spacing=line_spacing,
+            align=align,
+            box_width=box_width * scale,
+            fill_mode=fill_mode,
+            gradient_colors=gradient_colors,
+            gradient_direction=gradient_direction,
+            glow=glow_amt,
+            glow_color=glow_color,
+            glow_blur=glow_blur * scale,
+            glow_mode=glow_mode,
+            glow_gradient_colors=glow_gradient_colors,
+            glow_gradient_direction=glow_gradient_direction,
+            shadow_blur=shadow_blur * scale,
+            extrude_depth=extrude_depth * scale,
+            extrude_color=extrude_color,
+        )
+        self.makeCurrent()
+        if self._text_textures[idx] is not None:
+            try:
+                self._text_textures[idx].release()
+            except Exception:
+                pass
+        tx = self.ctx.texture((tw, th), 4, arr.tobytes())
+        tx.filter = (moderngl.LINEAR, moderngl.LINEAR)
+        self._text_textures[idx] = tx
+        self._text_sizes[idx] = (int(tw), int(th))
+        self._text_cache_keys[idx] = key
+        return (tx, (int(tw), int(th)))
+
+    def initializeGL(self):
+        try:
+            self._gl_ready = False
+            self._log(f"[{time.strftime('%H:%M:%S')}] initializeGL start")
+            self.makeCurrent()
+            moderngl.init_context(loader=_QtGLContextLoader(self.context()))
+            self.ctx = moderngl.get_context()
+            self._log(f"[{time.strftime('%H:%M:%S')}] moderngl ctx: {getattr(self.ctx, 'version_code', None)} {getattr(self.ctx, 'info', None)}")
+            self.prog_scene, self.prog_logo, self.prog_post, self.prog_lines, self.prog_points, self.prog_text = _compile(self.ctx)
+            self.vao_quad_scene = _quad_vao(self.ctx, self.prog_scene)
+            self.vao_quad_logo = _quad_vao(self.ctx, self.prog_logo)
+            self.vao_quad_text = _quad_vao(self.ctx, self.prog_text)
+            self.line_vbo = self.ctx.buffer(reserve=4 * 6 * 1024)
+            self.vao_lines = self.ctx.vertex_array(self.prog_lines, [(self.line_vbo, '2f 4f', 'in_pos', 'in_col')])
+            self.prog_lines['clip_enabled'].value = 0
+            self.prog_lines['clip_center_px'].value = (0.0, 0.0)
+            self.prog_lines['clip_radius_px'].value = 0.0
+            self.pt_vbo = self.ctx.buffer(reserve=4 * 3 * 2048)
+            self.vao_pts = self.ctx.vertex_array(self.prog_points, [(self.pt_vbo, '2f 1f', 'in_pos', 'in_size')])
+            self.prog_particle_quads = _compile_particle_quads(self.ctx)
+            self.particle_quad_vbo = self.ctx.buffer(reserve=4 * 8 * 6 * 2048)
+            self.vao_particle_quads = self.ctx.vertex_array(
+                self.prog_particle_quads,
+                [(self.particle_quad_vbo, "2f 2f 4f", "in_pos", "in_uv", "in_col")],
+            )
+            w, h = (1280, 720)
+            self.tex_bg = self.ctx.texture((w, h), 4, b'"""\xff' * (w * h))
+            self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            self._bg_tex_size = (float(w), float(h))
+            self.tex_logo = self.ctx.texture((192, 192), 4, b'\xff\xaa\x00\xff' * (192 * 192))
+            self.tex_logo.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            self._text_textures = []
+            for _i in range(5):
+                tx = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
+                tx.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self._text_textures.append(tx)
+            if self.bg_path:
+                self.load_background(self.bg_path)
+            if self.logo_path:
+                self.load_logo(self.logo_path)
+            self.particles = ParticleSystem(ParticleConfig(enabled=True, max_count=400, spawn_rate=40, lifetime_sec=1.6, spawn_radius=0, size=2, opacity=0.35, color=(255, 255, 255), speed=120), width=w, height=h, rng_seed=1)
+            self._particles_wh = (w, h)
+            self.ctx.enable(moderngl.BLEND)
+            self.ctx.enable(moderngl.PROGRAM_POINT_SIZE)
+            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            self._gl_ready = True
+            self._log(f"[{time.strftime('%H:%M:%S')}] initializeGL ok (qt_fbo={int(self.defaultFramebufferObject())})")
+        except Exception as e:
+            self._log(f"[{time.strftime('%H:%M:%S')}] Error in initializeGL: {e}")
+            import traceback
+            traceback.print_exc()
+            self._gl_ready = False
+            self.ctx = None
+
+    def paintGL(self):
+        paint_started = time.perf_counter()
+        try:
+            if not self.ctx or not getattr(self, "_gl_ready", False):
+                return
+            self._use_qt_framebuffer()
+            self._frame_counter += 1
+            if self._frame_counter in (1, 2, 3, 60, 120):
+                self._log(f"[{time.strftime('%H:%M:%S')}] paintGL frame={self._frame_counter} qt_fbo={int(self.defaultFramebufferObject())} size={self.width()}x{self.height()}")
+            # Ensure viewport matches widget dimensions (device pixels on HiDPI).
+            w, h, vw, vh = self._frame_metrics()
+            self.ctx.viewport = (0, 0, vw, vh)
+            self.ctx.clear(0.02, 0.02, 0.02, 1.0)
+            self.ctx.enable(moderngl.BLEND)
+            self.ctx.enable(moderngl.PROGRAM_POINT_SIZE)
+            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            import pygame
+            if getattr(self, 'audio_playing', False):
+                if pygame.mixer.music.get_busy():
+                    self._sync_current_time_from_clock()
+                else:
+                    # Track finished (or mixer stopped). Snap to end so Play restarts cleanly.
+                    duration = float(max(0.0, self._audio_duration_sec))
+                    if duration > 0:
+                        self.current_time = duration
+                        self._audio_clock_base = duration
+                    self.audio_playing = False
+                    self._audio_clock_started_at = None
+                    self._emit_playback_state()
+            frame_idx = int(self.current_time * 60)
+            if self.analyzer:
+                fft = self.analyzer.fft_for_frame(frame_idx)
+                feats = self.analyzer.features_for_frame(frame_idx)
+            else:
+                fft = np.zeros(1024, dtype=np.float32)
+                feats = {'bass': 0.0, 'beat': 0.0, 'onset': 0.0}
+            bass = float(feats.get('bass', 0.0))
+            tpl_bg = self.template.get('backgroundSettings', {}) if isinstance(self.template.get('backgroundSettings'), dict) else {}
+            bg_enabled = bool(tpl_bg.get('enabled', True))
+            bg_brightness = float(tpl_bg.get('brightness', 1.0))
+            bg_contrast = float(max(0.0, min(2.0, float(tpl_bg.get('contrast', 1.0) or 1.0))))
+            bg_saturation = float(max(0.0, min(2.0, float(tpl_bg.get('saturation', 1.0) or 1.0))))
+            bg_hue = float(max(-180.0, min(180.0, float(tpl_bg.get('hue', 0.0) or 0.0))))
+            bg_react = float(tpl_bg.get('reactivity', 0.0))
+            bg_smooth = float(tpl_bg.get('smoothing', 0.8))
+            bg_motion_mode = str(tpl_bg.get('motionMode', 'none') or 'none')
+            if bg_motion_mode not in ('none', 'zoom', 'vibrate', 'both'):
+                bg_motion_mode = 'none'
+            bg_motion_zoom_strength = float(tpl_bg.get('motionZoomStrength', 1.0) or 1.0)
+            bg_motion_zoom_strength = float(max(0.0, min(20.0, bg_motion_zoom_strength)))
+            bg_motion_vibrate_strength = float(tpl_bg.get('motionVibrateStrength', 1.0) or 1.0)
+            bg_motion_vibrate_strength = float(max(0.0, min(20.0, bg_motion_vibrate_strength)))
+            tpl_audio = self.template.get('audioSettings', {}) if isinstance(self.template.get('audioSettings'), dict) else {}
+            aud_sens = float(tpl_audio.get('sensitivity', 1.0))
+            aud_bar_height = float(tpl_audio.get('barHeight', 1.0) or 1.0)
+            aud_bar_height = float(max(0.25, min(8.0, aud_bar_height)))
+            aud_smooth = float(tpl_audio.get('smoothing', 0.8))
+            aud_smooth = float(max(0.0, min(0.99, aud_smooth)))
+            self.p_bass_fast = self.p_bass_fast * (1.0 - (1.0 - float(np.exp(-self.dt / 0.06)))) + bass * (1.0 - float(np.exp(-self.dt / 0.06)))
+            self.p_bass_slow = self.p_bass_slow * (1.0 - (1.0 - float(np.exp(-self.dt / 0.35)))) + bass * (1.0 - float(np.exp(-self.dt / 0.35)))
+            raw_kick = float(max(0.0, self.p_bass_fast - self.p_bass_slow))
+            kick0 = float(max(0.0, min(1.0, raw_kick * 4.0)))
+            self.p_kick_env = float(max(kick0, self.p_kick_env * float(np.exp(-self.dt / 0.18))))
+            kick_pow = float(max(0.0, min(1.0, self.p_kick_env))) ** 2
+            base_h = float(self.template.get('renderBaseHeight', 450.0))
+            base_h = float(max(1.0, min(4000.0, base_h)))
+            sf = float(h) / base_h
+            bg_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.6))))
+            self.bg_audio_env = _smooth_env(self.bg_audio_env, bg_audio_raw, bg_smooth)
+            if bg_motion_mode in ('vibrate', 'both'):
+                bg_shake_target = float(max(0.0, bg_react) * self.bg_audio_env * 18.0 * sf * bg_motion_vibrate_strength)
+                jitter_x = (time.time() * 0.81 + frame_idx * 0.013) % 1.0
+                jitter_y = (time.time() * 0.83 + frame_idx * 0.017) % 1.0
+                self.bg_shake_state_x = self.bg_shake_state_x * bg_smooth + (jitter_x * 2.0 - 1.0) * bg_shake_target * (1.0 - bg_smooth)
+                self.bg_shake_state_y = self.bg_shake_state_y * bg_smooth + (jitter_y * 2.0 - 1.0) * bg_shake_target * (1.0 - bg_smooth)
+            else:
+                self.bg_shake_state_x = 0.0
+                self.bg_shake_state_y = 0.0
+            self.prog_scene['tex_bg'].value = 0
+            if hasattr(self, 'tex_bg'):
+                self.tex_bg.use(location=0)
+            if 'out_size' in self.prog_scene:
+                self.prog_scene['out_size'].value = (float(w), float(h))
+            bg_fit_mode = str(tpl_bg.get("fitMode", "cover") or "cover")
+            if bg_fit_mode not in ("cover", "contain", "original"):
+                bg_fit_mode = "cover"
+            fit_mode_i = 0 if bg_fit_mode == "cover" else (1 if bg_fit_mode == "contain" else 2)
+            if "bg_fit_mode" in self.prog_scene:
+                self.prog_scene["bg_fit_mode"].value = int(fit_mode_i)
+            if "bg_tex_size" in self.prog_scene:
+                self.prog_scene["bg_tex_size"].value = (float(self._bg_tex_size[0]), float(self._bg_tex_size[1]))
+            user_off_x = float(tpl_bg.get("userOffsetX", 0.0) or 0.0)
+            user_off_y = float(tpl_bg.get("userOffsetY", 0.0) or 0.0)
+            user_scale = float(tpl_bg.get("userScale", 1.0) or 1.0)
+            user_scale = float(max(0.05, min(20.0, user_scale)))
+            off_uv_x = float(-user_off_x / max(1.0, float(w)))
+            off_uv_y = float(user_off_y / max(1.0, float(h)))
+            if bg_motion_mode in ('vibrate', 'both'):
+                self.prog_scene['bg_offset'].value = (
+                    float(off_uv_x + self.bg_shake_state_x / max(1.0, float(w))),
+                    float(off_uv_y + self.bg_shake_state_y / max(1.0, float(h))),
+                )
+            else:
+                self.prog_scene['bg_offset'].value = (float(off_uv_x), float(off_uv_y))
+            if bg_motion_mode in ('zoom', 'both'):
+                # Soft-cap the pulse so max Zoom Strength stays punchy but not runaway.
+                zoom_delta = float(self.bg_audio_env * bg_react * 0.04 * bg_motion_zoom_strength)
+                bg_scale = float(1.0 + min(2.5, max(0.0, zoom_delta)))
+            else:
+                bg_scale = 1.0
+            bg_scale = float(bg_scale) * float(user_scale)
+            self.prog_scene['bg_scale'].value = (float(bg_scale), float(bg_scale))
+            # Brightness still receives audio-react; contrast/sat/hue are static grade.
+            self.prog_scene['bg_brightness'].value = float(max(0.0, min(3.0, bg_brightness * (1.0 + self.bg_audio_env * bg_react))))
+            if "bg_contrast" in self.prog_scene:
+                self.prog_scene["bg_contrast"].value = float(bg_contrast)
+            if "bg_saturation" in self.prog_scene:
+                self.prog_scene["bg_saturation"].value = float(bg_saturation)
+            if "bg_hue" in self.prog_scene:
+                self.prog_scene["bg_hue"].value = float(bg_hue)
+            fx = self.template.get("effects") if isinstance(self.template.get("effects"), dict) else {}
+            vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
+            sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
+            if "vignette_enabled" in self.prog_scene:
+                self.prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
+                self.prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+                self.prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
+                self.prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+                vcol = str(vig.get("color", "#000000") or "#000000")
+                try:
+                    self.prog_scene["vignette_color"].value = (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0) if vcol.startswith("#") and len(vcol) == 7 else (0.0, 0.0, 0.0)
+                except Exception:
+                    self.prog_scene["vignette_color"].value = (0.0, 0.0, 0.0)
+            if "smoke_enabled" in self.prog_scene:
+                self.prog_scene["smoke_enabled"].value = 1 if bool(sm.get("enabled", False)) else 0
+                self.prog_scene["smoke_strength"].value = float(max(0.0, min(1.0, float(sm.get("strength", 0.35) or 0.35))))
+                self.prog_scene["smoke_blur"].value = float(max(0.0, min(1.0, float(sm.get("blur", 0.55) or 0.55))))
+                self.prog_scene["smoke_noise"].value = float(max(0.0, min(1.0, float(sm.get("noise", 0.55) or 0.55))))
+                self.prog_scene["smoke_speed"].value = float(max(0.0, min(2.0, float(sm.get("speed", 0.35) or 0.35))))
+                self.prog_scene["smoke_opacity"].value = float(max(0.0, min(1.0, float(sm.get("opacity", 0.55) or 0.55))))
+                scol = str(sm.get("color", "#000000") or "#000000")
+                try:
+                    self.prog_scene["smoke_color"].value = (int(scol[1:3], 16) / 255.0, int(scol[3:5], 16) / 255.0, int(scol[5:7], 16) / 255.0) if scol.startswith("#") and len(scol) == 7 else (0.0, 0.0, 0.0)
+                except Exception:
+                    self.prog_scene["smoke_color"].value = (0.0, 0.0, 0.0)
+            if "time_sec" in self.prog_scene:
+                self.prog_scene["time_sec"].value = float(self.current_time)
+            if bg_enabled and bool(str(self.bg_path or "").strip()):
+                self.vao_quad_scene.render(mode=moderngl.TRIANGLE_STRIP)
+            pos_cfg = self.template.get('position', {}) if isinstance(self.template.get('position'), dict) else {}
+            anchor = str(pos_cfg.get('anchor', 'center'))
+            off_x = float(pos_cfg.get('x', 0.0)) * sf
+            off_y = float(pos_cfg.get('y', 0.0)) * sf
+            cx, cy = _get_anchor_coords(anchor, off_x, off_y, w, h)
+            ls = self.template.get('logoSettings', {}) if isinstance(self.template.get('logoSettings'), dict) else {}
+            logo_enabled = bool(ls.get('enabled', True))
+            logo_size_base = float(ls.get('size', 192.0))
+            logo_scale_base = float(ls.get('scale', 1.0))
+            logo_react = float(ls.get('reactivity', 0.0))
+            logo_smooth = float(ls.get('smoothing', 0.75))
+            logo_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.8))))
+            self.logo_audio_env = _smooth_env(self.logo_audio_env, logo_audio_raw, logo_smooth)
+            logo_visual_radius = logo_size_base * 0.5 * sf * logo_scale_base
+            preview_bindings = (
+                self.template.get("previewBindings")
+                if isinstance(self.template.get("previewBindings"), dict)
+                else {}
+            )
+            spectrum_attach_to_logo = bool(preview_bindings.get("spectrumAttachToLogo", True))
+            spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
+            logo_circle_mask = bool(ls.get("circleMask", True))
+            logo_rgba_for_ratio = getattr(self, "_logo_rgba_cache", None)
+            logo_visible_radius_ratio = (
+                _compute_visible_logo_radius_ratio(logo_rgba_for_ratio, logo_circle_mask)
+                if spectrum_attach_to_logo and logo_rgba_for_ratio is not None
+                else 1.0
+            )
+            attached_to_logo = bool(spectrum_attach_to_logo and logo_enabled and bool(str(self.logo_path or "").strip()))
+            attached_base_radius = float(
+                max(0.0, (logo_visual_radius * logo_visible_radius_ratio) + spectrum_logo_gap)
+            )
+            ps_early = self._particle_settings()
+            if bool(ps_early.get("enabled", True)):
+                self._prepare_particle_audio(
+                    bass=bass,
+                    kick_pow=kick_pow,
+                    ps=ps_early,
+                    onset=float(feats.get("onset", 0.0) or 0.0),
+                    beat=float(feats.get("beat", 0.0) or 0.0),
+                )
+
+            def hex_to_rgb(hx: str):
+                s2 = str(hx or '').strip()
+                if s2.startswith('#'):
+                    s2 = s2[1:]
+                if len(s2) != 6:
+                    return (255, 255, 255)
+                try:
+                    return (int(s2[0:2], 16), int(s2[2:4], 16), int(s2[4:6], 16))
+                except Exception:
+                    return (255, 255, 255)
+            BINS = 64
+            fft_size_half = 1024
+            n0 = int(min(1024, fft.shape[0]))
+            for b_idx in range(BINS):
+                log_freq = np.log10(20.0) + b_idx / float(BINS) * (np.log10(12000.0) - np.log10(20.0))
+                freq = 10.0 ** log_freq
+                linear_index = freq / 22050.0 * fft_size_half
+                idx1 = int(np.floor(linear_index))
+                idx2 = int(min(np.ceil(linear_index), fft_size_half - 1))
+                frac = linear_index - float(idx1)
+                val1 = float(fft[idx1]) if idx1 < n0 else 0.0
+                val2 = float(fft[idx2]) if idx2 < n0 else 0.0
+                raw_val = val1 * (1.0 - frac) + val2 * frac
+                freq_boost = 1.0 + (b_idx / float(BINS)) ** 2 * 2.0
+                self.fft_log[b_idx] = float(max(0.01, min(1.0, raw_val * freq_boost)))
+            self.fft_smoothed = self.fft_smoothed * aud_smooth + self.fft_log * (1.0 - aud_smooth)
+            rg = float(max(0.1, min(8.0, aud_sens)))
+            fft_s = np.clip(self.fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
+            spectrum_enabled = bool(self.template.get("spectrumEnabled", True))
+            spectrum_layers = self.template.get('layers') if isinstance(self.template.get('layers'), list) else []
+            spectrum_layers = [sl for sl in spectrum_layers if isinstance(sl, dict)]
+            if spectrum_enabled and not spectrum_layers:
+                spectrum_layers = [dict(normalize_renderer_template(default_renderer_template()).get('layers', [{}])[0])]
+            if not spectrum_enabled:
+                spectrum_layers = []
+            attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
+            for sl in spectrum_layers:
+                curved = bool(sl.get('curved', False))
+                mirrored = bool(sl.get('mirrored', False))
+                gravity = str(sl.get('gravity', 'normal')).lower().strip()
+                style_preset = _resolve_export_spectrum_style(
+                    str(self.template.get('style', 'orbit-spikes')),
+                    sl,
+                )
+                bar_width_px = float(sl.get('barWidth', 4.0)) * sf
+                spike_height_px = float(sl.get('thickness', 30.0)) * sf * aud_bar_height
+                radius_offset_px = float(sl.get('radiusOffset', 0.0)) * sf
+                layer_op = float(max(0.0, min(1.0, float(sl.get('opacity', 1.0)))))
+                color_cfg = sl.get('color') if isinstance(sl.get('color'), dict) else {}
+                col_mode = str(color_cfg.get('mode', 'solid')).lower().strip()
+                solid_hex = str(color_cfg.get('solidColor', '#ffffff'))
+                grad_cols = color_cfg.get('gradientColors') if isinstance(color_cfg.get('gradientColors'), list) else ['#ff4fd8', '#22d3ee']
+                if not grad_cols:
+                    grad_cols = [solid_hex, '#22d3ee']
+                # Prefer vivid gradient stops; if mode is solid, still use solid_hex.
+                blend_mode = str(sl.get('blend_mode', 'normal')).lower().strip()
+                glow_strength = float(max(0.0, min(100.0, float(sl.get('glow', 0.0))))) / 100.0
+                glow_softness = float(max(0.0, min(30.0, float(sl.get('blur', 0.0)))))
+                render_fft = np.zeros(BINS, dtype=np.float32)
+                if mirrored:
+                    half = BINS // 2
+                    for i in range(half):
+                        smoothed = fft_s[i]
+                        if 1 < i < half - 2:
+                            smoothed = fft_s[i - 2] * 0.1 + fft_s[i - 1] * 0.2 + fft_s[i] * 0.4 + fft_s[i + 1] * 0.2 + fft_s[i + 2] * 0.1
+                        render_fft[half - 1 - i] = smoothed
+                        render_fft[half + i] = smoothed
+                else:
+                    for i in range(BINS):
+                        smoothed = fft_s[i]
+                        if 1 < i < BINS - 2:
+                            smoothed = fft_s[i - 2] * 0.1 + fft_s[i - 1] * 0.2 + fft_s[i] * 0.4 + fft_s[i + 1] * 0.2 + fft_s[i + 2] * 0.1
+                        render_fft[i] = smoothed
+                # Match export attach-to-logo radius (previewBindings + visible logo ratio).
+                radius = _resolve_spectrum_layer_radius(
+                    attached_to_logo=attached_to_logo,
+                    attached_base_radius=attached_base_radius,
+                    attached_layer_base_offset=attached_layer_base_offset,
+                    logo_visual_radius=logo_visual_radius,
+                    bar_width=bar_width_px,
+                    radius_offset=radius_offset_px,
+                )
+                n = BINS
+                px_arr = np.zeros(n, dtype=np.float32)
+                py_arr = np.zeros(n, dtype=np.float32)
+                dx_arr = np.zeros(n, dtype=np.float32)
+                dy_arr = np.zeros(n, dtype=np.float32)
+                if curved:
+                    total_angle = np.pi * 2.0 if mirrored else np.pi
+                    start_angle = np.pi / 2.0
+                    if gravity == 'top':
+                        start_angle = -np.pi / 2.0
+                    elif gravity == 'left':
+                        start_angle = np.pi
+                    elif gravity == 'right':
+                        start_angle = 0.0
+                    # normal / bottom keep default start_angle (pi/2)
+                    for i in range(n):
+                        t0 = float(i) / float(n - 1) if n > 1 else 0.0
+                        ang = start_angle - total_angle / 2.0 + t0 * total_angle
+                        px_arr[i] = np.cos(ang) * radius
+                        py_arr[i] = np.sin(ang) * radius
+                        dx_arr[i] = np.cos(ang)
+                        dy_arr[i] = np.sin(ang)
+                else:
+                    total_length = float(h * 0.8) if gravity in ('left', 'right') else float(w * 0.8)
+                    start_x = -total_length / 2.0
+                    for i in range(n):
+                        t0 = float(i) / float(n - 1) if n > 1 else 0.0
+                        off = start_x + t0 * total_length
+                        if gravity in ('normal', 'top'):
+                            # Classic EQ: bars rise upward from the baseline.
+                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (off, 0.0, 0.0, 1.0)
+                        elif gravity == 'bottom':
+                            # Rabbit-ears: bars grow downward from the baseline.
+                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (off, 0.0, 0.0, -1.0)
+                        elif gravity == 'left':
+                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (0.0, off, 1.0, 0.0)
+                        else:
+                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (0.0, off, -1.0, 0.0)
+                waveform_style = style_preset in ('aurora-ribbon', 'magma-ridge', 'plasma-bloom', 'soft-waveform', 'mountain', 'liquid', 'continuous-waveform')
+                if curved and mirrored and waveform_style:
+                    px_arr = np.concatenate([px_arr, px_arr[:1]])
+                    py_arr = np.concatenate([py_arr, py_arr[:1]])
+                    dx_arr = np.concatenate([dx_arr, dx_arr[:1]])
+                    dy_arr = np.concatenate([dy_arr, dy_arr[:1]])
+                base_total_length = radius * (np.pi * 2.0 if mirrored else np.pi) if curved else float(h * 0.8) if gravity in ('left', 'right') else float(w * 0.8)
+                pass_specs: list[dict] = []
+                if glow_strength > 0.0:
+                    pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.14 + glow_strength * 0.22), 'bar_width': bar_width_px + (glow_softness * 1.8 + glow_strength * 18.0) * sf, 'spike_height': spike_height_px + (glow_softness * 2.2 + glow_strength * 22.0) * sf, 'fill_circle': False})
+                    pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.08 + glow_strength * 0.15), 'bar_width': bar_width_px + (glow_softness * 3.0 + glow_strength * 32.0) * sf, 'spike_height': spike_height_px + (glow_softness * 3.4 + glow_strength * 34.0) * sf, 'fill_circle': False})
+                pass_specs.append({'is_glow': False, 'alpha': layer_op, 'bar_width': bar_width_px, 'spike_height': spike_height_px, 'fill_circle': bool(sl.get('fillCircle', False))})
+                for pass_cfg in pass_specs:
+                    pass_bar_width_px = float(pass_cfg['bar_width'])
+                    pass_spike_height_px = float(pass_cfg['spike_height'])
+                    pass_alpha = float(max(0.0, min(1.0, float(pass_cfg['alpha']))))
+                    fill_circle_pass = bool(pass_cfg['fill_circle'])
+                    if pass_cfg['is_glow']:
+                        self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                    elif blend_mode in ('screen', 'add', 'lighten'):
+                        self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                    else:
+                        self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+                    val_arr = (render_fft * pass_spike_height_px).astype(np.float32)
+                    if curved and mirrored and waveform_style:
+                        val_arr = np.concatenate([val_arr, val_arr[:1]])
+                    nn = int(px_arr.shape[0])
+                    half_t = float(max(1.0, pass_bar_width_px)) * 0.5
+
+                    def mk_col_array(nn0: int):
+                        if col_mode == 'gradient' and len(grad_cols) >= 2:
+                            c1 = np.array(hex_to_rgb(grad_cols[0]), dtype=np.float32) / 255.0
+                            c2 = np.array(hex_to_rgb(grad_cols[-1]), dtype=np.float32) / 255.0
+                            t_arr = (np.arange(nn0, dtype=np.float32) / float(max(1, nn0 - 1))).reshape((nn0, 1))
+                            rgb = c1.reshape((1, 3)) * (1.0 - t_arr) + c2.reshape((1, 3)) * t_arr
+                            a = np.full((nn0, 1), pass_alpha, dtype=np.float32)
+                            return np.concatenate([rgb, a], axis=1)
+                        c = np.array(hex_to_rgb(solid_hex), dtype=np.float32) / 255.0
+                        return np.tile(np.array([c[0], c[1], c[2], pass_alpha], dtype=np.float32)[None, :], (nn0, 1))
+                    ctx_col = mk_col_array(nn)
+                    slot_w = float(base_total_length / max(1, BINS))
+                    bw = resolve_bar_pixel_width(pass_bar_width_px, slot_w)
+                    if waveform_style:
+                        xs_o = np.zeros(nn, dtype=np.float32)
+                        ys_o = np.zeros(nn, dtype=np.float32)
+                        xs_i = np.zeros(nn, dtype=np.float32)
+                        ys_i = np.zeros(nn, dtype=np.float32)
+                        for i in range(nn):
+                            h_val = float(max(2.0, val_arr[i]))
+                            dx, dy = (float(dx_arr[i]), float(dy_arr[i]))
+                            if style_preset in ('magma-ridge', 'mountain'):
+                                peak_h = h_val * 1.18
+                                xs_o[i] = (cx + float(px_arr[i]) + dx * peak_h) / float(w) * 2.0 - 1.0
+                                ys_o[i] = (cy + float(py_arr[i]) + dy * peak_h) / float(h) * 2.0 - 1.0
+                                xs_i[i] = (cx + float(px_arr[i]) + dx * (half_t * 0.2)) / float(w) * 2.0 - 1.0
+                                ys_i[i] = (cy + float(py_arr[i]) + dy * (half_t * 0.2)) / float(h) * 2.0 - 1.0
+                            elif style_preset in ('plasma-bloom', 'liquid'):
+                                liquid_h = h_val * 0.92
+                                inner_pull = half_t * 1.35
+                                xs_o[i] = (cx + float(px_arr[i]) + dx * liquid_h) / float(w) * 2.0 - 1.0
+                                ys_o[i] = (cy + float(py_arr[i]) + dy * liquid_h) / float(h) * 2.0 - 1.0
+                                xs_i[i] = (cx + float(px_arr[i]) - dx * inner_pull) / float(w) * 2.0 - 1.0
+                                ys_i[i] = (cy + float(py_arr[i]) - dy * inner_pull) / float(h) * 2.0 - 1.0
+                            else:
+                                xs_o[i] = (cx + float(px_arr[i]) + dx * (h_val + half_t)) / float(w) * 2.0 - 1.0
+                                ys_o[i] = (cy + float(py_arr[i]) + dy * (h_val + half_t)) / float(h) * 2.0 - 1.0
+                                xs_i[i] = (cx + float(px_arr[i]) + dx * (h_val - half_t)) / float(w) * 2.0 - 1.0
+                                ys_i[i] = (cy + float(py_arr[i]) + dy * (h_val - half_t)) / float(h) * 2.0 - 1.0
+                        if curved and fill_circle_pass:
+                            cx_ndc = float(cx) / float(w) * 2.0 - 1.0
+                            cy_ndc = float(cy) / float(h) * 2.0 - 1.0
+                            pos_fill = np.empty((nn + 1, 2), dtype=np.float32)
+                            pos_fill[0, 0] = cx_ndc
+                            pos_fill[0, 1] = cy_ndc
+                            pos_fill[1:, 0] = xs_o
+                            pos_fill[1:, 1] = ys_o
+                            cols_edge = ctx_col[:nn].copy()
+                            cols_center = cols_edge[:1].copy()
+                            cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                            verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
+                            if verts_fill.nbytes > self.line_vbo.size:
+                                self.line_vbo.orphan(size=verts_fill.nbytes)
+                            self.line_vbo.write(verts_fill.tobytes())
+                            self.vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(nn + 1))
+                        pos = np.empty((2 * nn, 2), dtype=np.float32)
+                        pos[0::2, 0] = xs_o
+                        pos[0::2, 1] = ys_o
+                        pos[1::2, 0] = xs_i
+                        pos[1::2, 1] = ys_i
+                        colsi = np.repeat(ctx_col, 2, axis=0)
+                        verts = np.column_stack([pos, colsi]).astype(np.float32)
+                        if verts.nbytes > self.line_vbo.size:
+                            self.line_vbo.orphan(size=verts.nbytes)
+                        self.line_vbo.write(verts.tobytes())
+                        self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(2 * nn))
+                    else:
+                        # Match export: shared bar builder (same geometry as paintGL).
+                        from visualizer._spectrum_fast import build_bar_vertices
+                        bar_out = build_bar_vertices(
+                            px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
+                            bw, style_preset, sf, self.logo_audio_env, self.particle_audio_env,
+                            colors=ctx_col[:BINS],
+                        )
+                        if isinstance(bar_out, tuple):
+                            pos, colsi = bar_out
+                        else:
+                            pos = bar_out
+                            colsi = np.repeat(ctx_col[:BINS], 6, axis=0)
+                        if pos.shape[0]:
+                            verts = np.column_stack([pos, colsi]).astype(np.float32)
+                            if verts.nbytes > self.line_vbo.size:
+                                self.line_vbo.orphan(size=verts.nbytes)
+                            self.line_vbo.write(verts.tobytes())
+                            self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+            self._finish_particles_frame(
+                w=w,
+                h=h,
+                sf=sf,
+                logo_visual_radius=logo_visual_radius,
+                bass=bass,
+                kick_pow=kick_pow,
+                feats=feats,
+                logo_enabled=logo_enabled,
+            )
+            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            if logo_enabled:
+                self.prog_logo['tex_logo'].value = 1
+                if hasattr(self, 'tex_logo'):
+                    self.tex_logo.use(location=1)
+                if 'out_size' in self.prog_logo:
+                    self.prog_logo['out_size'].value = (float(w), float(h))
+                ax, ay = (cx, cy)
+                self.prog_logo['logo_px'].value = (float(ax) - float(w) * 0.5, float(ay) - float(h) * 0.5)
+                s_logo = logo_scale_base * (1.0 + self.logo_audio_env * logo_react)
+                s_logo = float(max(0.05, min(4.0, s_logo)))
+                size = logo_size_base * sf * s_logo
+                self.prog_logo['logo_size_px'].value = (float(size), float(size))
+                self.prog_logo['logo_opacity'].value = float(max(0.0, min(1.0, float(ls.get('opacity', 1.0)))))
+                self.prog_logo['logo_circle_mask'].value = 1 if bool(ls.get('circleMask', True)) else 0
+                if "logo_rot_rad" in self.prog_logo:
+                    spin_en = bool(ls.get("spinEnabled", False))
+                    spin_dir = str(ls.get("spinDirection", "cw") or "cw").strip().lower()
+                    dir_s = 1.0 if spin_dir == "cw" else -1.0
+                    speed_deg = float(ls.get("spinSpeed", 0.0) or 0.0)
+                    angle = 0.0
+                    if spin_en and abs(speed_deg) > 1e-06:
+                        angle = float(dir_s) * float(speed_deg) * 0.017453292519943295 * float(self.current_time)
+                    self.prog_logo["logo_rot_rad"].value = float(angle)
+                self.vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
+            overlays = self.template.get("textOverlays") if isinstance(self.template.get("textOverlays"), list) else []
+            if overlays:
+                import math
+                self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+                drag_source = self._text_drag_source()
+                for idx, o in enumerate(overlays[:64]):
+                    if not isinstance(o, dict) or not bool(o.get("enabled", False)):
+                        continue
+                    text = str(o.get("text", "") or "").strip()
+                    if not text:
+                        continue
+                    start = float(o.get("startSec", 0.0) or 0.0)
+                    dur = float(o.get("durationSec", 3.0) or 3.0)
+                    if dur <= 0:
+                        continue
+                    t_rel = float(self.current_time) - start
+                    if t_rel < 0.0 or t_rel > dur:
+                        continue
+                    u = float(max(0.0, min(1.0, t_rel / dur)))
+                    ease = u * u * (3.0 - 2.0 * u)
+                    anim = str(o.get("animation", "fade") or "fade")
+                    opacity = 1.0
+                    dx = 0.0
+                    dy = 0.0
+                    scale_t = 1.0
+                    reveal = 1.0
+                    fade_in = float(max(0.001, min(0.5, 0.18)))
+                    fade_out = fade_in
+                    if anim in ("fade", "slide_up", "slide_down", "slide_left", "slide_right", "pop", "typewriter", "glow", "shake"):
+                        a_in = min(1.0, u / fade_in)
+                        a_out = min(1.0, (1.0 - u) / fade_out)
+                        opacity = max(0.0, min(1.0, a_in * a_out))
+                    if anim == "slide_up":
+                        dy -= float((1.0 - ease) * 60.0 * sf)
+                    elif anim == "slide_down":
+                        dy += float((1.0 - ease) * 60.0 * sf)
+                    elif anim == "slide_left":
+                        dx -= float((1.0 - ease) * 70.0 * sf)
+                    elif anim == "slide_right":
+                        dx += float((1.0 - ease) * 70.0 * sf)
+                    elif anim == "pop":
+                        s0 = 0.85 + ease * 0.2
+                        scale_t = float(max(0.3, min(2.5, s0)))
+                    elif anim == "typewriter":
+                        reveal = float(max(0.0, min(1.0, u * 1.2)))
+                    elif anim == "glow":
+                        opacity *= float(0.78 + 0.22 * math.sin(u * math.tau * 2.0))
+                    elif anim == "shake":
+                        k = float(max(0.0, min(1.0, u))) * (1.0 - float(max(0.0, min(1.0, u))))
+                        dx += float(math.sin((start + float(self.current_time)) * 38.0 + idx * 7.0) * 10.0 * sf * k)
+                        dy += float(math.cos((start + float(self.current_time)) * 41.0 + idx * 11.0) * 10.0 * sf * k)
+                    tx, (tw, th) = self._ensure_text_texture(idx, o, sf)
+                    if tx is None or tw <= 0 or th <= 0:
+                        continue
+                    anchor_t = str(o.get("anchor", "top-left") or "top-left")
+                    ox = float(o.get("x", 24.0) if "x" in o else 24.0) * sf
+                    oy = float(o.get("y", 24.0) if "y" in o else 24.0) * sf
+                    # GPU real-time drag: add live widget-pixel offset (no template mutate).
+                    if drag_source and str(o.get("source") or "") == drag_source:
+                        ox += float(self._text_drag_dx)
+                        oy += float(self._text_drag_dy)
+                    ax, ay = _get_anchor_coords(anchor_t, ox, oy, w, h)
+                    draw_w = float(tw) * scale_t
+                    draw_h = float(th) * scale_t
+                    qx, qy = _text_quad_center_offset(anchor_t, draw_w, draw_h)
+                    self.prog_text["tex_text"].value = 2
+                    tx.use(location=2)
+                    self.prog_text["out_size"].value = (float(w), float(h))
+                    self.prog_text["text_px"].value = (
+                        float(ax) - float(w) * 0.5 + dx + qx,
+                        float(ay) - float(h) * 0.5 + dy + qy,
+                    )
+                    self.prog_text["text_size_px"].value = (draw_w, draw_h)
+                    self.prog_text["text_opacity"].value = float(
+                        max(0.0, min(1.0, opacity * float(o.get("opacity", 1.0) or 1.0)))
+                    )
+                    self.prog_text["reveal"].value = float(max(0.0, min(1.0, reveal)))
+                    self.vao_quad_text.render(mode=moderngl.TRIANGLE_STRIP)
+        except Exception as e:
+            self._log(f"[{time.strftime('%H:%M:%S')}] Error in paintGL: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            elapsed_ms = max(0.0, (time.perf_counter() - paint_started) * 1000.0)
+            if elapsed_ms > 0:
+                self._perf_frame_ms = elapsed_ms
+                self._perf_fps = 1000.0 / elapsed_ms
+                self._perf_last_paint_at = time.perf_counter()
+
+    def resizeGL(self, w, h):
+        if self.ctx:
+            self.ctx.viewport = (0, 0, w, h)
+
+
+class TimelineConnector(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._color = "#31435d"
+        self.setFixedSize(70, 220)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+    def set_color(self, color: str) -> None:
+        self._color = str(color or "#31435d")
+        self.update()
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(self._color))
+        pen.setWidth(6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        y = int(10 + 98 // 2)
+        p.drawLine(6, y, int(self.width() - 6), y)
+        p.end()
+
+
+class ProgressRingStep(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._title = ""
+        self._details: list[str] = []
+        self._duration_text = ""
+        self._percent = 0
+        self._state = "inactive"
+        self._icon = None
+        self._base_ring = "#31435d"
+        self._active_ring = "#2d71df"
+        self._text = "#eef4ff"
+        self._text_muted = "#8ea4c7"
+        self._icon_color = "#d9e5fb"
+        self.setMinimumHeight(220)
+        self.setMinimumWidth(180)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+    def set_data(self, *, title: str, percent: int, state: str, icon, details: list[str] | None = None, duration_text: str = "", icon_color: str | None = None) -> None:
+        self._title = str(title or "")
+        self._percent = int(max(0, min(100, int(percent))))
+        self._state = str(state or "inactive").strip().lower()
+        self._icon = icon
+        self._details = [str(x or "").strip() for x in (details or []) if str(x or "").strip()]
+        self._duration_text = str(duration_text or "").strip()
+        if icon_color is not None:
+            self._icon_color = str(icon_color or self._icon_color)
+
+        if self._state == "done":
+            self._active_ring = "#45c887"
+        elif self._state == "failed":
+            self._active_ring = "#d65a5a"
+        elif self._state == "cancelled":
+            self._active_ring = "#5e7598"
+        elif self._state == "running":
+            self._active_ring = "#2d71df"
+        else:
+            self._active_ring = "#2d71df" if self._percent > 0 else "#31435d"
+        self.update()
+
+    def paintEvent(self, ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w = int(self.width())
+        h = int(self.height())
+
+        circle_d = 98
+        ring_w = 9
+        top_pad = 10
+
+        cx = w // 2
+        cy = top_pad + circle_d // 2
+
+        rect = QRectF(float(cx - circle_d // 2), float(cy - circle_d // 2), float(circle_d), float(circle_d))
+
+        pen_bg = QPen(QColor(self._base_ring))
+        pen_bg.setWidth(ring_w)
+        pen_bg.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen_bg)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawArc(rect, 0, 360 * 16)
+
+        if self._percent > 0 and self._state in {"running", "done", "failed", "cancelled"}:
+            pen_fg = QPen(QColor(self._active_ring))
+            pen_fg.setWidth(ring_w)
+            pen_fg.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(pen_fg)
+            span = int(-360.0 * float(self._percent) / 100.0 * 16.0)
+            p.drawArc(rect, 90 * 16, span)
+        elif self._percent > 0:
+            pen_fg = QPen(QColor(self._active_ring))
+            pen_fg.setWidth(ring_w)
+            pen_fg.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(pen_fg)
+            span = int(-360.0 * float(self._percent) / 100.0 * 16.0)
+            p.drawArc(rect, 90 * 16, span)
+
+        if self._icon is not None:
+            try:
+                pm = self._icon.pixmap(QSize(26, 26))
+                p.drawPixmap(int(cx - pm.width() // 2), int(cy - 20), pm)
+            except Exception:
+                pass
+
+        p.setPen(QColor(self._text if self._state != "inactive" else self._text_muted))
+        f = QFont("Segoe UI", 10, QFont.Weight.Bold)
+        p.setFont(f)
+        p.drawText(QRectF(float(cx - 40), float(cy + 6), 80.0, 24.0), int(Qt.AlignmentFlag.AlignCenter), f"{self._percent}%")
+
+        y0 = top_pad + circle_d + 12
+        p.setPen(QColor(self._text))
+        ft = QFont("Segoe UI", 10, QFont.Weight.Bold)
+        p.setFont(ft)
+        p.drawText(QRectF(0.0, float(y0), float(w), 22.0), int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop), self._title)
+
+        p.setPen(QColor(self._text_muted))
+        fd = QFont("Segoe UI", 9)
+        p.setFont(fd)
+        yy = y0 + 22
+        if self._duration_text:
+            p.drawText(QRectF(0.0, float(yy), float(w), 18.0), int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop), self._duration_text)
+            yy += 18
+        for line in self._details[:2]:
+            p.drawText(QRectF(0.0, float(yy), float(w), 18.0), int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop), line)
+            yy += 18
+        p.end()
+
+
+class WorkflowTimeline(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._steps: list[dict] = []
+        self._step_widgets: list[ProgressRingStep] = []
+        self._connector_widgets: list[TimelineConnector] = []
+        self._keys: list[str] = []
+        self._icon_cache: dict[tuple[str, str], object] = {}
+        self._row = QHBoxLayout(self)
+        self._row.setContentsMargins(10, 10, 10, 10)
+        self._row.setSpacing(0)
+        self.setMinimumHeight(240)
+
+    def set_steps(self, steps: list[dict]) -> None:
+        steps2 = [dict(s) for s in (steps or []) if isinstance(s, dict)]
+        keys2 = [str(s.get("key", "") or str(s.get("title", "") or "")).strip() for s in steps2]
+
+        if not steps2:
+            self._steps = []
+            self._keys = []
+            self._step_widgets = []
+            self._connector_widgets = []
+            while self._row.count():
+                item = self._row.takeAt(0)
+                w = item.widget() if item is not None else None
+                if w is not None:
+                    w.setParent(None)
+                    w.deleteLater()
+            self.update()
+            return
+
+        can_update = bool(self._keys) and len(self._keys) == len(keys2) and all(a == b for a, b in zip(self._keys, keys2))
+        if not can_update:
+            self._steps = steps2
+            self._keys = keys2
+            self._step_widgets = []
+            self._connector_widgets = []
+            while self._row.count():
+                item = self._row.takeAt(0)
+                w = item.widget() if item is not None else None
+                if w is not None:
+                    w.setParent(None)
+                    w.deleteLater()
+
+            self._row.addStretch(1)
+            for idx, _ in enumerate(steps2):
+                step = ProgressRingStep()
+                self._step_widgets.append(step)
+                self._row.addWidget(step, 0, Qt.AlignmentFlag.AlignVCenter)
+                if idx < len(steps2) - 1:
+                    conn = TimelineConnector()
+                    self._connector_widgets.append(conn)
+                    self._row.addWidget(conn, 0, Qt.AlignmentFlag.AlignVCenter)
+            self._row.addStretch(1)
+        else:
+            self._steps = steps2
+
+        for idx, s in enumerate(steps2):
+            step = self._step_widgets[idx]
+            state = str(s.get("state", "inactive") or "inactive").strip().lower()
+            lucide = str(s.get("lucide", "")).strip()
+            icon_col = "#8ea4c7" if state == "inactive" else "#eef4ff"
+            icon = None
+            cache_key = (lucide, icon_col)
+            if cache_key in self._icon_cache:
+                icon = self._icon_cache.get(cache_key)
+            else:
+                try:
+                    host = self.window()
+                    if host is not None and hasattr(host, "_render_svg_icon") and hasattr(host, "_lucide_icon_path"):
+                        icon = host._render_svg_icon(host._lucide_icon_path(lucide), 22, icon_col)
+                except Exception:
+                    icon = None
+                # Only cache successful icon lookups — None means the window
+                # wasn't ready yet and we should retry on the next update.
+                if icon is not None:
+                    self._icon_cache[cache_key] = icon
+
+            step.set_data(
+                title=str(s.get("title", "") or ""),
+                percent=int(s.get("percent", 0) or 0),
+                state=state,
+                icon=icon,
+                details=list(s.get("details") or []),
+                duration_text=str(s.get("durationText", "") or "").strip(),
+                icon_color=icon_col,
+            )
+
+            if idx < len(steps2) - 1 and idx < len(self._connector_widgets):
+                conn = self._connector_widgets[idx]
+                ccol = "#31435d"
+                if state in {"running", "done"}:
+                    ccol = "#2d71df" if state == "running" else "#45c887"
+                if state in {"failed"}:
+                    ccol = "#d65a5a"
+                if state in {"cancelled"}:
+                    ccol = "#5e7598"
+                conn.set_color(ccol)
+        self.update()

@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/select';
 import { useUsers } from '@/hooks/use-users';
 import { toast } from '@/hooks/use-toast';
+import { formatVerificationDurationShort } from '@/lib/format-datetime';
 import httpClient from '@/lib/http-client';
 import type { User } from '@/types/models';
 import type { UserListParams } from '@/types/api';
@@ -88,6 +89,20 @@ export default function UsersPage() {
     setDeleteDialogOpen(true);
   };
 
+  async function handleCopyCode(event: React.MouseEvent, code: string) {
+    event.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(code);
+      toast({ title: 'Code copied', description: code });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Copy failed',
+        description: 'Could not copy to clipboard.',
+      });
+    }
+  }
+
   const handleConfirmDelete = async () => {
     if (!userToDelete) return;
     setIsDeleting(true);
@@ -115,6 +130,66 @@ export default function UsersPage() {
       header: 'Email',
       accessorFn: (row) => <span className="text-slate-200">{row.email}</span>,
       sortable: true,
+    },
+    {
+      id: 'email_confirmed',
+      header: 'Email status',
+      accessorFn: (row) => (
+        row.email_confirmed ? (
+          <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-400">
+            Verified
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-300">
+            Pending
+          </Badge>
+        )
+      ),
+    },
+    {
+      id: 'pending_verification_code',
+      header: 'Confirm code',
+      accessorFn: (row) => {
+        if (row.email_confirmed) {
+          return <span className="text-slate-500">—</span>;
+        }
+        if (!row.pending_verification_code) {
+          return <span className="text-slate-500 italic">Not sent</span>;
+        }
+        const duration = formatVerificationDurationShort(row.verification_code_expires_at);
+        return (
+          <button
+            type="button"
+            onClick={(event) => handleCopyCode(event, row.pending_verification_code!)}
+            className={`rounded px-1.5 py-0.5 font-mono text-sm tracking-widest transition-colors hover:bg-fuchsia-500/10 ${
+              duration.expired
+                ? 'text-slate-500 line-through'
+                : 'text-fuchsia-200 hover:text-fuchsia-100'
+            }`}
+            title="Click to copy code"
+          >
+            {row.pending_verification_code}
+          </button>
+        );
+      },
+    },
+    {
+      id: 'verification_code_expires_at',
+      header: 'Expires',
+      accessorFn: (row) => {
+        if (row.email_confirmed || !row.pending_verification_code) {
+          return <span className="text-slate-500">—</span>;
+        }
+        const duration = formatVerificationDurationShort(row.verification_code_expires_at);
+        if (!row.verification_code_expires_at) {
+          return <span className="text-slate-500">—</span>;
+        }
+        return (
+          <span className={duration.expired ? 'text-red-400' : 'text-amber-300'}>
+            {duration.label}
+          </span>
+        );
+      },
     },
     {
       id: 'display_name',

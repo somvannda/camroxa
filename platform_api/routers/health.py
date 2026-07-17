@@ -14,10 +14,10 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
-import httpx
 from fastapi import APIRouter, Depends
 
 from platform_api.config import Settings, get_settings
+from platform_api.dependencies import get_db_pool as get_app_db_pool
 
 logger = logging.getLogger(__name__)
 
@@ -41,27 +41,9 @@ class DatabasePool(Protocol):
     async def execute(self, query: str) -> Any: ...
 
 
-# ---------------------------------------------------------------------------
-# Default dependency stubs (replaced by real implementations in production)
-# ---------------------------------------------------------------------------
-
-
-class _StubDatabasePool:
-    """Stub database pool that always reports connectivity failure.
-
-    In production, this is replaced with a real asyncpg pool dependency.
-    """
-
-    async def execute(self, query: str) -> Any:
-        raise ConnectionError("No database pool configured")
-
-
-_stub_db_pool = _StubDatabasePool()
-
-
 def get_db_pool() -> DatabasePool:
-    """Dependency providing the database pool for health checks."""
-    return _stub_db_pool
+    """Dependency providing the real database pool for health checks."""
+    return get_app_db_pool()
 
 
 # ---------------------------------------------------------------------------
@@ -82,63 +64,45 @@ async def _check_database(pool: DatabasePool) -> bool:
         return False
 
 
-async def _check_suno(settings: Settings) -> bool:
-    """Check Suno API reachability with a lightweight request."""
-    if not settings.suno_api_base_url:
-        return False
+async def _check_provider_pool(provider: str) -> dict[str, Any]:
+    """Return key pool status for a provider (no env fallbacks)."""
+    from platform_api.dependencies import get_key_pool_service
+
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_HEALTH_CHECK_TIMEOUT)
-        ) as client:
-            url = f"{settings.suno_api_base_url.rstrip('/')}/api/v1/generate/credit"
-            resp = await client.get(
-                url,
-                headers={"Authorization": f"Bearer {settings.suno_api_key}"},
-            )
-            # Any non-5xx response means the service is reachable.
-            return resp.status_code < 500
+        key_pool = get_key_pool_service()
     except Exception:
-        logger.debug("Health check: Suno API unreachable", exc_info=True)
-        return False
+        logger.debug("Health check: key pool unavailable for %s", provider, exc_info=True)
+        return {"provider": provider, "available": False, "reason": "key_pool_unavailable"}
+    if key_pool is None:
+        return {"provider": provider, "available": False, "reason": "key_pool_unavailable"}
 
-
-async def _check_fal(settings: Settings) -> bool:
-    """Check Fal AI reachability with a lightweight request."""
-    if not settings.fal_api_base_url:
-        return False
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_HEALTH_CHECK_TIMEOUT)
-        ) as client:
-            # Use a HEAD or GET on the base URL to verify reachability.
-            url = settings.fal_api_base_url.rstrip("/")
-            resp = await client.get(
-                url,
-                headers={"Authorization": f"Key {settings.fal_api_key}"},
-            )
-            return resp.status_code < 500
-    except Exception:
-        logger.debug("Health check: Fal AI unreachable", exc_info=True)
-        return False
+        status = await key_pool.get_pool_status(provider)
+    except Exception as exc:
+        logger.debug("Health check: key pool status error for %s", provider, exc_info=True)
+        return {"provider": provider, "available": False, "reason": f"status_error:{type(exc).__name__}"}
+
+    active = int(status.get("active_keys", 0) or 0)
+    return {
+        "provider": provider,
+        "available": active > 0,
+        "pool": status,
+    }
 
 
-async def _check_slai(settings: Settings) -> bool:
-    """Check SLAI reachability with a lightweight request."""
-    if not settings.slai_api_base_url:
-        return False
-    try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(_HEALTH_CHECK_TIMEOUT)
-        ) as client:
-            url = settings.slai_api_base_url.rstrip("/")
-            resp = await client.get(
-                url,
-                headers={"Authorization": f"Bearer {settings.slai_api_key}"},
-            )
-            return resp.status_code < 500
-    except Exception:
-        logger.debug("Health check: SLAI unreachable", exc_info=True)
-        return False
+async def _check_suno() -> bool:
+    result = await _check_provider_pool("suno")
+    return bool(result.get("available", False))
+
+
+async def _check_fal() -> bool:
+    result = await _check_provider_pool("fal")
+    return bool(result.get("available", False))
+
+
+async def _check_slai() -> bool:
+    result = await _check_provider_pool("slai")
+    return bool(result.get("available", False))
 
 
 # ---------------------------------------------------------------------------
@@ -161,18 +125,34 @@ async def health_check(
 
     No authentication required.
     """
-    # Run all checks concurrently.
-    db_result, suno_result, fal_result, slai_result = await asyncio.gather(
+    (
+        db_result,
+        suno_ok,
+        fal_ok,
+        slai_ok,
+        suno_pool,
+        fal_pool,
+        slai_pool,
+        deepseek_pool,
+        openai_pool,
+        cala_pool,
+    ) = await asyncio.gather(
         _check_database(db_pool),
-        _check_suno(settings),
-        _check_fal(settings),
-        _check_slai(settings),
+        _check_suno(),
+        _check_fal(),
+        _check_slai(),
+        _check_provider_pool("suno"),
+        _check_provider_pool("fal"),
+        _check_provider_pool("slai"),
+        _check_provider_pool("deepseek"),
+        _check_provider_pool("openai"),
+        _check_provider_pool("cala"),
     )
 
     # Determine overall status.
     if not db_result:
         status = "unhealthy"
-    elif not (suno_result and fal_result and slai_result):
+    elif not (suno_ok and fal_ok and slai_ok):
         status = "degraded"
     else:
         status = "healthy"
@@ -183,9 +163,20 @@ async def health_check(
         "status": status,
         "database": db_result,
         "services": {
-            "suno": suno_result,
-            "fal": fal_result,
-            "slai": slai_result,
+            "suno": suno_ok,
+            "fal": fal_ok,
+            "slai": slai_ok,
+            "deepseek": bool(deepseek_pool.get("available", False)),
+            "openai": bool(openai_pool.get("available", False)),
+            "cala": bool(cala_pool.get("available", False)),
+        },
+        "service_pools": {
+            "suno": suno_pool,
+            "fal": fal_pool,
+            "slai": slai_pool,
+            "deepseek": deepseek_pool,
+            "openai": openai_pool,
+            "cala": cala_pool,
         },
         "uptime_seconds": uptime_seconds,
         "timestamp": datetime.now(timezone.utc).isoformat(),

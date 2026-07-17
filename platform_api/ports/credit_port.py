@@ -6,7 +6,7 @@ atomic deductions, refunds, and credit pack purchases.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class CreditServicePort(Protocol):
@@ -23,7 +23,14 @@ class CreditServicePort(Protocol):
         """
         ...
 
-    async def deduct(self, user_id: str, amount: int, reason: str, ref_id: str) -> bool:
+    async def deduct(
+        self,
+        user_id: str,
+        amount: int,
+        reason: str,
+        ref_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
         """Atomically deduct credits from a user's wallet.
 
         Returns True if the deduction succeeded (sufficient balance).
@@ -32,7 +39,14 @@ class CreditServicePort(Protocol):
         """
         ...
 
-    async def refund(self, user_id: str, amount: int, reason: str, ref_id: str) -> None:
+    async def refund(
+        self,
+        user_id: str,
+        amount: int,
+        reason: str,
+        ref_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         """Refund credits to a user's wallet.
 
         Used when an external service call fails after credits were deducted.

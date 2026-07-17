@@ -1,0 +1,254 @@
+"""Resolve and download Suno MP3 files for server-side streaming uploads."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+
+from platform_api.clients.suno_client import (
+    SunoGeneratePollResult,
+    _extract_clip_download_url,
+    _iter_generate_clips,
+    parse_suno_generate_poll,
+)
+from platform_api.services.storage_service import StorageServiceError
+
+logger = logging.getLogger(__name__)
+
+_MIN_MP3_BYTES = 4096
+_CHUNK_SIZE = 1024 * 1024
+_DOWNLOAD_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
+    "Accept": "audio/mpeg,audio/*,*/*;q=0.8",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class SunoTaskDownloadUrls:
+    audio_url_ok: str = ""
+    audio_url_alt: str = ""
+    image_url_ok: str = ""
+    image_url_alt: str = ""
+    duration_ok: float | None = None
+    duration_alt: float | None = None
+    tags_ok: str = ""
+    tags_alt: str = ""
+    refreshed: bool = False
+
+
+def build_download_url_candidates(*urls: str | None) -> list[str]:
+    """Return unique non-empty download URL candidates in priority order."""
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for raw in urls:
+        url = str(raw or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        candidates.append(url)
+    return candidates
+
+
+def urls_from_generate_poll(result: SunoGeneratePollResult) -> SunoTaskDownloadUrls:
+    return SunoTaskDownloadUrls(
+        audio_url_ok=str(result.audio_url_ok or "").strip(),
+        audio_url_alt=str(result.audio_url_alt or "").strip(),
+        image_url_ok=str(result.image_url_ok or "").strip(),
+        image_url_alt=str(result.image_url_alt or "").strip(),
+        duration_ok=result.duration_ok,
+        duration_alt=result.duration_alt,
+        tags_ok=str(result.tags_ok or "").strip(),
+        tags_alt=str(result.tags_alt or "").strip(),
+        refreshed=True,
+    )
+
+
+def urls_from_record_info_payload(payload: dict[str, Any]) -> SunoTaskDownloadUrls:
+    parsed = parse_suno_generate_poll(payload)
+    if parsed.state != "success":
+        return SunoTaskDownloadUrls()
+    return urls_from_generate_poll(parsed)
+
+
+def variant_url_candidates(
+    *,
+    variant: str,
+    stored_ok: str,
+    stored_alt: str,
+    refreshed: SunoTaskDownloadUrls | None,
+) -> list[str]:
+    refreshed_ok = refreshed.audio_url_ok if refreshed else ""
+    refreshed_alt = refreshed.audio_url_alt if refreshed else ""
+    if variant == "alt":
+        return build_download_url_candidates(refreshed_alt, stored_alt, refreshed_ok, stored_ok)
+    return build_download_url_candidates(refreshed_ok, stored_ok, refreshed_alt, stored_alt)
+
+
+async def refresh_suno_task_download_urls(
+    external_task_id: str,
+    *,
+    poll_status,
+) -> SunoTaskDownloadUrls:
+    """Re-fetch downloadable MP3 URLs from Suno record-info."""
+    task_id = str(external_task_id or "").strip()
+    if not task_id:
+        return SunoTaskDownloadUrls()
+    try:
+        poll_result = await poll_status(task_id)
+    except Exception as exc:
+        logger.warning("Suno record-info refresh failed for task %s: %s", task_id, str(exc)[:200])
+        return SunoTaskDownloadUrls()
+    if poll_result.state != "success":
+        return SunoTaskDownloadUrls()
+    return urls_from_generate_poll(poll_result)
+
+
+async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
+    """Poll Suno record-info using the DB pool (works outside FastAPI lifespan)."""
+    import os
+
+    from platform_api.clients.suno_client import SunoClient, SunoGeneratePollResult, parse_suno_generate_poll
+    from platform_api.config import Settings
+    from platform_api.services.key_encryption import KeyEncryption
+
+    task_id = str(external_task_id or "").strip()
+    if not task_id:
+        return SunoGeneratePollResult(state="failed", error="Missing Suno task id.")
+
+    row = await pool.fetchrow(
+        """
+        SELECT encrypted_key_value
+        FROM api_key_entries
+        WHERE provider = 'suno' AND status = 'active'
+        ORDER BY priority DESC, created_at ASC
+        LIMIT 1
+        """
+    )
+    if not row:
+        return SunoGeneratePollResult(state="failed", error="No active Suno API key configured.")
+
+    master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
+    if not master_key:
+        return SunoGeneratePollResult(state="failed", error="Encryption master key is not configured.")
+
+    encryption = KeyEncryption(master_key=master_key)
+    api_key = encryption.decrypt(bytes(row["encrypted_key_value"]))
+    try:
+        settings = Settings(_env_file=())
+    except Exception:
+        settings = Settings()
+    client = SunoClient(settings)
+    response = await client.check_status(task_id, api_key=api_key)
+    return parse_suno_generate_poll(response)
+
+
+async def download_suno_mp3_bytes(url: str, *, fallback_urls: list[str] | None = None) -> bytes:
+    """Download MP3 bytes, trying fallback URLs when the primary link is empty."""
+    candidates = build_download_url_candidates(url, *(fallback_urls or []))
+    if not candidates:
+        raise StorageServiceError("No Suno download URL provided.")
+
+    last_error: Exception | None = None
+    for candidate in candidates:
+        for attempt in range(1, 4):
+            try:
+                data = await _download_once(candidate)
+                if len(data) >= _MIN_MP3_BYTES:
+                    return data
+                last_error = StorageServiceError(
+                    f"Suno download returned empty body ({len(data)} bytes) for {candidate[:120]}"
+                )
+            except Exception as exc:
+                last_error = exc
+            if attempt < 3:
+                await asyncio.sleep(float(attempt))
+    raise StorageServiceError(str(last_error or "Unable to download Suno MP3."))
+
+
+async def _download_once(url: str) -> bytes:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(120.0, connect=15.0),
+        headers=_DOWNLOAD_HEADERS,
+        follow_redirects=True,
+    ) as client:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+            chunks: list[bytes] = []
+            async for chunk in response.aiter_bytes(chunk_size=_CHUNK_SIZE):
+                if chunk:
+                    chunks.append(chunk)
+            return b"".join(chunks)
+
+
+def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownloadUrls:
+    """Parse sunoapi.org callback payloads with nested clip arrays."""
+    data_block = raw_payload.get("data")
+    clips: list[dict[str, Any]] = []
+    if isinstance(data_block, dict):
+        nested = data_block.get("data")
+        if isinstance(nested, list):
+            clips.extend(item for item in nested if isinstance(item, dict))
+    if not clips:
+        return SunoTaskDownloadUrls()
+
+    download_urls = [_extract_clip_download_url(clip) for clip in clips]
+    download_urls = [url for url in download_urls if url]
+    if not download_urls:
+        return SunoTaskDownloadUrls()
+
+    return SunoTaskDownloadUrls(
+        audio_url_ok=download_urls[0],
+        audio_url_alt=download_urls[1] if len(download_urls) > 1 else "",
+        refreshed=True,
+    )
+
+
+def callback_indicates_success(raw_payload: dict[str, Any]) -> bool:
+    code = raw_payload.get("code")
+    if code is not None:
+        try:
+            if int(code) == 200:
+                return True
+        except (TypeError, ValueError):
+            pass
+
+    data_block = raw_payload.get("data")
+    if isinstance(data_block, dict):
+        callback_type = str(data_block.get("callbackType") or data_block.get("callback_type") or "").lower()
+        if callback_type in {"complete", "first"}:
+            return callback_type == "complete"
+        status = str(data_block.get("status") or "").upper()
+        if status in {"SUCCESS", "COMPLETE", "COMPLETED", "DONE"}:
+            return True
+    return False
+
+
+def extract_callback_task_id(raw_payload: dict[str, Any]) -> str:
+    for key in ("task_id", "taskId"):
+        value = str(raw_payload.get(key) or "").strip()
+        if value:
+            return value
+    data_block = raw_payload.get("data")
+    if isinstance(data_block, dict):
+        for key in ("task_id", "taskId"):
+            value = str(data_block.get(key) or "").strip()
+            if value:
+                return value
+    return ""
+
+
+__all__ = [
+    "SunoTaskDownloadUrls",
+    "build_download_url_candidates",
+    "callback_indicates_success",
+    "download_suno_mp3_bytes",
+    "extract_callback_download_urls",
+    "extract_callback_task_id",
+    "refresh_suno_task_download_urls",
+    "urls_from_record_info_payload",
+    "variant_url_candidates",
+]

@@ -4,19 +4,11 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
-# Configure root logging so startup diagnostics appear in terminal
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    stream=sys.stdout,
-)
-
 
 from platform_api.config import Settings, get_settings
 from platform_api.exceptions import PlatformAPIError
@@ -98,7 +90,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         get_auth_service,
         get_credit_repo,
         get_license_repo,
+        get_notification_service,
         get_rate_limit_config_repo,
+        get_usage_tracking_repo,
         get_user_repo,
         set_db_pool,
         set_redis,
@@ -106,16 +100,21 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from platform_api.middleware.auth import configure_auth_dependencies
     from platform_api.middleware.audit import configure_audit_middleware
     from platform_api.middleware.rate_limit import configure_rate_limiter
+    from platform_api.logging_setup import configure_api_logging
+    from platform_api.services.slai_image_config_service import load_slai_image_provider_config
+    from platform_api.routers.ws import configure_ws_dependencies
 
     settings = get_settings()
     db_pool = None
     redis_conn = None
 
-    # --- Startup diagnostics ---
+    configure_api_logging()
+    logger.info("API logging ready — batch/music, image, and credit progress appear in this terminal.")
     logger.info("=" * 60)
     logger.info("PLATFORM API STARTUP DIAGNOSTICS")
     logger.info("=" * 60)
     logger.info("Working directory: %s", os.getcwd())
+    logger.info("Environment: %s", settings.environment)
     logger.info("Database URL: %s", settings.database_url.replace(settings.database_url.split("@")[0].split("//")[1] if "@" in settings.database_url else "", "***"))
     logger.info("Redis URL: %s", settings.redis_url)
     logger.info("Debug mode: %s", settings.debug)
@@ -123,7 +122,15 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Encryption master key set: %s", "YES" if settings.encryption_master_key else "NO")
     logger.info("=" * 60)
 
+    from platform_api.config import validate_production_settings
+
+    validate_production_settings(settings)
+
     try:
+        from platform_api.migrations.runner import run_pending_migrations
+
+        await run_pending_migrations()
+
         # --- Create asyncpg connection pool ---
         import asyncpg
 
@@ -135,6 +142,11 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         db_pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
         set_db_pool(db_pool)
         logger.info("Database connection pool created.")
+
+        from platform_api.dependencies import get_settings_repo
+
+        await load_slai_image_provider_config(get_settings_repo())
+        logger.info("SLAI image provider configuration loaded from system settings.")
 
         # Verify DB connectivity
         try:
@@ -173,6 +185,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             user_repo=get_user_repo(),
             license_repo=get_license_repo(),
             credit_repo=get_credit_repo(),
+            plan_repo=get_license_repo(),
+            usage_repo=get_usage_tracking_repo(),
         )
         logger.info("Auth middleware configured.")
 
@@ -186,6 +200,45 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # --- Configure audit middleware ---
         configure_audit_middleware(audit_service=get_audit_service())
         logger.info("Audit middleware configured.")
+
+        # --- Configure WebSocket dependencies ---
+        configure_ws_dependencies(
+            auth_service=get_auth_service(),
+            notification_service=get_notification_service(),
+        )
+        logger.info("WebSocket notification dependencies configured.")
+
+        # --- Abuse alerts (Phase 3) ---
+        try:
+            from platform_api.services.abuse_alert_service import (
+                AbuseAlertService,
+                set_abuse_alert_service,
+            )
+
+            class _DbAdminProvider:
+                def __init__(self, pool: Any) -> None:
+                    self._pool = pool
+
+                async def get_admin_user_ids(self) -> list[str]:
+                    rows = await self._pool.fetch(
+                        "SELECT id::text AS id FROM users WHERE role = 'admin'"
+                    )
+                    return [str(r["id"]) for r in rows]
+
+            set_abuse_alert_service(
+                AbuseAlertService(
+                    redis=redis_conn,
+                    notification_service=get_notification_service(),
+                    admin_provider=_DbAdminProvider(db_pool),
+                    absorb_alert_threshold=settings.abuse_absorb_alert_threshold,
+                    polish_probe_threshold=settings.abuse_polish_probe_threshold,
+                    redeem_burst_threshold=settings.abuse_redeem_burst_threshold,
+                    redeem_burst_window_seconds=settings.abuse_redeem_burst_window_seconds,
+                )
+            )
+            logger.info("Abuse alert service configured.")
+        except Exception as exc:
+            logger.warning("Abuse alert service not configured (non-fatal): %s", exc)
 
         # --- Warm Key Pool Redis cache ---
         logger.info(
@@ -216,6 +269,8 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "ENCRYPTION_MASTER_KEY not set — key pool cache not loaded. "
                 "Set PLATFORM_ENCRYPTION_MASTER_KEY to enable the API key pool."
             )
+
+        logger.info("Platform API ready on port 8000 — idle until requests or batch generation.")
 
     except Exception as exc:
         logger.error("Failed to initialize application resources: %s", exc)
@@ -254,6 +309,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings is None:
         settings = get_settings()
 
+    from platform_api.config import validate_production_settings
+
+    validate_production_settings(settings)
+
     app = FastAPI(
         title=settings.app_name,
         version="0.1.0",
@@ -284,6 +343,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    from platform_api.middleware.request_log import RequestLogMiddleware
+
+    app.add_middleware(RequestLogMiddleware)
+
     # Note: Rate limiting is implemented as a FastAPI Depends() in route handlers
     # (via RateLimiter.check()), not as ASGI middleware. The auth middleware is also
     # implemented as Depends(get_current_user). This allows fine-grained control
@@ -296,19 +359,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --- Router Registration ---
     from platform_api.routers import (
         admin,
+        admin_invitations,
+        blog_posts,
+        admin_content_pools,
+        admin_image_sample_packs,
         auth,
         batch,
+        billing,
         callbacks,
+        control_panel,
+        content_pools,
         credits,
         generation,
         health,
+        image_jobs,
+        image_sample_packs,
         key_pool,
         licenses,
+        media,
+        music_downloads,
+        music_history,
         plans,
+        progress,
         profiles,
         prompts,
+        redeem_codes,
         settings_router,
         stats,
+        youtube,
         users,
         ws,
     )
@@ -321,26 +399,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
 
     app.include_router(auth.router, prefix=settings.api_v1_prefix)
+    app.include_router(billing.router, prefix=settings.api_v1_prefix)
     app.include_router(users.router, prefix=settings.api_v1_prefix)
     app.include_router(licenses.router, prefix=settings.api_v1_prefix)
     app.include_router(plans.router, prefix=settings.api_v1_prefix)
     app.include_router(credits.router, prefix=settings.api_v1_prefix)
     app.include_router(profiles.router, prefix=settings.api_v1_prefix)
+    from platform_api.routers import profile_video_templates
+
+    app.include_router(profile_video_templates.router, prefix=settings.api_v1_prefix)
     app.include_router(prompts.router, prefix=settings.api_v1_prefix)
+    app.include_router(redeem_codes.router, prefix=settings.api_v1_prefix)
     app.include_router(generation.router, prefix=settings.api_v1_prefix)
     app.include_router(batch.router, prefix=settings.api_v1_prefix)
+    app.include_router(content_pools.router, prefix=settings.api_v1_prefix)
     app.include_router(callbacks.router, prefix=settings.api_v1_prefix)
+    app.include_router(control_panel.router, prefix=settings.api_v1_prefix)
     app.include_router(ws.router, prefix=settings.api_v1_prefix)
     app.include_router(settings_router.router, prefix=settings.api_v1_prefix)
     app.include_router(stats.router, prefix=settings.api_v1_prefix)
+    app.include_router(progress.router, prefix=settings.api_v1_prefix)
+    app.include_router(youtube.router, prefix=settings.api_v1_prefix)
     app.include_router(admin.router, prefix=settings.api_v1_prefix)
+    app.include_router(admin_invitations.router, prefix=settings.api_v1_prefix)
+    app.include_router(blog_posts.router, prefix=settings.api_v1_prefix)
+    app.include_router(admin_content_pools.router, prefix=settings.api_v1_prefix)
+    from platform_api.routers import client_logs
+
+    app.include_router(client_logs.router, prefix=settings.api_v1_prefix)
     app.include_router(key_pool.router, prefix=settings.api_v1_prefix)
+    app.include_router(media.router, prefix=settings.api_v1_prefix)
+    app.include_router(music_history.router, prefix=settings.api_v1_prefix)
+    from platform_api.routers import admin_music_languages, music_languages
+
+    app.include_router(music_languages.router, prefix=settings.api_v1_prefix)
+    app.include_router(admin_music_languages.router, prefix=settings.api_v1_prefix)
+    app.include_router(music_downloads.router, prefix=settings.api_v1_prefix)
+    app.include_router(image_jobs.router, prefix=settings.api_v1_prefix)
+    app.include_router(image_sample_packs.router, prefix=settings.api_v1_prefix)
+    app.include_router(admin_image_sample_packs.router, prefix=settings.api_v1_prefix)
 
     from platform_api.routers import channel_setup
     app.include_router(channel_setup.router, prefix=settings.api_v1_prefix)
 
     from platform_api.routers import channel_prompts
     app.include_router(channel_prompts.router, prefix=settings.api_v1_prefix)
+
+    from platform_api.routers import ai_routing
+    app.include_router(ai_routing.router, prefix=settings.api_v1_prefix)
+
+    from platform_api.routers import marketplace
+    app.include_router(marketplace.router, prefix=settings.api_v1_prefix)
+
+    from platform_api.routers import streaming_public, streaming_admin
+
+    app.include_router(streaming_public.router, prefix=settings.api_v1_prefix)
+    app.include_router(streaming_admin.router, prefix=settings.api_v1_prefix)
 
     return app
 

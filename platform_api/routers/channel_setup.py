@@ -1,32 +1,34 @@
 """Channel setup router for onboarding wizard.
 
 Provides endpoints to generate channel names, logos, covers,
-and descriptions using AI (DeepSeek LLM + SLAI image generation).
-
-Credit deduction/refund is handled centrally by CreditOperationService.
+and descriptions using AI. Onboarding AI is payment-gated with
+per-operation caps — no wallet credits are charged during setup.
 """
 
 from __future__ import annotations
 
 import base64
 import logging
-from typing import Any
+import random
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any, TypeVar
 from uuid import UUID
 
-import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.exceptions import (
     ExternalServiceError,
-    InsufficientCreditsError,
     PlatformAPIError,
     ValidationError,
 )
 from platform_api.routers.generation import GenerationServiceDep
+from platform_api.services.ai_routing_service import AIRoutingService
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 router = APIRouter(prefix="/channel-setup", tags=["channel-setup"])
 
@@ -41,6 +43,145 @@ def set_clients(llm_client: Any, slai_client: Any) -> None:
     _slai_client = slai_client
 
 
+_CATEGORY_VARIATION_NOTES: dict[str, list[str]] = {
+    "title": [
+        "Use a fresh naming angle for this run and avoid the most common genre cliches.",
+        "Favor memorable brand names with a distinct tone instead of repeating familiar EDM or music channel patterns.",
+        "Make the naming direction feel new and commercially brandable, not like a slight rewrite of a common channel name.",
+    ],
+    "logo": [
+        "Take a distinct creative direction for this run with a different visual motif, accent color, and typography feel than a generic music logo.",
+        "Avoid defaulting to the same common icon treatment; give this concept its own recognizable branding direction.",
+        "Push for a noticeably different identity this time so the result does not feel like a repeat of a previous logo concept.",
+    ],
+    "cover": [
+        "Choose a noticeably different composition, lighting mood, and focal story for this banner concept.",
+        "Avoid repeating the same background layout or color story from typical genre cover art outputs.",
+        "Give this banner a fresh visual direction with a different scene balance and atmosphere.",
+    ],
+    "description": [
+        "Use a new narrative angle and phrasing pattern instead of repeating the same intro structure every time.",
+        "Keep the SEO strong, but vary the voice and selling points so repeated runs do not sound templated.",
+        "Avoid reusing the same sentence rhythm or repeated adjective stack from prior descriptions.",
+    ],
+    "keyword": [
+        "Vary the keyword mix and ordering so the set does not feel copied from a previous run.",
+        "Blend core genre terms with fresher long-tail phrases instead of returning the same predictable list.",
+        "Keep the keyword set relevant, but avoid repeating the exact same cluster of standard phrases.",
+    ],
+    "tag": [
+        "Return a varied tag mix with a fresh combination and ordering, not the same repeated tag pack.",
+        "Balance broad discovery tags with more distinctive niche tags so repeated runs stay differentiated.",
+        "Avoid reusing the same tag sequence or near-duplicate tag bundle from previous outputs.",
+    ],
+}
+
+_ROLE_NOTES: dict[str, str] = {
+    "primary": "This should feel like the flagship channel identity: confident, broad-appeal, and lead-brand ready.",
+    "secondary": "This should feel like a companion channel identity with a differentiated angle, while still belonging to the same overall brand world.",
+    "both": "Generate two distinct naming groups: the first half should fit a flagship primary channel, and the second half should fit a differentiated secondary companion channel. Avoid duplicates across the two halves.",
+}
+
+_YOUTUBE_KEYWORD_RULES = """
+YouTube channel keyword rules (strict):
+- Return 15-25 separate keyword strings in the JSON "keywords" array.
+- Each item is ONE keyword or short keyphrase only (1-3 words, max 35 characters).
+- Never return sentences, marketing copy, or channel descriptions.
+- Use correct English spelling and grammar. No broken or truncated words.
+- Never put commas inside an item. Commas are only JSON array separators.
+- Prefer high-intent search terms for the genre and channel niche.
+- Include the channel name once when relevant.
+"""
+
+_YOUTUBE_TAG_RULES = """
+YouTube video tag rules (strict):
+- Return 15-30 separate tag strings in the JSON "tags" array.
+- Each tag is 1-3 words, max 30 characters, correct English spelling.
+- Tags must paste directly into YouTube Studio (comma-separated in the UI).
+- No sentences, no broken words, no commas inside a tag string.
+- Combined tag length must stay under 500 characters.
+- Mix broad discovery tags with niche tags that fit the channel genre.
+"""
+def _build_prompt_with_variation(
+    base_prompt: str,
+    category: str,
+    *,
+    genre: str = "",
+    role: str = "",
+    description: str = "",
+) -> str:
+    prompt = (
+        base_prompt.replace("{genre}", genre or "music")
+        .replace("{description}", description or "")
+        .strip()
+    )
+
+    notes: list[str] = []
+    role_note = _ROLE_NOTES.get(role.strip().lower(), "")
+    if role_note:
+        notes.append(role_note)
+
+    variation_choices = _CATEGORY_VARIATION_NOTES.get(category, [])
+    if variation_choices:
+        notes.append(random.choice(variation_choices))
+
+    if category == "title":
+        notes.append(
+            "Return clearly distinct options, avoid duplicates, and do not recycle the same few generic words across most names."
+        )
+
+    if not notes:
+        return prompt
+
+    return f"{prompt}\n\nAdditional guidance:\n- " + "\n- ".join(notes)
+
+
+# ---------------------------------------------------------------------------
+# AI Routing dependency
+# ---------------------------------------------------------------------------
+
+
+async def _get_ai_routing_service() -> AIRoutingService:
+    """Placeholder dependency for AIRoutingService — override via app.dependency_overrides."""
+    raise NotImplementedError(
+        "AIRoutingService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+AIRoutingServiceDep = Annotated[AIRoutingService, Depends(_get_ai_routing_service)]
+
+
+async def _run_onboarding_ai(
+    ctx: AuthContext,
+    operation_type: str,
+    operation: Callable[[], Awaitable[T]],
+    *,
+    count: int = 1,
+    usage_metadata: dict[str, Any] | None = None,
+) -> T:
+    """Execute payment-gated onboarding AI (no wallet deduction)."""
+    from platform_api.dependencies import get_db_pool
+    from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
+    from platform_api.services.onboarding_entitlement_service import run_onboarding_ai_operation
+
+    endpoint_type = (
+        "image"
+        if operation_type in {"channel_logo", "channel_cover"}
+        else "llm"
+    )
+    await enforce_rate_limit_for_endpoint(ctx.user_id, endpoint_type)
+
+    pool = get_db_pool()
+    return await run_onboarding_ai_operation(
+        pool,
+        UUID(str(ctx.user_id)),
+        operation_type,
+        operation,
+        count=count,
+        usage_metadata=usage_metadata,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Request / Response schemas
 # ---------------------------------------------------------------------------
@@ -50,7 +191,7 @@ class GenerateNamesRequest(BaseModel):
     """Request to generate channel name suggestions."""
 
     genre: str = Field(..., min_length=1, max_length=100, description="Music genre (e.g. EDM, R&B, Pop)")
-    role: str = Field("primary", description="'primary' or 'secondary' channel")
+    role: str = Field("primary", description="'primary', 'secondary', or 'both' channels")
     description: str = Field("", max_length=500, description="Optional genre description/context")
     match_key: str = Field("", max_length=100, description="Match key of the selected music description (links to the admin channel prompt)")
     count: int = Field(10, ge=1, le=20, description="Number of names to generate (max 20)")
@@ -84,7 +225,7 @@ class GenerateCoversRequest(BaseModel):
 
     channel_name: str = Field(..., min_length=1, max_length=100)
     genre: str = Field("", max_length=100)
-    count: int = Field(3, ge=1, le=5)
+    count: int = Field(1, ge=1, le=5)
     role: str = Field("primary", description="'primary' or 'secondary' channel")
     match_key: str = Field("", max_length=100, description="Match key for prompt lookup")
 
@@ -100,6 +241,8 @@ class GenerateDescriptionRequest(BaseModel):
 
     channel_name: str = Field(..., min_length=1, max_length=100)
     genre: str = Field(..., min_length=1, max_length=100)
+    match_key: str = Field("", max_length=100, description="Match key for prompt lookup")
+    description: str = Field("", max_length=4000, description="Optional description context for keyword/tag generation")
 
 
 class GenerateDescriptionResponse(BaseModel):
@@ -108,6 +251,48 @@ class GenerateDescriptionResponse(BaseModel):
     description: str
     keywords: list[str]
     tags: list[str]
+
+
+class GenerateDescriptionTextResponse(BaseModel):
+    description: str
+
+
+class GenerateKeywordsResponse(BaseModel):
+    keywords: list[str]
+
+
+class GenerateTagsResponse(BaseModel):
+    tags: list[str]
+
+
+class SaveOnboardingDraftRequest(BaseModel):
+    """Persisted onboarding state for the authenticated user."""
+
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class OnboardingDraftResponse(BaseModel):
+    """Stored onboarding draft plus current name-generation usage state."""
+
+    payload: dict[str, Any] = Field(default_factory=dict)
+    name_generate_limit: int
+    name_generate_used: int
+    name_generate_remaining: int
+    logo_generate_limit: int
+    logo_generate_used: int
+    logo_generate_remaining: int
+    cover_generate_limit: int
+    cover_generate_used: int
+    cover_generate_remaining: int
+    description_generate_limit: int
+    description_generate_used: int
+    description_generate_remaining: int
+    keywords_generate_limit: int
+    keywords_generate_used: int
+    keywords_generate_remaining: int
+    tags_generate_limit: int
+    tags_generate_used: int
+    tags_generate_remaining: int
 
 
 class CreateProfileRequest(BaseModel):
@@ -132,38 +317,6 @@ class CreateProfileResponse(BaseModel):
     message: str
 
 
-# ---------------------------------------------------------------------------
-# Helper: call DeepSeek LLM
-# ---------------------------------------------------------------------------
-
-
-async def _call_llm(prompt: str, system: str = "") -> str:
-    """Call DeepSeek LLM API."""
-    import os
-
-    settings = __import__("platform_api.config", fromlist=["get_settings"]).get_settings()
-    api_key = settings.deepseek_api_key
-    base_url = settings.deepseek_api_base_url.rstrip("/")
-
-    if not api_key:
-        raise ValueError("DeepSeek API key not configured")
-
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "deepseek-chat", "messages": messages, "temperature": 0.8, "max_tokens": 500},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
-
-
 async def _get_channel_prompt(category: str, genre: str, default: str, match_key: str | None = None) -> str:
     """Fetch a channel prompt from DB, falling back to default if not found.
 
@@ -177,7 +330,7 @@ async def _get_channel_prompt(category: str, genre: str, default: str, match_key
             row = await pool.fetchrow(
                 """SELECT content FROM channel_prompts
                    WHERE category = $1 AND match_key = $2 AND is_active = true
-                   ORDER BY name ASC LIMIT 1""",
+                   ORDER BY RANDOM() LIMIT 1""",
                 category, match_key,
             )
             if row:
@@ -187,7 +340,7 @@ async def _get_channel_prompt(category: str, genre: str, default: str, match_key
             row = await pool.fetchrow(
                 """SELECT content FROM channel_prompts
                    WHERE category = $1 AND genre = $2 AND is_active = true
-                   ORDER BY name ASC LIMIT 1""",
+                   ORDER BY RANDOM() LIMIT 1""",
                 category, genre,
             )
             if row:
@@ -196,7 +349,7 @@ async def _get_channel_prompt(category: str, genre: str, default: str, match_key
         row = await pool.fetchrow(
             """SELECT content FROM channel_prompts
                WHERE category = $1 AND genre = '' AND is_active = true
-               ORDER BY name ASC LIMIT 1""",
+               ORDER BY RANDOM() LIMIT 1""",
             category,
         )
         if row:
@@ -204,6 +357,52 @@ async def _get_channel_prompt(category: str, genre: str, default: str, match_key
     except Exception as exc:
         logger.debug("Could not fetch channel prompt for %s/%s: %s", category, genre, exc)
     return default
+
+
+async def _build_onboarding_draft_response(
+    *,
+    pool: Any,
+    user_id: UUID,
+    payload: dict[str, Any] | None = None,
+) -> OnboardingDraftResponse:
+    from platform_api.services.onboarding_entitlement_service import (
+        ONBOARDING_AI_LIMITS,
+        get_onboarding_usage,
+    )
+
+    name_used = await get_onboarding_usage(pool, user_id, "channel_name")
+    name_limit = ONBOARDING_AI_LIMITS["channel_name"]
+    logo_used = await get_onboarding_usage(pool, user_id, "channel_logo")
+    logo_limit = ONBOARDING_AI_LIMITS["channel_logo"]
+    cover_used = await get_onboarding_usage(pool, user_id, "channel_cover")
+    cover_limit = ONBOARDING_AI_LIMITS["channel_cover"]
+    description_used = await get_onboarding_usage(pool, user_id, "channel_description")
+    description_limit = ONBOARDING_AI_LIMITS["channel_description"]
+    keywords_used = await get_onboarding_usage(pool, user_id, "channel_keywords")
+    keywords_limit = ONBOARDING_AI_LIMITS["channel_keywords"]
+    tags_used = await get_onboarding_usage(pool, user_id, "channel_tags")
+    tags_limit = ONBOARDING_AI_LIMITS["channel_tags"]
+    return OnboardingDraftResponse(
+        payload=payload or {},
+        name_generate_limit=name_limit,
+        name_generate_used=name_used,
+        name_generate_remaining=max(0, name_limit - name_used),
+        logo_generate_limit=logo_limit,
+        logo_generate_used=logo_used,
+        logo_generate_remaining=max(0, logo_limit - logo_used),
+        cover_generate_limit=cover_limit,
+        cover_generate_used=cover_used,
+        cover_generate_remaining=max(0, cover_limit - cover_used),
+        description_generate_limit=description_limit,
+        description_generate_used=description_used,
+        description_generate_remaining=max(0, description_limit - description_used),
+        keywords_generate_limit=keywords_limit,
+        keywords_generate_used=keywords_used,
+        keywords_generate_remaining=max(0, keywords_limit - keywords_used),
+        tags_generate_limit=tags_limit,
+        tags_generate_used=tags_used,
+        tags_generate_remaining=max(0, tags_limit - tags_used),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,12 +419,16 @@ async def _get_channel_prompt(category: str, genre: str, default: str, match_key
 async def generate_names(
     request: GenerateNamesRequest,
     gen: GenerationServiceDep,
+    routing_service: AIRoutingServiceDep,
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateNamesResponse:
     """Generate AI-powered channel name suggestions based on genre."""
-    from platform_api.dependencies import get_credit_operation_service
-
-    credit_svc = get_credit_operation_service()
+    # Resolve AI routing for channel_name operation
+    routing = await routing_service.resolve("channel_name")
+    text_chain = [
+        (item.provider, item.sub_model or "")
+        for item in await routing_service.resolve_text_chain("channel_name")
+    ]
 
     # Resolve prompt BEFORE charging — don't charge if no prompt available
     lookup_key = (request.match_key or request.genre or "").strip()
@@ -243,45 +446,51 @@ async def generate_names(
                 "with a match key equal to this genre's match key.",
             )
 
+    prompt = _build_prompt_with_variation(
+        prompt,
+        "title",
+        genre=request.genre,
+        role=request.role,
+        description=request.description,
+    )
+
     system = "You are a creative music branding expert. Return ONLY a JSON array of strings, no explanation."
     if request.description:
-        prompt += f" Context: {request.description}"
+        prompt += f"\n\nExtra user context: {request.description}"
 
     async def _do_generate() -> list[str]:
-        import json
+        from platform_api.ai.purposes.channel_generation import generate_channel_text
+        from platform_api.ai.purposes.channel_text import parse_string_list
 
-        result = await gen.generate_chat_text(system_prompt=system, user_prompt=prompt, model="deepseek-chat")
-
-        names: list[str] = []
-        start = result.find("[")
-        end = result.rfind("]") + 1
-        if start >= 0 and end > start:
-            try:
-                parsed = json.loads(result[start:end])
-                if isinstance(parsed, list):
-                    names = [str(n).strip() for n in parsed if str(n).strip()]
-            except (json.JSONDecodeError, ValueError):
-                names = []
-
-        if not names:
-            raw_lines = [n.strip() for n in result.split("\n") if n.strip()]
-            for line in raw_lines:
-                cleaned = line.strip("[],\"' \t")
-                if cleaned:
-                    names.append(cleaned)
-            names = names[:10]
-
-        return names
+        result = await generate_channel_text(
+            gen,
+            provider=routing.provider,
+            model=routing.sub_model,
+            system_prompt=system,
+            user_prompt=prompt,
+            temperature=0.95,
+            max_tokens=1200,
+            provider_chain=text_chain,
+        )
+        names = parse_string_list(result)
+        return names[:10] if names else []
 
     try:
-        names, _credits_used = await credit_svc.execute_with_credits(
-            user_id=ctx.user_id,
-            ai_service="deepseek",
-            operation_type="text_generation",
-            operation=_do_generate,
-            fallback_operation_type="text_generation",
+        names = await _run_onboarding_ai(
+            ctx,
+            "channel_name",
+            _do_generate,
+            usage_metadata={
+                "provider": routing.provider,
+                "model": routing.sub_model,
+                "sub_model": routing.sub_model,
+                "genre": request.genre,
+                "role": request.role,
+                "match_key": request.match_key,
+                "request_count": request.count,
+            },
         )
-    except InsufficientCreditsError:
+    except PlatformAPIError:
         raise
     except Exception as exc:
         logger.error("Failed to generate channel names: %s", exc)
@@ -313,6 +522,69 @@ async def profiles_status(
     return {"has_profiles": count >= 2, "profile_count": count}
 
 
+@router.get(
+    "/draft",
+    response_model=OnboardingDraftResponse,
+    status_code=200,
+    summary="Get the current user's onboarding draft",
+)
+async def get_onboarding_draft(
+    ctx: AuthContext = Depends(get_current_user),
+) -> OnboardingDraftResponse:
+    """Return the persisted onboarding draft for the authenticated user."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT payload
+        FROM onboarding_drafts
+        WHERE user_id = $1
+        """,
+        ctx.user_id,
+    )
+    payload = row["payload"] if row and isinstance(row["payload"], dict) else {}
+    return await _build_onboarding_draft_response(
+        pool=pool,
+        user_id=UUID(str(ctx.user_id)),
+        payload=payload,
+    )
+
+
+@router.put(
+    "/draft",
+    response_model=OnboardingDraftResponse,
+    status_code=200,
+    summary="Save the current user's onboarding draft",
+)
+async def save_onboarding_draft(
+    request: SaveOnboardingDraftRequest,
+    ctx: AuthContext = Depends(get_current_user),
+) -> OnboardingDraftResponse:
+    """Persist onboarding draft state so the user can resume later."""
+    from platform_api.dependencies import get_db_pool
+    import json as _json
+
+    pool = get_db_pool()
+    payload = request.payload if isinstance(request.payload, dict) else {}
+    await pool.execute(
+        """
+        INSERT INTO onboarding_drafts (user_id, payload, created_at, updated_at)
+        VALUES ($1, $2::jsonb, NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET
+            payload = EXCLUDED.payload,
+            updated_at = NOW()
+        """,
+        ctx.user_id,
+        _json.dumps(payload),
+    )
+    return await _build_onboarding_draft_response(
+        pool=pool,
+        user_id=UUID(str(ctx.user_id)),
+        payload=payload,
+    )
+
+
 @router.post(
     "/generate-logo",
     response_model=GenerateImageResponse,
@@ -322,12 +594,12 @@ async def profiles_status(
 async def generate_logo(
     request: GenerateLogoRequest,
     gen: GenerationServiceDep,
+    routing_service: AIRoutingServiceDep,
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateImageResponse:
-    """Generate a circular channel logo using SLAI image generation via the pool."""
-    from platform_api.dependencies import get_credit_operation_service
-
-    credit_svc = get_credit_operation_service()
+    """Generate a circular channel logo using image generation via the pool."""
+    routing_chain = await routing_service.resolve_image_chain("channel_logo")
+    primary_routing = routing_chain[0]
 
     # Resolve prompt BEFORE charging
     lookup_key = (request.match_key or request.genre or "").strip()
@@ -337,42 +609,75 @@ async def generate_logo(
         prompt = f"Create a professional circular YouTube channel logo for '{request.channel_name}' in the {request.genre or 'music'} genre. Modern, clean, dark background."
 
     # Inject channel name into the prompt if it's a template
-    prompt = prompt.replace("{channel_name}", request.channel_name)
-    prompt = prompt.replace("{genre}", request.genre or "music")
+    prompt = _build_prompt_with_variation(
+        prompt.replace("{channel_name}", request.channel_name),
+        "logo",
+        genre=request.genre,
+        role=request.role,
+    )
 
-    async def _do_generate() -> str:
+    usage_metadata: dict[str, Any] = {
+        "provider": primary_routing.provider,
+        "model": primary_routing.sub_model,
+        "sub_model": primary_routing.sub_model,
+        "genre": request.genre,
+        "role": request.role,
+        "match_key": request.match_key,
+        "channel_name": request.channel_name,
+    }
+
+    async def _do_generate() -> tuple[str, str, str | None]:
         import base64 as _b64
-        from platform_api.dependencies import get_cala_client, get_key_pool_service
+        import io
 
-        cala = get_cala_client()
+        from platform_api.ports.generation_port import ImageRequest
 
-        # Get API key from key pool
-        key_pool = get_key_pool_service()
-        api_key = None
-        if key_pool:
-            try:
-                api_key = await key_pool.get_key("cala")
-            except Exception:
-                pass  # Fall back to .env key
-
-        response = await cala.generate_image(
+        image_request = ImageRequest(
             prompt=prompt,
-            width=512,
-            height=512,
-            api_key=api_key,
+            provider=primary_routing.provider,
+            model_id=primary_routing.sub_model,
+            resolution="512x512",
+            style_strength=0.6,
+            base_image=None,
         )
-        image_bytes = await gen.extract_image_bytes_async(response, provider="cala")
-        return _b64.b64encode(image_bytes).decode()
+        outcome = await gen.submit_image_outcome(
+            ctx.user_id,
+            image_request,
+            operation="channel_logo",
+            skip_pricing=True,
+        )
+        usage_metadata["provider"] = outcome.provider
+        usage_metadata["model"] = outcome.sub_model
+        usage_metadata["sub_model"] = outcome.sub_model
+        image_bytes = outcome.image_bytes
+
+        if outcome.provider == "openai":
+            try:
+                from PIL import Image as _PILImage
+
+                img = _PILImage.open(io.BytesIO(image_bytes))
+                img = img.convert("RGBA")
+                img = img.resize((512, 512), _PILImage.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                image_bytes = buf.getvalue()
+            except ImportError:
+                pass
+
+        return _b64.b64encode(image_bytes).decode(), outcome.provider, outcome.sub_model
+
+    async def _do_generate_image() -> str:
+        image_b64, _, _ = await _do_generate()
+        return image_b64
 
     try:
-        image_b64, _credits_used = await credit_svc.execute_with_credits(
-            user_id=ctx.user_id,
-            ai_service="cala",
-            operation_type="image_generation",
-            operation=_do_generate,
-            fallback_operation_type="image_generation",
+        image_b64 = await _run_onboarding_ai(
+            ctx,
+            "channel_logo",
+            _do_generate_image,
+            usage_metadata=usage_metadata,
         )
-    except InsufficientCreditsError:
+    except PlatformAPIError:
         raise
     except Exception as exc:
         logger.error("Failed to generate logo: %s", exc)
@@ -393,59 +698,102 @@ async def generate_logo(
 async def generate_covers(
     request: GenerateCoversRequest,
     gen: GenerationServiceDep,
+    routing_service: AIRoutingServiceDep,
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateCoversResponse:
-    """Generate channel cover/banner images using SLAI via the pool."""
-    from platform_api.dependencies import get_credit_operation_service
-
-    credit_svc = get_credit_operation_service()
+    """Generate channel cover/banner images using image generation via the pool."""
+    routing_chain = await routing_service.resolve_image_chain("channel_cover")
+    primary_routing = routing_chain[0]
 
     # Resolve prompt BEFORE charging
     lookup_key = (getattr(request, 'match_key', '') or request.genre or "").strip()
     prompt = await _get_channel_prompt("cover", request.genre, "", match_key=lookup_key)
     if not prompt:
-        prompt = f"Create a professional YouTube channel banner for '{request.channel_name}' in the {request.genre or 'music'} genre. Wide cinematic composition, dark theme."
+        prompt = (
+            f"Create a professional YouTube channel banner for '{request.channel_name}' "
+            f"in the {request.genre or 'music'} genre. Cinematic 16:9 widescreen composition, dark theme."
+        )
 
-    prompt = prompt.replace("{channel_name}", request.channel_name)
-    prompt = prompt.replace("{genre}", request.genre or "music")
+    prompt = _build_prompt_with_variation(
+        prompt.replace("{channel_name}", request.channel_name),
+        "cover",
+        genre=request.genre,
+        role=request.role,
+    )
 
-    async def _do_generate() -> list[str]:
+    usage_metadata: dict[str, Any] = {
+        "provider": primary_routing.provider,
+        "model": primary_routing.sub_model,
+        "sub_model": primary_routing.sub_model,
+        "genre": request.genre,
+        "role": request.role,
+        "match_key": request.match_key,
+        "channel_name": request.channel_name,
+        "request_count": request.count,
+    }
+
+    async def _generate_one_cover() -> tuple[str, str, str | None]:
         import base64 as _b64
-        from platform_api.dependencies import get_cala_client, get_key_pool_service
+        import io
 
-        cala = get_cala_client()
+        from platform_api.ports.generation_port import ImageRequest
 
-        # Get API key from key pool
-        key_pool = get_key_pool_service()
-        api_key = None
-        if key_pool:
+        image_request = ImageRequest(
+            prompt=prompt,
+            provider=primary_routing.provider,
+            model_id=primary_routing.sub_model,
+            resolution="1920x1080",
+            style_strength=0.6,
+            base_image=None,
+        )
+        outcome = await gen.submit_image_outcome(
+            ctx.user_id,
+            image_request,
+            operation="channel_cover",
+            skip_pricing=True,
+        )
+        usage_metadata["provider"] = outcome.provider
+        usage_metadata["model"] = outcome.sub_model
+        usage_metadata["sub_model"] = outcome.sub_model
+        image_bytes = outcome.image_bytes
+
+        if outcome.provider == "openai":
             try:
-                api_key = await key_pool.get_key("cala")
-            except Exception:
-                pass  # Fall back to .env key
+                from PIL import Image as _PILImage
 
-        images: list[str] = []
-        for _i in range(request.count):
-            response = await cala.generate_image(
-                prompt=prompt,
-                width=1920,
-                height=480,
-                api_key=api_key,
-            )
-            image_bytes = await gen.extract_image_bytes_async(response, provider="cala")
-            images.append(_b64.b64encode(image_bytes).decode())
-        return images
+                img = _PILImage.open(io.BytesIO(image_bytes))
+                img = img.convert("RGBA")
+                scale = 1920.0 / float(img.width or 1)
+                new_w = 1920
+                new_h = max(1, int(float(img.height) * scale))
+                img = img.resize((new_w, new_h), _PILImage.Resampling.LANCZOS)
+                if new_h > 1080:
+                    y_offset = (new_h - 1080) // 2
+                    img = img.crop((0, y_offset, 1920, y_offset + 1080))
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                image_bytes = buf.getvalue()
+            except ImportError:
+                pass
+
+        return _b64.b64encode(image_bytes).decode(), outcome.provider, outcome.sub_model
 
     try:
-        images, _credits_used = await credit_svc.execute_with_credits(
-            user_id=ctx.user_id,
-            ai_service="cala",
-            operation_type="image_generation",
-            operation=_do_generate,
-            count=request.count,
-            fallback_operation_type="image_generation",
-        )
-    except InsufficientCreditsError:
+        images: list[str] = []
+        for _ in range(request.count):
+            async def _one_cover() -> str:
+                image_b64, _, _ = await _generate_one_cover()
+                return image_b64
+
+            images.append(
+                await _run_onboarding_ai(
+                    ctx,
+                    "channel_cover",
+                    _one_cover,
+                    usage_metadata=usage_metadata,
+                )
+            )
+    except PlatformAPIError:
         raise
     except Exception as exc:
         logger.error("Failed to generate covers: %s", exc)
@@ -466,51 +814,353 @@ async def generate_covers(
 async def generate_description(
     request: GenerateDescriptionRequest,
     gen: GenerationServiceDep,
+    routing_service: AIRoutingServiceDep,
     ctx: AuthContext = Depends(get_current_user),
 ) -> GenerateDescriptionResponse:
     """Generate a YouTube channel description, keywords, and tags using LLM."""
-    from platform_api.dependencies import get_credit_operation_service
+    # Resolve AI routing for channel_description operation
+    routing = await routing_service.resolve("channel_description")
+    text_chain = [
+        (item.provider, item.sub_model or "")
+        for item in await routing_service.resolve_text_chain("channel_description")
+    ]
 
-    credit_svc = get_credit_operation_service()
+    # Resolve prompt BEFORE charging
+    system = (
+        "You are a YouTube SEO expert. Return a JSON object with three fields: "
+        "'description' (string), 'keywords' (array), and 'tags' (array). "
+        "No explanation, just the JSON."
+    )
 
-    # Resolve prompt BEFORE charging — don't charge if no prompt available
-    system = "You are a YouTube SEO expert. Return a JSON object with three fields: 'description' (string), 'keywords' (array), and 'tags' (array). No explanation, just the JSON."
-
-    prompt = await _get_channel_prompt("description", request.genre, "", match_key=request.genre)
+    lookup_key = (request.match_key or request.genre).strip()
+    prompt = await _get_channel_prompt("description", request.genre, "", match_key=lookup_key)
     if not prompt:
         raise ValidationError(
-            f"No channel prompt found for category 'Description' with match_key '{request.genre}'. Please create one in the admin portal.",
+            f"No 'Channel Description' prompt found for match key '{lookup_key}'. "
+            "Create one in the admin portal (Music Prompts → Channel Prompts) "
+            "with category 'description' and a matching match key."
         )
+
+    prompt = _build_prompt_with_variation(
+        prompt.replace("{channel_name}", request.channel_name),
+        "description",
+        genre=request.genre,
+        description=request.description,
+    )
+
+    user_prompt = (
+        f"{prompt}\n\n"
+        "Return ONLY a JSON object with exactly these keys:\n"
+        "- description: string\n"
+        "- keywords: array of strings\n"
+        "- tags: array of strings\n"
+        f"{_YOUTUBE_KEYWORD_RULES}\n"
+        f"{_YOUTUBE_TAG_RULES}\n"
+        "No markdown, no extra keys, no extra text."
+    )
 
     async def _do_generate() -> GenerateDescriptionResponse:
-        import json
+        from platform_api.ai.purposes.channel_generation import generate_channel_text
+        from platform_api.ai.purposes.channel_text import parse_channel_description
 
-        result = await gen.generate_chat_text(system_prompt=system, user_prompt=prompt, model="deepseek-chat")
-        start = result.find("{")
-        end = result.rfind("}") + 1
-        if start >= 0 and end > start:
-            parsed = json.loads(result[start:end])
-            return GenerateDescriptionResponse(
-                description=parsed.get("description", ""),
-                keywords=parsed.get("keywords", []),
-                tags=parsed.get("tags", []),
-            )
-        raise ValueError("LLM response did not contain valid JSON object")
+        result = await generate_channel_text(
+            gen,
+            provider=routing.provider,
+            model=routing.sub_model,
+            system_prompt=system,
+            user_prompt=user_prompt,
+            temperature=0.45,
+            max_tokens=1200,
+            provider_chain=text_chain,
+        )
+        logger.info("Description LLM raw (first 500): %s", repr(result[:500]) if result else "EMPTY")
+        parsed = parse_channel_description(result)
+        return GenerateDescriptionResponse(
+            description=str(parsed.get("description", "")),
+            keywords=[str(k) for k in parsed.get("keywords", [])],
+            tags=[str(t) for t in parsed.get("tags", [])],
+        )
 
     try:
-        response, _credits_used = await credit_svc.execute_with_credits(
-            user_id=ctx.user_id,
-            ai_service="deepseek",
-            operation_type="text_generation",
-            operation=_do_generate,
-            fallback_operation_type="text_generation",
+        response = await _run_onboarding_ai(
+            ctx,
+            "channel_description",
+            _do_generate,
+            usage_metadata={
+                "provider": routing.provider,
+                "model": routing.sub_model,
+                "sub_model": routing.sub_model,
+                "genre": request.genre,
+                "match_key": request.match_key,
+                "channel_name": request.channel_name,
+            },
         )
-    except InsufficientCreditsError:
+    except PlatformAPIError:
         raise
     except Exception as exc:
         logger.error("Failed to generate description: %s", exc)
         raise ExternalServiceError(
             f"Failed to generate description: {str(exc)}",
+            is_retryable=True,
+        )
+
+    return response
+
+
+@router.post(
+    "/generate-description-text",
+    response_model=GenerateDescriptionTextResponse,
+    status_code=200,
+    summary="Generate channel description text only",
+)
+async def generate_description_text(
+    request: GenerateDescriptionRequest,
+    gen: GenerationServiceDep,
+    routing_service: AIRoutingServiceDep,
+    ctx: AuthContext = Depends(get_current_user),
+) -> GenerateDescriptionTextResponse:
+    routing = await routing_service.resolve("channel_description")
+    text_chain = [
+        (item.provider, item.sub_model or "")
+        for item in await routing_service.resolve_text_chain("channel_description")
+    ]
+
+    lookup_key = (request.match_key or request.genre).strip()
+    prompt = await _get_channel_prompt("description", request.genre, "", match_key=lookup_key)
+    if not prompt:
+        raise ValidationError(
+            f"No 'Channel Description' prompt found for match key '{lookup_key}'. "
+            "Create one in the admin portal (Music Prompts → Channel Prompts) "
+            "with category 'description' and a matching match key."
+        )
+
+    prompt = _build_prompt_with_variation(
+        prompt.replace("{channel_name}", request.channel_name),
+        "description",
+        genre=request.genre,
+        description=request.description,
+    )
+
+    system = "Return ONLY a JSON object with exactly one key: 'description' (string). No markdown, no extra keys, no extra text."
+    user_prompt = (
+        "Return ONLY a JSON object with exactly one key: 'description' (string). "
+        "No markdown, no extra keys, no extra text.\n\n"
+        f"{prompt}"
+    )
+
+    async def _do_generate() -> GenerateDescriptionTextResponse:
+        from platform_api.ai.purposes.channel_generation import generate_channel_text
+        from platform_api.ai.purposes.channel_text import parse_description_text
+
+        result = await generate_channel_text(
+            gen,
+            provider=routing.provider,
+            model=routing.sub_model,
+            system_prompt=system,
+            user_prompt=user_prompt,
+            temperature=0.5,
+            max_tokens=1200,
+            provider_chain=text_chain,
+        )
+        return GenerateDescriptionTextResponse(
+            description=parse_description_text(result),
+        )
+
+    try:
+        response = await _run_onboarding_ai(
+            ctx,
+            "channel_description",
+            _do_generate,
+            usage_metadata={
+                "provider": routing.provider,
+                "model": routing.sub_model,
+                "sub_model": routing.sub_model,
+                "genre": request.genre,
+                "match_key": request.match_key,
+                "channel_name": request.channel_name,
+                "mode": "description_text",
+            },
+        )
+    except PlatformAPIError:
+        raise
+    except Exception as exc:
+        logger.error("Failed to generate description text: %s", exc)
+        raise ExternalServiceError(
+            f"Failed to generate description text: {str(exc)}",
+            is_retryable=True,
+        )
+
+    return response
+
+
+@router.post(
+    "/generate-keywords",
+    response_model=GenerateKeywordsResponse,
+    status_code=200,
+    summary="Generate channel SEO keywords only",
+)
+async def generate_keywords(
+    request: GenerateDescriptionRequest,
+    gen: GenerationServiceDep,
+    routing_service: AIRoutingServiceDep,
+    ctx: AuthContext = Depends(get_current_user),
+) -> GenerateKeywordsResponse:
+    routing = await routing_service.resolve("channel_keywords")
+    text_chain = [
+        (item.provider, item.sub_model or "")
+        for item in await routing_service.resolve_text_chain("channel_keywords")
+    ]
+
+    lookup_key = (request.match_key or request.genre).strip()
+    prompt = await _get_channel_prompt("keyword", request.genre, "", match_key=lookup_key)
+    if not prompt:
+        raise ValidationError(
+            f"No 'Channel Keywords' prompt found for match key '{lookup_key}'. "
+            "Create one in the admin portal (Music Prompts → Channel Prompts) "
+            "with category 'keyword' and a matching match key."
+        )
+
+    prompt = _build_prompt_with_variation(
+        prompt.replace("{channel_name}", request.channel_name),
+        "keyword",
+        genre=request.genre,
+        description=request.description,
+    )
+
+    system = (
+        "Return ONLY a JSON object with exactly one key: 'keywords' (array of strings). "
+        "No markdown, no extra keys, no extra text."
+    )
+    user_prompt = (
+        "Return ONLY a JSON object with exactly one key: 'keywords' (array of strings). "
+        "No markdown, no extra keys, no extra text.\n\n"
+        f"{prompt}\n"
+        f"{_YOUTUBE_KEYWORD_RULES}"
+    )
+
+    async def _do_generate() -> GenerateKeywordsResponse:
+        from platform_api.ai.purposes.channel_generation import generate_channel_text
+        from platform_api.ai.purposes.channel_text import parse_keywords
+
+        result = await generate_channel_text(
+            gen,
+            provider=routing.provider,
+            model=routing.sub_model,
+            system_prompt=system,
+            user_prompt=user_prompt,
+            temperature=0.35,
+            max_tokens=1200,
+            provider_chain=text_chain,
+        )
+        return GenerateKeywordsResponse(keywords=parse_keywords(result))
+
+    try:
+        response = await _run_onboarding_ai(
+            ctx,
+            "channel_keywords",
+            _do_generate,
+            usage_metadata={
+                "provider": routing.provider,
+                "model": routing.sub_model,
+                "sub_model": routing.sub_model,
+                "genre": request.genre,
+                "match_key": request.match_key,
+                "channel_name": request.channel_name,
+            },
+        )
+    except PlatformAPIError:
+        raise
+    except Exception as exc:
+        logger.error("Failed to generate keywords: %s", exc)
+        raise ExternalServiceError(
+            f"Failed to generate keywords: {str(exc)}",
+            is_retryable=True,
+        )
+
+    return response
+
+
+@router.post(
+    "/generate-tags",
+    response_model=GenerateTagsResponse,
+    status_code=200,
+    summary="Generate channel tags only",
+)
+async def generate_tags(
+    request: GenerateDescriptionRequest,
+    gen: GenerationServiceDep,
+    routing_service: AIRoutingServiceDep,
+    ctx: AuthContext = Depends(get_current_user),
+) -> GenerateTagsResponse:
+    routing = await routing_service.resolve("channel_tags")
+    text_chain = [
+        (item.provider, item.sub_model or "")
+        for item in await routing_service.resolve_text_chain("channel_tags")
+    ]
+
+    lookup_key = (request.match_key or request.genre).strip()
+    prompt = await _get_channel_prompt("tag", request.genre, "", match_key=lookup_key)
+    if not prompt:
+        raise ValidationError(
+            f"No 'Channel Tags' prompt found for match key '{lookup_key}'. "
+            "Create one in the admin portal (Music Prompts → Channel Prompts) "
+            "with category 'tag' and a matching match key."
+        )
+
+    prompt = _build_prompt_with_variation(
+        prompt.replace("{channel_name}", request.channel_name),
+        "tag",
+        genre=request.genre,
+        description=request.description,
+    )
+
+    system = (
+        "Return ONLY a JSON object with exactly one key: 'tags' (array of strings). "
+        "No markdown, no extra keys, no extra text."
+    )
+    user_prompt = (
+        "Return ONLY a JSON object with exactly one key: 'tags' (array of strings). "
+        "No markdown, no extra keys, no extra text.\n\n"
+        f"{prompt}\n"
+        f"{_YOUTUBE_TAG_RULES}"
+    )
+
+    async def _do_generate() -> GenerateTagsResponse:
+        from platform_api.ai.purposes.channel_generation import generate_channel_text
+        from platform_api.ai.purposes.channel_text import parse_tags
+
+        result = await generate_channel_text(
+            gen,
+            provider=routing.provider,
+            model=routing.sub_model,
+            system_prompt=system,
+            user_prompt=user_prompt,
+            temperature=0.35,
+            max_tokens=1200,
+            provider_chain=text_chain,
+        )
+        return GenerateTagsResponse(tags=parse_tags(result))
+
+    try:
+        response = await _run_onboarding_ai(
+            ctx,
+            "channel_tags",
+            _do_generate,
+            usage_metadata={
+                "provider": routing.provider,
+                "model": routing.sub_model,
+                "sub_model": routing.sub_model,
+                "genre": request.genre,
+                "match_key": request.match_key,
+                "channel_name": request.channel_name,
+            },
+        )
+    except PlatformAPIError:
+        raise
+    except Exception as exc:
+        logger.error("Failed to generate tags: %s", exc)
+        raise ExternalServiceError(
+            f"Failed to generate tags: {str(exc)}",
             is_retryable=True,
         )
 
@@ -540,6 +1190,12 @@ async def create_profile(
 
     pool = get_db_pool()
     user_id = ctx.user_id
+    user_uuid = UUID(user_id)
+
+    from platform_api.dependencies import get_profile_service
+
+    profile_service = get_profile_service()
+    await profile_service.ensure_profile_capacity(user_uuid)
 
     # Generate folder name from channel name
     folder_name = request.name.lower().replace(" ", "-").replace("/", "-")

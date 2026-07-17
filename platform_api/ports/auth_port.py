@@ -26,7 +26,9 @@ class TokenPayload:
     user_id: str
     email: str
     role: str
+    iat: int  # issued-at timestamp (Unix epoch)
     exp: int  # expiration timestamp (Unix epoch)
+    token_version: int = 0
 
 
 class AuthServicePort(Protocol):

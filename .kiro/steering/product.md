@@ -2,7 +2,7 @@
 
 MusicGenerator is an AI-powered music production and distribution platform consisting of three components:
 
-1. **Desktop App** (`python_app/`) — PyQt6 desktop application for music generation, video export with spectrum visualizers, and automated YouTube upload. Targets Windows. Packaged via PyInstaller.
+1. **Desktop App** (`camxora_python/`) — PyQt6 desktop application for music generation, video export with spectrum visualizers, and automated YouTube upload. Targets Windows. Packaged via PyInstaller.
 
 2. **Platform API** (`platform_api/`) — FastAPI backend providing authentication, credit/billing management, license enforcement, and proxied access to external AI services (Suno for music, Fal AI/SLAI for images, DeepSeek for LLM song drafts).
 

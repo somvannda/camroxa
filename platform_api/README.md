@@ -24,6 +24,8 @@ Centralized Python backend service for the music generation ecosystem. Acts as t
 - Alembic for database migrations
 - Hypothesis for property-based testing
 
+**Production infrastructure plan** (VPS, B2 storage, streaming, job queue, workers): see [`docs/PRODUCTION_INFRASTRUCTURE_PLAN.md`](../docs/PRODUCTION_INFRASTRUCTURE_PLAN.md).
+
 ---
 
 ## Project Structure
@@ -142,8 +144,8 @@ platform_api/
 **Architecture:** Two-tier consumption — Plan quota first, then wallet credits.
 
 ```
-Monthly/Yearly User → Plan quota (420-840 songs/month) → Wallet credits
-Lifetime User → Wallet credits only (gets 1,000 bonus on activation)
+Monthly/Yearly User → Plan quota (from live `plans` row) → Wallet credits
+Lifetime / wallet-only User → Wallet credits only
 ```
 
 | Component | Responsibility |
@@ -197,20 +199,19 @@ Request → Validate (resolution 512-2048, prompt ≤2000, base64 ≤10MB) → C
 
 ### 4. License & Plan Management
 
-**Plan types:**
-| Plan | Price | Profiles | Songs/month | AI included |
-|------|-------|----------|-------------|-------------|
-| Monthly | $79/mo | 3 | 420 (7/day/channel) | Within quota |
-| Yearly | $699/yr | 4 | 840 (7/day/channel) | Within quota |
-| Lifetime | $1,499 | 5 | N/A | Credit packs only |
+**Plans are Admin-only.** There is no API bootstrap or seed script for default tiers.
+Create and configure all plans in the Admin Portal against the live `plans` table
+(pricing, profile allowance, song/image limits, billing cycle). An empty DB has no
+plans until an Admin creates the first one.
 
 | Component | Responsibility |
 |-----------|---------------|
 | `license_service.py` | Create/assign/revoke licenses, daily+monthly quota enforcement, plan offer logic, plan deactivation |
-| `license_repo.py` | License keys, plan table, offers (promo pricing with max redemptions), usage tracking |
+| `license_repo.py` | License keys, plan table CRUD, offers (promo pricing with max redemptions), usage tracking |
 
 **Key behaviors:**
-- Daily song limit: configurable per channel (default 7/day)
+- Quotas and allowances come only from the assigned license's plan row in PostgreSQL
+- Daily song limit: configurable per plan (Admin-set on the plan)
 - Plan offers: promotional pricing with auto-revert when max redemptions reached
 - License revocation recalculates profile allowance (existing profiles preserved, no new ones until under limit)
 - Plan changes don't affect existing subscribers until renewal
@@ -353,7 +354,7 @@ export PLATFORM_JWT_SECRET=your-secret-here
 alembic upgrade head
 
 # Start the server
-uvicorn platform_api.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn platform_api.main:app --host 0.0.0.0 --port 8000 --reload --log-config platform_api/log_config.json --log-level info
 
 # Run tests
 pytest tests/ -q

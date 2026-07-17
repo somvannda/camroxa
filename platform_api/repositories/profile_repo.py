@@ -8,6 +8,7 @@ Requirements: 8.1, 8.2, 8.3, 8.5, 8.6, 8.7
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -44,6 +45,30 @@ class AsyncPGPool(Protocol):
 
 def _row_to_profile(row: Any) -> ChannelProfile:
     """Convert an asyncpg Record to a ChannelProfile domain object."""
+    raw_image_config = row.get("image_config")
+    if isinstance(raw_image_config, str):
+        try:
+            parsed = json.loads(raw_image_config or "{}")
+            image_config = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            image_config = {}
+    elif isinstance(raw_image_config, dict):
+        image_config = raw_image_config
+    else:
+        image_config = {}
+
+    raw_youtube_config = row.get("youtube_config")
+    if isinstance(raw_youtube_config, str):
+        try:
+            parsed = json.loads(raw_youtube_config or "{}")
+            youtube_config = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            youtube_config = {}
+    elif isinstance(raw_youtube_config, dict):
+        youtube_config = raw_youtube_config
+    else:
+        youtube_config = {}
+
     return ChannelProfile(
         id=row["id"],
         user_id=row["user_id"],
@@ -54,11 +79,20 @@ def _row_to_profile(row: Any) -> ChannelProfile:
         video_template_id=row.get("video_template_id"),
         reel_template_id=row.get("reel_template_id"),
         output_resolution=row.get("output_resolution", "1920x1080"),
-        image_config=row.get("image_config") or {},
-        youtube_config=row.get("youtube_config") or {},
+        image_config=image_config,
+        youtube_config=youtube_config,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+
+
+def _serialize_jsonb_value(value: Any) -> str:
+    """Serialize profile config payloads for asyncpg JSONB parameters."""
+    if value is None:
+        return "{}"
+    if isinstance(value, str):
+        return value
+    return json.dumps(value)
 
 
 # All columns returned from SELECT queries
@@ -101,7 +135,7 @@ class ProfileRepository:
                 video_template_id, reel_template_id, output_resolution,
                 image_config, youtube_config, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, NOW(), NOW())
             RETURNING {_SELECT_COLS}
             """,
             profile.id,
@@ -113,8 +147,8 @@ class ProfileRepository:
             profile.video_template_id,
             profile.reel_template_id,
             profile.output_resolution,
-            profile.image_config,
-            profile.youtube_config,
+            _serialize_jsonb_value(profile.image_config),
+            _serialize_jsonb_value(profile.youtube_config),
         )
         return _row_to_profile(row)
 
@@ -220,8 +254,12 @@ class ProfileRepository:
         param_idx = 1
 
         for col, val in fields.items():
-            set_parts.append(f"{col} = ${param_idx}")
-            values.append(val)
+            if col in {"image_config", "youtube_config"}:
+                set_parts.append(f"{col} = ${param_idx}::jsonb")
+                values.append(_serialize_jsonb_value(val))
+            else:
+                set_parts.append(f"{col} = ${param_idx}")
+                values.append(val)
             param_idx += 1
 
         # Always update updated_at

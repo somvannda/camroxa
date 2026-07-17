@@ -58,7 +58,6 @@ class CalaClient:
 
     def __init__(self, settings: Settings) -> None:
         self._base_url = (settings.cala_api_base_url or "http://localhost:3000").rstrip("/")
-        self._api_key = getattr(settings, "cala_api_key", "") or ""
         # CALA image generation can take 3-5 minutes
         self._timeout = httpx.Timeout(
             timeout=300.0,
@@ -91,7 +90,13 @@ class CalaClient:
         Returns:
             Response dict with 'data' containing image URL.
         """
-        key = api_key or self._api_key
+        if not api_key:
+            raise ExternalServiceError(
+                "CALA API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "cala"},
+            )
+        key = api_key
 
         # Determine aspect ratio
         if width == height:
@@ -102,7 +107,6 @@ class CalaClient:
             aspect_ratio = "16:9"
 
         payload: dict[str, Any] = {
-            "model": "cgpt-web/gpt-5.5",
             "prompt": prompt,
             "n": 1,
             "aspect_ratio": aspect_ratio,
@@ -113,6 +117,9 @@ class CalaClient:
 
         if extra_params:
             payload.update(extra_params)
+
+        if "model" not in payload:
+            payload["model"] = "cgpt-web/gpt-5.5"
 
         url = f"{self._base_url}/v1/images/generations"
 

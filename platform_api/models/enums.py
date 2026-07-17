@@ -39,8 +39,10 @@ class TaskStatus(StrEnum):
     """Status of an AI generation task (Suno)."""
 
     PENDING = "pending"
+    RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class ImageKind(StrEnum):

@@ -1,0 +1,33 @@
+"""AI routing registry constant tests."""
+
+from __future__ import annotations
+
+from platform_api.ai.registry import PROVIDER_SUB_MODELS, SUB_MODEL_COST_TIERS
+from platform_api.ai.types import IMAGE_PROVIDERS, PROVIDER_CAPABILITIES, TEXT_LLM_PROVIDERS, ServiceType
+
+
+def test_slai_text_models_include_mimo() -> None:
+    slai_models = PROVIDER_SUB_MODELS["slai"]
+    text_models = slai_models[ServiceType.TEXT_GENERATION]
+    image_models = slai_models[ServiceType.IMAGE_GENERATION]
+
+    assert "xiaomi/mimo-v2.5-pro" in text_models
+    assert "cgpt-web/gpt-5.5-pro" not in text_models
+    assert "slai/gpt-image-2" in image_models
+    assert "xiaomi/mimo-v2.5-pro" not in image_models
+    assert SUB_MODEL_COST_TIERS["xiaomi/mimo-v2.5-pro"] == "~$0.00009/1K"
+    assert SUB_MODEL_COST_TIERS["slai/gpt-image-2"] == "~$0.01/img"
+
+
+def test_suno_supports_music_and_lyric_text() -> None:
+    assert ServiceType.TEXT_GENERATION in PROVIDER_CAPABILITIES["suno"]
+    assert ServiceType.MUSIC_GENERATION in PROVIDER_CAPABILITIES["suno"]
+    assert "suno" in TEXT_LLM_PROVIDERS
+    assert "suno" not in IMAGE_PROVIDERS
+    assert "fal" in IMAGE_PROVIDERS
+
+    suno_models = PROVIDER_SUB_MODELS["suno"]
+    assert "lyrics" in suno_models[ServiceType.TEXT_GENERATION]
+    assert "V5" in suno_models[ServiceType.MUSIC_GENERATION]
+    assert SUB_MODEL_COST_TIERS["lyrics"] == "~2 Suno credits (~$0.01)"
+    assert SUB_MODEL_COST_TIERS["V5"] == "~12 Suno credits (~$0.06)"

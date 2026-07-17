@@ -282,18 +282,15 @@ class LicenseService:
             license_id, user_id, plan
         )
 
-        # For lifetime plans, credit bonus (Req 6.11)
-        if plan.billing_cycle_days is None and self._credit_repo is not None:
-            await self._credit_repo.add_credits(
-                user_id,
-                LIFETIME_BONUS_CREDITS,
-                "lifetime_bonus",
-                ref_id=str(license_id),
-            )
-            logger.info(
-                "Lifetime bonus credited: user_id=%s, amount=%d",
-                user_id,
-                LIFETIME_BONUS_CREDITS,
+        # Lifetime / wallet plans: credit included wallet balance from plan config
+        if self._credit_repo is not None:
+            from platform_api.services.billing_mode_service import grant_included_wallet_credits
+
+            await grant_included_wallet_credits(
+                self._credit_repo,
+                user_id=user_id,
+                plan=plan,
+                license_id=license_id,
             )
 
         logger.info(
@@ -405,11 +402,11 @@ class LicenseService:
 
         # Calculate songs remaining for monthly/yearly plans
         songs_remaining: int | None = None
-        if plan.monthly_song_quota is not None:
+        if plan.monthly_song_limit is not None:
             current_usage = await self._plan_repo.get_current_usage(
                 user_id, license.id
             )
-            songs_remaining = max(0, plan.monthly_song_quota - current_usage)
+            songs_remaining = max(0, plan.monthly_song_limit - current_usage)
 
         # Format expiration date
         expiration_date: str | None = None
@@ -419,7 +416,7 @@ class LicenseService:
         return {
             "plan_type": plan.name,
             "profile_allowance": plan.profile_allowance,
-            "monthly_song_quota": plan.monthly_song_quota,
+            "monthly_song_quota": plan.monthly_song_limit,
             "songs_remaining": songs_remaining,
             "daily_song_limit_per_channel": plan.daily_song_limit_per_channel,
             "expiration_date": expiration_date,
@@ -558,7 +555,7 @@ class LicenseService:
             )
 
         # Lifetime plans have no monthly quota
-        if plan.monthly_song_quota is None:
+        if plan.monthly_song_limit is None:
             return
 
         # Get current period usage
@@ -566,7 +563,7 @@ class LicenseService:
             user_id, license.id
         )
 
-        if current_usage >= plan.monthly_song_quota:
+        if current_usage >= plan.monthly_song_limit:
             # Calculate reset time based on billing period
             now = datetime.now(timezone.utc)
             if license.activated_at is not None and plan.billing_cycle_days:
@@ -594,7 +591,7 @@ class LicenseService:
             raise QuotaExceededError(
                 "Monthly song generation quota exceeded.",
                 details={
-                    "limit": plan.monthly_song_quota,
+                    "limit": plan.monthly_song_limit,
                     "current_usage": current_usage,
                     "reset_time": reset_time,
                     "reset_seconds": reset_seconds,

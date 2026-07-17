@@ -130,6 +130,16 @@ def _determine_action_type(method: str, path: str) -> str:
         elif method_upper == "DELETE":
             return "profile.delete"
         return f"profile.{method_upper.lower()}"
+    elif normalized.startswith("billing/credit-pack"):
+        return "credit.pack.checkout"
+    elif normalized.startswith("billing/webhooks/cutluy"):
+        return "billing.webhook.cutluy"
+    elif normalized.startswith("redeem-codes/redeem"):
+        return "credit.redeem"
+    elif normalized.startswith("billing/payments"):
+        if method_upper == "POST":
+            return "billing.payment.create"
+        return f"billing.payment.{method_upper.lower()}"
     elif normalized.startswith("credits/purchase"):
         return "credit.purchase"
     elif normalized.startswith("credits/adjust"):

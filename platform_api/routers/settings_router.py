@@ -94,7 +94,15 @@ async def patch_settings(
     Requirement 14.2: Persist changed keys and return full merged settings.
     Requirement 14.4: Exclude sensitive settings from responses.
     """
-    return await settings_service.patch_settings(
+    merged = await settings_service.patch_settings(
         user_id=ctx.user_id,
         patch=patch,
     )
+    from platform_api.services.workspace_notifications import notify_workspace_changed
+
+    await notify_workspace_changed(
+        ctx.user_id,
+        source="settings.patch",
+        scope="preferences",
+    )
+    return merged
