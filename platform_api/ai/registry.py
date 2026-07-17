@@ -53,10 +53,40 @@ SLAI_TEXT_MODELS: dict[str, ModelSpec] = {
         aliases=("mimo-v2.5-pro",),
         supports_json_mode=False,
         extra_payload={
-            "stream": False,
+            "stream": True,
             "thinking": {"type": "disabled"},
         },
         cost_tier="~$0.00009/1K",
+        request_timeout_seconds=180.0,
+    ),
+    "gpt-5.6-sol": ModelSpec(
+        api_id="gpt-5.6-sol",
+        supports_json_mode=False,
+        extra_payload={
+            "stream": True,
+            "thinking": {"type": "disabled"},
+        },
+        cost_tier="~$0.001/1K",
+        request_timeout_seconds=180.0,
+    ),
+    "gpt-5.6-terra": ModelSpec(
+        api_id="gpt-5.6-terra",
+        supports_json_mode=False,
+        extra_payload={
+            "stream": True,
+            "thinking": {"type": "disabled"},
+        },
+        cost_tier="~$0.001/1K",
+        request_timeout_seconds=180.0,
+    ),
+    "gpt-5.6-tuna": ModelSpec(
+        api_id="gpt-5.6-tuna",
+        supports_json_mode=False,
+        extra_payload={
+            "stream": True,
+            "thinking": {"type": "disabled"},
+        },
+        cost_tier="~$0.001/1K",
         request_timeout_seconds=180.0,
     ),
 }

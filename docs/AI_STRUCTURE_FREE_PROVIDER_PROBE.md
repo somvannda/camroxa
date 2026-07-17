@@ -61,26 +61,22 @@ Re-run the probe after changing prompts or adding providers. Update section 3 wh
 
 ## 3. Probe results
 
-**Last sandbox run:** 2026-07-17T04:42:31Z (`docs/AI_STRUCTURE_FREE_PROVIDER_PROBE.json`)
+**Last sandbox run:** 2026-07-17T06:21:18Z (`docs/AI_STRUCTURE_FREE_PROVIDER_PROBE.json`)
 
 | Provider | Model | Run | Headers | Distinct sections | Content lines | Preamble | Pass | Notes |
 |----------|-------|-----|---------|-------------------|---------------|----------|------|-------|
-| openai | gpt-4o-mini | 1 | 8 | bridge, chorus, intro, outro, verse 1, verse 2 | 30 | no | PASS | Bracket headers, no preamble |
-| openai | gpt-4o-mini | 2 | 7 | bridge, chorus, intro, outro, verse 1, verse 2 | 26 | no | PASS | Consistent layout |
-| openai | gpt-4o | 1 | 10 | bridge, chorus, drop, intro, outro, pre-chorus, verse 1, verse 2 | 30 | no | PASS | EDM prompt |
-| openai | gpt-4o | 2 | 7 | bridge, chorus, intro, outro, verse 1, verse 2 | 26 | no | PASS | Lo-fi prompt |
-| openai | gpt-4-turbo | 1 | 10 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 34 | no | PASS | |
-| openai | gpt-4-turbo | 2 | 8 | bridge, chorus, intro, outro, verse 1, verse 2, verse 3 | 30 | no | PASS | |
-| deepseek | deepseek-chat | 1 | 10 | bridge, chorus, drop, intro, outro, pre-chorus, verse | 36 | no | PASS | |
-| deepseek | deepseek-chat | 2 | 7 | bridge, chorus, intro, outro, verse 1, verse 2 | 24 | no | PASS | |
-| deepseek | deepseek-reasoner | 1 | 12 | bridge, chorus, drop, intro, outro, pre-chorus, verse 1, verse 2 | 38 | no | PASS | |
-| deepseek | deepseek-reasoner | 2 | 7 | bridge, chorus, intro, outro, verse 1, verse 2 | 23 | no | PASS | |
-| slai | xiaomi/mimo-v2.5-pro | 1 | — | — | — | — | ERROR | HTTP 401 on chat completion (sandbox key) |
-| slai | xiaomi/mimo-v2.5-pro | 2 | — | — | — | — | ERROR | HTTP 401 on chat completion (sandbox key) |
-| suno | lyrics | 1 | 9 | bridge, chorus, final chorus, intro, pre-chorus, verse 1, verse 2 | 70 | no | PASS | Suno lyrics API with bracket headers |
-| suno | lyrics | 2 | 8 | bridge, chorus, final chorus, pre-chorus, verse 1, verse 2 | 52 | no | PASS | Both runs passed on latest probe |
+| openai | gpt-4o-mini | 1–2 | 7–8 | bridge, chorus, intro, outro, verse 1, verse 2 | 26–30 | no | PASS | Bracket headers, no preamble |
+| openai | gpt-4o | 1–2 | 6–9 | bridge, chorus, drop, intro, outro, pre-chorus, verse 1, verse 2 | 24–34 | no | PASS | |
+| openai | gpt-4-turbo | 1–2 | 8–10 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 30–34 | no | PASS | |
+| deepseek | deepseek-chat | 1–2 | 7–10 | bridge, chorus, drop, intro, outro, pre-chorus, verse | 25–40 | no | PASS | |
+| deepseek | deepseek-reasoner | 1–2 | 7–11 | bridge, chorus, drop, intro, outro, pre-chorus, verse 1, verse 2 | 32–42 | no | PASS | |
+| slai | xiaomi/mimo-v2.5-pro | 1–2 | 7–11 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 35–55 | no | PASS | Requires `PLATFORM_SLAI_API_BASE_URL` + streaming |
+| slai | gpt-5.6-sol | 1–2 | 7–11 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 46–64 | no | PASS | ~19s per run (SLAI streaming) |
+| slai | gpt-5.6-terra | 1–2 | 8–11 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 32–60 | no | PASS | |
+| slai | gpt-5.6-tuna | 1–2 | — | — | — | — | ERROR | SLAI API returns **404** — model id not available upstream yet |
+| suno | lyrics | 1–2 | 8–9 | bridge, chorus, final chorus, intro, pre-chorus, verse 1, verse 2 | 56–64 | no | PASS | Suno lyrics API with bracket headers |
 
-**Summary:** OpenAI and DeepSeek chat models consistently return bracket section headers with at least 16 content lines and no preamble. Suno lyrics API returned headers on both runs in the latest probe (an earlier run hit a transient Suno rephrase error). Slai probe failed with **401** — verify the sandbox Slai pool key before treating Slai as validated.
+**Summary:** OpenAI, DeepSeek, and three SLAI text models (`mimo-v2.5-pro`, `gpt-5.6-sol`, `gpt-5.6-terra`) pass validation. Suno lyrics API passes on both runs. `gpt-5.6-tuna` is registered but SLAI upstream returns 404 — confirm the model id with SLAI before routing production traffic.
 
 Re-run after deploy:
 
@@ -92,13 +88,19 @@ python scripts/deploy/run_probe_ai_structure_free_sandbox.py
 
 | Provider | Behavior |
 |----------|----------|
-| OpenAI / DeepSeek | Bracket headers (`[Verse]`, `[Chorus]`, ...), 7-12 headers, no preamble |
+| OpenAI / DeepSeek | Bracket headers (`[Verse]`, `[Chorus]`, ...), 7–12 headers, no preamble |
 | Suno Lyrics API | Bracket headers on success; occasional transient Suno API errors |
-| Slai | Not validated — 401 auth failure on sandbox |
+| Slai | Bracket headers when auth + base URL are configured; lyric calls must use **streaming** (`stream: true`) or SLAI's bridge times out (~6s) with 504 |
 
-### Slai sandbox key refresh (manual)
+### Slai sandbox setup (ops)
 
-If Slai rows show **HTTP 401** after `run_probe_ai_structure_free_sandbox.py`, refresh the Slai API key in the sandbox provider pool (admin portal or DB `provider_keys`) before re-running the probe. This does not block other providers; treat Slai as optional until the key is renewed.
+Earlier probe runs showed **HTTP 401** because sandbox `platform_api/.env` lacked `PLATFORM_SLAI_API_BASE_URL`. Without it, SLAI pool keys were sent to the DeepSeek client URL. Fix:
+
+1. Set `PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop` in sandbox `.env` (included in `restore_sandbox_env.py` / `camxora-sandbox-remote.sh`).
+2. Ensure the SLAI key in the admin key pool is active (keys live in DB, not `.env`).
+3. SLAI text models use `stream: true` in registry `extra_payload` — non-streaming lyric prompts hit SLAI `api_bridge_timeout` (504).
+
+`gpt-5.6-tuna`: registered as text-only; probe blocked until SLAI exposes this model id (404 from upstream).
 
 ---
 

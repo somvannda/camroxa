@@ -5,6 +5,7 @@ Handles chat completion requests with configurable per-model timeouts.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -27,6 +28,51 @@ def _normalize_slai_text_model(model: str) -> str:
     from platform_api.ai.registry import resolve_text_model_id
 
     return resolve_text_model_id("slai", model)
+
+
+def _chat_completions_url(base_url: str) -> str:
+    """Build OpenAI-compatible chat URL for a provider base URL."""
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/v1"):
+        normalized = normalized[:-3]
+    # SLAI text chat is served at /chat/completions (images use /v1/images/...).
+    if "slai" in normalized.lower():
+        return f"{normalized}/chat/completions"
+    return f"{normalized}/v1/chat/completions"
+
+
+async def _aggregate_streaming_chat_response(response: httpx.Response) -> dict[str, Any]:
+    """Collect SSE chat completion chunks into a non-streaming response shape."""
+    content_parts: list[str] = []
+    async for line in response.aiter_lines():
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if not data or data == "[DONE]":
+            continue
+        try:
+            chunk = json.loads(data)
+        except json.JSONDecodeError:
+            continue
+        for choice in chunk.get("choices") or []:
+            if not isinstance(choice, dict):
+                continue
+            delta = choice.get("delta") or {}
+            if not isinstance(delta, dict):
+                continue
+            piece = delta.get("content")
+            if piece:
+                content_parts.append(str(piece))
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "".join(content_parts),
+                }
+            }
+        ]
+    }
 
 
 def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceError:
@@ -169,8 +215,19 @@ class LlmClient:
                 async with httpx.AsyncClient(
                     timeout=self._request_timeout(timeout_seconds),
                 ) as temp_client:
+                    if payload.get("stream"):
+                        async with temp_client.stream(
+                            "POST",
+                            _chat_completions_url(base_url),
+                            json=payload,
+                            headers=headers,
+                        ) as response:
+                            if response.is_error:
+                                await response.aread()
+                            response.raise_for_status()
+                            return await _aggregate_streaming_chat_response(response)
                     response = await temp_client.post(
-                        f"{base_url.rstrip('/')}/v1/chat/completions",
+                        _chat_completions_url(base_url),
                         json=payload,
                         headers=headers,
                     )

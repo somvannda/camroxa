@@ -24,6 +24,14 @@ def test_slai_gpt_image_is_image_only() -> None:
     assert "lyric" not in ops
 
 
+def test_slai_gpt56_models_are_text_only() -> None:
+    for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-tuna"):
+        ops = operation_types_for_model("slai", model)
+        assert "lyric" in ops
+        assert "music" not in ops
+        assert "channel_logo" not in ops
+
+
 def test_seed_rows_exclude_slai_music() -> None:
     rows = build_seed_cost_rows()
     slai_music = [
@@ -57,10 +65,12 @@ def test_mimo_lyric_cost_matches_slai_shop_calibration() -> None:
 def test_slai_models_seed_with_usd_estimates() -> None:
     rows = build_seed_cost_rows()
     mimo = [r for r in rows if r["sub_model"] == "xiaomi/mimo-v2.5-pro"]
+    gpt56 = [r for r in rows if r["sub_model"] in {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-tuna"}]
     image = [r for r in rows if r["sub_model"] == "slai/gpt-image-2"]
     assert len(mimo) == len(TEXT_OPERATIONS)
+    assert len(gpt56) == 3 * len(TEXT_OPERATIONS)
     assert len(image) == len(IMAGE_OPERATIONS)
-    assert all(r["cost_usd"] > 0 for r in mimo + image)
+    assert all(r["cost_usd"] > 0 for r in mimo + gpt56 + image)
 
 
 def test_cgpt_web_not_in_registry_seed() -> None:
