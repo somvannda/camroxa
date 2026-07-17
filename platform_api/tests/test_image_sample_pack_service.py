@@ -62,3 +62,31 @@ async def test_upload_pack_zip_extracts_supported_images(tmp_path) -> None:
     assert record.asset_count == 2
     assert len(repo.assets) == 2
     assert all(str(tmp_path) in asset["absolute_path"] for asset in repo.assets)
+
+
+@pytest.mark.asyncio
+async def test_import_pack_from_url_downloads_and_extracts(tmp_path, monkeypatch) -> None:
+    repo = _FakeRepo()
+    service = ImageSamplePackService(storage_root=str(tmp_path), repo=repo)
+    zip_bytes = _zip_with_images()
+
+    async def _fake_download(source_type: str, source_value: str) -> bytes:
+        assert source_type == "url"
+        assert source_value == "https://example.com/pack.zip"
+        return zip_bytes
+
+    monkeypatch.setattr(
+        "platform_api.services.image_sample_pack_service.download_zip_from_url",
+        _fake_download,
+    )
+
+    record = await service.import_pack_from_url(
+        category="thumbnail",
+        name="Remote Pack",
+        source_type="url",
+        source_value="https://example.com/pack.zip",
+    )
+    assert record.asset_count == 2
+    assert record.source_type == "url"
+    assert record.source_value == "https://example.com/pack.zip"
+    assert len(repo.assets) == 2

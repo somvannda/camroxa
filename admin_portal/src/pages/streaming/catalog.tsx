@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Loader2, RefreshCw } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -23,14 +24,18 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  formatDuration,
   useDeleteAlbum,
   useDeleteTrack,
   useRepublishAlbum,
   useRepublishTrack,
   useStreamingAlbums,
   useStreamingCatalog,
+  useSyncAllMetadata,
+  useSyncTrackMetadata,
   useUnpublishAlbum,
   useUnpublishTrack,
+  useUpdateTrackGenre,
 } from '@/hooks/use-streaming';
 import { toast } from '@/hooks/use-toast';
 
@@ -51,8 +56,13 @@ export default function StreamingCatalogPage() {
   const unpublishAlbum = useUnpublishAlbum();
   const republishAlbum = useRepublishAlbum();
   const deleteAlbum = useDeleteAlbum();
+  const syncTrack = useSyncTrackMetadata();
+  const syncAll = useSyncAllMetadata();
+  const updateGenre = useUpdateTrackGenre();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [query, setQuery] = useState('');
+  const [editingGenreTrackId, setEditingGenreTrackId] = useState<string | null>(null);
+  const [genreDraft, setGenreDraft] = useState('');
 
   const tracks = useMemo(() => {
     const items = tracksData ?? [];
@@ -86,15 +96,55 @@ export default function StreamingCatalogPage() {
     void refetchAlbums();
   };
 
+  const handleSaveGenre = (trackId: string) => {
+    const genre = genreDraft.trim();
+    if (!genre) {
+      toast({ title: 'Genre cannot be empty', variant: 'destructive' });
+      return;
+    }
+    updateGenre.mutate(
+      { trackId, genre },
+      {
+        onSuccess: () => {
+          toast({ title: 'Genre updated' });
+          setEditingGenreTrackId(null);
+        },
+        onError: () => toast({ title: 'Genre update failed', variant: 'destructive' }),
+      },
+    );
+  };
+
   return (
     <div className="space-y-6 p-6">
       <PageHeader
         title="Music Streaming Catalog"
-        description="Manage tracks and albums on music.camxora.com. Hide (unpublish) removes items from the public portal; delete removes them permanently from the catalog."
+        description="Manage tracks and albums on music.camxora.com. Sync metadata from Suno to backfill genre, duration, cover, and lyrics."
         actions={
-          <Button variant="outline" onClick={refreshAll}>
-            Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              disabled={syncAll.isPending}
+              onClick={() =>
+                syncAll.mutate(100, {
+                  onSuccess: (result) =>
+                    toast({
+                      title: `Synced ${result.synced} of ${result.total} tracks`,
+                      description:
+                        result.failed.length > 0
+                          ? `${result.failed.length} track(s) failed — check logs`
+                          : undefined,
+                    }),
+                  onError: () => toast({ title: 'Bulk sync failed', variant: 'destructive' }),
+                })
+              }
+            >
+              {syncAll.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Sync all metadata
+            </Button>
+            <Button variant="outline" onClick={refreshAll}>
+              Refresh
+            </Button>
+          </div>
         }
       />
 
@@ -146,9 +196,13 @@ export default function StreamingCatalogPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[56px]">Cover</TableHead>
                     <TableHead>Title</TableHead>
                     <TableHead>Album</TableHead>
                     <TableHead>Artist</TableHead>
+                    <TableHead>Genre</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Lyrics</TableHead>
                     <TableHead>Variant</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -157,16 +211,54 @@ export default function StreamingCatalogPage() {
                 <TableBody>
                   {tracks.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center text-slate-400">
+                      <TableCell colSpan={10} className="py-8 text-center text-slate-400">
                         No tracks match this filter.
                       </TableCell>
                     </TableRow>
                   ) : (
                     tracks.map((track) => (
                       <TableRow key={track.id}>
+                        <TableCell>
+                          {track.cover_url ? (
+                            <img
+                              src={track.cover_url}
+                              alt=""
+                              className="h-10 w-10 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded bg-slate-800" />
+                          )}
+                        </TableCell>
                         <TableCell className="font-medium text-slate-100">{track.title}</TableCell>
                         <TableCell>{track.album_name}</TableCell>
                         <TableCell>{track.artist_name ?? '—'}</TableCell>
+                        <TableCell>
+                          {editingGenreTrackId === track.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                className="h-8 w-28"
+                                value={genreDraft}
+                                onChange={(e) => setGenreDraft(e.target.value)}
+                              />
+                              <Button size="sm" variant="outline" onClick={() => handleSaveGenre(track.id)}>
+                                Save
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-left text-slate-300 hover:text-slate-100"
+                              onClick={() => {
+                                setEditingGenreTrackId(track.id);
+                                setGenreDraft(track.genre ?? '');
+                              }}
+                            >
+                              {track.genre ?? '—'}
+                            </button>
+                          )}
+                        </TableCell>
+                        <TableCell className="tabular-nums">{formatDuration(track.duration_seconds)}</TableCell>
+                        <TableCell>{track.has_lyrics ? 'Yes' : 'No'}</TableCell>
                         <TableCell className="uppercase">{track.variant}</TableCell>
                         <TableCell>
                           <Badge
@@ -176,6 +268,20 @@ export default function StreamingCatalogPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="space-x-2 text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={syncTrack.isPending}
+                            onClick={() =>
+                              syncTrack.mutate(track.id, {
+                                onSuccess: () => toast({ title: 'Metadata synced' }),
+                                onError: () =>
+                                  toast({ title: 'Sync failed', variant: 'destructive' }),
+                              })
+                            }
+                          >
+                            Sync
+                          </Button>
                           {track.publish_status === 'published' ? (
                             <Button
                               size="sm"
@@ -257,8 +363,10 @@ export default function StreamingCatalogPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[56px]">Cover</TableHead>
                     <TableHead>Album</TableHead>
                     <TableHead>Artist</TableHead>
+                    <TableHead>Genre</TableHead>
                     <TableHead>Tracks</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -267,15 +375,27 @@ export default function StreamingCatalogPage() {
                 <TableBody>
                   {albums.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-slate-400">
+                      <TableCell colSpan={7} className="py-8 text-center text-slate-400">
                         No albums match this filter.
                       </TableCell>
                     </TableRow>
                   ) : (
                     albums.map((album) => (
                       <TableRow key={album.id}>
+                        <TableCell>
+                          {album.cover_url ? (
+                            <img
+                              src={album.cover_url}
+                              alt=""
+                              className="h-10 w-10 rounded object-cover"
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded bg-slate-800" />
+                          )}
+                        </TableCell>
                         <TableCell className="font-medium text-slate-100">{album.album_name}</TableCell>
                         <TableCell>{album.artist_name ?? '—'}</TableCell>
+                        <TableCell>{album.genre ?? '—'}</TableCell>
                         <TableCell>
                           {album.published_track_count} published / {album.track_count} total
                         </TableCell>

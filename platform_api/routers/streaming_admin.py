@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -18,6 +18,7 @@ from platform_api.services.streaming_config_service import (
     resolve_streaming_storage_config,
     save_streaming_storage_config,
 )
+from platform_api.services.streaming_metadata_sync_service import StreamingMetadataSyncService
 from platform_api.services.streaming_upload_service import StreamingUploadService
 
 router = APIRouter(prefix="/admin/streaming", tags=["streaming-admin"])
@@ -62,6 +63,11 @@ class CatalogTrackResponse(BaseModel):
     variant: str
     publish_status: str
     storage_key: str
+    genre: str | None = None
+    duration_seconds: float | None = None
+    cover_url: str | None = None
+    has_lyrics: bool = False
+    suno_image_url: str | None = None
     created_at: str | None = None
 
 
@@ -76,6 +82,8 @@ class CatalogAlbumResponse(BaseModel):
     track_count: int
     published_track_count: int
     publish_status: str
+    genre: str | None = None
+    cover_url: str | None = None
     cover_storage_key: str | None = None
     created_at: str | None = None
 
@@ -96,6 +104,42 @@ class UploadJobResponse(BaseModel):
 
 class UploadJobListResponse(BaseModel):
     items: list[UploadJobResponse]
+
+
+class UpdateTrackGenreRequest(BaseModel):
+    genre: str = Field(..., min_length=1, max_length=128)
+
+
+class MetadataSyncResponse(BaseModel):
+    ok: bool
+    track_id: str | None = None
+    genre: str | None = None
+    duration_seconds: float | None = None
+    has_lyrics: bool | None = None
+    refreshed_from_suno: bool | None = None
+
+
+class BulkMetadataSyncResponse(BaseModel):
+    ok: bool
+    synced: int
+    failed: list[dict[str, str]]
+    total: int
+
+
+async def _admin_cover_url(pool: Any, storage_key: str | None) -> str | None:
+    if not storage_key:
+        return None
+    service = StreamingCatalogService(pool)
+    return await service._cover_url(storage_key)
+
+
+def _track_cover_key(row: dict) -> str | None:
+    return row.get("cover_storage_key") or row.get("album_cover_storage_key")
+
+
+def _track_genre(row: dict) -> str | None:
+    genre = str(row.get("genre") or row.get("album_genre") or "").strip()
+    return genre or None
 
 
 @router.get("/config", response_model=StreamingStorageConfigResponse)
@@ -142,20 +186,29 @@ async def list_streaming_catalog(ctx: AdminDep, limit: int = 100) -> CatalogList
     del ctx
     from platform_api.dependencies import get_db_pool
 
-    rows = await StreamingRepository(get_db_pool()).list_admin_catalog(limit=max(1, min(limit, 500)))
-    items = [
-        CatalogTrackResponse(
-            id=str(row["id"]),
-            title=str(row["title"]),
-            album_name=str(row["album_name"]),
-            artist_name=row.get("artist_name"),
-            variant=str(row["variant"]),
-            publish_status=str(row["publish_status"]),
-            storage_key=str(row["storage_key"]),
-            created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+    pool = get_db_pool()
+    rows = await StreamingRepository(pool).list_admin_catalog(limit=max(1, min(limit, 500)))
+    items: list[CatalogTrackResponse] = []
+    for row in rows:
+        cover_url = await _admin_cover_url(pool, _track_cover_key(row))
+        lyrics = str(row.get("lyrics") or "").strip()
+        items.append(
+            CatalogTrackResponse(
+                id=str(row["id"]),
+                title=str(row["title"]),
+                album_name=str(row["album_name"]),
+                artist_name=row.get("artist_name"),
+                variant=str(row["variant"]),
+                publish_status=str(row["publish_status"]),
+                storage_key=str(row["storage_key"]),
+                genre=_track_genre(row),
+                duration_seconds=row.get("duration_seconds"),
+                cover_url=cover_url,
+                has_lyrics=bool(lyrics),
+                suno_image_url=row.get("suno_image_url"),
+                created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+            )
         )
-        for row in rows
-    ]
     return CatalogListResponse(items=items)
 
 
@@ -164,20 +217,25 @@ async def list_streaming_albums(ctx: AdminDep, limit: int = 100) -> CatalogAlbum
     del ctx
     from platform_api.dependencies import get_db_pool
 
-    rows = await StreamingRepository(get_db_pool()).list_admin_albums(limit=max(1, min(limit, 500)))
-    items = [
-        CatalogAlbumResponse(
-            id=str(row["id"]),
-            album_name=str(row["album_name"]),
-            artist_name=row.get("artist_name"),
-            track_count=int(row.get("track_count") or 0),
-            published_track_count=int(row.get("published_track_count") or 0),
-            publish_status=str(row["publish_status"]),
-            cover_storage_key=row.get("cover_storage_key"),
-            created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+    pool = get_db_pool()
+    rows = await StreamingRepository(pool).list_admin_albums(limit=max(1, min(limit, 500)))
+    items: list[CatalogAlbumResponse] = []
+    for row in rows:
+        cover_storage_key = row.get("cover_storage_key")
+        items.append(
+            CatalogAlbumResponse(
+                id=str(row["id"]),
+                album_name=str(row["album_name"]),
+                artist_name=row.get("artist_name"),
+                track_count=int(row.get("track_count") or 0),
+                published_track_count=int(row.get("published_track_count") or 0),
+                publish_status=str(row["publish_status"]),
+                genre=str(row.get("genre") or "").strip() or None,
+                cover_url=await _admin_cover_url(pool, cover_storage_key),
+                cover_storage_key=cover_storage_key,
+                created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+            )
         )
-        for row in rows
-    ]
     return CatalogAlbumListResponse(items=items)
 
 
@@ -269,3 +327,71 @@ async def retry_streaming_upload_job(job_id: UUID, ctx: AdminDep) -> dict:
         if "not found" in message.lower():
             raise NotFoundError(message) from exc
         raise ValidationError(message) from exc
+
+
+@router.post("/tracks/{track_id}/sync-metadata", response_model=MetadataSyncResponse)
+async def sync_stream_track_metadata(track_id: UUID, ctx: AdminDep) -> MetadataSyncResponse:
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    service = StreamingMetadataSyncService(get_db_pool())
+    try:
+        result = await service.sync_track_metadata(track_id)
+    except ValueError as exc:
+        message = str(exc)
+        if "not found" in message.lower():
+            raise NotFoundError(message) from exc
+        raise ValidationError(message) from exc
+    return MetadataSyncResponse.model_validate(result)
+
+
+@router.post("/catalog/sync-metadata", response_model=BulkMetadataSyncResponse)
+async def sync_all_stream_metadata(
+    ctx: AdminDep,
+    limit: int = 100,
+) -> BulkMetadataSyncResponse:
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    result = await StreamingMetadataSyncService(get_db_pool()).sync_all_tracks_metadata(
+        limit=max(1, min(limit, 500)),
+    )
+    return BulkMetadataSyncResponse.model_validate(result)
+
+
+@router.patch("/tracks/{track_id}", response_model=CatalogTrackResponse)
+async def update_stream_track(
+    track_id: UUID,
+    request: UpdateTrackGenreRequest,
+    ctx: AdminDep,
+) -> CatalogTrackResponse:
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    repo = StreamingRepository(pool)
+    if not await repo.update_track_genre(track_id, request.genre):
+        raise NotFoundError("Track not found.")
+
+    rows = await repo.list_admin_catalog(limit=500)
+    row = next((item for item in rows if str(item["id"]) == str(track_id)), None)
+    if row is None:
+        raise NotFoundError("Track not found.")
+
+    cover_url = await _admin_cover_url(pool, _track_cover_key(row))
+    lyrics = str(row.get("lyrics") or "").strip()
+    return CatalogTrackResponse(
+        id=str(row["id"]),
+        title=str(row["title"]),
+        album_name=str(row["album_name"]),
+        artist_name=row.get("artist_name"),
+        variant=str(row["variant"]),
+        publish_status=str(row["publish_status"]),
+        storage_key=str(row["storage_key"]),
+        genre=_track_genre(row),
+        duration_seconds=row.get("duration_seconds"),
+        cover_url=cover_url,
+        has_lyrics=bool(lyrics),
+        suno_image_url=row.get("suno_image_url"),
+        created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+    )

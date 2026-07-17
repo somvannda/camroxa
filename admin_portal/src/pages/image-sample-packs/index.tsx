@@ -5,6 +5,7 @@ import {
   useCreateImageSamplePack,
   useDeleteImageSamplePack,
   useImageSamplePacks,
+  useImportImageSamplePackUrl,
   useUpdateImageSamplePack,
   useUploadImageSamplePack,
 } from '@/hooks/use-image-sample-packs';
@@ -45,6 +46,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type PackFormState = {
   category: ImageSamplePackCategory;
@@ -89,8 +91,13 @@ export default function ImageSamplePacksPage() {
   const updateMutation = useUpdateImageSamplePack();
   const deleteMutation = useDeleteImageSamplePack();
   const uploadMutation = useUploadImageSamplePack();
+  const importUrlMutation = useImportImageSamplePackUrl();
   const uploadFileRef = useRef<HTMLInputElement>(null);
   const reuploadFileRef = useRef<HTMLInputElement>(null);
+
+  const [uploadTab, setUploadTab] = useState<'zip' | 'url'>('zip');
+  const [importSourceType, setImportSourceType] = useState<'google_drive' | 'url'>('google_drive');
+  const [importUrl, setImportUrl] = useState('');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -200,12 +207,41 @@ export default function ImageSamplePacksPage() {
   };
 
   const handleSubmitUpload = async () => {
-    const file = uploadFileRef.current?.files?.[0] ?? null;
     const name = form.name.trim();
     if (!name) {
       toast({ title: 'Name is required', variant: 'destructive' });
       return;
     }
+
+    if (uploadTab === 'url') {
+      const sourceValue = importUrl.trim();
+      if (!sourceValue) {
+        toast({ title: 'URL is required', variant: 'destructive' });
+        return;
+      }
+      try {
+        await importUrlMutation.mutateAsync({
+          category: form.category,
+          name,
+          source_type: importSourceType,
+          source_value: sourceValue,
+          is_active: form.is_active,
+          sort_order: Number(form.sort_order) || 0,
+          version_label: form.version_label.trim() || null,
+          notes: form.notes.trim() || null,
+        });
+        toast({ title: 'Sample pack imported from URL' });
+        setUploadOpen(false);
+        setForm(createEmptyForm());
+        setImportUrl('');
+        setUploadTab('zip');
+      } catch {
+        toast({ title: 'URL import failed (max 100 MB)', variant: 'destructive' });
+      }
+      return;
+    }
+
+    const file = uploadFileRef.current?.files?.[0] ?? null;
     if (!file) {
       toast({ title: 'Choose a ZIP file', variant: 'destructive' });
       return;
@@ -227,6 +263,13 @@ export default function ImageSamplePacksPage() {
     } catch {
       toast({ title: 'Upload failed', variant: 'destructive' });
     }
+  };
+
+  const sourceTypeLabel = (sourceType: string) => {
+    if (sourceType === 'vps_upload') return 'VPS upload';
+    if (sourceType === 'google_drive') return 'Google Drive';
+    if (sourceType === 'url') return 'Direct URL';
+    return sourceType;
   };
 
   const handleSubmitReupload = async () => {
@@ -310,6 +353,7 @@ export default function ImageSamplePacksPage() {
                     <TableHead>Name</TableHead>
                     <TableHead className="w-[120px]">Version</TableHead>
                     <TableHead className="w-[90px] text-right">Assets</TableHead>
+                    <TableHead className="w-[120px]">Source</TableHead>
                     <TableHead>Storage path</TableHead>
                     <TableHead className="w-[90px] text-right">Sort</TableHead>
                     <TableHead className="w-[110px]">Status</TableHead>
@@ -319,7 +363,7 @@ export default function ImageSamplePacksPage() {
                 <TableBody>
                   {packs.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-sm text-slate-400 py-8">
+                      <TableCell colSpan={9} className="text-center text-sm text-slate-400 py-8">
                         No sample packs yet. Upload a ZIP to get started.
                       </TableCell>
                     </TableRow>
@@ -337,6 +381,9 @@ export default function ImageSamplePacksPage() {
                         </TableCell>
                         <TableCell className="text-right text-slate-300">
                           {pack.asset_count ?? 0}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{sourceTypeLabel(pack.source_type)}</Badge>
                         </TableCell>
                         <TableCell className="max-w-[280px] truncate text-xs text-slate-400">
                           {pack.storage_path || '—'}
@@ -502,51 +549,97 @@ export default function ImageSamplePacksPage() {
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Upload sample pack ZIP</DialogTitle>
+            <DialogTitle>Upload sample pack</DialogTitle>
             <DialogDescription>
-              Extract images to VPS storage for server-side image generation.
+              Upload a ZIP to VPS storage or import from Google Drive / direct URL (max 100 MB for URL import).
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Category</Label>
-              <Select
-                value={form.category}
-                onValueChange={(value) =>
-                  setForm((current) => ({ ...current, category: value as ImageSamplePackCategory }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <Tabs value={uploadTab} onValueChange={(value) => setUploadTab(value as 'zip' | 'url')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="zip">Upload ZIP</TabsTrigger>
+              <TabsTrigger value="url">Import from URL</TabsTrigger>
+            </TabsList>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Category</Label>
+                <Select
+                  value={form.category}
+                  onValueChange={(value) =>
+                    setForm((current) => ({ ...current, category: value as ImageSamplePackCategory }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORY_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Name</Label>
+                <Input
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                />
+              </div>
+              <TabsContent value="zip" className="mt-0">
+                <div className="grid gap-2">
+                  <Label>ZIP file</Label>
+                  <Input ref={uploadFileRef} type="file" accept=".zip,application/zip" />
+                </div>
+              </TabsContent>
+              <TabsContent value="url" className="mt-0 space-y-4">
+                <div className="grid gap-2">
+                  <Label>Source type</Label>
+                  <Select
+                    value={importSourceType}
+                    onValueChange={(value) => setImportSourceType(value as 'google_drive' | 'url')}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="google_drive">Google Drive</SelectItem>
+                      <SelectItem value="url">Direct URL</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label>URL</Label>
+                  <Input
+                    value={importUrl}
+                    onChange={(event) => setImportUrl(event.target.value)}
+                    placeholder={
+                      importSourceType === 'google_drive'
+                        ? 'https://drive.google.com/file/d/...'
+                        : 'https://example.com/pack.zip'
+                    }
+                  />
+                </div>
+              </TabsContent>
             </div>
-            <div className="grid gap-2">
-              <Label>Name</Label>
-              <Input
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label>ZIP file</Label>
-              <Input ref={uploadFileRef} type="file" accept=".zip,application/zip" />
-            </div>
-          </div>
+          </Tabs>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setUploadOpen(false)} disabled={uploadMutation.isPending}>
+            <Button
+              variant="outline"
+              onClick={() => setUploadOpen(false)}
+              disabled={uploadMutation.isPending || importUrlMutation.isPending}
+            >
               Cancel
             </Button>
-            <Button onClick={handleSubmitUpload} disabled={uploadMutation.isPending}>
-              {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Upload
+            <Button
+              onClick={handleSubmitUpload}
+              disabled={uploadMutation.isPending || importUrlMutation.isPending}
+            >
+              {uploadMutation.isPending || importUrlMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              {uploadTab === 'url' ? 'Import' : 'Upload'}
             </Button>
           </DialogFooter>
         </DialogContent>

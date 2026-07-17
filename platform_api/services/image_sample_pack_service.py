@@ -12,6 +12,10 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from platform_api.exceptions import ValidationError
+from platform_api.services.sample_pack_downloader import (
+    _MAX_URL_IMPORT_BYTES,
+    download_zip_from_url,
+)
 
 _SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 _MAX_ZIP_BYTES = 10 * 1024 * 1024
@@ -39,13 +43,14 @@ class ImageSamplePackService:
         self._repo = repo
         self._storage_root.mkdir(parents=True, exist_ok=True)
 
-    def validate_zip_bytes(self, file_content: bytes) -> None:
+    def validate_zip_bytes(self, file_content: bytes, *, max_bytes: int = _MAX_ZIP_BYTES) -> None:
         if not file_content:
             raise ValidationError("ZIP file is empty.", details={"field": "file"})
-        if len(file_content) > _MAX_ZIP_BYTES:
+        if len(file_content) > max_bytes:
+            limit_mb = max_bytes // (1024 * 1024)
             raise ValidationError(
-                "ZIP file exceeds 10 MB limit.",
-                details={"field": "file", "max_bytes": _MAX_ZIP_BYTES},
+                f"ZIP file exceeds {limit_mb} MB limit.",
+                details={"field": "file", "max_bytes": max_bytes},
             )
         try:
             with zipfile.ZipFile(io.BytesIO(file_content)) as zf:
@@ -57,8 +62,14 @@ class ImageSamplePackService:
                 details={"field": "file", "reason": "bad_zip_file"},
             ) from exc
 
-    def extract_assets_from_zip(self, file_content: bytes, *, destination: Path) -> list[ExtractedSampleAsset]:
-        self.validate_zip_bytes(file_content)
+    def extract_assets_from_zip(
+        self,
+        file_content: bytes,
+        *,
+        destination: Path,
+        max_bytes: int = _MAX_ZIP_BYTES,
+    ) -> list[ExtractedSampleAsset]:
+        self.validate_zip_bytes(file_content, max_bytes=max_bytes)
         if destination.exists():
             shutil.rmtree(destination)
         destination.mkdir(parents=True, exist_ok=True)
@@ -94,17 +105,23 @@ class ImageSamplePackService:
             )
         return assets
 
-    async def upload_pack_zip(
+    async def download_zip_from_url(self, source_type: str, source_value: str) -> bytes:
+        return await download_zip_from_url(source_type, source_value)
+
+    async def _persist_pack_zip(
         self,
         *,
         category: str,
         name: str,
         file_content: bytes,
+        source_type: str,
+        source_value: str,
         is_active: bool = True,
         sort_order: int = 0,
         version_label: str | None = None,
         notes: str | None = None,
         pack_id: str | None = None,
+        max_zip_bytes: int = _MAX_ZIP_BYTES,
     ) -> Any:
         normalized_category = str(category or "").strip().lower()
         if normalized_category not in {"background", "thumbnail"}:
@@ -118,7 +135,12 @@ class ImageSamplePackService:
 
         pack_uuid = UUID(str(pack_id)) if pack_id else uuid4()
         destination = self._storage_root / normalized_category / str(pack_uuid)
-        assets = self.extract_assets_from_zip(file_content, destination=destination)
+        self.validate_zip_bytes(file_content, max_bytes=max_zip_bytes)
+        assets = self.extract_assets_from_zip(
+            file_content,
+            destination=destination,
+            max_bytes=max_zip_bytes,
+        )
 
         if pack_id:
             existing = await self._repo.get_by_id(str(pack_uuid))
@@ -130,8 +152,8 @@ class ImageSamplePackService:
                 str(pack_uuid),
                 category=normalized_category,
                 name=normalized_name,
-                source_type="vps_upload",
-                source_value=str(destination),
+                source_type=source_type,
+                source_value=source_value,
                 is_active=is_active,
                 sort_order=sort_order,
                 version_label=version_label,
@@ -144,8 +166,8 @@ class ImageSamplePackService:
                 pack_id=str(pack_uuid),
                 category=normalized_category,
                 name=normalized_name,
-                source_type="vps_upload",
-                source_value=str(destination),
+                source_type=source_type,
+                source_value=source_value,
                 is_active=is_active,
                 sort_order=sort_order,
                 version_label=version_label,
@@ -171,3 +193,60 @@ class ImageSamplePackService:
             ],
         )
         return record
+
+    async def upload_pack_zip(
+        self,
+        *,
+        category: str,
+        name: str,
+        file_content: bytes,
+        is_active: bool = True,
+        sort_order: int = 0,
+        version_label: str | None = None,
+        notes: str | None = None,
+        pack_id: str | None = None,
+    ) -> Any:
+        pack_uuid = UUID(str(pack_id)) if pack_id else uuid4()
+        destination = self._storage_root / str(category or "").strip().lower() / str(pack_uuid)
+        return await self._persist_pack_zip(
+            category=category,
+            name=name,
+            file_content=file_content,
+            source_type="vps_upload",
+            source_value=str(destination),
+            is_active=is_active,
+            sort_order=sort_order,
+            version_label=version_label,
+            notes=notes,
+            pack_id=pack_id,
+            max_zip_bytes=_MAX_ZIP_BYTES,
+        )
+
+    async def import_pack_from_url(
+        self,
+        *,
+        category: str,
+        name: str,
+        source_type: str,
+        source_value: str,
+        is_active: bool = True,
+        sort_order: int = 0,
+        version_label: str | None = None,
+        notes: str | None = None,
+        pack_id: str | None = None,
+    ) -> Any:
+        file_content = await self.download_zip_from_url(source_type, source_value)
+        normalized_source = str(source_type or "").strip().lower()
+        return await self._persist_pack_zip(
+            category=category,
+            name=name,
+            file_content=file_content,
+            source_type=normalized_source,
+            source_value=str(source_value or "").strip(),
+            is_active=is_active,
+            sort_order=sort_order,
+            version_label=version_label,
+            notes=notes,
+            pack_id=pack_id,
+            max_zip_bytes=_MAX_URL_IMPORT_BYTES,
+        )

@@ -32,6 +32,7 @@ export type StreamTrack = {
   cover_url?: string | null;
   genre?: string | null;
   duration_seconds?: number | null;
+  lyrics?: string | null;
 };
 
 export type StreamAlbum = {

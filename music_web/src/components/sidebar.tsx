@@ -43,6 +43,7 @@ export default function Sidebar() {
           );
         })}
       </nav>
+      <p className="mt-8 text-xs text-[hsl(var(--muted-foreground))]">Playlists coming soon</p>
     </aside>
   );
 }

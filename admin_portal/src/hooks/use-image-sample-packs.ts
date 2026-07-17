@@ -90,3 +90,42 @@ export function useUploadImageSamplePack() {
   });
 }
 
+export function useImportImageSamplePackUrl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      category: 'background' | 'thumbnail';
+      name: string;
+      source_type: 'google_drive' | 'url';
+      source_value: string;
+      is_active?: boolean;
+      sort_order?: number;
+      version_label?: string | null;
+      notes?: string | null;
+      packId?: string;
+    }) => {
+      const body = {
+        source_type: payload.source_type,
+        source_value: payload.source_value,
+        ...(payload.packId
+          ? {}
+          : {
+              category: payload.category,
+              name: payload.name,
+              is_active: payload.is_active ?? true,
+              sort_order: payload.sort_order ?? 0,
+              version_label: payload.version_label ?? null,
+              notes: payload.notes ?? null,
+            }),
+      };
+      const path = payload.packId
+        ? `/api/v1/admin/image-sample-packs/${payload.packId}/import-url`
+        : '/api/v1/admin/image-sample-packs/import-url';
+      return httpClient.post<ImageSamplePackRecord>(path, body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: imageSamplePackKeys.all });
+    },
+  });
+}
+

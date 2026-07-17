@@ -87,6 +87,20 @@ class ImageSamplePackUpdateRequest(BaseModel):
     notes: str | None = None
 
 
+class ImageSamplePackImportUrlRequest(BaseModel):
+    source_type: str = Field(..., min_length=1)
+    source_value: str = Field(..., min_length=1)
+
+
+class ImageSamplePackImportUrlCreateRequest(ImageSamplePackImportUrlRequest):
+    category: str = Field(..., min_length=1)
+    name: str = Field(..., min_length=1)
+    is_active: bool = True
+    sort_order: int = 0
+    version_label: str | None = None
+    notes: str | None = None
+
+
 def _raise_image_sample_pack_migration_needed() -> None:
     raise HTTPException(
         status_code=503,
@@ -197,6 +211,68 @@ async def reupload_image_sample_pack(
             sort_order=0 if sort_order is None else sort_order,
             version_label=version_label,
             notes=notes,
+        )
+    except ValidationError as exc:
+        status = 404 if "not found" in str(exc).lower() else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    except Exception as exc:
+        _handle_image_sample_pack_storage_error(exc)
+        raise
+    return _pack_to_item(updated)
+
+
+@router.post("/import-url", response_model=ImageSamplePackItem)
+async def create_and_import_image_sample_pack_from_url(
+    _ctx: AdminDep,
+    service: ServiceDep,
+    request: ImageSamplePackImportUrlCreateRequest,
+) -> ImageSamplePackItem:
+    try:
+        created = await service.import_pack_from_url(
+            category=request.category,
+            name=request.name,
+            source_type=request.source_type,
+            source_value=request.source_value,
+            is_active=request.is_active,
+            sort_order=request.sort_order,
+            version_label=request.version_label,
+            notes=request.notes,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _handle_image_sample_pack_storage_error(exc)
+        raise
+    return _pack_to_item(created)
+
+
+@router.post("/{pack_id}/import-url", response_model=ImageSamplePackItem)
+async def import_image_sample_pack_from_url(
+    _ctx: AdminDep,
+    service: ServiceDep,
+    repo: RepoDep,
+    pack_id: str,
+    request: ImageSamplePackImportUrlRequest,
+) -> ImageSamplePackItem:
+    try:
+        existing = await repo.get_by_id(pack_id)
+    except Exception as exc:
+        _handle_image_sample_pack_storage_error(exc)
+        raise
+    if not existing:
+        raise HTTPException(status_code=404, detail="Sample pack not found.")
+
+    try:
+        updated = await service.import_pack_from_url(
+            pack_id=pack_id,
+            category=existing.category,
+            name=existing.name,
+            source_type=request.source_type,
+            source_value=request.source_value,
+            is_active=existing.is_active,
+            sort_order=existing.sort_order,
+            version_label=existing.version_label,
+            notes=existing.notes,
         )
     except ValidationError as exc:
         status = 404 if "not found" in str(exc).lower() else 400

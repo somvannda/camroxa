@@ -608,7 +608,8 @@ class StreamingRepository:
     async def list_admin_catalog(self, *, limit: int = 100) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             """
-            SELECT t.*, a.album_name, u.display_name AS artist_name
+            SELECT t.*, a.album_name, a.genre AS album_genre, a.cover_storage_key AS album_cover_storage_key,
+                   u.display_name AS artist_name
             FROM stream_tracks t
             JOIN stream_albums a ON a.id = t.album_id
             JOIN users u ON u.id = t.user_id
@@ -618,6 +619,80 @@ class StreamingRepository:
             limit,
         )
         return [dict(row) for row in rows]
+
+    async def get_track_for_metadata_sync(self, track_id: UUID) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow(
+            """
+            SELECT t.*,
+                   a.album_slug,
+                   st.external_task_id,
+                   st.style AS suno_style,
+                   s.lyrics AS song_lyrics
+            FROM stream_tracks t
+            JOIN stream_albums a ON a.id = t.album_id
+            LEFT JOIN suno_tasks st ON st.id = t.suno_task_id
+            LEFT JOIN songs s ON s.id = t.song_id
+            WHERE t.id = $1
+            """,
+            track_id,
+        )
+        return dict(row) if row else None
+
+    async def list_tracks_for_metadata_sync(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT t.id
+            FROM stream_tracks t
+            ORDER BY t.updated_at ASC NULLS FIRST, t.created_at ASC
+            LIMIT $1
+            """,
+            limit,
+        )
+        return [dict(row) for row in rows]
+
+    async def update_track_metadata_sync(
+        self,
+        track_id: UUID,
+        *,
+        lyrics: str | None = None,
+        duration_seconds: float | None = None,
+        genre: str | None = None,
+        suno_image_url: str | None = None,
+        tags: list[str] | None = None,
+        cover_storage_key: str | None = None,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE stream_tracks
+            SET lyrics = COALESCE($2, lyrics),
+                duration_seconds = COALESCE($3, duration_seconds),
+                genre = COALESCE($4, genre),
+                suno_image_url = COALESCE($5, suno_image_url),
+                tags = COALESCE($6, tags),
+                cover_storage_key = COALESCE($7, cover_storage_key),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            track_id,
+            lyrics,
+            duration_seconds,
+            genre,
+            suno_image_url,
+            tags,
+            cover_storage_key,
+        )
+
+    async def update_track_genre(self, track_id: UUID, genre: str) -> bool:
+        result = await self._pool.execute(
+            """
+            UPDATE stream_tracks
+            SET genre = $2, updated_at = NOW()
+            WHERE id = $1
+            """,
+            track_id,
+            genre.strip(),
+        )
+        return result.endswith("1")
 
     async def get_suno_stream_context(self, suno_task_id: UUID) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
