@@ -42,7 +42,15 @@ Get-Content $envFile | ForEach-Object {
 $env:CAMXORA_ENV_FILE = $envFile
 
 if (-not $SkipInstall) {
+    # PowerShell Stop treats pip stderr WARNINGs as terminating NativeCommandError.
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     python -m pip install -e ".[dev]" pyinstaller
+    $pipCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    if ($pipCode -ne 0) {
+        throw "pip install failed with exit code $pipCode"
+    }
 }
 
 if (-not $SkipInstallerAssets) {
