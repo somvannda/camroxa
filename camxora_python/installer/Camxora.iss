@@ -13,7 +13,7 @@
 #ifdef CamxoraVersion
   #define MyAppVersion CamxoraVersion
 #else
-  #define MyAppVersion "0.2.0"
+  #define MyAppVersion "0.2.1"
 #endif
 #define MyAppPublisher "Camxora"
 #define MyAppExeName "Camxora.exe"
