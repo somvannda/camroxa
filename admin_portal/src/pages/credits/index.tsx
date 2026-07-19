@@ -77,12 +77,9 @@ const OPERATION_TYPES = [
   { value: 'album', label: 'Album' },
   { value: 'background_image', label: 'Background Image' },
   { value: 'thumbnail_image', label: 'Thumbnail Image' },
-  { value: 'music', label: 'Music (AI routing)' },
-  // --- Legacy (superseded by specific operations above) ---
-  { value: 'text_generation', label: 'Text Generation (legacy)' },
-  { value: 'image_generation', label: 'Image Generation (legacy)' },
-  { value: 'music_generation', label: 'Music Generation (Suno billing)' },
-  { value: 'channel_setup', label: 'Channel Setup (legacy)' },
+  { value: 'music', label: 'Music (Suno)' },
+  { value: 'video', label: 'Video generation (local export)' },
+  { value: 'video_merge', label: 'Auto merge video (local)' },
 ] as const;
 
 // --- Validation Schemas ---
@@ -130,6 +127,7 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'xiaomi/mimo-v2.5-pro', label: 'xiaomi/mimo-v2.5-pro (SLAI MiMo text)' },
     { value: 'slai/gpt-image-2', label: 'slai/gpt-image-2 (SLAI images)' },
   ],
+  local: [],
   cala: [],
   suno: [
     { value: 'V5', label: 'V5' },
@@ -363,10 +361,15 @@ function PricingSection() {
     return map;
   }, [serviceAvailability]);
 
-  // Get AI services list from service availability
+  // Get AI services list from service availability (+ local desktop ops)
   const aiServices = useMemo(() => {
-    if (!serviceAvailability) return [];
-    return serviceAvailability.map((entry: ServiceAvailabilityEntry) => entry.ai_service);
+    const services = serviceAvailability
+      ? serviceAvailability.map((entry: ServiceAvailabilityEntry) => entry.ai_service)
+      : [];
+    if (!services.includes('local')) {
+      services.push('local');
+    }
+    return services.sort();
   }, [serviceAvailability]);
 
   const form = useForm<PricingFormValues>({

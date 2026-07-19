@@ -12,8 +12,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
+
+from platform_api.services.billing_calendar import billing_today
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID, uuid4
@@ -52,6 +54,11 @@ from platform_api.services.run_directory_planner import (
     plan_run_directories,
     resolve_channel_run_dir,
 )
+from platform_api.services.suno_status_messages import (
+    classify_suno_failure_type,
+    is_suno_failure_status,
+    is_suno_pending_status,
+)
 from platform_api.services.thumbnail_composite import (
     enrich_background_prompt,
     enrich_thumbnail_prompt,
@@ -80,6 +87,16 @@ BATCH_STATUS_PROCESSING = "processing"
 BATCH_STATUS_COMPLETED = "completed"
 BATCH_STATUS_PARTIAL = "partial"
 BATCH_STATUS_FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class SunoSanitizedPayload:
+    title: str
+    lyrics: str
+    style: str
+    replacements: tuple[Any, ...]
+    blocked_terms: tuple[str, ...]
+    is_retry: bool
 
 
 def _read_bool_setting(settings: dict[str, Any], key: str, *, default: bool = False) -> bool:
@@ -143,6 +160,7 @@ class BatchRepositoryProtocol(Protocol):
         output_dir_ok: str | None = None,
         output_dir_alt: str | None = None,
     ) -> bool: ...
+    async def get_latest_suno_task_for_song(self, song_id: UUID) -> SunoTask | None: ...
 
 
 class CreditServiceProtocol(Protocol):
@@ -364,7 +382,7 @@ class BatchService:
             daily_songs: dict[tuple[UUID, date], int] = defaultdict(int)
             daily_images: dict[tuple[UUID, date], int] = defaultdict(int)
             daily_drafts: dict[tuple[UUID, date], int] = defaultdict(int)
-            today = date.today()
+            today = billing_today()
             for run_date in run_dates:
                 for ok_profile_id, alt_profile_id in profile_pairs:
                     if run_date == today:
@@ -415,7 +433,7 @@ class BatchService:
 
                 from platform_api.services.billing_mode_service import subscription_covers_batch
 
-                period_start = self._enforcement_service._period_start(ctx, date.today())
+                period_start = self._enforcement_service._period_start(ctx, billing_today())
                 if ctx and ctx.plan is not None:
                     covered_by_subscription = await subscription_covers_batch(
                         plan=ctx.plan,
@@ -828,6 +846,12 @@ class BatchService:
                         title=title,
                         reason=reason,
                         song_id=str(song.id),
+                    )
+                    self._log_suno_failure_metric(
+                        batch_id=batch.id,
+                        song_id=song.id,
+                        error_message=reason,
+                        is_retry=False,
                     )
                     logger.warning(
                         "Suno submission failed for song %s in batch %s: %s",
@@ -1314,12 +1338,35 @@ class BatchService:
         if song.status != SONG_STATUS_PENDING:
             await self._batch_repo.update_song_status(song_id, SONG_STATUS_PENDING)
 
+    async def _assert_song_allows_suno_retry(self, song: Song) -> None:
+        """Ensure a song may submit or resubmit Suno."""
+        if song.status in {SONG_STATUS_SUNO_FAILED, SONG_STATUS_DRAFT_READY}:
+            return
+        if song.status == SONG_STATUS_SUNO_PENDING:
+            latest = await self._batch_repo.get_latest_suno_task_for_song(song.id)
+            if latest is not None and is_suno_failure_status(latest.status):
+                return
+            if latest is not None and is_suno_pending_status(latest.status):
+                raise ValidationError(
+                    "Suno is still in progress for this song. Wait for it to finish before retrying.",
+                    details={
+                        "status": song.status,
+                        "suno_task_status": str(latest.status or ""),
+                    },
+                )
+        raise ValidationError(
+            "Only songs with draft_ready or suno_failed status can submit Suno.",
+            details={"status": song.status},
+        )
+
     async def validate_song_suno_retry(
         self,
         *,
         batch_id: UUID,
         song_id: UUID,
         user_id: str,
+        lyrics_override: str | None = None,
+        title_override: str | None = None,
     ) -> None:
         """Validate ownership/status before a background Suno retry."""
         batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
@@ -1336,16 +1383,24 @@ class BatchService:
                 f"Song '{song_id}' not found in batch '{batch_id}'.",
                 details={"batch_id": str(batch_id), "song_id": str(song_id)},
             )
-        if song.status not in {SONG_STATUS_SUNO_FAILED, SONG_STATUS_DRAFT_READY}:
-            raise ValidationError(
-                "Only songs with draft_ready or suno_failed status can submit Suno.",
-                details={"status": song.status},
-            )
-        if not str(song.title or "").strip() or not str(song.lyrics or "").strip():
+        await self._assert_song_allows_suno_retry(song)
+        title = str(title_override if title_override is not None else song.title or "").strip()
+        lyrics = str(lyrics_override if lyrics_override is not None else song.lyrics or "").strip()
+        if not title or not lyrics:
             raise ValidationError(
                 "Song draft is incomplete. Retry draft generation first.",
                 details={"song_id": str(song_id)},
             )
+
+    async def latest_suno_failure_hint(self, song_id: UUID) -> str | None:
+        """Return the latest Suno rejection message for rewrite context."""
+        from platform_api.services.suno_status_messages import is_suno_failure_status
+
+        latest = await self._batch_repo.get_latest_suno_task_for_song(song_id)
+        if latest is None or not is_suno_failure_status(latest.status):
+            return None
+        message = str(latest.error_message or "").strip()
+        return message or None
 
     async def retry_song_draft(
         self,
@@ -1464,6 +1519,12 @@ class BatchService:
                     reason=reason,
                     song_id=str(song.id),
                 )
+                self._log_suno_failure_metric(
+                    batch_id=batch.id,
+                    song_id=song.id,
+                    error_message=reason,
+                    is_retry=True,
+                )
                 logger.warning(
                     "Suno submission failed for retried song %s in batch %s: %s",
                     song.id,
@@ -1480,6 +1541,9 @@ class BatchService:
         batch_id: UUID,
         song_id: UUID,
         user_id: str,
+        title: str | None = None,
+        album: str | None = None,
+        lyrics: str | None = None,
     ) -> Song:
         """Retry Suno submission for a song that already has a draft."""
         batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
@@ -1496,24 +1560,35 @@ class BatchService:
                 f"Song '{song_id}' not found in batch '{batch_id}'.",
                 details={"batch_id": str(batch_id), "song_id": str(song_id)},
             )
-        if song.status not in {SONG_STATUS_SUNO_FAILED, SONG_STATUS_DRAFT_READY}:
-            raise ValidationError(
-                "Only songs with draft_ready or suno_failed status can submit Suno.",
-                details={"status": song.status},
+        await self._assert_song_allows_suno_retry(song)
+
+        resolved_title = str(title if title is not None else song.title or "").strip()
+        resolved_album = str(album if album is not None else song.album or "").strip()
+        resolved_lyrics = str(lyrics if lyrics is not None else song.lyrics or "").strip()
+        if title is not None or album is not None or lyrics is not None:
+            await self._batch_repo.update_song_draft(
+                song_id,
+                resolved_title or "Untitled",
+                resolved_album,
+                resolved_lyrics,
             )
-        if not str(song.title or "").strip() or not str(song.lyrics or "").strip():
+            song.title = resolved_title or "Untitled"
+            song.album = resolved_album
+            song.lyrics = resolved_lyrics
+
+        if not resolved_title or not resolved_lyrics:
             raise ValidationError(
                 "Song draft is incomplete. Retry draft generation first.",
                 details={"song_id": str(song_id)},
             )
 
         suno_model = await self._resolve_suno_model(batch.user_id)
-        title = str(song.title or "").strip() or "Untitled"
+        title_for_log = resolved_title or "Untitled"
         try:
             draft_log.log_suno_submit_started(
                 batch_id=str(batch.id),
                 song_number=song.batch_index + 1,
-                title=title,
+                title=title_for_log,
                 model=suno_model,
             )
             task_id = await self._submit_song_to_suno(
@@ -1521,11 +1596,12 @@ class BatchService:
                 batch=batch,
                 user_id=user_id,
                 model=suno_model,
+                is_retry=True,
             )
             draft_log.log_suno_submitted(
                 batch_id=str(batch.id),
                 song_number=song.batch_index + 1,
-                title=title,
+                title=title_for_log,
                 task_id=task_id,
             )
         except Exception as exc:
@@ -1534,9 +1610,15 @@ class BatchService:
             draft_log.log_suno_submit_failed(
                 batch_id=str(batch.id),
                 song_number=song.batch_index + 1,
-                title=title,
+                title=title_for_log,
                 reason=reason,
                 song_id=str(song.id),
+            )
+            self._log_suno_failure_metric(
+                batch_id=batch.id,
+                song_id=song.id,
+                error_message=reason,
+                is_retry=True,
             )
             logger.warning(
                 "Suno retry failed for song %s in batch %s: %s",
@@ -1726,6 +1808,43 @@ class BatchService:
 
         return created
 
+    async def ensure_batch_image_jobs(
+        self,
+        *,
+        user_id: str,
+        batch_id: UUID,
+    ) -> int:
+        """Create missing album image jobs when Suno finished but enqueue never ran."""
+        batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
+        if batch is None or not batch.auto_gen_image:
+            return 0
+
+        existing = await self._batch_repo.get_image_jobs_by_batch(batch_id)
+        if existing:
+            return 0
+
+        songs = await self._batch_repo.get_songs_by_batch(batch_id)
+        if not any(song.status == SONG_STATUS_SUNO_SUCCESS for song in songs):
+            return 0
+
+        try:
+            created = await self.create_image_jobs_for_batch(batch, songs=songs)
+        except Exception:
+            logger.exception(
+                "Failed to backfill image jobs for batch %s",
+                batch_id,
+            )
+            return 0
+
+        if created:
+            logger.info(
+                "Backfilled %d image job(s) for batch %s after Suno completion.",
+                len(created),
+                batch_id,
+            )
+            self._schedule_image_jobs_run(user_id=user_id, batch_id=batch_id)
+        return len(created)
+
     async def sync_manual_assets_for_batch(
         self,
         *,
@@ -1826,6 +1945,19 @@ class BatchService:
             limit=limit,
             max_age_days=30,
         )
+        batch_ids = {
+            UUID(str(row["batch_id"]))
+            for row in rows
+            if row.get("batch_id")
+        }
+        for batch_id in batch_ids:
+            try:
+                await self.ensure_batch_image_jobs(user_id=user_id, batch_id=batch_id)
+            except Exception:
+                logger.exception(
+                    "Failed to ensure image jobs during pending download sync for batch %s",
+                    batch_id,
+                )
         items: list[dict[str, Any]] = []
         for row in rows:
             track_no_raw = row.get("batch_index")
@@ -1924,11 +2056,22 @@ class BatchService:
             song_id = UUID(str(row["song_id"])) if row.get("song_id") else None
             batch_id = UUID(str(row["batch_id"])) if row.get("batch_id") else None
             if poll_result.state == "success":
+                from platform_api.services.suno_audio_resolver import normalize_http_download_url
+
+                url_ok = normalize_http_download_url(poll_result.audio_url_ok) or None
+                url_alt = normalize_http_download_url(poll_result.audio_url_alt) or None
+                if not url_ok and not url_alt:
+                    logger.warning(
+                        "Suno reconcile success without download URLs for task %s",
+                        row.get("id"),
+                    )
+                    continue
+
                 await self._batch_repo.update_status(
                     task_id,
                     status=TaskStatus.SUCCESS,
-                    audio_url_ok=poll_result.audio_url_ok or None,
-                    audio_url_alt=poll_result.audio_url_alt or None,
+                    audio_url_ok=url_ok,
+                    audio_url_alt=url_alt,
                 )
                 if song_id and batch_id:
                     await self.handle_suno_task_update(
@@ -1943,7 +2086,7 @@ class BatchService:
                         from platform_api.dependencies import get_db_pool
                         from platform_api.services.streaming_upload_service import StreamingUploadService
 
-                        if poll_result.audio_url_ok or poll_result.audio_url_alt:
+                        if url_ok or url_alt:
                             StreamingUploadService(get_db_pool()).schedule_suno_streaming_upload(
                                 suno_task_id=task_id
                             )
@@ -1956,12 +2099,17 @@ class BatchService:
                 reconciled += 1
                 continue
 
-            await self._batch_repo.update_status(task_id, status=TaskStatus.FAILED)
+            await self._batch_repo.update_status(
+                task_id,
+                status=TaskStatus.FAILED,
+                error_message=str(poll_result.error or "").strip() or None,
+            )
             if song_id and batch_id:
                 await self.handle_suno_task_update(
                     song_id=song_id,
                     batch_id=batch_id,
                     status=TaskStatus.FAILED,
+                    error_message=str(poll_result.error or "").strip() or None,
                 )
             reconciled += 1
         for batch_id in batches_to_run_images:
@@ -2121,8 +2269,22 @@ class BatchService:
             await self.refresh_batch_status(batch_id)
             return []
 
-        # Create image jobs
-        jobs = await self.create_image_jobs_for_song(song, batch)
+        jobs: list[ImageJob] = []
+        try:
+            jobs = await self.create_image_jobs_for_song(song, batch)
+        except Exception:
+            logger.exception(
+                "Image job creation failed for song %s in batch %s",
+                song_id,
+                batch_id,
+            )
+        if not jobs:
+            created_count = await self.ensure_batch_image_jobs(
+                user_id=str(batch.user_id),
+                batch_id=batch_id,
+            )
+            if created_count:
+                jobs = await self._batch_repo.get_image_jobs_by_batch(batch_id)
         await self.refresh_batch_status(batch_id)
         return jobs
 
@@ -2131,6 +2293,8 @@ class BatchService:
         song_id: UUID,
         batch_id: UUID,
         status: TaskStatus,
+        *,
+        error_message: str | None = None,
     ) -> list[ImageJob]:
         """Route Suno callback status changes back into the batch lifecycle."""
         if status == TaskStatus.SUCCESS:
@@ -2161,6 +2325,7 @@ class BatchService:
                     song_number=song.batch_index + 1,
                     title=str(song.title or "").strip() or "Untitled",
                     status=status.value,
+                    reason=str(error_message or "").strip(),
                 )
             else:
                 draft_log.log_suno_callback_failed(
@@ -2168,8 +2333,20 @@ class BatchService:
                     song_number=None,
                     title="Unknown",
                     status=status.value,
-                    reason=f"song_id={str(song_id)[:8]}",
+                    reason=str(error_message or "").strip() or f"song_id={str(song_id)[:8]}",
                 )
+            latest_task = await self._batch_repo.get_latest_suno_task_for_song(song_id)
+            from platform_api.services.suno_lyrics_sanitize import extract_blocked_terms_from_suno_error
+
+            blocked_terms = extract_blocked_terms_from_suno_error(error_message)
+            self._log_suno_failure_metric(
+                batch_id=batch_id,
+                song_id=song_id,
+                status=status.value,
+                error_message=error_message,
+                is_retry=latest_task is not None,
+                blocked_terms=blocked_terms,
+            )
             await self.update_song_to_suno_failed(song_id)
             if not already_failed:
                 batch = await self._batch_repo.get_batch_by_id(batch_id)
@@ -2285,7 +2462,7 @@ class BatchService:
             try:
                 suno_price = await self._pricing_service.get_price(
                     music_provider,
-                    "music_generation",
+                    "music",
                     self._normalize_suno_pricing_model(suno_model),
                 )
             except Exception as exc:
@@ -2518,12 +2695,108 @@ class BatchService:
             include_album=not draft_request.forced_album,
             pricing=self._pricing_service,
         )
+    async def _sanitize_suno_payload(
+        self,
+        song: Song,
+        batch: Batch,
+        *,
+        latest_task: SunoTask | None = None,
+        is_retry: bool = False,
+    ) -> SunoSanitizedPayload:
+        """Sanitize lyrics/title/style using static blocklist and latest Suno failure hints."""
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.suno_lyrics_sanitize import (
+            SunoSanitizeReplacement,
+            extract_blocked_terms_from_suno_error,
+            sanitize_text_for_suno_with_changes,
+        )
+
+        if latest_task is None:
+            latest_task = await self._batch_repo.get_latest_suno_task_for_song(song.id)
+
+        runtime_config = await get_suno_blocklist_service().get_runtime_config()
+
+        blocked_terms: list[str] = []
+        if latest_task is not None and is_suno_failure_status(latest_task.status):
+            blocked_terms = extract_blocked_terms_from_suno_error(latest_task.error_message)
+
+        raw_lyrics = str(song.lyrics or "").strip()
+        raw_title = str(song.title or "").strip()
+        raw_style = await self._resolve_song_style(song, batch)
+
+        lyrics, lyrics_changes = sanitize_text_for_suno_with_changes(
+            raw_lyrics,
+            field="lyrics",
+            blocked_terms=blocked_terms,
+            runtime_config=runtime_config,
+        )
+        title, title_changes = sanitize_text_for_suno_with_changes(
+            raw_title,
+            field="title",
+            blocked_terms=blocked_terms,
+            runtime_config=runtime_config,
+        )
+        style, style_changes = sanitize_text_for_suno_with_changes(
+            raw_style,
+            field="style",
+            blocked_terms=blocked_terms,
+            runtime_config=runtime_config,
+        )
+
+        replacements: list[SunoSanitizeReplacement] = [
+            *lyrics_changes,
+            *title_changes,
+            *style_changes,
+        ]
+        resolved_title = title.strip() or "Untitled"
+        if lyrics != raw_lyrics or resolved_title != raw_title:
+            await self._batch_repo.update_song_draft(
+                song.id,
+                resolved_title,
+                str(song.album or "").strip(),
+                lyrics,
+            )
+            song.title = resolved_title
+            song.lyrics = lyrics
+
+        return SunoSanitizedPayload(
+            title=resolved_title,
+            lyrics=lyrics,
+            style=style,
+            replacements=tuple(replacements),
+            blocked_terms=tuple(blocked_terms),
+            is_retry=is_retry or latest_task is not None,
+        )
+
+    def _log_suno_failure_metric(
+        self,
+        *,
+        batch_id: UUID | None,
+        song_id: UUID | None,
+        status: object = "",
+        error_message: object = "",
+        is_retry: bool = False,
+        blocked_terms: list[str] | None = None,
+    ) -> None:
+        draft_log.log_suno_failure_metric(
+            batch_id=str(batch_id) if batch_id else None,
+            song_id=str(song_id) if song_id else None,
+            failure_type=classify_suno_failure_type(
+                status=status,
+                error_message=error_message,
+            ),
+            is_retry=is_retry,
+            blocked_terms_extracted=blocked_terms,
+        )
+
     async def _submit_song_to_suno(
         self,
         song: Song,
         batch: Batch,
         user_id: str,
         model: str,
+        *,
+        is_retry: bool = False,
     ) -> str:
         """Submit one successful draft to Suno and link the created task back to the batch.
 
@@ -2535,7 +2808,12 @@ class BatchService:
         any wallet debit are refunded while the original plan_allowance debit remains
         for owner COGS visibility.
         """
-        style = await self._resolve_song_style(song, batch)
+        payload = await self._sanitize_suno_payload(
+            song,
+            batch,
+            is_retry=is_retry,
+        )
+
         charged = 0
         music_provider = "suno"
         music_sub_model = self._normalize_suno_pricing_model(model)
@@ -2558,9 +2836,9 @@ class BatchService:
                 user_id,
                 SunoRequest(
                     model=model,
-                    title=str(song.title or "").strip(),
-                    lyrics=str(song.lyrics or "").strip(),
-                    style=style,
+                    title=payload.title,
+                    lyrics=payload.lyrics,
+                    style=payload.style,
                     instrumental=False,
                 ),
                 skip_pricing=self._enforcement_service is not None,
@@ -2581,7 +2859,14 @@ class BatchService:
                 if stash is not None:
                     await stash(f"suno:{song.id}", int(charged or 0))
             return task_id
-        except Exception:
+        except Exception as exc:
+            self._log_suno_failure_metric(
+                batch_id=batch.id,
+                song_id=song.id,
+                error_message=str(exc),
+                is_retry=payload.is_retry,
+                blocked_terms=list(payload.blocked_terms),
+            )
             if billing_applied:
                 await self._refund_suno_billing(
                     user_id=user_id,
@@ -2676,7 +2961,9 @@ class BatchService:
             if drafts_completed == 0 and drafts_failed == total_songs:
                 return BATCH_STATUS_FAILED
             if drafts_completed + drafts_failed >= total_songs:
-                return BATCH_STATUS_PARTIAL if drafts_failed > 0 else BATCH_STATUS_FAILED
+                if drafts_failed > 0:
+                    return BATCH_STATUS_PARTIAL
+                return BATCH_STATUS_PROCESSING
             return BATCH_STATUS_PROCESSING
 
         suno_terminal = suno_completed + suno_failed

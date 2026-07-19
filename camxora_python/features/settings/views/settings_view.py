@@ -64,7 +64,7 @@ from shared.lib.settings_workspace import (
 from features.settings.widgets.user_owned_prompt_panel import UserOwnedPromptPanel
 from shared.models.auth import ProfileResponse, UserMeResponse
 from shared.models.platform import PromptNameOption, YouTubeConnectionResponse
-from shared.services.app_logger import log_error, log_info
+from shared.services.app_logger import get_app_logger, log_error, log_info
 from shared.services.build_config import get_portal_base_url
 from shared.services.ffmpeg_setup import (
     FFMPEG_DOWNLOAD_PAGE_URL,
@@ -72,9 +72,11 @@ from shared.services.ffmpeg_setup import (
     ffmpeg_preferences_note,
 )
 from shared.services.file_service import list_directory_image_paths, open_external_url, open_path, read_file_bytes
+from shared.services.log_sync import SyncLogsWorker, build_client_log_payload
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
 from shared.services.session_service import SessionService
+from shared.services.shell_status import emit_shell_status
 from shared.services.workspace_cache import WorkspaceCache, cache_entry_is_fresh
 from shared.themes.deep_blue import (
     MUSIC_SECTION_ID,
@@ -86,6 +88,7 @@ from shared.themes.deep_blue import (
     SETTINGS_FORM_ROW_ID,
     SETTINGS_SECONDARY_BUTTON_ID,
     SHELL_TEXT_EDIT_ID,
+    START_BUTTON_ID,
     SUBTITLE_LABEL_ID,
 )
 from shared.widgets.data_table import create_data_table, set_table_rows
@@ -177,6 +180,7 @@ class SettingsView(QWidget):
         self._playlists_worker: YouTubePlaylistsWorker | None = None
         self._sample_packs_worker: ImageSamplePacksWorker | None = None
         self._sample_pack_install_worker: SamplePackInstallWorker | None = None
+        self._diag_sync_worker: SyncLogsWorker | None = None
         self._profiles: list[ProfileResponse] = []
         self._settings_raw: dict[str, object] = {}
         self._youtube_connections: list[YouTubeConnectionResponse] = []
@@ -1307,6 +1311,33 @@ class SettingsView(QWidget):
         if not SERVER_MANAGED_SAMPLE_PACKS:
             root.addWidget(sample_packs_panel)
             root.addWidget(library_panel)
+
+        diagnostics_panel = SettingsPanel(
+            "Diagnostics",
+            subtitle=(
+                "Upload recent local logs to Camxora support without opening the raw console. "
+                "Use this when support asks you to send diagnostics."
+            ),
+        )
+        self._diag_status = QLabel("Logs stay on this computer until you send them.")
+        self._diag_status.setObjectName(SUBTITLE_LABEL_ID)
+        self._diag_status.setWordWrap(True)
+        diagnostics_panel.add_widget(self._diag_status)
+        diagnostics_panel.add_widget(
+            note_box(
+                "Secrets are redacted before upload. Raw HTML gateway errors are summarized. "
+                "The full Diagnostics console is hidden unless support enables it on your build."
+            )
+        )
+        self._send_diagnostics_btn = QPushButton("Send diagnostics")
+        self._send_diagnostics_btn.setObjectName(START_BUTTON_ID)
+        self._send_diagnostics_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._send_diagnostics_btn.setToolTip(
+            "Upload recent local logs to Camxora so support can review them in the admin portal."
+        )
+        self._send_diagnostics_btn.clicked.connect(self._on_send_diagnostics)
+        diagnostics_panel.add_widget(self._send_diagnostics_btn)
+        root.addWidget(diagnostics_panel)
 
         return make_scrollable_tab_page(host)
 
@@ -2727,6 +2758,50 @@ class SettingsView(QWidget):
 
         self._update_publication_schedule_visibility()
         self._load_publication_playlists()
+
+    def _on_send_diagnostics(self) -> None:
+        if self._diag_sync_worker is not None and self._diag_sync_worker.isRunning():
+            return
+        payload = build_client_log_payload()
+        if payload is None:
+            self._diag_status.setText("Nothing to send yet — use the app a bit, then try again.")
+            self._set_footer_notice("No log lines to send yet.", tone="warning")
+            emit_shell_status("No log lines to send yet.")
+            return
+        line_count = int(payload.get("lineCount") or 0)
+        self._send_diagnostics_btn.setEnabled(False)
+        self._diag_status.setText(f"Sending {line_count} log line(s)…")
+        self._set_footer_notice("Sending diagnostics…", tone="neutral")
+        emit_shell_status("Sending diagnostics…")
+        worker = SyncLogsWorker(self._api, payload, parent=self)
+        worker.succeeded.connect(self._on_diagnostics_succeeded)
+        worker.failed.connect(self._on_diagnostics_failed)
+        worker.finished.connect(self._on_diagnostics_finished)
+        self._diag_sync_worker = worker
+        worker.start()
+
+    def _on_diagnostics_succeeded(self, result: object) -> None:
+        batch_id = ""
+        if isinstance(result, dict):
+            batch_id = str(result.get("id") or result.get("batchId") or "")
+        msg = "Diagnostics sent to Camxora support."
+        if batch_id:
+            msg = f"Diagnostics sent · batch {batch_id[:8]}…"
+        self._diag_status.setText(msg)
+        self._set_footer_notice(msg, tone="success", auto_reset_ms=5000)
+        emit_shell_status(msg)
+        get_app_logger().info(f"Diagnostics upload succeeded ({batch_id or 'ok'})", category="log")
+
+    def _on_diagnostics_failed(self, message: str) -> None:
+        text = message or "Could not send diagnostics."
+        self._diag_status.setText(text)
+        self._set_footer_notice(text, tone="error")
+        emit_shell_status(text)
+        get_app_logger().error(f"Diagnostics upload failed: {text}", category="log")
+
+    def _on_diagnostics_finished(self) -> None:
+        self._send_diagnostics_btn.setEnabled(True)
+        self._diag_sync_worker = None
 
     def _bind_preferences_tab(self) -> None:
         draft = self._system_draft

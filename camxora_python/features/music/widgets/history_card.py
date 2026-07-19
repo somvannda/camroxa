@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from shared.lib.formatting import format_datetime_label, format_run_date_label, today_ymd
 from shared.lib.music_history_labels import is_song_title_generating
+from shared.lib.music_status import format_song_pipeline_status, song_pipeline_status_tooltip
 from shared.models.platform import MusicHistoryBatch, MusicHistorySong
 from shared.themes.deep_blue import SHELL_DATE_EDIT_ID, SUBTITLE_LABEL_ID
 from shared.widgets.data_table import create_data_table
@@ -33,14 +34,15 @@ EMPTY_MESSAGE = "No history rows match the current filters."
 
 def batch_retry_targets(batch: MusicHistoryBatch) -> tuple[list[str], list[str]]:
     """Return (draft_failed ids, suno_failed ids) for batch-level retry."""
+    from shared.lib.music_status import is_song_suno_batch_retry_target
+
     draft_ids: list[str] = []
     suno_ids: list[str] = []
     for song in batch.songs:
         song_status = str(song.status or "").strip().lower()
-        suno_status = str(song.suno_status or "").strip().lower()
         if song_status == "draft_failed":
             draft_ids.append(song.song_id)
-        if song_status == "suno_failed" or suno_status == "suno_failed":
+        if is_song_suno_batch_retry_target(song.status, song.suno_status):
             suno_ids.append(song.song_id)
     return draft_ids, suno_ids
 
@@ -249,13 +251,23 @@ class HistoryCard(QFrame):
 
             album_1 = str(entry.batch.ok_album or entry.song.album or "").strip() or "—"
             album_2 = str(entry.batch.alt_album or "").strip() or "—"
+            suno_label = format_song_pipeline_status(
+                entry.song.status,
+                entry.song.suno_status,
+                entry.song.suno_error_message,
+            )
+            suno_tooltip = song_pipeline_status_tooltip(
+                entry.song.status,
+                entry.song.suno_status,
+                entry.song.suno_error_message,
+            )
             values = [
                 str(entry.row_number or ""),
                 album_1,
                 album_2,
                 entry.song.description_name or "—",
                 entry.song.structure_name or "—",
-                entry.song.suno_status or entry.song.status or "pending",
+                suno_label,
                 format_run_date_label(entry.batch.from_date or entry.batch.to_date),
             ]
             column_indexes = (0, _HISTORY_COL_ALBUM_1, _HISTORY_COL_ALBUM_2, 4, 5, 8, 9)
@@ -265,8 +277,9 @@ class HistoryCard(QFrame):
                 item.setTextAlignment(
                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                 )
-                if value and value != "—":
-                    item.setToolTip(value)
+                tooltip = suno_tooltip if col_index == 8 and suno_tooltip else value
+                if tooltip and tooltip != "—":
+                    item.setToolTip(tooltip)
                 self._table.setItem(row_index, col_index, item)
 
             self._set_title_cell(
@@ -456,9 +469,12 @@ class HistoryCard(QFrame):
             action = menu.addAction("Suno")
             action.triggered.connect(lambda: self.retry_suno_requested.emit(entry))
 
-        if song_status == "suno_failed" or suno_status == "suno_failed":
-            action = menu.addAction("Retry Suno")
-            action.triggered.connect(lambda: self.retry_suno_requested.emit(entry))
+        from shared.lib.music_status import is_song_suno_retry_eligible
+
+        if is_song_suno_retry_eligible(entry.song.status, entry.song.suno_status):
+            if song_status != "draft_ready":
+                action = menu.addAction("Retry Suno")
+                action.triggered.connect(lambda: self.retry_suno_requested.emit(entry))
 
         image_total = int(entry.song.image_jobs_total or 0)
         image_done = int(entry.song.image_jobs_completed or 0)

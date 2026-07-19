@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, Qt, QTimer
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from features.progress.widgets.download_queue_card import DownloadQueueCard
 from features.progress.widgets.error_banner import ProgressErrorBanner
 from features.progress.widgets.operational_rows_card import EffectiveProgressRow, OperationalRowsCard
 from features.progress.widgets.progress_detail_card import ProgressDetailCard
@@ -26,10 +25,7 @@ from features.progress.widgets.stats_row import ProgressStatsRow
 from shared.lib.formatting import today_ymd
 from shared.lib.manual_asset_paths import ManualAssetInspection, manual_inspection_key, normalize_image_source_mode
 from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, progress_runtime_key
-from shared.lib.music_download_utils import filter_actionable_pending_downloads
 from shared.models.platform import (
-    PendingMusicDownloadItem,
-    PendingMusicDownloadsResponse,
     ProgressFilters,
     ProgressRow,
     UserSettingsResponse,
@@ -43,16 +39,14 @@ from shared.workers.data_workers import (
     BatchRetrySunoWorker,
     ImageRetryJobsWorker,
     ManualInspectionWorker,
-    PendingDownloadsWorker,
     SettingsWorker,
     SyncManualImageWorker,
     WorkflowLoadResult,
     WorkflowLoadWorker,
 )
 
-DEFAULT_POLL_MS = 12_000
-ACTIVE_POLL_MS = 4_000
-PENDING_DOWNLOADS_POLL_MS = 5_000
+DEFAULT_POLL_MS = 30_000
+ACTIVE_POLL_MS = 8_000
 
 HELPER_TEXT = (
     "Operational pipeline view for monitoring failures, waiting rows, and recovery actions."
@@ -89,7 +83,6 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._init_pollable()
         self._api = api
         self._worker: WorkflowLoadWorker | None = None
-        self._pending_worker: PendingDownloadsWorker | None = None
         self._settings_worker: SettingsWorker | None = None
         self._inspection_worker: ManualInspectionWorker | None = None
         self._sync_worker: SyncManualImageWorker | None = None
@@ -99,15 +92,11 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows: list[ProgressRow] = []
         self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
         self._manual_inspections: dict[str, ManualAssetInspection] = {}
-        self._pending_downloads: list[PendingMusicDownloadItem] = []
         self._image_source_mode = "ai"
         self._loading = True
         self._is_error = False
         self._ever_loaded = False
         self._syncing_batch_id = ""
-        self._pending_timer = QTimer(self)
-        self._pending_timer.setInterval(PENDING_DOWNLOADS_POLL_MS)
-        self._pending_timer.timeout.connect(self._refresh_pending_downloads)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
 
@@ -217,10 +206,6 @@ class ProgressView(PollablePageMixin, QScrollArea):
         )
         root.addWidget(self._rows_splitter, 1)
 
-        self._download_queue = DownloadQueueCard()
-        self._download_queue.hide()
-        root.addWidget(self._download_queue, 0)
-
         self._from_date.dateChanged.connect(lambda *_: self._on_filters_changed())
         self._to_date.dateChanged.connect(lambda *_: self._on_filters_changed())
         self._active_only.stateChanged.connect(lambda *_: self._on_filters_changed())
@@ -247,12 +232,9 @@ class ProgressView(PollablePageMixin, QScrollArea):
 
     def activate_page(self) -> None:
         self._refresh_settings()
-        self._refresh_pending_downloads()
-        self._pending_timer.start()
         PollablePageMixin.activate_page(self)
 
     def deactivate_page(self) -> None:
-        self._pending_timer.stop()
         PollablePageMixin.deactivate_page(self)
 
     def _on_filters_changed(self) -> None:
@@ -317,22 +299,6 @@ class ProgressView(PollablePageMixin, QScrollArea):
             self._rows_card.set_manual_inspections({})
             self._detail_card.set_manual_inspections({})
         self._render_table()
-
-    def _refresh_pending_downloads(self) -> None:
-        if self._pending_worker is not None and self._pending_worker.isRunning():
-            return
-        worker = PendingDownloadsWorker(self._api, limit=12, parent=self)
-        worker.succeeded.connect(self._on_pending_loaded)
-        worker.finished.connect(lambda: setattr(self, "_pending_worker", None))
-        self._pending_worker = worker
-        worker.start()
-
-    def _on_pending_loaded(self, payload: object) -> None:
-        if not isinstance(payload, PendingMusicDownloadsResponse):
-            return
-        self._pending_downloads = filter_actionable_pending_downloads(payload.items)
-        self._download_queue.set_items(self._pending_downloads)
-        self._update_meta_label(len(self._filtered_effective_rows()))
 
     def _refresh_manual_inspections(self) -> None:
         if self._image_source_mode != "manual" or not self._rows:
@@ -447,12 +413,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
     def _update_meta_label(self, visible_count: int) -> None:
         stage_label = self._stage_filter.currentText()
         row_suffix = "" if visible_count == 1 else "s"
-        pending_count = len(self._pending_downloads)
-        pending_suffix = "" if pending_count == 1 else "s"
         self._meta_label.setText(
-            f"{visible_count} visible row{row_suffix} · "
-            f"{pending_count} pending desktop download{pending_suffix} · "
-            f"{stage_label}"
+            f"{visible_count} visible row{row_suffix} · {stage_label}"
         )
 
     def _update_stats(self) -> None:
@@ -502,18 +464,32 @@ class ProgressView(PollablePageMixin, QScrollArea):
         open_path(directory)
 
     def _sync_manual_assets(self, batch_id: str) -> None:
-        if not batch_id or self._sync_worker is not None and self._sync_worker.isRunning():
+        if not batch_id:
+            self._show_retry_notice("Missing batch id for manual sync.")
             return
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            self._show_retry_notice("A manual sync is already in progress.")
+            return
+        self._show_retry_notice("Syncing manual image assets…", tone="neutral")
         self._syncing_batch_id = batch_id
         self._rows_card.set_syncing_batch_id(batch_id)
         self._detail_card.set_syncing_batch_id(batch_id)
         self._render_table()
         worker = SyncManualImageWorker(self._api, batch_id, self)
-        worker.succeeded.connect(lambda _payload: self.refresh_data())
-        worker.failed.connect(lambda _message: self._clear_sync_state())
+        worker.succeeded.connect(self._on_manual_sync_succeeded)
+        worker.failed.connect(self._on_manual_sync_failed)
         worker.finished.connect(self._clear_sync_state)
         self._sync_worker = worker
         worker.start()
+
+    def _on_manual_sync_succeeded(self, _payload: object) -> None:
+        self._show_retry_notice("Manual assets synced. Refreshing progress…", tone="success")
+        self.refresh_data()
+
+    def _on_manual_sync_failed(self, message: str) -> None:
+        detail = str(message or "").strip() or "Unable to sync manual image assets."
+        self._show_retry_notice(detail, tone="error")
+        self._clear_sync_state()
 
     def _retry_images(self, batch_id: str) -> None:
         if not batch_id:
@@ -534,7 +510,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
             batch_id=batch_id,
             parent=self,
         )
-        worker.succeeded.connect(self._on_image_retry_succeeded)
+        worker.succeeded.connect(lambda payload, bid=batch_id: self._on_image_retry_succeeded(bid, payload))
         worker.failed.connect(self._on_image_retry_failed)
         worker.finished.connect(lambda: setattr(self, "_image_retry_worker", None))
         self._image_retry_worker = worker
@@ -562,7 +538,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._image_retry_worker = worker
         worker.start()
 
-    def _on_image_retry_succeeded(self, payload: object) -> None:
+    def _on_image_retry_succeeded(self, batch_id: str, payload: object) -> None:
         from shared.models.platform import ImageJobsRetryResponse
 
         updated = 0
@@ -570,43 +546,105 @@ class ProgressView(PollablePageMixin, QScrollArea):
             updated = int(payload.updated or 0)
         if updated > 0:
             self._error_banner.hide()
-        else:
             self._show_retry_notice(
-                "No failed image jobs were reset. They may already be pending or running."
+                f"Retry queued for {updated} image job(s). Refreshing progress…",
+                tone="success",
             )
+            self.refresh_data()
+            return
+
+        if batch_id:
+            self._show_retry_notice(
+                "No image jobs to retry — queueing image generation…",
+                tone="neutral",
+            )
+            self._enqueue_images(batch_id)
+            return
+
+        self._show_retry_notice(
+            "No failed image jobs were reset. They may already be pending or running.",
+        )
         self.refresh_data()
 
     def _on_image_retry_failed(self, message: str) -> None:
         detail = str(message or "").strip() or "Unable to retry image jobs."
         self._show_retry_notice(detail)
 
-    def _show_retry_notice(self, message: str) -> None:
-        self._error_banner.set_message(message)
+    def _show_retry_notice(self, message: str, *, tone: str = "warning") -> None:
+        from shared.services.action_feedback import notify_action
+
+        text = str(message or "").strip()
+        if not text:
+            return
+        self._error_banner.set_message(text)
         self._error_banner.show()
+        notify_action(text, tone=tone)
 
     def _retry_failed_drafts(self, batch_id: str, song_ids: list[str]) -> None:
         if not batch_id or not song_ids:
+            self._show_retry_notice("No failed drafts to retry.")
             return
         if self._draft_retry_worker is not None and self._draft_retry_worker.isRunning():
+            self._show_retry_notice("A draft retry is already in progress.")
             return
+        count = len(song_ids)
+        suffix = "s" if count != 1 else ""
+        self._show_retry_notice(f"Retrying failed drafts for {count} song{suffix}…", tone="neutral")
         worker = BatchRetryDraftsWorker(self._api, batch_id, song_ids, parent=self)
-        worker.succeeded.connect(lambda _count: self.refresh_data())
-        worker.failed.connect(lambda _message: None)
+        worker.succeeded.connect(self._on_draft_retry_succeeded)
+        worker.failed.connect(self._on_draft_retry_failed)
         worker.finished.connect(lambda: setattr(self, "_draft_retry_worker", None))
         self._draft_retry_worker = worker
         worker.start()
 
     def _retry_failed_suno(self, batch_id: str, song_ids: list[str]) -> None:
         if not batch_id or not song_ids:
+            self._show_retry_notice("No failed Suno submissions to retry.")
             return
         if self._suno_retry_worker is not None and self._suno_retry_worker.isRunning():
+            self._show_retry_notice("A Suno retry is already in progress.")
             return
+        count = len(song_ids)
+        suffix = "s" if count != 1 else ""
+        self._show_retry_notice(f"Retrying failed Suno for {count} song{suffix}…", tone="neutral")
         worker = BatchRetrySunoWorker(self._api, batch_id, song_ids, parent=self)
-        worker.succeeded.connect(lambda _count: self.refresh_data())
-        worker.failed.connect(lambda _message: None)
+        worker.succeeded.connect(self._on_suno_retry_succeeded)
+        worker.failed.connect(self._on_suno_retry_failed)
         worker.finished.connect(lambda: setattr(self, "_suno_retry_worker", None))
         self._suno_retry_worker = worker
         worker.start()
+
+    def _on_draft_retry_succeeded(self, count: int) -> None:
+        queued = int(count or 0)
+        if queued <= 0:
+            self._show_retry_notice("No draft retries were queued.")
+            return
+        suffix = "s" if queued != 1 else ""
+        self._show_retry_notice(
+            f"Queued draft retry for {queued} song{suffix}. Refreshing progress…",
+            tone="success",
+        )
+        self.refresh_data()
+
+    def _on_draft_retry_failed(self, message: str) -> None:
+        detail = str(message or "").strip() or "Unable to retry draft generation."
+        self._show_retry_notice(detail)
+
+    def _on_suno_retry_succeeded(self, count: int) -> None:
+        queued = int(count or 0)
+        if queued <= 0:
+            self._show_retry_notice("No Suno retries were queued.")
+            return
+        suffix = "s" if queued != 1 else ""
+        self._show_retry_notice(
+            f"Queued Suno retry for {queued} song{suffix}. Refreshing progress…",
+            tone="success",
+        )
+        self.refresh_data()
+
+    def _on_suno_retry_failed(self, message: str) -> None:
+        detail = str(message or "").strip() or "Unable to retry Suno submission."
+        self._show_retry_notice(detail)
 
     def _clear_sync_state(self) -> None:
         self._syncing_batch_id = ""

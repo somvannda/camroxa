@@ -9,8 +9,20 @@ from platform_api.services.credit_units import (
     cost_units_to_pricing_units,
     usd_to_cost_units,
 )
-from platform_api.services.model_cost_estimates import estimate_cost_usd
-from platform_api.services.pricing_keys import normalize_pricing_sub_model, pricing_lookup_key
+from platform_api.services.model_cost_estimates import (
+    build_seed_cost_rows,
+    estimate_cost_usd,
+)
+from platform_api.services.local_platform_operations import (
+    LOCAL_AI_SERVICE,
+    LOCAL_PLATFORM_OPERATIONS,
+    build_local_pricing_seed_rows,
+)
+from platform_api.services.pricing_keys import (
+    normalize_pricing_sub_model,
+    pricing_lookup_key,
+    pricing_row_exists,
+)
 from platform_api.services.pricing_sync_service import (
     RequiredPricingPair,
     collect_required_pricing_pairs,
@@ -95,6 +107,42 @@ def resolve_model_cost_usd(
         sub_model=normalized_model,
         operation_type=operation_type,
     )
+
+
+def collect_registry_pricing_pairs() -> list[RequiredPricingPair]:
+    """Return every provider/model/operation pair defined in the model registry seed."""
+    seen: set[tuple[str, str, str]] = set()
+    required: list[RequiredPricingPair] = []
+    for row in build_seed_cost_rows():
+        ai_service = str(row["ai_service"])
+        sub_model = normalize_pricing_sub_model(row.get("sub_model"))
+        operation_type = str(row["operation_type"])
+        key = pricing_lookup_key(ai_service, operation_type, sub_model)
+        if key in seen:
+            continue
+        seen.add(key)
+        required.append(
+            RequiredPricingPair(
+                ai_service=key[0],
+                operation_type=key[1],
+                sub_model=key[2],
+                source="registry",
+            )
+        )
+    return required
+
+
+def _local_pricing_units(operation_type: str) -> tuple[int, int] | None:
+    """Fixed list/cost credits for local desktop ops (COGS $0)."""
+    if operation_type not in LOCAL_PLATFORM_OPERATIONS:
+        return None
+    for row in build_local_pricing_seed_rows():
+        if row["operation_type"] == operation_type:
+            return (
+                int(row["external_cost_cents"]),
+                int(row["credits_per_operation"]),
+            )
+    return None
 
 
 class PricingGeneratorService:
@@ -204,5 +252,121 @@ class PricingGeneratorService:
             "missing_cost_count": len(missing_costs),
             "created": created,
             "updated": updated,
+            "missing_costs": missing_costs,
+        }
+
+    async def list_registry_pricing_gaps(self) -> list[dict[str, str]]:
+        """Registry seed pairs that do not yet have a credit_pricing row."""
+        existing_keys = {
+            pricing_lookup_key(
+                str(row["ai_service"]),
+                str(row["operation_type"]),
+                str(row.get("sub_model") or ""),
+            )
+            for row in await self._pricing_repo.get_all()
+        }
+        gaps: list[dict[str, str]] = []
+        for pair in collect_registry_pricing_pairs():
+            if pricing_row_exists(
+                existing_keys,
+                ai_service=pair.ai_service,
+                operation_type=pair.operation_type,
+                sub_model=pair.sub_model,
+            ):
+                continue
+            gaps.append(
+                {
+                    "ai_service": pair.ai_service,
+                    "operation_type": pair.operation_type,
+                    "sub_model": pair.sub_model,
+                }
+            )
+        return gaps
+
+    async def generate_missing_from_registry(
+        self,
+        *,
+        margin_percent: float,
+        global_credit_value: float,
+    ) -> dict[str, Any]:
+        """Create needs-review pricing rows only for registry pairs missing from pricing."""
+        cost_rows = await self._model_cost_repo.get_all()
+        existing_keys = {
+            pricing_lookup_key(
+                str(row["ai_service"]),
+                str(row["operation_type"]),
+                str(row.get("sub_model") or ""),
+            )
+            for row in await self._pricing_repo.get_all()
+        }
+
+        created: list[dict[str, Any]] = []
+        skipped: list[dict[str, str]] = []
+        missing_costs: list[dict[str, str]] = []
+
+        for pair in collect_registry_pricing_pairs():
+            key = pricing_lookup_key(pair.ai_service, pair.operation_type, pair.sub_model)
+            if pricing_row_exists(
+                existing_keys,
+                ai_service=pair.ai_service,
+                operation_type=pair.operation_type,
+                sub_model=pair.sub_model,
+            ):
+                skipped.append(
+                    {
+                        "ai_service": pair.ai_service,
+                        "operation_type": pair.operation_type,
+                        "sub_model": pair.sub_model,
+                    }
+                )
+                continue
+
+            local_units = (
+                _local_pricing_units(pair.operation_type)
+                if pair.ai_service == LOCAL_AI_SERVICE
+                else None
+            )
+            if local_units is not None:
+                cost_units, pricing_units = local_units
+            else:
+                cost_usd = resolve_model_cost_usd(
+                    ai_service=pair.ai_service,
+                    sub_model=pair.sub_model,
+                    operation_type=pair.operation_type,
+                    cost_rows=cost_rows,
+                )
+                if cost_usd is None:
+                    missing_costs.append(
+                        {
+                            "ai_service": pair.ai_service,
+                            "operation_type": pair.operation_type,
+                            "sub_model": pair.sub_model,
+                        }
+                    )
+                    continue
+                cost_units, pricing_units = compute_credit_prices(
+                    cost_usd=cost_usd,
+                    global_credit_value=global_credit_value,
+                    margin_percent=margin_percent,
+                )
+
+            row = await self._pricing_repo.create(
+                pair.ai_service,
+                pair.operation_type,
+                pricing_units,
+                cost_units,
+                sub_model=pair.sub_model,
+                needs_review=True,
+            )
+            created.append(row)
+            existing_keys.add(key)
+
+        return {
+            "created_count": len(created),
+            "updated_count": 0,
+            "skipped_existing_count": len(skipped),
+            "missing_cost_count": len(missing_costs),
+            "created": created,
+            "updated": [],
             "missing_costs": missing_costs,
         }

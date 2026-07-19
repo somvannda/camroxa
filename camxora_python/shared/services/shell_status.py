@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, Signal
 class ShellStatusBus(QObject):
     show_message = Signal(str, str)
     restore_default = Signal()
+    flash_action = Signal(str, str, int)
 
     _instance: ShellStatusBus | None = None
 
@@ -28,7 +29,7 @@ def emit_shell_status(message: str, *, tone: str = "neutral") -> None:
             log_info(text, category="ui")
         except Exception:
             pass
-    safe_tone = tone if tone in {"neutral", "success", "error"} else "neutral"
+    safe_tone = tone if tone in {"neutral", "success", "error", "warning"} else "neutral"
     ShellStatusBus.instance().show_message.emit(message, safe_tone)
 
 

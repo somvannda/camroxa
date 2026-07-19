@@ -91,9 +91,9 @@ def _escape_ffconcat_path(target_path: str) -> str:
 def _is_file_stable(target_path: str) -> bool:
     path = Path(target_path)
     try:
-        previous = path.stat()
-        if not previous.is_file():
+        if not path.is_file():
             return False
+        previous = path.stat()
         with path.open("rb") as handle:
             handle.read(1)
     except OSError:
@@ -197,9 +197,13 @@ def merge_video_outputs(
     for file_path in requested:
         if cancel():
             raise RuntimeError("Video export stopped.")
+        path = Path(file_path)
         try:
-            stat = Path(file_path).stat()
-            if not stat.is_file() or stat.st_size < MIN_VALID_EXPORT_BYTES:
+            if not path.is_file():
+                skipped_paths.append(file_path)
+                continue
+            stat = path.stat()
+            if stat.st_size < MIN_VALID_EXPORT_BYTES:
                 skipped_paths.append(file_path)
                 continue
             if not _is_file_stable(file_path):

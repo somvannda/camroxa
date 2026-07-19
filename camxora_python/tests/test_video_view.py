@@ -147,7 +147,7 @@ def test_on_save_succeeded_clears_saving_busy_without_tab_click(qapp: QApplicati
         patch.object(view, "_persist_local_draft_snapshot"),
         patch.object(view, "_render_workspace"),
         patch.object(view, "_schedule_template_server_sync"),
-        patch("features.video.views.video_view.emit_shell_status"),
+        patch("features.video.views.video_view.notify_action"),
     ):
         view._on_save_succeeded(workspace)
 

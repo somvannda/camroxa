@@ -13,8 +13,8 @@ from uuid import UUID, uuid4
 
 from platform_api.exceptions import ValidationError
 from platform_api.services.sample_pack_downloader import (
-    _MAX_URL_IMPORT_BYTES,
     download_zip_from_url,
+    get_url_import_max_bytes,
 )
 
 _SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -248,5 +248,5 @@ class ImageSamplePackService:
             version_label=version_label,
             notes=notes,
             pack_id=pack_id,
-            max_zip_bytes=_MAX_URL_IMPORT_BYTES,
+            max_zip_bytes=get_url_import_max_bytes(),
         )

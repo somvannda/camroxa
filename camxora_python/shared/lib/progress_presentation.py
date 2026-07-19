@@ -43,6 +43,8 @@ def _image_badge(ready: int, total: int, status: str, label: str) -> str:
     count = f"{ready}/{max(1, total)}"
     if normalized == "READY" or (total > 0 and ready >= total):
         return f"{label} {count} ✓"
+    if normalized == "SYNC":
+        return f"{label} {count} ↓"
     if normalized == "FAILED":
         return f"{label} {count} ✗"
     if normalized in {"PENDING", "RUNNING", "PROCESSING"}:

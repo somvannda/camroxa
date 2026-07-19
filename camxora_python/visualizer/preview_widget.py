@@ -901,6 +901,13 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     pygame.mixer.music.load(active_path)
                     cache_key = self._audio_duration_cache_key(active_path)
                     decoded_duration = float(self._audio_duration_cache.get(cache_key, 0.0) or 0.0)
+                    if decoded_duration <= 0:
+                        # Cheap metadata probe so seek/total time work before STFT finishes.
+                        from visualizer.audio import probe_audio_duration_sec
+
+                        decoded_duration = float(probe_audio_duration_sec(active_path) or 0.0)
+                        if decoded_duration > 0:
+                            self._audio_duration_cache[cache_key] = decoded_duration
                 except Exception as e:
                     if load_seq != self._audio_load_seq:
                         self._log(f"[{time.strftime('%H:%M:%S')}] Audio load failed on stale request #{load_seq}: {e}")
@@ -944,8 +951,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis failed on stale request #{load_seq}: {e}")
                     return
                 self.analyzer = None
-                self._audio_duration_sec = 0.0
+                # Keep any probed/cached duration — wiping it re-breaks seek mid-play.
                 self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis failed #{load_seq}: {active_path} error={e}")
+                self._emit_playback_state()
             else:
                 if load_seq != self._audio_load_seq:
                     self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis ignored for stale request #{load_seq}: {active_path}")

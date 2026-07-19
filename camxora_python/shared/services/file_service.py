@@ -10,6 +10,20 @@ from pathlib import Path
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
+def sanitize_local_path(target_path: str) -> str:
+    """Fix paths polluted with a Linux server cwd prefix on Windows clients."""
+    text = str(target_path or "").strip()
+    if not text:
+        return text
+    if os.name == "nt" and text.startswith("/") and ":\\" in text.replace("/", "\\"):
+        normalized = text.replace("/", "\\")
+        marker = ":\\"
+        idx = normalized.find(marker)
+        if idx > 1:
+            return normalized[idx - 1 :]
+    return text
+
+
 @dataclass(frozen=True, slots=True)
 class DirectoryEntry:
     name: str
@@ -17,7 +31,7 @@ class DirectoryEntry:
 
 
 def list_directory_entries(directory_path: str, *, max_results: int = 500) -> list[DirectoryEntry]:
-    directory = Path(directory_path.strip())
+    directory = Path(sanitize_local_path(directory_path.strip()))
     if not directory.is_dir():
         return []
 
@@ -33,7 +47,7 @@ def list_directory_entries(directory_path: str, *, max_results: int = 500) -> li
 
 
 def list_directory_image_paths(directory_path: str, *, max_results: int = 50) -> list[str]:
-    directory = Path(directory_path.strip())
+    directory = Path(sanitize_local_path(directory_path.strip()))
     if not directory.is_dir():
         return []
 
@@ -54,8 +68,16 @@ def ensure_directory(directory_path: str) -> None:
 
 
 def open_path(target_path: str) -> None:
-    normalized = str(target_path or "").strip()
+    normalized = sanitize_local_path(str(target_path or "").strip())
     if not normalized:
+        return
+    path = Path(normalized)
+    if not path.exists():
+        from shared.services.app_logger import log_warn
+        from shared.services.shell_status import emit_shell_status
+
+        log_warn(f"Cannot open missing path: {normalized}", category="filesystem")
+        emit_shell_status(f"File not found: {path.name}", tone="warning")
         return
     if os.name == "nt":
         os.startfile(normalized)  # type: ignore[attr-defined]
@@ -66,7 +88,7 @@ def open_path(target_path: str) -> None:
 
 
 def read_file_bytes(target_path: str) -> bytes | None:
-    normalized = str(target_path or "").strip()
+    normalized = sanitize_local_path(str(target_path or "").strip())
     if not normalized:
         return None
     path = Path(normalized)

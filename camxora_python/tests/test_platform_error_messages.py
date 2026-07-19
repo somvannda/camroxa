@@ -19,3 +19,17 @@ def test_extracts_fastapi_detail_string() -> None:
 def test_falls_back_to_friendly_status_copy() -> None:
     assert _extract_error_message(None, 401) == "Incorrect email or password."
     assert "try again" in _extract_error_message({}, 500).lower()
+
+
+def test_omits_html_gateway_bodies() -> None:
+    html = (
+        "<html><head><title>502 Bad Gateway</title></head>"
+        "<body><center><h1>502 Bad Gateway</h1></center>"
+        "<hr><center>nginx/1.18.0 (Ubuntu)</center></body></html>"
+    )
+    assert _extract_error_message(html, 502) == (
+        "The service is temporarily unavailable. Please try again."
+    )
+    assert _extract_error_message({"detail": html}, 502) == (
+        "The service is temporarily unavailable. Please try again."
+    )

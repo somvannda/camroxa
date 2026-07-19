@@ -37,6 +37,7 @@ from shared.lib.music_composer import (
 )
 from shared.lib.music_costs import (
     format_button_credit_label,
+    format_draft_slot_button_label,
     format_operation_cost_label,
     get_batch_generate_total_cost,
     get_music_plan_cost_breakdown,
@@ -51,7 +52,7 @@ from shared.lib.music_settings import (
     settings_snapshot,
 )
 from shared.models.auth import ProfileResponse
-from shared.models.platform import BatchCreateRequest, MusicHistoryBatch, MusicHistoryListResponse, MusicPlanPreflightRequest, MusicPlanPreflightResponse, YouTubeConnectionResponse
+from shared.models.platform import BatchCreateRequest, MusicHistoryBatch, MusicHistoryListResponse, MusicPlanPreflightRequest, MusicPlanPreflightResponse, SunoBlocklistRuntimeResponse, YouTubeConnectionResponse
 from shared.services.app_logger import log_error, log_info
 from shared.services.file_service import ensure_directory, open_path
 from shared.lib.page_account_scope import account_cache_mismatch, cached_user_id
@@ -62,7 +63,6 @@ from shared.themes.deep_blue import (
     PANEL_SCROLL_RIGHT_GUTTER_PX,
     SUBTITLE_LABEL_ID,
 )
-from shared.widgets.flash_status_footer import FlashStatusFooter
 from shared.widgets.settings_ui import make_panel_scroll_area
 from shared.workers.data_workers import (
     BatchRetryFailuresWorker,
@@ -107,6 +107,7 @@ class MusicView(QWidget):
         self._retry_worker: (
             RetrySongDraftWorker | RetrySongSunoWorker | BatchRetryFailuresWorker | None
         ) = None
+        self._pending_history_retry_kind = ""
         self._profiles: list[ProfileResponse] = []
         self._youtube_connections: list[YouTubeConnectionResponse] = []
         self._history = MusicHistoryListResponse()
@@ -133,6 +134,7 @@ class MusicView(QWidget):
         self._loaded_user_id: str | None = None
         self._history_filters = HistoryFiltersState()
         self._language_options: list[tuple[str, str]] = [("en", "English")]
+        self._suno_blocklist: object | None = None
         self._generation_preflight: MusicPlanPreflightResponse | None = None
         self._description_options_by_id: dict[str, object] = {}
         self._save_timer = QTimer(self)
@@ -200,7 +202,8 @@ class MusicView(QWidget):
         self._song_card.copy_both_requested.connect(
             lambda: self._copy_text("\n\n".join(part for part in (self._song_card.title(), self._song_card.lyrics()) if part))
         )
-        self._song_card.field_changed.connect(self._on_polish_strength_changed)
+        self._song_card.field_changed.connect(self._on_song_fields_changed)
+        self._song_card.suno_auto_fixed.connect(self._on_suno_auto_fixed)
         self._primary_card.toggled.connect(lambda profile_id: self._toggle_profile("primary", profile_id))
         self._secondary_card.toggled.connect(lambda profile_id: self._toggle_profile("secondary", profile_id))
         self._automation_card.generate_requested.connect(self._create_batches)
@@ -234,8 +237,6 @@ class MusicView(QWidget):
         self._scroll.setWidget(container)
         page_layout.addWidget(self._scroll, stretch=1)
 
-        self._status_footer = FlashStatusFooter(self)
-
     def _flash_status(
         self,
         message: str,
@@ -243,7 +244,9 @@ class MusicView(QWidget):
         tone: str = "neutral",
         duration_ms: int = 5000,
     ) -> None:
-        self._status_footer.flash(message, tone=tone, duration_ms=duration_ms)
+        from shared.services.action_feedback import notify_action
+
+        notify_action(message, tone=tone, duration_ms=duration_ms)
 
     def _restore_local_workspace_prefs(self) -> None:
         prefs = MusicLocalStore().read_workspace_prefs()
@@ -368,6 +371,21 @@ class MusicView(QWidget):
                 song_count=self._music_settings.song_count,
             )
             self._apply_description_language_mode(self._selected_description_id)
+
+    def _apply_suno_blocklist(self, payload: object | None) -> None:
+        if isinstance(payload, SunoBlocklistRuntimeResponse):
+            blocklist = payload
+        else:
+            blocklist = None
+        self._suno_blocklist = blocklist
+        if blocklist is None:
+            self._song_card.set_platform_suno_blocklist()
+            return
+        self._song_card.set_platform_suno_blocklist(
+            replacements=dict(blocklist.replacements),
+            block_terms=list(blocklist.block_terms),
+            warn_terms=list(blocklist.warn_terms),
+        )
 
     def refresh_data(self) -> None:
         if account_cache_mismatch(self._loaded_user_id, self._cache):
@@ -535,6 +553,7 @@ class MusicView(QWidget):
             self._cache.apply_settings_workspace(youtube_connections=self._youtube_connections)
         self._history = payload.history
         self._language_options = list(payload.language_options or [("en", "English")])
+        self._apply_suno_blocklist(payload.suno_blocklist)
         self._settings_raw = read_settings_dict(payload.settings)
         self._operation_costs = map_operation_costs(payload.operation_costs.items)
         if self._cache is not None:
@@ -715,9 +734,29 @@ class MusicView(QWidget):
             youtube_connections=self._youtube_connections,
         )
 
-    def _on_polish_strength_changed(self) -> None:
+    def _on_song_fields_changed(self) -> None:
         self._music_settings.polish_strength = self._song_card.polish_strength()
+        self._composer.lyrics = self._song_card.lyrics()
+        self._composer.title = self._song_card.title()
+        self._composer.album = self._song_card.album()
+        self._update_polish_button_state()
         self._schedule_settings_save()
+
+    def _on_suno_auto_fixed(self, summary: str) -> None:
+        self._flash_status(f"Suno auto-fix applied: {summary}", tone="success")
+
+    def _update_polish_button_state(self) -> None:
+        lyrics = self._song_card.lyrics().strip()
+        has_primary = bool(self._primary_profiles())
+        if not lyrics:
+            self._song_card.set_polish_enabled(False, reason="Add lyrics before rewriting.")
+        elif not has_primary:
+            self._song_card.set_polish_enabled(
+                False,
+                reason="Select at least one primary channel (uses 1 draft from your allowance).",
+            )
+        else:
+            self._song_card.set_polish_enabled(True)
 
     def _apply_description_language_mode(self, description_id: str) -> None:
         if len(self._language_options) < 2:
@@ -811,10 +850,10 @@ class MusicView(QWidget):
         self._song_card.set_effect_values(effects["valence"], effects["danceability"], effects["instrumentalness"])
         lyric_cost = self._operation_costs.get("lyric")
         draft_label = format_button_credit_label("Draft", lyric_cost.credits_per_operation if lyric_cost else None)
-        polish_label = format_button_credit_label("Polish", lyric_cost.credits_per_operation if lyric_cost else None)
+        polish_label = format_draft_slot_button_label("Rewrite lyrics")
         self._song_card.set_button_labels(draft_label, polish_label)
         self._song_card.set_draft_enabled(not invalid and bool(self._composer.description.strip()))
-        self._song_card.set_polish_enabled(bool(self._song_card.lyrics().strip()))
+        self._update_polish_button_state()
 
         image_source_mode = normalize_image_source_mode(self._settings_raw.get("imageSourceMode"))
         breakdown = get_music_plan_cost_breakdown(
@@ -900,7 +939,7 @@ class MusicView(QWidget):
         costs = "  ".join(
             [
                 format_operation_cost_label(self._operation_costs.get("lyric"), "Draft"),
-                format_operation_cost_label(self._operation_costs.get("lyric"), "Polish"),
+                "Rewrite lyrics: 1 draft",
                 "Revisions: 0 credits",
                 format_operation_cost_label(self._operation_costs.get("music"), "Suno"),
                 format_operation_cost_label(self._operation_costs.get("background_image"), "Image"),
@@ -966,8 +1005,13 @@ class MusicView(QWidget):
         self.refresh_history()
 
     def _retry_history_draft(self, row: HistoryRow) -> None:
-        if row.song is None or self._retry_worker is not None and self._retry_worker.isRunning():
+        if row.song is None:
+            self._flash_status("Select a song before retrying the draft.", tone="warning")
             return
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status("A retry is already in progress.", tone="warning")
+            return
+        self._pending_history_retry_kind = "draft"
         worker = RetrySongDraftWorker(self._api, row.batch.batch_id, row.song.song_id, self)
         worker.succeeded.connect(self._on_history_retry_succeeded)
         worker.failed.connect(self._show_workspace_error)
@@ -977,10 +1021,48 @@ class MusicView(QWidget):
         self._flash_status(f"Retrying draft for song #{row.song.batch_index + 1}…")
         worker.start()
 
-    def _retry_history_suno(self, row: HistoryRow) -> None:
-        if row.song is None or self._retry_worker is not None and self._retry_worker.isRunning():
+    def _find_history_row(self, song_id: str | None) -> HistoryRow | None:
+        if not song_id:
+            return None
+        for batch in self._history.batches:
+            for song in batch.songs:
+                if song.song_id == song_id:
+                    return HistoryRow(batch=batch, song=song)
+        return None
+
+    @staticmethod
+    def _song_eligible_for_suno_retry(song: object) -> bool:
+        from shared.lib.music_status import is_song_suno_retry_eligible
+
+        return is_song_suno_retry_eligible(
+            str(getattr(song, "status", "") or ""),
+            str(getattr(song, "suno_status", "") or "") or None,
+        )
+
+    def _retry_history_suno(
+        self,
+        row: HistoryRow,
+        *,
+        title: str | None = None,
+        album: str | None = None,
+        lyrics: str | None = None,
+    ) -> None:
+        if row.song is None:
+            self._flash_status("Select a song before retrying Suno.", tone="warning")
             return
-        worker = RetrySongSunoWorker(self._api, row.batch.batch_id, row.song.song_id, self)
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status("A retry is already in progress.", tone="warning")
+            return
+        self._pending_history_retry_kind = "suno"
+        worker = RetrySongSunoWorker(
+            self._api,
+            row.batch.batch_id,
+            row.song.song_id,
+            title=title,
+            album=album,
+            lyrics=lyrics,
+            parent=self,
+        )
         worker.succeeded.connect(self._on_history_retry_succeeded)
         worker.failed.connect(self._show_workspace_error)
         worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
@@ -1079,7 +1161,24 @@ class MusicView(QWidget):
             self._latest_batch_summary = "Retry in progress"
             self._last_batch_status_key = None
             self._batch_timer.start()
-            self._flash_status("Draft retry queued.", tone="success")
+            track_no = None
+            if payload.song_id and self._history.rows:
+                for entry in self._history.rows:
+                    if entry.song and entry.song.song_id == payload.song_id:
+                        track_no = int(entry.song.batch_index) + 1
+                        break
+            track_label = f" #{track_no}" if track_no else ""
+            if self._pending_history_retry_kind == "suno":
+                self._flash_status(
+                    f"Suno retry queued for song{track_label}. Watching batch progress…",
+                    tone="success",
+                )
+            else:
+                self._flash_status(
+                    f"Draft retry queued for song{track_label}. Watching batch progress…",
+                    tone="success",
+                )
+        self._pending_history_retry_kind = ""
         self._error_banner.hide()
         self.refresh_data()
 
@@ -1104,6 +1203,34 @@ class MusicView(QWidget):
             lyrics=self._composer.lyrics,
             polish_strength=self._music_settings.polish_strength,
         )
+        failure_message = str(row.song.suno_error_message or "").strip()
+        learned_terms: list[str] = []
+        if failure_message:
+            from shared.lib.suno_lyrics_sanitize import (
+                extract_blocked_terms_from_suno_error,
+                format_suno_replacements,
+                infer_suno_replacements_from_learned_terms,
+            )
+
+            learned_terms = extract_blocked_terms_from_suno_error(failure_message)
+            self._song_card.set_learned_suno_terms(learned_terms)
+            inferred = infer_suno_replacements_from_learned_terms(
+                title=self._composer.title,
+                lyrics=self._composer.lyrics,
+                learned_terms=learned_terms,
+            )
+            summary = format_suno_replacements(inferred)
+            if summary:
+                self._flash_status(
+                    f"Suno-safe wording on draft: {summary}",
+                    tone="success",
+                )
+        else:
+            self._song_card.set_learned_suno_terms([])
+        song_status = str(row.song.status or "").strip().lower()
+        suno_status = str(row.song.suno_status or "").strip().lower()
+        if failure_message and (song_status == "suno_failed" or suno_status == "suno_failed"):
+            self._flash_status(f"Suno failed: {failure_message}", tone="warning", duration_ms=8000)
         self._refresh_presentation()
 
     def _generate_draft(self) -> None:
@@ -1169,8 +1296,84 @@ class MusicView(QWidget):
         log_info(f'Draft ready: "{self._composer.title}"', category="music")
         self._flash_status(f'Draft ready: "{self._composer.title}"', tone="success")
 
+    def _resolve_polish_suno_row(self) -> HistoryRow | None:
+        """Pick the history song that should receive a post-polish Suno retry."""
+        row = self._find_history_row(self._selected_history_song_id)
+        if row is not None and row.song is not None and self._song_eligible_for_suno_retry(row.song):
+            return row
+
+        if not self._history.batches:
+            return None
+
+        newest = self._history.batches[0]
+        eligible = [
+            HistoryRow(batch=newest, song=song)
+            for song in newest.songs
+            if self._song_eligible_for_suno_retry(song)
+        ]
+        if not eligible:
+            return None
+
+        title = (self._composer.title or self._song_card.title() or "").strip().casefold()
+        if title:
+            titled = [
+                candidate
+                for candidate in eligible
+                if (candidate.song.title or "").strip().casefold() == title
+            ]
+            if len(titled) == 1:
+                return titled[0]
+
+        if len(eligible) == 1:
+            return eligible[0]
+        return None
+
     def _polish_lyrics(self) -> None:
-        self._show_workspace_error("Lyrics polish is temporarily disabled.")
+        if self._polish_worker is not None and self._polish_worker.isRunning():
+            return
+        lyrics = self._song_card.lyrics().strip()
+        if not lyrics:
+            self._show_workspace_error("There are no lyrics to rewrite.")
+            return
+        primary = self._primary_profiles()
+        if not primary:
+            self._show_workspace_error("Select at least one primary channel before rewriting lyrics.")
+            return
+        payload = {
+            "lyrics": lyrics,
+            "strength": self._song_card.polish_strength(),
+            "channel_profile_id": primary[0].id,
+            "description": self._composer.description.strip() or None,
+            "structure": self._composer.structure.strip() or None,
+        }
+        row = self._resolve_polish_suno_row()
+        if row is not None and row.song is not None:
+            payload["batch_id"] = row.batch.batch_id
+            payload["song_id"] = row.song.song_id
+            payload["title"] = (self._composer.title or row.song.title or "").strip() or None
+            payload["album"] = (self._composer.album or row.song.album or "").strip() or None
+            if not payload["description"] and row.song.description_name:
+                payload["description"] = row.song.description_name.strip()
+            if not payload["structure"] and row.song.structure_name:
+                payload["structure"] = row.song.structure_name.strip()
+            self._selected_history_song_id = row.song.song_id
+            log_info(
+                f"Rewriting lyrics with Suno auto-retry for song #{row.song.batch_index + 1}…",
+                category="music",
+            )
+        else:
+            log_info(
+                "Rewriting lyrics only — no eligible failed song linked for Suno auto-retry.",
+                category="music",
+            )
+        worker = PolishLyricsWorker(self._api, payload, parent=self)
+        worker.succeeded.connect(self._on_polish_complete)
+        worker.failed.connect(self._show_workspace_error)
+        worker.finished.connect(lambda: setattr(self, "_polish_worker", None))
+        self._polish_worker = worker
+        log_info("Rewriting lyrics…", category="music")
+        self._flash_status("Rewriting lyrics…")
+        worker.start()
 
     def _on_polish_complete(self, payload: object) -> None:
         from shared.models.platform import LyricsPolishResponse
@@ -1185,7 +1388,65 @@ class MusicView(QWidget):
             lyrics=self._composer.lyrics,
             polish_strength=self._music_settings.polish_strength,
         )
-        self._flash_status("Lyrics polished.", tone="success")
+        row = self._resolve_polish_suno_row()
+        if payload.suno_queued and row is not None and row.song is not None:
+            log_info(
+                f"Rewrite complete — Suno queued for song #{row.song.batch_index + 1}.",
+                category="music",
+            )
+            self._flash_status(
+                f"Lyrics rewritten. Suno queued for song #{row.song.batch_index + 1}.",
+                tone="success",
+            )
+            self.refresh_data()
+            return
+
+        self._flash_status("Lyrics rewritten.", tone="success")
+
+        if row is None or row.song is None:
+            log_info(
+                "Rewrite complete without Suno — click a failed song in History, then rewrite again.",
+                category="music",
+            )
+            self._flash_status(
+                "Lyrics rewritten. Click a failed song in History, then rewrite again to auto-retry Suno.",
+                tone="warning",
+                duration_ms=10000,
+            )
+            return
+        if not self._song_eligible_for_suno_retry(row.song):
+            song_status = str(row.song.status or "").strip().lower()
+            suno_status = str(row.song.suno_status or "").strip().lower()
+            log_info(
+                f"Rewrite complete without Suno — song status={song_status or 'unknown'} "
+                f"suno_status={suno_status or 'unknown'}.",
+                category="music",
+            )
+            self._flash_status(
+                "Lyrics rewritten. This song is not eligible for Suno retry yet.",
+                tone="warning",
+                duration_ms=8000,
+            )
+            return
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status(
+                "Lyrics rewritten. Suno retry already in progress.",
+                tone="warning",
+            )
+            return
+        log_info(
+            f"Rewrite complete — submitting Suno for song #{row.song.batch_index + 1}…",
+            category="music",
+        )
+        self._flash_status(
+            f"Lyrics rewritten. Submitting Suno for song #{row.song.batch_index + 1}…",
+        )
+        self._retry_history_suno(
+            row,
+            title=self._composer.title,
+            album=self._composer.album,
+            lyrics=self._composer.lyrics,
+        )
 
     def _schedule_preflight_check(self) -> None:
         self._preflight_timer.start()
@@ -1345,7 +1606,18 @@ class MusicView(QWidget):
         if not isinstance(payload, BatchStatusResponse):
             return
         status_message = self._format_batch_status_message(payload)
-        tone = "success" if payload.status == "completed" else "error" if payload.status == "failed" else "warning" if payload.status == "partial" else "neutral"
+        if payload.status == "failed" and payload.drafts_completed > 0:
+            tone = "warning"
+        else:
+            tone = (
+                "success"
+                if payload.status == "completed"
+                else "error"
+                if payload.status == "failed"
+                else "warning"
+                if payload.status == "partial"
+                else "neutral"
+            )
 
         status_key = (
             payload.status,
@@ -1380,6 +1652,7 @@ class MusicView(QWidget):
 
     def _show_workspace_error(self, message: str) -> None:
         if message:
+            self._pending_history_retry_kind = ""
             self._flash_status(message, tone="error", duration_ms=7000)
             log_error(message, category="music")
 

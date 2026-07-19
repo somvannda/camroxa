@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 
 from platform_api.exceptions import DuplicateError, ForbiddenError, NotFoundError, ValidationError
 from platform_api.models.domain import MusicDescription, MusicStructure
+from platform_api.services.music_genre_catalog_service import MusicGenreCatalogService
+from platform_api.services.music_genre_utils import normalize_description_genres
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +99,17 @@ class PromptService:
         prompt_repo: Repository for prompt persistence operations.
     """
 
-    def __init__(self, prompt_repo: PromptRepositoryPort) -> None:
+    def __init__(self, prompt_repo: PromptRepositoryPort, pool: Any | None = None) -> None:
         self._prompt_repo = prompt_repo
+        self._genre_catalog = MusicGenreCatalogService(pool) if pool is not None else None
+
+    async def _resolve_description_genres(self, genres: list[str] | None) -> list[str]:
+        if self._genre_catalog is None:
+            return normalize_description_genres(genres or [])
+        try:
+            return await self._genre_catalog.resolve_genre_names(genres)
+        except ValueError as exc:
+            raise ValidationError(str(exc), details={"field": "genres"}) from exc
 
     # -----------------------------------------------------------------------
     # Validation helpers
@@ -226,6 +237,7 @@ class PromptService:
         match_key: str | None = None,
         vocal_profile: dict[str, Any] | None = None,
         is_active: bool = True,
+        genres: list[str] | None = None,
     ) -> MusicDescription:
         """Create a new song description.
 
@@ -255,6 +267,15 @@ class PromptService:
                 str(exc),
                 details={"field": "vocal_profile"},
             ) from exc
+        try:
+            validated_genres = await self._resolve_description_genres(genres or [])
+        except ValidationError:
+            raise
+        except ValueError as exc:
+            raise ValidationError(
+                str(exc),
+                details={"field": "genres"},
+            ) from exc
 
         # Check uniqueness
         existing = await self._prompt_repo.get_description_by_name(name, user_id=None)
@@ -268,6 +289,7 @@ class PromptService:
             id=uuid4(),
             name=name,
             content=content,
+            genres=validated_genres,
             match_key=match_key.strip() if match_key else None,
             vocal_profile=validated_profile,
             is_active=bool(is_active),
@@ -330,6 +352,16 @@ class PromptService:
                 raise ValidationError(
                     str(exc),
                     details={"field": "vocal_profile"},
+                ) from exc
+        if "genres" in fields:
+            try:
+                fields["genres"] = await self._resolve_description_genres(fields["genres"] or [])
+            except ValidationError:
+                raise
+            except ValueError as exc:
+                raise ValidationError(
+                    str(exc),
+                    details={"field": "genres"},
                 ) from exc
 
         updated = await self._prompt_repo.update_description(desc_id, **fields)

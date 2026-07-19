@@ -2,11 +2,12 @@
 
 import { Play } from 'lucide-react';
 import { usePlayer } from '@/components/player-provider';
-import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
+import { formatDuration, formatGenreLabels, type StreamTrack } from '@/lib/streaming-api';
 
 export default function TrackRow({ track }: { track: StreamTrack }) {
   const { playTrack } = usePlayer();
   const duration = formatDuration(track.duration_seconds);
+  const genreLabel = formatGenreLabels(track);
 
   return (
     <button
@@ -24,7 +25,7 @@ export default function TrackRow({ track }: { track: StreamTrack }) {
         <p className="truncate font-medium">{track.title}</p>
         <p className="truncate text-sm text-[hsl(var(--muted-foreground))]">
           {track.artist_name ?? 'Camxora Artist'} · {track.album_name ?? 'Album'}
-          {track.genre ? ` · ${track.genre}` : ''}
+          {genreLabel ? ` · ${genreLabel}` : ''}
           {track.variant ? ` · ${track.variant.toUpperCase()}` : ''}
         </p>
       </div>

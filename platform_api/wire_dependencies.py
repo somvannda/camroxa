@@ -211,6 +211,13 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[image_jobs_get_batch_svc] = real_batch_service
     app.dependency_overrides[music_downloads_get_batch_svc] = real_batch_service
 
+    # --- music_history.py ---
+    from platform_api.routers.music_history import (
+        _get_batch_service as music_history_get_batch_svc,
+    )
+
+    app.dependency_overrides[music_history_get_batch_svc] = real_batch_service
+
     # --- callbacks.py ---
     from platform_api.routers.callbacks import (
         _get_suno_task_repo as cb_get_task_repo,
@@ -318,6 +325,8 @@ def wire_all_dependencies(app: FastAPI) -> None:
     # --- generation.py ---
     from platform_api.routers.generation import (
         _get_generation_service as gen_get_svc,
+        _get_enforcement_service as gen_get_enforcement,
+        _get_batch_service as gen_get_batch_svc,
         _get_task_lookup as gen_get_task,
         _get_ai_routing_service as gen_get_ai_routing,
         _get_prompt_service as gen_get_prompt_svc,
@@ -326,6 +335,9 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     async def real_generation_service():
         return get_generation_service()
+
+    async def real_enforcement_service():
+        return get_usage_enforcement_service()
 
     async def real_task_lookup():
         return get_batch_repo()
@@ -347,7 +359,12 @@ def wire_all_dependencies(app: FastAPI) -> None:
     async def real_gen_profile_service():
         return get_profile_service()
 
+    async def real_gen_batch_service():
+        return get_batch_service()
+
     app.dependency_overrides[gen_get_svc] = real_generation_service
+    app.dependency_overrides[gen_get_enforcement] = real_enforcement_service
+    app.dependency_overrides[gen_get_batch_svc] = real_gen_batch_service
     app.dependency_overrides[gen_get_task] = real_task_lookup
     app.dependency_overrides[gen_get_ai_routing] = real_gen_ai_routing_service
     app.dependency_overrides[gen_get_prompt_svc] = real_gen_prompt_service

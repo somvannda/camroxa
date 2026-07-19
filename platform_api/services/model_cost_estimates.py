@@ -21,6 +21,7 @@ from platform_api.ai.types import (
     Operation,
     ServiceType,
 )
+from platform_api.services.local_platform_operations import build_local_model_cost_rows
 
 _PER_1K_RE = re.compile(r"~\$([0-9.]+)\s*/\s*1k", re.IGNORECASE)
 _PER_IMG_RE = re.compile(r"~\$([0-9.]+)\s*/\s*img", re.IGNORECASE)
@@ -57,7 +58,7 @@ def _service_type_for_operation(operation_type: str) -> ServiceType | None:
 
 
 def _suno_music_operations() -> list[str]:
-    return ["music", "music_generation"]
+    return ["music"]
 
 
 def operation_types_for_model(ai_service: str, sub_model: str) -> list[str]:
@@ -196,6 +197,7 @@ def build_seed_cost_rows() -> list[dict[str, Any]]:
                     "source": "registry",
                 }
             )
+    rows.extend(build_local_model_cost_rows())
     return rows
 
 

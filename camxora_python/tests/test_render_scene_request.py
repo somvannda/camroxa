@@ -111,6 +111,30 @@ def test_build_pipeline_render_scene_request_uses_saved_draft_source() -> None:
     assert scene.output.fps == 24
 
 
+def test_pipeline_render_scene_ignores_template_preview_background() -> None:
+    """E2E automation must use batch AI background, never template previewBackground."""
+    scene = build_pipeline_render_scene_request(
+        template={
+            "style": "straight-bars",
+            "previewBackground": "D:/templates/design-only-bg.png",
+            "logoPath": "D:/logo.png",
+        },
+        workspace={
+            "templateId": "tpl-1",
+            "outputResolution": "1920x1080",
+            "logoPath": "D:/logo.png",
+            "backgroundPath": "D:/templates/design-only-bg.png",
+        },
+        run_dir="D:/runs/batch-01",
+        background_path="D:/runs/batch-01/ai-background-16x9.png",
+        branch="long",
+        batch_id="batch-01",
+        role="primary",
+    )
+    assert scene.assets.background_path == "D:/runs/batch-01/ai-background-16x9.png"
+    assert scene.draft.get("backgroundPath") in ("", None)
+
+
 def test_build_pipeline_render_scene_request_uses_reel_resolution() -> None:
     scene = build_pipeline_render_scene_request(
         template={"style": "straight-bars"},

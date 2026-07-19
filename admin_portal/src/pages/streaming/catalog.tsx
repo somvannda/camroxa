@@ -250,10 +250,23 @@ export default function StreamingCatalogPage() {
                               className="text-left text-slate-300 hover:text-slate-100"
                               onClick={() => {
                                 setEditingGenreTrackId(track.id);
-                                setGenreDraft(track.genre ?? '');
+                                setGenreDraft(track.genre ?? track.genres?.[0] ?? '');
                               }}
                             >
-                              {track.genre ?? '—'}
+                              {track.genres?.length ? (
+                                <span className="flex flex-wrap gap-1">
+                                  {track.genres.map((item) => (
+                                    <span
+                                      key={item}
+                                      className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-200"
+                                    >
+                                      {item}
+                                    </span>
+                                  ))}
+                                </span>
+                              ) : (
+                                (track.genre ?? '—')
+                              )}
                             </button>
                           )}
                         </TableCell>
@@ -395,7 +408,22 @@ export default function StreamingCatalogPage() {
                         </TableCell>
                         <TableCell className="font-medium text-slate-100">{album.album_name}</TableCell>
                         <TableCell>{album.artist_name ?? '—'}</TableCell>
-                        <TableCell>{album.genre ?? '—'}</TableCell>
+                        <TableCell>
+                          {album.genres?.length ? (
+                            <span className="flex flex-wrap gap-1">
+                              {album.genres.map((item) => (
+                                <span
+                                  key={item}
+                                  className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-200"
+                                >
+                                  {item}
+                                </span>
+                              ))}
+                            </span>
+                          ) : (
+                            (album.genre ?? '—')
+                          )}
+                        </TableCell>
                         <TableCell>
                           {album.published_track_count} published / {album.track_count} total
                         </TableCell>

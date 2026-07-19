@@ -30,14 +30,19 @@ NOW = datetime(2024, 1, 15, 12, 0, 0)
 def _make_description(
     name: str = "Epic Rock",
     content: str = "High energy rock with driving guitars",
+    genres: list[str] | None = None,
     match_key: str | None = None,
+    vocal_profile: dict | None = None,
     is_active: bool = True,
+    **_ignored: object,
 ) -> MusicDescription:
     return MusicDescription(
         id=uuid4(),
         name=name,
         content=content,
+        genres=genres or [],
         match_key=match_key,
+        vocal_profile=vocal_profile,
         is_active=is_active,
         created_at=NOW,
         updated_at=NOW,
@@ -222,6 +227,17 @@ class TestCreateDescription:
         response = await client.post(
             "/api/v1/prompts/descriptions",
             json={"name": "Valid Name", "content": ""},
+        )
+        assert response.status_code == 422
+
+    async def test_create_rejects_invalid_genres(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/api/v1/prompts/descriptions",
+            json={
+                "name": "Eurodance",
+                "content": "Production notes",
+                "genres": ["x" * 61],
+            },
         )
         assert response.status_code == 422
 

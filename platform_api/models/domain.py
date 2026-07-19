@@ -180,6 +180,7 @@ class MusicDescription:
     id: UUID = field(default_factory=uuid4)
     name: str = ""
     content: str = ""
+    genres: list[str] = field(default_factory=list)
     match_key: str | None = None
     vocal_profile: dict[str, Any] | None = None
     is_active: bool = True
@@ -271,6 +272,7 @@ class SunoTask:
     output_dir_alt: str | None = None
     downloaded_ok: bool = False
     downloaded_alt: bool = False
+    error_message: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 

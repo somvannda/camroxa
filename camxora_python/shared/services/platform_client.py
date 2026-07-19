@@ -191,9 +191,10 @@ def _log_api_error(method: str, path: str, err: PlatformApiError) -> None:
         if "youtube sign-in expired" in lowered or "reconnect from the youtube tab" in lowered:
             return
     try:
-        from shared.services.app_logger import log_error
+        from shared.services.app_logger import log_error, sanitize_error_body
 
-        log_error(f"{method.upper()} {path} → {err.status}: {err}", category="api")
+        detail = sanitize_error_body(str(err), status=err.status)
+        log_error(f"{method.upper()} {path} → {err.status}: {detail}", category="api")
     except Exception:
         return
 
@@ -253,11 +254,18 @@ def _normalize_error_value(value: Any) -> str | None:
 
 def _friendly_status_message(status: int, server_message: str | None) -> str:
     """Prefer server text; fall back to clear status-based copy (never raw 'Request failed (N)')."""
-    text = (server_message or "").strip()
+    from shared.services.app_logger import sanitize_error_body
+
+    text = sanitize_error_body((server_message or "").strip(), status=status)
+    if text.startswith("[omitted HTML/gateway error body"):
+        text = ""
     # Normalize common auth wording for login UX.
     if text.lower() in {"invalid credentials.", "invalid credentials"}:
         return "Incorrect email or password."
     if text:
+        # Keep UI messages short — long dumps are rarely useful to end users.
+        if len(text) > 280:
+            text = text[:277].rstrip() + "…"
         return text
 
     defaults = {

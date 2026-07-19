@@ -25,6 +25,21 @@ _DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
     "Accept": "audio/mpeg,audio/*,*/*;q=0.8",
 }
+_INVALID_URL_LITERALS = frozenset({"none", "null", "undefined", "n/a", "nil"})
+
+
+def normalize_http_download_url(url: str | None) -> str:
+    """Return a usable http(s) download URL or empty string."""
+    text = str(url or "").strip()
+    if not text or text.lower() in _INVALID_URL_LITERALS:
+        return ""
+    if text.startswith(("http://", "https://")):
+        return text
+    return ""
+
+
+def is_http_download_url(url: str | None) -> bool:
+    return bool(normalize_http_download_url(url))
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +60,7 @@ def build_download_url_candidates(*urls: str | None) -> list[str]:
     seen: set[str] = set()
     candidates: list[str] = []
     for raw in urls:
-        url = str(raw or "").strip()
+        url = normalize_http_download_url(raw)
         if not url or url in seen:
             continue
         seen.add(url)
@@ -55,10 +70,10 @@ def build_download_url_candidates(*urls: str | None) -> list[str]:
 
 def urls_from_generate_poll(result: SunoGeneratePollResult) -> SunoTaskDownloadUrls:
     return SunoTaskDownloadUrls(
-        audio_url_ok=str(result.audio_url_ok or "").strip(),
-        audio_url_alt=str(result.audio_url_alt or "").strip(),
-        image_url_ok=str(result.image_url_ok or "").strip(),
-        image_url_alt=str(result.image_url_alt or "").strip(),
+        audio_url_ok=normalize_http_download_url(result.audio_url_ok),
+        audio_url_alt=normalize_http_download_url(result.audio_url_alt),
+        image_url_ok=normalize_http_download_url(result.image_url_ok),
+        image_url_alt=normalize_http_download_url(result.image_url_alt),
         duration_ok=result.duration_ok,
         duration_alt=result.duration_alt,
         tags_ok=str(result.tags_ok or "").strip(),
@@ -110,9 +125,9 @@ async def refresh_suno_task_download_urls(
 async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
     """Poll Suno record-info using the DB pool (works outside FastAPI lifespan)."""
     import os
+    from types import SimpleNamespace
 
     from platform_api.clients.suno_client import SunoClient, SunoGeneratePollResult, parse_suno_generate_poll
-    from platform_api.config import Settings
     from platform_api.services.key_encryption import KeyEncryption
 
     task_id = str(external_task_id or "").strip()
@@ -137,10 +152,11 @@ async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
 
     encryption = KeyEncryption(master_key=master_key)
     api_key = encryption.decrypt(bytes(row["encrypted_key_value"]))
-    try:
-        settings = Settings(_env_file=())
-    except Exception:
-        settings = Settings()
+    settings = SimpleNamespace(
+        suno_api_base_url=os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://apibox.erweima.ai").strip(),
+        suno_callback_base_url=os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip(),
+        suno_timeout_seconds=int(os.environ.get("PLATFORM_SUNO_TIMEOUT_SECONDS", "30") or 30),
+    )
     client = SunoClient(settings)
     response = await client.check_status(task_id, api_key=api_key)
     return parse_suno_generate_poll(response)
@@ -248,6 +264,8 @@ __all__ = [
     "download_suno_mp3_bytes",
     "extract_callback_download_urls",
     "extract_callback_task_id",
+    "is_http_download_url",
+    "normalize_http_download_url",
     "refresh_suno_task_download_urls",
     "urls_from_record_info_payload",
     "variant_url_candidates",

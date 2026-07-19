@@ -20,6 +20,7 @@ from platform_api.services.streaming_config_service import (
 )
 from platform_api.services.streaming_metadata_sync_service import StreamingMetadataSyncService
 from platform_api.services.streaming_upload_service import StreamingUploadService
+from platform_api.services.music_genre_utils import parse_genre_list
 
 router = APIRouter(prefix="/admin/streaming", tags=["streaming-admin"])
 
@@ -64,6 +65,7 @@ class CatalogTrackResponse(BaseModel):
     publish_status: str
     storage_key: str
     genre: str | None = None
+    genres: list[str] = Field(default_factory=list)
     duration_seconds: float | None = None
     cover_url: str | None = None
     has_lyrics: bool = False
@@ -83,6 +85,7 @@ class CatalogAlbumResponse(BaseModel):
     published_track_count: int
     publish_status: str
     genre: str | None = None
+    genres: list[str] = Field(default_factory=list)
     cover_url: str | None = None
     cover_storage_key: str | None = None
     created_at: str | None = None
@@ -114,6 +117,7 @@ class MetadataSyncResponse(BaseModel):
     ok: bool
     track_id: str | None = None
     genre: str | None = None
+    genres: list[str] | None = None
     duration_seconds: float | None = None
     has_lyrics: bool | None = None
     refreshed_from_suno: bool | None = None
@@ -137,9 +141,46 @@ def _track_cover_key(row: dict) -> str | None:
     return row.get("cover_storage_key") or row.get("album_cover_storage_key")
 
 
-def _track_genre(row: dict) -> str | None:
+def _track_genres(row: dict) -> list[str]:
+    genres = parse_genre_list(row.get("genres"))
+    if genres:
+        return genres
     genre = str(row.get("genre") or row.get("album_genre") or "").strip()
-    return genre or None
+    return [genre] if genre else []
+
+
+def _track_genre(row: dict) -> str | None:
+    genres = _track_genres(row)
+    return genres[0] if genres else None
+
+
+def _album_genres(row: dict) -> list[str]:
+    genres = parse_genre_list(row.get("genres"))
+    if genres:
+        return genres
+    genre = str(row.get("genre") or "").strip()
+    return [genre] if genre else None
+
+
+def _build_catalog_track_response(row: dict, *, cover_url: str | None) -> CatalogTrackResponse:
+    genres = _track_genres(row)
+    lyrics = str(row.get("lyrics") or "").strip()
+    return CatalogTrackResponse(
+        id=str(row["id"]),
+        title=str(row["title"]),
+        album_name=str(row["album_name"]),
+        artist_name=row.get("artist_name"),
+        variant=str(row["variant"]),
+        publish_status=str(row["publish_status"]),
+        storage_key=str(row["storage_key"]),
+        genre=genres[0] if genres else None,
+        genres=genres,
+        duration_seconds=row.get("duration_seconds"),
+        cover_url=cover_url,
+        has_lyrics=bool(lyrics),
+        suno_image_url=row.get("suno_image_url"),
+        created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+    )
 
 
 @router.get("/config", response_model=StreamingStorageConfigResponse)
@@ -191,24 +232,7 @@ async def list_streaming_catalog(ctx: AdminDep, limit: int = 100) -> CatalogList
     items: list[CatalogTrackResponse] = []
     for row in rows:
         cover_url = await _admin_cover_url(pool, _track_cover_key(row))
-        lyrics = str(row.get("lyrics") or "").strip()
-        items.append(
-            CatalogTrackResponse(
-                id=str(row["id"]),
-                title=str(row["title"]),
-                album_name=str(row["album_name"]),
-                artist_name=row.get("artist_name"),
-                variant=str(row["variant"]),
-                publish_status=str(row["publish_status"]),
-                storage_key=str(row["storage_key"]),
-                genre=_track_genre(row),
-                duration_seconds=row.get("duration_seconds"),
-                cover_url=cover_url,
-                has_lyrics=bool(lyrics),
-                suno_image_url=row.get("suno_image_url"),
-                created_at=row["created_at"].isoformat() if row.get("created_at") else None,
-            )
-        )
+        items.append(_build_catalog_track_response(row, cover_url=cover_url))
     return CatalogListResponse(items=items)
 
 
@@ -222,6 +246,7 @@ async def list_streaming_albums(ctx: AdminDep, limit: int = 100) -> CatalogAlbum
     items: list[CatalogAlbumResponse] = []
     for row in rows:
         cover_storage_key = row.get("cover_storage_key")
+        genres = _album_genres(row)
         items.append(
             CatalogAlbumResponse(
                 id=str(row["id"]),
@@ -230,7 +255,8 @@ async def list_streaming_albums(ctx: AdminDep, limit: int = 100) -> CatalogAlbum
                 track_count=int(row.get("track_count") or 0),
                 published_track_count=int(row.get("published_track_count") or 0),
                 publish_status=str(row["publish_status"]),
-                genre=str(row.get("genre") or "").strip() or None,
+                genre=genres[0] if genres else None,
+                genres=genres,
                 cover_url=await _admin_cover_url(pool, cover_storage_key),
                 cover_storage_key=cover_storage_key,
                 created_at=row["created_at"].isoformat() if row.get("created_at") else None,
@@ -379,19 +405,4 @@ async def update_stream_track(
         raise NotFoundError("Track not found.")
 
     cover_url = await _admin_cover_url(pool, _track_cover_key(row))
-    lyrics = str(row.get("lyrics") or "").strip()
-    return CatalogTrackResponse(
-        id=str(row["id"]),
-        title=str(row["title"]),
-        album_name=str(row["album_name"]),
-        artist_name=row.get("artist_name"),
-        variant=str(row["variant"]),
-        publish_status=str(row["publish_status"]),
-        storage_key=str(row["storage_key"]),
-        genre=_track_genre(row),
-        duration_seconds=row.get("duration_seconds"),
-        cover_url=cover_url,
-        has_lyrics=bool(lyrics),
-        suno_image_url=row.get("suno_image_url"),
-        created_at=row["created_at"].isoformat() if row.get("created_at") else None,
-    )
+    return _build_catalog_track_response(row, cover_url=cover_url)

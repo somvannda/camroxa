@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 
 from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user
+from platform_api.services.batch_service import BatchService
 from platform_api.models.schemas import (
     MusicHistoryBatchResponse,
     MusicHistoryListResponse,
@@ -19,6 +20,15 @@ from platform_api.models.schemas import (
 from platform_api.services.run_directory_planner import resolve_history_output_dirs
 
 router = APIRouter(prefix="/music", tags=["music"])
+
+
+async def _get_batch_service() -> BatchService:
+    raise NotImplementedError(
+        "BatchService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
 
 
 def _utc_now() -> datetime:
@@ -44,18 +54,30 @@ def _is_schema_drift_error(error: Exception) -> bool:
             or "alt_run_dir" in message
             or "folder_name" in message
             or "youtube_upload_jobs" in message
+            or "error_message" in message
         )
     )
 
 
 @router.get("/history", response_model=MusicHistoryListResponse)
 async def list_music_history(
+    batch_service: BatchServiceDep,
     ctx: AuthContext = Depends(get_current_user),
     limit: int = Query(default=8, ge=1, le=25),
 ) -> MusicHistoryListResponse:
     """Return recent batch/song history for the authenticated user."""
     user_id = UUID(ctx.user_id)
     pool = get_db_pool()
+
+    # Reconcile in-flight Suno tasks so history reflects provider success even when
+    # webhooks were rejected or delayed (client refresh should not depend on MP3 sync).
+    try:
+        await batch_service.reconcile_pending_suno_tasks(
+            user_id=ctx.user_id,
+            limit=max(limit, 25),
+        )
+    except Exception:
+        pass
 
     try:
         batch_rows = await pool.fetch(
@@ -153,6 +175,7 @@ async def list_music_history(
                 s.created_at,
                 s.updated_at,
                 st.status AS suno_status,
+                st.error_message AS suno_error_message,
                 COALESCE(st.downloaded_ok, false) AS downloaded_ok,
                 COALESCE(st.downloaded_alt, false) AS downloaded_alt,
                 y.status AS youtube_status
@@ -161,7 +184,7 @@ async def list_music_history(
             LEFT JOIN music_descriptions d ON d.id = s.description_id
             LEFT JOIN music_structures ms ON ms.id = s.structure_id
             LEFT JOIN LATERAL (
-                SELECT status, output_dir_ok, output_dir_alt, downloaded_ok, downloaded_alt
+                SELECT status, output_dir_ok, output_dir_alt, downloaded_ok, downloaded_alt, error_message
                 FROM suno_tasks st
                 WHERE st.song_id = s.id
                 ORDER BY st.updated_at DESC, st.created_at DESC
@@ -206,6 +229,7 @@ async def list_music_history(
                 s.created_at,
                 s.updated_at,
                 st.status AS suno_status,
+                st.error_message AS suno_error_message,
                 COALESCE(st.downloaded_ok, false) AS downloaded_ok,
                 COALESCE(st.downloaded_alt, false) AS downloaded_alt,
                 NULL::text AS youtube_status
@@ -214,7 +238,7 @@ async def list_music_history(
             LEFT JOIN music_descriptions d ON d.id = s.description_id
             LEFT JOIN music_structures ms ON ms.id = s.structure_id
             LEFT JOIN LATERAL (
-                SELECT status, downloaded_ok, downloaded_alt
+                SELECT status, downloaded_ok, downloaded_alt, error_message
                 FROM suno_tasks st
                 WHERE st.song_id = s.id
                 ORDER BY st.updated_at DESC, st.created_at DESC
@@ -288,6 +312,9 @@ async def list_music_history(
                 output_dir_alt=output_dir_alt,
                 status=str(row["status"] or "pending"),
                 suno_status=str(row["suno_status"]) if row["suno_status"] else None,
+                suno_error_message=str(_row_value(row, "suno_error_message")).strip()
+                if _row_value(row, "suno_error_message")
+                else None,
                 youtube_status=str(row["youtube_status"]) if row["youtube_status"] else None,
                 downloaded_ok=bool(row["downloaded_ok"]),
                 downloaded_alt=bool(row["downloaded_alt"]),

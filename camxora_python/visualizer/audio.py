@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import librosa
 import numpy as np
@@ -11,6 +12,31 @@ class AudioInfo:
     sample_rate: int
     duration_sec: float
     frames: int
+
+
+def probe_audio_duration_sec(path: str) -> float:
+    """Fast duration probe without building the full STFT analyzer.
+
+    Used so first-play transport (seek bar / total time) works before FFT analysis
+    finishes. Prefer soundfile metadata; fall back to librosa path duration.
+    """
+    text = str(path or "").strip()
+    if not text or not Path(text).is_file():
+        return 0.0
+    try:
+        import soundfile as sf
+
+        info = sf.info(text)
+        duration = float(getattr(info, "duration", 0.0) or 0.0)
+        if duration > 0:
+            return duration
+    except Exception:
+        pass
+    try:
+        duration = float(librosa.get_duration(path=text))
+        return max(0.0, duration)
+    except Exception:
+        return 0.0
 
 
 class AudioAnalyzer:

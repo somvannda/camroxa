@@ -22,6 +22,7 @@ from platform_api.models.schemas import (
     MusicPlanPreflightRequest,
     MusicPlanPreflightResponse,
     SongRetryResponse,
+    SongSunoRetryRequest,
 )
 from platform_api.services.batch_service import BatchService
 
@@ -184,12 +185,19 @@ async def _retry_song_suno_with_logging(
     batch_id: str,
     song_id: str,
     user_id: str,
+    *,
+    title: str | None = None,
+    album: str | None = None,
+    lyrics: str | None = None,
 ) -> None:
     try:
         await batch_service.retry_song_suno(
             batch_id=UUID(batch_id),
             song_id=UUID(song_id),
             user_id=user_id,
+            title=title,
+            album=album,
+            lyrics=lyrics,
         )
     except Exception:
         logger.exception(
@@ -284,14 +292,18 @@ async def retry_song_suno(
     ctx: CurrentUserDep,
     batch_service: BatchServiceDep,
     background_tasks: BackgroundTasks,
+    request: SongSunoRetryRequest | None = None,
 ) -> SongRetryResponse:
     """Queue Suno submission for draft_ready or suno_failed songs."""
     await enforce_rate_limit(http_request, ctx.user_id)
 
+    payload = request or SongSunoRetryRequest()
     await batch_service.validate_song_suno_retry(
         batch_id=UUID(batch_id),
         song_id=UUID(song_id),
         user_id=ctx.user_id,
+        lyrics_override=payload.lyrics,
+        title_override=payload.title,
     )
     background_tasks.add_task(
         _retry_song_suno_with_logging,
@@ -299,6 +311,9 @@ async def retry_song_suno(
         batch_id,
         song_id,
         ctx.user_id,
+        title=payload.title,
+        album=payload.album,
+        lyrics=payload.lyrics,
     )
     return SongRetryResponse(
         batch_id=batch_id,

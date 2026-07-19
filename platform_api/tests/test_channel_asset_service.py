@@ -5,6 +5,7 @@ from platform_api.services.channel_asset_service import (
     build_batch_channel_assets,
     compute_long_ready,
     compute_reel_ready,
+    merge_channel_asset_paths,
     resolve_channel_asset_paths,
 )
 
@@ -66,3 +67,21 @@ def test_build_batch_channel_assets_keeps_partial_readiness(tmp_path) -> None:
     assert asset.thumbnail_16x9_path == str((run_dir / "thumbnail-16x9.png").resolve())
     assert asset.background_9x16_path is None
     assert asset.thumbnail_9x16_path is None
+
+
+def test_merge_channel_asset_paths_ignores_missing_persisted_paths(tmp_path) -> None:
+    run_dir = tmp_path / "Primary" / "2026-06-29"
+    run_dir.mkdir(parents=True)
+    (run_dir / "background-16x9.png").write_bytes(b"bg16")
+
+    merged = merge_channel_asset_paths(
+        str(run_dir),
+        {
+            "background_16x9_path": str((run_dir / "background-16x9.png").resolve()),
+            "thumbnail_16x9_path": str(tmp_path / "missing-thumbnail-16x9.png"),
+        },
+    )
+
+    assert merged["background_16x9_path"] == str((run_dir / "background-16x9.png").resolve())
+    assert merged["thumbnail_16x9_path"] is None
+    assert compute_long_ready(merged) is False

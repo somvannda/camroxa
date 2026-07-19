@@ -4,7 +4,6 @@ import {
   Image as ImageIcon,
   Music,
   ShieldCheck,
-  Sparkles,
   Video,
   Workflow,
 } from "lucide-react";
@@ -14,25 +13,26 @@ import { ContentPageShell } from "@/components/marketing/content-page-shell";
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "Explore CAMXORA features across music generation, image creation, video workflow, production control, and export-ready desktop workflows.",
+    "Explore Camxora desktop features: music batches, image generation, video templates, progress tracking, and YouTube publishing.",
 };
 
 export default function FeaturesPage() {
   return (
     <ContentPageShell
       eyebrow="Features"
-      title="Core surfaces of the CAMXORA desktop studio."
-      description="Each feature maps to a real part of the workflow, so the website explains the same product structure users see when they move into production."
+      title="What you can do inside the Camxora desktop app."
+      description="Every feature maps to a real workspace in Camxora — from song generation and image prep to video templates, exports, and channel uploads."
       aside={
         <div className="space-y-5">
           <div>
-            <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Product focus</div>
+            <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Built for creators</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              Desktop workflow, not generic AI marketing.
+              A full studio, not a single AI demo.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
-            CAMXORA is strongest when the public story matches the real studio surfaces.
+            Manage multiple channel profiles, run batches, and keep music-to-video production moving
+            without leaving the app.
           </p>
         </div>
       }
@@ -41,45 +41,45 @@ export default function FeaturesPage() {
         {[
           {
             icon: Music,
-            title: "Music generation",
+            title: "Music workspace",
             detail:
-              "Generate and refine tracks with repeatable control.",
-            bullets: ["Prompt-led output", "Iteration-ready workflow"],
+              "Plan batches by date and channel pair, generate drafts, polish lyrics, and automate Suno when you are ready.",
+            bullets: ["Multi-day batch planning", "Draft, polish, and Suno automation"],
           },
           {
             icon: ImageIcon,
-            title: "Image workflow",
+            title: "Image workspace",
             detail:
-              "Create channel artwork and supporting visual assets.",
-            bullets: ["Artwork support", "Profile alignment"],
+              "Create backgrounds and thumbnails that stay consistent with each song and profile.",
+            bullets: ["Background & thumbnail jobs", "Profile-aligned visuals"],
           },
           {
             icon: Video,
-            title: "Video output",
+            title: "Video studio",
             detail:
-              "Handle preview, render, and export from one flow.",
-            bullets: ["Preview and render", "Export-ready delivery"],
+              "Build reusable templates with spectrum, particles, logo, and text — then preview and export MP4s.",
+            bullets: ["Live GPU preview", "Template save & marketplace packs"],
           },
           {
             icon: Workflow,
-            title: "Workflow control",
+            title: "Progress & workflow",
             detail:
-              "Keep runs, statuses, and longer sessions organized.",
-            bullets: ["Progress visibility", "Session structure"],
+              "Follow every run from music through upload, with stage filters and recovery actions when something stalls.",
+            bullets: ["Stage-by-stage monitoring", "Retry and recovery tools"],
           },
           {
             icon: Boxes,
-            title: "Channel-scale system",
+            title: "Channel profiles",
             detail:
-              "Work at channel level instead of isolated one-off tasks.",
-            bullets: ["Multi-profile setup", "Organized outputs"],
+              "Run multiple channels under one account, each with its own templates, YouTube connection, and output paths.",
+            bullets: ["Per-channel templates", "YouTube connect & publish defaults"],
           },
           {
             icon: ShieldCheck,
-            title: "Product layer",
+            title: "Account & credits",
             detail:
-              "Website, pricing, account, and desktop feel like one system.",
-            bullets: ["Live pricing alignment", "Cleaner entry flow"],
+              "Sign in once, use plan credits for generation, and keep settings synced between the portal and desktop.",
+            bullets: ["Plan-based access", "Desktop preferences & readiness checks"],
           },
         ].map(({ icon: Icon, title, detail, bullets }) => (
           <div

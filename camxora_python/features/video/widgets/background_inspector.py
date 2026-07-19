@@ -92,6 +92,12 @@ class BackgroundInspector(QWidget):
         select_host = QWidget()
         select_host.setLayout(select_row)
         background_section.add_widget(select_host)
+        background_section.add_widget(
+            note_box(
+                "Saved with the template for Video-page preview only. "
+                "Music → Video automation always uses the AI-generated batch background, not this image."
+            )
+        )
 
         self._details_host = QWidget()
         details_layout = QVBoxLayout(self._details_host)

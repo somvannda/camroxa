@@ -17,6 +17,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_PATHS = ("platform_api", "admin_portal", "music_web", "docs")
 
 
+def safe_print(text: str) -> None:
+    """Print deploy output without failing on Windows cp1252 consoles."""
+    if not text:
+        return
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        sys.stdout.buffer.write(text.encode("utf-8", errors="replace") + b"\n")
+
+
 def build_feature_tarball() -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="camxora-feature-deploy-"))
     archive = tmp / "camxora-feature.tar.gz"
@@ -100,9 +110,9 @@ echo FEATURE_DEPLOY_DONE
     _, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=900)
     out = stdout.read().decode("utf-8", errors="replace")
     err = stderr.read().decode("utf-8", errors="replace")
-    print(out)
+    safe_print(out)
     if err.strip():
-        print(err)
+        safe_print(err)
     code = stdout.channel.recv_exit_status()
     client.close()
     return code

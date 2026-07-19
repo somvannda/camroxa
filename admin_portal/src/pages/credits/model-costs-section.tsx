@@ -11,6 +11,8 @@ import {
   useDeleteModelCost,
   useSeedModelCosts,
   useGeneratePricing,
+  useRegistryPricingGaps,
+  useSeedRegistryPricing,
   useGlobalCreditValue,
 } from '@/hooks/use-credits';
 import type { ModelCost } from '@/types/models';
@@ -84,9 +86,12 @@ export function ModelCostsSection() {
   const deleteCost = useDeleteModelCost();
   const seedCosts = useSeedModelCosts();
   const generatePricing = useGeneratePricing();
+  const { data: registryGaps } = useRegistryPricingGaps();
+  const seedRegistryPricing = useSeedRegistryPricing();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [registryPricingOpen, setRegistryPricingOpen] = useState(false);
   const [editing, setEditing] = useState<ModelCost | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ModelCost | null>(null);
   const [marginPercent, setMarginPercent] = useState('10');
@@ -195,6 +200,9 @@ export function ModelCostsSection() {
         seeded_count?: number;
         skipped_existing_count?: number;
         pruned_count?: number;
+        local_pricing_created_count?: number;
+        local_pricing_updated_count?: number;
+        local_pricing_skipped_count?: number;
       };
       toast({
         title: overwrite
@@ -202,10 +210,16 @@ export function ModelCostsSection() {
           : `Seeded ${result.seeded_count} model cost(s)`,
         description: [
           result.skipped_existing_count
-            ? `${result.skipped_existing_count} already existed`
+            ? `${result.skipped_existing_count} cost row(s) already existed`
             : null,
-          result.pruned_count ? `${result.pruned_count} stale row(s) removed` : null,
-          overwrite ? 'Registry estimates overwrote matching rows.' : null,
+          result.pruned_count ? `${result.pruned_count} stale cost row(s) removed` : null,
+          result.local_pricing_created_count
+            ? `${result.local_pricing_created_count} local pricing row(s) added (video/merge)`
+            : null,
+          result.local_pricing_skipped_count
+            ? `${result.local_pricing_skipped_count} local pricing row(s) kept as-is`
+            : null,
+          overwrite ? 'Registry estimates overwrote matching cost rows.' : null,
         ]
           .filter(Boolean)
           .join(' · ') || undefined,
@@ -249,6 +263,37 @@ export function ModelCostsSection() {
     }
   }
 
+  async function handleSeedRegistryPricing() {
+    const margin = Number(marginPercent);
+    if (!Number.isFinite(margin) || margin < 0 || margin >= 100) {
+      toast({ variant: 'destructive', title: 'Enter a margin between 0 and 99' });
+      return;
+    }
+    if (!gcvData?.global_credit_value) {
+      toast({
+        variant: 'destructive',
+        title: 'Set Global Credit Value first',
+      });
+      return;
+    }
+    try {
+      const result = await seedRegistryPricing.mutateAsync({
+        margin_percent: margin,
+      }) as {
+        created_count?: number;
+        skipped_existing_count?: number;
+        missing_cost_count?: number;
+      };
+      toast({
+        title: 'Registry pricing drafts created',
+        description: `Added ${result.created_count ?? 0} needs-review row(s). Skipped ${result.skipped_existing_count ?? 0} existing. Missing costs: ${result.missing_cost_count ?? 0}.`,
+      });
+      setRegistryPricingOpen(false);
+    } catch {
+      toast({ variant: 'destructive', title: 'Failed to seed registry pricing' });
+    }
+  }
+
   return (
     <>
       <Card>
@@ -266,9 +311,13 @@ export function ModelCostsSection() {
             <Button variant="outline" size="sm" onClick={() => handleSeed(true)} disabled={seedCosts.isPending}>
               Refresh estimates
             </Button>
+            <Button variant="outline" size="sm" onClick={() => setRegistryPricingOpen(true)}>
+              Seed missing pricing
+              {(registryGaps?.gap_count ?? 0) > 0 ? ` (${registryGaps?.gap_count})` : ''}
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setGenerateOpen(true)}>
               <Sparkles className="mr-1 h-4 w-4" />
-              Auto-generate pricing
+              Auto-generate (routing)
             </Button>
             <Button size="sm" onClick={openCreate}>
               <Plus className="mr-1 h-4 w-4" />
@@ -450,17 +499,69 @@ export function ModelCostsSection() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+      <Dialog open={registryPricingOpen} onOpenChange={setRegistryPricingOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Auto-generate pricing</DialogTitle>
+            <DialogTitle>Seed missing pricing from registry</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Creates draft pricing rows for every provider/model/operation required by AI routing.
-              Cost credits and pricing credits are computed from model USD costs, GCV
-              {gcvData?.global_credit_value ? ` ($${gcvData.global_credit_value}/cr)` : ' (not set)'},
-              and your target profit margin on revenue.
+              Compares the model registry catalog to your credit pricing table. Only
+              <strong className="text-slate-300"> missing </strong>
+              rows are created, always marked
+              <strong className="text-slate-300"> needs review</strong>. Existing
+              pricing is never changed.
+            </p>
+            {(registryGaps?.gap_count ?? 0) > 0 ? (
+              <div className="rounded-md border border-amber-800/60 bg-amber-950/20 p-3 text-sm">
+                <p className="font-medium text-amber-200">
+                  {registryGaps?.gap_count} registry pair(s) not priced yet
+                </p>
+                <p className="mt-1 text-muted-foreground text-xs">
+                  e.g. new models like gpt-5.6-luna after registry seed
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No registry gaps — pricing already covers the catalog.
+              </p>
+            )}
+            <div className="space-y-2">
+              <Label>Target profit margin (% of revenue)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={99}
+                step={0.5}
+                value={marginPercent}
+                onChange={(e) => setMarginPercent(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleSeedRegistryPricing}
+              disabled={seedRegistryPricing.isPending || !(registryGaps?.gap_count ?? 0)}
+            >
+              {seedRegistryPricing.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+              Create draft pricing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Auto-generate pricing (routing)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Creates draft pricing for provider/model/operation pairs required by
+              <strong className="text-slate-300"> AI routing</strong> (primary +
+              fallback chains). Use
+              <strong className="text-slate-300"> Seed missing pricing</strong> for
+              the full registry catalog instead.
             </p>
             <div className="rounded-md border border-slate-700 bg-slate-900/40 p-3 text-sm text-slate-300">
               <p className="font-medium text-slate-200">What happens to existing pricing?</p>

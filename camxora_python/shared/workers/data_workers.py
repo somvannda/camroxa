@@ -105,8 +105,12 @@ class WorkflowLoadWorker(QThread):
     def run(self) -> None:
         try:
             response = self._api.list_progress(self._filters)
+            from shared.lib.progress_local_overlay import apply_local_progress_overlays
+
+            rows = apply_local_progress_overlays(list(response.rows))
+            response = response.model_copy(update={"rows": rows})
             workspace = get_video_workspace_service().get_workspace_state()
-            runtime_by_key = build_runtime_presentation_map(response.rows, workspace)
+            runtime_by_key = build_runtime_presentation_map(rows, workspace)
             self.succeeded.emit(WorkflowLoadResult(response=response, runtime_by_key=runtime_by_key))
         except PlatformApiError as exc:
             self.failed.emit(str(exc))
@@ -208,11 +212,14 @@ class MusicDownloadSyncWorker(QThread):
                         ensured_dirs.add(output_dir)
                     from pathlib import Path
 
-                    target_file = Path(str(target.target_path))
+                    from shared.services.file_service import sanitize_local_path
+
+                    target_file = Path(sanitize_local_path(str(target.target_path)))
+                    target_path = str(target_file)
                     if target_file.is_file() and target_file.stat().st_size > 0:
                         downloaded = True
                     else:
-                        downloaded = self._download_file(target.download_url, target.target_path)
+                        downloaded = self._download_file(target.download_url, target_path)
                     if not downloaded:
                         continue
                     current = sync_map.get(item.task_id) or MusicDownloadSyncItem(task_id=item.task_id)
@@ -246,7 +253,9 @@ class MusicDownloadSyncWorker(QThread):
 
         import httpx
 
-        path = Path(target_path)
+        from shared.services.file_service import sanitize_local_path
+
+        path = Path(sanitize_local_path(target_path))
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with httpx.Client(timeout=60.0, follow_redirects=True) as client:
@@ -308,6 +317,9 @@ class VideoPipelineOrchestrationWorker(QThread):
                 workspace = workspace.model_copy(update={"export": active.export})
 
             rows = list(progress.rows)
+            from shared.lib.progress_local_overlay import apply_local_progress_overlays
+
+            rows = apply_local_progress_overlays(rows)
             inspections = build_video_run_inspection_map(rows)
             runtime_by_key = build_runtime_presentation_map(rows, workspace)
             self.succeeded.emit(
@@ -408,6 +420,7 @@ class MusicWorkspacePayload:
     operation_costs: object
     language_options: list
     youtube_connections: list
+    suno_blocklist: object | None = None
 
 
 class MusicWorkspaceWorker(QThread):
@@ -434,6 +447,7 @@ class MusicWorkspaceWorker(QThread):
                 future_costs = pool.submit(self._fetch_operation_costs)
                 future_languages = pool.submit(self._fetch_language_options)
                 future_youtube = pool.submit(self._api.list_youtube_connections)
+                future_blocklist = pool.submit(self._fetch_suno_blocklist)
                 profiles = future_profiles.result()
                 settings = future_settings.result()
                 description_options = future_descriptions.result()
@@ -442,6 +456,7 @@ class MusicWorkspaceWorker(QThread):
                 operation_costs = future_costs.result()
                 language_options = future_languages.result()
                 youtube_connections = future_youtube.result()
+                suno_blocklist = future_blocklist.result()
             self.succeeded.emit(
                 MusicWorkspacePayload(
                     profiles=profiles,
@@ -452,6 +467,7 @@ class MusicWorkspaceWorker(QThread):
                     operation_costs=operation_costs,
                     language_options=language_options,
                     youtube_connections=youtube_connections,
+                    suno_blocklist=suno_blocklist,
                 )
             )
         except PlatformApiError as exc:
@@ -485,6 +501,20 @@ class MusicWorkspaceWorker(QThread):
                 exc,
             )
         return list(DEFAULT_LANGUAGE_OPTIONS)
+
+    def _fetch_suno_blocklist(self):
+        from shared.models.platform import SunoBlocklistRuntimeResponse
+
+        try:
+            return self._api.get_suno_blocklist()
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to load Suno blocklist from API: %s",
+                exc,
+            )
+            return SunoBlocklistRuntimeResponse()
 
 
 class MusicLanguagesWorker(QThread):
@@ -649,6 +679,12 @@ class PolishLyricsWorker(QThread):
                     lyrics=str(self._payload["lyrics"]),
                     strength=int(self._payload["strength"]),
                     channel_profile_id=self._payload.get("channel_profile_id"),
+                    batch_id=self._payload.get("batch_id"),
+                    song_id=self._payload.get("song_id"),
+                    title=self._payload.get("title"),
+                    album=self._payload.get("album"),
+                    description=self._payload.get("description"),
+                    structure=self._payload.get("structure"),
                 )
             )
             self.succeeded.emit(result)
@@ -751,15 +787,36 @@ class RetrySongSunoWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, api: PlatformApi, batch_id: str, song_id: str, parent=None) -> None:
+    def __init__(
+        self,
+        api: PlatformApi,
+        batch_id: str,
+        song_id: str,
+        *,
+        title: str | None = None,
+        album: str | None = None,
+        lyrics: str | None = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._api = api
         self._batch_id = batch_id
         self._song_id = song_id
+        self._title = title
+        self._album = album
+        self._lyrics = lyrics
 
     def run(self) -> None:
         try:
-            self.succeeded.emit(self._api.retry_song_suno(self._batch_id, self._song_id))
+            self.succeeded.emit(
+                self._api.retry_song_suno(
+                    self._batch_id,
+                    self._song_id,
+                    title=self._title,
+                    album=self._album,
+                    lyrics=self._lyrics,
+                )
+            )
         except PlatformApiError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:
@@ -1087,25 +1144,11 @@ class ImagePreviewLoadWorker(QThread):
             self.failed.emit(str(exc) or "Failed to load image previews.")
 
     def _load_image_bytes(self, path: str | None, job_id: str | None) -> bytes | None:
-        from pathlib import Path
-
+        from shared.lib.image_output_utils import ensure_image_output_local
         from shared.services.file_service import read_file_bytes
 
-        local_bytes = read_file_bytes(path or "")
-        if local_bytes:
-            return local_bytes
-        if self._api is None or not job_id:
-            return None
-        target_path = str(path or "").strip()
-        if not target_path:
-            return None
-        image_bytes = self._api.get_image_job_output(job_id)
-        if not image_bytes:
-            return None
-        target = Path(target_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(image_bytes)
-        return image_bytes
+        local_path = ensure_image_output_local(self._api, path, job_id)
+        return read_file_bytes(local_path) if local_path else None
 
 
 class ImageOutputSyncWorker(QThread):
@@ -1120,29 +1163,57 @@ class ImageOutputSyncWorker(QThread):
         self._limit = limit
 
     def run(self) -> None:
-        from pathlib import Path
-
-        from shared.services.file_service import read_file_bytes
+        from shared.lib.image_output_utils import ensure_image_output_local
+        from shared.services.file_service import read_file_bytes, sanitize_local_path
 
         try:
             response = self._api.list_image_jobs(status=["success"], limit=self._limit)
             synced = 0
             for job in response.items:
-                target_path = str(job.output_image_path or "").strip()
+                target_path = sanitize_local_path(str(job.output_image_path or "").strip())
                 if not target_path or read_file_bytes(target_path):
                     continue
-                image_bytes = self._api.get_image_job_output(job.id)
-                if not image_bytes:
-                    continue
-                target = Path(target_path)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(image_bytes)
-                synced += 1
+                if ensure_image_output_local(self._api, job.output_image_path, job.id):
+                    synced += 1
             self.succeeded.emit(synced)
         except PlatformApiError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Image output sync failed.")
+
+
+class ImageOpenWorker(QThread):
+    """Ensure an image output exists locally, then open it in the system viewer."""
+
+    succeeded = Signal(str)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        path: str,
+        job_id: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._path = path
+        self._job_id = job_id
+
+    def run(self) -> None:
+        from shared.lib.image_output_utils import ensure_image_output_local
+
+        try:
+            local_path = ensure_image_output_local(self._api, self._path, self._job_id)
+            if not local_path:
+                self.failed.emit("Image file is not available yet.")
+                return
+            self.succeeded.emit(local_path)
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to open image file.")
 
 
 @dataclass(frozen=True, slots=True)

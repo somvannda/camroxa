@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { AxiosError } from 'axios';
 import { Edit3, Loader2, Plus, RefreshCcw, Trash2, Upload } from 'lucide-react';
 
 import {
@@ -17,6 +18,11 @@ import type {
   ImageSamplePackUpdateRequest,
 } from '@/types/image-sample-packs';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+
+function getImportErrorMessage(error: unknown, fallback: string): string {
+  const axiosError = error as AxiosError<{ detail?: string; error?: { message?: string } }>;
+  return axiosError.response?.data?.error?.message ?? axiosError.response?.data?.detail ?? fallback;
+}
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -235,8 +241,12 @@ export default function ImageSamplePacksPage() {
         setForm(createEmptyForm());
         setImportUrl('');
         setUploadTab('zip');
-      } catch {
-        toast({ title: 'URL import failed (max 100 MB)', variant: 'destructive' });
+      } catch (error) {
+        toast({
+          title: 'URL import failed',
+          description: getImportErrorMessage(error, 'Check the link, sharing settings, and 1 GB URL import limit.'),
+          variant: 'destructive',
+        });
       }
       return;
     }
@@ -551,7 +561,7 @@ export default function ImageSamplePacksPage() {
           <DialogHeader>
             <DialogTitle>Upload sample pack</DialogTitle>
             <DialogDescription>
-              Upload a ZIP to VPS storage or import from Google Drive / direct URL (max 100 MB for URL import).
+              Upload a ZIP to VPS storage or import from Google Drive / direct URL (up to 1 GB for URL import).
             </DialogDescription>
           </DialogHeader>
           <Tabs value={uploadTab} onValueChange={(value) => setUploadTab(value as 'zip' | 'url')}>

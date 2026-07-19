@@ -43,7 +43,11 @@ def build_applied_effect_pack_draft_state(
 ) -> dict[str, Any]:
     template_patch = build_template_effect_pack_apply_patch(domain, item)
     next_template = merge_records(current_template, template_patch)
-    resolved_draft = build_video_template_draft(next_template, logo_path=logo_path)
+    resolved_draft = build_video_template_draft(
+        next_template,
+        logo_path=logo_path,
+        background_path=str(current_draft.get("backgroundPath") or ""),
+    )
 
     if domain == "background":
         return {
@@ -109,7 +113,11 @@ def apply_spectrum_pack_as_preset(
     template_patch = item.get("templatePatch")
     patch = dict(template_patch) if isinstance(template_patch, dict) else {}
     next_template = merge_records(current_template, patch)
-    resolved_draft = build_video_template_draft(next_template, logo_path=logo_path)
+    resolved_draft = build_video_template_draft(
+        next_template,
+        logo_path=logo_path,
+        background_path=str(current_draft.get("backgroundPath") or ""),
+    )
     next_draft = {**current_draft, **pick_spectrum_draft_slice(resolved_draft)}
     effect_packs = current_draft.get("effectPacks")
     if isinstance(effect_packs, dict):
@@ -131,7 +139,11 @@ def apply_particle_pack_as_preset(
     template_patch = item.get("templatePatch")
     patch = dict(template_patch) if isinstance(template_patch, dict) else {}
     next_template = merge_records(current_template, patch)
-    resolved_draft = build_video_template_draft(next_template, logo_path=logo_path)
+    resolved_draft = build_video_template_draft(
+        next_template,
+        logo_path=logo_path,
+        background_path=str(current_draft.get("backgroundPath") or ""),
+    )
     next_draft = {**current_draft, **pick_particles_draft_slice(resolved_draft)}
     effect_packs = current_draft.get("effectPacks")
     if isinstance(effect_packs, dict):

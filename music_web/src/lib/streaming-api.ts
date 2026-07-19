@@ -31,6 +31,7 @@ export type StreamTrack = {
   variant?: string;
   cover_url?: string | null;
   genre?: string | null;
+  genres?: string[];
   duration_seconds?: number | null;
   lyrics?: string | null;
 };
@@ -42,6 +43,7 @@ export type StreamAlbum = {
   cover_url?: string | null;
   track_count?: number;
   genre?: string | null;
+  genres?: string[];
 };
 
 function formatDuration(seconds?: number | null): string {
@@ -53,6 +55,14 @@ function formatDuration(seconds?: number | null): string {
 }
 
 export { formatDuration };
+
+export function formatGenreLabels(track: {
+  genres?: string[] | null;
+  genre?: string | null;
+}): string {
+  if (track.genres?.length) return track.genres.join(' · ');
+  return track.genre?.trim() ?? '';
+}
 
 export type StreamGenre = {
   genre: string;

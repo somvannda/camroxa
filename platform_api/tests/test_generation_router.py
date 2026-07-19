@@ -13,7 +13,7 @@ from __future__ import annotations
 import base64
 import json
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -34,6 +34,7 @@ from platform_api.routers.callbacks import (
     _get_suno_task_repo,
 )
 from platform_api.routers.generation import (
+    _get_batch_service,
     _get_enforcement_service,
     _get_generation_service,
     _get_task_lookup,
@@ -80,6 +81,7 @@ def mock_generation_service() -> AsyncMock:
     service.submit_draft = AsyncMock(
         return_value=SongDraft(title="Test Song", album="Test Album", lyrics="[Verse]\nLyrics here")
     )
+    service.polish_lyrics_text = AsyncMock(return_value="[Verse]\nPolished lyrics here")
     service.submit_suno = AsyncMock(return_value=str(uuid4()))
     service.submit_image = AsyncMock(return_value=b"\x89PNG\r\n\x1a\nfakedata")
     service.submit_image_outcome = AsyncMock(
@@ -148,6 +150,12 @@ def mock_ai_routing_service() -> AsyncMock:
     )
     service.resolve = AsyncMock(return_value=routing)
     service.resolve_image_chain = AsyncMock(return_value=[routing])
+    text_routing = RoutingResult(
+        provider="deepseek",
+        sub_model="deepseek-chat",
+        service_type="text_generation",
+    )
+    service.resolve_text_chain = AsyncMock(return_value=[text_routing])
     return service
 
 
@@ -169,6 +177,14 @@ def mock_profile_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_batch_service() -> AsyncMock:
+    service = AsyncMock()
+    service.validate_song_suno_retry = AsyncMock(return_value=None)
+    service.retry_song_suno = AsyncMock(return_value=None)
+    return service
+
+
+@pytest.fixture
 def app(
     mock_generation_service: AsyncMock,
     mock_enforcement_service: AsyncMock,
@@ -180,6 +196,7 @@ def app(
     mock_ai_routing_service: AsyncMock,
     mock_prompt_service: AsyncMock,
     mock_profile_service: AsyncMock,
+    mock_batch_service: AsyncMock,
 ):
     """Create a test app with all dependencies overridden."""
     application = create_app()
@@ -189,6 +206,7 @@ def app(
     application.dependency_overrides[_get_ai_routing_service] = lambda: mock_ai_routing_service
     application.dependency_overrides[_get_prompt_service] = lambda: mock_prompt_service
     application.dependency_overrides[_get_profile_service] = lambda: mock_profile_service
+    application.dependency_overrides[_get_batch_service] = lambda: mock_batch_service
     application.dependency_overrides[_get_task_lookup] = lambda: mock_task_lookup
     application.dependency_overrides[_get_suno_task_repo] = lambda: mock_suno_task_repo
     application.dependency_overrides[_get_notification_port] = lambda: mock_notification
@@ -352,6 +370,116 @@ class TestGenerateDraft:
             json={"description": "Test", "structure": "[Verse]\n[Chorus]\n[Bridge]\n[Outro]"},
         )
         assert response.status_code == 402
+
+
+# ---------------------------------------------------------------------------
+# POST /generation/polish-lyrics
+# ---------------------------------------------------------------------------
+
+
+class TestPolishLyrics:
+    """Tests for POST /api/v1/generation/polish-lyrics."""
+
+    async def test_success(
+        self,
+        client: AsyncClient,
+        mock_generation_service: AsyncMock,
+        mock_enforcement_service: AsyncMock,
+    ) -> None:
+        response = await client.post(
+            "/api/v1/generation/polish-lyrics",
+            json={"lyrics": "[Verse]\nLine one", "strength": 60},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["lyrics"] == "[Verse]\nPolished lyrics here"
+        assert data["suno_queued"] is False
+        mock_enforcement_service.check_and_deduct.assert_awaited_once()
+        call = mock_enforcement_service.check_and_deduct.await_args
+        assert call.kwargs["operation_type"] == "lyric"
+        mock_generation_service.polish_lyrics_text.assert_awaited_once()
+
+    async def test_refunds_on_llm_failure(
+        self,
+        client: AsyncClient,
+        mock_generation_service: AsyncMock,
+        mock_enforcement_service: AsyncMock,
+    ) -> None:
+        mock_generation_service.polish_lyrics_text.side_effect = ExternalServiceError(
+            "Polish returned empty lyrics.",
+            is_retryable=True,
+        )
+        response = await client.post(
+            "/api/v1/generation/polish-lyrics",
+            json={"lyrics": "[Verse]\nLine one", "strength": 40},
+        )
+        assert response.status_code in {502, 503}
+        mock_enforcement_service.refund_failed_operation.assert_awaited_once()
+        refund_call = mock_enforcement_service.refund_failed_operation.await_args
+        assert refund_call.kwargs["reason"] == "polish_failed"
+
+    async def test_uses_chat_llm_chain_not_suno(
+        self,
+        client: AsyncClient,
+        mock_generation_service: AsyncMock,
+        mock_ai_routing_service: AsyncMock,
+    ) -> None:
+        from platform_api.services.ai_routing_service import RoutingResult
+
+        mock_ai_routing_service.resolve_text_chain = AsyncMock(
+            return_value=[
+                RoutingResult(
+                    provider="suno",
+                    sub_model="lyrics",
+                    service_type="music_generation",
+                ),
+                RoutingResult(
+                    provider="deepseek",
+                    sub_model="deepseek-chat",
+                    service_type="text_generation",
+                ),
+            ]
+        )
+        response = await client.post(
+            "/api/v1/generation/polish-lyrics",
+            json={"lyrics": "[Verse]\nLine one", "strength": 60},
+        )
+        assert response.status_code == 200
+        mock_generation_service.polish_lyrics_text.assert_awaited_once()
+        call = mock_generation_service.polish_lyrics_text.await_args
+        assert call.args[3] == "deepseek"
+        assert call.kwargs["provider_chain"] == [
+            ("deepseek", "deepseek-chat"),
+        ]
+
+    async def test_queues_suno_when_history_context_provided(
+        self,
+        client: AsyncClient,
+        mock_generation_service: AsyncMock,
+        mock_batch_service: AsyncMock,
+    ) -> None:
+        batch_id = str(uuid4())
+        song_id = str(uuid4())
+        response = await client.post(
+            "/api/v1/generation/polish-lyrics",
+            json={
+                "lyrics": "[Verse]\nLine one",
+                "strength": 60,
+                "batch_id": batch_id,
+                "song_id": song_id,
+                "title": "Retry Title",
+                "album": "Retry Album",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["suno_queued"] is True
+        mock_batch_service.validate_song_suno_retry.assert_awaited_once()
+        validate_call = mock_batch_service.validate_song_suno_retry.await_args
+        assert validate_call.kwargs["batch_id"] == UUID(batch_id)
+        assert validate_call.kwargs["song_id"] == UUID(song_id)
+        assert validate_call.kwargs["lyrics_override"] == "[Verse]\nPolished lyrics here"
+        assert validate_call.kwargs["title_override"] == "Retry Title"
 
 
 # ---------------------------------------------------------------------------

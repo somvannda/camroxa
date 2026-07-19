@@ -23,6 +23,7 @@ export type StreamingCatalogTrack = {
   publish_status: string;
   storage_key: string;
   genre?: string | null;
+  genres?: string[];
   duration_seconds?: number | null;
   cover_url?: string | null;
   has_lyrics?: boolean;
@@ -38,6 +39,7 @@ export type StreamingCatalogAlbum = {
   published_track_count: number;
   publish_status: string;
   genre?: string | null;
+  genres?: string[];
   cover_url?: string | null;
   cover_storage_key?: string | null;
   created_at?: string | null;

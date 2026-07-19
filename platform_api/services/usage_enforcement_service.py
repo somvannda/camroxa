@@ -23,6 +23,7 @@ from uuid import UUID
 from platform_api.exceptions import (
     ExternalServiceError,
     InsufficientCreditsError,
+    LicenseExpiredError,
     QuotaExceededError,
 )
 from platform_api.models.domain import Plan
@@ -37,6 +38,7 @@ from platform_api.services.billing_mode_service import (
     subscription_covers_operation,
     uses_account_daily_quota,
 )
+from platform_api.services.billing_calendar import billing_today, next_billing_midnight
 from platform_api.services import credit_progress_log as credit_log
 from platform_api.services.billing_period_service import (
     ActiveSubscriptionContext,
@@ -66,7 +68,7 @@ class OperationHold:
 
 
 def _absorb_budget_key(user_id: UUID, usage_date: date | None = None) -> str:
-    day = usage_date or date.today()
+    day = usage_date or billing_today()
     return f"{_ABSORB_BUDGET_PREFIX}{user_id}:{day.isoformat()}"
 
 
@@ -270,20 +272,16 @@ class UsageEnforcementService:
         pricing_repo: CreditPricingRepositoryProtocol,
         redis: RedisProtocol,
         license_repo: Any | None = None,
+        daily_quota_bank_service: Any | None = None,
     ) -> None:
-        """Build the enforcement service.
-
-        ``license_repo`` is accepted but unused — plan_usage sync is on
-        ``PlanRepository`` (``plan_repo.sync_songs_used_for_period``).
-        """
+        """Build the enforcement service."""
         self._credit_repo = credit_repo
         self._usage_repo = usage_repo
         self._plan_repo = plan_repo
         self._pricing_repo = pricing_repo
         self._redis = redis
-        # license_repo retained as unused kwarg for older call sites.
-        if license_repo is not None:
-            pass
+        self._license_repo = license_repo
+        self._daily_quota_bank_service = daily_quota_bank_service
 
     async def check_and_deduct(
         self,
@@ -337,8 +335,9 @@ class UsageEnforcementService:
 
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
-        today = date.today()
+        today = billing_today()
         period_start = self._period_start(ctx, today)
+        wallet_daily_overage = False
 
         # Step 3–5: Daily/monthly plan quotas (all users with a plan)
         if plan is not None:
@@ -347,15 +346,26 @@ class UsageEnforcementService:
                 channel_profile_id=channel_profile_id,
                 operation_type=operation_type,
                 subscription_context=ctx,
+                wallet_bypass_credits=credits_per_operation,
+            )
+            wallet_daily_overage = await self._is_wallet_daily_overage(
+                user_id=user_id,
+                channel_profile_id=channel_profile_id,
+                operation_type=operation_type,
+                subscription_context=ctx,
             )
 
         # Subscription quota-first: no wallet charge while plan allowance remains
-        if plan is not None and await subscription_covers_operation(
-            plan=plan,
-            user_id=user_id,
-            operation_type=operation_type,
-            usage_repo=self._usage_repo,
-            period_start=period_start,
+        if (
+            plan is not None
+            and not wallet_daily_overage
+            and await subscription_covers_operation(
+                plan=plan,
+                user_id=user_id,
+                operation_type=operation_type,
+                usage_repo=self._usage_repo,
+                period_start=period_start,
+            )
         ):
             await self._increment_usage_counters(
                 user_id=user_id,
@@ -386,6 +396,7 @@ class UsageEnforcementService:
             return 0
 
         # Wallet billing (lifetime, overage, or users without subscription coverage)
+        await self._enforce_wallet_subscription_gate(user_id)
         current_balance = await self._credit_repo.get_balance(user_id)
         if current_balance < credits_per_operation:
             raise InsufficientCreditsError(
@@ -404,6 +415,7 @@ class UsageEnforcementService:
             list_credit_units=credits_per_operation,
             charged_credit_units=credits_per_operation,
             purpose=reason,
+            wallet_daily_overage=wallet_daily_overage,
         )
         deduction_success = await self._credit_repo.atomic_deduct(
             user_id, credits_per_operation, reason, metadata=usage_metadata
@@ -475,24 +487,38 @@ class UsageEnforcementService:
         await self.enforce_fail_absorb_budget(user_id)
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
-        period_start = self._period_start(ctx, date.today())
+        period_start = self._period_start(ctx, billing_today())
+        wallet_daily_overage = False
 
-        await self._enforce_plan_quotas(
-            user_id=user_id,
-            channel_profile_id=channel_profile_id,
-            operation_type=operation_type,
-            subscription_context=ctx,
-        )
+        if plan is not None:
+            await self._enforce_plan_quotas(
+                user_id=user_id,
+                channel_profile_id=channel_profile_id,
+                operation_type=operation_type,
+                subscription_context=ctx,
+                wallet_bypass_credits=min_credits,
+            )
+            wallet_daily_overage = await self._is_wallet_daily_overage(
+                user_id=user_id,
+                channel_profile_id=channel_profile_id,
+                operation_type=operation_type,
+                subscription_context=ctx,
+            )
 
-        if plan is not None and await subscription_covers_operation(
-            plan=plan,
-            user_id=user_id,
-            operation_type=operation_type,
-            usage_repo=self._usage_repo,
-            period_start=period_start,
+        if (
+            plan is not None
+            and not wallet_daily_overage
+            and await subscription_covers_operation(
+                plan=plan,
+                user_id=user_id,
+                operation_type=operation_type,
+                usage_repo=self._usage_repo,
+                period_start=period_start,
+            )
         ):
             return
 
+        await self._enforce_wallet_subscription_gate(user_id)
         current_balance = await self._credit_repo.get_balance(user_id)
         if current_balance < min_credits:
             raise InsufficientCreditsError(
@@ -571,7 +597,7 @@ class UsageEnforcementService:
         await self.enforce_fail_absorb_budget(user_id)
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
-        period_start = self._period_start(ctx, date.today())
+        period_start = self._period_start(ctx, billing_today())
 
         estimated_drafts = (
             draft_ops if draft_ops is not None else max(0, song_count * 2 + 1)
@@ -640,7 +666,7 @@ class UsageEnforcementService:
         await self.enforce_fail_absorb_budget(user_id)
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
-        today = date.today()
+        today = billing_today()
         period_start = self._period_start(ctx, today)
 
         # Lyric/title/album burn the draft pool — they do not
@@ -668,7 +694,16 @@ class UsageEnforcementService:
             )
             return
 
-        daily_limit = self._get_daily_limit(plan, quota_op)
+        daily_limit, banked_units, daily_count_before = await self._resolve_daily_bank_state(
+            user_id=user_id,
+            channel_profile_id=channel_profile_id,
+            operation_type=operation_type,
+            plan=plan,
+            today=today,
+        )
+        effective_daily = daily_limit + banked_units
+        account_daily = uses_account_daily_quota(quota_op)
+        bank_profile_id = None if account_daily else channel_profile_id
         addon_slots = int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0
         monthly_limit = effective_monthly_limit_for_operation(plan, addon_slots, quota_op)
         allow_monthly_overage = is_subscription_plan(plan)
@@ -695,19 +730,40 @@ class UsageEnforcementService:
                 operation_type=quota_op,
                 usage_date=today,
                 period_start=period_start,
-                daily_limit=daily_limit,
+                daily_limit=effective_daily,
                 monthly_limit=monthly_limit,
                 allow_monthly_overage=allow_monthly_overage,
                 count=count,
-                account_daily=uses_account_daily_quota(quota_op),
+                account_daily=account_daily,
             )
             if not reserved:
-                raise QuotaExceededError(
-                    "Generation quota exceeded.",
-                    details={
-                        "error_code": "QUOTA_EXCEEDED",
-                        "operation_type": operation_type,
-                    },
+                if (
+                    allow_monthly_overage
+                    and daily_count_before + count > effective_daily
+                ):
+                    await self._usage_repo.increment_usage(
+                        user_id=user_id,
+                        channel_profile_id=channel_profile_id,
+                        operation_type=quota_op,
+                        usage_date=today,
+                        period_start=period_start,
+                    )
+                else:
+                    raise QuotaExceededError(
+                        "Generation quota exceeded.",
+                        details={
+                            "error_code": "QUOTA_EXCEEDED",
+                            "operation_type": operation_type,
+                        },
+                    )
+            elif self._daily_quota_bank_service is not None:
+                await self._daily_quota_bank_service.consume_bank_for_usage(
+                    user_id,
+                    bank_profile_id,
+                    quota_op,
+                    daily_count_before=daily_count_before,
+                    count=count,
+                    daily_limit=daily_limit,
                 )
 
         cache_key = self._daily_cache_key(
@@ -733,7 +789,7 @@ class UsageEnforcementService:
         """Release a prior quota reservation after a failed generation."""
         if not counts_toward_product_quota(operation_type):
             return
-        today = date.today()
+        today = billing_today()
         quota_op = self._pool_operation_type(operation_type)
         decrement = getattr(self._usage_repo, "decrement_usage", None)
         if decrement is None:
@@ -964,7 +1020,7 @@ class UsageEnforcementService:
         credits_per_operation = int(pricing_entry["credits_per_operation"])
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
-        period_start = self._period_start(ctx, date.today())
+        period_start = self._period_start(ctx, billing_today())
 
         if plan is not None and await subscription_covers_operation(
             plan=plan,
@@ -988,6 +1044,14 @@ class UsageEnforcementService:
             )
             return 0
 
+        await self._enforce_wallet_subscription_gate(user_id)
+        wallet_daily_overage = await self._is_wallet_daily_overage(
+            user_id=user_id,
+            channel_profile_id=channel_profile_id,
+            operation_type=operation_type,
+            subscription_context=ctx,
+            additional_count=1,
+        )
         current_balance = await self._credit_repo.get_balance(user_id)
         if current_balance < credits_per_operation:
             raise InsufficientCreditsError(
@@ -1006,6 +1070,7 @@ class UsageEnforcementService:
             list_credit_units=credits_per_operation,
             charged_credit_units=credits_per_operation,
             purpose=reason,
+            wallet_daily_overage=wallet_daily_overage,
         )
         deduction_success = await self._credit_repo.atomic_deduct(
             user_id, credits_per_operation, reason, metadata=usage_metadata
@@ -1044,7 +1109,7 @@ class UsageEnforcementService:
 
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
-        period_start = self._period_start(ctx, date.today())
+        period_start = self._period_start(ctx, billing_today())
 
         if plan is not None and await subscription_covers_operation(
             plan=plan,
@@ -1202,8 +1267,9 @@ class UsageEnforcementService:
         credits_per_operation = int(pricing_entry["credits_per_operation"])
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
-        today = date.today()
+        today = billing_today()
         period_start = self._period_start(ctx, today)
+        wallet_daily_overage = False
 
         if plan is not None:
             await self._enforce_plan_quotas(
@@ -1211,14 +1277,25 @@ class UsageEnforcementService:
                 channel_profile_id=channel_profile_id,
                 operation_type=operation_type,
                 subscription_context=ctx,
+                wallet_bypass_credits=credits_per_operation,
+            )
+            wallet_daily_overage = await self._is_wallet_daily_overage(
+                user_id=user_id,
+                channel_profile_id=channel_profile_id,
+                operation_type=operation_type,
+                subscription_context=ctx,
             )
 
-        if plan is not None and await subscription_covers_operation(
-            plan=plan,
-            user_id=user_id,
-            operation_type=operation_type,
-            usage_repo=self._usage_repo,
-            period_start=period_start,
+        if (
+            plan is not None
+            and not wallet_daily_overage
+            and await subscription_covers_operation(
+                plan=plan,
+                user_id=user_id,
+                operation_type=operation_type,
+                usage_repo=self._usage_repo,
+                period_start=period_start,
+            )
         ):
             await self._increment_usage_counters(
                 user_id=user_id,
@@ -1242,6 +1319,7 @@ class UsageEnforcementService:
             )
             return 0
 
+        await self._enforce_wallet_subscription_gate(user_id)
         current_balance = await self._credit_repo.get_balance(user_id)
         if current_balance < credits_per_operation:
             raise InsufficientCreditsError(
@@ -1260,6 +1338,7 @@ class UsageEnforcementService:
             list_credit_units=credits_per_operation,
             charged_credit_units=credits_per_operation,
             purpose=reason,
+            wallet_daily_overage=wallet_daily_overage,
         )
         deduction_success = await self._credit_repo.atomic_deduct(
             user_id, credits_per_operation, reason, metadata=usage_metadata
@@ -1380,6 +1459,7 @@ class UsageEnforcementService:
         list_credit_units: int,
         charged_credit_units: int,
         purpose: str,
+        wallet_daily_overage: bool = False,
     ) -> dict[str, Any]:
         if counts_toward_image_quota(operation_type):
             coverage = "image_allowance"
@@ -1391,7 +1471,7 @@ class UsageEnforcementService:
             coverage = "merge_allowance"
         else:
             coverage = "song_package"
-        return {
+        metadata = {
             "category": "generation",
             "operation": operation_type,
             "operation_type": operation_type,
@@ -1403,6 +1483,9 @@ class UsageEnforcementService:
             "charged_credit_units": charged_credit_units,
             "coverage": coverage,
         }
+        if wallet_daily_overage:
+            metadata["wallet_daily_overage"] = True
+        return metadata
 
     @staticmethod
     def _pool_operation_type(operation_type: str) -> str:
@@ -1442,24 +1525,50 @@ class UsageEnforcementService:
             songs_used=songs_used,
         )
 
-    async def _enforce_plan_quotas(
+    async def _enforce_wallet_subscription_gate(self, user_id: UUID) -> None:
+        """Block wallet spend for expired monthly/yearly subscribers."""
+        repo = self._license_repo
+        if repo is None:
+            return
+        requires = getattr(repo, "requires_active_license_for_wallet", None)
+        if requires is None:
+            return
+        if not await requires(user_id):
+            return
+        has_active = getattr(repo, "has_active_license", None)
+        if has_active is None:
+            return
+        if not await has_active(str(user_id)):
+            raise LicenseExpiredError()
+
+    async def _resolve_daily_bank_state(
         self,
         *,
         user_id: UUID,
         channel_profile_id: UUID | None,
         operation_type: str,
-        subscription_context: ActiveSubscriptionContext | None = None,
-        additional_count: int = 1,
-    ) -> None:
-        ctx = subscription_context or await self._resolve_subscription_context(user_id)
-        plan = ctx.plan if ctx else None
-        if plan is None:
-            return
-
+        plan: Plan,
+        today: date,
+    ) -> tuple[int, int, int]:
+        """Return (daily_limit, banked_units, daily_count) after accrual."""
         quota_op = self._pool_operation_type(operation_type)
-        today = date.today()
         daily_limit = self._get_daily_limit(plan, quota_op)
-        if uses_account_daily_quota(quota_op):
+        account_daily = uses_account_daily_quota(quota_op)
+        bank_profile_id = None if account_daily else channel_profile_id
+
+        banked_units = 0
+        bank_service = self._daily_quota_bank_service
+        if bank_service is not None and daily_limit > 0:
+            banked_units = await bank_service.accrue_and_get_banked_units(
+                user_id,
+                bank_profile_id,
+                quota_op,
+                daily_limit=daily_limit,
+                usage_date=today,
+                account_daily=account_daily,
+            )
+
+        if account_daily:
             getter = getattr(self._usage_repo, "get_account_daily_count", None)
             if getter is not None:
                 daily_count = await getter(user_id, quota_op, today)
@@ -1471,15 +1580,89 @@ class UsageEnforcementService:
             daily_count = await self._get_daily_count_cached(
                 user_id, channel_profile_id, quota_op, today
             )
-        if daily_count + max(1, additional_count) > daily_limit:
-            reset_time = datetime(
-                today.year, today.month, today.day, tzinfo=timezone.utc
-            ) + timedelta(days=1)
+        return daily_limit, banked_units, daily_count
+
+    async def _can_wallet_daily_bypass(
+        self,
+        *,
+        user_id: UUID,
+        plan: Plan,
+        subscription_context: ActiveSubscriptionContext | None,
+        wallet_bypass_credits: int | None,
+    ) -> bool:
+        if wallet_bypass_credits is None or wallet_bypass_credits <= 0:
+            return False
+        if subscription_context is None or not is_subscription_plan(plan):
+            return False
+        balance = await self._credit_repo.get_balance(user_id)
+        return balance >= wallet_bypass_credits
+
+    async def _is_wallet_daily_overage(
+        self,
+        *,
+        user_id: UUID,
+        channel_profile_id: UUID | None,
+        operation_type: str,
+        subscription_context: ActiveSubscriptionContext | None,
+        additional_count: int = 1,
+    ) -> bool:
+        ctx = subscription_context
+        plan = ctx.plan if ctx else None
+        if plan is None or not is_subscription_plan(plan):
+            return False
+        today = billing_today()
+        daily_limit, banked_units, daily_count = await self._resolve_daily_bank_state(
+            user_id=user_id,
+            channel_profile_id=channel_profile_id,
+            operation_type=operation_type,
+            plan=plan,
+            today=today,
+        )
+        effective_daily = daily_limit + banked_units
+        return daily_count + max(1, additional_count) > effective_daily
+
+    async def _enforce_plan_quotas(
+        self,
+        *,
+        user_id: UUID,
+        channel_profile_id: UUID | None,
+        operation_type: str,
+        subscription_context: ActiveSubscriptionContext | None = None,
+        additional_count: int = 1,
+        wallet_bypass_credits: int | None = None,
+    ) -> None:
+        ctx = subscription_context or await self._resolve_subscription_context(user_id)
+        plan = ctx.plan if ctx else None
+        if plan is None:
+            return
+
+        quota_op = self._pool_operation_type(operation_type)
+        today = billing_today()
+        daily_limit, banked_units, daily_count = await self._resolve_daily_bank_state(
+            user_id=user_id,
+            channel_profile_id=channel_profile_id,
+            operation_type=operation_type,
+            plan=plan,
+            today=today,
+        )
+        effective_daily = daily_limit + banked_units
+        requested = max(1, additional_count)
+        if daily_count + requested > effective_daily:
+            if await self._can_wallet_daily_bypass(
+                user_id=user_id,
+                plan=plan,
+                subscription_context=ctx,
+                wallet_bypass_credits=wallet_bypass_credits,
+            ):
+                return
+            reset_time = next_billing_midnight(from_date=today)
             raise QuotaExceededError(
                 "Daily generation quota exceeded.",
                 details={
                     "error_code": "DAILY_QUOTA_EXCEEDED",
                     "limit": daily_limit,
+                    "banked_units": banked_units,
+                    "effective_daily_limit": effective_daily,
                     "current_usage": daily_count,
                     "requested": additional_count,
                     "reset_time": reset_time.isoformat(),

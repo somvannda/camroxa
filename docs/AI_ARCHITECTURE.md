@@ -61,6 +61,27 @@ OPENAI_TEXT_MODELS["gpt-4.1"] = ModelSpec(
 
 `PROVIDER_SUB_MODELS` and admin dropdowns update automatically.
 
+After adding a model, click **Admin → Credits → Seed from registry** (or run
+`python -m platform_api.scripts.seed_model_costs`). This **adds missing** model
+cost rows only; existing manual costs and all credit pricing are kept unless you
+use **Refresh estimates** (overwrite).
+
+Then use **Seed missing pricing** to create **needs-review** credit pricing rows
+only for registry catalog pairs not yet in the pricing table. Existing pricing
+is never overwritten. **Auto-generate (routing)** is separate — it only covers
+pairs required by AI routing assignments.
+
+### Local desktop ops (video / merge)
+
+Video export and auto-merge are not AI providers. Defaults live in
+`platform_api/services/local_platform_operations.py` and seed as:
+
+- `ai_model_costs`: `local` / `video` and `local` / `video_merge` at **$0 COGS**
+- `credit_pricing`: **3** and **10** display credits list price (COGS 0)
+
+**Seed from registry** restores missing local rows without touching your other
+pricing. Use **Auto-generate pricing** only for AI routing pairs (margin-based).
+
 ### SLAI text with quirks (e.g. MiMo)
 
 ```python

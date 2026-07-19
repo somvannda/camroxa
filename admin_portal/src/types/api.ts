@@ -135,6 +135,21 @@ export interface GeneratePricingRequest {
   mark_needs_review?: boolean;
 }
 
+export interface SeedRegistryPricingRequest {
+  margin_percent: number;
+}
+
+export interface RegistryPricingGapEntry {
+  ai_service: string;
+  operation_type: string;
+  sub_model?: string;
+}
+
+export interface RegistryPricingGapsResponse {
+  gap_count: number;
+  gaps: RegistryPricingGapEntry[];
+}
+
 export interface UpdateGlobalCreditValueRequest {
   value: number;
 }

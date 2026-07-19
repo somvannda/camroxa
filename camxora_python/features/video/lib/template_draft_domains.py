@@ -35,6 +35,7 @@ def _pick_spectrum_slice(draft: dict[str, Any]) -> dict[str, Any]:
 def _pick_background_slice(draft: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "backgroundEnabled",
+        "backgroundPath",
         "backgroundFitMode",
         "backgroundUserScale",
         "backgroundBrightness",

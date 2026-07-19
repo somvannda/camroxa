@@ -52,6 +52,7 @@ def resolve_video_pipeline_inputs(
     branch: VideoPipelineBranch,
     profile: ProfileResponse | None = None,
 ) -> ResolvedVideoPipelineInputs:
+    """Resolve pipeline assets from batch progress meta (AI backgrounds), never template preview."""
     meta = row.meta if row is not None else None
     is_long = branch == "long"
     background_path = (meta.background_16x9_path if is_long else meta.background_9x16_path) if meta else None

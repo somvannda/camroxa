@@ -24,6 +24,7 @@ from features.video.workers.pipeline_export_worker import PipelineExportRequest,
 from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, VideoPipelineMergeWorker
 from shared.models.desktop import VideoExportState, VideoWorkspaceState
 from shared.services.platform_api import PlatformApi
+from shared.services.platform_client import PlatformApiError
 from shared.services.shell_status import emit_shell_status
 from shared.services.video_workspace_service import get_video_workspace_service
 
@@ -31,7 +32,7 @@ from shared.services.video_workspace_service import get_video_workspace_service
 class PipelineAutomationService(QObject):
     """Runs pipeline export/merge without requiring the Video page to be open."""
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, api: PlatformApi, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._store = VideoLocalStore()
         self._normalizer = TemplateNormalizer()
@@ -42,7 +43,11 @@ class PipelineAutomationService(QObject):
         self._busy = False
         self._video_charge: dict[str, Any] = {}
         self._merge_charge: dict[str, Any] = {}
-        self._api = PlatformApi()
+        self._api = api
+        self._auth_blocked = False
+
+    def auth_blocked(self) -> bool:
+        return self._auth_blocked
 
     def is_busy(self) -> bool:
         return self._busy or bool(
@@ -53,6 +58,7 @@ class PipelineAutomationService(QObject):
     def start(self, candidate: AutoVideoCandidate, *, settings: dict[str, Any]) -> bool:
         if self.is_busy():
             return False
+        self._auth_blocked = False
         self._settings = dict(settings or {})
         workspace = self._store.set_template(candidate.template_id)
         if candidate.branch == "long" and candidate.output_resolution:
@@ -126,6 +132,13 @@ class PipelineAutomationService(QObject):
                 "channel_profile_id": profile_id,
                 "ref_id": f"video:{ref_base}",
             }
+        except PlatformApiError as exc:
+            if exc.status == 401:
+                self._auth_blocked = True
+                emit_shell_status("Auto-video paused: sign in to continue.", tone="warning")
+                return False
+            emit_shell_status(f"Auto-video blocked (billing): {exc}")
+            return False
         except Exception as exc:
             emit_shell_status(f"Auto-video blocked (billing): {exc}")
             return False
@@ -199,7 +212,12 @@ class PipelineAutomationService(QObject):
         if not dict(workspace.template):
             return None
         template = dict(workspace.template)
-        saved_draft = build_video_template_draft(template, logo_path=workspace.logo_path)
+        saved_draft = build_video_template_draft(
+            template,
+            logo_path=workspace.logo_path,
+            # Template previewBackground is for Video-page design only.
+            background_path="",
+        )
         layers = clone_layer_records(template.get("layers") or [])
         return self._normalizer.to_renderer_dict(
             base=template,
@@ -331,6 +349,30 @@ class PipelineAutomationService(QObject):
                 "channel_profile_id": profile_id,
                 "ref_id": f"video_merge:{ref_base}",
             }
+        except PlatformApiError as exc:
+            if exc.status == 401:
+                self._auth_blocked = True
+                message = "Export complete; auto-merge paused: sign in to continue."
+            else:
+                message = f"Export complete; auto-merge blocked (billing): {exc}"
+            self._busy = False
+            workspace = self._current_workspace()
+            if workspace is not None:
+                self._publish_workspace(
+                    workspace.model_copy(
+                        update={
+                            "export": workspace.export.model_copy(
+                                update={
+                                    "running": False,
+                                    "merge_running": False,
+                                    "current_status": message,
+                                }
+                            )
+                        }
+                    )
+                )
+            emit_shell_status(message, tone="warning" if exc.status == 401 else "neutral")
+            return
         except Exception as exc:
             self._busy = False
             workspace = self._current_workspace()

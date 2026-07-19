@@ -244,9 +244,42 @@ _SECTION_LINE_WEIGHTS: dict[str, float] = {
     "final drop": 3.5,
 }
 _DEFAULT_SECTION_LINE_WEIGHT = 2.0
+_META_TAIL_LINE_RE = re.compile(
+    r"(^---+$|^\*\*.*\*\*$|.*\b(do not repeat|end mark|remaining through|"
+    r"audio void|boat block|ok cut|cut\.|aus fade|silence shorter|"
+    r"sign\. cut|error--|only low noise|au revoir)\b)",
+    re.IGNORECASE,
+)
+
+
+def strip_trailing_lyric_meta_tail(text: str) -> str:
+    """Drop model commentary / production notes after the lyric body."""
+    clean_lines: list[str] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            clean_lines.append(line)
+            continue
+        if _META_TAIL_LINE_RE.search(stripped):
+            break
+        clean_lines.append(line)
+
+    while clean_lines and not clean_lines[-1].strip():
+        clean_lines.pop()
+    while clean_lines and len(clean_lines[-1].strip()) <= 2:
+        tail = clean_lines[-1].strip()
+        if tail.isalpha() and len(tail) == 1:
+            clean_lines.pop()
+            continue
+        break
+    return "\n".join(clean_lines).strip()
+
+
 _CORRUPT_LYRIC_LINE_RE = re.compile(
     r'(\{\s*$|^\s*\}\s*$|"lyrics"\s*:|please present|acting failure|token back|'
-    r"accord override|unintelligense|\b8token\b|normal edit yes|short reply mode)",
+    r"accord override|unintelligense|\b8token\b|normal edit yes|short reply mode|"
+    r"boat block|do not repeat dropped|end mark|remaining through|audio void|"
+    r"only low noise|ok cut|aus fade|silence shorter|au revoir)",
     re.IGNORECASE,
 )
 
@@ -859,6 +892,7 @@ def normalize_ai_structure_lyrics(lyrics: str) -> str:
     text = unwrap_embedded_lyrics_payload(str(lyrics or "").strip())
     text = strip_trailing_lyric_json_artifacts(text)
     text = strip_lyrics_preamble(text)
+    text = strip_trailing_lyric_meta_tail(text)
     if extract_lyric_section_headers(text):
         return text.strip()
 
@@ -1038,7 +1072,7 @@ def build_ai_structure_lyrics_system_prompt(
             primary=language,
             secondary=secondary_language,
             profile=parsed,
-            structure_headers=None,
+            structure_headers=[],
         )
     return base + f"- {build_monolingual_language_instruction(language)}\n"
 
@@ -1623,6 +1657,99 @@ class GenerationService:
             raise NoAvailableKeysError(provider, {})
         return wrapper
 
+    async def polish_lyrics_text(
+        self,
+        user_id: str,
+        lyrics: str,
+        strength: int,
+        provider: str,
+        model_id: str,
+        *,
+        provider_chain: list[tuple[str, str]] | None = None,
+        description: str | None = None,
+        structure: str | None = None,
+        title: str | None = None,
+        suno_failure_hint: str | None = None,
+    ) -> str:
+        """Rewrite lyrics for Suno resubmit while preserving theme and section layout."""
+        del user_id  # reserved for future audit logging
+        text = str(lyrics or "").strip()
+        if not text:
+            raise ValidationError(
+                "Lyrics are required to rewrite.",
+                details={"field": "lyrics"},
+            )
+
+        strength_clamped = max(0, min(100, int(strength)))
+        temperature = 0.55 + (strength_clamped / 100.0) * 0.4
+        rewrite_intensity = (
+            "Use clearly different wording, imagery, and phrasing from the original."
+            if strength_clamped >= 70
+            else "Change wording substantially while keeping the same story beats."
+        )
+        system_prompt = (
+            "Rewrite song lyrics for music generation. Keep the same overall theme, mood, "
+            "and story arc, but produce fresh lyrics that read like a new draft—not a light edit. "
+            f"{rewrite_intensity} "
+            "Remove artist names, producer tags, brand names, and other references that could "
+            "trigger music-platform content filters. "
+            "Never use the word 'lowlight' or other tokens that resemble producer tags. "
+            "Keep section labels like [Verse], [Chorus], [Bridge] and preserve line breaks. "
+            "Return ONLY the rewritten lyrics text."
+        )
+        failure_hint = str(suno_failure_hint or "").strip()
+        if failure_hint:
+            system_prompt += (
+                " Suno previously rejected similar lyrics. Avoid repeating the blocked wording. "
+                f"Provider rejection detail: {failure_hint}"
+            )
+        context_lines: list[str] = []
+        theme = str(description or "").strip()
+        layout = str(structure or "").strip()
+        song_title = str(title or "").strip()
+        if theme:
+            context_lines.append(f"Song theme / description: {theme}")
+        if layout:
+            context_lines.append(f"Song structure: {layout}")
+        if song_title:
+            context_lines.append(f"Working title: {song_title}")
+        if context_lines:
+            context_lines.append("")
+        context_lines.append("Original lyrics to rewrite:")
+        context_lines.append(text)
+        user_prompt = "\n".join(context_lines)
+
+        polished = await self.generate_text(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            provider=provider,
+            model=model_id,
+            temperature=temperature,
+            max_tokens=4096,
+            prefer_json=False,
+            provider_chain=provider_chain,
+        )
+        cleaned = str(polished or "").strip()
+        if not cleaned:
+            raise ExternalServiceError(
+                "Lyrics rewrite returned empty text.",
+                is_retryable=True,
+                details={"provider": provider},
+            )
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.suno_lyrics_sanitize import (
+            extract_blocked_terms_from_suno_error,
+            sanitize_lyrics_for_suno,
+        )
+
+        blocked = extract_blocked_terms_from_suno_error(failure_hint)
+        runtime_config = await get_suno_blocklist_service().get_runtime_config()
+        return sanitize_lyrics_for_suno(
+            cleaned,
+            blocked_terms=blocked,
+            runtime_config=runtime_config,
+        )
+
     # ------------------------------------------------------------------
     # submit_draft (Requirements 10.1, 10.3-10.7, 7.3, 7.6)
     # ------------------------------------------------------------------
@@ -1888,7 +2015,6 @@ class GenerationService:
                         if title_attempt >= MAX_TITLE_ATTEMPTS:
                             await refund_failed_draft(attempts_used=title_attempt)
                             raise
-                    continue
                     if not title:
                         last_failure_reason = f"Incomplete title on attempt {title_attempt}"
                         continue
@@ -1954,7 +2080,6 @@ class GenerationService:
                         if album_attempt >= MAX_ALBUM_ATTEMPTS:
                             await refund_failed_draft(attempts_used=album_attempt)
                             raise
-                    continue
                     if not album:
                         last_failure_reason = f"Incomplete album on attempt {album_attempt}"
                         continue
@@ -2288,8 +2413,11 @@ class GenerationService:
         """
         user_uuid = UUID(user_id)
         ref_id = str(uuid4())
+        from platform_api.dependencies import get_suno_blocklist_service
         from platform_api.ai.purposes.metadata_text import sanitize_metadata_name
+        from platform_api.services.suno_lyrics_sanitize import sanitize_text_for_suno
 
+        runtime_config = await get_suno_blocklist_service().get_runtime_config()
         safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
         if not safe_title:
             raise ValidationError(
@@ -2297,12 +2425,16 @@ class GenerationService:
                 details={"field": "title"},
             )
 
+        safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
+        safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
+        safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
+
         # Compute request hash for dedup (Req 11.5)
         request_hash = compute_suno_request_hash(
             model=request.model,
             title=safe_title,
-            lyrics=request.lyrics,
-            style=request.style,
+            lyrics=safe_lyrics,
+            style=safe_style,
             instrumental=request.instrumental,
         )
 
@@ -2325,7 +2457,7 @@ class GenerationService:
 
             price = await self._pricing_repo.get_price(
                 "suno",
-                "music_generation",
+                "music",
                 normalize_suno_pricing_sub_model(request.model) or None,
             )
 
@@ -2357,8 +2489,8 @@ class GenerationService:
             suno_response = await self._call_suno(
                 model=request.model,
                 title=safe_title,
-                lyrics=request.lyrics,
-                style=request.style,
+                lyrics=safe_lyrics,
+                style=safe_style,
                 instrumental=request.instrumental,
                 callback_url=None,  # Client uses configured callback URL
             )
@@ -2397,8 +2529,8 @@ class GenerationService:
             request_hash=request_hash,
             model=request.model,
             title=safe_title,
-            lyrics=request.lyrics,
-            style=request.style,
+            lyrics=safe_lyrics,
+            style=safe_style,
             instrumental=request.instrumental,
             external_task_id=external_task_id,
             status=TaskStatus.PENDING,

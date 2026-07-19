@@ -6,11 +6,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable
 
+from shared.lib.app_install import get_or_seed_install_datetime
 from shared.lib.music_readiness import SECTION_ICON_BY_NAME, ReadinessItem
 from shared.models.push_events import NOTIFICATION_MESSAGE, SOFTWARE_UPDATE_AVAILABLE
 from shared.services.push_notification_hub import PushInboxItem
-
-_SETUP_FALLBACK_TIME = datetime(2000, 1, 1).astimezone()
 
 
 @dataclass(slots=True)
@@ -32,13 +31,15 @@ def setup_notification_id(item: ReadinessItem) -> str:
 
 
 def notification_item_from_setup(item: ReadinessItem) -> NotificationItem:
+    # Setup checklist items are long-lived; stamp them with first-launch time
+    # (never the old hardcoded 2000-01-01 placeholder).
     return NotificationItem(
         id=setup_notification_id(item),
         kind="setup",
         title=item.label,
         message=item.hint or f"Open {item.section} to complete this setup step.",
         icon=SECTION_ICON_BY_NAME.get(item.section, "settings"),
-        created_at=_SETUP_FALLBACK_TIME,
+        created_at=get_or_seed_install_datetime(),
     )
 
 

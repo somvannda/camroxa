@@ -41,10 +41,18 @@ def format_operation_cost_label(item: OperationCostResponse | None, fallback: st
     return f"{fallback}: {item.credits_per_operation} credits"
 
 
-def format_button_credit_label(label: str, credits: int | None, unavailable_label: str = "Unavailable") -> str:
+def format_button_credit_label(label: str, credits: float | int | None, unavailable_label: str = "Unavailable") -> str:
     if credits is None:
         return f"{label} ({unavailable_label})"
+    if isinstance(credits, float) and credits.is_integer():
+        credits = int(credits)
     return f"{label} ({credits} Credits)"
+
+
+def format_draft_slot_button_label(label: str, slots: int = 1) -> str:
+    """Label for ops that consume plan draft allowance (e.g. 1 polish = 1 draft)."""
+    unit = "Draft" if slots == 1 else "Drafts"
+    return f"{label} ({slots} {unit})"
 
 
 def get_profile_image_job_count(profile: ProfileResponse | None) -> int:

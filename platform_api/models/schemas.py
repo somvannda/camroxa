@@ -215,6 +215,7 @@ class QuotaStatusResponse(BaseModel):
     daily_merges_remaining: int | None = None
     daily_merges_limit: int | None = None
     wallet_balance: int = 0
+    renewal_alert: str = "none"
     channels: list[ChannelDailyQuotaResponse] = Field(default_factory=list)
 
 
@@ -245,6 +246,14 @@ class SongRetryResponse(BaseModel):
     album: str | None = None
 
 
+class SongSunoRetryRequest(BaseModel):
+    """Optional draft overrides applied before Suno resubmission."""
+
+    title: str | None = None
+    album: str | None = None
+    lyrics: str | None = None
+
+
 class MusicHistorySongResponse(BaseModel):
     """Read-only song summary used by the music history surface."""
 
@@ -261,6 +270,7 @@ class MusicHistorySongResponse(BaseModel):
     output_dir_alt: str | None = None
     status: str
     suno_status: str | None = None
+    suno_error_message: str | None = None
     youtube_status: str | None = None
     downloaded_ok: bool = False
     downloaded_alt: bool = False

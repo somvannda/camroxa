@@ -28,6 +28,7 @@ def test_genre_queries_present() -> None:
     tracks_by_genre = _extract_function_sql(source, "list_published_tracks_by_genre")
 
     assert "GROUP BY genre" in list_genres
+    assert "jsonb_array_elements_text(t.genres)" in list_genres
     assert "HAVING COUNT(t.id) > 0" in albums_by_genre
     assert "publish_status = 'published'" in tracks_by_genre
 

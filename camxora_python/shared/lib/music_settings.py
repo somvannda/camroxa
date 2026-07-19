@@ -35,7 +35,7 @@ class MusicSettingsState:
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
     auto_upload_youtube: bool = False
-    polish_strength: int = 60
+    polish_strength: int = 85
 
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:

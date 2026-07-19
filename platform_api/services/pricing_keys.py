@@ -33,6 +33,29 @@ def pricing_lookup_key(
     )
 
 
+# Legacy operation keys superseded by canonical routing/pricing keys.
+_LEGACY_PRICING_OPERATION_ALIASES: dict[tuple[str, str], str] = {
+    ("suno", "music_generation"): "music",
+}
+
+
+def pricing_row_exists(
+    existing_keys: set[tuple[str, str, str]],
+    *,
+    ai_service: str,
+    operation_type: str,
+    sub_model: str | None = None,
+) -> bool:
+    """Return True when a pricing row (or canonical alias) already exists."""
+    key = pricing_lookup_key(ai_service, operation_type, sub_model)
+    if key in existing_keys:
+        return True
+    canonical = _LEGACY_PRICING_OPERATION_ALIASES.get((key[0], key[1]))
+    if canonical is None:
+        return False
+    return pricing_lookup_key(key[0], canonical, key[2]) in existing_keys
+
+
 def format_pricing_model_label(sub_model: str | None) -> str:
     """Human-readable label for admin UI."""
     normalized = normalize_pricing_sub_model(sub_model)

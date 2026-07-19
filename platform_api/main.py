@@ -430,10 +430,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(key_pool.router, prefix=settings.api_v1_prefix)
     app.include_router(media.router, prefix=settings.api_v1_prefix)
     app.include_router(music_history.router, prefix=settings.api_v1_prefix)
-    from platform_api.routers import admin_music_languages, music_languages
+    from platform_api.routers import admin_music_languages, music_languages, suno_blocklist, suno_blocklist_admin
 
     app.include_router(music_languages.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_music_languages.router, prefix=settings.api_v1_prefix)
+    app.include_router(suno_blocklist.router, prefix=settings.api_v1_prefix)
+    app.include_router(suno_blocklist_admin.router, prefix=settings.api_v1_prefix)
     app.include_router(music_downloads.router, prefix=settings.api_v1_prefix)
     app.include_router(image_jobs.router, prefix=settings.api_v1_prefix)
     app.include_router(image_sample_packs.router, prefix=settings.api_v1_prefix)

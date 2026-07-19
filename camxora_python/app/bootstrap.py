@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from app.root_window import RootWindow
 from shared.lib.app_icon import load_app_icon
+from shared.lib.single_instance import SingleInstanceGuard, notify_already_running
 from shared.themes import apply_theme
 
 
@@ -24,9 +25,11 @@ def _set_windows_app_id() -> None:
 
 
 def run() -> int:
+    from shared.lib.app_install import get_or_seed_install_datetime
     from shared.lib.env_loader import load_desktop_env
 
     load_desktop_env()
+    get_or_seed_install_datetime()
     _set_windows_app_id()
 
     app = QApplication(sys.argv)
@@ -34,6 +37,11 @@ def run() -> int:
     app.setOrganizationName("Camxora")
     app.setWindowIcon(load_app_icon())
     apply_theme(app)
+
+    guard = SingleInstanceGuard(app)
+    if not guard.try_become_primary():
+        notify_already_running()
+        return 0
 
     def _shutdown_child_processes() -> None:
         try:
@@ -53,6 +61,7 @@ def run() -> int:
         pass
 
     window = RootWindow()
+    guard.set_activate_handler(window.bring_to_front)
     window.show()
 
     return app.exec()

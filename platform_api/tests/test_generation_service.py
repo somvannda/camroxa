@@ -135,8 +135,8 @@ class FakePricingRepo:
             ("deepseek", "album"): 1,
             ("deepseek", "lyric"): 2,
             ("deepseek", "draft"): 2,
-            ("suno", "music_generation"): 14,
-            ("suno", "music_generation", "V5"): 14,
+            ("suno", "music"): 14,
+            ("suno", "music", "V5"): 14,
             ("fal", "image"): 3,
             ("slai", "image"): 3,
         }
@@ -1223,7 +1223,7 @@ class TestSubmitSuno:
     async def test_v5_5_uses_model_specific_pricing(self, credit_service, task_repo):
         pricing_repo = FakePricingRepo(
             prices={
-                ("suno", "music_generation", "V5_5"): 16,
+                ("suno", "music", "V5_5"): 16,
             }
         )
         service = _make_service(

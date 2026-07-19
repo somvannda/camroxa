@@ -69,7 +69,7 @@ class ControlsQueueCard(QFrame):
     clear_queue_requested = Signal()
     job_retry_requested = Signal(str, str)
     jobs_retry_requested = Signal(list, str)
-    job_open_requested = Signal(str)
+    job_open_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -358,7 +358,7 @@ class ControlsQueueCard(QFrame):
             self.job_retry_requested.emit(job.id, entry.batch_id)
             return
         if job.status == "success" and job.output_image_path:
-            self.job_open_requested.emit(job.output_image_path)
+            self.job_open_requested.emit(job.output_image_path, job.id)
 
     @staticmethod
     def _job_is_failed(job) -> bool:
@@ -399,8 +399,8 @@ class ControlsQueueCard(QFrame):
     ) -> None:
         self.jobs_retry_requested.emit(job_ids, batch_id)
 
-    def _emit_job_open_requested(self, path: str, _checked: bool = False) -> None:
-        self.job_open_requested.emit(path)
+    def _emit_job_open_requested(self, path: str, job_id: str, _checked: bool = False) -> None:
+        self.job_open_requested.emit(path, job_id)
 
     def _show_context_menu(self, position) -> None:
         index = self._table.indexAt(position)
@@ -447,12 +447,14 @@ class ControlsQueueCard(QFrame):
             )
         if entry.bg_job and self._job_is_success(entry.bg_job):
             bg_path = entry.bg_job.output_image_path or ""
+            bg_job_id = entry.bg_job.id
             action = menu.addAction("Open Background File")
-            action.triggered.connect(partial(self._emit_job_open_requested, bg_path))
+            action.triggered.connect(partial(self._emit_job_open_requested, bg_path, bg_job_id))
         if entry.th_job and self._job_is_success(entry.th_job):
             th_path = entry.th_job.output_image_path or ""
+            th_job_id = entry.th_job.id
             action = menu.addAction("Open Thumbnail File")
-            action.triggered.connect(partial(self._emit_job_open_requested, th_path))
+            action.triggered.connect(partial(self._emit_job_open_requested, th_path, th_job_id))
 
         if menu.actions():
             menu.exec(self._table.viewport().mapToGlobal(position))

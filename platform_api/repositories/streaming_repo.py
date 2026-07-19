@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+import json
+
 
 class StreamingRepository:
     def __init__(self, pool: Any) -> None:
@@ -154,6 +156,7 @@ class StreamingRepository:
         cover_storage_key: str | None = None,
         suno_image_url: str | None = None,
         tags: list[str] | None = None,
+        genres: list[str] | None = None,
     ) -> UUID:
         existing = None
         if suno_task_id is not None:
@@ -167,6 +170,7 @@ class StreamingRepository:
             )
         now = datetime.now(timezone.utc)
         tags_json = tags or None
+        genres_json = genres or None
         if existing:
             track_id = UUID(str(existing["id"]))
             try:
@@ -184,8 +188,9 @@ class StreamingRepository:
                         cover_storage_key = COALESCE($10, cover_storage_key),
                         suno_image_url = COALESCE($11, suno_image_url),
                         tags = COALESCE($12, tags),
+                        genres = COALESCE($13::jsonb, genres),
                         publish_status = 'published',
-                        published_at = $13,
+                        published_at = $14,
                         updated_at = NOW()
                     WHERE id = $1
                     """,
@@ -201,6 +206,7 @@ class StreamingRepository:
                     cover_storage_key,
                     suno_image_url,
                     tags_json,
+                    json.dumps(genres_json) if genres_json is not None else None,
                     now,
                 )
             except Exception:
@@ -236,10 +242,10 @@ class StreamingRepository:
                 INSERT INTO stream_tracks (
                     id, user_id, album_id, song_id, suno_task_id, title, lyrics,
                     variant, storage_key, size_bytes, mime_type, duration_seconds,
-                    genre, track_number, cover_storage_key, suno_image_url, tags,
+                    genre, track_number, cover_storage_key, suno_image_url, tags, genres,
                     publish_status, published_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'published', $18)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'published', $19)
                 """,
                 track_id,
                 user_id,
@@ -258,6 +264,7 @@ class StreamingRepository:
                 cover_storage_key,
                 suno_image_url,
                 tags_json,
+                json.dumps(genres_json) if genres_json is not None else json.dumps([]),
                 now,
             )
         except Exception:
@@ -286,19 +293,49 @@ class StreamingRepository:
             )
         return track_id
 
-    async def update_album_genre(self, album_id: UUID, genre: str | None) -> None:
-        if not genre:
+    async def update_album_genre(
+        self,
+        album_id: UUID,
+        genre: str | None,
+        *,
+        genres: list[str] | None = None,
+        overwrite: bool = False,
+    ) -> None:
+        if not genre and not genres and not overwrite:
             return
+        genres_payload = json.dumps(genres if genres is not None else [])
         try:
-            await self._pool.execute(
-                """
-                UPDATE stream_albums
-                SET genre = COALESCE(genre, $2), updated_at = NOW()
-                WHERE id = $1
-                """,
-                album_id,
-                genre,
-            )
+            if overwrite:
+                await self._pool.execute(
+                    """
+                    UPDATE stream_albums
+                    SET genre = $2,
+                        genres = COALESCE($3::jsonb, '[]'::jsonb),
+                        updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    album_id,
+                    genre,
+                    genres_payload,
+                )
+            else:
+                await self._pool.execute(
+                    """
+                    UPDATE stream_albums
+                    SET genre = COALESCE(genre, $2),
+                        genres = CASE
+                            WHEN jsonb_array_length(COALESCE(genres, '[]'::jsonb)) = 0
+                                 AND $3::jsonb IS NOT NULL
+                            THEN $3::jsonb
+                            ELSE genres
+                        END,
+                        updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    album_id,
+                    genre,
+                    genres_payload if genres else None,
+                )
         except Exception:
             return
 
@@ -511,7 +548,17 @@ class StreamingRepository:
                    COUNT(track_id)::int AS track_count
             FROM (
                 SELECT DISTINCT
-                       COALESCE(NULLIF(TRIM(a.genre), ''), NULLIF(TRIM(t.genre), '')) AS genre,
+                       unnest(
+                           CASE
+                               WHEN jsonb_array_length(COALESCE(t.genres, '[]'::jsonb)) > 0 THEN
+                                   ARRAY(SELECT jsonb_array_elements_text(t.genres))
+                               WHEN NULLIF(TRIM(t.genre), '') IS NOT NULL THEN ARRAY[t.genre]
+                               WHEN jsonb_array_length(COALESCE(a.genres, '[]'::jsonb)) > 0 THEN
+                                   ARRAY(SELECT jsonb_array_elements_text(a.genres))
+                               WHEN NULLIF(TRIM(a.genre), '') IS NOT NULL THEN ARRAY[a.genre]
+                               ELSE ARRAY[]::text[]
+                           END
+                       ) AS genre,
                        a.id AS album_id,
                        t.id AS track_id
                 FROM stream_albums a
@@ -519,7 +566,7 @@ class StreamingRepository:
                   ON t.album_id = a.id AND t.publish_status = 'published'
                 WHERE a.publish_status = 'published'
             ) grouped
-            WHERE genre IS NOT NULL
+            WHERE genre IS NOT NULL AND TRIM(genre) <> ''
             GROUP BY genre
             ORDER BY track_count DESC, genre ASC
             """
@@ -543,7 +590,14 @@ class StreamingRepository:
             LEFT JOIN stream_tracks t
               ON t.album_id = a.id AND t.publish_status = 'published'
             WHERE a.publish_status = 'published'
-              AND LOWER(TRIM(COALESCE(a.genre, ''))) = LOWER(TRIM($1))
+              AND (
+                LOWER(TRIM(COALESCE(a.genre, ''))) = LOWER(TRIM($1))
+                OR EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(a.genres, '[]'::jsonb)) g
+                    WHERE LOWER(TRIM(g)) = LOWER(TRIM($1))
+                )
+              )
             GROUP BY a.id, u.display_name
             HAVING COUNT(t.id) > 0
             ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC
@@ -571,7 +625,19 @@ class StreamingRepository:
             JOIN users u ON u.id = t.user_id
             WHERE t.publish_status = 'published'
               AND a.publish_status = 'published'
-              AND LOWER(TRIM(COALESCE(t.genre, a.genre, ''))) = LOWER(TRIM($1))
+              AND (
+                LOWER(TRIM(COALESCE(t.genre, a.genre, ''))) = LOWER(TRIM($1))
+                OR EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(t.genres, '[]'::jsonb)) g
+                    WHERE LOWER(TRIM(g)) = LOWER(TRIM($1))
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM jsonb_array_elements_text(COALESCE(a.genres, '[]'::jsonb)) g
+                    WHERE LOWER(TRIM(g)) = LOWER(TRIM($1))
+                )
+              )
             ORDER BY t.published_at DESC NULLS LAST, t.created_at DESC
             LIMIT $2 OFFSET $3
             """,
@@ -627,11 +693,13 @@ class StreamingRepository:
                    a.album_slug,
                    st.external_task_id,
                    st.style AS suno_style,
-                   s.lyrics AS song_lyrics
+                   s.lyrics AS song_lyrics,
+                   md.genres AS description_genres
             FROM stream_tracks t
             JOIN stream_albums a ON a.id = t.album_id
             LEFT JOIN suno_tasks st ON st.id = t.suno_task_id
             LEFT JOIN songs s ON s.id = t.song_id
+            LEFT JOIN music_descriptions md ON md.id = s.description_id
             WHERE t.id = $1
             """,
             track_id,
@@ -660,7 +728,36 @@ class StreamingRepository:
         suno_image_url: str | None = None,
         tags: list[str] | None = None,
         cover_storage_key: str | None = None,
+        genres: list[str] | None = None,
+        overwrite: bool = False,
     ) -> None:
+        tags_payload = json.dumps(tags) if tags else None
+        genres_payload = json.dumps(genres if genres is not None else [])
+        if overwrite:
+            await self._pool.execute(
+                """
+                UPDATE stream_tracks
+                SET lyrics = COALESCE($2, lyrics),
+                    duration_seconds = COALESCE($3, duration_seconds),
+                    genre = $4,
+                    suno_image_url = COALESCE($5, suno_image_url),
+                    tags = COALESCE($6::jsonb, tags),
+                    cover_storage_key = COALESCE($7, cover_storage_key),
+                    genres = COALESCE($8::jsonb, '[]'::jsonb),
+                    updated_at = NOW()
+                WHERE id = $1
+                """,
+                track_id,
+                lyrics,
+                duration_seconds,
+                genre,
+                suno_image_url,
+                tags_payload,
+                cover_storage_key,
+                genres_payload,
+            )
+            return
+
         await self._pool.execute(
             """
             UPDATE stream_tracks
@@ -668,8 +765,9 @@ class StreamingRepository:
                 duration_seconds = COALESCE($3, duration_seconds),
                 genre = COALESCE($4, genre),
                 suno_image_url = COALESCE($5, suno_image_url),
-                tags = COALESCE($6, tags),
+                tags = COALESCE($6::jsonb, tags),
                 cover_storage_key = COALESCE($7, cover_storage_key),
+                genres = COALESCE($8::jsonb, genres),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -678,8 +776,9 @@ class StreamingRepository:
             duration_seconds,
             genre,
             suno_image_url,
-            tags,
+            tags_payload,
             cover_storage_key,
+            genres_payload if genres else None,
         )
 
     async def update_track_genre(self, track_id: UUID, genre: str) -> bool:
@@ -709,10 +808,13 @@ class StreamingRepository:
                    s.album AS song_album,
                    s.lyrics AS song_lyrics,
                    s.batch_index,
+                   s.description_id,
+                   md.genres AS description_genres,
                    b.ok_album,
                    b.alt_album
             FROM suno_tasks st
             LEFT JOIN songs s ON s.id = st.song_id
+            LEFT JOIN music_descriptions md ON md.id = s.description_id
             LEFT JOIN batches b ON b.id = st.batch_id
             WHERE st.id = $1
             """,

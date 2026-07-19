@@ -174,10 +174,19 @@ def build_spectrum_settings_state(
     }
 
 
-def build_background_settings_state(template: dict[str, Any]) -> dict[str, Any]:
+def build_background_settings_state(
+    template: dict[str, Any],
+    background_path: str | None = None,
+) -> dict[str, Any]:
     background_settings = to_record(template.get("backgroundSettings"))
+    if background_path is None:
+        resolved_path = to_string_value(template.get("previewBackground"), "")
+    else:
+        # Explicit "" clears preview path (used by pipeline so template bg never leaks).
+        resolved_path = str(background_path).strip()
     return {
         "backgroundEnabled": to_boolean(background_settings.get("enabled"), True),
+        "backgroundPath": resolved_path,
         "backgroundFitMode": to_string_value(background_settings.get("fitMode"), "cover"),
         "backgroundUserScale": to_number(background_settings.get("userScale"), 1),
         "backgroundBrightness": to_number(background_settings.get("brightness"), 1),
@@ -268,7 +277,12 @@ def build_text_settings_state(template: dict[str, Any]) -> dict[str, Any]:
     return {"textOverlays": []}
 
 
-def build_video_template_draft(template: dict[str, Any], *, logo_path: str) -> VideoTemplateDraft:
+def build_video_template_draft(
+    template: dict[str, Any],
+    *,
+    logo_path: str,
+    background_path: str | None = None,
+) -> VideoTemplateDraft:
     logo_state = build_logo_settings_state(template, logo_path)
     draft: VideoTemplateDraft = {}
     draft.update(
@@ -278,7 +292,7 @@ def build_video_template_draft(template: dict[str, Any], *, logo_path: str) -> V
             float(logo_state["logoSizeStep"]),
         )
     )
-    draft.update(build_background_settings_state(template))
+    draft.update(build_background_settings_state(template, background_path))
     draft.update(build_atmosphere_settings_state(template))
     draft.update(logo_state)
     draft.update(build_particle_settings_state(template))

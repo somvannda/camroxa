@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from uuid import UUID
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from platform_api.middleware.auth import AuthContext
@@ -84,8 +86,11 @@ async def test_music_history_falls_back_when_date_columns_or_history_columns_are
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(music_history, "get_db_pool", lambda: FakeMusicHistoryPool())
+    batch_service = AsyncMock()
+    batch_service.reconcile_pending_suno_tasks = AsyncMock(return_value=0)
 
     result = await music_history.list_music_history(
+        batch_service,
         AuthContext(
             user_id="00000000-0000-0000-0000-000000000001",
             email="boss@example.com",
@@ -93,6 +98,8 @@ async def test_music_history_falls_back_when_date_columns_or_history_columns_are
         ),
         limit=8,
     )
+
+    batch_service.reconcile_pending_suno_tasks.assert_awaited_once()
 
     assert len(result.batches) == 1
     assert result.batches[0].planned_days == 1

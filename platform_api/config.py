@@ -142,6 +142,7 @@ class Settings(BaseSettings):
     # --- Marketplace ---
     marketplace_storage_path: str = "./marketplace_storage"
     sample_pack_storage_path: str = "./sample_pack_storage"
+    sample_pack_url_import_max_mb: int = 1024
     image_output_cache_dir: str = "./image_output_cache"
 
     # --- Billing / CutLuy ---

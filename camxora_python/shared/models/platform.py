@@ -292,6 +292,7 @@ class MusicHistorySong(BaseModel):
     output_dir_alt: str | None = None
     status: str = ""
     suno_status: str | None = None
+    suno_error_message: str | None = None
     youtube_status: str | None = None
     downloaded_ok: bool = False
     downloaded_alt: bool = False
@@ -334,11 +335,17 @@ class MusicLanguageListResponse(BaseModel):
     items: list[MusicLanguageOption] = Field(default_factory=list)
 
 
+class SunoBlocklistRuntimeResponse(BaseModel):
+    replacements: dict[str, str] = Field(default_factory=dict)
+    block_terms: list[str] = Field(default_factory=list)
+    warn_terms: list[str] = Field(default_factory=list)
+
+
 class OperationCostResponse(BaseModel):
     operation_type: str
     provider: str | None = None
     sub_model: str | None = None
-    credits_per_operation: int | None = None
+    credits_per_operation: float | None = None
     available: bool = False
     message: str | None = None
 
@@ -376,10 +383,17 @@ class LyricsPolishRequest(BaseModel):
     lyrics: str
     strength: int
     channel_profile_id: str | None = None
+    batch_id: str | None = None
+    song_id: str | None = None
+    title: str | None = None
+    album: str | None = None
+    description: str | None = None
+    structure: str | None = None
 
 
 class LyricsPolishResponse(BaseModel):
     lyrics: str
+    suno_queued: bool = False
 
 
 class MusicPlanPreflightRequest(BaseModel):

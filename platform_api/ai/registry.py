@@ -79,8 +79,8 @@ SLAI_TEXT_MODELS: dict[str, ModelSpec] = {
         cost_tier="~$0.001/1K",
         request_timeout_seconds=180.0,
     ),
-    "gpt-5.6-tuna": ModelSpec(
-        api_id="gpt-5.6-tuna",
+    "gpt-5.6-luna": ModelSpec(
+        api_id="gpt-5.6-luna",
         supports_json_mode=False,
         extra_payload={
             "stream": True,
@@ -95,7 +95,7 @@ SUNO_TEXT_MODELS: dict[str, ModelSpec] = {
     "lyrics": ModelSpec(
         api_id="lyrics",
         supports_json_mode=False,
-        cost_tier="~2 Suno credits (~$0.01)",
+        cost_tier="~0.4 credits (~$0.004)",
         request_timeout_seconds=120.0,
     ),
 }

@@ -23,6 +23,11 @@ from platform_api.models.enums import TaskStatus
 from platform_api.services.batch_service import BatchService
 from platform_api.services.image_job_service import ImageJobService
 from platform_api.services.image_job_runner import run_image_jobs_until_empty
+from platform_api.services.suno_status_messages import (
+    is_suno_failure_status,
+    is_suno_success_status,
+    suno_task_failure_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +82,7 @@ class SunoTaskRepository(Protocol):
         status: TaskStatus,
         audio_url_ok: str | None = None,
         audio_url_alt: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         """Update a Suno task's status and audio URLs."""
         ...
@@ -179,6 +185,33 @@ def _validate_hmac_signature(
     return hmac.compare_digest(expected, provided)
 
 
+def _resolve_callback_client_ip(request: Request) -> str | None:
+    """Extract client IP, honoring reverse-proxy X-Forwarded-For when present."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return None
+
+
+def _extract_callback_signature(
+    request: Request,
+    x_signature: str | None,
+) -> str | None:
+    """Return the first non-empty Suno callback signature header value."""
+    for candidate in (
+        x_signature,
+        request.headers.get("x-signature"),
+        request.headers.get("X-Hmac-Signature"),
+        request.headers.get("x-hmac-signature"),
+    ):
+        text = str(candidate or "").strip()
+        if text:
+            return text
+    return None
+
+
 def _validate_callback_request(
     client_ip: str | None,
     body: bytes,
@@ -187,32 +220,52 @@ def _validate_callback_request(
     """Validate callback request via HMAC (preferred) or IP allowlist.
 
     Security rules:
-    - When HMAC secret is configured, a valid HMAC is **required**. Invalid or
-      missing signatures are rejected — no fallthrough to IP / debug accept.
-    - When HMAC is not configured, IP allowlist may authorize the request.
-    - Open accept (no HMAC, no IP) is allowed only when ``debug=true``.
+    - When a signature header is present, it must validate against the configured
+      HMAC secret (fail closed on invalid/forged signatures).
+    - Suno provider callbacks typically omit signatures; those are accepted.
+    - Optional IP allowlist can additionally authorize callbacks behind nginx.
+    - Open accept (no HMAC, no IP) only when ``debug=true``.
     """
     settings = get_settings()
     hmac_secret = (getattr(settings, "suno_callback_hmac_secret", "") or "").strip()
     allowed_ips = _configured_allowed_ips()
+    provided_sig = str(signature or "").strip()
 
-    # HMAC configured → fail closed on signature (no IP/debug fallthrough).
-    if hmac_secret:
-        if _validate_hmac_signature(body, signature, hmac_secret):
+    if provided_sig and hmac_secret:
+        if _validate_hmac_signature(body, provided_sig, hmac_secret):
+            return True
+        # Suno provider IPs may send non-HMAC headers; trust the IP allowlist when configured.
+        if allowed_ips and client_ip and client_ip in allowed_ips:
+            logger.info(
+                "Suno callback accepted via IP allowlist despite invalid signature. IP=%s",
+                client_ip,
+            )
             return True
         logger.warning(
-            "Suno callback rejected: HMAC secret is configured but signature is "
-            "missing or invalid. IP=%s",
+            "Suno callback rejected: invalid HMAC signature. IP=%s",
             client_ip,
         )
         return False
 
-    # No HMAC: IP allowlist is the only non-debug auth path.
+    if provided_sig and not hmac_secret:
+        logger.warning(
+            "Suno callback rejected: signature provided but HMAC secret is not configured. IP=%s",
+            client_ip,
+        )
+        return False
+
     if allowed_ips and client_ip and client_ip in allowed_ips:
         return True
 
-    # Development fallback only when debug is on and neither auth method is set.
-    if settings.debug and not allowed_ips:
+    # Suno provider webhooks do not sign payloads; accept unsigned callbacks.
+    if hmac_secret and not provided_sig:
+        logger.info(
+            "Suno callback accepted without signature (provider does not sign). IP=%s",
+            client_ip,
+        )
+        return True
+
+    if settings.debug and not allowed_ips and not hmac_secret:
         logger.warning(
             "Callback accepted without HMAC or IP validation (dev mode). "
             "Configure PLATFORM_SUNO_CALLBACK_HMAC_SECRET for production."
@@ -282,12 +335,31 @@ def _extract_status_from_payload(payload: SunoCallbackPayload) -> TaskStatus | N
     if not status_str:
         return None
 
-    status_upper = status_str.upper().strip()
-    if status_upper in ("SUCCESS", "COMPLETE", "COMPLETED", "DONE"):
+    status_upper = str(status_str).upper().strip()
+    if is_suno_success_status(status_upper):
         return TaskStatus.SUCCESS
-    elif status_upper in ("FAILED", "ERROR", "FAILURE"):
+    if is_suno_failure_status(status_upper):
+        return TaskStatus.FAILED
+    if status_upper in ("FAILED", "ERROR", "FAILURE", "CANCELLED", "CANCELED"):
         return TaskStatus.FAILED
     return None
+
+
+def _extract_error_message_from_raw(raw_payload: dict[str, Any]) -> str:
+    data = raw_payload.get("data")
+    if isinstance(data, dict):
+        for key in ("errorMessage", "error_message", "msg", "message"):
+            value = str(data.get(key, "")).strip()
+            if value:
+                return value
+    for key in ("errorMessage", "error_message", "msg", "message"):
+        value = str(raw_payload.get(key, "")).strip()
+        if value:
+            return value
+    status = ""
+    if isinstance(data, dict):
+        status = str(data.get("status", "")).strip()
+    return suno_task_failure_message(status=status)
 
 
 def _extract_status_from_raw(raw_payload: dict[str, Any]) -> TaskStatus | None:
@@ -380,10 +452,11 @@ async def suno_callback(
     """
     # Read raw body for HMAC validation
     body = await request.body()
-    client_ip = request.client.host if request.client else None
+    client_ip = _resolve_callback_client_ip(request)
+    callback_signature = _extract_callback_signature(request, x_signature)
 
     # --- HMAC / IP Validation ---
-    if not _validate_callback_request(client_ip, body, x_signature):
+    if not _validate_callback_request(client_ip, body, callback_signature):
         logger.warning(
             "Suno callback rejected: HMAC/IP validation failed. IP=%s",
             client_ip,
@@ -452,18 +525,70 @@ async def suno_callback(
     if not audio_url_ok and not audio_url_alt:
         audio_url_ok, audio_url_alt = _extract_audio_urls(payload)
 
+    from platform_api.services.suno_audio_resolver import normalize_http_download_url
+
+    audio_url_ok = normalize_http_download_url(audio_url_ok) or None
+    audio_url_alt = normalize_http_download_url(audio_url_alt) or None
+
+    if new_status == TaskStatus.SUCCESS and not audio_url_ok and not audio_url_alt:
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.services.suno_audio_resolver import (
+                poll_suno_generate_with_pool,
+                urls_from_generate_poll,
+            )
+
+            poll_result = await poll_suno_generate_with_pool(get_db_pool(), external_task_id)
+            if poll_result.state == "success":
+                refreshed = urls_from_generate_poll(poll_result)
+                audio_url_ok = normalize_http_download_url(refreshed.audio_url_ok) or None
+                audio_url_alt = normalize_http_download_url(refreshed.audio_url_alt) or None
+        except Exception as exc:
+            logger.warning(
+                "Suno callback record-info refresh failed for task_id=%s: %s",
+                external_task_id,
+                str(exc)[:200],
+            )
+
+    persist_status = new_status
+    task_error_message: str | None = None
+    if new_status == TaskStatus.SUCCESS and not audio_url_ok and not audio_url_alt:
+        logger.warning(
+            "Suno callback success without download URLs for task_id=%s; "
+            "keeping pending for reconcile.",
+            external_task_id,
+        )
+        persist_status = TaskStatus.PENDING
+
+    if persist_status == TaskStatus.FAILED:
+        task_error_message = _extract_error_message_from_raw(raw_payload)
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.services.suno_audio_resolver import poll_suno_generate_with_pool
+
+            poll_result = await poll_suno_generate_with_pool(get_db_pool(), external_task_id)
+            if poll_result.state == "failed" and poll_result.error:
+                task_error_message = poll_result.error
+        except Exception as exc:
+            logger.warning(
+                "Suno callback record-info refresh failed for task_id=%s: %s",
+                external_task_id,
+                str(exc)[:200],
+            )
+
     # --- Update Task Record (Req 11.3, 11.6) ---
     task_id = UUID(str(task_data["id"]))
     user_id = str(task_data["user_id"])
 
     await task_repo.update_status(
         task_id,
-        status=new_status,
+        status=persist_status,
         audio_url_ok=audio_url_ok,
         audio_url_alt=audio_url_alt,
+        error_message=task_error_message,
     )
 
-    if new_status == TaskStatus.SUCCESS and (audio_url_ok or audio_url_alt):
+    if persist_status == TaskStatus.SUCCESS and (audio_url_ok or audio_url_alt):
         try:
             from platform_api.dependencies import get_db_pool
             from platform_api.services.streaming_upload_service import StreamingUploadService
@@ -487,12 +612,13 @@ async def suno_callback(
         except Exception:
             auto_run_images = False
 
-    if song_id_value and batch_id_value:
+    if song_id_value and batch_id_value and persist_status != TaskStatus.PENDING:
         try:
             await batch_service.handle_suno_task_update(
                 song_id=UUID(str(song_id_value)),
                 batch_id=UUID(str(batch_id_value)),
-                status=new_status,
+                status=persist_status,
+                error_message=task_error_message,
             )
         except Exception as exc:
             logger.error(
@@ -501,7 +627,7 @@ async def suno_callback(
                 str(exc)[:200],
             )
 
-    if auto_run_images and parsed_batch_id is not None:
+    if auto_run_images and parsed_batch_id is not None and persist_status == TaskStatus.SUCCESS:
         asyncio.create_task(
             run_image_jobs_until_empty(
                 image_job_service,
@@ -514,16 +640,16 @@ async def suno_callback(
         "Suno callback processed: task_id=%s, external_id=%s, status=%s",
         task_id,
         external_task_id,
-        new_status.value,
+        persist_status.value,
     )
 
     # --- Push WebSocket Notification (Req 11.3) ---
     notification_payload = {
         "task_id": str(task_id),
         "external_task_id": external_task_id,
-        "status": new_status.value,
+        "status": persist_status.value,
     }
-    if new_status == TaskStatus.SUCCESS:
+    if persist_status == TaskStatus.SUCCESS:
         notification_payload["audio_url_ok"] = audio_url_ok
         notification_payload["audio_url_alt"] = audio_url_alt
 

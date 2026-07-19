@@ -75,3 +75,37 @@ def test_list_branch_export_outputs_filters_reel_and_long(tmp_path: Path) -> Non
 
     assert long_outputs == [str(valid)]
     assert reel_outputs == [str(reel)]
+
+
+def test_merge_video_outputs_validates_paths_without_stat_is_file(tmp_path: Path, monkeypatch) -> None:
+    """Regression: os.stat_result has no is_file(); merge must use Path.is_file()."""
+    from features.video.lib.pipeline_merge import merge_video_outputs
+
+    paths: list[str] = []
+    for index in range(2):
+        target = tmp_path / f"track-{index}.mp4"
+        target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+        paths.append(str(target))
+
+    monkeypatch.setattr("features.video.lib.pipeline_merge._is_file_stable", lambda _path: True)
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffmpeg_from_path_hint", lambda _hint: "ffmpeg")
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffprobe_from_path_hint", lambda _hint: "")
+
+    merged_target = tmp_path / "MERGED_PRIMARY_batch.mp4"
+
+    def _fake_run_hidden(args, **kwargs):
+        # Simulate ffmpeg writing a valid merged output.
+        output_path = Path(args[-1])
+        output_path.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+        return type("Result", (), {"returncode": 0, "stderr": "", "stdout": ""})()
+
+    monkeypatch.setattr("features.video.lib.pipeline_merge.run_hidden", _fake_run_hidden)
+
+    result = merge_video_outputs(
+        ffmpeg_path="ffmpeg",
+        mp4_paths=paths,
+        target_path=str(merged_target),
+        shuffle=False,
+    )
+
+    assert result == str(merged_target)

@@ -15,7 +15,7 @@ def test_slai_text_models_include_mimo() -> None:
     assert "xiaomi/mimo-v2.5-pro" in text_models
     assert "gpt-5.6-sol" in text_models
     assert "gpt-5.6-terra" in text_models
-    assert "gpt-5.6-tuna" in text_models
+    assert "gpt-5.6-luna" in text_models
     assert "cgpt-web/gpt-5.5-pro" not in text_models
     assert "slai/gpt-image-2" in image_models
     assert "xiaomi/mimo-v2.5-pro" not in image_models
@@ -34,12 +34,12 @@ def test_suno_supports_music_and_lyric_text() -> None:
     suno_models = PROVIDER_SUB_MODELS["suno"]
     assert "lyrics" in suno_models[ServiceType.TEXT_GENERATION]
     assert "V5" in suno_models[ServiceType.MUSIC_GENERATION]
-    assert SUB_MODEL_COST_TIERS["lyrics"] == "~2 Suno credits (~$0.01)"
+    assert SUB_MODEL_COST_TIERS["lyrics"] == "~0.4 credits (~$0.004)"
     assert SUB_MODEL_COST_TIERS["V5"] == "~12 Suno credits (~$0.06)"
 
 
 def test_slai_gpt56_models_support_all_text_operations() -> None:
-    for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-tuna"):
+    for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
         assert set(operation_types_for_model("slai", model)) == set(TEXT_OPERATIONS)
         assert set(operation_types_for_model("slai", model)).isdisjoint(set(IMAGE_OPERATIONS))
         assert "music" not in operation_types_for_model("slai", model)

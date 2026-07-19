@@ -16,6 +16,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from platform_api.models.domain import MusicDescription, MusicStructure
+from platform_api.services.music_genre_utils import parse_genre_list
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class AsyncPGPool(Protocol):
 # ---------------------------------------------------------------------------
 
 _DESC_SELECT_COLS = (
-    "id, name, content, match_key, vocal_profile, is_active, user_id, created_at, updated_at"
+    "id, name, content, genres, match_key, vocal_profile, is_active, user_id, created_at, updated_at"
 )
 _STRUCT_SELECT_COLS = "id, name, content, match_key, is_active, user_id, created_at, updated_at"
 
@@ -62,6 +63,7 @@ def _row_to_description(row: Any) -> MusicDescription:
         id=row["id"],
         name=row["name"],
         content=row["content"],
+        genres=parse_genre_list(row.get("genres")),
         match_key=row["match_key"],
         vocal_profile=vocal_profile if isinstance(vocal_profile, dict) else None,
         is_active=bool(row["is_active"]),
@@ -105,14 +107,15 @@ class PromptRepository:
         row = await self._pool.fetchrow(
             f"""
             INSERT INTO music_descriptions (
-                id, name, content, match_key, vocal_profile, is_active, user_id, created_at, updated_at
+                id, name, content, genres, match_key, vocal_profile, is_active, user_id, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW(), NOW())
+            VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, NOW(), NOW())
             RETURNING {_DESC_SELECT_COLS}
             """,
             desc.id,
             desc.name,
             desc.content,
+            _serialize_jsonb_value(desc.genres or []),
             desc.match_key,
             _serialize_jsonb_value(desc.vocal_profile),
             desc.is_active,
@@ -207,7 +210,7 @@ class PromptRepository:
         param_idx = 1
 
         for col, val in fields.items():
-            if col == "vocal_profile":
+            if col in {"vocal_profile", "genres"}:
                 set_parts.append(f"{col} = ${param_idx}::jsonb")
                 values.append(_serialize_jsonb_value(val))
             else:

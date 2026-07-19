@@ -10,9 +10,37 @@ from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.storage_service import StorageService
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
 from platform_api.services.streaming_upload_service import StreamingUploadService
+from platform_api.services.music_genre_utils import resolve_stream_genres
 from platform_api.services.suno_audio_resolver import SunoTaskDownloadUrls
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_metadata_text(value: Any, *, max_length: int | None = None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+        text = ", ".join(parts) if parts else None
+    else:
+        text = str(value).strip() or None
+    if not text:
+        return None
+    if max_length is not None and len(text) > max_length:
+        return text[: max_length - 1].rstrip() + "…"
+    return text
+
+
+def _coerce_tag_list(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+        return parts or None
+    text = str(value).strip()
+    if not text:
+        return None
+    return [part.strip() for part in text.split(",") if part.strip()] or None
 
 
 class StreamingMetadataSyncService:
@@ -46,9 +74,13 @@ class StreamingMetadataSyncService:
             suno_image_url = refreshed.image_url_ok
             tags_text = refreshed.tags_ok
 
-        lyrics = str(row.get("song_lyrics") or row.get("lyrics") or "").strip() or None
-        genre = str(row.get("suno_style") or tags_text or row.get("genre") or "").strip() or None
-        tags = [part.strip() for part in str(tags_text or "").split(",") if part.strip()] or None
+        lyrics = _coerce_metadata_text(row.get("song_lyrics") or row.get("lyrics"))
+        primary_genre, catalog_genres = resolve_stream_genres(
+            description_genres=row.get("description_genres"),
+            suno_tags_text=tags_text,
+        )
+        genre = _coerce_metadata_text(primary_genre, max_length=120)
+        tags = _coerce_tag_list(tags_text)
 
         cover_storage_key = row.get("cover_storage_key")
         album_id = UUID(str(row["album_id"]))
@@ -78,14 +110,21 @@ class StreamingMetadataSyncService:
             suno_image_url=suno_image_url or None,
             tags=tags,
             cover_storage_key=cover_storage_key,
+            genres=catalog_genres,
+            overwrite=True,
         )
-        if genre:
-            await self._repo.update_album_genre(album_id, genre)
+        await self._repo.update_album_genre(
+            album_id,
+            genre,
+            genres=catalog_genres,
+            overwrite=True,
+        )
 
         return {
             "ok": True,
             "track_id": str(track_id),
             "genre": genre,
+            "genres": catalog_genres,
             "duration_seconds": duration_seconds,
             "has_lyrics": bool(lyrics),
             "refreshed_from_suno": refreshed.refreshed,

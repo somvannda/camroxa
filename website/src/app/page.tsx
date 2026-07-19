@@ -83,13 +83,15 @@ export default async function Home() {
           <div className="max-w-4xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-100/80">
               <Sparkles className="h-3.5 w-3.5 text-fuchsia-200" />
-              Desktop studio
+              Windows desktop app
             </div>
             <h1 className="mt-6 font-display text-5xl font-semibold leading-[0.92] tracking-[-0.07em] text-white md:text-7xl">
-              The desktop studio for branded music channel production.
+              Produce branded music channels with one desktop studio.
             </h1>
             <p className="mt-6 max-w-3xl text-base leading-8 text-slate-200/72 md:text-lg">
-              CAMXORA brings music, image, video, and export workflow into one product system.
+              Camxora is the Windows app for generating songs, preparing images, building video
+              templates, exporting MP4s, and publishing to YouTube — with progress tracking across
+              every channel profile.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -111,7 +113,7 @@ export default async function Home() {
                 href="/download"
               >
                 <Download className="h-4 w-4" />
-                Download app
+                Download for Windows
               </Link>
             </div>
           </div>
@@ -119,18 +121,18 @@ export default async function Home() {
           <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6">
             <div className="border-b border-white/8 pb-4">
               <div>
-                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Studio preview</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Inside the app</div>
                 <div className="mt-2 font-display text-2xl font-semibold text-white">
-                  Real production flow.
+                  Built for daily production.
                 </div>
               </div>
             </div>
 
             <div className="mt-5 space-y-3">
               {[
-                { label: "Workflow", value: "Music, image, video" },
-                { label: "Control", value: "Desktop-first production" },
-                { label: "Output", value: "Preview, render, export" },
+                { label: "Music", value: "Batch songs & drafts" },
+                { label: "Video", value: "Templates, preview, export" },
+                { label: "Publish", value: "Progress & YouTube upload" },
               ].map((item) => (
                 <div key={item.label} className="flex items-start justify-between gap-4 border-b border-white/6 pb-3 last:border-b-0 last:pb-0">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
@@ -145,21 +147,21 @@ export default async function Home() {
 
         <section className="grid gap-8 border-y border-white/8 py-12">
           <div className="max-w-2xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Workflow</div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Get started</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
-              A cleaner path into the desktop product.
+              From account to first export in three steps.
             </h2>
             <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
-              The website explains the product, the account flow handles access, and the desktop app
-              stays focused on production.
+              Sign up, pick a plan, then install Camxora and open your channel profiles in the
+              desktop studio.
             </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-3">
             {[
-              { label: "Create account", detail: "Start with a clear product entry point." },
-              { label: "Choose plan", detail: "Use live pricing from the real catalog." },
-              { label: "Open desktop", detail: "Move directly into studio workflow." },
+              { label: "Create account", detail: "Register and sign in to unlock your workspace." },
+              { label: "Choose a plan", detail: "Match credits and channel capacity to your schedule." },
+              { label: "Open Camxora", detail: "Install the Windows app and start a production run." },
             ].map((item, index) => (
               <div key={item.label} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
@@ -177,14 +179,14 @@ export default async function Home() {
         <section className="grid gap-8">
           <div className="max-w-3xl">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
-              Desktop app flow
+              Desktop pipeline
             </div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
-              The desktop app runs a real five-stage pipeline.
+              One pipeline from song idea to published video.
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200/70 md:text-base">
-              The workflow in `camxora_python` moves from generation to asset prep, video output,
-              merge, and upload.
+              Camxora walks each batch through music, images, video, merge, and upload so you can
+              monitor every channel without juggling separate tools.
             </p>
           </div>
 
@@ -193,27 +195,27 @@ export default async function Home() {
               {
                 step: "01",
                 title: "Music",
-                detail: "Generate songs in batches.",
+                detail: "Generate drafts and Suno tracks in controlled batches.",
               },
               {
                 step: "02",
                 title: "Images",
-                detail: "Prepare backgrounds and thumbnails.",
+                detail: "Create backgrounds and thumbnails for each song.",
               },
               {
                 step: "03",
                 title: "Video",
-                detail: "Convert approved assets to MP4 output.",
+                detail: "Preview spectrum templates and export branded MP4s.",
               },
               {
                 step: "04",
                 title: "Merge",
-                detail: "Combine outputs into final deliverables.",
+                detail: "Combine outputs into final deliverables for the run.",
               },
               {
                 step: "05",
                 title: "Upload",
-                detail: "Track progress and publish to channel.",
+                detail: "Send finished videos to connected YouTube channels.",
               },
             ].map((item) => (
               <div
@@ -234,9 +236,9 @@ export default async function Home() {
 
         <section className="grid gap-8">
           <div className="max-w-2xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Core surfaces</div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">App workspace</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
-              The website now reflects the product more directly.
+              Everything you need lives in the Camxora desktop app.
             </h2>
           </div>
 
@@ -244,23 +246,23 @@ export default async function Home() {
             {[
               {
                 icon: Music,
-                title: "Music generation",
-                detail: "Shape repeatable music output inside a studio-first workflow.",
+                title: "Music workspace",
+                detail: "Compose batches, manage channel pairs, and automate drafts through Suno.",
               },
               {
                 icon: ImageIcon,
-                title: "Image workflow",
-                detail: "Create visuals that stay aligned with channel identity and direction.",
+                title: "Image workspace",
+                detail: "Generate and organize backgrounds and thumbnails for each track.",
               },
               {
                 icon: Video,
-                title: "Video output",
-                detail: "Preview, render, and package content for channel publishing.",
+                title: "Video studio",
+                detail: "Design templates with spectrum, particles, logo, and text — then export.",
               },
               {
                 icon: Workflow,
-                title: "Production control",
-                detail: "Track progress, organize runs, and manage channel-scale work.",
+                title: "Progress & workflow",
+                detail: "Watch every run stage, retry failed steps, and keep channels on schedule.",
               },
             ].map(({ icon: Icon, title, detail }) => (
               <div
@@ -282,7 +284,7 @@ export default async function Home() {
             <div className="max-w-2xl">
               <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Live platform activity</div>
               <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
-                Real numbers from the platform.
+                Creators already shipping with Camxora.
               </div>
             </div>
             <div className="text-xs text-slate-300/60">
@@ -324,22 +326,23 @@ export default async function Home() {
 
         <section className="grid gap-10 border-t border-white/8 pt-8 lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="max-w-2xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Get started</div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Ready when you are</div>
             <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
-              Website, account, and desktop now tell the same story.
+              Install Camxora and start your next channel run.
             </div>
             <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
-              Start on the website, choose a plan, then continue inside the CAMXORA desktop studio.
+              Create an account, download the Windows app, and keep music, video, and YouTube
+              publishing in one place.
             </p>
           </div>
 
           <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-6 ring-1 ring-white/6 md:p-7">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Start now</div>
             <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white">
-              Ready for CAMXORA?
+              Open the desktop studio.
             </div>
             <p className="mt-4 text-sm leading-7 text-slate-200/72">
-              Create your account and move into the real desktop workflow.
+              Your profiles, credits, and production tools are waiting in Camxora.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <a

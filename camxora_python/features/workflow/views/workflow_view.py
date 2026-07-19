@@ -31,6 +31,7 @@ from shared.lib.video_runtime_inspection import (
     progress_runtime_key,
 )
 from shared.models.platform import ProgressFilters, ProgressRow
+from shared.services.action_feedback import notify_action
 from shared.services.platform_api import PlatformApi
 from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
@@ -38,8 +39,8 @@ from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import WorkflowLoadResult, WorkflowLoadWorker, WorkflowRuntimeWorker
 
-DEFAULT_POLL_MS = 12_000
-ACTIVE_POLL_MS = 4_000
+DEFAULT_POLL_MS = 30_000
+ACTIVE_POLL_MS = 8_000
 EXPORT_RUNTIME_POLL_MS = 1_500
 LANE_COLUMN_WIDTH = 320
 
@@ -73,6 +74,7 @@ class WorkflowView(PollablePageMixin, QScrollArea):
         self._loading = True
         self._is_error = False
         self._ever_loaded = False
+        self._manual_refresh = False
         self._loaded_user_id: str | None = None
         self._local_workspace_restored = False
         self._local_save_timer = QTimer(self)
@@ -111,7 +113,7 @@ class WorkflowView(PollablePageMixin, QScrollArea):
         self._to_date.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
         self._active_only = QCheckBox("Active only")
         self._refresh_btn = QPushButton("Refresh")
-        self._refresh_btn.clicked.connect(self.refresh_data)
+        self._refresh_btn.clicked.connect(lambda: self.refresh_data(manual=True))
         toolbar.addWidget(QLabel("From"))
         toolbar.addWidget(self._from_date)
         toolbar.addWidget(QLabel("To"))
@@ -237,14 +239,17 @@ class WorkflowView(PollablePageMixin, QScrollArea):
             to_date=self._to_date.date().toString("yyyy-MM-dd"),
         )
 
-    def refresh_data(self) -> None:
+    def refresh_data(self, *, manual: bool = False) -> None:
         if account_cache_mismatch(self._loaded_user_id, self._cache):
             self._reset_for_account_change()
         if self._worker is not None and self._worker.isRunning():
             return
         if not self._ever_loaded:
             self._loading = True
+        self._manual_refresh = manual
         self._refresh_btn.setEnabled(False)
+        if manual:
+            notify_action("Refreshing workflow…", tone="neutral")
         worker = WorkflowLoadWorker(self._api, self._current_filters(), self)
         worker.succeeded.connect(self._on_loaded)
         worker.failed.connect(self._on_failed)
@@ -266,9 +271,11 @@ class WorkflowView(PollablePageMixin, QScrollArea):
         self._stats_row.set_summary_counts(runs=0, active=0, attention=0, done=0)
         self._selected_panel.show_loading()
 
-    def _on_failed(self, _message: str) -> None:
+    def _on_failed(self, message: str) -> None:
         self._loading = False
         self._is_error = True
+        detail = str(message or "").strip() or "Unable to load workflow."
+        notify_action(detail, tone="error")
         self._error_banner.show()
         if self._rows:
             self._render()
@@ -296,6 +303,9 @@ class WorkflowView(PollablePageMixin, QScrollArea):
         self._render()
         self._sync_runtime_timer()
         self._loaded_user_id = cached_user_id(self._cache)
+        if getattr(self, "_manual_refresh", False):
+            notify_action("Workflow updated.", tone="success")
+            self._manual_refresh = False
 
     def _refresh_runtime_overlay(self) -> None:
         if not self._rows or (self._runtime_worker is not None and self._runtime_worker.isRunning()):

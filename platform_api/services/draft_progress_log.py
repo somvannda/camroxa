@@ -280,6 +280,25 @@ def log_suno_callback_failed(
     )
 
 
+def log_suno_failure_metric(
+    *,
+    batch_id: str | None,
+    song_id: str | None,
+    failure_type: str,
+    is_retry: bool,
+    blocked_terms_extracted: list[str] | None = None,
+) -> None:
+    terms = ",".join(blocked_terms_extracted or [])
+    _progress_warn(
+        "[batch %s] suno_failure_metric song_id=%s failure_type=%s is_retry=%s blocked_terms=%s",
+        _batch_label(batch_id),
+        str(song_id or "")[:8] or "?",
+        failure_type,
+        "true" if is_retry else "false",
+        terms or "-",
+    )
+
+
 def log_suno_batch_submit_summary(
     *,
     batch_id: str,

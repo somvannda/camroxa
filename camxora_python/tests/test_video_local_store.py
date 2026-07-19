@@ -178,6 +178,24 @@ def test_patch_template_updates_name_and_style(isolated_video_store: VideoLocalS
     assert workspace.template.get("style") == "flying-glow"
 
 
+def test_patch_template_persists_preview_background(isolated_video_store: VideoLocalStore) -> None:
+    workspace = isolated_video_store.patch_template(
+        {
+            "templateName": "With Preview BG",
+            "previewBackground": "C:/backgrounds/design.png",
+            "logoPath": "C:/logos/a.png",
+            "previewLogo": "C:/logos/a.png",
+        },
+        settings={"outputResolution": "1920x1080"},
+    )
+    assert workspace.template.get("previewBackground") == "C:/backgrounds/design.png"
+    assert workspace.background_path == "C:/backgrounds/design.png"
+
+    reread = isolated_video_store.read_workspace_state({"outputResolution": "1920x1080"})
+    assert reread.background_path == "C:/backgrounds/design.png"
+    assert reread.template.get("previewBackground") == "C:/backgrounds/design.png"
+
+
 def test_delete_template_falls_back_to_neighbor(isolated_video_store: VideoLocalStore) -> None:
     workspace = isolated_video_store.delete_template("tpl-a")
     assert workspace.template_id == "tpl-b"

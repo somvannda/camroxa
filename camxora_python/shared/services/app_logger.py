@@ -59,10 +59,36 @@ _REDACT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?i)(secret\s*[:=]\s*)\S+"),
 )
 _JWT_PATTERN = re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")
+_HTML_BODY_PATTERN = re.compile(
+    r"(?is)(?:<!DOCTYPE\s+html|<html\b|<head\b|<body\b|<title\b|nginx/\d)",
+)
+
+
+def _looks_like_html_or_gateway_body(text: str) -> bool:
+    sample = (text or "")[:800]
+    if not sample:
+        return False
+    if _HTML_BODY_PATTERN.search(sample):
+        return True
+    # Long markup dumps from reverse proxies / error pages.
+    if len(text) > 400 and sample.count("<") >= 3 and sample.count(">") >= 3:
+        return True
+    return False
+
+
+def sanitize_error_body(text: str, *, status: int | None = None) -> str:
+    """Replace HTML/gateway dumps with a short safe summary for logs and UI."""
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    if not _looks_like_html_or_gateway_body(raw):
+        return raw
+    status_bit = f" HTTP {status}" if status is not None else ""
+    return f"[omitted HTML/gateway error body{status_bit}, {len(raw)} chars]"
 
 
 def redact_text(text: str) -> str:
-    out = str(text or "")
+    out = sanitize_error_body(str(text or ""))
     for pattern in _REDACT_PATTERNS:
         out = pattern.sub(r"\1[REDACTED]", out)
     return _JWT_PATTERN.sub("[REDACTED]", out)

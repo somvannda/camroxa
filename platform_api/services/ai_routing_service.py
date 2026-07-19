@@ -36,6 +36,7 @@ from platform_api.ai.types import (
     Operation,
     ServiceType,
 )
+from platform_api.services.model_cost_estimates import operation_types_for_model
 
 
 # ---------------------------------------------------------------------------
@@ -107,9 +108,11 @@ class AIRoutingService:
         self,
         settings_repo: SettingsRepositoryPort,
         key_pool_service: KeyPoolServicePort,
+        model_cost_repo: Any | None = None,
     ) -> None:
         self._settings_repo = settings_repo
         self._key_pool = key_pool_service
+        self._model_cost_repo = model_cost_repo
 
     # -------------------------------------------------------------------
     # Public API
@@ -585,6 +588,17 @@ class AIRoutingService:
             st.value: [] for st in ServiceType
         }
 
+        cost_by_key: dict[tuple[str, str, str], float] = {}
+        if self._model_cost_repo is not None:
+            for row in await self._model_cost_repo.get_all():
+                ai_service = str(row.get("ai_service") or "").strip()
+                sub_model = str(row.get("sub_model") or "")
+                operation_type = str(row.get("operation_type") or "").strip()
+                cost_usd = row.get("cost_usd")
+                if not ai_service or not operation_type or cost_usd is None:
+                    continue
+                cost_by_key[(ai_service, sub_model, operation_type)] = float(cost_usd)
+
         for provider, capabilities in PROVIDER_CAPABILITIES.items():
             # Check if provider has active keys
             pool_status = await self._key_pool.get_pool_status(provider)
@@ -600,14 +614,31 @@ class AIRoutingService:
                 if st == ServiceType.MUSIC_GENERATION:
                     sub_models = []
 
-                # Include cost tier annotations for each sub-model
-                sub_models_with_tiers = [
-                    {
-                        "name": model,
-                        "cost_tier": SUB_MODEL_COST_TIERS.get(model, ""),
-                    }
-                    for model in sub_models
-                ]
+                sub_models_with_tiers: list[dict[str, Any]] = []
+                for model in sub_models:
+                    operations = operation_types_for_model(provider, model)
+                    cost_usd_by_operation: dict[str, float] = {}
+                    for operation_type in operations:
+                        db_cost = cost_by_key.get((provider, model, operation_type))
+                        if db_cost is not None:
+                            cost_usd_by_operation[operation_type] = db_cost
+
+                    cost_usd: float | None = None
+                    if cost_usd_by_operation:
+                        if len(operations) == 1:
+                            cost_usd = cost_usd_by_operation.get(operations[0])
+                        elif operations:
+                            cost_usd = cost_usd_by_operation.get(operations[0])
+
+                    sub_models_with_tiers.append(
+                        {
+                            "name": model,
+                            "cost_tier": SUB_MODEL_COST_TIERS.get(model, ""),
+                            "cost_usd": cost_usd,
+                            "cost_usd_by_operation": cost_usd_by_operation,
+                            "operations": operations,
+                        }
+                    )
 
                 result[st.value].append({
                     "provider": provider,

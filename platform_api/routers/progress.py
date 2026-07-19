@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Any
@@ -12,12 +13,18 @@ from fastapi import APIRouter, Depends, Query
 from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.models.schemas import ProgressListResponse, ProgressRow, ProgressRowMeta
-from platform_api.services.channel_asset_service import compute_long_ready, compute_reel_ready, resolve_channel_asset_paths
+from platform_api.services.channel_asset_service import (
+    compute_long_ready,
+    compute_reel_ready,
+    merge_channel_asset_paths,
+)
 from platform_api.services.run_directory_planner import resolve_channel_run_dir
 from platform_api.services.video_run_inspection import (
     build_video_run_presentation,
     inspect_video_run_directory,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["progress"])
 
@@ -186,6 +193,7 @@ def _build_row(
         (bg_total <= 0 or bg_ready >= bg_total)
         and (th_total <= 0 or th_ready >= th_total)
         and (bg_total > 0 or th_total > 0)
+        and (long_ready or reel_ready)
     )
 
     stage = "Music"
@@ -443,6 +451,21 @@ async def list_progress_rows(
 
     batch_ids = [row["id"] for row in batch_rows]
 
+    from platform_api.dependencies import get_batch_service
+
+    batch_service = get_batch_service()
+    for batch_id in batch_ids:
+        try:
+            await batch_service.ensure_batch_image_jobs(
+                user_id=ctx.user_id,
+                batch_id=batch_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to ensure image jobs while loading progress for batch %s",
+                batch_id,
+            )
+
     song_stats_rows = await pool.fetch(
         """
         SELECT
@@ -629,19 +652,11 @@ async def list_progress_rows(
                 alt_profile_name=str(batch.get("alt_profile_name") or ""),
             ) or ""
             persisted = dict(persisted_asset_groups.get(key, {}))
-            live_assets = resolve_channel_asset_paths(run_dir) if run_dir else {
-                "background_16x9_path": None,
-                "background_9x16_path": None,
-                "thumbnail_16x9_path": None,
-                "thumbnail_9x16_path": None,
-            }
+            merged = merge_channel_asset_paths(run_dir, persisted)
             merged = {
                 "run_dir": persisted.get("run_dir") or run_dir or None,
                 "source_mode": persisted.get("source_mode"),
-                "background_16x9_path": live_assets["background_16x9_path"] or persisted.get("background_16x9_path"),
-                "background_9x16_path": live_assets["background_9x16_path"] or persisted.get("background_9x16_path"),
-                "thumbnail_16x9_path": live_assets["thumbnail_16x9_path"] or persisted.get("thumbnail_16x9_path"),
-                "thumbnail_9x16_path": live_assets["thumbnail_9x16_path"] or persisted.get("thumbnail_9x16_path"),
+                **merged,
             }
             merged["long_ready"] = compute_long_ready(merged)
             merged["reel_ready"] = compute_reel_ready(merged)

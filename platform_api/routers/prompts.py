@@ -14,10 +14,11 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.prompt_service import PromptService
+from platform_api.services.music_genre_utils import normalize_description_genres
 
 # ---------------------------------------------------------------------------
 # Router
@@ -37,6 +38,7 @@ class DescriptionResponse(BaseModel):
     id: str
     name: str
     content: str
+    genres: list[str] = Field(default_factory=list)
     match_key: str | None = None
     vocal_profile: dict[str, Any] | None = None
     is_active: bool = True
@@ -51,9 +53,18 @@ class CreateDescriptionRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     content: str = Field(..., min_length=1, max_length=5000)
+    genres: list[str] = Field(default_factory=list)
     match_key: str | None = None
     vocal_profile: dict[str, Any] | None = None
     is_active: bool = True
+
+    @field_validator("genres")
+    @classmethod
+    def validate_genres(cls, value: list[str]) -> list[str]:
+        try:
+            return normalize_description_genres(value)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class UpdateDescriptionRequest(BaseModel):
@@ -61,9 +72,20 @@ class UpdateDescriptionRequest(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     content: str | None = Field(default=None, min_length=1, max_length=5000)
+    genres: list[str] | None = None
     match_key: str | None = None
     vocal_profile: dict[str, Any] | None = None
     is_active: bool | None = None
+
+    @field_validator("genres")
+    @classmethod
+    def validate_genres(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        try:
+            return normalize_description_genres(value)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class StructureResponse(BaseModel):
@@ -212,6 +234,7 @@ def _description_to_response(desc, *, usage_count: int = 0) -> DescriptionRespon
         id=str(desc.id),
         name=desc.name,
         content=desc.content,
+        genres=list(desc.genres or []),
         match_key=desc.match_key,
         vocal_profile=desc.vocal_profile,
         is_active=desc.is_active,
@@ -326,6 +349,48 @@ def _usage_days_to_response(rows: list[dict]) -> list[PromptUsageByDay]:
 
 
 # ---------------------------------------------------------------------------
+# Genre catalog (Admin autocomplete)
+# ---------------------------------------------------------------------------
+
+
+class GenreCatalogItemResponse(BaseModel):
+    name: str
+    slug: str
+    category: str
+    aliases: list[str] = Field(default_factory=list)
+
+
+class GenreCatalogListResponse(BaseModel):
+    items: list[GenreCatalogItemResponse]
+    categories: list[str] = Field(default_factory=list)
+
+
+@router.get(
+    "/genre-catalog",
+    response_model=GenreCatalogListResponse,
+    status_code=200,
+    summary="Search curated music genres (Admin)",
+)
+async def search_genre_catalog(
+    ctx: AdminUserDep,
+    q: str | None = None,
+    category: str | None = None,
+    limit: int = 30,
+) -> GenreCatalogListResponse:
+    del ctx
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.music_genre_catalog_service import MusicGenreCatalogService
+
+    service = MusicGenreCatalogService(get_db_pool())
+    items = await service.search(query=q, category=category, limit=limit)
+    categories = await service.list_categories()
+    return GenreCatalogListResponse(
+        items=[GenreCatalogItemResponse.model_validate(item) for item in items],
+        categories=categories,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Description Endpoints (Admin-only)
 # ---------------------------------------------------------------------------
 
@@ -423,6 +488,7 @@ async def create_description(
     desc = await prompt_service.create_description(
         name=request.name,
         content=request.content,
+        genres=request.genres,
         match_key=request.match_key,
         vocal_profile=request.vocal_profile,
         is_active=request.is_active,
@@ -453,6 +519,8 @@ async def update_description(
         fields["name"] = request.name
     if request.content is not None:
         fields["content"] = request.content
+    if "genres" in request.model_fields_set:
+        fields["genres"] = request.genres
     # match_key can be explicitly set to None to clear it
     if "match_key" in request.model_fields_set:
         fields["match_key"] = request.match_key

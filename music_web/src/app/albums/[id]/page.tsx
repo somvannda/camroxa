@@ -33,11 +33,14 @@ export default async function AlbumPage({ params }: { params: Promise<{ id: stri
           <h1 className="mt-2 text-4xl font-semibold">{album.album_name}</h1>
           <p className="mt-2 text-[hsl(var(--muted-foreground))]">{album.artist_name}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {album.genre ? (
-              <span className="rounded-full bg-[hsl(var(--primary))]/20 px-3 py-1 text-xs font-medium text-[hsl(var(--primary))]">
-                {album.genre}
+            {(album.genres?.length ? album.genres : album.genre ? [album.genre] : []).map((item) => (
+              <span
+                key={item}
+                className="rounded-full bg-[hsl(var(--primary))]/20 px-3 py-1 text-xs font-medium text-[hsl(var(--primary))]"
+              >
+                {item}
               </span>
-            ) : null}
+            ))}
             {totalDuration > 0 ? (
               <span className="text-sm text-[hsl(var(--muted-foreground))]">
                 {formatDuration(totalDuration)} total

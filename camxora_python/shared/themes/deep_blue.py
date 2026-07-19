@@ -1554,12 +1554,61 @@ QToolTip {
 QFrame#account_card QComboBox {
     background-color: #0f1923;
     border: 1px solid #2a4a6c;
+    min-height: 28px;
+    padding: 2px 8px;
 }
 
+/* Styling QSpinBox without ::up/down subcontrols hides Fusion steppers. */
 QFrame#account_card QSpinBox,
 QFrame#account_card QDoubleSpinBox {
     background-color: transparent;
     border: 1px solid #2a4a6c;
+    padding-right: 18px;
+    min-height: 28px;
+}
+
+QFrame#account_card QSpinBox::up-button,
+QFrame#account_card QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 16px;
+    border-left: 1px solid #2a4a6c;
+    border-bottom: 1px solid #2a4a6c;
+    background-color: #1a2a3c;
+}
+
+QFrame#account_card QSpinBox::down-button,
+QFrame#account_card QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 16px;
+    border-left: 1px solid #2a4a6c;
+    background-color: #1a2a3c;
+}
+
+QFrame#account_card QSpinBox::up-button:hover,
+QFrame#account_card QDoubleSpinBox::up-button:hover,
+QFrame#account_card QSpinBox::down-button:hover,
+QFrame#account_card QDoubleSpinBox::down-button:hover {
+    background-color: #2a4a6c;
+}
+
+QFrame#account_card QSpinBox::up-arrow,
+QFrame#account_card QDoubleSpinBox::up-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid #4ac0ff;
+}
+
+QFrame#account_card QSpinBox::down-arrow,
+QFrame#account_card QDoubleSpinBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #4ac0ff;
 }
 
 QFrame#account_card QComboBox QAbstractItemView {
@@ -1630,6 +1679,23 @@ QWidget#video_workspace QComboBox,
 QWidget#video_workspace QTextEdit {
     background-color: transparent;
     border: 1px solid #2a4a6c;
+}
+
+/* Export queue Speed/FPS/Workers — .QWidget flat-host rule above strips combo chrome. */
+QWidget#video_export_fields QComboBox,
+QWidget#video_export_fields QSpinBox,
+QWidget#video_export_fields QDoubleSpinBox {
+    background-color: #0f1923;
+    border: 1px solid #2a4a6c;
+    border-radius: 3px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 2px 8px;
+}
+
+QWidget#video_export_fields QSpinBox,
+QWidget#video_export_fields QDoubleSpinBox {
+    padding-right: 18px;
 }
 
 QWidget#video_workspace QComboBox QAbstractItemView {

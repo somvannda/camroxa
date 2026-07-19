@@ -61,24 +61,32 @@ Re-run the probe after changing prompts or adding providers. Update section 3 wh
 
 ## 3. Probe results
 
-**Last sandbox run:** 2026-07-17T06:21:18Z (`docs/AI_STRUCTURE_FREE_PROVIDER_PROBE.json`)
+**Last sandbox run:** 2026-07-17T08:51:38Z (`docs/AI_STRUCTURE_FREE_PROVIDER_PROBE.json`) — **3 runs/model**, full lyrics in `docs/ai_free_probe_lyrics/`
 
-| Provider | Model | Run | Headers | Distinct sections | Content lines | Preamble | Pass | Notes |
-|----------|-------|-----|---------|-------------------|---------------|----------|------|-------|
-| openai | gpt-4o-mini | 1–2 | 7–8 | bridge, chorus, intro, outro, verse 1, verse 2 | 26–30 | no | PASS | Bracket headers, no preamble |
-| openai | gpt-4o | 1–2 | 6–9 | bridge, chorus, drop, intro, outro, pre-chorus, verse 1, verse 2 | 24–34 | no | PASS | |
-| openai | gpt-4-turbo | 1–2 | 8–10 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 30–34 | no | PASS | |
-| deepseek | deepseek-chat | 1–2 | 7–10 | bridge, chorus, drop, intro, outro, pre-chorus, verse | 25–40 | no | PASS | |
-| deepseek | deepseek-reasoner | 1–2 | 7–11 | bridge, chorus, drop, intro, outro, pre-chorus, verse 1, verse 2 | 32–42 | no | PASS | |
-| slai | xiaomi/mimo-v2.5-pro | 1–2 | 7–11 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 35–55 | no | PASS | Requires `PLATFORM_SLAI_API_BASE_URL` + streaming |
-| slai | gpt-5.6-sol | 1–2 | 7–11 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 46–64 | no | PASS | ~19s per run (SLAI streaming) |
-| slai | gpt-5.6-terra | 1–2 | 8–11 | bridge, chorus, intro, outro, pre-chorus, verse 1, verse 2 | 32–60 | no | PASS | |
-| slai | gpt-5.6-tuna | 1–2 | — | — | — | — | ERROR | SLAI API returns **404** — model id not available upstream yet |
-| suno | lyrics | 1–2 | 8–9 | bridge, chorus, final chorus, intro, pre-chorus, verse 1, verse 2 | 56–64 | no | PASS | Suno lyrics API with bracket headers |
+| Provider | Model | Runs | Content lines (range) | Pass | Notes |
+|----------|-------|------|----------------------|------|-------|
+| openai | gpt-4o-mini | 3 | 26–30 | 3/3 PASS | Bracket headers, no meta tail |
+| openai | gpt-4o | 3 | 24–26 | 3/3 PASS | |
+| openai | gpt-4-turbo | 3 | 26–34 | 3/3 PASS | |
+| deepseek | deepseek-chat | 3 | 28–34 | 3/3 PASS | |
+| deepseek | deepseek-reasoner | 3 | 24–40 | 3/3 PASS | 1 false-positive WARN (poetic `…` in outro) — fixed in probe heuristic |
+| slai | xiaomi/mimo-v2.5-pro | 3 | 23–56 | 3/3 PASS | Requires streaming + `PLATFORM_SLAI_API_BASE_URL` |
+| slai | gpt-5.6-sol | 3 | 44–46 | 3/3 PASS | |
+| slai | gpt-5.6-terra | 3 | 34–42 | 3/3 PASS | |
+| slai | gpt-5.6-luna | 3 | 40–46 | 3/3 PASS | |
+| suno | lyrics | 3 | 48–67 | 3/3 PASS | Suno lyrics API with bracket headers |
 
-**Summary:** OpenAI, DeepSeek, and three SLAI text models (`mimo-v2.5-pro`, `gpt-5.6-sol`, `gpt-5.6-terra`) pass validation. Suno lyrics API passes on both runs. `gpt-5.6-tuna` is registered but SLAI upstream returns 404 — confirm the model id with SLAI before routing production traffic.
+**Summary:** **30/30** probe rows PASS after manual review of full lyrics. No trailing meta garbage (`---`, `**Boat block**`, `END MARK`, production notes) in any raw or normalized file. No mixed-language corruption in English-only runs. All songs have proper `[Intro]`/`[Verse]`/`[Chorus]` headers and ≥16 content lines.
 
 Re-run after deploy:
+
+```bash
+python scripts/deploy/probe_ai_free_lyrics_sandbox.py
+python scripts/deploy/probe_ai_free_lyrics_sandbox.py --runs 3 --provider slai
+python scripts/deploy/summarize_probe.py docs/AI_STRUCTURE_FREE_PROVIDER_PROBE.json
+```
+
+Legacy runner (sync SSH, may timeout on long runs):
 
 ```bash
 python scripts/deploy/run_probe_ai_structure_free_sandbox.py
@@ -100,7 +108,7 @@ Earlier probe runs showed **HTTP 401** because sandbox `platform_api/.env` lacke
 2. Ensure the SLAI key in the admin key pool is active (keys live in DB, not `.env`).
 3. SLAI text models use `stream: true` in registry `extra_payload` — non-streaming lyric prompts hit SLAI `api_bridge_timeout` (504).
 
-`gpt-5.6-tuna`: registered as text-only; probe blocked until SLAI exposes this model id (404 from upstream).
+`gpt-5.6-luna`: text-only; lyric probe PASS after correcting model id from `gpt-5.6-tuna`.
 
 ---
 

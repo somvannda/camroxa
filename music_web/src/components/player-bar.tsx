@@ -2,7 +2,7 @@
 
 import { Pause, Play } from 'lucide-react';
 import { usePlayer } from '@/components/player-provider';
-import { formatDuration } from '@/lib/streaming-api';
+import { formatDuration, formatGenreLabels } from '@/lib/streaming-api';
 
 export default function PlayerBar() {
   const { current, playing, toggle } = usePlayer();
@@ -22,7 +22,7 @@ export default function PlayerBar() {
           <p className="truncate font-medium">{current.title}</p>
           <p className="truncate text-sm text-[hsl(var(--muted-foreground))]">
             {current.artist_name ?? 'Camxora Artist'} · {current.album_name ?? 'Album'}
-            {current.genre ? ` · ${current.genre}` : ''}
+            {formatGenreLabels(current) ? ` · ${formatGenreLabels(current)}` : ''}
             {duration ? ` · ${duration}` : ''}
           </p>
         </div>

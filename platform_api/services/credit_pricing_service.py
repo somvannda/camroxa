@@ -128,7 +128,7 @@ async def lookup_pricing_entry(
 
     operations_to_try = [operation]
     if service.lower() == "suno" and operation.lower() in {"music_generation", "music", "suno"}:
-        operations_to_try = ["music_generation", "music"]
+        operations_to_try = ["music", "music_generation"]
 
     for op in operations_to_try:
         entry = await pricing_repo.get_by_service_and_operation(
@@ -677,6 +677,69 @@ class CreditPricingService:
                 ai_service or "all",
             )
         return count
+
+    async def seed_local_platform_pricing(
+        self, *, overwrite: bool = False
+    ) -> dict[str, int]:
+        """Insert missing credit_pricing rows for local video/merge operations."""
+        from platform_api.services.local_platform_operations import (
+            build_local_pricing_seed_rows,
+        )
+
+        existing_keys = {
+            pricing_lookup_key(
+                str(row["ai_service"]),
+                str(row["operation_type"]),
+                str(row.get("sub_model") or ""),
+            )
+            for row in await self._pricing_repo.get_all()
+        }
+
+        created = 0
+        skipped = 0
+        updated = 0
+        for row in build_local_pricing_seed_rows():
+            key = pricing_lookup_key(
+                row["ai_service"], row["operation_type"], row["sub_model"]
+            )
+            if key in existing_keys and not overwrite:
+                skipped += 1
+                continue
+
+            if key in existing_keys:
+                result = await self._pricing_repo.update(
+                    row["ai_service"],
+                    row["operation_type"],
+                    int(row["credits_per_operation"]),
+                    int(row["external_cost_cents"]),
+                    sub_model=row["sub_model"],
+                )
+                if result is not None:
+                    updated += 1
+                continue
+
+            await self._pricing_repo.create(
+                row["ai_service"],
+                row["operation_type"],
+                int(row["credits_per_operation"]),
+                int(row["external_cost_cents"]),
+                sub_model=row["sub_model"],
+                needs_review=bool(row.get("needs_review", False)),
+            )
+            created += 1
+            existing_keys.add(key)
+            logger.info(
+                "Local platform pricing seeded: %s/%s (%d cr)",
+                row["ai_service"],
+                row["operation_type"],
+                int(row["credits_per_operation"]),
+            )
+
+        return {
+            "created_count": created,
+            "updated_count": updated,
+            "skipped_existing_count": skipped,
+        }
 
     async def sync_from_routing_config(
         self,

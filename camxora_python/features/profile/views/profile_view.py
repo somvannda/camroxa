@@ -12,6 +12,7 @@ from features.profile.widgets.profile_cards import (
     MembershipCard,
 )
 from shared.models.platform import DashboardOverview
+from shared.services.action_feedback import notify_action
 from shared.services.platform_api import PlatformApi
 from shared.services.workspace_cache import WorkspaceCache
 from shared.workers.data_workers import DashboardOverviewWorker
@@ -77,6 +78,7 @@ class ProfileView(QScrollArea):
                 self._apply_overview(cached)
             else:
                 self._enter_loading_state()
+        notify_action("Refreshing profile…", tone="neutral")
         worker = DashboardOverviewWorker(self._api, self, cache=self._cache)
         worker.succeeded.connect(self._on_loaded)
         worker.failed.connect(self._on_failed)
@@ -90,9 +92,11 @@ class ProfileView(QScrollArea):
         self._profiles.show_loading()
         self._activity.show_loading()
 
-    def _on_failed(self, _message: str) -> None:
+    def _on_failed(self, message: str) -> None:
         if self._last_overview is not None:
             return
+        detail = str(message or "").strip() or "Unable to load profile."
+        notify_action(detail, tone="error")
         self._account.show_error()
         self._membership.show_loading()
         self._profiles.show_empty()
@@ -102,6 +106,7 @@ class ProfileView(QScrollArea):
         if not isinstance(payload, DashboardOverview):
             return
         self._apply_overview(payload)
+        notify_action("Profile updated.", tone="success")
 
     def _apply_overview(self, data: DashboardOverview) -> None:
         self._last_overview = data

@@ -410,6 +410,7 @@ def test_title_active_follows_selected_track() -> None:
 def test_background_contrast_sat_hue_roundtrip() -> None:
     draft = {
         "backgroundEnabled": True,
+        "backgroundPath": "D:/preview/bg.png",
         "backgroundFitMode": "cover",
         "backgroundUserScale": 1.0,
         "backgroundBrightness": 1.1,
@@ -424,14 +425,16 @@ def test_background_contrast_sat_hue_roundtrip() -> None:
         "backgroundMotionSpeed": 1,
     }
     patch = build_background_template_patch({}, draft)
+    assert patch["previewBackground"] == "D:/preview/bg.png"
     bg = patch["backgroundSettings"]
     assert bg["contrast"] == 1.2
     assert bg["saturation"] == 0.8
     assert bg["hue"] == 30
-    state = build_background_settings_state({"backgroundSettings": bg})
+    state = build_background_settings_state({"backgroundSettings": bg}, "D:/preview/bg.png")
     assert state["backgroundContrast"] == 1.2
     assert state["backgroundSaturation"] == 0.8
     assert state["backgroundHue"] == 30
+    assert state["backgroundPath"] == "D:/preview/bg.png"
     norm = normalize_renderer_template({"backgroundSettings": bg})
     assert abs(norm["backgroundSettings"]["contrast"] - 1.2) < 1e-6
     assert abs(norm["backgroundSettings"]["hue"] - 30) < 1e-6

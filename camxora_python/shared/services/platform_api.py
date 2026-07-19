@@ -45,6 +45,7 @@ from shared.models.platform import (
     MusicDownloadSyncResponse,
     MusicHistoryListResponse,
     MusicLanguageListResponse,
+    SunoBlocklistRuntimeResponse,
     OperationCostsResponse,
     QuotaStatusResponse,
     PendingMusicDownloadsResponse,
@@ -330,6 +331,10 @@ class PlatformApi:
         data = self._client.request("/music/languages", auth=True)
         return MusicLanguageListResponse.model_validate(data)
 
+    def get_suno_blocklist(self) -> SunoBlocklistRuntimeResponse:
+        data = self._client.request("/generation/suno-blocklist", auth=True)
+        return SunoBlocklistRuntimeResponse.model_validate(data)
+
     def get_operation_costs(self) -> OperationCostsResponse:
         data = self._client.request("/credits/operation-costs", auth=True)
         return OperationCostsResponse.model_validate(data)
@@ -406,11 +411,27 @@ class PlatformApi:
         )
         return SongRetryResponse.model_validate(data)
 
-    def retry_song_suno(self, batch_id: str, song_id: str) -> SongRetryResponse:
+    def retry_song_suno(
+        self,
+        batch_id: str,
+        song_id: str,
+        *,
+        title: str | None = None,
+        album: str | None = None,
+        lyrics: str | None = None,
+    ) -> SongRetryResponse:
+        body: dict[str, str] = {}
+        if title is not None:
+            body["title"] = title
+        if album is not None:
+            body["album"] = album
+        if lyrics is not None:
+            body["lyrics"] = lyrics
         data = self._client.request(
             f"/batches/{batch_id}/songs/{song_id}/retry-suno",
             method="POST",
             auth=True,
+            body=body or None,
         )
         return SongRetryResponse.model_validate(data)
 

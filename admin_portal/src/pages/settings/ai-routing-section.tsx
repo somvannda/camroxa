@@ -82,36 +82,100 @@ const DEFAULT_SUB_MODELS: Record<string, string> = {
 
 // --- Helper Functions ---
 
-function getDefaultAssignment(serviceType: ServiceType): OperationAssignment {
+function getDefaultAssignment(
+  serviceType: ServiceType,
+  operation?: string,
+  providers: ProviderOption[] = [],
+): OperationAssignment {
   const provider = DEFAULT_PROVIDERS[serviceType];
+  const subModels = getSubModelsForProvider(providers, provider, operation);
+  const fallbackModel = DEFAULT_SUB_MODELS[provider] ?? null;
+  const subModel =
+    subModels.find((model) => model === fallbackModel) ?? subModels[0] ?? fallbackModel;
   return {
     provider,
-    sub_model: DEFAULT_SUB_MODELS[provider] ?? null,
+    sub_model: subModel,
     is_active: true,
+  };
+}
+
+function normalizeAssignmentSubModel(
+  assignment: OperationAssignment,
+  _serviceType: ServiceType,
+  operation: string,
+  providers: ProviderOption[],
+): OperationAssignment {
+  if (operation === 'music') {
+    return { ...assignment, sub_model: null };
+  }
+  const subModels = getSubModelsForProvider(providers, assignment.provider, operation);
+  if (subModels.length === 0) {
+    return assignment;
+  }
+  if (assignment.sub_model && subModels.includes(assignment.sub_model)) {
+    return assignment;
+  }
+  return {
+    ...assignment,
+    sub_model: subModels[0] ?? null,
   };
 }
 
 function getSubModelsForProvider(
   providers: ProviderOption[],
   providerName: string,
+  operation?: string,
 ): string[] {
   const found = providers.find((p) => p.provider === providerName);
-  return found?.sub_models ?? [];
+  if (!found) return [];
+  const models = found.sub_models ?? [];
+  if (!operation) return models;
+  return models.filter((model) => modelSupportsOperation(found, model, operation));
 }
 
-function getCostTierForModel(
+function modelSupportsOperation(
+  provider: ProviderOption,
+  modelName: string,
+  operation: string,
+): boolean {
+  const detail = provider.sub_models_detail?.find((d) => d.name === modelName);
+  if (detail?.operations?.length) {
+    return detail.operations.includes(operation);
+  }
+  return true;
+}
+
+function formatUsdCost(amount: number): string {
+  if (amount === 0) return '$0';
+  if (amount < 0.01) {
+    return `$${amount.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')}`;
+  }
+  if (amount < 1) return `$${amount.toFixed(4)}`;
+  return `$${amount.toFixed(2)}`;
+}
+
+function getCostDisplayForModel(
   providers: ProviderOption[],
   providerName: string,
   modelName: string,
+  operation?: string,
 ): string {
   const found = providers.find((p) => p.provider === providerName);
   const detail = found?.sub_models_detail?.find((d) => d.name === modelName);
-  return detail?.cost_tier ?? '';
+  if (!detail) return '';
+
+  if (operation && detail.cost_usd_by_operation?.[operation] != null) {
+    return formatUsdCost(detail.cost_usd_by_operation[operation]);
+  }
+  if (detail.cost_usd != null) {
+    return formatUsdCost(detail.cost_usd);
+  }
+  return detail.cost_tier ?? '';
 }
 
-function formatModelLabel(model: string, costTier: string): string {
-  if (!costTier) return model;
-  return `${model} (${costTier})`;
+function formatModelLabel(model: string, costDisplay: string): string {
+  if (!costDisplay) return model;
+  return `${model} (${costDisplay})`;
 }
 
 function capitalizeProvider(provider: string): string {
@@ -162,13 +226,23 @@ export function AIRoutingSection() {
 
         for (const op of operationKeys) {
           if (operations[op]) {
-            flat[op] = {
+            const assignment = {
               ...operations[op],
               is_active: operations[op].is_active !== false,
               ...(op === 'music' ? { sub_model: null } : {}),
             };
+            flat[op] = normalizeAssignmentSubModel(
+              assignment,
+              serviceType,
+              op,
+              providersData?.[serviceType] ?? [],
+            );
           } else {
-            flat[op] = getDefaultAssignment(serviceType);
+            flat[op] = getDefaultAssignment(
+              serviceType,
+              op,
+              providersData?.[serviceType] ?? [],
+            );
           }
         }
       }
@@ -200,7 +274,7 @@ export function AIRoutingSection() {
     newProvider: string,
   ) => {
     const providers = providersData?.[serviceType] ?? [];
-    const subModels = getSubModelsForProvider(providers, newProvider);
+    const subModels = getSubModelsForProvider(providers, newProvider, operation);
     const firstSubModel = subModels.length > 0 ? subModels[0] : null;
     const userSelectsModel = operation === 'music';
 
@@ -598,7 +672,7 @@ function FallbackChainEditor({
                     <SelectItem key={model} value={model}>
                       {formatModelLabel(
                         model,
-                        getCostTierForModel(providers, entry.provider, model),
+                        getCostDisplayForModel(providers, entry.provider, model),
                       )}
                     </SelectItem>
                   ))}
@@ -718,9 +792,13 @@ function OperationRow({
   const currentProvider = assignment?.provider ?? '';
   const currentSubModel = assignment?.sub_model ?? '';
   const isActive = assignment?.is_active !== false;
-  const subModels = getSubModelsForProvider(providers, currentProvider);
+  const subModels = getSubModelsForProvider(providers, currentProvider, operation);
   const hasSubModels = subModels.length > 0;
   const hideSubModel = operation === 'music';
+  const selectedSubModel =
+    currentSubModel && subModels.includes(currentSubModel)
+      ? currentSubModel
+      : (subModels[0] ?? '');
 
   return (
     <div className={`flex items-center gap-4 ${!isActive ? 'opacity-50' : ''}`}>
@@ -753,16 +831,21 @@ function OperationRow({
 
       {/* Sub-model dropdown (conditional) with cost tier annotations */}
       {hasSubModels && !hideSubModel && (
-        <Select value={currentSubModel ?? ''} onValueChange={onSubModelChange}>
+        <Select value={selectedSubModel} onValueChange={onSubModelChange}>
           <SelectTrigger className="w-52">
             <SelectValue placeholder="Select model" />
           </SelectTrigger>
           <SelectContent>
             {subModels.map((model) => {
-              const tier = getCostTierForModel(providers, currentProvider, model);
+              const costDisplay = getCostDisplayForModel(
+                providers,
+                currentProvider,
+                model,
+                operation,
+              );
               return (
                 <SelectItem key={model} value={model}>
-                  {formatModelLabel(model, tier)}
+                  {formatModelLabel(model, costDisplay)}
                 </SelectItem>
               );
             })}

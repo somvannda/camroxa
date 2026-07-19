@@ -266,6 +266,21 @@ class GeneratePricingResponse(BaseModel):
     missing_costs: list[dict[str, str]] = Field(default_factory=list)
 
 
+class RegistryPricingGapEntry(BaseModel):
+    ai_service: str
+    operation_type: str
+    sub_model: str = ""
+
+
+class RegistryPricingGapsResponse(BaseModel):
+    gap_count: int
+    gaps: list[RegistryPricingGapEntry] = Field(default_factory=list)
+
+
+class SeedRegistryPricingRequest(BaseModel):
+    margin_percent: float = Field(..., ge=0, lt=100)
+
+
 class CreateCreditPackRequest(BaseModel):
     """Body for creating a credit pack (Admin)."""
 
@@ -531,7 +546,12 @@ async def get_quota_status(
     credit_service: CreditServiceDep,
 ) -> QuotaStatusResponse:
     """Return plan quota remaining and per-channel daily caps for the current user."""
-    from platform_api.dependencies import get_plan_repo, get_profile_repo, get_usage_tracking_repo
+    from platform_api.dependencies import (
+        get_license_repo,
+        get_plan_repo,
+        get_profile_repo,
+        get_usage_tracking_repo,
+    )
     from platform_api.services.quota_display_service import (
         get_channel_daily_quotas,
         get_monthly_quota_status,
@@ -589,9 +609,9 @@ async def get_quota_status(
     daily_videos_remaining = None
     daily_merges_remaining = None
     if plan is not None:
-        from datetime import date as _date
+        from platform_api.services.billing_calendar import billing_today
 
-        today = _date.today()
+        today = billing_today()
         getter = getattr(usage_repo, "get_account_daily_count", None)
         if getter is not None:
             videos_used_today = await getter(user_id, "video", today)
@@ -607,6 +627,13 @@ async def get_quota_status(
         usage_repo=usage_repo,
         profile_repo=profile_repo,
     )
+    from platform_api.services.subscription_renewal_alert_service import (
+        renewal_alert_for_license,
+    )
+
+    license_repo = get_license_repo()
+    expires_at = await license_repo.get_user_license_expires_at(user_id)
+    renewal_alert = renewal_alert_for_license(expires_at)
     return QuotaStatusResponse(
         songs_remaining=songs_remaining,
         songs_quota=songs_quota,
@@ -623,6 +650,7 @@ async def get_quota_status(
         daily_merges_remaining=daily_merges_remaining,
         daily_merges_limit=daily_merges_limit,
         wallet_balance=units_to_credits(balance),
+        renewal_alert=renewal_alert,
         channels=[
             ChannelDailyQuotaResponse(
                 profile_id=item.profile_id,
@@ -1049,9 +1077,19 @@ async def delete_model_cost(
 async def seed_model_costs(
     _: AdminDep,
     model_cost_service: ModelCostServiceDep,
+    pricing_service: PricingServiceDep,
     overwrite: bool = False,
 ) -> dict[str, int]:
-    return await model_cost_service.seed_from_registry(overwrite=overwrite)
+    cost_result = await model_cost_service.seed_from_registry(overwrite=overwrite)
+    pricing_result = await pricing_service.seed_local_platform_pricing(
+        overwrite=overwrite
+    )
+    return {
+        **cost_result,
+        "local_pricing_created_count": pricing_result["created_count"],
+        "local_pricing_updated_count": pricing_result["updated_count"],
+        "local_pricing_skipped_count": pricing_result["skipped_existing_count"],
+    }
 
 
 @router.post(
@@ -1087,6 +1125,62 @@ async def generate_pricing(
         image_fallback_chain=assignments_data.get("image_fallback_chain", []),
         overwrite_existing=request.overwrite_existing,
         mark_needs_review=request.mark_needs_review,
+    )
+    return GeneratePricingResponse(
+        created_count=int(result["created_count"]),
+        updated_count=int(result["updated_count"]),
+        skipped_existing_count=int(result["skipped_existing_count"]),
+        missing_cost_count=int(result["missing_cost_count"]),
+        missing_costs=list(result.get("missing_costs") or []),
+    )
+
+
+@router.get(
+    "/pricing/registry-gaps",
+    response_model=RegistryPricingGapsResponse,
+    status_code=200,
+    summary="List registry catalog pairs missing from credit pricing (Admin)",
+)
+async def list_registry_pricing_gaps(
+    _: AdminDep,
+    pricing_generator: PricingGeneratorServiceDep,
+) -> RegistryPricingGapsResponse:
+    gaps = await pricing_generator.list_registry_pricing_gaps()
+    return RegistryPricingGapsResponse(
+        gap_count=len(gaps),
+        gaps=[
+            RegistryPricingGapEntry(
+                ai_service=str(item["ai_service"]),
+                operation_type=str(item["operation_type"]),
+                sub_model=str(item.get("sub_model") or ""),
+            )
+            for item in gaps
+        ],
+    )
+
+
+@router.post(
+    "/pricing/seed-from-registry",
+    response_model=GeneratePricingResponse,
+    status_code=200,
+    summary="Create needs-review pricing rows for registry pairs not yet priced (Admin)",
+)
+async def seed_pricing_from_registry(
+    request: SeedRegistryPricingRequest,
+    _: AdminDep,
+    pricing_generator: PricingGeneratorServiceDep,
+    settings_service: SettingsServiceDep,
+) -> GeneratePricingResponse:
+    gcv = await settings_service.get_global_credit_value()
+    if gcv is None:
+        raise ValidationError(
+            "Configure Global Credit Value before seeding pricing.",
+            details={"field": "global_credit_value"},
+        )
+
+    result = await pricing_generator.generate_missing_from_registry(
+        margin_percent=request.margin_percent,
+        global_credit_value=gcv,
     )
     return GeneratePricingResponse(
         created_count=int(result["created_count"]),

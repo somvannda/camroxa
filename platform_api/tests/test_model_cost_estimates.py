@@ -25,7 +25,7 @@ def test_slai_gpt_image_is_image_only() -> None:
 
 
 def test_slai_gpt56_models_are_text_only() -> None:
-    for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-tuna"):
+    for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
         ops = operation_types_for_model("slai", model)
         assert "lyric" in ops
         assert "music" not in ops
@@ -65,7 +65,7 @@ def test_mimo_lyric_cost_matches_slai_shop_calibration() -> None:
 def test_slai_models_seed_with_usd_estimates() -> None:
     rows = build_seed_cost_rows()
     mimo = [r for r in rows if r["sub_model"] == "xiaomi/mimo-v2.5-pro"]
-    gpt56 = [r for r in rows if r["sub_model"] in {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-tuna"}]
+    gpt56 = [r for r in rows if r["sub_model"] in {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}]
     image = [r for r in rows if r["sub_model"] == "slai/gpt-image-2"]
     assert len(mimo) == len(TEXT_OPERATIONS)
     assert len(gpt56) == 3 * len(TEXT_OPERATIONS)
@@ -83,8 +83,8 @@ def test_suno_music_models_seed_with_music_operations() -> None:
     rows = build_seed_cost_rows()
     v5 = [row for row in rows if row["ai_service"] == "suno" and row["sub_model"] == "V5"]
     v55 = [row for row in rows if row["ai_service"] == "suno" and row["sub_model"] == "V5_5"]
-    assert {row["operation_type"] for row in v5} == {"music", "music_generation"}
-    assert {row["operation_type"] for row in v55} == {"music", "music_generation"}
+    assert {row["operation_type"] for row in v5} == {"music"}
+    assert {row["operation_type"] for row in v55} == {"music"}
     assert all(row["cost_usd"] == 0.06 for row in v5 + v55)
     assert all(
         "Suno pack: 12 credits" in (row["notes"] or "") for row in v5 + v55
@@ -102,4 +102,4 @@ def test_suno_lyrics_model_only_seeds_lyric_operation() -> None:
     ]
     assert len(lyric_rows) == 1
     assert lyric_rows[0]["operation_type"] == "lyric"
-    assert lyric_rows[0]["cost_usd"] == 0.01
+    assert lyric_rows[0]["cost_usd"] == 0.004

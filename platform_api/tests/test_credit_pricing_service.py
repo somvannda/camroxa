@@ -280,6 +280,15 @@ class TestGetPrice:
         repo.seed("suno", "music_generation", cr(14), cr(8), sub_model="V5")
         assert await service.get_price("suno", "music", "V5") == cr(14)
 
+    @pytest.mark.asyncio
+    async def test_suno_prefers_music_row_over_music_generation_alias(
+        self, service: CreditPricingService, repo: FakeCreditPricingRepo
+    ) -> None:
+        repo.seed("suno", "music_generation", cr(14), cr(8), sub_model="V5")
+        repo.seed("suno", "music", cr(20), cr(10), sub_model="V5")
+        assert await service.get_price("suno", "music", "V5") == cr(20)
+        assert await service.get_price("suno", "music_generation", "V5") == cr(20)
+
 
 # ---------------------------------------------------------------------------
 # Tests: set_price

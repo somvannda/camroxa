@@ -14,6 +14,13 @@ import httpx
 
 from platform_api.config import Settings
 from platform_api.exceptions import ExternalServiceError
+from platform_api.services.suno_status_messages import (
+    is_suno_failure_status,
+    is_suno_pending_status,
+    is_suno_success_status,
+    suno_submit_error_message,
+    suno_task_failure_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +64,7 @@ def extract_suno_lyrics_task_id(response: dict[str, Any]) -> str:
     code = int(response.get("code", 0) or 0)
     if code != 200:
         raise ExternalServiceError(
-            str(response.get("msg", "")).strip() or f"Suno lyrics submit failed (code {code})",
+            suno_submit_error_message(code=code, msg=response.get("msg", ""), context="lyrics"),
             is_retryable=code in {429, 430, 500, 455},
             details={"provider": "suno", "reason": "lyrics_submit_failed", "code": code},
         )
@@ -103,7 +110,7 @@ def extract_suno_generate_task_id(response: dict[str, Any]) -> str:
     code = int(response.get("code", 0) or 0)
     if code != 200:
         raise ExternalServiceError(
-            str(response.get("msg", "")).strip() or f"Suno generate failed (code {code})",
+            suno_submit_error_message(code=code, msg=response.get("msg", ""), context="generate"),
             is_retryable=code in {429, 430, 455, 500},
             details={"provider": "suno", "reason": "generate_submit_failed", "code": code},
         )
@@ -139,19 +146,22 @@ def parse_suno_lyrics_poll(response: dict[str, Any]) -> SunoLyricsPollResult:
     if code != 200:
         return SunoLyricsPollResult(
             state="failed",
-            error=str(response.get("msg", "")).strip() or f"Suno lyrics poll failed (code {code})",
+            error=suno_task_failure_message(api_code=code, api_msg=response.get("msg", "")),
         )
 
     data = response.get("data") if isinstance(response.get("data"), dict) else {}
     status = str(data.get("status", "")).strip().upper()
-    if status in {"", "PENDING"}:
+    if is_suno_pending_status(status):
         return SunoLyricsPollResult(state="pending")
 
     if status != "SUCCESS":
-        error = str(data.get("errorMessage", "")).strip()
+        error_message = str(data.get("errorMessage", "")).strip()
         return SunoLyricsPollResult(
             state="failed",
-            error=error or f"Suno lyrics failed (status={status})",
+            error=suno_task_failure_message(
+                status=status,
+                error_message=error_message,
+            ),
         )
 
     response_block = data.get("response") if isinstance(data.get("response"), dict) else {}
@@ -268,11 +278,12 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
     if code != 200:
         return SunoGeneratePollResult(
             state="failed",
-            error=str(response.get("msg", "")).strip() or f"Suno generate poll failed (code {code})",
+            error=suno_task_failure_message(api_code=code, api_msg=response.get("msg", "")),
         )
 
     data = response.get("data") if isinstance(response.get("data"), dict) else {}
     status = str(data.get("status", "")).strip().upper()
+    error_message = str(data.get("errorMessage", "")).strip()
     clips = _iter_generate_clips(data)
     audio_urls: list[str] = []
     image_urls: list[str] = []
@@ -299,23 +310,25 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
             tags_alt=tags[1] if len(tags) > 1 else "",
         )
 
-    if status in {"FAILED", "ERROR", "FAILURE", "CANCELLED"}:
-        error = str(data.get("errorMessage", "")).strip()
+    if is_suno_failure_status(status):
         return SunoGeneratePollResult(
             state="failed",
-            error=error or f"Suno generate failed (status={status})",
+            error=suno_task_failure_message(status=status, error_message=error_message),
         )
 
-    if status in {"", "PENDING", "QUEUED", "RUNNING", "PROCESSING", "TEXT_SUCCESS", "FIRST_SUCCESS"}:
+    if is_suno_pending_status(status):
         return SunoGeneratePollResult(state="pending")
 
-    if status in {"SUCCESS", "COMPLETE", "COMPLETED", "DONE"}:
+    if is_suno_success_status(status):
         return SunoGeneratePollResult(
             state="failed",
             error="Suno reported success but returned no audio URLs.",
         )
 
-    return SunoGeneratePollResult(state="pending")
+    return SunoGeneratePollResult(
+        state="failed",
+        error=suno_task_failure_message(status=status, error_message=error_message),
+    )
 
 
 def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceError:

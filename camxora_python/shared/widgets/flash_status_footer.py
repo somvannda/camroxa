@@ -15,7 +15,9 @@ from shared.themes.deep_blue import (
 
 
 class FlashStatusFooter(QFrame):
-    """Settings-style footer that floats over the page bottom and auto-hides."""
+    """Settings-style badge that floats over the page bottom-right and auto-hides."""
+
+    _MAX_BADGE_WIDTH = 420
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -62,12 +64,14 @@ class FlashStatusFooter(QFrame):
         if parent is None:
             return
         margin = self._overlay_margin
-        width = max(0, parent.width() - margin * 2)
-        self.setMaximumWidth(width)
-        self.setMinimumWidth(width)
-        self.resize(width, self.sizeHint().height())
-        x = margin
-        y = max(0, parent.height() - self.height() - margin)
+        max_width = min(self._MAX_BADGE_WIDTH, max(160, parent.width() - margin * 2))
+        self._label.setMaximumWidth(max_width - 24)
+        self.adjustSize()
+        width = min(max_width, max(self.sizeHint().width(), 160))
+        height = self.sizeHint().height()
+        self.setFixedSize(width, height)
+        x = max(margin, parent.width() - width - margin)
+        y = max(margin, parent.height() - height - margin)
         self.move(x, y)
 
     def _apply_tone(self, tone: str) -> None:

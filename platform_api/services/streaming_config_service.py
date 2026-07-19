@@ -117,7 +117,20 @@ async def resolve_streaming_storage_config(
         try:
             resolved = get_settings()
         except Exception:
-            resolved = Settings(_env_file=())
+            from types import SimpleNamespace
+
+            resolved = SimpleNamespace(
+                encryption_master_key=os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", ""),
+                streaming_b2_key_id=os.environ.get("PLATFORM_STREAMING_B2_KEY_ID", ""),
+                streaming_b2_application_key=os.environ.get("PLATFORM_STREAMING_B2_APPLICATION_KEY", ""),
+                streaming_b2_bucket=os.environ.get("PLATFORM_STREAMING_B2_BUCKET", "camxora-media"),
+                streaming_b2_region=os.environ.get("PLATFORM_STREAMING_B2_REGION", "us-west-004"),
+                streaming_b2_endpoint=os.environ.get("PLATFORM_STREAMING_B2_ENDPOINT", ""),
+                streaming_cdn_base_url=os.environ.get("PLATFORM_STREAMING_CDN_BASE_URL", ""),
+                streaming_stream_url_ttl_seconds=int(
+                    os.environ.get("PLATFORM_STREAMING_STREAM_URL_TTL_SECONDS", "3600") or 3600
+                ),
+            )
     master_key = resolved.encryption_master_key.strip() or os.environ.get(
         "PLATFORM_ENCRYPTION_MASTER_KEY", ""
     ).strip()

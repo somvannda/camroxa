@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from features.marketplace.coordinator import CatalogResponse, InstallResult, MarketplaceCoordinator
 from features.marketplace.views.marketplace_view import MarketplaceView
+from shared.services.action_feedback import notify_action
 
 
 class MarketplacePageController(QObject):
@@ -111,8 +112,12 @@ class MarketplacePageController(QObject):
                 self._pending_reinstall.add(item_id)
         except Exception as exc:
             self._view.set_install_progress(item_id, False)
-            QMessageBox.warning(self._view, "Marketplace", f"Installation failed: {exc}")
+            detail = f"Installation failed: {exc}"
+            notify_action(detail, tone="error")
+            QMessageBox.warning(self._view, "Marketplace", detail)
             return
+
+        notify_action("Installing template…", tone="neutral")
 
         def _work() -> InstallResult:
             if reinstall:
@@ -134,16 +139,21 @@ class MarketplacePageController(QObject):
 
         if isinstance(result, Exception):
             self._pending_reinstall.discard(item_id)
-            QMessageBox.warning(self._view, "Marketplace", f"Installation failed: {result}")
+            detail = f"Installation failed: {result}"
+            notify_action(detail, tone="error")
+            QMessageBox.warning(self._view, "Marketplace", detail)
             return
 
         if not isinstance(result, InstallResult):
             self._pending_reinstall.discard(item_id)
-            QMessageBox.warning(self._view, "Marketplace", "Installation failed: unexpected response")
+            detail = "Installation failed: unexpected response"
+            notify_action(detail, tone="error")
+            QMessageBox.warning(self._view, "Marketplace", detail)
             return
 
         if result.error:
             self._pending_reinstall.discard(item_id)
+            notify_action(result.error, tone="error")
             QMessageBox.warning(self._view, "Marketplace", result.error)
             return
 
@@ -156,11 +166,13 @@ class MarketplacePageController(QObject):
                     self._on_templates_changed()
                 except Exception:
                     pass
-            self._show_success_notification(
+            success_message = (
                 "Template reinstalled successfully."
                 if was_reinstall
                 else "Template installed successfully."
             )
+            notify_action(success_message, tone="success")
+            self._show_success_notification(success_message)
 
     # ─── Catalog Refresh ──────────────────────────────────────────────────
 
@@ -175,6 +187,7 @@ class MarketplacePageController(QObject):
 
         self._view.set_loading(True)
         self._view.begin_preview_generation()
+        notify_action("Loading marketplace…", tone="neutral")
 
         def _work() -> CatalogResponse:
             return self._coordinator.fetch_catalog(page=page, kind=kind, search=search)
@@ -195,16 +208,21 @@ class MarketplacePageController(QObject):
 
         if isinstance(result, Exception):
             self._view.set_loading(False)
-            self._view.set_error(f"Failed to load catalog: {result}")
+            detail = f"Failed to load catalog: {result}"
+            notify_action(detail, tone="error")
+            self._view.set_error(detail)
             return
 
         if not isinstance(result, CatalogResponse):
             self._view.set_loading(False)
-            self._view.set_error("Failed to load catalog: unexpected response")
+            detail = "Failed to load catalog: unexpected response"
+            notify_action(detail, tone="error")
+            self._view.set_error(detail)
             return
 
         if result.error:
             self._view.set_loading(False)
+            notify_action(result.error, tone="error")
             self._view.set_error(result.error)
             return
 
@@ -219,6 +237,9 @@ class MarketplacePageController(QObject):
             result.page_size,
             installed_ids=installed_ids,
         )
+        count = len(result.items)
+        suffix = "s" if count != 1 else ""
+        notify_action(f"Loaded {count} template{suffix}.", tone="success")
 
     # ─── Notifications ────────────────────────────────────────────────────
 

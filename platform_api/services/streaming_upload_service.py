@@ -13,9 +13,11 @@ from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.storage_service import StorageService, StorageServiceError
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
 from platform_api.services.streaming_slug import slugify
+from platform_api.services.music_genre_utils import parse_suno_clip_tags, resolve_stream_genres
 from platform_api.services.suno_audio_resolver import (
     SunoTaskDownloadUrls,
     download_suno_mp3_bytes,
+    normalize_http_download_url,
     poll_suno_generate_with_pool,
     refresh_suno_task_download_urls,
     variant_url_candidates,
@@ -46,12 +48,12 @@ class StreamingUploadService:
                 return
 
             refreshed = await self._refresh_task_download_urls(context)
-            audio_ok = str(
-                refreshed.audio_url_ok or context.get("audio_url_ok") or ""
-            ).strip()
-            audio_alt = str(
-                refreshed.audio_url_alt or context.get("audio_url_alt") or ""
-            ).strip()
+            audio_ok = normalize_http_download_url(
+                refreshed.audio_url_ok or context.get("audio_url_ok")
+            )
+            audio_alt = normalize_http_download_url(
+                refreshed.audio_url_alt or context.get("audio_url_alt")
+            )
             if refreshed.refreshed and (refreshed.audio_url_ok or refreshed.audio_url_alt):
                 await self._persist_refreshed_audio_urls(
                     suno_task_id=suno_task_id,
@@ -142,7 +144,7 @@ class StreamingUploadService:
             song_id=song_id,
             batch_id=batch_id,
             suno_task_id=suno_task_id,
-            source_url=source_url,
+            source_url=normalize_http_download_url(source_url) or None,
             storage_key=storage_key,
         )
 
@@ -154,12 +156,16 @@ class StreamingUploadService:
 
             candidates = variant_url_candidates(
                 variant=variant,
-                stored_ok=str(context.get("audio_url_ok") or ""),
-                stored_alt=str(context.get("audio_url_alt") or ""),
+                stored_ok=normalize_http_download_url(context.get("audio_url_ok")),
+                stored_alt=normalize_http_download_url(context.get("audio_url_alt")),
                 refreshed=refreshed,
             )
-            primary_url = candidates[0] if candidates else source_url
+            primary_url = candidates[0] if candidates else normalize_http_download_url(source_url)
             fallback_urls = candidates[1:] if len(candidates) > 1 else []
+            if not primary_url:
+                raise StorageServiceError(
+                    "No valid Suno download URL available. Re-poll record-info or retry after Suno callback."
+                )
             data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
@@ -185,8 +191,12 @@ class StreamingUploadService:
                     suno_image_url = refreshed.image_url_ok
                     tags_text = refreshed.tags_ok
 
-            genre = str(context.get("suno_style") or tags_text or "").strip() or None
-            tags = [part.strip() for part in tags_text.split(",") if part.strip()] or None
+            primary_genre, catalog_genres = resolve_stream_genres(
+                description_genres=context.get("description_genres"),
+                suno_tags_text=tags_text,
+            )
+            genre = primary_genre
+            tags = parse_suno_clip_tags(tags_text) or None
             track_number = None
             batch_index = context.get("batch_index")
             if batch_index is not None:
@@ -204,7 +214,7 @@ class StreamingUploadService:
                 storage=storage,
             )
 
-            await self._repo.update_album_genre(album_id, genre)
+            await self._repo.update_album_genre(album_id, genre, genres=catalog_genres or None)
             await self._repo.upsert_track(
                 user_id=user_id,
                 album_id=album_id,
@@ -221,6 +231,7 @@ class StreamingUploadService:
                 cover_storage_key=cover_storage_key,
                 suno_image_url=suno_image_url or None,
                 tags=tags,
+                genres=catalog_genres or None,
             )
             await self._repo.mark_upload_job(job_id, status="success", storage_key=storage_key)
         except Exception as exc:
@@ -390,10 +401,10 @@ class StreamingUploadService:
         if not kind.startswith("mp3_"):
             raise ValueError("Only MP3 upload jobs can be retried from admin.")
 
-        source_url = str(job.get("source_url") or "").strip()
+        source_url = normalize_http_download_url(job.get("source_url"))
         suno_task_id = job.get("suno_task_id")
-        if not source_url or not suno_task_id:
-            raise ValueError("Upload job is missing source URL or Suno task reference.")
+        if not suno_task_id:
+            raise ValueError("Upload job is missing Suno task reference.")
 
         variant = kind.removeprefix("mp3_")
         if variant not in {"ok", "alt"}:
@@ -443,12 +454,16 @@ class StreamingUploadService:
 
             candidates = variant_url_candidates(
                 variant=variant,
-                stored_ok=str(context.get("audio_url_ok") or ""),
-                stored_alt=str(context.get("audio_url_alt") or ""),
+                stored_ok=normalize_http_download_url(context.get("audio_url_ok")),
+                stored_alt=normalize_http_download_url(context.get("audio_url_alt")),
                 refreshed=refreshed,
             )
             primary_url = candidates[0] if candidates else source_url
             fallback_urls = candidates[1:] if len(candidates) > 1 else []
+            if not primary_url:
+                raise ValueError(
+                    "No valid Suno download URL available for retry. Check Suno task record-info."
+                )
             data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")

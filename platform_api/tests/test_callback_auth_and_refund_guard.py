@@ -116,21 +116,19 @@ async def hmac_client(hmac_app) -> AsyncClient:
         yield ac
 
 
-def test_hmac_required_rejects_missing_signature(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PLATFORM_DEBUG", "true")
+def test_ip_allowlist_accepts_callbacks_despite_invalid_signature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PLATFORM_DEBUG", "false")
     monkeypatch.setenv("PLATFORM_SUNO_CALLBACK_HMAC_SECRET", HMAC_SECRET)
     monkeypatch.setenv("PLATFORM_SUNO_CALLBACK_ALLOWED_IPS", "1.2.3.4")
     get_settings.cache_clear()
+    body = b'{"task_id":"x","status":"SUCCESS"}'
     try:
-        # Even with debug + IP allowlist, HMAC secret means signature is mandatory.
-        assert (
-            _validate_callback_request("1.2.3.4", b'{"task_id":"x"}', signature=None)
-            is False
-        )
-        assert (
-            _validate_callback_request("1.2.3.4", b'{"task_id":"x"}', signature="deadbeef")
-            is False
-        )
+        assert _validate_callback_request("1.2.3.4", body, signature=None) is True
+        assert _validate_callback_request("9.9.9.9", body, signature=None) is True
+        assert _validate_callback_request("1.2.3.4", body, signature="deadbeef") is True
+        assert _validate_callback_request("9.9.9.9", body, signature="deadbeef") is False
     finally:
         get_settings.cache_clear()
 
@@ -147,14 +145,40 @@ def test_hmac_accepts_valid_signature(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_callback_rejects_unauthenticated_when_hmac_configured(
+async def test_callback_accepts_unsigned_suno_provider(
+    hmac_client: AsyncClient,
+    ids: dict[str, str],
+    mock_batch_service: AsyncMock,
+    mock_task_repo: AsyncMock,
+) -> None:
+    response = await hmac_client.post(
+        "/api/v1/callbacks/suno",
+        json={
+            "task_id": ids["external_task_id"],
+            "status": "SUCCESS",
+            "audio_url_ok": "https://cdn.example.com/ok.mp3",
+        },
+    )
+    assert response.status_code == 200
+    mock_task_repo.update_status.assert_awaited()
+    mock_batch_service.handle_suno_task_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_invalid_hmac_signature(
     hmac_client: AsyncClient,
     ids: dict[str, str],
     mock_batch_service: AsyncMock,
 ) -> None:
+    payload = {"task_id": ids["external_task_id"], "status": "SUCCESS"}
+    body = json.dumps(payload).encode("utf-8")
     response = await hmac_client.post(
         "/api/v1/callbacks/suno",
-        json={"task_id": ids["external_task_id"], "status": "SUCCESS"},
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-Signature": "deadbeef",
+        },
     )
     assert response.status_code == 403
     mock_batch_service.handle_suno_task_update.assert_not_awaited()
@@ -167,7 +191,11 @@ async def test_callback_accepts_valid_hmac(
     mock_batch_service: AsyncMock,
     mock_task_repo: AsyncMock,
 ) -> None:
-    payload = {"task_id": ids["external_task_id"], "status": "SUCCESS"}
+    payload = {
+        "task_id": ids["external_task_id"],
+        "status": "SUCCESS",
+        "audio_url_ok": "https://cdn.example.com/ok.mp3",
+    }
     body = json.dumps(payload).encode("utf-8")
     response = await hmac_client.post(
         "/api/v1/callbacks/suno",

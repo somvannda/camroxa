@@ -12,7 +12,10 @@ export interface ProviderOption {
 
 export interface SubModelDetail {
   name: string;
-  cost_tier: string; // "$" = cheapest, "$$" = moderate, "$$$" = premium
+  cost_tier: string;
+  cost_usd?: number | null;
+  cost_usd_by_operation?: Record<string, number>;
+  operations?: string[];
 }
 
 export interface AssignmentsResponse {

@@ -364,10 +364,16 @@ class _NotificationDropdown(QFrame):
                 child.widget().deleteLater()
 
         today_count = sum(1 for item in items if item.created_at.astimezone().date() == date.today())
-        if today_count == 1:
-            self._subtitle.setText("You have 1 notification today.")
+        total = len(items)
+        if today_count == total:
+            if today_count == 1:
+                self._subtitle.setText("You have 1 notification today.")
+            else:
+                self._subtitle.setText(f"You have {today_count} notifications today.")
+        elif total == 1:
+            self._subtitle.setText("You have 1 open notification.")
         else:
-            self._subtitle.setText(f"You have {today_count} notifications today.")
+            self._subtitle.setText(f"You have {total} open notifications.")
 
         if not items:
             self._scroll.hide()

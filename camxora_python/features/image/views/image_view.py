@@ -29,12 +29,14 @@ from shared.models.auth import ProfileResponse
 from shared.models.platform import ImageJobListItem, MusicHistoryListResponse
 from shared.services.file_service import open_path
 from shared.services.platform_api import PlatformApi
+from shared.services.action_feedback import notify_action
 from shared.services.shell_status import emit_shell_status, restore_shell_status
 from shared.services.workspace_cache import WorkspaceCache
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import (
     ImageClearQueueWorker,
+    ImageOpenWorker,
     ImagePreviewLoadWorker,
     ImageRetryJobsWorker,
     ImageWorkspacePayload,
@@ -65,6 +67,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._retry_worker: ImageRetryJobsWorker | None = None
         self._clear_worker: ImageClearQueueWorker | None = None
         self._preview_worker: ImagePreviewLoadWorker | None = None
+        self._open_worker: ImageOpenWorker | None = None
         self._profiles: list[ProfileResponse] = []
         self._image_jobs: list[ImageJobListItem] = []
         self._history = MusicHistoryListResponse()
@@ -138,7 +141,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._controls_card.clear_queue_requested.connect(self._clear_queue)
         self._controls_card.job_retry_requested.connect(self._on_job_retry_requested)
         self._controls_card.jobs_retry_requested.connect(self._retry_jobs)
-        self._controls_card.job_open_requested.connect(open_path)
+        self._controls_card.job_open_requested.connect(self._on_job_open_requested)
 
         self.setWidget(container)
 
@@ -318,6 +321,21 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._controls_card.set_rows(rows, self._selected_queue_key)
         self._load_previews(self._controls_card.selected_row())
 
+    def _on_job_open_requested(self, path: str, job_id: str) -> None:
+        if self._open_worker is not None and self._open_worker.isRunning():
+            return
+        worker = ImageOpenWorker(
+            self._api,
+            path=path,
+            job_id=job_id,
+            parent=self,
+        )
+        worker.succeeded.connect(open_path)
+        worker.failed.connect(lambda message: emit_shell_status(message, tone="warning"))
+        worker.finished.connect(lambda: setattr(self, "_open_worker", None))
+        self._open_worker = worker
+        worker.start()
+
     def _on_row_selected(self, key: str) -> None:
         self._selected_queue_key = key
         self._schedule_local_workspace_save()
@@ -391,6 +409,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         worker.failed.connect(self._on_retry_failed)
         worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
         self._retry_worker = worker
+        notify_action("Retrying image job…", tone="neutral")
         worker.start()
 
     def _retry_jobs(
@@ -419,6 +438,10 @@ class ImageView(PollablePageMixin, QScrollArea):
         worker.failed.connect(self._on_retry_failed)
         worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
         self._retry_worker = worker
+        if batch_id and not job_ids:
+            notify_action("Retrying failed image jobs for batch…", tone="neutral")
+        else:
+            notify_action(f"Retrying {len(job_ids)} image job(s)…", tone="neutral")
         worker.start()
 
     def _on_retry_succeeded(self, payload: object) -> None:
@@ -428,13 +451,14 @@ class ImageView(PollablePageMixin, QScrollArea):
         if isinstance(payload, ImageJobsRetryResponse):
             updated = int(payload.updated or 0)
         if updated > 0:
-            self._status_label = f"Retry queued for {updated} job{'s' if updated != 1 else ''}."
+            message = f"Retry queued for {updated} image job{'s' if updated != 1 else ''}."
+            self._status_label = message
             self._error_banner.hide()
+            notify_action(message, tone="success")
         else:
+            message = "No failed image jobs were reset. They may already be pending or running."
             self._status_label = "No failed image jobs to retry."
-            self._show_workspace_error(
-                "No failed image jobs were reset. They may already be pending or running."
-            )
+            self._show_workspace_error(message)
         self.refresh_data()
 
     def _on_retry_failed(self, message: str) -> None:
@@ -459,7 +483,9 @@ class ImageView(PollablePageMixin, QScrollArea):
         if confirmed != QMessageBox.StandardButton.Yes:
             return
         if self._clear_worker is not None and self._clear_worker.isRunning():
+            notify_action("A queue clear is already in progress.", tone="warning")
             return
+        notify_action("Clearing image queue for selected date range…", tone="neutral")
         worker = ImageClearQueueWorker(self._api, batch_ids, parent=self)
         worker.succeeded.connect(self._on_clear_succeeded)
         worker.failed.connect(self._on_clear_failed)
@@ -467,9 +493,12 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._clear_worker = worker
         worker.start()
 
-    def _on_clear_succeeded(self, _deleted: int) -> None:
-        self._status_label = "Queue cleared for the selected date range."
+    def _on_clear_succeeded(self, deleted: int) -> None:
+        count = int(deleted or 0)
+        message = f"Cleared {count} image job(s) from the queue."
+        self._status_label = message
         self._error_banner.hide()
+        notify_action(message, tone="success")
         self.refresh_data()
 
     def _on_clear_failed(self, message: str) -> None:
@@ -477,6 +506,10 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._show_workspace_error(message or "Unable to clear image queue.")
 
     def _show_workspace_error(self, message: str) -> None:
-        self._error_banner.set_message(message)
+        text = str(message or "").strip()
+        if not text:
+            return
+        self._error_banner.set_message(text)
         self._error_banner.show()
+        notify_action(text, tone="error")
         self._refresh_presentation()

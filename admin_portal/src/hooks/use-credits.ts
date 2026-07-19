@@ -6,6 +6,8 @@ import type {
   CreateModelCostRequest,
   CreatePricingRequest,
   GeneratePricingRequest,
+  RegistryPricingGapsResponse,
+  SeedRegistryPricingRequest,
   UpdateCreditPackRequest,
   UpdateGlobalCreditValueRequest,
 } from '@/types/api';
@@ -227,7 +229,11 @@ export function useSeedModelCosts() {
         `/api/v1/credits/model-costs/seed?overwrite=${overwrite}`,
         {},
       ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['model-costs'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['model-costs'] });
+      queryClient.invalidateQueries({ queryKey: ['pricing'] });
+      queryClient.invalidateQueries({ queryKey: ['registry-pricing-gaps'] });
+    },
   });
 }
 
@@ -239,6 +245,27 @@ export function useGeneratePricing() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
       queryClient.invalidateQueries({ queryKey: ['ai-routing', 'audit'] });
+      queryClient.invalidateQueries({ queryKey: ['registry-pricing-gaps'] });
+    },
+  });
+}
+
+export function useRegistryPricingGaps() {
+  return useQuery({
+    queryKey: ['registry-pricing-gaps'],
+    queryFn: () =>
+      httpClient.get<RegistryPricingGapsResponse>('/api/v1/credits/pricing/registry-gaps'),
+  });
+}
+
+export function useSeedRegistryPricing() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: SeedRegistryPricingRequest) =>
+      httpClient.post('/api/v1/credits/pricing/seed-from-registry', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pricing'] });
+      queryClient.invalidateQueries({ queryKey: ['registry-pricing-gaps'] });
     },
   });
 }

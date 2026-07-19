@@ -125,6 +125,8 @@ class ModelCostService:
         created = 0
         skipped = 0
         pruned = 0
+        # Drop registry-seeded rows that no longer exist in the catalog (e.g. legacy
+        # suno/music_generation after consolidating on suno/music).
         for row in await self._repo.get_all():
             if str(row.get("source") or "") != "registry":
                 continue

@@ -22,7 +22,7 @@ class VideoPipelineCoordinator(QObject):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._poll)
         self._worker: VideoPipelineOrchestrationWorker | None = None
-        self._automation = PipelineAutomationService(self)
+        self._automation = PipelineAutomationService(self._api, self)
         self._cooldown_until: dict[str, float] = {}
         self._active = False
 
@@ -77,6 +77,8 @@ class VideoPipelineCoordinator(QObject):
         started = self._automation.start(candidate, settings=payload.settings)
         if started:
             self._cooldown_until[cooldown_key] = time.time() + 4.0
+        elif self._automation.auth_blocked():
+            self._cooldown_until[cooldown_key] = time.time() + 120.0
         else:
             self._cooldown_until[cooldown_key] = time.time() + 12.0
 

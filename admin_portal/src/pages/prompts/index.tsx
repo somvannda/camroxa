@@ -385,6 +385,7 @@ function DescriptionsTab() {
     const payload = {
       name: values.name,
       content: values.content,
+      genres: values.genres,
       match_key: values.match_key || undefined,
       vocal_profile: vocalProfile,
     };
@@ -441,6 +442,7 @@ function DescriptionsTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Genres</TableHead>
                 <TableHead>Content</TableHead>
                 <TableHead>Match Key</TableHead>
                 <TableHead className="w-[120px]">Visibility</TableHead>
@@ -453,6 +455,19 @@ function DescriptionsTab() {
                 descriptions.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell>
+                      {item.genres && item.genres.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {item.genres.map((genre) => (
+                            <Badge key={genre} variant="outline">
+                              {genre}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {truncateContent(item.content)}
                     </TableCell>

@@ -27,6 +27,9 @@ set -e
 REPO=/opt/camxora/repo
 tar -xzf /tmp/camxora-src.tar.gz -C $REPO platform_api
 chown -R camxora:camxora $REPO/platform_api
+grep -q '^PLATFORM_SAMPLE_PACK_URL_IMPORT_MAX_MB=' $REPO/platform_api/.env || \
+  echo 'PLATFORM_SAMPLE_PACK_URL_IMPORT_MAX_MB=1024' >> $REPO/platform_api/.env
+grep '^PLATFORM_SAMPLE_PACK_URL_IMPORT_MAX_MB=' $REPO/platform_api/.env
 systemctl restart camxora-api
 sleep 2
 systemctl is-active camxora-api

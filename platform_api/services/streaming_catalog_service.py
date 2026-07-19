@@ -10,6 +10,7 @@ from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.storage_service import StorageService
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
 from platform_api.services.streaming_slug import slugify
+from platform_api.services.music_genre_utils import parse_genre_list
 
 
 class StreamingCatalogService:
@@ -30,13 +31,26 @@ class StreamingCatalogService:
     def _track_cover_key(track: dict[str, Any]) -> str | None:
         return track.get("cover_storage_key") or track.get("album_cover_storage_key")
 
+    @staticmethod
+    def _decorate_genre_fields(row: dict[str, Any]) -> None:
+        genres = parse_genre_list(row.get("genres"))
+        if not genres:
+            primary = str(row.get("genre") or row.get("album_genre") or "").strip()
+            genres = [primary] if primary else []
+        row["genres"] = genres
+        row["genre_slug"] = slugify(genres[0]) if genres else None
+        if not row.get("genre") and genres:
+            row["genre"] = genres[0]
+
     async def _decorate_track(self, track: dict[str, Any]) -> None:
         track["cover_url"] = await self._cover_url(self._track_cover_key(track))
         if track.get("genre") is None and track.get("album_genre"):
             track["genre"] = track.get("album_genre")
+        self._decorate_genre_fields(track)
 
     async def _decorate_album(self, album: dict[str, Any]) -> None:
         album["cover_url"] = await self._cover_url(album.get("cover_storage_key"))
+        self._decorate_genre_fields(album)
 
     async def get_home(self) -> dict[str, Any]:
         recent_tracks = await self._repo.list_recent_published_tracks(limit=12)
@@ -78,7 +92,9 @@ class StreamingCatalogService:
             items.append(
                 {
                     "genre": genre,
+                    "genres": [genre],
                     "slug": slugify(genre),
+                    "genre_slug": slugify(genre),
                     "album_count": int(row.get("album_count") or 0),
                     "track_count": int(row.get("track_count") or 0),
                 }
@@ -151,6 +167,17 @@ class StreamingCatalogService:
             "cover_url": await self._cover_url(self._track_cover_key(track)),
             "duration_seconds": track.get("duration_seconds"),
             "genre": track.get("genre") or track.get("album_genre"),
+            "genres": parse_genre_list(track.get("genres"))
+            or (
+                [str(track.get("genre") or track.get("album_genre")).strip()]
+                if str(track.get("genre") or track.get("album_genre") or "").strip()
+                else []
+            ),
+            "genre_slug": slugify(
+                str(track.get("genre") or track.get("album_genre") or ""),
+                fallback="",
+            )
+            or None,
         }
 
     async def unpublish_track(self, track_id: UUID) -> bool:

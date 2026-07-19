@@ -292,6 +292,18 @@ def get_model_cost_service():
     return ModelCostService(repo=get_model_cost_repo())
 
 
+def get_suno_blocklist_repo():
+    from platform_api.repositories.suno_blocklist_repo import SunoBlocklistRepository
+
+    return SunoBlocklistRepository(pool=get_db_pool())
+
+
+def get_suno_blocklist_service():
+    from platform_api.services.suno_blocklist_service import SunoBlocklistService
+
+    return SunoBlocklistService(repo=get_suno_blocklist_repo())
+
+
 def get_pricing_generator_service():
     from platform_api.services.pricing_generator_service import PricingGeneratorService
 
@@ -308,6 +320,23 @@ def get_usage_tracking_repo():
     return UsageTrackingRepository(pool=get_db_pool())
 
 
+def get_daily_quota_bank_repo():
+    """Dependency that returns the DailyQuotaBankRepository instance."""
+    from platform_api.repositories.daily_quota_bank_repo import DailyQuotaBankRepository
+
+    return DailyQuotaBankRepository(pool=get_db_pool())
+
+
+def get_daily_quota_bank_service():
+    """Dependency that returns the DailyQuotaBankService instance."""
+    from platform_api.services.daily_quota_bank_service import DailyQuotaBankService
+
+    return DailyQuotaBankService(
+        bank_repo=get_daily_quota_bank_repo(),
+        usage_repo=get_usage_tracking_repo(),
+    )
+
+
 def get_usage_enforcement_service():
     """Dependency that returns the UsageEnforcementService instance."""
     from platform_api.services.usage_enforcement_service import UsageEnforcementService
@@ -319,6 +348,7 @@ def get_usage_enforcement_service():
         pricing_repo=get_credit_repo(),
         redis=get_redis(),
         license_repo=get_license_repo(),
+        daily_quota_bank_service=get_daily_quota_bank_service(),
     )
 
 
@@ -337,7 +367,7 @@ def get_prompt_service():
     """Dependency that returns the PromptService instance."""
     from platform_api.services.prompt_service import PromptService
 
-    return PromptService(prompt_repo=get_prompt_repo())
+    return PromptService(prompt_repo=get_prompt_repo(), pool=get_db_pool())
 
 
 def get_generation_service():
@@ -648,4 +678,5 @@ def get_ai_routing_service():
     return AIRoutingService(
         settings_repo=get_settings_repo(),
         key_pool_service=key_pool_svc,
+        model_cost_repo=get_model_cost_repo(),
     )

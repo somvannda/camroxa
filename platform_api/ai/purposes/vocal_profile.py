@@ -297,7 +297,7 @@ def build_section_language_plan(
     secondary: str | None,
 ) -> list[tuple[str, str, str]]:
     plan: list[tuple[str, str, str]] = []
-    for header in structure_headers:
+    for header in structure_headers or []:
         code = resolve_header_language(
             header,
             profile=profile,
@@ -468,11 +468,18 @@ def build_bilingual_language_instruction(
     structure_headers: list[str],
 ) -> str:
     plan = build_section_language_plan(
-        structure_headers,
+        structure_headers or [],
         profile=profile,
         primary=primary,
         secondary=secondary,
     )
+    if not plan:
+        return (
+            f"- Bilingual song: primary={language_label(primary)}, "
+            f"secondary={language_label(secondary)}.\n"
+            "- Choose section headers and assign each section's lyric language "
+            "according to the vocal profile.\n"
+        )
     lines = [
         f"Bilingual song: primary={language_label(primary)}, secondary={language_label(secondary)}.",
         "Section language plan:",

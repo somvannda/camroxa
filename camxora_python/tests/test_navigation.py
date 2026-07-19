@@ -2,6 +2,7 @@
 
 from shared.constants.navigation import (
     SHELL_ROUTES,
+    diagnostics_ui_enabled,
     get_route_by_key,
     get_utility_routes,
     get_workspace_routes,
@@ -9,7 +10,7 @@ from shared.constants.navigation import (
 
 
 def test_shell_route_count() -> None:
-    assert len(SHELL_ROUTES) == 10
+    assert len(SHELL_ROUTES) == 11
 
 
 def test_workspace_routes_exclude_system() -> None:
@@ -21,9 +22,18 @@ def test_workspace_routes_exclude_system() -> None:
     assert "video" in keys
 
 
-def test_utility_routes() -> None:
+def test_utility_routes_hide_log_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("CAMXORA_SHOW_DIAGNOSTICS", raising=False)
+    keys = {route.key for route in get_utility_routes()}
+    assert keys == {"settings"}
+    assert diagnostics_ui_enabled() is False
+
+
+def test_utility_routes_include_log_when_diagnostics_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("CAMXORA_SHOW_DIAGNOSTICS", "1")
     keys = {route.key for route in get_utility_routes()}
     assert keys == {"settings", "log"}
+    assert diagnostics_ui_enabled() is True
 
 
 def test_get_route_by_key() -> None:

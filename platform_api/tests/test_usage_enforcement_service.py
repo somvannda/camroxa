@@ -20,6 +20,7 @@ from platform_api.exceptions import (
     InsufficientCreditsError,
     QuotaExceededError,
 )
+from platform_api.services.billing_calendar import billing_today
 from platform_api.models.domain import Plan
 from platform_api.services.usage_enforcement_service import (
     DAILY_CACHE_TTL_SECONDS,
@@ -513,8 +514,8 @@ async def test_daily_quota_exceeded_raises_429(
     """Reaching daily limit raises QuotaExceededError with DAILY_QUOTA_EXCEEDED."""
     user_id = uuid4()
     channel_id = uuid4()
-    credit_repo.set_balance(user_id, 500)
-    today = date.today()
+    credit_repo.set_balance(user_id, 0)
+    today = billing_today()
     usage_repo.set_daily_count(user_id, channel_id, "music", today, 7)
 
     with pytest.raises(QuotaExceededError) as exc_info:
@@ -537,8 +538,8 @@ async def test_daily_image_limit_uses_image_field(
     """Image generation uses daily_image_limit_per_channel from plan."""
     user_id = uuid4()
     channel_id = uuid4()
-    credit_repo.set_balance(user_id, 500)
-    today = date.today()
+    credit_repo.set_balance(user_id, 0)
+    today = billing_today()
     usage_repo.set_daily_count(user_id, channel_id, "background_image", today, 7)
 
     with pytest.raises(QuotaExceededError) as exc_info:
@@ -564,7 +565,7 @@ async def test_monthly_quota_exceeded_uses_wallet_for_subscription(
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 5000)
-    today = date.today()
+    today = billing_today()
     period_start = today.replace(day=1)
     usage_repo.set_monthly_count(user_id, "music", period_start, 420)
 
@@ -648,7 +649,7 @@ async def test_subscription_monthly_exhausted_without_wallet_raises_402(
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 0)
-    today = date.today()
+    today = billing_today()
     period_start = today.replace(day=1)
     usage_repo.set_monthly_count(user_id, "music", period_start, 420)
 
@@ -668,7 +669,7 @@ async def test_subscription_monthly_exhausted_uses_wallet(
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 500)
-    today = date.today()
+    today = billing_today()
     period_start = today.replace(day=1)
     usage_repo.set_monthly_count(user_id, "music", period_start, 420)
 
@@ -706,7 +707,7 @@ async def test_preflight_batch_requires_wallet_when_quota_exhausted(
     """Batch preflight requires wallet balance when monthly song quota is exhausted."""
     user_id = uuid4()
     credit_repo.set_balance(user_id, 5)
-    today = date.today()
+    today = billing_today()
     period_start = today.replace(day=1)
     usage_repo.set_monthly_count(user_id, "music", period_start, 420)
 
@@ -768,8 +769,8 @@ async def test_redis_cache_hit(
     """Daily count is read from Redis cache when available."""
     user_id = uuid4()
     channel_id = uuid4()
-    credit_repo.set_balance(user_id, 500)
-    today = date.today()
+    credit_repo.set_balance(user_id, 0)
+    today = billing_today()
     cache_key = UsageEnforcementService._daily_cache_key(
         user_id, channel_id, "music", today
     )
@@ -793,8 +794,8 @@ async def test_redis_ttl_set_on_increment(
     """After successful deduction, Redis cache is incremented with 25-hour TTL."""
     user_id = uuid4()
     channel_id = uuid4()
-    credit_repo.set_balance(user_id, 500)
-    today = date.today()
+    credit_repo.set_balance(user_id, 0)
+    today = billing_today()
 
     await service.check_and_deduct(
         user_id, channel_id, "music_generation", "suno"
@@ -979,9 +980,9 @@ async def test_draft_daily_enforced_against_draft_pool(
     pricing_repo.seed("slai", "lyric", 216)
     user_id = uuid4()
     channel_id = uuid4()
-    credit_repo.set_balance(user_id, 500)
+    credit_repo.set_balance(user_id, 0)
     plan_repo.set_plan(user_id, _make_plan(daily_draft=7))
-    today = date.today()
+    today = billing_today()
     usage_repo.set_daily_count(user_id, channel_id, "draft", today, 7)
 
     with pytest.raises(QuotaExceededError) as exc_info:

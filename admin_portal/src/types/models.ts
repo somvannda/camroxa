@@ -286,6 +286,7 @@ export interface MusicDescription {
   id: string;
   name: string;
   content: string;
+  genres?: string[];
   match_key: string | null;
   vocal_profile?: VocalProfile | null;
   is_active: boolean;

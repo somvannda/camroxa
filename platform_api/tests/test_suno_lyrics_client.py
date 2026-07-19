@@ -34,7 +34,7 @@ def test_extract_suno_generate_task_id_flat_legacy() -> None:
 
 
 def test_extract_suno_generate_task_id_api_error() -> None:
-    with pytest.raises(ExternalServiceError, match="Insufficient credits"):
+    with pytest.raises(ExternalServiceError, match="Insufficient Suno API credits"):
         extract_suno_generate_task_id({"code": 429, "msg": "Insufficient credits", "data": {}})
 
 

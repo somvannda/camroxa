@@ -14,15 +14,16 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from pydantic import BaseModel, Field
 
-from platform_api.exceptions import ForbiddenError, ValidationError
+from platform_api.exceptions import ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
 from platform_api.models.enums import TaskStatus
 from platform_api.ports.generation_port import DraftRequest, ImageRequest, SunoRequest
 from platform_api.services.ai_routing_service import AIRoutingService
+from platform_api.services.batch_service import BatchService
 from platform_api.services.generation_service import GenerationService
 from platform_api.services.prompt_service import PromptService
 from platform_api.services.usage_enforcement_service import UsageEnforcementService
@@ -72,12 +73,48 @@ class DraftGenerationResponse(BaseModel):
 
 class LyricsPolishRequest(BaseModel):
     lyrics: str = Field(min_length=1, max_length=20000)
-    strength: int = Field(ge=0, le=100, default=60)
+    strength: int = Field(ge=0, le=100, default=85)
     channel_profile_id: UUID | None = None
+    batch_id: UUID | None = None
+    song_id: UUID | None = None
+    title: str | None = Field(default=None, max_length=255)
+    album: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=4000)
+    structure: str | None = Field(default=None, max_length=2000)
 
 
 class LyricsPolishResponse(BaseModel):
     lyrics: str
+    suno_queued: bool = False
+
+
+class LyricsSunoCheckRequest(BaseModel):
+    lyrics: str = Field(default="", max_length=20000)
+    title: str = Field(default="", max_length=255)
+    learned_terms: list[str] = Field(default_factory=list, max_length=100)
+
+
+class LyricsSunoRiskHitResponse(BaseModel):
+    term: str
+    severity: str
+    start: int
+    end: int
+    suggestion: str
+
+
+class SunoSanitizeReplacementResponse(BaseModel):
+    field: str
+    source: str
+    target: str
+
+
+class LyricsSunoCheckResponse(BaseModel):
+    hits: list[LyricsSunoRiskHitResponse]
+    sanitized_preview: str
+    sanitized_title: str = ""
+    replacements: list[SunoSanitizeReplacementResponse] = Field(default_factory=list)
+    block_count: int
+    warn_count: int
 
 
 class SunoGenerationRequest(BaseModel):
@@ -172,6 +209,13 @@ async def _get_profile_service():
     return get_profile_service()
 
 
+async def _get_batch_service() -> BatchService:
+    """Placeholder dependency for BatchService — wired in wire_dependencies.py."""
+    raise NotImplementedError(
+        "BatchService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 class TaskLookupPort:
     """Protocol for looking up Suno task status."""
 
@@ -193,6 +237,7 @@ EnforcementServiceDep = Annotated[UsageEnforcementService, Depends(_get_enforcem
 AIRoutingServiceDep = Annotated[AIRoutingService, Depends(_get_ai_routing_service)]
 PromptServiceDep = Annotated[PromptService, Depends(_get_prompt_service)]
 ProfileServiceDep = Annotated[object, Depends(_get_profile_service)]
+BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
 TaskLookupDep = Annotated[TaskLookupPort, Depends(_get_task_lookup)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
@@ -395,24 +440,184 @@ async def generate_draft(
     "/polish-lyrics",
     response_model=LyricsPolishResponse,
     status_code=200,
-    summary="Polish lyrics text",
+    summary="Rewrite lyrics text",
 )
 async def polish_lyrics(
     request: LyricsPolishRequest,
+    http_request: Request,
     ctx: CurrentUserDep,
     generation_service: GenerationServiceDep,
     enforcement_service: EnforcementServiceDep,
     routing_service: AIRoutingServiceDep,
     profile_service: ProfileServiceDep,
+    batch_service: BatchServiceDep,
+    background_tasks: BackgroundTasks,
 ) -> LyricsPolishResponse:
-    """Polish is disabled for launch — do not spend LLM under draft/lyric meters."""
-    del request, generation_service, enforcement_service, routing_service, profile_service
-    from platform_api.services.abuse_alert_service import maybe_note_polish_probe
+    """Rewrite existing lyrics via LLM (1 rewrite = 1 draft/lyric quota)."""
+    await enforce_rate_limit(http_request, ctx.user_id)
 
-    await maybe_note_polish_probe(user_id=getattr(ctx, "user_id", None))
-    raise ForbiddenError(
-        "Lyrics polish is temporarily disabled.",
-        details={"error_code": "POLISH_DISABLED"},
+    await _assert_owned_channel_profile(
+        profile_service,
+        user_id=ctx.user_id,
+        channel_profile_id=request.channel_profile_id,
+    )
+
+    text_chain = await routing_service.resolve_text_chain("lyric")
+    polish_chain = [
+        (item.provider, item.sub_model or "")
+        for item in text_chain
+        if item.provider != "suno"
+    ]
+    if not polish_chain:
+        raise ValidationError(
+            "No chat LLM is available for lyrics rewrite. "
+            "Configure DeepSeek, OpenAI, or SLAI for lyric generation.",
+            details={"reason": "no_polish_providers"},
+        )
+    bill_provider, bill_model = polish_chain[0]
+    charged = await enforcement_service.check_and_deduct(
+        user_id=UUID(ctx.user_id),
+        channel_profile_id=request.channel_profile_id,
+        operation_type="lyric",
+        ai_service=bill_provider,
+        sub_model=bill_model or None,
+    )
+
+    try:
+        suno_failure_hint: str | None = None
+        if request.batch_id is not None and request.song_id is not None:
+            suno_failure_hint = await batch_service.latest_suno_failure_hint(request.song_id)
+
+        polished = await generation_service.polish_lyrics_text(
+            ctx.user_id,
+            request.lyrics,
+            request.strength,
+            bill_provider,
+            bill_model,
+            provider_chain=polish_chain,
+            description=request.description,
+            structure=request.structure,
+            title=request.title,
+            suno_failure_hint=suno_failure_hint,
+        )
+    except Exception:
+        try:
+            await enforcement_service.refund_failed_operation(
+                UUID(ctx.user_id),
+                request.channel_profile_id,
+                "lyric",
+                bill_provider,
+                charged_credit_units=int(charged or 0),
+                sub_model=bill_model or None,
+                reason="polish_failed",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to refund lyric polish for user=%s",
+                ctx.user_id,
+            )
+        raise
+
+    suno_queued = False
+    if request.batch_id is not None and request.song_id is not None:
+        try:
+            await batch_service.validate_song_suno_retry(
+                batch_id=request.batch_id,
+                song_id=request.song_id,
+                user_id=ctx.user_id,
+                lyrics_override=polished,
+                title_override=request.title,
+            )
+            background_tasks.add_task(
+                batch_service.retry_song_suno,
+                batch_id=request.batch_id,
+                song_id=request.song_id,
+                user_id=ctx.user_id,
+                title=request.title,
+                album=request.album,
+                lyrics=polished,
+            )
+            suno_queued = True
+        except Exception:
+            logger.exception(
+                "Polish succeeded but Suno queue failed for user=%s batch=%s song=%s",
+                ctx.user_id,
+                request.batch_id,
+                request.song_id,
+            )
+
+    return LyricsPolishResponse(lyrics=polished, suno_queued=suno_queued)
+
+
+@router.post(
+    "/lyrics-suno-check",
+    response_model=LyricsSunoCheckResponse,
+    status_code=200,
+    summary="Scan lyrics for Suno submission risks",
+)
+async def check_lyrics_for_suno(
+    request: LyricsSunoCheckRequest,
+    http_request: Request,
+    ctx: CurrentUserDep,
+) -> LyricsSunoCheckResponse:
+    """Return hard-block and warning hits plus a sanitized preview for Suno lyrics."""
+    await enforce_rate_limit(http_request, ctx.user_id)
+
+    from platform_api.dependencies import get_suno_blocklist_service
+    from platform_api.services.suno_lyrics_sanitize import (
+        find_suno_risk_terms_in_text,
+        sanitize_text_for_suno_with_changes,
+    )
+
+    runtime_config = await get_suno_blocklist_service().get_runtime_config()
+    lyrics_hits = find_suno_risk_terms_in_text(
+        request.lyrics,
+        learned_terms=request.learned_terms,
+        runtime_config=runtime_config,
+    )
+    title_hits = find_suno_risk_terms_in_text(
+        request.title,
+        learned_terms=request.learned_terms,
+        runtime_config=runtime_config,
+    )
+    hits = lyrics_hits + title_hits
+    sanitized_preview, lyrics_replacements = sanitize_text_for_suno_with_changes(
+        request.lyrics,
+        field="lyrics",
+        blocked_terms=request.learned_terms,
+        runtime_config=runtime_config,
+    )
+    sanitized_title, title_replacements = sanitize_text_for_suno_with_changes(
+        request.title,
+        field="title",
+        blocked_terms=request.learned_terms,
+        runtime_config=runtime_config,
+    )
+    block_count = sum(1 for hit in hits if hit.severity == "block")
+    warn_count = sum(1 for hit in hits if hit.severity == "warn")
+    return LyricsSunoCheckResponse(
+        hits=[
+            LyricsSunoRiskHitResponse(
+                term=hit.term,
+                severity=hit.severity,
+                start=hit.start,
+                end=hit.end,
+                suggestion=hit.suggestion,
+            )
+            for hit in hits
+        ],
+        sanitized_preview=sanitized_preview,
+        sanitized_title=sanitized_title,
+        replacements=[
+            SunoSanitizeReplacementResponse(
+                field=item.field,
+                source=item.source,
+                target=item.target,
+            )
+            for item in [*lyrics_replacements, *title_replacements]
+        ],
+        block_count=block_count,
+        warn_count=warn_count,
     )
 
 

@@ -164,7 +164,9 @@ class ExportQueuePanel(QWidget):
         toggles_col.addStretch(1)
         options_row.addLayout(toggles_col, 0)
 
-        fields_col = QVBoxLayout()
+        fields_host = QWidget()
+        fields_host.setObjectName("video_export_fields")
+        fields_col = QVBoxLayout(fields_host)
         fields_col.setContentsMargins(0, 0, 0, 0)
         fields_col.setSpacing(6)
 
@@ -190,7 +192,7 @@ class ExportQueuePanel(QWidget):
         self._workers_spin.valueChanged.connect(self._on_workers_changed)
         fields_col.addLayout(self._compact_field_row("Workers", self._workers_spin))
 
-        options_row.addLayout(fields_col, 0)
+        options_row.addWidget(fields_host, 0)
         options_row.addStretch(1)
         actions_layout.addLayout(options_row)
         right_column.addWidget(actions_card)
@@ -244,6 +246,8 @@ class ExportQueuePanel(QWidget):
         right_column.addWidget(status_card)
         right_column.addStretch()
 
+    _EXPORT_FIELD_HEIGHT = 28
+
     def _compact_field_row(self, label_text: str, control: QWidget) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -254,8 +258,10 @@ class ExportQueuePanel(QWidget):
         label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         control.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         control.setFixedWidth(118)
-        row.addWidget(label, 0)
-        row.addWidget(control, 0)
+        control.setMinimumHeight(self._EXPORT_FIELD_HEIGHT)
+        control.setFixedHeight(self._EXPORT_FIELD_HEIGHT)
+        row.addWidget(label, 0, Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(control, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addStretch(1)
         return row
 

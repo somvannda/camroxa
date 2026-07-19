@@ -1,10 +1,12 @@
 {
-  "generated_at": "2026-07-17T06:21:18Z",
-  "runs_per_model": 2,
+  "generated_at": "2026-07-17T08:51:38Z",
+  "runs_per_model": 3,
   "test_descriptions": [
     "EDM workout gym track with driving bass, energetic drops, and motivational lyrics",
-    "Lo-fi chill study beat with warm piano, soft drums, and reflective mood"
+    "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
+    "Pop ballad about long-distance love, emotional vocals, piano and strings"
   ],
+  "lyrics_dir": "/opt/camxora/repo/docs/ai_free_probe_lyrics",
   "results": [
     {
       "provider": "openai",
@@ -13,7 +15,8 @@
       "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 5.43,
+      "review_issues": [],
+      "elapsed_seconds": 5.57,
       "analysis": {
         "has_headers": true,
         "header_count": 8,
@@ -40,10 +43,11 @@
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]  \nFeel the rhythm, let it ignite  \nWe're rising up, ready to fight  \n[Verse 1]  \nHeart is pounding, sweat on my skin  \nEvery step I take, I can feel the win  \nThe lights are flashing, energy's high  \nWith every beat, I know I can fly  \n[Chorus]  \nPush it to the limit, don't hold back  \nFeel the power surging, on the right track  \nWe're unstoppable, we own the night  \nIn this moment, everything feels right  \n[Verse 2]  \nChasing dreams like a wildfire blaze  \nIn this arena, we set the stag"
+        "normalized_preview": "[Intro]  \nFeel the rhythm, feel the beat,  \nHeart's racing, can't accept defeat.  \n[Verse 1]  \nPush the limits, break the chain,  \nEvery drop of sweat, it's not in vain.  \nChasing shadows, reaching high,  \nWith every step, I'm touching the sky.  \n[Chorus]  \nWe rise up, we won't back down,  \nIn this moment, we own this town.  \nFeel the power, let it ignite,  \nTogether we shine, we're ready to fight.  \n[Verse 2]  \nNo more fear, just pure desire,  \nFuel the fire, take me higher.  \nWith every heartb"
       },
-      "raw_preview": "[Intro]  \nFeel the rhythm, let it ignite  \nWe're rising up, ready to fight  \n[Verse 1]  \nHeart is pounding, sweat on my skin  \nEvery step I take, I can feel the win  \nThe lights are flashing, energy's high  \nWith every beat, I know I can fly  \n[Chorus]  \nPush it to the limit, don't hold back  \nFeel the power surging, on the right track  \nWe're unstoppable, we own the night  \nIn this moment, everything feels right  \n[Verse 2]  \nChasing dreams like a wildfire blaze  \nIn this arena, we set the stage  \nFuel the fire, let it burn bright  \nTogether we can conquer, ready for the fight  \n[Chorus]  \nPush it to the limit, don't hold back  \nFeel the power surging, on the right track  \nWe're unstoppable, we own the night  \nIn this moment, everything feels right  \n[Bridge]  \nWhen the world is heavy, ju",
-      "normalized_preview": "[Intro]  \nFeel the rhythm, let it ignite  \nWe're rising up, ready to fight  \n[Verse 1]  \nHeart is pounding, sweat on my skin  \nEvery step I take, I can feel the win  \nThe lights are flashing, energy's high  \nWith every beat, I know I can fly  \n[Chorus]  \nPush it to the limit, don't hold back  \nFeel the power surging, on the right track  \nWe're unstoppable, we own the night  \nIn this moment, everything feels right  \n[Verse 2]  \nChasing dreams like a wildfire blaze  \nIn this arena, we set the stage  \nFuel the fire, let it burn bright  \nTogether we can conquer, ready for the fight  \n[Chorus]  \nPush it to the limit, don't hold back  \nFeel the power surging, on the right track  \nWe're unstoppable, we own the night  \nIn this moment, everything feels right  \n[Bridge]  \nWhen the world is heavy, ju"
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4o-mini_run1_normalized.txt",
+      "raw_preview": "[Intro]  \nFeel the rhythm, feel the beat,  \nHeart's racing, can't accept defeat.  \n[Verse 1]  \nPush the limits, break the chain,  \nEvery drop of sweat, it's not in vain.  \nChasing shadows, reaching high,  \nWith every step, I'm touching the sky.  \n[Chorus]  \nWe rise up, we won't back down,  \nIn this moment, we own this town.  \nFeel the power, let it ignite,  \nTogether we shine, we're ready to fight.  \n[Verse 2]  \nNo more fear, just pure desire,  \nFuel the fire, take me higher.  \nWith every heartbeat, I feel alive,  \nIn this journey, we will thrive.  \n[Chorus]  \nWe rise up, we won't back down,  \nIn this moment, we own this town.  \nFeel the power, let it ignite,  \nTogether we shine, we're ready to fight.  \n[Bridge]  \nLet the music take control,  \nFeel the energy in your soul.  \nRunning faster",
+      "normalized_preview": "[Intro]  \nFeel the rhythm, feel the beat,  \nHeart's racing, can't accept defeat.  \n[Verse 1]  \nPush the limits, break the chain,  \nEvery drop of sweat, it's not in vain.  \nChasing shadows, reaching high,  \nWith every step, I'm touching the sky.  \n[Chorus]  \nWe rise up, we won't back down,  \nIn this moment, we own this town.  \nFeel the power, let it ignite,  \nTogether we shine, we're ready to fight.  \n[Verse 2]  \nNo more fear, just pure desire,  \nFuel the fire, take me higher.  \nWith every heartbeat, I feel alive,  \nIn this journey, we will thrive.  \n[Chorus]  \nWe rise up, we won't back down,  \nIn this moment, we own this town.  \nFeel the power, let it ignite,  \nTogether we shine, we're ready to fight.  \n[Bridge]  \nLet the music take control,  \nFeel the energy in your soul.  \nRunning faster"
     },
     {
       "provider": "openai",
@@ -52,7 +56,8 @@
       "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 3.48,
+      "review_issues": [],
+      "elapsed_seconds": 5.64,
       "analysis": {
         "has_headers": true,
         "header_count": 7,
@@ -78,10 +83,52 @@
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]  \nIn the quiet of the night,  \nThoughts drift like stars in flight.  \n[Verse 1]  \nPages turn, the world fades away,  \nLost in dreams where I long to stay.  \nFingers dance on keys so light,  \nWhispers echo in the dim moonlight.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, solace I find.  \nWith every note, I breathe and flow,  \nIn the stillness, I let go.  \n[Verse 2]  \nCoffee steam rises, a gentle embrace,  \nTime slows down in this sacred place.  \nWords spill softly, like a "
+        "normalized_preview": "[Intro]  \nIn the quiet of the night,  \nThoughts like whispers take their flight.  \n[Verse 1]  \nPages turning, coffee's brewing,  \nLost in dreams, the world is skewing.  \nSoftly playing in the background,  \nMelodies of peace I’ve found.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, I seek and find.  \nEvery note a gentle sigh,  \nFloating softly, time slips by.  \n[Verse 2]  \nSunlight creeping through the blinds,  \nChasing shadows, leaving binds.  \nMoments linger, drift away,  \nIn this"
       },
-      "raw_preview": "[Intro]  \nIn the quiet of the night,  \nThoughts drift like stars in flight.  \n[Verse 1]  \nPages turn, the world fades away,  \nLost in dreams where I long to stay.  \nFingers dance on keys so light,  \nWhispers echo in the dim moonlight.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, solace I find.  \nWith every note, I breathe and flow,  \nIn the stillness, I let go.  \n[Verse 2]  \nCoffee steam rises, a gentle embrace,  \nTime slows down in this sacred place.  \nWords spill softly, like a gentle stream,  \nBuilding castles from a fleeting dream.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, solace I find.  \nWith every note, I breathe and flow,  \nIn the stillness, I let go.  \n[Bridge]  \nMoments captured in the air,  \nFloating softly without a care.  \nEvery heartbeat, ever",
-      "normalized_preview": "[Intro]  \nIn the quiet of the night,  \nThoughts drift like stars in flight.  \n[Verse 1]  \nPages turn, the world fades away,  \nLost in dreams where I long to stay.  \nFingers dance on keys so light,  \nWhispers echo in the dim moonlight.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, solace I find.  \nWith every note, I breathe and flow,  \nIn the stillness, I let go.  \n[Verse 2]  \nCoffee steam rises, a gentle embrace,  \nTime slows down in this sacred place.  \nWords spill softly, like a gentle stream,  \nBuilding castles from a fleeting dream.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, solace I find.  \nWith every note, I breathe and flow,  \nIn the stillness, I let go.  \n[Bridge]  \nMoments captured in the air,  \nFloating softly without a care.  \nEvery heartbeat, ever"
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4o-mini_run2_normalized.txt",
+      "raw_preview": "[Intro]  \nIn the quiet of the night,  \nThoughts like whispers take their flight.  \n[Verse 1]  \nPages turning, coffee's brewing,  \nLost in dreams, the world is skewing.  \nSoftly playing in the background,  \nMelodies of peace I’ve found.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, I seek and find.  \nEvery note a gentle sigh,  \nFloating softly, time slips by.  \n[Verse 2]  \nSunlight creeping through the blinds,  \nChasing shadows, leaving binds.  \nMoments linger, drift away,  \nIn this calm, I choose to stay.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, I seek and find.  \nEvery note a gentle sigh,  \nFloating softly, time slips by.  \n[Bridge]  \nThoughts collide like stars above,  \nIn this stillness, I feel love.  \nEvery heartbeat, every breath,  \nIn this moment, I f",
+      "normalized_preview": "[Intro]  \nIn the quiet of the night,  \nThoughts like whispers take their flight.  \n[Verse 1]  \nPages turning, coffee's brewing,  \nLost in dreams, the world is skewing.  \nSoftly playing in the background,  \nMelodies of peace I’ve found.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, I seek and find.  \nEvery note a gentle sigh,  \nFloating softly, time slips by.  \n[Verse 2]  \nSunlight creeping through the blinds,  \nChasing shadows, leaving binds.  \nMoments linger, drift away,  \nIn this calm, I choose to stay.  \n[Chorus]  \nLet the rhythm guide my mind,  \nIn this space, I seek and find.  \nEvery note a gentle sigh,  \nFloating softly, time slips by.  \n[Bridge]  \nThoughts collide like stars above,  \nIn this stillness, I feel love.  \nEvery heartbeat, every breath,  \nIn this moment, I f"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 8.64,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 8,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "intro",
+          "outro",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 30,
+        "total_lines": 38,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]  \nIn the silence of the night, I hear your name,  \nWhispers of a love that feels the same.  \n[Verse 1]  \nMiles apart, but our hearts beat as one,  \nCounting stars, dreaming of the day we’re done.  \nEvery sunrise brings a piece of you near,  \nYet every sunset reminds me you’re not here.  \n[Chorus]  \nSo I'll hold on, through the distance and the pain,  \nEvery tear I shed is a drop of love in the rain.  \nWith every heartbeat, I’ll send you my song,  \nIn this long-distance love, we’ll keep h"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4o-mini_run3_normalized.txt",
+      "raw_preview": "[Intro]  \nIn the silence of the night, I hear your name,  \nWhispers of a love that feels the same.  \n[Verse 1]  \nMiles apart, but our hearts beat as one,  \nCounting stars, dreaming of the day we’re done.  \nEvery sunrise brings a piece of you near,  \nYet every sunset reminds me you’re not here.  \n[Chorus]  \nSo I'll hold on, through the distance and the pain,  \nEvery tear I shed is a drop of love in the rain.  \nWith every heartbeat, I’ll send you my song,  \nIn this long-distance love, we’ll keep holding on.  \n[Verse 2]  \nLate-night calls, where your laughter fills the air,  \nI close my eyes, imagining you there.  \nEach word a promise, each sigh a vow,  \nI’ll keep you close, no matter where or how.  \n[Chorus]  \nSo I'll hold on, through the distance and the pain,  \nEvery tear I shed is a drop ",
+      "normalized_preview": "[Intro]  \nIn the silence of the night, I hear your name,  \nWhispers of a love that feels the same.  \n[Verse 1]  \nMiles apart, but our hearts beat as one,  \nCounting stars, dreaming of the day we’re done.  \nEvery sunrise brings a piece of you near,  \nYet every sunset reminds me you’re not here.  \n[Chorus]  \nSo I'll hold on, through the distance and the pain,  \nEvery tear I shed is a drop of love in the rain.  \nWith every heartbeat, I’ll send you my song,  \nIn this long-distance love, we’ll keep holding on.  \n[Verse 2]  \nLate-night calls, where your laughter fills the air,  \nI close my eyes, imagining you there.  \nEach word a promise, each sigh a vow,  \nI’ll keep you close, no matter where or how.  \n[Chorus]  \nSo I'll hold on, through the distance and the pain,  \nEvery tear I shed is a drop "
     },
     {
       "provider": "openai",
@@ -90,39 +137,38 @@
       "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 2.99,
+      "review_issues": [],
+      "elapsed_seconds": 3.89,
       "analysis": {
         "has_headers": true,
-        "header_count": 9,
+        "header_count": 7,
         "distinct_section_labels": [
           "bridge",
           "chorus",
           "intro",
           "outro",
-          "pre-chorus",
           "verse 1",
           "verse 2"
         ],
         "headers_sample": [
           "[Intro]",
           "[Verse 1]",
-          "[Pre-Chorus]",
           "[Chorus]",
           "[Verse 2]",
-          "[Pre-Chorus]",
           "[Chorus]",
           "[Bridge]",
           "[Outro]"
         ],
-        "content_line_count": 34,
-        "total_lines": 43,
+        "content_line_count": 26,
+        "total_lines": 33,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]  \nFeel the beat, let it flow  \nPush it harder, let it show  \n[Verse 1]  \nEvery step, every stride  \nFeel the power deep inside  \nSweat it out, leave it all  \nRise above, stand tall  \n[Pre-Chorus]  \nThe rhythm's in your veins  \nBreaking through the chains  \nKeep moving, don't stop  \nFeel the energy drop  \n[Chorus]  \nRun to the rhythm, chase the light  \nIn this moment, take the fight  \nHeart's racing, never slow  \nFeel the fire, let it grow  \n[Verse 2]  \nLift the weight, feel the burn  \nEv"
+        "normalized_preview": "[Intro]  \nFeel the beat, let it flow  \nPush it harder, let it show  \n[Verse 1]  \nIn the mirror, see your fire  \nEvery step takes you higher  \nSweat is shining like a crown  \nFeel the power, don't back down  \n[Chorus]  \nRise up, feel the energy  \nLet the music set you free  \nEvery heartbeat's like a drum  \nKeep on moving, don't you run  \n[Verse 2]  \nRhythm's pulsing through your veins  \nBreaking limits, breaking chains  \nStronger with each breath you take  \nFeel the earth beneath you shake  \n[Cho"
       },
-      "raw_preview": "[Intro]  \nFeel the beat, let it flow  \nPush it harder, let it show  \n[Verse 1]  \nEvery step, every stride  \nFeel the power deep inside  \nSweat it out, leave it all  \nRise above, stand tall  \n[Pre-Chorus]  \nThe rhythm's in your veins  \nBreaking through the chains  \nKeep moving, don't stop  \nFeel the energy drop  \n[Chorus]  \nRun to the rhythm, chase the light  \nIn this moment, take the fight  \nHeart's racing, never slow  \nFeel the fire, let it grow  \n[Verse 2]  \nLift the weight, feel the burn  \nEvery lesson, every turn  \nStronger now than before  \nPush it further, give it more  \n[Pre-Chorus]  \nThe rhythm's in your veins  \nBreaking through the chains  \nKeep moving, don't stop  \nFeel the energy drop  \n[Chorus]  \nRun to the rhythm, chase the light  \nIn this moment, take the fight  \nHeart's raci",
-      "normalized_preview": "[Intro]  \nFeel the beat, let it flow  \nPush it harder, let it show  \n[Verse 1]  \nEvery step, every stride  \nFeel the power deep inside  \nSweat it out, leave it all  \nRise above, stand tall  \n[Pre-Chorus]  \nThe rhythm's in your veins  \nBreaking through the chains  \nKeep moving, don't stop  \nFeel the energy drop  \n[Chorus]  \nRun to the rhythm, chase the light  \nIn this moment, take the fight  \nHeart's racing, never slow  \nFeel the fire, let it grow  \n[Verse 2]  \nLift the weight, feel the burn  \nEvery lesson, every turn  \nStronger now than before  \nPush it further, give it more  \n[Pre-Chorus]  \nThe rhythm's in your veins  \nBreaking through the chains  \nKeep moving, don't stop  \nFeel the energy drop  \n[Chorus]  \nRun to the rhythm, chase the light  \nIn this moment, take the fight  \nHeart's raci"
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4o_run1_normalized.txt",
+      "raw_preview": "[Intro]  \nFeel the beat, let it flow  \nPush it harder, let it show  \n[Verse 1]  \nIn the mirror, see your fire  \nEvery step takes you higher  \nSweat is shining like a crown  \nFeel the power, don't back down  \n[Chorus]  \nRise up, feel the energy  \nLet the music set you free  \nEvery heartbeat's like a drum  \nKeep on moving, don't you run  \n[Verse 2]  \nRhythm's pulsing through your veins  \nBreaking limits, breaking chains  \nStronger with each breath you take  \nFeel the earth beneath you shake  \n[Chorus]  \nRise up, feel the energy  \nLet the music set you free  \nEvery heartbeat's like a drum  \nKeep on moving, don't you run  \n[Bridge]  \nFeel the rush, don't slow down  \nIn this moment, wear your crown  \nNothing's gonna hold you back  \nKeep on track, stay on track  \n[Outro]  \nFeel the beat, let it ",
+      "normalized_preview": "[Intro]  \nFeel the beat, let it flow  \nPush it harder, let it show  \n[Verse 1]  \nIn the mirror, see your fire  \nEvery step takes you higher  \nSweat is shining like a crown  \nFeel the power, don't back down  \n[Chorus]  \nRise up, feel the energy  \nLet the music set you free  \nEvery heartbeat's like a drum  \nKeep on moving, don't you run  \n[Verse 2]  \nRhythm's pulsing through your veins  \nBreaking limits, breaking chains  \nStronger with each breath you take  \nFeel the earth beneath you shake  \n[Chorus]  \nRise up, feel the energy  \nLet the music set you free  \nEvery heartbeat's like a drum  \nKeep on moving, don't you run  \n[Bridge]  \nFeel the rush, don't slow down  \nIn this moment, wear your crown  \nNothing's gonna hold you back  \nKeep on track, stay on track  \n[Outro]  \nFeel the beat, let it "
     },
     {
       "provider": "openai",
@@ -131,18 +177,61 @@
       "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 4.58,
+      "review_issues": [],
+      "elapsed_seconds": 3.07,
       "analysis": {
         "has_headers": true,
-        "header_count": 6,
+        "header_count": 7,
         "distinct_section_labels": [
           "bridge",
           "chorus",
+          "intro",
           "outro",
           "verse 1",
           "verse 2"
         ],
         "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Outro]"
+        ],
+        "content_line_count": 26,
+        "total_lines": 33,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]  \nIn the quiet of the night,  \nSoft whispers take flight,  \n[Verse 1]  \nWith a gentle touch of keys,  \nThe world slows down with ease,  \nNotes like raindrops on the ground,  \nIn their melody, I'm found.  \n[Chorus]  \nDrifting through the endless time,  \nLost in rhythm, lost in rhyme,  \nHeartbeats sync with every beat,  \nIn this space, we find retreat.  \n[Verse 2]  \nWarmth of chords, a soft embrace,  \nA tranquil journey, a sacred space,  \nThoughts unwind in the gentle flow,  \nIn the music,"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4o_run2_normalized.txt",
+      "raw_preview": "[Intro]  \nIn the quiet of the night,  \nSoft whispers take flight,  \n[Verse 1]  \nWith a gentle touch of keys,  \nThe world slows down with ease,  \nNotes like raindrops on the ground,  \nIn their melody, I'm found.  \n[Chorus]  \nDrifting through the endless time,  \nLost in rhythm, lost in rhyme,  \nHeartbeats sync with every beat,  \nIn this space, we find retreat.  \n[Verse 2]  \nWarmth of chords, a soft embrace,  \nA tranquil journey, a sacred space,  \nThoughts unwind in the gentle flow,  \nIn the music, we let go.  \n[Chorus]  \nDrifting through the endless time,  \nLost in rhythm, lost in rhyme,  \nHeartbeats sync with every beat,  \nIn this space, we find retreat.  \n[Bridge]  \nLet the echoes guide you home,  \nWhere the mind is free to roam,  \nIn the silence, hear the sound,  \nOf peace and calm all ar",
+      "normalized_preview": "[Intro]  \nIn the quiet of the night,  \nSoft whispers take flight,  \n[Verse 1]  \nWith a gentle touch of keys,  \nThe world slows down with ease,  \nNotes like raindrops on the ground,  \nIn their melody, I'm found.  \n[Chorus]  \nDrifting through the endless time,  \nLost in rhythm, lost in rhyme,  \nHeartbeats sync with every beat,  \nIn this space, we find retreat.  \n[Verse 2]  \nWarmth of chords, a soft embrace,  \nA tranquil journey, a sacred space,  \nThoughts unwind in the gentle flow,  \nIn the music, we let go.  \n[Chorus]  \nDrifting through the endless time,  \nLost in rhythm, lost in rhyme,  \nHeartbeats sync with every beat,  \nIn this space, we find retreat.  \n[Bridge]  \nLet the echoes guide you home,  \nWhere the mind is free to roam,  \nIn the silence, hear the sound,  \nOf peace and calm all ar"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 2.82,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 7,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "intro",
+          "outro",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
           "[Verse 1]",
           "[Chorus]",
           "[Verse 2]",
@@ -151,14 +240,15 @@
           "[Outro]"
         ],
         "content_line_count": 24,
-        "total_lines": 30,
+        "total_lines": 31,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Verse 1]  \nIn the quiet of the night, where thoughts begin to flow  \nSoft whispers in the silence, where only dreams can go  \nA gentle rhythm carries me, on a wave of endless time  \nLost in the echoes of a distant, soothing rhyme  \n[Chorus]  \nFloating on a melody, where the heart and mind align  \nA peaceful journey inward, where the stars begin to shine  \nThe world outside is fading, as I drift into the sound  \nIn this lo-fi sanctuary, where serenity is found  \n[Verse 2]  \nThe piano plays a mem"
+        "normalized_preview": "[Intro]  \nIn the quiet of the night, I hear your name  \nMiles apart, yet our hearts feel the same  \n[Verse 1]  \nCity lights can't dim the spark we share  \nEvery whispered word lingers in the air  \nTime zones can't divide the love we know  \nIn this endless dance, we let our feelings show  \n[Chorus]  \nAcross the miles, I feel your embrace  \nIn every star, I see your face  \nThough oceans lie between our dreams  \nLove is closer than it seems  \n[Verse 2]  \nLetters written with the moon as our guide  "
       },
-      "raw_preview": "[Verse 1]  \nIn the quiet of the night, where thoughts begin to flow  \nSoft whispers in the silence, where only dreams can go  \nA gentle rhythm carries me, on a wave of endless time  \nLost in the echoes of a distant, soothing rhyme  \n[Chorus]  \nFloating on a melody, where the heart and mind align  \nA peaceful journey inward, where the stars begin to shine  \nThe world outside is fading, as I drift into the sound  \nIn this lo-fi sanctuary, where serenity is found  \n[Verse 2]  \nThe piano plays a memory, of a time long passed away  \nEach note a gentle reminder, of the beauty in each day  \nThe drums softly beating, like a heartbeat in the night  \nGuiding me through shadows, till the morning's gentle light  \n[Chorus]  \nFloating on a melody, where the heart and mind align  \nA peaceful journey inwa",
-      "normalized_preview": "[Verse 1]  \nIn the quiet of the night, where thoughts begin to flow  \nSoft whispers in the silence, where only dreams can go  \nA gentle rhythm carries me, on a wave of endless time  \nLost in the echoes of a distant, soothing rhyme  \n[Chorus]  \nFloating on a melody, where the heart and mind align  \nA peaceful journey inward, where the stars begin to shine  \nThe world outside is fading, as I drift into the sound  \nIn this lo-fi sanctuary, where serenity is found  \n[Verse 2]  \nThe piano plays a memory, of a time long passed away  \nEach note a gentle reminder, of the beauty in each day  \nThe drums softly beating, like a heartbeat in the night  \nGuiding me through shadows, till the morning's gentle light  \n[Chorus]  \nFloating on a melody, where the heart and mind align  \nA peaceful journey inwa"
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4o_run3_normalized.txt",
+      "raw_preview": "[Intro]  \nIn the quiet of the night, I hear your name  \nMiles apart, yet our hearts feel the same  \n[Verse 1]  \nCity lights can't dim the spark we share  \nEvery whispered word lingers in the air  \nTime zones can't divide the love we know  \nIn this endless dance, we let our feelings show  \n[Chorus]  \nAcross the miles, I feel your embrace  \nIn every star, I see your face  \nThough oceans lie between our dreams  \nLove is closer than it seems  \n[Verse 2]  \nLetters written with the moon as our guide  \nPromises made with the tide  \nEach sunrise brings us closer still  \nIn this journey, love will find its will  \n[Chorus]  \nAcross the miles, I feel your embrace  \nIn every star, I see your face  \nThough oceans lie between our dreams  \nLove is closer than it seems  \n[Bridge]  \nNo distance can break t",
+      "normalized_preview": "[Intro]  \nIn the quiet of the night, I hear your name  \nMiles apart, yet our hearts feel the same  \n[Verse 1]  \nCity lights can't dim the spark we share  \nEvery whispered word lingers in the air  \nTime zones can't divide the love we know  \nIn this endless dance, we let our feelings show  \n[Chorus]  \nAcross the miles, I feel your embrace  \nIn every star, I see your face  \nThough oceans lie between our dreams  \nLove is closer than it seems  \n[Verse 2]  \nLetters written with the moon as our guide  \nPromises made with the tide  \nEach sunrise brings us closer still  \nIn this journey, love will find its will  \n[Chorus]  \nAcross the miles, I feel your embrace  \nIn every star, I see your face  \nThough oceans lie between our dreams  \nLove is closer than it seems  \n[Bridge]  \nNo distance can break t"
     },
     {
       "provider": "openai",
@@ -167,7 +257,8 @@
       "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 7.04,
+      "review_issues": [],
+      "elapsed_seconds": 10.0,
       "analysis": {
         "has_headers": true,
         "header_count": 10,
@@ -197,10 +288,11 @@
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nGet your heart racing, feel the floor\nTonight, we're chasing something more\n[Verse 1]\nPulse is rising, lights are blinding\nEvery step, energy binding\nSweat drips down like a river flowing\nIn the rhythm, we keep on glowing\n[Pre-Chorus]\nPush it harder, break the limit\nEvery second, gotta live in it\n[Chorus]\nRise up, feel the power surge\nBeat drops, as our paths converge\nLift higher, let the world blur\nTonight, we're unstoppable, that's for sure\n[Verse 2]\nBass thumping, bodies jumping\nAdren"
+        "normalized_preview": "[Intro]\nPush through the limits, let's ignite\nFeel the power of the night\n[Verse 1]\nHeartbeat racing, lights are low\nSweat dripping, let it flow\nMuscles burning, no retreat\nEvery step to this pounding beat\n[Pre-Chorus]\nTurn it up, feel the heat\nMove your body, stomp your feet\n[Chorus]\nRise up, this is your fight\nWe're breaking barriers tonight\nPush harder, reach the sky\nIn every beat, we're alive\n[Verse 2]\nAdrenaline, it fills the air\nPushing forward, we're almost there\nStrength surges from deep"
       },
-      "raw_preview": "[Intro]\nGet your heart racing, feel the floor\nTonight, we're chasing something more\n[Verse 1]\nPulse is rising, lights are blinding\nEvery step, energy binding\nSweat drips down like a river flowing\nIn the rhythm, we keep on glowing\n[Pre-Chorus]\nPush it harder, break the limit\nEvery second, gotta live in it\n[Chorus]\nRise up, feel the power surge\nBeat drops, as our paths converge\nLift higher, let the world blur\nTonight, we're unstoppable, that's for sure\n[Verse 2]\nBass thumping, bodies jumping\nAdrenaline rush, heartbeats pumping\nMove your feet, don't stop now\nWe own the night, let me show you how\n[Pre-Chorus]\nPush it harder, break the limit\nEvery second, gotta live in it\n[Chorus]\nRise up, feel the power surge\nBeat drops, as our paths converge\nLift higher, let the world blur\nTonight, we're unst",
-      "normalized_preview": "[Intro]\nGet your heart racing, feel the floor\nTonight, we're chasing something more\n[Verse 1]\nPulse is rising, lights are blinding\nEvery step, energy binding\nSweat drips down like a river flowing\nIn the rhythm, we keep on glowing\n[Pre-Chorus]\nPush it harder, break the limit\nEvery second, gotta live in it\n[Chorus]\nRise up, feel the power surge\nBeat drops, as our paths converge\nLift higher, let the world blur\nTonight, we're unstoppable, that's for sure\n[Verse 2]\nBass thumping, bodies jumping\nAdrenaline rush, heartbeats pumping\nMove your feet, don't stop now\nWe own the night, let me show you how\n[Pre-Chorus]\nPush it harder, break the limit\nEvery second, gotta live in it\n[Chorus]\nRise up, feel the power surge\nBeat drops, as our paths converge\nLift higher, let the world blur\nTonight, we're unst"
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4-turbo_run1_normalized.txt",
+      "raw_preview": "[Intro]\nPush through the limits, let's ignite\nFeel the power of the night\n[Verse 1]\nHeartbeat racing, lights are low\nSweat dripping, let it flow\nMuscles burning, no retreat\nEvery step to this pounding beat\n[Pre-Chorus]\nTurn it up, feel the heat\nMove your body, stomp your feet\n[Chorus]\nRise up, this is your fight\nWe're breaking barriers tonight\nPush harder, reach the sky\nIn every beat, we're alive\n[Verse 2]\nAdrenaline, it fills the air\nPushing forward, we're almost there\nStrength surges from deep inside\nWith every breath, we're amplified\n[Pre-Chorus]\nTurn it up, feel the heat\nMove your body, stomp your feet\n[Chorus]\nRise up, this is your fight\nWe're breaking barriers tonight\nPush harder, reach the sky\nIn every beat, we're alive\n[Bridge]\nFeel the rhythm in your soul\nTaking charge, losing con",
+      "normalized_preview": "[Intro]\nPush through the limits, let's ignite\nFeel the power of the night\n[Verse 1]\nHeartbeat racing, lights are low\nSweat dripping, let it flow\nMuscles burning, no retreat\nEvery step to this pounding beat\n[Pre-Chorus]\nTurn it up, feel the heat\nMove your body, stomp your feet\n[Chorus]\nRise up, this is your fight\nWe're breaking barriers tonight\nPush harder, reach the sky\nIn every beat, we're alive\n[Verse 2]\nAdrenaline, it fills the air\nPushing forward, we're almost there\nStrength surges from deep inside\nWith every breath, we're amplified\n[Pre-Chorus]\nTurn it up, feel the heat\nMove your body, stomp your feet\n[Chorus]\nRise up, this is your fight\nWe're breaking barriers tonight\nPush harder, reach the sky\nIn every beat, we're alive\n[Bridge]\nFeel the rhythm in your soul\nTaking charge, losing con"
     },
     {
       "provider": "openai",
@@ -209,7 +301,301 @@
       "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 10.55,
+      "review_issues": [],
+      "elapsed_seconds": 11.3,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 7,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "intro",
+          "outro",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Outro]"
+        ],
+        "content_line_count": 26,
+        "total_lines": 33,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nSoftly the night falls, as the keys play low\nGentle whispers of the life we used to know\n[Verse 1]\nDim lights, these quiet sighs, the world in slow-mo\nTurning pages of the past, where did those smiles go?\nCoffee steam, a distant dream, beneath the moon's glow\nIn every note, a memory floats, in the rhythm, we row\n[Chorus]\nUnderneath the starlit canvas, we find our pace\nLost in thoughts, serene spots, in the music's embrace\nEvery beat a heartbeat, in this tranquil space\nMelodies weave thro"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4-turbo_run2_normalized.txt",
+      "raw_preview": "[Intro]\nSoftly the night falls, as the keys play low\nGentle whispers of the life we used to know\n[Verse 1]\nDim lights, these quiet sighs, the world in slow-mo\nTurning pages of the past, where did those smiles go?\nCoffee steam, a distant dream, beneath the moon's glow\nIn every note, a memory floats, in the rhythm, we row\n[Chorus]\nUnderneath the starlit canvas, we find our pace\nLost in thoughts, serene spots, in the music's embrace\nEvery beat a heartbeat, in this tranquil space\nMelodies weave through the leaves of our quiet chase\n[Verse 2]\nEchoes of laughter in the corners of the room\nOld melodies playing, dispelling all the gloom\nReflections in the window, showing phases of the moon\nEach chord a thread in the web, the night's loom\n[Chorus]\nUnderneath the starlit canvas, we find our pace\nLos",
+      "normalized_preview": "[Intro]\nSoftly the night falls, as the keys play low\nGentle whispers of the life we used to know\n[Verse 1]\nDim lights, these quiet sighs, the world in slow-mo\nTurning pages of the past, where did those smiles go?\nCoffee steam, a distant dream, beneath the moon's glow\nIn every note, a memory floats, in the rhythm, we row\n[Chorus]\nUnderneath the starlit canvas, we find our pace\nLost in thoughts, serene spots, in the music's embrace\nEvery beat a heartbeat, in this tranquil space\nMelodies weave through the leaves of our quiet chase\n[Verse 2]\nEchoes of laughter in the corners of the room\nOld melodies playing, dispelling all the gloom\nReflections in the window, showing phases of the moon\nEach chord a thread in the web, the night's loom\n[Chorus]\nUnderneath the starlit canvas, we find our pace\nLos"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4-turbo",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 7.75,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 9,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "intro",
+          "outro",
+          "verse 1",
+          "verse 2",
+          "verse 3"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Verse 3]",
+          "[Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 34,
+        "total_lines": 43,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nOh, the miles stretch out like endless dreams\nIn the quiet, your whisper seems so close\n[Verse 1]\nEvery sunrise paints your face in my mind\nAcross the oceans, where our stars realign\nI hold your letters like precious stones\nFeeling your warmth through paper and tones\n[Chorus]\nCan you feel my love from miles away?\nHear my heart beat your name every day\nIn the silence, in the crowd, it's true\nEvery part of me keeps longing for you\n[Verse 2]\nNights are the canvas for our moonlit confessions"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/openai_gpt-4-turbo_run3_normalized.txt",
+      "raw_preview": "[Intro]\nOh, the miles stretch out like endless dreams\nIn the quiet, your whisper seems so close\n[Verse 1]\nEvery sunrise paints your face in my mind\nAcross the oceans, where our stars realign\nI hold your letters like precious stones\nFeeling your warmth through paper and tones\n[Chorus]\nCan you feel my love from miles away?\nHear my heart beat your name every day\nIn the silence, in the crowd, it's true\nEvery part of me keeps longing for you\n[Verse 2]\nNights are the canvas for our moonlit confessions\nDistance fades in the glow of our affection\nI trace the map lines that lead to your door\nEvery mile closer to you, I adore\n[Chorus]\nCan you feel my love from miles away?\nHear my heart beat your name every day\nIn the silence, in the crowd, it's true\nEvery part of me keeps longing for you\n[Bridge]\nAn",
+      "normalized_preview": "[Intro]\nOh, the miles stretch out like endless dreams\nIn the quiet, your whisper seems so close\n[Verse 1]\nEvery sunrise paints your face in my mind\nAcross the oceans, where our stars realign\nI hold your letters like precious stones\nFeeling your warmth through paper and tones\n[Chorus]\nCan you feel my love from miles away?\nHear my heart beat your name every day\nIn the silence, in the crowd, it's true\nEvery part of me keeps longing for you\n[Verse 2]\nNights are the canvas for our moonlit confessions\nDistance fades in the glow of our affection\nI trace the map lines that lead to your door\nEvery mile closer to you, I adore\n[Chorus]\nCan you feel my love from miles away?\nHear my heart beat your name every day\nIn the silence, in the crowd, it's true\nEvery part of me keeps longing for you\n[Bridge]\nAn"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "run": 1,
+      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 4.11,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 11,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "drop",
+          "intro",
+          "outro",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Drop]",
+          "[Verse 2]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Drop]",
+          "[Outro]"
+        ],
+        "content_line_count": 34,
+        "total_lines": 45,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nFeel the fire, feel the beat\nHeart is pounding, move your feet\n[Verse 1]\nWake up the power inside your soul\nPush through the limits, take control\nThe weight is heavy, but so are you\nBreak every chain, see it through\n[Pre-Chorus]\nThe rhythm hits, the lights ignite\nNo turning back, we own the night\n[Chorus]\nRise up, rise up, we're never backing down\nTurn the volume loud, let it shake the ground\nEvery drop is a chance to fly\nReach for the sky, reach for the sky\n[Drop]\nGo, go, go, feel the s"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/deepseek_deepseek-chat_run1_normalized.txt",
+      "raw_preview": "[Intro]\nFeel the fire, feel the beat\nHeart is pounding, move your feet\n[Verse 1]\nWake up the power inside your soul\nPush through the limits, take control\nThe weight is heavy, but so are you\nBreak every chain, see it through\n[Pre-Chorus]\nThe rhythm hits, the lights ignite\nNo turning back, we own the night\n[Chorus]\nRise up, rise up, we're never backing down\nTurn the volume loud, let it shake the ground\nEvery drop is a chance to fly\nReach for the sky, reach for the sky\n[Drop]\nGo, go, go, feel the surge inside\nGo, go, go, let the fire guide\n[Verse 2]\nSweat on the floor, but your mind is clear\nChase every doubt, make it disappear\nThe burn is real, but so's the gain\nStep through the storm, embrace the pain\n[Pre-Chorus]\nThe rhythm hits, the lights ignite\nNo turning back, we own the night\n[Chorus]",
+      "normalized_preview": "[Intro]\nFeel the fire, feel the beat\nHeart is pounding, move your feet\n[Verse 1]\nWake up the power inside your soul\nPush through the limits, take control\nThe weight is heavy, but so are you\nBreak every chain, see it through\n[Pre-Chorus]\nThe rhythm hits, the lights ignite\nNo turning back, we own the night\n[Chorus]\nRise up, rise up, we're never backing down\nTurn the volume loud, let it shake the ground\nEvery drop is a chance to fly\nReach for the sky, reach for the sky\n[Drop]\nGo, go, go, feel the surge inside\nGo, go, go, let the fire guide\n[Verse 2]\nSweat on the floor, but your mind is clear\nChase every doubt, make it disappear\nThe burn is real, but so's the gain\nStep through the storm, embrace the pain\n[Pre-Chorus]\nThe rhythm hits, the lights ignite\nNo turning back, we own the night\n[Chorus]"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "run": 2,
+      "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 3.7,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 7,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "intro",
+          "outro",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Outro]"
+        ],
+        "content_line_count": 28,
+        "total_lines": 35,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nRain taps the glass, a quiet sound\nThe clock moves slow, the world spins round\n[Verse 1]\nA cup of coffee's getting cold\nA story in the steam unfolds\nThe lamp glows gold across the page\nI'm turning through a quiet stage\nThe thoughts drift by like afternoon\nBeneath a sleepy, silver moon\n[Chorus]\nAnd I let the notes just fade away\nIn the hush at the end of the day\nEvery chord a gentle sigh\nUnderneath a velvet sky\n[Verse 2]\nThe ink runs soft on paper lines\nA memory in slow decline\nThe drumbe"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/deepseek_deepseek-chat_run2_normalized.txt",
+      "raw_preview": "[Intro]\nRain taps the glass, a quiet sound\nThe clock moves slow, the world spins round\n[Verse 1]\nA cup of coffee's getting cold\nA story in the steam unfolds\nThe lamp glows gold across the page\nI'm turning through a quiet stage\nThe thoughts drift by like afternoon\nBeneath a sleepy, silver moon\n[Chorus]\nAnd I let the notes just fade away\nIn the hush at the end of the day\nEvery chord a gentle sigh\nUnderneath a velvet sky\n[Verse 2]\nThe ink runs soft on paper lines\nA memory in slow decline\nThe drumbeat taps a steady rhyme\nTo mark the slipping of the time\nA window frames the falling light\nThat holds me in the coming night\n[Chorus]\nAnd I let the notes just fade away\nIn the hush at the end of the day\nEvery chord a gentle sigh\nUnderneath a velvet sky\n[Bridge]\nThe weight I carried starts to lift\nA s",
+      "normalized_preview": "[Intro]\nRain taps the glass, a quiet sound\nThe clock moves slow, the world spins round\n[Verse 1]\nA cup of coffee's getting cold\nA story in the steam unfolds\nThe lamp glows gold across the page\nI'm turning through a quiet stage\nThe thoughts drift by like afternoon\nBeneath a sleepy, silver moon\n[Chorus]\nAnd I let the notes just fade away\nIn the hush at the end of the day\nEvery chord a gentle sigh\nUnderneath a velvet sky\n[Verse 2]\nThe ink runs soft on paper lines\nA memory in slow decline\nThe drumbeat taps a steady rhyme\nTo mark the slipping of the time\nA window frames the falling light\nThat holds me in the coming night\n[Chorus]\nAnd I let the notes just fade away\nIn the hush at the end of the day\nEvery chord a gentle sigh\nUnderneath a velvet sky\n[Bridge]\nThe weight I carried starts to lift\nA s"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 4.0,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 9,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "outro",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 30,
+        "total_lines": 39,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Verse 1]\nAnother midnight call across the miles\nI hear your voice and fake a tired smile\nThe city lights are cold without you here\nCounting the days until you disappear\n[Pre-Chorus]\nAnd I know the distance is a heavy chain\nBut every whisper cuts right through the rain\n[Chorus]\nI'm holding on to the echo of your name\nA thousand miles just burning in the flame\nThe world is wide but my heart knows the way\nI'll love you through the static anyway\n[Verse 2]\nI trace the map where your fingers used to "
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/deepseek_deepseek-chat_run3_normalized.txt",
+      "raw_preview": "[Verse 1]\nAnother midnight call across the miles\nI hear your voice and fake a tired smile\nThe city lights are cold without you here\nCounting the days until you disappear\n[Pre-Chorus]\nAnd I know the distance is a heavy chain\nBut every whisper cuts right through the rain\n[Chorus]\nI'm holding on to the echo of your name\nA thousand miles just burning in the flame\nThe world is wide but my heart knows the way\nI'll love you through the static anyway\n[Verse 2]\nI trace the map where your fingers used to be\nA photograph is all that's left of me\nThe seasons change but this ache stays the same\nWhispering your letters like a prayer for rain\n[Pre-Chorus]\nAnd I know the silence tries to break us in\nBut every heartbeat tells me where you've been\n[Chorus]\nI'm holding on to the echo of your name\nA thousand ",
+      "normalized_preview": "[Verse 1]\nAnother midnight call across the miles\nI hear your voice and fake a tired smile\nThe city lights are cold without you here\nCounting the days until you disappear\n[Pre-Chorus]\nAnd I know the distance is a heavy chain\nBut every whisper cuts right through the rain\n[Chorus]\nI'm holding on to the echo of your name\nA thousand miles just burning in the flame\nThe world is wide but my heart knows the way\nI'll love you through the static anyway\n[Verse 2]\nI trace the map where your fingers used to be\nA photograph is all that's left of me\nThe seasons change but this ache stays the same\nWhispering your letters like a prayer for rain\n[Pre-Chorus]\nAnd I know the silence tries to break us in\nBut every heartbeat tells me where you've been\n[Chorus]\nI'm holding on to the echo of your name\nA thousand "
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-reasoner",
+      "run": 1,
+      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 8.74,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 7,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "intro",
+          "outro",
+          "pre-chorus",
+          "verse"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 40,
+        "total_lines": 47,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nGet ready, feel the beat take hold\nLeave your doubts outside the door\nThis moment's yours to own\nLet the rhythm take control\n[Verse]\nSweat on the floor, heart in the race\nEvery rep erases the space\nBetween where you are and where you wanna be\nFeel the weight—you're breaking free\nNo looking back, no giving in\nThe fire inside is where you begin\nOne more step, one more breath\nPush through the pain, defy the death of doubt\n[Pre-Chorus]\nFeel the bass, it's in your veins\nEnergy pours through y"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/deepseek_deepseek-reasoner_run1_normalized.txt",
+      "raw_preview": "[Intro]\nGet ready, feel the beat take hold\nLeave your doubts outside the door\nThis moment's yours to own\nLet the rhythm take control\n[Verse]\nSweat on the floor, heart in the race\nEvery rep erases the space\nBetween where you are and where you wanna be\nFeel the weight—you're breaking free\nNo looking back, no giving in\nThe fire inside is where you begin\nOne more step, one more breath\nPush through the pain, defy the death of doubt\n[Pre-Chorus]\nFeel the bass, it's in your veins\nEnergy pours through your veins\nThe drop is coming, hold on tight\nIgnite the night, become the light\n[Chorus]\nWe are power, we are sound\nHigher ground where we are found\nNo ceiling, no chain can hold us down\nWe rise up—we own this town\nWe are warriors, we are stars\nBurning brighter than the scars\nFeel the thunder, feel t",
+      "normalized_preview": "[Intro]\nGet ready, feel the beat take hold\nLeave your doubts outside the door\nThis moment's yours to own\nLet the rhythm take control\n[Verse]\nSweat on the floor, heart in the race\nEvery rep erases the space\nBetween where you are and where you wanna be\nFeel the weight—you're breaking free\nNo looking back, no giving in\nThe fire inside is where you begin\nOne more step, one more breath\nPush through the pain, defy the death of doubt\n[Pre-Chorus]\nFeel the bass, it's in your veins\nEnergy pours through your veins\nThe drop is coming, hold on tight\nIgnite the night, become the light\n[Chorus]\nWe are power, we are sound\nHigher ground where we are found\nNo ceiling, no chain can hold us down\nWe rise up—we own this town\nWe are warriors, we are stars\nBurning brighter than the scars\nFeel the thunder, feel t"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-reasoner",
+      "run": 2,
+      "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
+      "status": "WARN",
+      "validation_error": null,
+      "review_issues": [
+        "possible_truncation: last line ends abruptly (Coffee steam curls slow and low… and I let it go)"
+      ],
+      "elapsed_seconds": 6.3,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 7,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "intro",
+          "outro",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Outro]"
+        ],
+        "content_line_count": 24,
+        "total_lines": 31,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nRain taps on the window pane, a lullaby in gray\nCoffee steam curls slow and low before the break of day\n[Verse 1]\nA stack of books on the desk, pages yellowed and worn\nGot a mind that's second-guessing, trying to find what's reborn\nEvery line I trace in pencil blurs with time and sleep\nBut the soft hum of the piano makes the silence deep\n[Chorus]\nAnd I'm drifting on a chord that never quite resolves\nThrough the static of the hours, every worry dissolves\nWarm piano under moonlight, soft d"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/deepseek_deepseek-reasoner_run2_normalized.txt",
+      "raw_preview": "[Intro]\nRain taps on the window pane, a lullaby in gray\nCoffee steam curls slow and low before the break of day\n[Verse 1]\nA stack of books on the desk, pages yellowed and worn\nGot a mind that's second-guessing, trying to find what's reborn\nEvery line I trace in pencil blurs with time and sleep\nBut the soft hum of the piano makes the silence deep\n[Chorus]\nAnd I'm drifting on a chord that never quite resolves\nThrough the static of the hours, every worry dissolves\nWarm piano under moonlight, soft drums that barely speak\nI'm learning how to listen to the quiet of the week\n[Verse 2]\nThe clock ticks on without a rush, a patient metronome\nI let my thoughts unravel, I don't have to take them home\nThere's a notebook full of half‑drawn stars and questions left unread\nBut the melody's enough now, it'",
+      "normalized_preview": "[Intro]\nRain taps on the window pane, a lullaby in gray\nCoffee steam curls slow and low before the break of day\n[Verse 1]\nA stack of books on the desk, pages yellowed and worn\nGot a mind that's second-guessing, trying to find what's reborn\nEvery line I trace in pencil blurs with time and sleep\nBut the soft hum of the piano makes the silence deep\n[Chorus]\nAnd I'm drifting on a chord that never quite resolves\nThrough the static of the hours, every worry dissolves\nWarm piano under moonlight, soft drums that barely speak\nI'm learning how to listen to the quiet of the week\n[Verse 2]\nThe clock ticks on without a rush, a patient metronome\nI let my thoughts unravel, I don't have to take them home\nThere's a notebook full of half‑drawn stars and questions left unread\nBut the melody's enough now, it'"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-reasoner",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 5.22,
       "analysis": {
         "has_headers": true,
         "header_count": 8,
@@ -236,172 +622,11 @@
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nCity lights blur in the rain outside\nSoft echoes of a song that plays in low tide\n[Verse 1]\nPages turn, the clock unwinds,\nIn the quiet corners of my mind\nGentle beats, a soft piano’s cry,\nUnderneath the vast, unending sky\n[Chorus]\nLet's lose track of time, in whispers low,\nWhere the dreams weave and thoughts gently flow\nIn the heart of night, under flickering glow,\nStay in this moment, let the world move slow\n[Verse 2]\nCandles flicker, shadows dance,\nIn the silence, our minds advance\nWo"
+        "normalized_preview": "[Intro]\nPiano keys like raindrops on the glass\nA silent room where shadows fall\n[Verse 1]\nYour voice is a whisper in the static hum\nI trace the outline of your name on the screen\nAnother night, another time zone run\nCounting the hours till you’re next to me\n[Chorus]\nI’ll hold the line across the miles of dark\nEvery heartbeat is a signal in the air\nWe’re two constellations waiting for the spark\nThe distance burns, but I swear I’ll be there\n[Verse 2]\nMorning here, you’re still asleep in your half-"
       },
-      "raw_preview": "[Intro]\nCity lights blur in the rain outside\nSoft echoes of a song that plays in low tide\n[Verse 1]\nPages turn, the clock unwinds,\nIn the quiet corners of my mind\nGentle beats, a soft piano’s cry,\nUnderneath the vast, unending sky\n[Chorus]\nLet's lose track of time, in whispers low,\nWhere the dreams weave and thoughts gently flow\nIn the heart of night, under flickering glow,\nStay in this moment, let the world move slow\n[Verse 2]\nCandles flicker, shadows dance,\nIn the silence, our minds advance\nWords spill over, a serene cascade,\nIn the warmth of the night, our worries fade\n[Chorus]\nLet's lose track of time, in whispers low,\nWhere the dreams weave and thoughts gently flow\nIn the heart of night, under flickering glow,\nStay in this moment, let the world move slow\n[Bridge]\nThrough the window, a",
-      "normalized_preview": "[Intro]\nCity lights blur in the rain outside\nSoft echoes of a song that plays in low tide\n[Verse 1]\nPages turn, the clock unwinds,\nIn the quiet corners of my mind\nGentle beats, a soft piano’s cry,\nUnderneath the vast, unending sky\n[Chorus]\nLet's lose track of time, in whispers low,\nWhere the dreams weave and thoughts gently flow\nIn the heart of night, under flickering glow,\nStay in this moment, let the world move slow\n[Verse 2]\nCandles flicker, shadows dance,\nIn the silence, our minds advance\nWords spill over, a serene cascade,\nIn the warmth of the night, our worries fade\n[Chorus]\nLet's lose track of time, in whispers low,\nWhere the dreams weave and thoughts gently flow\nIn the heart of night, under flickering glow,\nStay in this moment, let the world move slow\n[Bridge]\nThrough the window, a"
-    },
-    {
-      "provider": "deepseek",
-      "model": "deepseek-chat",
-      "run": 1,
-      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
-      "status": "PASS",
-      "validation_error": null,
-      "elapsed_seconds": 4.49,
-      "analysis": {
-        "has_headers": true,
-        "header_count": 10,
-        "distinct_section_labels": [
-          "bridge",
-          "chorus",
-          "drop",
-          "intro",
-          "outro",
-          "pre-chorus",
-          "verse"
-        ],
-        "headers_sample": [
-          "[Intro]",
-          "[Verse]",
-          "[Pre-Chorus]",
-          "[Chorus]",
-          "[Drop]",
-          "[Verse]",
-          "[Pre-Chorus]",
-          "[Chorus]",
-          "[Bridge]",
-          "[Outro]"
-        ],
-        "content_line_count": 40,
-        "total_lines": 50,
-        "starts_with_header": true,
-        "has_preamble": false,
-        "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nLet's go\n[Verse]\nWaking up the fire inside\nNo more time left to hide\nFeel the rhythm in your veins\nBreaking through the mental chains\n[Pre-Chorus]\nPush it harder, feel the beat\nNothing's gonna stop your feet\nEvery step is one more chance\nGet up, move, and take your stance\n[Chorus]\nWe are unstoppable tonight\nBurning bright like city lights\nRaise your hands up to the sky\nNo surrender, no goodbye\nWe are unstoppable tonight\nFeel the power, take the flight\n[Drop]\nGo, go, go\nDrive the bass, ig"
-      },
-      "raw_preview": "[Intro]\nLet's go\n[Verse]\nWaking up the fire inside\nNo more time left to hide\nFeel the rhythm in your veins\nBreaking through the mental chains\n[Pre-Chorus]\nPush it harder, feel the beat\nNothing's gonna stop your feet\nEvery step is one more chance\nGet up, move, and take your stance\n[Chorus]\nWe are unstoppable tonight\nBurning bright like city lights\nRaise your hands up to the sky\nNo surrender, no goodbye\nWe are unstoppable tonight\nFeel the power, take the flight\n[Drop]\nGo, go, go\nDrive the bass, ignite the soul\nGo, go, go\nMake this moment lose control\n[Verse]\nSweat and grit and iron will\nEvery challenge, climb that hill\nEchoes of the crowd's loud roar\nYou're the one they're fighting for\n[Pre-Chorus]\nPush it harder, feel the beat\nNothing's gonna stop your feet\nEvery step is one more chance\nGet",
-      "normalized_preview": "[Intro]\nLet's go\n[Verse]\nWaking up the fire inside\nNo more time left to hide\nFeel the rhythm in your veins\nBreaking through the mental chains\n[Pre-Chorus]\nPush it harder, feel the beat\nNothing's gonna stop your feet\nEvery step is one more chance\nGet up, move, and take your stance\n[Chorus]\nWe are unstoppable tonight\nBurning bright like city lights\nRaise your hands up to the sky\nNo surrender, no goodbye\nWe are unstoppable tonight\nFeel the power, take the flight\n[Drop]\nGo, go, go\nDrive the bass, ignite the soul\nGo, go, go\nMake this moment lose control\n[Verse]\nSweat and grit and iron will\nEvery challenge, climb that hill\nEchoes of the crowd's loud roar\nYou're the one they're fighting for\n[Pre-Chorus]\nPush it harder, feel the beat\nNothing's gonna stop your feet\nEvery step is one more chance\nGet"
-    },
-    {
-      "provider": "deepseek",
-      "model": "deepseek-chat",
-      "run": 2,
-      "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
-      "status": "PASS",
-      "validation_error": null,
-      "elapsed_seconds": 3.17,
-      "analysis": {
-        "has_headers": true,
-        "header_count": 7,
-        "distinct_section_labels": [
-          "bridge",
-          "chorus",
-          "intro",
-          "outro",
-          "verse 1",
-          "verse 2"
-        ],
-        "headers_sample": [
-          "[Intro]",
-          "[Verse 1]",
-          "[Chorus]",
-          "[Verse 2]",
-          "[Chorus]",
-          "[Bridge]",
-          "[Outro]"
-        ],
-        "content_line_count": 25,
-        "total_lines": 32,
-        "starts_with_header": true,
-        "has_preamble": false,
-        "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nFading light on a quiet street\nEchoes of a day complete\n[Verse 1]\nPencil lines on a page of doubt\nWatching shadows move about\nA coffee cup beside my hand\nTrying hard to understand\n[Chorus]\nLet the rhythm hold me slow\nWhere the quiet rivers go\nBreathe the stillness, let it stay\nWash the noise of yesterday\n[Verse 2]\nWindow pane with a misty glow\nThoughts like raindrops, soft and low\nEvery note a gentle thread\nWeaving dreams inside my head\n[Chorus]\nLet the rhythm hold me slow\nWhere the quie"
-      },
-      "raw_preview": "[Intro]\nFading light on a quiet street\nEchoes of a day complete\n[Verse 1]\nPencil lines on a page of doubt\nWatching shadows move about\nA coffee cup beside my hand\nTrying hard to understand\n[Chorus]\nLet the rhythm hold me slow\nWhere the quiet rivers go\nBreathe the stillness, let it stay\nWash the noise of yesterday\n[Verse 2]\nWindow pane with a misty glow\nThoughts like raindrops, soft and low\nEvery note a gentle thread\nWeaving dreams inside my head\n[Chorus]\nLet the rhythm hold me slow\nWhere the quiet rivers go\nBreathe the stillness, let it stay\nWash the noise of yesterday\n[Bridge]\nAnd the clock ticks on the wall\nBut I don't mind the fall\nInto spaces deep and wide\nWhere the answers gently hide\n[Outro]\nFading light on a quiet street\nEchoes of a day complete\nSoft and slow, I let it go",
-      "normalized_preview": "[Intro]\nFading light on a quiet street\nEchoes of a day complete\n[Verse 1]\nPencil lines on a page of doubt\nWatching shadows move about\nA coffee cup beside my hand\nTrying hard to understand\n[Chorus]\nLet the rhythm hold me slow\nWhere the quiet rivers go\nBreathe the stillness, let it stay\nWash the noise of yesterday\n[Verse 2]\nWindow pane with a misty glow\nThoughts like raindrops, soft and low\nEvery note a gentle thread\nWeaving dreams inside my head\n[Chorus]\nLet the rhythm hold me slow\nWhere the quiet rivers go\nBreathe the stillness, let it stay\nWash the noise of yesterday\n[Bridge]\nAnd the clock ticks on the wall\nBut I don't mind the fall\nInto spaces deep and wide\nWhere the answers gently hide\n[Outro]\nFading light on a quiet street\nEchoes of a day complete\nSoft and slow, I let it go"
-    },
-    {
-      "provider": "deepseek",
-      "model": "deepseek-reasoner",
-      "run": 1,
-      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
-      "status": "PASS",
-      "validation_error": null,
-      "elapsed_seconds": 5.62,
-      "analysis": {
-        "has_headers": true,
-        "header_count": 11,
-        "distinct_section_labels": [
-          "bridge",
-          "chorus",
-          "drop",
-          "intro",
-          "outro",
-          "pre-chorus",
-          "verse 1",
-          "verse 2"
-        ],
-        "headers_sample": [
-          "[Intro]",
-          "[Verse 1]",
-          "[Pre-Chorus]",
-          "[Chorus]",
-          "[Drop]",
-          "[Verse 2]",
-          "[Pre-Chorus]",
-          "[Chorus]",
-          "[Drop]",
-          "[Bridge]",
-          "[Outro]"
-        ],
-        "content_line_count": 42,
-        "total_lines": 53,
-        "starts_with_header": true,
-        "has_preamble": false,
-        "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nFeel the burn, feel the beat\nHeart is pounding, on your feet\n[Verse 1]\nWake up the fire deep inside\nNo more waiting, no more hide\nPush it harder, break the chain\nEvery drop is worth the pain\n[Pre-Chorus]\nThe bass is hitting through your chest\nYou know this moment is your test\nLet go of doubt, embrace the sound\nThe only way is up from ground\n[Chorus]\nWe're going higher, higher, never gonna stop\nLight the wire, wire, reaching for the top\nEvery step is power, every breath a fight\nGet up now"
-      },
-      "raw_preview": "[Intro]\nFeel the burn, feel the beat\nHeart is pounding, on your feet\n[Verse 1]\nWake up the fire deep inside\nNo more waiting, no more hide\nPush it harder, break the chain\nEvery drop is worth the pain\n[Pre-Chorus]\nThe bass is hitting through your chest\nYou know this moment is your test\nLet go of doubt, embrace the sound\nThe only way is up from ground\n[Chorus]\nWe're going higher, higher, never gonna stop\nLight the wire, wire, reaching for the top\nEvery step is power, every breath a fight\nGet up now, own the night\n[Drop]\nGo, go, go, feel the thunder roll\nGo, go, go, take back control\nGo, go, go, let the rhythm rise\nVictory is in your eyes\n[Verse 2]\nThe sweat is falling, don't you quit\nYou came this far, you're made for it\nOne more rep, one more mile\nTurn the struggle into style\n[Pre-Chorus]\nTh",
-      "normalized_preview": "[Intro]\nFeel the burn, feel the beat\nHeart is pounding, on your feet\n[Verse 1]\nWake up the fire deep inside\nNo more waiting, no more hide\nPush it harder, break the chain\nEvery drop is worth the pain\n[Pre-Chorus]\nThe bass is hitting through your chest\nYou know this moment is your test\nLet go of doubt, embrace the sound\nThe only way is up from ground\n[Chorus]\nWe're going higher, higher, never gonna stop\nLight the wire, wire, reaching for the top\nEvery step is power, every breath a fight\nGet up now, own the night\n[Drop]\nGo, go, go, feel the thunder roll\nGo, go, go, take back control\nGo, go, go, let the rhythm rise\nVictory is in your eyes\n[Verse 2]\nThe sweat is falling, don't you quit\nYou came this far, you're made for it\nOne more rep, one more mile\nTurn the struggle into style\n[Pre-Chorus]\nTh"
-    },
-    {
-      "provider": "deepseek",
-      "model": "deepseek-reasoner",
-      "run": 2,
-      "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
-      "status": "PASS",
-      "validation_error": null,
-      "elapsed_seconds": 6.52,
-      "analysis": {
-        "has_headers": true,
-        "header_count": 7,
-        "distinct_section_labels": [
-          "bridge",
-          "chorus",
-          "intro",
-          "outro",
-          "verse 1",
-          "verse 2"
-        ],
-        "headers_sample": [
-          "[Intro]",
-          "[Verse 1]",
-          "[Chorus]",
-          "[Verse 2]",
-          "[Chorus]",
-          "[Bridge]",
-          "[Outro]"
-        ],
-        "content_line_count": 32,
-        "total_lines": 39,
-        "starts_with_header": true,
-        "has_preamble": false,
-        "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nSoft piano keys on a rainy night\nA breath of silence, fading light\n[Verse 1]\nLate night pages, ink on your hand\nLost in a notebook, no understand\nThe clock keeps spinning, you don't hear a sound\nYour thoughts drift upward, never touch the ground\nA cup of coffee cold by your side\nThe moon out your window is your only guide\nEvery word you write is a gentle sigh\nTime slows down like clouds passing by\n[Chorus]\nAnd the study hums a quiet tune\nUnderneath a dusty moon\nLet the world just fade an"
-      },
-      "raw_preview": "[Intro]\nSoft piano keys on a rainy night\nA breath of silence, fading light\n[Verse 1]\nLate night pages, ink on your hand\nLost in a notebook, no understand\nThe clock keeps spinning, you don't hear a sound\nYour thoughts drift upward, never touch the ground\nA cup of coffee cold by your side\nThe moon out your window is your only guide\nEvery word you write is a gentle sigh\nTime slows down like clouds passing by\n[Chorus]\nAnd the study hums a quiet tune\nUnderneath a dusty moon\nLet the world just fade and fall\nYou don't need to move at all\n[Verse 2]\nYour pencil sketches circles on the page\nThe rhythm of the rain is your only stage\nA memory flickers, a summer's glow\nBut you let it pass like melting snow\nThe beat of your heart so soft and deep\nThe promises that your thoughts can keep\nNo rush, no hurr",
-      "normalized_preview": "[Intro]\nSoft piano keys on a rainy night\nA breath of silence, fading light\n[Verse 1]\nLate night pages, ink on your hand\nLost in a notebook, no understand\nThe clock keeps spinning, you don't hear a sound\nYour thoughts drift upward, never touch the ground\nA cup of coffee cold by your side\nThe moon out your window is your only guide\nEvery word you write is a gentle sigh\nTime slows down like clouds passing by\n[Chorus]\nAnd the study hums a quiet tune\nUnderneath a dusty moon\nLet the world just fade and fall\nYou don't need to move at all\n[Verse 2]\nYour pencil sketches circles on the page\nThe rhythm of the rain is your only stage\nA memory flickers, a summer's glow\nBut you let it pass like melting snow\nThe beat of your heart so soft and deep\nThe promises that your thoughts can keep\nNo rush, no hurr"
+      "lyric_file": "docs/ai_free_probe_lyrics/deepseek_deepseek-reasoner_run3_normalized.txt",
+      "raw_preview": "[Intro]\nPiano keys like raindrops on the glass\nA silent room where shadows fall\n[Verse 1]\nYour voice is a whisper in the static hum\nI trace the outline of your name on the screen\nAnother night, another time zone run\nCounting the hours till you’re next to me\n[Chorus]\nI’ll hold the line across the miles of dark\nEvery heartbeat is a signal in the air\nWe’re two constellations waiting for the spark\nThe distance burns, but I swear I’ll be there\n[Verse 2]\nMorning here, you’re still asleep in your half-light\nI send a photo of the sunrise through the phone\nThe world keeps spinning, but I’m stuck inside this night\nWishing I could warm the space you sleep alone\n[Chorus]\nI’ll hold the line across the miles of dark\nEvery heartbeat is a signal in the air\nWe’re two constellations waiting for the spark\nTh",
+      "normalized_preview": "[Intro]\nPiano keys like raindrops on the glass\nA silent room where shadows fall\n[Verse 1]\nYour voice is a whisper in the static hum\nI trace the outline of your name on the screen\nAnother night, another time zone run\nCounting the hours till you’re next to me\n[Chorus]\nI’ll hold the line across the miles of dark\nEvery heartbeat is a signal in the air\nWe’re two constellations waiting for the spark\nThe distance burns, but I swear I’ll be there\n[Verse 2]\nMorning here, you’re still asleep in your half-light\nI send a photo of the sunrise through the phone\nThe world keeps spinning, but I’m stuck inside this night\nWishing I could warm the space you sleep alone\n[Chorus]\nI’ll hold the line across the miles of dark\nEvery heartbeat is a signal in the air\nWe’re two constellations waiting for the spark\nTh"
     },
     {
       "provider": "slai",
@@ -410,7 +635,8 @@
       "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 12.51,
+      "review_issues": [],
+      "elapsed_seconds": 25.85,
       "analysis": {
         "has_headers": true,
         "header_count": 11,
@@ -437,15 +663,16 @@
           "[Chorus]",
           "[Outro]"
         ],
-        "content_line_count": 55,
-        "total_lines": 66,
+        "content_line_count": 56,
+        "total_lines": 67,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\n(Bass pulse fading in)\nFeel the static in the air\nLock it in, no time to spare\n(Energy rising)\n[Verse 1]\nLace up tight, the rubber meets the floor\nEvery breath is opening a door\nShake the dust off, let the engine roar\nIgnite the core, give it something more\nNo looking back, the past is just a ghost\nPush the limit to the edge of coast\n[Pre-Chorus]\nThe pressure’s building, can you feel the heat?\nRhythm pumping to the heavy beat\nHands are shaking, but we don’t retreat\nGet ready for the drop"
+        "normalized_preview": "[Intro]\nBass drum kicks, feel the floor start to shake\nHeartbeat rising, it's a choice that we make\nLight the fire, let the shadows all fade\nThis is the moment, a new world we've made\n[Verse 1]\nLace 'em up tight, let the world fall away\nEvery drop of sweat washes doubt to grey\nThe iron's cold, but the will is a flame\nPush past the limit, forget your own name\nThe static in your ears is a battle cry\nOne more rep, reach for the sky\n[Pre-Chorus]\nThe pressure's building, can you feel the shift?\nA ris"
       },
-      "raw_preview": "[Intro]\n(Bass pulse fading in)\nFeel the static in the air\nLock it in, no time to spare\n(Energy rising)\n[Verse 1]\nLace up tight, the rubber meets the floor\nEvery breath is opening a door\nShake the dust off, let the engine roar\nIgnite the core, give it something more\nNo looking back, the past is just a ghost\nPush the limit to the edge of coast\n[Pre-Chorus]\nThe pressure’s building, can you feel the heat?\nRhythm pumping to the heavy beat\nHands are shaking, but we don’t retreat\nGet ready for the drop, take a seat... No!\n[Chorus]\nBreak the ceiling, smash the wall\nStand up tall, never gonna fall\nWe are the thunder, we are the storm\nKeep the fire in your system warm\nBreak the ceiling, let it go\nFeel the rhythm taking control\n[Verse 2]\nGravity is just a suggestion now\nWipe the sweat off of your bro",
-      "normalized_preview": "[Intro]\n(Bass pulse fading in)\nFeel the static in the air\nLock it in, no time to spare\n(Energy rising)\n[Verse 1]\nLace up tight, the rubber meets the floor\nEvery breath is opening a door\nShake the dust off, let the engine roar\nIgnite the core, give it something more\nNo looking back, the past is just a ghost\nPush the limit to the edge of coast\n[Pre-Chorus]\nThe pressure’s building, can you feel the heat?\nRhythm pumping to the heavy beat\nHands are shaking, but we don’t retreat\nGet ready for the drop, take a seat... No!\n[Chorus]\nBreak the ceiling, smash the wall\nStand up tall, never gonna fall\nWe are the thunder, we are the storm\nKeep the fire in your system warm\nBreak the ceiling, let it go\nFeel the rhythm taking control\n[Verse 2]\nGravity is just a suggestion now\nWipe the sweat off of your bro"
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_xiaomi_mimo-v2.5-pro_run1_normalized.txt",
+      "raw_preview": "[Intro]\nBass drum kicks, feel the floor start to shake\nHeartbeat rising, it's a choice that we make\nLight the fire, let the shadows all fade\nThis is the moment, a new world we've made\n[Verse 1]\nLace 'em up tight, let the world fall away\nEvery drop of sweat washes doubt to grey\nThe iron's cold, but the will is a flame\nPush past the limit, forget your own name\nThe static in your ears is a battle cry\nOne more rep, reach for the sky\n[Pre-Chorus]\nThe pressure's building, can you feel the shift?\nA rising wave, an unstoppable gift\nThe countdown's starting, the signal is near\nShed all the weight of the yesteryear\n[Chorus]\nIgnite the core, let the rhythm take control\nWe're chasing lightning, body, heart, and soul\nThe bass is heavy, the drop is gonna fall\nGive it everything, standing ten feet tall\nI",
+      "normalized_preview": "[Intro]\nBass drum kicks, feel the floor start to shake\nHeartbeat rising, it's a choice that we make\nLight the fire, let the shadows all fade\nThis is the moment, a new world we've made\n[Verse 1]\nLace 'em up tight, let the world fall away\nEvery drop of sweat washes doubt to grey\nThe iron's cold, but the will is a flame\nPush past the limit, forget your own name\nThe static in your ears is a battle cry\nOne more rep, reach for the sky\n[Pre-Chorus]\nThe pressure's building, can you feel the shift?\nA rising wave, an unstoppable gift\nThe countdown's starting, the signal is near\nShed all the weight of the yesteryear\n[Chorus]\nIgnite the core, let the rhythm take control\nWe're chasing lightning, body, heart, and soul\nThe bass is heavy, the drop is gonna fall\nGive it everything, standing ten feet tall\nI"
     },
     {
       "provider": "slai",
@@ -454,7 +681,8 @@
       "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 9.25,
+      "review_issues": [],
+      "elapsed_seconds": 10.71,
       "analysis": {
         "has_headers": true,
         "header_count": 7,
@@ -475,15 +703,54 @@
           "[Bridge]",
           "[Outro]"
         ],
-        "content_line_count": 35,
-        "total_lines": 42,
+        "content_line_count": 44,
+        "total_lines": 51,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nRaindrops on the windowpane\nA soft piano starts to play\nLet the noise just drift away\n[Verse 1]\nThe coffee's warm, the morning's grey\nA thousand thoughts begin to fray\nI watch the steam just twist and rise\nBeneath these tired, heavy eyes\nThe city hums a distant tune\nA quiet afternoon\n[Chorus]\nSo let the hours drift on by\nNo need to ask the reason why\nJust find a place where I can hide\nAnd let the world just fall aside\nThis gentle beat, this simple rhyme\nA quiet space to call all mine\n[Ve"
+        "normalized_preview": "[Intro]\nLate night, the city's soft glow\nJust me and the radio\nA cup of coffee, getting low\nLet the quiet moments grow\n[Verse 1]\nThe pages turn, a gentle sound\nMy thoughts are drifting, not quite found\nThe world outside spins round and round\nBut in this space, I'm safe and sound\nThe piano keys, they softly fall\nAnswering a silent call\nTo let the day's distractions go\nAnd watch the peaceful river flow\n[Chorus]\nThis is the quiet I've been needing\nA gentle, rhythmic, steady breathing\nThe softest li"
       },
-      "raw_preview": "[Intro]\nRaindrops on the windowpane\nA soft piano starts to play\nLet the noise just drift away\n[Verse 1]\nThe coffee's warm, the morning's grey\nA thousand thoughts begin to fray\nI watch the steam just twist and rise\nBeneath these tired, heavy eyes\nThe city hums a distant tune\nA quiet afternoon\n[Chorus]\nSo let the hours drift on by\nNo need to ask the reason why\nJust find a place where I can hide\nAnd let the world just fall aside\nThis gentle beat, this simple rhyme\nA quiet space to call all mine\n[Verse 2]\nThe pages turn, the ink is dry\nA question mark against the sky\nThe shadows stretch across the floor\nAnd I don't need to know what for\nJust this moment, soft and slow\nA quiet place for thoughts to grow\n[Chorus]\nSo let the hours drift on by\nNo need to ask the reason why\nJust find a place where ",
-      "normalized_preview": "[Intro]\nRaindrops on the windowpane\nA soft piano starts to play\nLet the noise just drift away\n[Verse 1]\nThe coffee's warm, the morning's grey\nA thousand thoughts begin to fray\nI watch the steam just twist and rise\nBeneath these tired, heavy eyes\nThe city hums a distant tune\nA quiet afternoon\n[Chorus]\nSo let the hours drift on by\nNo need to ask the reason why\nJust find a place where I can hide\nAnd let the world just fall aside\nThis gentle beat, this simple rhyme\nA quiet space to call all mine\n[Verse 2]\nThe pages turn, the ink is dry\nA question mark against the sky\nThe shadows stretch across the floor\nAnd I don't need to know what for\nJust this moment, soft and slow\nA quiet place for thoughts to grow\n[Chorus]\nSo let the hours drift on by\nNo need to ask the reason why\nJust find a place where "
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_xiaomi_mimo-v2.5-pro_run2_normalized.txt",
+      "raw_preview": "[Intro]\nLate night, the city's soft glow\nJust me and the radio\nA cup of coffee, getting low\nLet the quiet moments grow\n[Verse 1]\nThe pages turn, a gentle sound\nMy thoughts are drifting, not quite found\nThe world outside spins round and round\nBut in this space, I'm safe and sound\nThe piano keys, they softly fall\nAnswering a silent call\nTo let the day's distractions go\nAnd watch the peaceful river flow\n[Chorus]\nThis is the quiet I've been needing\nA gentle, rhythmic, steady breathing\nThe softest light, the shadows creeping\nMy weary soul is slowly sleeping\nNo rush, no race, no final bell\nJust stories that the night can tell\n[Verse 2]\nThe pencil scratches on the page\nTurning over a new stage\nThe dusty memories and the age\nAre just a line upon a gauge\nThe drum's soft tap, a steady friend\nOn this",
+      "normalized_preview": "[Intro]\nLate night, the city's soft glow\nJust me and the radio\nA cup of coffee, getting low\nLet the quiet moments grow\n[Verse 1]\nThe pages turn, a gentle sound\nMy thoughts are drifting, not quite found\nThe world outside spins round and round\nBut in this space, I'm safe and sound\nThe piano keys, they softly fall\nAnswering a silent call\nTo let the day's distractions go\nAnd watch the peaceful river flow\n[Chorus]\nThis is the quiet I've been needing\nA gentle, rhythmic, steady breathing\nThe softest light, the shadows creeping\nMy weary soul is slowly sleeping\nNo rush, no race, no final bell\nJust stories that the night can tell\n[Verse 2]\nThe pencil scratches on the page\nTurning over a new stage\nThe dusty memories and the age\nAre just a line upon a gauge\nThe drum's soft tap, a steady friend\nOn this"
+    },
+    {
+      "provider": "slai",
+      "model": "xiaomi/mimo-v2.5-pro",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 15.64,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 6,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "outro",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Verse 1]",
+          "[Verse 2]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 23,
+        "total_lines": 29,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Verse 1]\nThe city lights are glowing on the pane\nA different sunset from the one you see\nI trace the miles upon a map in vain\nAnd whisper words that only reach my dreams\n[Verse 2]\nYour voice a ghost inside my telephone\nA fragile thread across the ocean's roar\nI read your letters till the ink is gone\nAnd still I find I'm needing so much more\n[Chorus]\nSo hold me in the space between the stars\nWhere distance is a promise we can break\nAnd every beat of this relentless heart\nIs one step closer to th"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_xiaomi_mimo-v2.5-pro_run3_normalized.txt",
+      "raw_preview": "[Verse 1]\nThe city lights are glowing on the pane\nA different sunset from the one you see\nI trace the miles upon a map in vain\nAnd whisper words that only reach my dreams\n[Verse 2]\nYour voice a ghost inside my telephone\nA fragile thread across the ocean's roar\nI read your letters till the ink is gone\nAnd still I find I'm needing so much more\n[Chorus]\nSo hold me in the space between the stars\nWhere distance is a promise we can break\nAnd every beat of this relentless heart\nIs one step closer to the dawn we'll make\n[Bridge]\nThe silence in this room is deafening\nIt echoes with the laughter that we've shared\nBut I will keep on believing, keep on singing\nUntil the day I'm finally there\n[Chorus]\nSo hold me in the space between the stars\nWhere distance is a promise we can break\nAnd every beat of t",
+      "normalized_preview": "[Verse 1]\nThe city lights are glowing on the pane\nA different sunset from the one you see\nI trace the miles upon a map in vain\nAnd whisper words that only reach my dreams\n[Verse 2]\nYour voice a ghost inside my telephone\nA fragile thread across the ocean's roar\nI read your letters till the ink is gone\nAnd still I find I'm needing so much more\n[Chorus]\nSo hold me in the space between the stars\nWhere distance is a promise we can break\nAnd every beat of this relentless heart\nIs one step closer to the dawn we'll make\n[Bridge]\nThe silence in this room is deafening\nIt echoes with the laughter that we've shared\nBut I will keep on believing, keep on singing\nUntil the day I'm finally there\n[Chorus]\nSo hold me in the space between the stars\nWhere distance is a promise we can break\nAnd every beat of t"
     },
     {
       "provider": "slai",
@@ -492,7 +759,8 @@
       "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 19.94,
+      "review_issues": [],
+      "elapsed_seconds": 21.89,
       "analysis": {
         "has_headers": true,
         "header_count": 11,
@@ -520,15 +788,16 @@
           "[Final Drop]",
           "[Outro]"
         ],
-        "content_line_count": 64,
-        "total_lines": 75,
+        "content_line_count": 44,
+        "total_lines": 55,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nLights up, heart loud, feel the current rise\nLocked in, game face, thunder in our eyes\n[Verse 1]\nOne more plate and one more round\nPlant your feet and shake the ground\nEvery breath becomes a spark\nWe bring daylight to the dark\nPressure hits, but we don't bend\nPush the limit, break the end\nSweat like fire, pulse like drums\nHear the future as it comes\n[Pre-Chorus]\nNo looking back, no slowing down\nWe came to take the higher ground\nCount it in, ignite the flame\nWhen the beat drops, own your "
+        "normalized_preview": "[Intro]\nLights up, heart loud, feel the floor ignite\nLock in, breathe deep, we were built to fight\n[Verse 1]\nLace tight, game face, thunder in the chest\nEvery drop of sweat is proof we gave our best\nNo pause, no doubt, leave it at the door\nWhen the pressure rises, we demand some more\nOne rep, two reps, power through the strain\nTurn the weight of yesterday into fuel inside the veins\n[Pre-Chorus]\nHear that countdown calling\nFeel the bassline climb\nWe don't fear the falling\nWe get up every time\n[Ch"
       },
-      "raw_preview": "[Intro]\nLights up, heart loud, feel the current rise\nLocked in, game face, thunder in our eyes\n[Verse 1]\nOne more plate and one more round\nPlant your feet and shake the ground\nEvery breath becomes a spark\nWe bring daylight to the dark\nPressure hits, but we don't bend\nPush the limit, break the end\nSweat like fire, pulse like drums\nHear the future as it comes\n[Pre-Chorus]\nNo looking back, no slowing down\nWe came to take the higher ground\nCount it in, ignite the flame\nWhen the beat drops, own your name\n[Chorus]\nGo harder, go higher\nTurn your heartbeat into fire\nStand taller, get stronger\nHold the line a little longer\nNo fear, no surrender\nWe were built to break the pressure\nRight now, come alive\nFeel the power in the drive\n[Drop]\nPush, push, power through\nThere is nothing you can't do\nMove, m",
-      "normalized_preview": "[Intro]\nLights up, heart loud, feel the current rise\nLocked in, game face, thunder in our eyes\n[Verse 1]\nOne more plate and one more round\nPlant your feet and shake the ground\nEvery breath becomes a spark\nWe bring daylight to the dark\nPressure hits, but we don't bend\nPush the limit, break the end\nSweat like fire, pulse like drums\nHear the future as it comes\n[Pre-Chorus]\nNo looking back, no slowing down\nWe came to take the higher ground\nCount it in, ignite the flame\nWhen the beat drops, own your name\n[Chorus]\nGo harder, go higher\nTurn your heartbeat into fire\nStand taller, get stronger\nHold the line a little longer\nNo fear, no surrender\nWe were built to break the pressure\nRight now, come alive\nFeel the power in the drive\n[Drop]\nPush, push, power through\nThere is nothing you can't do\nMove, m"
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-sol_run1_normalized.txt",
+      "raw_preview": "[Intro]\nLights up, heart loud, feel the floor ignite\nLock in, breathe deep, we were built to fight\n[Verse 1]\nLace tight, game face, thunder in the chest\nEvery drop of sweat is proof we gave our best\nNo pause, no doubt, leave it at the door\nWhen the pressure rises, we demand some more\nOne rep, two reps, power through the strain\nTurn the weight of yesterday into fuel inside the veins\n[Pre-Chorus]\nHear that countdown calling\nFeel the bassline climb\nWe don't fear the falling\nWe get up every time\n[Chorus]\nPush harder, go farther, set the night on fire\nHands high, pulse racing, take it even higher\nNo limits, no quitting, let the whole room shake\nWe came to move mountains with every move we make\n[Drop]\nRise, rise, break through the ceiling\nDrive, drive, live for the feeling\nBurn, burn, brighter t",
+      "normalized_preview": "[Intro]\nLights up, heart loud, feel the floor ignite\nLock in, breathe deep, we were built to fight\n[Verse 1]\nLace tight, game face, thunder in the chest\nEvery drop of sweat is proof we gave our best\nNo pause, no doubt, leave it at the door\nWhen the pressure rises, we demand some more\nOne rep, two reps, power through the strain\nTurn the weight of yesterday into fuel inside the veins\n[Pre-Chorus]\nHear that countdown calling\nFeel the bassline climb\nWe don't fear the falling\nWe get up every time\n[Chorus]\nPush harder, go farther, set the night on fire\nHands high, pulse racing, take it even higher\nNo limits, no quitting, let the whole room shake\nWe came to move mountains with every move we make\n[Drop]\nRise, rise, break through the ceiling\nDrive, drive, live for the feeling\nBurn, burn, brighter t"
     },
     {
       "provider": "slai",
@@ -537,14 +806,14 @@
       "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 18.78,
+      "review_issues": [],
+      "elapsed_seconds": 20.09,
       "analysis": {
         "has_headers": true,
         "header_count": 7,
         "distinct_section_labels": [
           "bridge",
           "chorus",
-          "final chorus",
           "intro",
           "outro",
           "verse 1",
@@ -556,18 +825,62 @@
           "[Chorus]",
           "[Verse 2]",
           "[Bridge]",
+          "[Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 44,
+        "total_lines": 51,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nRain draws rivers down the glass\nMidnight lets the traffic pass\nA worn-out lamp, a wooden chair\nQuiet thoughts are everywhere\n[Verse 1]\nCoffee cools beside my notes\nDreams hide in the words I wrote\nEvery page becomes a door\nOpening a little more\nSoft keys fall like autumn light\nKeeping time with sleepless night\nI don't need to know the end\nJust the next line, just the pen\n[Chorus]\nSlow down, breathe in\nLet the small hours begin\nOne thought, one sound\nKeep my feet on steady ground\nNo race"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-sol_run2_normalized.txt",
+      "raw_preview": "[Intro]\nRain draws rivers down the glass\nMidnight lets the traffic pass\nA worn-out lamp, a wooden chair\nQuiet thoughts are everywhere\n[Verse 1]\nCoffee cools beside my notes\nDreams hide in the words I wrote\nEvery page becomes a door\nOpening a little more\nSoft keys fall like autumn light\nKeeping time with sleepless night\nI don't need to know the end\nJust the next line, just the pen\n[Chorus]\nSlow down, breathe in\nLet the small hours begin\nOne thought, one sound\nKeep my feet on steady ground\nNo race, no fear\nWhat I need is waiting here\nThrough the hush, through the blue\nI am finding something true\n[Verse 2]\nShadows lean across the floor\nMoonlight rests against the door\nQuestions gather, then they fade\nPeace arrives in notes I play\nAll the noise I used to chase\nLoses shape and leaves no trace\nE",
+      "normalized_preview": "[Intro]\nRain draws rivers down the glass\nMidnight lets the traffic pass\nA worn-out lamp, a wooden chair\nQuiet thoughts are everywhere\n[Verse 1]\nCoffee cools beside my notes\nDreams hide in the words I wrote\nEvery page becomes a door\nOpening a little more\nSoft keys fall like autumn light\nKeeping time with sleepless night\nI don't need to know the end\nJust the next line, just the pen\n[Chorus]\nSlow down, breathe in\nLet the small hours begin\nOne thought, one sound\nKeep my feet on steady ground\nNo race, no fear\nWhat I need is waiting here\nThrough the hush, through the blue\nI am finding something true\n[Verse 2]\nShadows lean across the floor\nMoonlight rests against the door\nQuestions gather, then they fade\nPeace arrives in notes I play\nAll the noise I used to chase\nLoses shape and leaves no trace\nE"
+    },
+    {
+      "provider": "slai",
+      "model": "gpt-5.6-sol",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 21.42,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 9,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "final chorus",
+          "outro",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
           "[Final Chorus]",
           "[Outro]"
         ],
         "content_line_count": 46,
-        "total_lines": 53,
+        "total_lines": 55,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nRain draws rivers on the glass\nMidnight lets the traffic pass\nA quiet room, a softened glow\nI turn the page and take it slow\n[Verse 1]\nWarm piano in the hall\nSoft as shadows on the wall\nCoffee cooling by my hand\nLittle notes I understand\nEvery answer takes its time\nEvery thought becomes a line\nOutside, all the streetlights blur\nInside, I can still be sure\n[Chorus]\nOne more page before the dawn\nKeep the little lamp light on\nLet the hours gently move\nTo the quiet pocket groove\nI don't need"
+        "normalized_preview": "[Verse 1]\nYour morning spills across my midnight room\nI watch the screen and feel the silence bloom\nA thousand miles lie folded in between\nBut every word you send still reaches me\n[Pre-Chorus]\nI count the stations, cities, passing cars\nAnd draw a road from where we are\n[Chorus]\nIf love can cross an ocean in the dark\nThen let my name be written on your heart\nWhen all I have is your voice on the line\nI close my eyes and pull you close to mine\nNo distance can undo what we have made\nNo lonely night "
       },
-      "raw_preview": "[Intro]\nRain draws rivers on the glass\nMidnight lets the traffic pass\nA quiet room, a softened glow\nI turn the page and take it slow\n[Verse 1]\nWarm piano in the hall\nSoft as shadows on the wall\nCoffee cooling by my hand\nLittle notes I understand\nEvery answer takes its time\nEvery thought becomes a line\nOutside, all the streetlights blur\nInside, I can still be sure\n[Chorus]\nOne more page before the dawn\nKeep the little lamp light on\nLet the hours gently move\nTo the quiet pocket groove\nI don't need to know it all\nI can learn and I can fall\nIn this calm, I find my way\nWord by word and day by day\n[Verse 2]\nSoft drums whisper underneath\nGiving restless thoughts relief\nPencil tapping with the rain\nFinding patterns in my brain\nAll the noise I carried in\nFades beneath the vinyl spin\nEvery doubt tha",
-      "normalized_preview": "[Intro]\nRain draws rivers on the glass\nMidnight lets the traffic pass\nA quiet room, a softened glow\nI turn the page and take it slow\n[Verse 1]\nWarm piano in the hall\nSoft as shadows on the wall\nCoffee cooling by my hand\nLittle notes I understand\nEvery answer takes its time\nEvery thought becomes a line\nOutside, all the streetlights blur\nInside, I can still be sure\n[Chorus]\nOne more page before the dawn\nKeep the little lamp light on\nLet the hours gently move\nTo the quiet pocket groove\nI don't need to know it all\nI can learn and I can fall\nIn this calm, I find my way\nWord by word and day by day\n[Verse 2]\nSoft drums whisper underneath\nGiving restless thoughts relief\nPencil tapping with the rain\nFinding patterns in my brain\nAll the noise I carried in\nFades beneath the vinyl spin\nEvery doubt tha"
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-sol_run3_normalized.txt",
+      "raw_preview": "[Verse 1]\nYour morning spills across my midnight room\nI watch the screen and feel the silence bloom\nA thousand miles lie folded in between\nBut every word you send still reaches me\n[Pre-Chorus]\nI count the stations, cities, passing cars\nAnd draw a road from where we are\n[Chorus]\nIf love can cross an ocean in the dark\nThen let my name be written on your heart\nWhen all I have is your voice on the line\nI close my eyes and pull you close to mine\nNo distance can undo what we have made\nNo lonely night can make this feeling fade\nUntil the day these separate skies align\nHold on to me, and I will call you mine\n[Verse 2]\nYour sweater hangs like summer by the door\nI wear it when I miss you even more\nThe clock keeps turning circles on the wall\nStill I would wait through every rise and fall\n[Pre-Chorus]",
+      "normalized_preview": "[Verse 1]\nYour morning spills across my midnight room\nI watch the screen and feel the silence bloom\nA thousand miles lie folded in between\nBut every word you send still reaches me\n[Pre-Chorus]\nI count the stations, cities, passing cars\nAnd draw a road from where we are\n[Chorus]\nIf love can cross an ocean in the dark\nThen let my name be written on your heart\nWhen all I have is your voice on the line\nI close my eyes and pull you close to mine\nNo distance can undo what we have made\nNo lonely night can make this feeling fade\nUntil the day these separate skies align\nHold on to me, and I will call you mine\n[Verse 2]\nYour sweater hangs like summer by the door\nI wear it when I miss you even more\nThe clock keeps turning circles on the wall\nStill I would wait through every rise and fall\n[Pre-Chorus]"
     },
     {
       "provider": "slai",
@@ -576,7 +889,8 @@
       "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 13.34,
+      "review_issues": [],
+      "elapsed_seconds": 22.75,
       "analysis": {
         "has_headers": true,
         "header_count": 11,
@@ -584,7 +898,7 @@
           "bridge",
           "chorus",
           "drop",
-          "final chorus",
+          "final drop",
           "intro",
           "outro",
           "pre-chorus",
@@ -601,18 +915,19 @@
           "[Pre-Chorus]",
           "[Chorus]",
           "[Bridge]",
-          "[Final Chorus]",
+          "[Final Drop]",
           "[Outro]"
         ],
-        "content_line_count": 60,
-        "total_lines": 71,
+        "content_line_count": 42,
+        "total_lines": 53,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Intro]\nLights ignite, the floor comes alive\nHeart on fire, we were born to drive\nNo more waiting, no more doubt\nTurn it up and let it out\n[Verse 1]\nLace up tight, feel the pressure rise\nSteel and sweat under neon skies\nEvery heartbeat hits like a drum\nChasing the strongest version to come\n[Pre-Chorus]\nOne more rep, one more round\nFeel that power shake the ground\nWhen the walls say “slow it down”\nWe break through the sound\n[Chorus]\nPush, push, push to the limit\nFire in the lungs, we’re living in"
+        "normalized_preview": "[Intro]\nLights ignite, the floor is shaking\nHeart on fire, no time for waiting\nBreathe it in, let the pressure rise\nTonight we train beneath electric skies\n[Verse 1]\nLace up tight, hear the countdown call\nTurn that doubt into a wrecking ball\nEvery rep is a promise made\nEvery scar is a debt repaid\n[Pre-Chorus]\nFeel the bass run under your skin\nNo looking back, let the power in\nThree, two, one, break through the sound\nBring the thunder, shake the ground\n[Chorus]\nPush harder, move faster, hands to "
       },
-      "raw_preview": "[Intro]\nLights ignite, the floor comes alive\nHeart on fire, we were born to drive\nNo more waiting, no more doubt\nTurn it up and let it out\n[Verse 1]\nLace up tight, feel the pressure rise\nSteel and sweat under neon skies\nEvery heartbeat hits like a drum\nChasing the strongest version to come\n[Pre-Chorus]\nOne more rep, one more round\nFeel that power shake the ground\nWhen the walls say “slow it down”\nWe break through the sound\n[Chorus]\nPush, push, push to the limit\nFire in the lungs, we’re living in it\nRaise that weight, let the whole room know\nWe don’t stop when the bassline blows\nRun, run, run through the pain\nTurn every scar into strength again\nHands up high, let the speakers scream\nWork for the body, fight for the dream\n[Drop]\nGo hard, go fast, no turning back\nBeat in the chest and fire on",
-      "normalized_preview": "[Intro]\nLights ignite, the floor comes alive\nHeart on fire, we were born to drive\nNo more waiting, no more doubt\nTurn it up and let it out\n[Verse 1]\nLace up tight, feel the pressure rise\nSteel and sweat under neon skies\nEvery heartbeat hits like a drum\nChasing the strongest version to come\n[Pre-Chorus]\nOne more rep, one more round\nFeel that power shake the ground\nWhen the walls say “slow it down”\nWe break through the sound\n[Chorus]\nPush, push, push to the limit\nFire in the lungs, we’re living in it\nRaise that weight, let the whole room know\nWe don’t stop when the bassline blows\nRun, run, run through the pain\nTurn every scar into strength again\nHands up high, let the speakers scream\nWork for the body, fight for the dream\n[Drop]\nGo hard, go fast, no turning back\nBeat in the chest and fire on"
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-terra_run1_normalized.txt",
+      "raw_preview": "[Intro]\nLights ignite, the floor is shaking\nHeart on fire, no time for waiting\nBreathe it in, let the pressure rise\nTonight we train beneath electric skies\n[Verse 1]\nLace up tight, hear the countdown call\nTurn that doubt into a wrecking ball\nEvery rep is a promise made\nEvery scar is a debt repaid\n[Pre-Chorus]\nFeel the bass run under your skin\nNo looking back, let the power in\nThree, two, one, break through the sound\nBring the thunder, shake the ground\n[Chorus]\nPush harder, move faster, hands to the sky\nWe were built for the burn, we were born to fly\nNo limits, no fear, let the whole room know\nWhen the beat drops down, we rise up more\n[Drop]\nRise up more\nRise up more\nStrike like lightning, ready to roar\nRise up more\n[Verse 2]\nSweat like rain on a neon floor\nOne more round, then one round mo",
+      "normalized_preview": "[Intro]\nLights ignite, the floor is shaking\nHeart on fire, no time for waiting\nBreathe it in, let the pressure rise\nTonight we train beneath electric skies\n[Verse 1]\nLace up tight, hear the countdown call\nTurn that doubt into a wrecking ball\nEvery rep is a promise made\nEvery scar is a debt repaid\n[Pre-Chorus]\nFeel the bass run under your skin\nNo looking back, let the power in\nThree, two, one, break through the sound\nBring the thunder, shake the ground\n[Chorus]\nPush harder, move faster, hands to the sky\nWe were built for the burn, we were born to fly\nNo limits, no fear, let the whole room know\nWhen the beat drops down, we rise up more\n[Drop]\nRise up more\nRise up more\nStrike like lightning, ready to roar\nRise up more\n[Verse 2]\nSweat like rain on a neon floor\nOne more round, then one round mo"
     },
     {
       "provider": "slai",
@@ -621,10 +936,11 @@
       "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 8.7,
+      "review_issues": [],
+      "elapsed_seconds": 9.4,
       "analysis": {
         "has_headers": true,
-        "header_count": 8,
+        "header_count": 7,
         "distinct_section_labels": [
           "bridge",
           "chorus",
@@ -638,60 +954,38 @@
           "[Pre-Chorus]",
           "[Chorus]",
           "[Verse 2]",
-          "[Pre-Chorus]",
-          "[Chorus]",
           "[Bridge]",
+          "[Chorus]",
           "[Outro]"
         ],
-        "content_line_count": 32,
-        "total_lines": 40,
+        "content_line_count": 34,
+        "total_lines": 41,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Verse 1]\nMorning spills across the page\nDusty gold on an empty stage\nWarm keys drift through the room\nMaking space for a quieter bloom\n[Pre-Chorus]\nI let the ticking lose its race\nBreathe a little slower in this place\n[Chorus]\nLet the soft drums carry me\nLike rain on a midnight street\nEvery thought can settle down\nWhen the world turns low and brown\nI am learning how to stay\nIn the calm between the days\n[Verse 2]\nCoffee rings beside my notes\nHalf-made plans and worn-out quotes\nOutside, buses hum"
+        "normalized_preview": "[Verse 1]\nMorning light across the page\nCoffee cooling by the windowpane\nLittle notes become a road\nThrough the quiet, through the slow\nPencil dust and city rain\nSoftly tapping out a name\n[Pre-Chorus]\nI don't need to rush the sky\nI can let the minutes fly\n[Chorus]\nStay awhile, the world can wait\nWarm piano on a late-night state\nEvery dream in a gentle key\nFinding its way back to me\nBreathe in low, let the silence speak\nStrength can live in a quiet week\n[Verse 2]\nStreetlights blur beneath the gla"
       },
-      "raw_preview": "[Verse 1]\nMorning spills across the page\nDusty gold on an empty stage\nWarm keys drift through the room\nMaking space for a quieter bloom\n[Pre-Chorus]\nI let the ticking lose its race\nBreathe a little slower in this place\n[Chorus]\nLet the soft drums carry me\nLike rain on a midnight street\nEvery thought can settle down\nWhen the world turns low and brown\nI am learning how to stay\nIn the calm between the days\n[Verse 2]\nCoffee rings beside my notes\nHalf-made plans and worn-out quotes\nOutside, buses hum and fade\nInside, little dreams get made\n[Pre-Chorus]\nNo need to solve the whole unknown\nThis small light is enough to own\n[Chorus]\nLet the soft drums carry me\nLike rain on a midnight street\nEvery thought can settle down\nWhen the world turns low and brown\nI am learning how to stay\nIn the calm betwee",
-      "normalized_preview": "[Verse 1]\nMorning spills across the page\nDusty gold on an empty stage\nWarm keys drift through the room\nMaking space for a quieter bloom\n[Pre-Chorus]\nI let the ticking lose its race\nBreathe a little slower in this place\n[Chorus]\nLet the soft drums carry me\nLike rain on a midnight street\nEvery thought can settle down\nWhen the world turns low and brown\nI am learning how to stay\nIn the calm between the days\n[Verse 2]\nCoffee rings beside my notes\nHalf-made plans and worn-out quotes\nOutside, buses hum and fade\nInside, little dreams get made\n[Pre-Chorus]\nNo need to solve the whole unknown\nThis small light is enough to own\n[Chorus]\nLet the soft drums carry me\nLike rain on a midnight street\nEvery thought can settle down\nWhen the world turns low and brown\nI am learning how to stay\nIn the calm betwee"
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-terra_run2_normalized.txt",
+      "raw_preview": "[Verse 1]\nMorning light across the page\nCoffee cooling by the windowpane\nLittle notes become a road\nThrough the quiet, through the slow\nPencil dust and city rain\nSoftly tapping out a name\n[Pre-Chorus]\nI don't need to rush the sky\nI can let the minutes fly\n[Chorus]\nStay awhile, the world can wait\nWarm piano on a late-night state\nEvery dream in a gentle key\nFinding its way back to me\nBreathe in low, let the silence speak\nStrength can live in a quiet week\n[Verse 2]\nStreetlights blur beneath the glass\nGolden hours come and pass\nPages turn like falling leaves\nHolding all the things I need\nA distant train hums down the line\nKeeping time with peace of mind\n[Bridge]\nIf the answer takes its time\nI'll leave a little room to shine\nNo loud thunder, no grand design\nJust a steady heart and a borrowed rh",
+      "normalized_preview": "[Verse 1]\nMorning light across the page\nCoffee cooling by the windowpane\nLittle notes become a road\nThrough the quiet, through the slow\nPencil dust and city rain\nSoftly tapping out a name\n[Pre-Chorus]\nI don't need to rush the sky\nI can let the minutes fly\n[Chorus]\nStay awhile, the world can wait\nWarm piano on a late-night state\nEvery dream in a gentle key\nFinding its way back to me\nBreathe in low, let the silence speak\nStrength can live in a quiet week\n[Verse 2]\nStreetlights blur beneath the glass\nGolden hours come and pass\nPages turn like falling leaves\nHolding all the things I need\nA distant train hums down the line\nKeeping time with peace of mind\n[Bridge]\nIf the answer takes its time\nI'll leave a little room to shine\nNo loud thunder, no grand design\nJust a steady heart and a borrowed rh"
     },
     {
       "provider": "slai",
-      "model": "gpt-5.6-tuna",
-      "run": 1,
-      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
-      "status": "ERROR",
-      "validation_error": "Attempted to access streaming response content, without having called `read()`.",
-      "elapsed_seconds": 1.01,
-      "analysis": {},
-      "raw_preview": "",
-      "normalized_preview": ""
-    },
-    {
-      "provider": "slai",
-      "model": "gpt-5.6-tuna",
-      "run": 2,
-      "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
-      "status": "ERROR",
-      "validation_error": "Attempted to access streaming response content, without having called `read()`.",
-      "elapsed_seconds": 0.93,
-      "analysis": {},
-      "raw_preview": "",
-      "normalized_preview": ""
-    },
-    {
-      "provider": "suno",
-      "model": "lyrics",
-      "run": 1,
-      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
+      "model": "gpt-5.6-terra",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 7.69,
+      "review_issues": [],
+      "elapsed_seconds": 13.19,
       "analysis": {
         "has_headers": true,
-        "header_count": 8,
+        "header_count": 9,
         "distinct_section_labels": [
           "bridge",
           "chorus",
           "final chorus",
+          "outro",
           "pre-chorus",
           "verse 1",
           "verse 2"
@@ -704,33 +998,126 @@
           "[Pre-Chorus]",
           "[Chorus]",
           "[Bridge]",
-          "[Final Chorus]"
+          "[Final Chorus]",
+          "[Outro]"
         ],
-        "content_line_count": 64,
-        "total_lines": 72,
+        "content_line_count": 42,
+        "total_lines": 51,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Verse 1]\nTie my laces tight\nHands on the cold bar\nOne more set tonight\nI came here to go far\nBreathe in, lock in\nNo talk, just work\nI push through the burn\n'til the whole room hurts\n[Pre-Chorus]\nCount it down now\nThree, two, one\nHeart hit hard\nBut I’m not done\nWhen it rises\nI rise too\nTell me heavy\nI’ll carry through\n[Chorus]\nPush it up, push it up\nFeel that iron pulse\nPush it up, push it up\nI don’t need a lull\nOne more rep, one more round\nI’m still standing tall\nPush it up, push it up\nI want i"
+        "normalized_preview": "[Verse 1]\nYour coffee cup is cooling in my mind\nA little morning ritual we share across the miles\nI trace the city lights outside my windowpane\nAnd wonder if your midnight sky is calling out my name\n[Pre-Chorus]\nThe screen goes dark, but I still see\nThe way your eyes keep finding me\n[Chorus]\nSo hold on through the distance\nThrough every lonely road\nMy heart is on the next flight\nMy love is coming home\nThough oceans keep us separated\nNo map can make us strangers\nI feel you in the silence\nAnd I wi"
       },
-      "raw_preview": "[Verse 1]\nTie my laces tight\nHands on the cold bar\nOne more set tonight\nI came here to go far\nBreathe in, lock in\nNo talk, just work\nI push through the burn\n'til the whole room hurts\n\n[Pre-Chorus]\nCount it down now\nThree, two, one\nHeart hit hard\nBut I’m not done\nWhen it rises\nI rise too\nTell me heavy\nI’ll carry through\n\n[Chorus]\nPush it up, push it up\nFeel that iron pulse\nPush it up, push it up\nI don’t need a lull\nOne more rep, one more round\nI’m still standing tall\nPush it up, push it up\nI want it all\n\n[Verse 2]\nSweat on the floor now\nWeight on my mind\nI’ve been the same place\nA thousand times\nBut I’m sharper now\nFaster than before\nWhen the pain says stop\nI want it more\n\n[Pre-Chorus]\nCount it down now\nThree, two, one\nHeart hit hard\nBut I’m not done\nWhen it rises\nI rise too\nTell me heavy\nI",
-      "normalized_preview": "[Verse 1]\nTie my laces tight\nHands on the cold bar\nOne more set tonight\nI came here to go far\nBreathe in, lock in\nNo talk, just work\nI push through the burn\n'til the whole room hurts\n[Pre-Chorus]\nCount it down now\nThree, two, one\nHeart hit hard\nBut I’m not done\nWhen it rises\nI rise too\nTell me heavy\nI’ll carry through\n[Chorus]\nPush it up, push it up\nFeel that iron pulse\nPush it up, push it up\nI don’t need a lull\nOne more rep, one more round\nI’m still standing tall\nPush it up, push it up\nI want it all\n[Verse 2]\nSweat on the floor now\nWeight on my mind\nI’ve been the same place\nA thousand times\nBut I’m sharper now\nFaster than before\nWhen the pain says stop\nI want it more\n[Pre-Chorus]\nCount it down now\nThree, two, one\nHeart hit hard\nBut I’m not done\nWhen it rises\nI rise too\nTell me heavy\nI’ll "
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-terra_run3_normalized.txt",
+      "raw_preview": "[Verse 1]\nYour coffee cup is cooling in my mind\nA little morning ritual we share across the miles\nI trace the city lights outside my windowpane\nAnd wonder if your midnight sky is calling out my name\n[Pre-Chorus]\nThe screen goes dark, but I still see\nThe way your eyes keep finding me\n[Chorus]\nSo hold on through the distance\nThrough every lonely road\nMy heart is on the next flight\nMy love is coming home\nThough oceans keep us separated\nNo map can make us strangers\nI feel you in the silence\nAnd I will wait forever\n[Verse 2]\nI keep your voice inside my favorite song\nIt fills the empty room and makes the hard days feel less long\nThere are postcards on the dresser by the bed\nProof that every place you go still leaves a piece of you instead\n[Pre-Chorus]\nWhen the world is pulling us apart\nI hear yo",
+      "normalized_preview": "[Verse 1]\nYour coffee cup is cooling in my mind\nA little morning ritual we share across the miles\nI trace the city lights outside my windowpane\nAnd wonder if your midnight sky is calling out my name\n[Pre-Chorus]\nThe screen goes dark, but I still see\nThe way your eyes keep finding me\n[Chorus]\nSo hold on through the distance\nThrough every lonely road\nMy heart is on the next flight\nMy love is coming home\nThough oceans keep us separated\nNo map can make us strangers\nI feel you in the silence\nAnd I will wait forever\n[Verse 2]\nI keep your voice inside my favorite song\nIt fills the empty room and makes the hard days feel less long\nThere are postcards on the dresser by the bed\nProof that every place you go still leaves a piece of you instead\n[Pre-Chorus]\nWhen the world is pulling us apart\nI hear yo"
     },
     {
-      "provider": "suno",
-      "model": "lyrics",
+      "provider": "slai",
+      "model": "gpt-5.6-luna",
+      "run": 1,
+      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 12.8,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 11,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "drop",
+          "final drop",
+          "intro",
+          "outro",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Drop]",
+          "[Verse 2]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Final Drop]",
+          "[Outro]"
+        ],
+        "content_line_count": 44,
+        "total_lines": 55,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nWake the fire, let the silence break\nFeel the pressure, feel the whole floor shake\nHeartbeat syncing with the flashing light\nWe came for power, we came to ignite\n[Verse 1]\nLace up, lock in, leave the doubt behind\nEvery heavy breath is a stronger mind\nSteel in the hands and thunder in the chest\nPush beyond the limit, never settle less\n[Pre-Chorus]\nOne more rep, one more round\nLet the rhythm lift you off the ground\nWhen the body says, “You’re done”\nTell it, “Watch me overcome”\n[Chorus]\nRis"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-luna_run1_normalized.txt",
+      "raw_preview": "[Intro]\nWake the fire, let the silence break\nFeel the pressure, feel the whole floor shake\nHeartbeat syncing with the flashing light\nWe came for power, we came to ignite\n[Verse 1]\nLace up, lock in, leave the doubt behind\nEvery heavy breath is a stronger mind\nSteel in the hands and thunder in the chest\nPush beyond the limit, never settle less\n[Pre-Chorus]\nOne more rep, one more round\nLet the rhythm lift you off the ground\nWhen the body says, “You’re done”\nTell it, “Watch me overcome”\n[Chorus]\nRise up, burn bright, take it to the edge\nTurn the struggle into something you can catch\nNo fear, no brakes, let the energy flow\nWe don’t wait for the moment—we create the show\n[Drop]\nGo, go, go, let the bassline drive\nMove, move, move, feel alive\nBreak through, break free, make the whole room roar\nPus",
+      "normalized_preview": "[Intro]\nWake the fire, let the silence break\nFeel the pressure, feel the whole floor shake\nHeartbeat syncing with the flashing light\nWe came for power, we came to ignite\n[Verse 1]\nLace up, lock in, leave the doubt behind\nEvery heavy breath is a stronger mind\nSteel in the hands and thunder in the chest\nPush beyond the limit, never settle less\n[Pre-Chorus]\nOne more rep, one more round\nLet the rhythm lift you off the ground\nWhen the body says, “You’re done”\nTell it, “Watch me overcome”\n[Chorus]\nRise up, burn bright, take it to the edge\nTurn the struggle into something you can catch\nNo fear, no brakes, let the energy flow\nWe don’t wait for the moment—we create the show\n[Drop]\nGo, go, go, let the bassline drive\nMove, move, move, feel alive\nBreak through, break free, make the whole room roar\nPus"
+    },
+    {
+      "provider": "slai",
+      "model": "gpt-5.6-luna",
       "run": 2,
       "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
       "status": "PASS",
       "validation_error": null,
-      "elapsed_seconds": 8.19,
+      "review_issues": [],
+      "elapsed_seconds": 11.74,
       "analysis": {
         "has_headers": true,
         "header_count": 8,
         "distinct_section_labels": [
           "bridge",
           "chorus",
+          "intro",
+          "outro",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Intro]",
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Bridge]",
+          "[Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 40,
+        "total_lines": 48,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Intro]\nMidnight settles softly on the window glass\nPencil shadows wander where the quiet passes\nA cup of amber comfort cools beside the page\nWhile the city lowers slowly from its restless stage\n[Verse 1]\nI trace a little pathway through the words I know\nLet the gentle rhythm tell me where to go\nEvery small idea is a lantern in the blue\nBurning just enough to pull the morning through\n[Pre-Chorus]\nNo need to chase the hours\nNo need to race the rain\nI find a steady heartbeat\nInside the hush again\n"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-luna_run2_normalized.txt",
+      "raw_preview": "[Intro]\nMidnight settles softly on the window glass\nPencil shadows wander where the quiet passes\nA cup of amber comfort cools beside the page\nWhile the city lowers slowly from its restless stage\n[Verse 1]\nI trace a little pathway through the words I know\nLet the gentle rhythm tell me where to go\nEvery small idea is a lantern in the blue\nBurning just enough to pull the morning through\n[Pre-Chorus]\nNo need to chase the hours\nNo need to race the rain\nI find a steady heartbeat\nInside the hush again\n[Chorus]\nLet the soft keys carry me\nPast the doubt and drifting sleep\nOne more line, one breath, one dream\nNothing’s farther than it seems\nWith the whole night folding wide\nI can meet the rising light\nStep by step, I’m finding room\nFor a little brighter bloom\n[Verse 2]\nDust turns gold beneath the la",
+      "normalized_preview": "[Intro]\nMidnight settles softly on the window glass\nPencil shadows wander where the quiet passes\nA cup of amber comfort cools beside the page\nWhile the city lowers slowly from its restless stage\n[Verse 1]\nI trace a little pathway through the words I know\nLet the gentle rhythm tell me where to go\nEvery small idea is a lantern in the blue\nBurning just enough to pull the morning through\n[Pre-Chorus]\nNo need to chase the hours\nNo need to race the rain\nI find a steady heartbeat\nInside the hush again\n[Chorus]\nLet the soft keys carry me\nPast the doubt and drifting sleep\nOne more line, one breath, one dream\nNothing’s farther than it seems\nWith the whole night folding wide\nI can meet the rising light\nStep by step, I’m finding room\nFor a little brighter bloom\n[Verse 2]\nDust turns gold beneath the la"
+    },
+    {
+      "provider": "slai",
+      "model": "gpt-5.6-luna",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 13.57,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 9,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
           "final chorus",
+          "outro",
           "pre-chorus",
           "verse 1",
           "verse 2"
@@ -743,17 +1130,140 @@
           "[Pre-Chorus]",
           "[Chorus]",
           "[Bridge]",
-          "[Final Chorus]"
+          "[Final Chorus]",
+          "[Outro]"
+        ],
+        "content_line_count": 46,
+        "total_lines": 55,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Verse 1]\nYour city wakes beneath a different sky\nWhile morning spills like gold across my room\nI trace the miles between your heart and mine\nAnd hear your voice inside the quiet bloom\n[Pre-Chorus]\nThe calendar keeps turning without grace\nBut every day still leads me to your face\n[Chorus]\nIf love can cross the oceans in the night\nThen I will find you somewhere in the blue\nNo distance has the power to divide\nThe beating world I built around you\nAnd when the lonely hours pull me under\nI hold your "
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/slai_gpt-5.6-luna_run3_normalized.txt",
+      "raw_preview": "[Verse 1]\nYour city wakes beneath a different sky\nWhile morning spills like gold across my room\nI trace the miles between your heart and mine\nAnd hear your voice inside the quiet bloom\n[Pre-Chorus]\nThe calendar keeps turning without grace\nBut every day still leads me to your face\n[Chorus]\nIf love can cross the oceans in the night\nThen I will find you somewhere in the blue\nNo distance has the power to divide\nThe beating world I built around you\nAnd when the lonely hours pull me under\nI hold your promise like a light\nUntil the stars surrender to the sunrise\nAnd bring me back to you tonight\n[Verse 2]\nI keep your photograph beside the bed\nA little proof that all of this is real\nThe words we leave beneath our messages\nAre tiny sparks of everything we feel\n[Pre-Chorus]\nThough every goodbye tremb",
+      "normalized_preview": "[Verse 1]\nYour city wakes beneath a different sky\nWhile morning spills like gold across my room\nI trace the miles between your heart and mine\nAnd hear your voice inside the quiet bloom\n[Pre-Chorus]\nThe calendar keeps turning without grace\nBut every day still leads me to your face\n[Chorus]\nIf love can cross the oceans in the night\nThen I will find you somewhere in the blue\nNo distance has the power to divide\nThe beating world I built around you\nAnd when the lonely hours pull me under\nI hold your promise like a light\nUntil the stars surrender to the sunrise\nAnd bring me back to you tonight\n[Verse 2]\nI keep your photograph beside the bed\nA little proof that all of this is real\nThe words we leave beneath our messages\nAre tiny sparks of everything we feel\n[Pre-Chorus]\nThough every goodbye tremb"
+    },
+    {
+      "provider": "suno",
+      "model": "lyrics",
+      "run": 1,
+      "description": "EDM workout gym track with driving bass, energetic drops, and motivational lyric",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 6.45,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 8,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Chorus]"
+        ],
+        "content_line_count": 67,
+        "total_lines": 75,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Verse 1]\nTie up tight\nHit the floor\nOne more set\nThen one more\nHands up high\nChest stays proud\nBreathe it in\nMake it loud\n[Pre-Chorus]\nCount me in\nI don't fold\nFeel that fire\nTake control\nOne more rep\nHold that pain\nIf you break\nBuild again\n[Chorus]\nRun it back\nRun it back\nI go harder\nRun it back\nRun it back\nBreak the ceiling\nRun it back\nRun it back\nI was built for this feeling\n[Verse 2]\nBurn in the legs\nStill I move\nHeavy heart\nSharper groove\nLock that gaze\nDon't look down\nTake your place\nOwn "
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/suno_lyrics_run1_normalized.txt",
+      "raw_preview": "[Verse 1]\nTie up tight\nHit the floor\nOne more set\nThen one more\nHands up high\nChest stays proud\nBreathe it in\nMake it loud\n\n[Pre-Chorus]\nCount me in\nI don't fold\nFeel that fire\nTake control\nOne more rep\nHold that pain\nIf you break\nBuild again\n\n[Chorus]\nRun it back\nRun it back\nI go harder\nRun it back\nRun it back\nBreak the ceiling\nRun it back\nRun it back\nI was built for this feeling\n\n[Verse 2]\nBurn in the legs\nStill I move\nHeavy heart\nSharper groove\nLock that gaze\nDon't look down\nTake your place\nOwn this ground\n\n[Pre-Chorus]\nCount me in\nI don't fold\nFeel that fire\nTake control\nOne more rep\nHold that pain\nIf you break\nBuild again\n\n[Chorus]\nRun it back\nRun it back\nI go harder\nRun it back\nRun it back\nBreak the ceiling\nRun it back\nRun it back\nI was built for this feeling\n\n[Bridge]\nWhen it hits\nI",
+      "normalized_preview": "[Verse 1]\nTie up tight\nHit the floor\nOne more set\nThen one more\nHands up high\nChest stays proud\nBreathe it in\nMake it loud\n[Pre-Chorus]\nCount me in\nI don't fold\nFeel that fire\nTake control\nOne more rep\nHold that pain\nIf you break\nBuild again\n[Chorus]\nRun it back\nRun it back\nI go harder\nRun it back\nRun it back\nBreak the ceiling\nRun it back\nRun it back\nI was built for this feeling\n[Verse 2]\nBurn in the legs\nStill I move\nHeavy heart\nSharper groove\nLock that gaze\nDon't look down\nTake your place\nOwn this ground\n[Pre-Chorus]\nCount me in\nI don't fold\nFeel that fire\nTake control\nOne more rep\nHold that pain\nIf you break\nBuild again\n[Chorus]\nRun it back\nRun it back\nI go harder\nRun it back\nRun it back\nBreak the ceiling\nRun it back\nRun it back\nI was built for this feeling\n[Bridge]\nWhen it hits\nI don't"
+    },
+    {
+      "provider": "suno",
+      "model": "lyrics",
+      "run": 2,
+      "description": "Lo-fi chill study beat with warm piano, soft drums, and reflective mood",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 8.47,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 8,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Chorus]"
         ],
         "content_line_count": 56,
         "total_lines": 64,
         "starts_with_header": true,
         "has_preamble": false,
         "wrapped_single_verse": false,
-        "normalized_preview": "[Verse 1]\nMorning on the table\nSteam inside the glass\nYour name in the margins\nAnd the hours moving past\nI fold the old receipts\nLike little paper birds\nQuiet in the hallway\nI keep my softer words\n[Pre-Chorus]\nIf I close my eyes\nI can see it clear\nAll the heavy days\nTurn thin in here\n[Chorus]\nHold me in the hush\nHold me in the hush\nLet the small things stay\nLet the dark drift off\nHold me in the hush\nHold me in the hush\nI can breathe again\nWhen the world goes soft (goes soft)\n[Verse 2]\nSneakers b"
+        "normalized_preview": "[Verse 1]\nI wrote your name in the margin\nThen crossed it out twice\nSteam on the window\nCold cup by my side\nLoose-leaf thoughts on the table\nFalling out of line\nI keep your face in the quiet\nLike a folded-up sign\n[Pre-Chorus]\nAnd I try to keep moving\nBut the room knows my steps\nEvery page holds a shadow\nI still haven’t left\n[Chorus]\nStay in the paper moon\nStay till the night goes blue\nStay in the paper moon\nI’m still thinking of you\nStay in the paper moon\nSoft where the hurt cuts through\nStay in"
       },
-      "raw_preview": "[Verse 1]\nMorning on the table\nSteam inside the glass\nYour name in the margins\nAnd the hours moving past\n\nI fold the old receipts\nLike little paper birds\nQuiet in the hallway\nI keep my softer words\n\n[Pre-Chorus]\nIf I close my eyes\nI can see it clear\nAll the heavy days\nTurn thin in here\n\n[Chorus]\nHold me in the hush\nHold me in the hush\nLet the small things stay\nLet the dark drift off\n\nHold me in the hush\nHold me in the hush\nI can breathe again\nWhen the world goes soft (goes soft)\n\n[Verse 2]\nSneakers by the doorway\nRain on the windowpane\nA bent-up page of notes\nWith your side of the train\n\nI let the kettle sing\nThen I let it fade\nNothing needs to hurry\nNothing needs to break\n\n[Pre-Chorus]\nIf I lose my way\nI come back near\nTo the steady little flame\nWaiting here\n\n[Chorus]\nHold me in the hush\n",
-      "normalized_preview": "[Verse 1]\nMorning on the table\nSteam inside the glass\nYour name in the margins\nAnd the hours moving past\nI fold the old receipts\nLike little paper birds\nQuiet in the hallway\nI keep my softer words\n[Pre-Chorus]\nIf I close my eyes\nI can see it clear\nAll the heavy days\nTurn thin in here\n[Chorus]\nHold me in the hush\nHold me in the hush\nLet the small things stay\nLet the dark drift off\nHold me in the hush\nHold me in the hush\nI can breathe again\nWhen the world goes soft (goes soft)\n[Verse 2]\nSneakers by the doorway\nRain on the windowpane\nA bent-up page of notes\nWith your side of the train\nI let the kettle sing\nThen I let it fade\nNothing needs to hurry\nNothing needs to break\n[Pre-Chorus]\nIf I lose my way\nI come back near\nTo the steady little flame\nWaiting here\n[Chorus]\nHold me in the hush\nHold me "
+      "lyric_file": "docs/ai_free_probe_lyrics/suno_lyrics_run2_normalized.txt",
+      "raw_preview": "[Verse 1]\nI wrote your name in the margin\nThen crossed it out twice\nSteam on the window\nCold cup by my side\n\nLoose-leaf thoughts on the table\nFalling out of line\nI keep your face in the quiet\nLike a folded-up sign\n\n[Pre-Chorus]\nAnd I try to keep moving\nBut the room knows my steps\nEvery page holds a shadow\nI still haven’t left\n\n[Chorus]\nStay in the paper moon\nStay till the night goes blue\nStay in the paper moon\nI’m still thinking of you\nStay in the paper moon\nSoft where the hurt cuts through\nStay in the paper moon\nI can breathe when I do\n\n[Verse 2]\nStreet sound leaking through curtains\nLike a faraway train\nMy hand on the notebook\nYour echo on the page\n\nI count the marks in the grain\nOn the desk where you sat\nSmall things hit the hardest\nWhen the whole world goes flat\n\n[Pre-Chorus]\nAnd I try",
+      "normalized_preview": "[Verse 1]\nI wrote your name in the margin\nThen crossed it out twice\nSteam on the window\nCold cup by my side\nLoose-leaf thoughts on the table\nFalling out of line\nI keep your face in the quiet\nLike a folded-up sign\n[Pre-Chorus]\nAnd I try to keep moving\nBut the room knows my steps\nEvery page holds a shadow\nI still haven’t left\n[Chorus]\nStay in the paper moon\nStay till the night goes blue\nStay in the paper moon\nI’m still thinking of you\nStay in the paper moon\nSoft where the hurt cuts through\nStay in the paper moon\nI can breathe when I do\n[Verse 2]\nStreet sound leaking through curtains\nLike a faraway train\nMy hand on the notebook\nYour echo on the page\nI count the marks in the grain\nOn the desk where you sat\nSmall things hit the hardest\nWhen the whole world goes flat\n[Pre-Chorus]\nAnd I try to ke"
+    },
+    {
+      "provider": "suno",
+      "model": "lyrics",
+      "run": 3,
+      "description": "Pop ballad about long-distance love, emotional vocals, piano and strings",
+      "status": "PASS",
+      "validation_error": null,
+      "review_issues": [],
+      "elapsed_seconds": 9.81,
+      "analysis": {
+        "has_headers": true,
+        "header_count": 8,
+        "distinct_section_labels": [
+          "bridge",
+          "chorus",
+          "final chorus",
+          "pre-chorus",
+          "verse 1",
+          "verse 2"
+        ],
+        "headers_sample": [
+          "[Verse 1]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Verse 2]",
+          "[Pre-Chorus]",
+          "[Chorus]",
+          "[Bridge]",
+          "[Final Chorus]"
+        ],
+        "content_line_count": 48,
+        "total_lines": 56,
+        "starts_with_header": true,
+        "has_preamble": false,
+        "wrapped_single_verse": false,
+        "normalized_preview": "[Verse 1]\nYour hoodie hangs by my door\nStill smells like the train ride home\nYou left your blue scarf here\nI fold it slow, then I let it go\n[Pre-Chorus]\nEvery night I count the hours\nEvery clock drips like rain\nYou say, \"Hold on, hold on\"\nSo I hold on again\n[Chorus]\nAcross these paper miles\nI still feel you near\nAcross these paper miles\nI hear you in my ear\nAcross these paper miles\nDon't let us disappear\n(near, near)\nAcross these paper miles\n[Verse 2]\nYour coffee cup on my shelf\nHas a crack like"
+      },
+      "lyric_file": "docs/ai_free_probe_lyrics/suno_lyrics_run3_normalized.txt",
+      "raw_preview": "[Verse 1]\nYour hoodie hangs by my door\nStill smells like the train ride home\nYou left your blue scarf here\nI fold it slow, then I let it go\n\n[Pre-Chorus]\nEvery night I count the hours\nEvery clock drips like rain\nYou say, \"Hold on, hold on\"\nSo I hold on again\n\n[Chorus]\nAcross these paper miles\nI still feel you near\nAcross these paper miles\nI hear you in my ear\nAcross these paper miles\nDon't let us disappear\n(near, near)\nAcross these paper miles\n\n[Verse 2]\nYour coffee cup on my shelf\nHas a crack like a tiny map\nI trace where your hand was\nAnd wonder when you'll come back\n\n[Pre-Chorus]\nEvery night I count the hours\nEvery line feels too thin\nYou say, \"Hold on, hold on\"\nSo I hold on again\n\n[Chorus]\nAcross these paper miles\nI still feel you near\nAcross these paper miles\nI hear you in my ear\nAcro",
+      "normalized_preview": "[Verse 1]\nYour hoodie hangs by my door\nStill smells like the train ride home\nYou left your blue scarf here\nI fold it slow, then I let it go\n[Pre-Chorus]\nEvery night I count the hours\nEvery clock drips like rain\nYou say, \"Hold on, hold on\"\nSo I hold on again\n[Chorus]\nAcross these paper miles\nI still feel you near\nAcross these paper miles\nI hear you in my ear\nAcross these paper miles\nDon't let us disappear\n(near, near)\nAcross these paper miles\n[Verse 2]\nYour coffee cup on my shelf\nHas a crack like a tiny map\nI trace where your hand was\nAnd wonder when you'll come back\n[Pre-Chorus]\nEvery night I count the hours\nEvery line feels too thin\nYou say, \"Hold on, hold on\"\nSo I hold on again\n[Chorus]\nAcross these paper miles\nI still feel you near\nAcross these paper miles\nI hear you in my ear\nAcross th"
     }
   ]
 }

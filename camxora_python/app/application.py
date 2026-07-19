@@ -19,6 +19,7 @@ from shared.services.session_service import SessionService
 from shared.services.setup_readiness_service import refresh_setup_readiness
 from shared.services.shell_status import ShellStatusBus
 from shared.services.video_pipeline_coordinator import VideoPipelineCoordinator
+from shared.widgets.flash_status_footer import FlashStatusFooter
 from shared.widgets.shell_footer_bar import ShellFooterBar
 from shared.widgets.page_header import PageHeader
 from shared.widgets.sidebar_nav import SidebarNav
@@ -84,6 +85,8 @@ class AppShellWidget(QWidget):
         self._stack.setObjectName("shell_page_stack")
         content_inner_layout.addWidget(self._stack, stretch=1)
 
+        self._action_flash = FlashStatusFooter(content_inner)
+
         content_layout.addWidget(content_inner, stretch=1)
 
         self._status_bar = ShellFooterBar()
@@ -113,6 +116,10 @@ class AppShellWidget(QWidget):
         bus = ShellStatusBus.instance()
         bus.show_message.connect(self._status_bar.set_message)
         bus.restore_default.connect(self._restore_status_message)
+        bus.flash_action.connect(self._on_action_flash)
+
+    def _on_action_flash(self, message: str, tone: str, duration_ms: int) -> None:
+        self._action_flash.flash(message, tone=tone, duration_ms=duration_ms)
 
     def _connect_signals(self) -> None:
         self._sidebar.route_selected.connect(self._on_route_selected)

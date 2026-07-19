@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -138,18 +139,24 @@ SHELL_ROUTES: tuple[ShellRouteMeta, ...] = (
     ShellRouteMeta(
         key="log",
         path="/app/log",
-        label="Log",
-        title="Log",
-        eyebrow="System",
+        label="Diagnostics",
+        title="Diagnostics",
+        eyebrow="Support",
         description=(
-            "Runtime action log for this desktop session. Sync manually when you want "
-            "support to review diagnostics in the admin portal."
+            "Support-only runtime log console. Hidden from normal users; enable with "
+            "CAMXORA_SHOW_DIAGNOSTICS=1. Prefer Settings → Send diagnostics for uploads."
         ),
         is_placeholder=False,
     ),
 )
 
 _DEFAULT_ROUTE = SHELL_ROUTES[0]
+
+
+def diagnostics_ui_enabled() -> bool:
+    """Raw Log/Diagnostics page is support-only; off for end users by default."""
+    raw = (os.environ.get("CAMXORA_SHOW_DIAGNOSTICS") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 def get_route_by_key(key: ShellRouteKey) -> ShellRouteMeta:
@@ -165,4 +172,5 @@ def get_workspace_routes() -> tuple[ShellRouteMeta, ...]:
 
 
 def get_utility_routes() -> tuple[ShellRouteMeta, ...]:
-    return tuple(r for r in SHELL_ROUTES if r.key in ("settings", "log"))
+    keys = ("settings", "log") if diagnostics_ui_enabled() else ("settings",)
+    return tuple(r for r in SHELL_ROUTES if r.key in keys)

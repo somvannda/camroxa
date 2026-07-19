@@ -192,3 +192,14 @@ def test_batch_retry_targets_collects_failed_songs_only(qapp: QApplication) -> N
     draft_ids, suno_ids = batch_retry_targets(batch)
     assert draft_ids == ["s1"]
     assert suno_ids == ["s3", "s4"]
+
+
+def test_batch_retry_targets_includes_stuck_suno_pending(qapp: QApplication) -> None:
+    batch = MusicHistoryBatch(
+        batch_id="batch-2",
+        song_count=1,
+        songs=[_song("s5", 0, status="suno_pending", suno_status="failed")],
+    )
+    draft_ids, suno_ids = batch_retry_targets(batch)
+    assert draft_ids == []
+    assert suno_ids == ["s5"]

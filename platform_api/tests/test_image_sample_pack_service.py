@@ -5,6 +5,7 @@ import zipfile
 
 import pytest
 
+from platform_api.exceptions import ValidationError
 from platform_api.services.image_sample_pack_service import ImageSamplePackService
 
 
@@ -90,3 +91,30 @@ async def test_import_pack_from_url_downloads_and_extracts(tmp_path, monkeypatch
     assert record.source_type == "url"
     assert record.source_value == "https://example.com/pack.zip"
     assert len(repo.assets) == 2
+
+
+@pytest.mark.asyncio
+async def test_import_pack_from_google_drive_folder_rejected(tmp_path) -> None:
+    repo = _FakeRepo()
+    service = ImageSamplePackService(storage_root=str(tmp_path), repo=repo)
+
+    with pytest.raises(ValidationError, match="folder links are not supported"):
+        await service.import_pack_from_url(
+            category="background",
+            name="Folder Pack",
+            source_type="google_drive",
+            source_value="https://drive.google.com/drive/folders/abc123XYZ",
+        )
+
+
+def test_get_url_import_max_bytes_uses_settings(monkeypatch) -> None:
+    from platform_api.config import Settings
+    from platform_api.services import sample_pack_downloader
+
+    monkeypatch.setattr(
+        sample_pack_downloader,
+        "get_settings",
+        lambda: Settings(sample_pack_url_import_max_mb=512),
+    )
+    assert sample_pack_downloader.get_url_import_max_bytes() == 512 * 1024 * 1024
+

@@ -13,7 +13,9 @@ import os
 
 import asyncpg
 
+from platform_api.repositories.credit_repo import CreditRepository
 from platform_api.repositories.model_cost_repo import ModelCostRepository
+from platform_api.services.credit_pricing_service import CreditPricingService
 from platform_api.services.model_cost_service import ModelCostService
 
 
@@ -35,13 +37,23 @@ async def main() -> None:
 
     pool = await asyncpg.create_pool(dsn)
     try:
-        service = ModelCostService(repo=ModelCostRepository(pool))
-        result = await service.seed_from_registry(overwrite=args.overwrite)
+        cost_service = ModelCostService(repo=ModelCostRepository(pool))
+        pricing_service = CreditPricingService(pricing_repo=CreditRepository(pool))
+        cost_result = await cost_service.seed_from_registry(overwrite=args.overwrite)
+        pricing_result = await pricing_service.seed_local_platform_pricing(
+            overwrite=args.overwrite
+        )
         print(
             "Model costs seeded: "
-            f"created/updated={result['seeded_count']}, "
-            f"skipped={result['skipped_existing_count']}, "
-            f"pruned={result.get('pruned_count', 0)}"
+            f"created/updated={cost_result['seeded_count']}, "
+            f"skipped={cost_result['skipped_existing_count']}, "
+            f"pruned={cost_result.get('pruned_count', 0)}"
+        )
+        print(
+            "Local platform pricing seeded: "
+            f"created={pricing_result['created_count']}, "
+            f"updated={pricing_result['updated_count']}, "
+            f"skipped={pricing_result['skipped_existing_count']}"
         )
     finally:
         await pool.close()

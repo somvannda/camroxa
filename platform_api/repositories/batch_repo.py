@@ -184,7 +184,8 @@ class BatchRepository:
                         INSERT INTO batches
                             (id, user_id, ok_profile_id, alt_profile_id, song_count,
                              language, secondary_language, creativity_level, pairing_mode, status,
-                             ok_run_dir, alt_run_dir, created_at, updated_at)
+                             ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
                         """,
                         batch.id,
@@ -217,7 +218,8 @@ class BatchRepository:
                 SELECT id, user_id, ok_profile_id, alt_profile_id, song_count,
                        language, secondary_language, creativity_level, pairing_mode, status, auto_gen_image, auto_gsuno,
                        planned_from_date, planned_to_date,
-                       ok_run_dir, alt_run_dir, created_at, updated_at
+                       ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                 FROM batches
                 WHERE id = $1
                 """,
@@ -234,7 +236,8 @@ class BatchRepository:
                            auto_gen_image,
                            false AS auto_gsuno,
                            planned_from_date, planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     WHERE id = $1
                     """,
@@ -250,7 +253,8 @@ class BatchRepository:
                            false AS auto_gen_image,
                            false AS auto_gsuno,
                            NULL::date AS planned_from_date, NULL::date AS planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     WHERE id = $1
                     """,
@@ -276,7 +280,8 @@ class BatchRepository:
                 SELECT id, user_id, ok_profile_id, alt_profile_id, song_count,
                        language, secondary_language, creativity_level, pairing_mode, status, auto_gen_image, auto_gsuno,
                        planned_from_date, planned_to_date,
-                       ok_run_dir, alt_run_dir, created_at, updated_at
+                       ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                 FROM batches
                 WHERE id = $1 AND user_id = $2
                 """,
@@ -294,7 +299,8 @@ class BatchRepository:
                            auto_gen_image,
                            false AS auto_gsuno,
                            planned_from_date, planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     WHERE id = $1 AND user_id = $2
                     """,
@@ -311,7 +317,8 @@ class BatchRepository:
                            false AS auto_gen_image,
                            false AS auto_gsuno,
                            NULL::date AS planned_from_date, NULL::date AS planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     WHERE id = $1 AND user_id = $2
                     """,
@@ -340,7 +347,8 @@ class BatchRepository:
                 SELECT id, user_id, ok_profile_id, alt_profile_id, song_count,
                        language, secondary_language, creativity_level, pairing_mode, status, auto_gen_image, auto_gsuno,
                        planned_from_date, planned_to_date,
-                       ok_run_dir, alt_run_dir, created_at, updated_at
+                       ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                 FROM batches
                 WHERE user_id = $1
                 ORDER BY created_at DESC
@@ -358,7 +366,8 @@ class BatchRepository:
                            auto_gen_image,
                            false AS auto_gsuno,
                            planned_from_date, planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     WHERE user_id = $1
                     ORDER BY created_at DESC
@@ -375,7 +384,8 @@ class BatchRepository:
                            false AS auto_gen_image,
                            false AS auto_gsuno,
                            NULL::date AS planned_from_date, NULL::date AS planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     WHERE user_id = $1
                     ORDER BY created_at DESC
@@ -398,7 +408,8 @@ class BatchRepository:
                 SELECT id, user_id, ok_profile_id, alt_profile_id, song_count,
                        language, secondary_language, creativity_level, pairing_mode, status, auto_gen_image, auto_gsuno,
                        planned_from_date, planned_to_date,
-                       ok_run_dir, alt_run_dir, created_at, updated_at
+                       ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                 FROM batches
                 ORDER BY created_at DESC
                 """
@@ -414,7 +425,8 @@ class BatchRepository:
                            auto_gen_image,
                            false AS auto_gsuno,
                            planned_from_date, planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     ORDER BY created_at DESC
                     """
@@ -429,7 +441,8 @@ class BatchRepository:
                            false AS auto_gen_image,
                            false AS auto_gsuno,
                            NULL::date AS planned_from_date, NULL::date AS planned_to_date,
-                           ok_run_dir, alt_run_dir, created_at, updated_at
+                           ok_run_dir, alt_run_dir, ok_album, alt_album, structure_mode,
+                       created_at, updated_at
                     FROM batches
                     ORDER BY created_at DESC
                     """
@@ -760,6 +773,7 @@ class BatchRepository:
         status: TaskStatus,
         audio_url_ok: str | None = None,
         audio_url_alt: str | None = None,
+        error_message: str | None = None,
     ) -> None:
         """Compatibility update surface for the callbacks router."""
         await self._pool.execute(
@@ -768,6 +782,7 @@ class BatchRepository:
             SET status = $2,
                 audio_url_ok = COALESCE($3, audio_url_ok),
                 audio_url_alt = COALESCE($4, audio_url_alt),
+                error_message = COALESCE($5, error_message),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -775,6 +790,7 @@ class BatchRepository:
             status.value,
             audio_url_ok,
             audio_url_alt,
+            error_message,
         )
 
     async def list_pending_suno_downloads(
@@ -833,20 +849,28 @@ class BatchRepository:
         user_id: UUID,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        """Return in-flight Suno tasks that still need API polling."""
+        """Return Suno tasks that need API polling (pending or success without URLs)."""
         rows = await self._pool.fetch(
             """
             SELECT id, user_id, song_id, batch_id, external_task_id, status
             FROM suno_tasks
             WHERE user_id = $1
-              AND status = $2
               AND external_task_id IS NOT NULL
               AND BTRIM(external_task_id) <> ''
+              AND (
+                status = $2
+                OR (
+                  status = $3
+                  AND COALESCE(NULLIF(BTRIM(audio_url_ok), ''), NULL) IS NULL
+                  AND COALESCE(NULLIF(BTRIM(audio_url_alt), ''), NULL) IS NULL
+                )
+              )
             ORDER BY created_at ASC
-            LIMIT $3
+            LIMIT $4
             """,
             user_id,
             TaskStatus.PENDING.value,
+            TaskStatus.SUCCESS.value,
             max(1, min(int(limit or 10), 25)),
         )
         return [dict(row) for row in rows]
@@ -903,6 +927,27 @@ class BatchRepository:
             batch_id,
         )
         return [self._row_to_suno_task(row) for row in rows]
+
+    async def get_latest_suno_task_for_song(self, song_id: UUID) -> SunoTask | None:
+        """Return the most recent Suno task linked to a song, if any."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, song_id, user_id, batch_id, request_hash, model,
+                   title, lyrics, style, instrumental, external_task_id,
+                   status, audio_url_ok, audio_url_alt, output_dir_ok,
+                   output_dir_alt, downloaded_ok, downloaded_alt,
+                   error_message,
+                   created_at, updated_at
+            FROM suno_tasks
+            WHERE song_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            song_id,
+        )
+        if row is None:
+            return None
+        return self._row_to_suno_task(row)
 
     async def get_suno_task_for_user(self, task_id: UUID, user_id: UUID) -> SunoTask | None:
         """Retrieve a Suno task by ID scoped to a specific user.
@@ -1493,6 +1538,7 @@ class BatchRepository:
             output_dir_alt=row["output_dir_alt"],
             downloaded_ok=row["downloaded_ok"],
             downloaded_alt=row["downloaded_alt"],
+            error_message=row["error_message"] if "error_message" in row else None,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

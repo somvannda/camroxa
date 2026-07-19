@@ -178,7 +178,8 @@ from shared.models.desktop import (
 from shared.models.platform import ProgressRow
 from shared.services.platform_api import PlatformApi
 from shared.services.app_logger import log_error
-from shared.services.shell_status import emit_shell_status, restore_shell_status
+from shared.services.action_feedback import notify_action
+from shared.services.shell_status import restore_shell_status
 from shared.services.video_template_catalog import emit_video_template_catalog_changed
 from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
@@ -801,7 +802,9 @@ class VideoView(QWidget):
             self._content.hide()
 
         if force and self._ever_loaded:
-            emit_shell_status("Refreshing video workspace…")
+            notify_action("Refreshing video workspace…", tone="neutral")
+        elif not self._ever_loaded:
+            notify_action("Loading video workspace…", tone="neutral")
 
         worker = VideoWorkspaceWorker(self._api, parent=self)
         worker.succeeded.connect(self._on_loaded)
@@ -853,7 +856,7 @@ class VideoView(QWidget):
 
         restore_shell_status()
         if not had_workspace:
-            emit_shell_status("Video workspace loaded.")
+            notify_action("Video workspace loaded.", tone="success")
 
     def _on_failed(self, message: str) -> None:
         self._loading = False
@@ -861,7 +864,7 @@ class VideoView(QWidget):
         self._loading_card.show()
         self._content.hide()
         restore_shell_status()
-        emit_shell_status(message or "Unable to load video workspace.")
+        notify_action(message or "Unable to load video workspace.", tone="error")
 
     def _hydrate_draft_from_workspace(self, *, force_from_saved: bool = False) -> None:
         if not self._workspace:
@@ -876,7 +879,7 @@ class VideoView(QWidget):
             return
 
         template = dict(self._workspace.template)
-        persisted_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path)
+        persisted_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path, background_path=self._workspace.background_path)
         snapshot = None
         if template_id and not force_from_saved:
             snapshot = read_video_workspace_draft_snapshot(
@@ -1099,7 +1102,7 @@ class VideoView(QWidget):
         if not self._workspace or not dict(self._workspace.template):
             return None
         template = dict(self._workspace.template)
-        saved_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path)
+        saved_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path, background_path=self._workspace.background_path)
         layers = clone_layer_records(template.get("layers") or [])
         paths = [str(p) for p in (track_paths or self._current_track_paths()) if str(p or "").strip()]
         # Per-track active highlight is applied again in the export worker.
@@ -1120,36 +1123,39 @@ class VideoView(QWidget):
 
     def _start_pipeline_export(self) -> None:
         if self._export_worker is not None and self._export_worker.isRunning():
+            notify_action("An export is already running.", tone="warning")
             return
         if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
+            notify_action("A pipeline export is already running.", tone="warning")
             return
         if self._pipeline_merge_worker is not None and self._pipeline_merge_worker.isRunning():
+            notify_action("A video merge is already running.", tone="warning")
             return
         row = self._selected_pipeline_row()
         if row is None:
-            emit_shell_status("Select a pipeline run before exporting.")
+            notify_action("Select a pipeline run before exporting.", tone="warning")
             return
         branch = "reel" if self._selected_pipeline_branch == "reel" else "long"
         resolved = resolve_video_pipeline_inputs(row, branch)
         run_dir = str(resolved.run_dir or "").strip()
         background_path = str(resolved.background_path or "").strip()
         if not run_dir or not Path(run_dir).is_dir():
-            emit_shell_status("Selected run directory is missing.")
+            notify_action("Selected run directory is missing.", tone="warning")
             return
         if not background_path or not Path(background_path).is_file():
-            emit_shell_status("Selected branch background image is missing.")
+            notify_action("Selected branch background image is missing.", tone="warning")
             return
         if not resolved.ready:
-            emit_shell_status("Selected branch assets are not ready yet.")
+            notify_action("Selected branch assets are not ready yet.", tone="warning")
             return
         mp3_list = self._store.list_mp3_files(run_dir)
         if not mp3_list:
-            emit_shell_status("No MP3 files were found in the selected run directory.")
+            notify_action("No MP3 files were found in the selected run directory.", tone="warning")
             return
         track_paths = [item.path for item in mp3_list]
         template = self._build_pipeline_export_template(track_paths=track_paths)
         if not template:
-            emit_shell_status("No active video template is loaded.")
+            notify_action("No active video template is loaded.", tone="warning")
             return
 
         scene = build_pipeline_render_scene_request(
@@ -1202,7 +1208,7 @@ class VideoView(QWidget):
                 "ref_id": f"video:{ref_base}",
             }
         except Exception as exc:
-            emit_shell_status(f"Video export blocked (billing): {exc}")
+            notify_action(f"Video export blocked (billing): {exc}", tone="warning")
             return
         self._pipeline_merge_context = {
             "run_dir": run_dir,
@@ -1269,7 +1275,7 @@ class VideoView(QWidget):
         worker.finished.connect(self._on_pipeline_export_worker_finished)
         self._pipeline_export_worker = worker
         worker.start()
-        emit_shell_status(f"Started {branch_label} export from the selected pipeline run.")
+        notify_action(f"Started {branch_label} export from the selected pipeline run.")
 
     def _stop_active_export(self) -> None:
         self._stop_export_pending = True
@@ -1277,15 +1283,15 @@ class VideoView(QWidget):
         self._update_export_panel()
         if self._export_worker is not None and self._export_worker.isRunning():
             self._export_worker.cancel()
-            emit_shell_status("Stopping export…")
+            notify_action("Stopping export…")
             return
         if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
             self._pipeline_export_worker.cancel()
-            emit_shell_status("Stopping pipeline export…")
+            notify_action("Stopping pipeline export…")
             return
         if self._pipeline_merge_worker is not None and self._pipeline_merge_worker.isRunning():
             self._pipeline_merge_worker.cancel()
-            emit_shell_status("Stopping video merge…")
+            notify_action("Stopping video merge…")
             return
         self._stop_export_pending = False
         if self._workspace:
@@ -1315,7 +1321,7 @@ class VideoView(QWidget):
         # Load the selected track into the GPU preview (required for Play / double-click).
         self._flush_preview_update()
         self._update_stage_summary()
-        emit_shell_status("Applied the selected preview track.")
+        notify_action("Applied the selected preview track.", tone="success")
 
     def _play_preview_mp3(self, path: str) -> None:
         """Double-click a track: select it and start playback when audio is ready."""
@@ -1368,7 +1374,7 @@ class VideoView(QWidget):
             except Exception:
                 pass
             self._stage.issue_playback_command("play")
-            emit_shell_status(f"Playing: {Path(audio_path).name}")
+            notify_action(f"Playing: {Path(audio_path).name}")
 
     def _reorder_tracks(self, paths: object) -> None:
         if not isinstance(paths, list) or not paths:
@@ -1379,15 +1385,15 @@ class VideoView(QWidget):
         )
         self._publish_workspace(self._workspace)
         self._update_inspectors()
-        emit_shell_status("Track order updated.")
+        notify_action("Track order updated.", tone="success")
 
     def _patch_export_setting(self, patch: dict[str, object], status: str) -> None:
         """Persist an export option like python_app's _persist_setting_patch."""
         self._settings.update(patch)
         worker = PatchSettingsWorker(self._api, dict(patch), parent=self)
-        worker.succeeded.connect(lambda *_: emit_shell_status(status))
+        worker.succeeded.connect(lambda *_: notify_action(status, tone="success"))
         worker.failed.connect(
-            lambda message: emit_shell_status(message or "Unable to save export settings.")
+            lambda message: notify_action(message or "Unable to save export settings.", tone="error")
         )
         worker.start()
 
@@ -1465,7 +1471,7 @@ class VideoView(QWidget):
         self._update_inspectors()
         self._schedule_stage_summary_update()
         count = len(self._workspace.mp3_list)
-        emit_shell_status(f"Loaded {count} track(s) from the selected folder.")
+        notify_action(f"Loaded {count} track(s) from the selected folder.", tone="success")
 
     def _build_manual_export_scene(self, *, audio_path: str = ""):
         if not self._workspace or not self._template_draft:
@@ -1505,8 +1511,10 @@ class VideoView(QWidget):
     def _start_manual_export(self) -> None:
         # python_app behavior: export the whole track list as one batch.
         if self._export_worker is not None and self._export_worker.isRunning():
+            notify_action("An export is already running.", tone="warning")
             return
         if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
+            notify_action("A pipeline export is already running.", tone="warning")
             return
         if not self._workspace:
             return
@@ -1514,10 +1522,10 @@ class VideoView(QWidget):
         if not tracks and str(self._workspace.selected_mp3_path or "").strip():
             tracks = [str(self._workspace.selected_mp3_path)]
         if not tracks:
-            emit_shell_status("Select an MP3 folder before exporting.")
+            notify_action("Select an MP3 folder before exporting.", tone="warning")
             return
         if not str(self._workspace.background_path or "").strip():
-            emit_shell_status("Select a background image before exporting.")
+            notify_action("Select a background image before exporting.", tone="warning")
             return
 
         output_dir = QFileDialog.getExistingDirectory(
@@ -1605,6 +1613,7 @@ class VideoView(QWidget):
         worker.finished.connect(self._on_export_worker_finished)
         self._export_worker = worker
         worker.start()
+        notify_action(f"Exporting {Path(audio_path).name}…", tone="neutral")
 
     def _stop_manual_export(self) -> None:
         self._stop_active_export()
@@ -1678,7 +1687,7 @@ class VideoView(QWidget):
                     }
                 )
             )
-        emit_shell_status(message or "Track export failed.")
+        notify_action(message or "Track export failed.", tone="error")
         log_error(message or "Track export failed.", category="video")
 
     def _on_export_worker_finished(self) -> None:
@@ -1758,7 +1767,7 @@ class VideoView(QWidget):
                 }
             )
         )
-        emit_shell_status(message)
+        notify_action(message, tone="success")
 
     def _on_pipeline_export_progress(self, payload: object) -> None:
         if not isinstance(payload, dict) or not self._workspace:
@@ -1846,7 +1855,7 @@ class VideoView(QWidget):
                 }
             )
         )
-        emit_shell_status(message)
+        notify_action(message, tone="success")
 
     def _start_pipeline_merge(self) -> None:
         context = dict(self._pipeline_merge_context or {})
@@ -1873,7 +1882,7 @@ class VideoView(QWidget):
                 "ref_id": f"video_merge:{ref_base}",
             }
         except Exception as exc:
-            emit_shell_status(f"Merge blocked (billing): {exc}")
+            notify_action(f"Merge blocked (billing): {exc}", tone="warning")
             if self._workspace:
                 self._publish_workspace(
                     self._workspace.model_copy(
@@ -1910,6 +1919,7 @@ class VideoView(QWidget):
         worker.finished.connect(self._on_pipeline_merge_worker_finished)
         self._pipeline_merge_worker = worker
         worker.start()
+        notify_action("Merging video outputs…", tone="neutral")
 
     def _on_pipeline_merge_progress(self, payload: object) -> None:
         if not isinstance(payload, dict) or not self._workspace:
@@ -1956,7 +1966,7 @@ class VideoView(QWidget):
                 }
             )
         )
-        emit_shell_status(message)
+        notify_action(message, tone="success")
 
     def _on_pipeline_merge_failed(self, message: str) -> None:
         self._stop_export_pending = False
@@ -1975,7 +1985,7 @@ class VideoView(QWidget):
                     }
                 )
             )
-        emit_shell_status(message or "Video merge failed.")
+        notify_action(message or "Video merge failed.", tone="error")
         log_error(message or "Video merge failed.", category="video")
 
     def _on_pipeline_merge_worker_finished(self) -> None:
@@ -1999,7 +2009,7 @@ class VideoView(QWidget):
                     }
                 )
             )
-        emit_shell_status(message or "Pipeline export failed.")
+        notify_action(message or "Pipeline export failed.", tone="error")
         log_error(message or "Pipeline export failed.", category="video")
 
     def _on_pipeline_export_worker_finished(self) -> None:
@@ -2204,6 +2214,7 @@ class VideoView(QWidget):
             return
 
         self._resolution_save_pending = True
+        notify_action("Saving output resolution…", tone="neutral")
         self._workspace = self._store.set_output_resolution(normalized, settings=self._settings)
         self._settings["outputResolution"] = normalized
         self._settings["imageResolution"] = normalized
@@ -2225,13 +2236,13 @@ class VideoView(QWidget):
         self._resolution_save_pending = False
         if self._workspace:
             self._update_stage_summary()
-        emit_shell_status("Output resolution updated.")
+        notify_action("Output resolution updated.", tone="success")
 
     def _on_output_resolution_save_failed(self, message: str) -> None:
         self._resolution_save_pending = False
         if self._workspace:
             self._update_stage_summary()
-        emit_shell_status(message or "Unable to update output resolution right now.")
+        notify_action(message or "Unable to update output resolution right now.", tone="error")
 
     def _issue_preview_playback_command(self, command: str) -> None:
         self._stage.issue_playback_command(command)
@@ -2346,6 +2357,8 @@ class VideoView(QWidget):
         self._schedule_dirty_state_update()
 
     def _select_background(self) -> None:
+        if not self._template_draft:
+            return
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Select background image",
@@ -2355,9 +2368,12 @@ class VideoView(QWidget):
         if not path:
             return
         self._workspace = self._store.set_background_path(path, settings=self._settings)
+        self._template_draft = {**self._template_draft, "backgroundPath": path}
         self._publish_workspace(self._workspace)
+        self._update_inspectors()
+        self._update_dirty_state()
         self._update_preview()
-        emit_shell_status("Applied the selected background image.")
+        notify_action("Applied the selected background image.", tone="success")
 
     def _effect_pack_selection(self, domain: str) -> dict[str, str] | None:
         if not self._template_draft:
@@ -2437,7 +2453,7 @@ class VideoView(QWidget):
             return
         item = self._resolve_effect_pack_catalog_item(domain, value)
         if not item:
-            emit_shell_status(f"Selected {domain} pack is unavailable.")
+            notify_action(f"Selected {domain} pack is unavailable.", tone="warning")
             return
         result = build_applied_effect_pack_draft_state(
             current_draft=self._template_draft,
@@ -2452,9 +2468,9 @@ class VideoView(QWidget):
             if isinstance(next_layers, list):
                 self._spectrum_layers = clone_layer_records(next_layers)
             self._selected_spectrum_layer_index = 0
-            emit_shell_status(f"Previewing {item.get('name')} ({item.get('version')}) in the local workspace draft.")
+            notify_action(f"Previewing {item.get('name')} ({item.get('version')}) in the local workspace draft.", tone="success")
         else:
-            emit_shell_status(f"Applied {item.get('name')} ({item.get('version')}) to the local {domain} draft.")
+            notify_action(f"Applied {item.get('name')} ({item.get('version')}) to the local {domain} draft.", tone="success")
         self._update_inspectors()
         self._update_dirty_state()
 
@@ -2465,17 +2481,18 @@ class VideoView(QWidget):
             self._template_draft = build_video_template_draft(
                 dict(self._workspace.template),
                 logo_path=self._workspace.logo_path,
+                background_path=self._workspace.background_path,
             )
             self._spectrum_layers = clone_layer_records(self._workspace.template.get("layers"))
             self._selected_spectrum_layer_index = 0
-            emit_shell_status("Restored the saved spectrum pack selection.")
+            notify_action("Restored the saved spectrum pack selection.", tone="success")
         else:
             result = build_cleared_effect_pack_draft_state(
                 current_draft=self._template_draft,
                 domain=domain,
             )
             self._template_draft = result["nextDraft"]
-            emit_shell_status(f"Cleared the local {domain} pack reference.")
+            notify_action(f"Cleared the local {domain} pack reference.", tone="success")
         self._update_inspectors()
         self._update_dirty_state()
 
@@ -2493,13 +2510,14 @@ class VideoView(QWidget):
         result = self._effect_pack_service.install_from_file(path)
         self._effect_pack_busy = False
         if not result.get("ok"):
-            emit_shell_status(str(result.get("error") or "Unable to install effect pack."))
+            notify_action(str(result.get("error") or "Unable to install effect pack."), tone="error")
             self._update_effect_pack_selectors()
             return
         item = result.get("item")
         if isinstance(item, dict):
-            emit_shell_status(
-                f"Installed {item.get('name')} ({item.get('version')}) for {item.get('domain')}."
+            notify_action(
+                f"Installed {item.get('name')} ({item.get('version')}) for {item.get('domain')}.",
+                tone="success",
             )
         self._refresh_effect_pack_catalog()
 
@@ -2509,7 +2527,7 @@ class VideoView(QWidget):
         self._refresh_effect_pack_catalog()
         self._effect_pack_busy = False
         self._update_effect_pack_selectors()
-        emit_shell_status("Reloaded the local effect pack catalog.")
+        notify_action("Reloaded the local effect pack catalog.", tone="success")
 
     def _toggle_effect_pack_enabled(self, domain: str) -> None:
         item = self._effect_pack_status(domain).get("item")
@@ -2522,11 +2540,11 @@ class VideoView(QWidget):
         result = self._effect_pack_service.set_enabled(pack_id, enabled=enabled)
         self._effect_pack_busy = False
         if not result.get("ok"):
-            emit_shell_status(str(result.get("error") or "Unable to update effect pack state."))
+            notify_action(str(result.get("error") or "Unable to update effect pack state."), tone="error")
             self._update_effect_pack_selectors()
             return
         label = "Enabled" if enabled else "Disabled"
-        emit_shell_status(f"{label} {item.get('name')} ({item.get('version')}).")
+        notify_action(f"{label} {item.get('name')} ({item.get('version')}).")
         self._refresh_effect_pack_catalog()
 
     def _activate_effect_pack_version(self, domain: str) -> None:
@@ -2540,10 +2558,10 @@ class VideoView(QWidget):
         result = self._effect_pack_service.activate_version(pack_id, version)
         self._effect_pack_busy = False
         if not result.get("ok"):
-            emit_shell_status(str(result.get("error") or "Unable to activate effect pack version."))
+            notify_action(str(result.get("error") or "Unable to activate effect pack version."), tone="error")
             self._update_effect_pack_selectors()
             return
-        emit_shell_status(f"Activated {item.get('name')} ({item.get('version')}).")
+        notify_action(f"Activated {item.get('name')} ({item.get('version')}).", tone="success")
         self._refresh_effect_pack_catalog()
 
     def _remove_effect_pack_version(self, domain: str) -> None:
@@ -2557,10 +2575,10 @@ class VideoView(QWidget):
         result = self._effect_pack_service.remove_version(pack_id, version)
         self._effect_pack_busy = False
         if not result.get("ok"):
-            emit_shell_status(str(result.get("error") or "Unable to remove effect pack version."))
+            notify_action(str(result.get("error") or "Unable to remove effect pack version."), tone="error")
             self._update_effect_pack_selectors()
             return
-        emit_shell_status(f"Removed {item.get('name')} ({item.get('version')}).")
+        notify_action(f"Removed {item.get('name')} ({item.get('version')}).", tone="success")
         self._refresh_effect_pack_catalog()
 
     def _set_spectrum_layers(
@@ -2755,7 +2773,7 @@ class VideoView(QWidget):
         self._update_inspectors()
         self._update_dirty_state()
         self._update_preview()
-        emit_shell_status("Applied the selected logo.")
+        notify_action("Applied the selected logo.", tone="success")
 
     def _apply_particle_preset(self, preset_key: str) -> None:
         if not self._workspace or not self._template_draft:
@@ -2776,7 +2794,7 @@ class VideoView(QWidget):
                 f"{pack_selection['packId']}::{pack_selection['version']}",
             )
             if not item:
-                emit_shell_status("Selected particle pack is unavailable.")
+                notify_action("Selected particle pack is unavailable.", tone="warning")
                 return
             result = apply_particle_pack_as_preset(
                 current_draft=self._template_draft,
@@ -2789,12 +2807,12 @@ class VideoView(QWidget):
             self._update_inspectors()
             self._update_dirty_state()
             self._flush_preview_update()
-            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            notify_action(f"Applied pack preset: {item.get('name')}.", tone="success")
             return
 
         patch = build_builtin_particle_preset_patch(preset_key)
         if not patch:
-            emit_shell_status("Unable to apply that particle preset.")
+            notify_action("Unable to apply that particle preset.", tone="error")
             return
         self._template_draft = {**self._template_draft, **patch}
         self._active_particle_preset_key = preset_key
@@ -2818,7 +2836,7 @@ class VideoView(QWidget):
                 f"{pack_selection['packId']}::{pack_selection['version']}",
             )
             if not item:
-                emit_shell_status("Selected background pack is unavailable.")
+                notify_action("Selected background pack is unavailable.", tone="warning")
                 return
             result = build_applied_effect_pack_draft_state(
                 current_draft=self._template_draft,
@@ -2832,12 +2850,12 @@ class VideoView(QWidget):
             self._update_inspectors()
             self._update_dirty_state()
             self._flush_preview_update()
-            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            notify_action(f"Applied pack preset: {item.get('name')}.", tone="success")
             return
 
         patch = resolve_background_preset_patch(preset_key)
         if not patch:
-            emit_shell_status("Unable to apply that background preset.")
+            notify_action("Unable to apply that background preset.", tone="error")
             return
         self._template_draft = {**self._template_draft, **patch}
         self._active_background_preset_key = preset_key
@@ -2861,7 +2879,7 @@ class VideoView(QWidget):
                 f"{pack_selection['packId']}::{pack_selection['version']}",
             )
             if not item:
-                emit_shell_status("Selected logo pack is unavailable.")
+                notify_action("Selected logo pack is unavailable.", tone="warning")
                 return
             result = build_applied_effect_pack_draft_state(
                 current_draft=self._template_draft,
@@ -2875,12 +2893,12 @@ class VideoView(QWidget):
             self._update_inspectors()
             self._update_dirty_state()
             self._flush_preview_update()
-            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            notify_action(f"Applied pack preset: {item.get('name')}.", tone="success")
             return
 
         patch = resolve_logo_preset_patch(preset_key)
         if not patch:
-            emit_shell_status("Unable to apply that logo preset.")
+            notify_action("Unable to apply that logo preset.", tone="error")
             return
         self._template_draft = {**self._template_draft, **patch}
         self._active_logo_preset_key = preset_key
@@ -2904,7 +2922,7 @@ class VideoView(QWidget):
                 f"{pack_selection['packId']}::{pack_selection['version']}",
             )
             if not item:
-                emit_shell_status("Selected spectrum pack is unavailable.")
+                notify_action("Selected spectrum pack is unavailable.", tone="warning")
                 return
             result = apply_spectrum_pack_as_preset(
                 current_draft=self._template_draft,
@@ -2920,7 +2938,7 @@ class VideoView(QWidget):
             self._active_spectrum_preset_key = None
             self._update_inspectors()
             self._update_dirty_state()
-            emit_shell_status(f"Applied pack preset: {item.get('name')}.")
+            notify_action(f"Applied pack preset: {item.get('name')}.", tone="success")
             return
 
         session = get_session_spectrum_preset(preset_key)
@@ -2974,13 +2992,13 @@ class VideoView(QWidget):
             self._active_spectrum_preset_key = preset_key
             self._update_inspectors()
             self._update_dirty_state()
-            emit_shell_status(f"Restored stacked preset: {preset_key.replace('-', ' ').title()}.")
+            notify_action(f"Restored stacked preset: {preset_key.replace('-', ' ').title()}.", tone="success")
             return
 
         base_template = {**dict(self._workspace.template), **self._template_draft}
         patched = build_stacked_spectrum_preset_template(base_template, preset_key)
         if not patched:
-            emit_shell_status("Unable to apply that stacked spectrum preset.")
+            notify_action("Unable to apply that stacked spectrum preset.", tone="error")
             return
         self._template_draft = {**self._template_draft, "style": patched.get("style", preset_key)}
         self._spectrum_layers = clone_layer_records(patched.get("layers"))
@@ -2988,7 +3006,7 @@ class VideoView(QWidget):
         self._active_spectrum_preset_key = preset_key
         self._update_inspectors()
         self._update_dirty_state()
-        emit_shell_status(f"Applied stacked preset: {preset_key.replace('-', ' ').title()}.")
+        notify_action(f"Applied stacked preset: {preset_key.replace('-', ' ').title()}.", tone="success")
 
     def _clear_stacked_spectrum_preset(self) -> None:
         if not self._workspace:
@@ -3006,7 +3024,7 @@ class VideoView(QWidget):
         self._selected_spectrum_layer_index = 0
         self._update_inspectors()
         self._update_dirty_state()
-        emit_shell_status("Cleared stacked spectrum layers.")
+        notify_action("Cleared stacked spectrum layers.", tone="success")
 
     def _restore_particle_preset(self) -> None:
         if not self._template_draft:
@@ -3015,18 +3033,18 @@ class VideoView(QWidget):
         if not is_builtin_particle_preset_key(key):
             key = self._particles_inspector.selected_preset_key()
         if not is_builtin_particle_preset_key(key):
-            emit_shell_status("No active particle preset to restore.")
+            notify_action("No active particle preset to restore.", tone="warning")
             return
         patch = restore_particle_preset_to_factory(key)
         if not patch:
-            emit_shell_status("Unable to restore that particle preset.")
+            notify_action("Unable to restore that particle preset.", tone="error")
             return
         self._template_draft = {**self._template_draft, **patch}
         self._active_particle_preset_key = key
         self._update_inspectors()
         self._update_dirty_state()
         self._flush_preview_update()
-        emit_shell_status(f"Restored particle preset '{key}' to factory defaults.")
+        notify_action(f"Restored particle preset '{key}' to factory defaults.", tone="success")
 
     def _restore_spectrum_preset(self) -> None:
         if not self._workspace or not self._template_draft:
@@ -3035,14 +3053,14 @@ class VideoView(QWidget):
         if not is_session_spectrum_preset_key(key):
             key = self._spectrum_inspector.selected_preset_key()
         if not is_session_spectrum_preset_key(key):
-            emit_shell_status("No active spectrum preset to restore.")
+            notify_action("No active spectrum preset to restore.", tone="warning")
             return
         restore_spectrum_preset_to_factory(key)
         base_template = {**dict(self._workspace.template), **self._template_draft, "layers": self._spectrum_layers}
         if key in STACKED_LAYER_PRESETS:
             patched = build_stacked_spectrum_preset_template(base_template, key)
             if not patched:
-                emit_shell_status("Unable to restore that stacked spectrum preset.")
+                notify_action("Unable to restore that stacked spectrum preset.", tone="error")
                 return
         else:
             patched = build_spectrum_preset_template(base_template, key, replace_stack=True)
@@ -3052,7 +3070,7 @@ class VideoView(QWidget):
         self._active_spectrum_preset_key = key
         self._update_inspectors()
         self._update_dirty_state()
-        emit_shell_status(f"Restored spectrum preset '{key}' to factory defaults.")
+        notify_action(f"Restored spectrum preset '{key}' to factory defaults.", tone="success")
 
     def _restore_background_preset(self) -> None:
         if not self._template_draft:
@@ -3061,18 +3079,18 @@ class VideoView(QWidget):
         if not is_builtin_background_preset_key(key):
             key = self._background_inspector.selected_preset_key()
         if not is_builtin_background_preset_key(key):
-            emit_shell_status("No active background preset to restore.")
+            notify_action("No active background preset to restore.", tone="warning")
             return
         patch = restore_background_preset_to_factory(key)
         if not patch:
-            emit_shell_status("Unable to restore that background preset.")
+            notify_action("Unable to restore that background preset.", tone="error")
             return
         self._template_draft = {**self._template_draft, **patch}
         self._active_background_preset_key = key
         self._update_inspectors()
         self._update_dirty_state()
         self._flush_preview_update()
-        emit_shell_status(f"Restored background preset '{key}' to factory defaults.")
+        notify_action(f"Restored background preset '{key}' to factory defaults.", tone="success")
 
     def _restore_logo_preset(self) -> None:
         if not self._template_draft:
@@ -3081,18 +3099,18 @@ class VideoView(QWidget):
         if not is_builtin_logo_preset_key(key):
             key = self._logo_inspector.selected_preset_key()
         if not is_builtin_logo_preset_key(key):
-            emit_shell_status("No active logo preset to restore.")
+            notify_action("No active logo preset to restore.", tone="warning")
             return
         patch = restore_logo_preset_to_factory(key)
         if not patch:
-            emit_shell_status("Unable to restore that logo preset.")
+            notify_action("Unable to restore that logo preset.", tone="error")
             return
         self._template_draft = {**self._template_draft, **patch}
         self._active_logo_preset_key = key
         self._update_inspectors()
         self._update_dirty_state()
         self._flush_preview_update()
-        emit_shell_status(f"Restored logo preset '{key}' to factory defaults.")
+        notify_action(f"Restored logo preset '{key}' to factory defaults.", tone="success")
 
     def _restore_text_preset(self) -> None:
         """Restore the active text preset to factory. Call if a text inspector emits preset_restore_requested."""
@@ -3100,19 +3118,19 @@ class VideoView(QWidget):
             return
         key = self._active_text_preset_key
         if not is_builtin_text_preset_key(key):
-            emit_shell_status("No active text preset to restore.")
+            notify_action("No active text preset to restore.", tone="warning")
             return
         restore_text_preset_to_factory(key)
         overlays = self._text_overlays()
         index = resolve_selected_text_overlay_index(overlays, str(self._selected_text_overlay_index))
         next_overlays, next_index = apply_resolved_text_preset(overlays, key, selected_index=index)
         self._set_text_overlays(next_overlays, selected_index=next_index)
-        emit_shell_status(f"Restored text preset '{key}' to factory defaults.")
+        notify_action(f"Restored text preset '{key}' to factory defaults.", tone="success")
 
     def _persisted_draft(self) -> dict | None:
         if not self._workspace:
             return None
-        return build_video_template_draft(dict(self._workspace.template), logo_path=self._workspace.logo_path)
+        return build_video_template_draft(dict(self._workspace.template), logo_path=self._workspace.logo_path, background_path=self._workspace.background_path)
 
     def _workspace_dirty(self) -> bool:
         if not self._template_draft:
@@ -3223,11 +3241,11 @@ class VideoView(QWidget):
         self._preview_remount_pending = False
         if SHOW_VIDEO_WORKSPACE_DIAGNOSTICS:
             self._update_diagnostics_panel()
-        emit_shell_status("Remounted the GPU preview surface.")
+        notify_action("Remounted the GPU preview surface.", tone="success")
 
     def _refresh_workspace_from_diagnostics(self) -> None:
         self.refresh_data(force=True)
-        emit_shell_status("Video workspace diagnostics refreshed.")
+        notify_action("Video workspace diagnostics refreshed.")
 
     def _reset_local_draft(self) -> None:
         if not self._workspace_dirty():
@@ -3248,7 +3266,7 @@ class VideoView(QWidget):
         self._hydrate_draft_from_workspace(force_from_saved=True)
         self._persist_local_draft_snapshot()
         self._render_workspace()
-        emit_shell_status("Reset the local Video workspace draft back to the saved template.")
+        notify_action("Reset the local Video workspace draft back to the saved template.", tone="success")
 
     def _copy_diagnostics(self) -> None:
         payload = getattr(self, "_diagnostics_payload", None)
@@ -3258,10 +3276,10 @@ class VideoView(QWidget):
         text = serialize_diagnostics_payload(payload if isinstance(payload, dict) else {})
         clipboard = QGuiApplication.clipboard()
         if clipboard is None:
-            emit_shell_status("Clipboard access is not available.")
+            notify_action("Clipboard access is not available.", tone="warning")
             return
         clipboard.setText(text)
-        emit_shell_status("Copied Video diagnostics to the clipboard.")
+        notify_action("Copied Video diagnostics to the clipboard.", tone="success")
 
     def _on_template_name_changed(self, value: str) -> None:
         self._template_name_draft = value
@@ -3294,7 +3312,7 @@ class VideoView(QWidget):
         self._hydrated_template_id = ""
         self._hydrate_draft_from_workspace()
         self._render_workspace()
-        emit_shell_status("Applied the selected template.")
+        notify_action("Applied the selected template.", tone="success")
 
     def _create_blank_template(self) -> None:
         if self._saving or self._deleting:
@@ -3320,14 +3338,14 @@ class VideoView(QWidget):
         if self._cache is not None and self._workspace is not None:
             self._cache.apply_video_workspace(self._workspace, self._settings)
         emit_video_template_catalog_changed()
-        emit_shell_status(f"Created blank template: {self._workspace.template_name}.")
+        notify_action(f"Created blank template: {self._workspace.template_name}.", tone="success")
 
     def _save_template(self) -> None:
         if not self._workspace or not self._template_draft or self._patch_worker is not None:
             return
         name = self._template_name_draft.strip()
         if not name:
-            emit_shell_status("Template name is required before saving.")
+            notify_action("Template name is required before saving.", tone="warning")
             return
         if not self._workspace.template_id:
             # Keep the in-memory draft the user already edited; only create the catalog row.
@@ -3345,6 +3363,7 @@ class VideoView(QWidget):
         )
         self._saving = True
         self._update_dirty_state()
+        notify_action("Saving template…", tone="neutral")
         worker = VideoPatchTemplateWorker(self._store, patch, settings=self._settings, parent=self)
         worker.succeeded.connect(self._on_save_succeeded)
         worker.failed.connect(self._on_save_failed)
@@ -3365,7 +3384,7 @@ class VideoView(QWidget):
             emit_video_template_catalog_changed()
         self._saving = False
         self._update_dirty_state()
-        emit_shell_status("Saved the current workspace draft into the selected template.")
+        notify_action("Saved the current workspace draft into the selected template.", tone="success")
 
     def _schedule_template_server_sync(self) -> None:
         if not self._workspace or self._template_sync_worker is not None:
@@ -3394,10 +3413,10 @@ class VideoView(QWidget):
 
     def _on_template_sync_succeeded(self, message: str) -> None:
         if message.strip():
-            emit_shell_status(message)
+            notify_action(message, tone="success")
 
     def _on_template_sync_failed(self, message: str) -> None:
-        emit_shell_status(message or "Saved locally; server sync failed.")
+        notify_action(message or "Saved locally; server sync failed.", tone="warning")
 
     def _on_template_sync_finished(self) -> None:
         self._template_sync_worker = None
@@ -3405,7 +3424,7 @@ class VideoView(QWidget):
     def _on_save_failed(self, message: str) -> None:
         self._saving = False
         self._update_dirty_state()
-        emit_shell_status(message or "Unable to save template.")
+        notify_action(message or "Unable to save template.", tone="error")
 
     def _on_patch_worker_finished(self) -> None:
         self._patch_worker = None
@@ -3433,7 +3452,7 @@ class VideoView(QWidget):
         if self._cache is not None and self._workspace is not None:
             self._cache.apply_video_workspace(self._workspace, self._settings)
         emit_video_template_catalog_changed()
-        emit_shell_status(f"Deleted {template_name}.")
+        notify_action(f"Deleted {template_name}.", tone="success")
 
     # ─── Export for Marketplace (admin-only) ──────────────────────────────
 
@@ -3462,7 +3481,7 @@ class VideoView(QWidget):
         from PySide6.QtWidgets import QFileDialog, QInputDialog
 
         if not self._workspace or not self._workspace.template:
-            emit_shell_status("No template loaded to export.")
+            notify_action("No template loaded to export.", tone="warning")
             return
 
         template_name = self._workspace.template_name or "Untitled"
@@ -3523,9 +3542,9 @@ class VideoView(QWidget):
                 zf.writestr("preview.png", _minimal_png())
 
             Path(save_path).write_bytes(buf.getvalue())
-            emit_shell_status(f"Exported marketplace bundle → {Path(save_path).name}")
+            notify_action(f"Exported marketplace bundle → {Path(save_path).name}", tone="success")
         except Exception as exc:
-            emit_shell_status(f"Export failed: {exc}")
+            notify_action(f"Export failed: {exc}", tone="error")
 
 
 def _minimal_png() -> bytes:

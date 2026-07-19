@@ -106,6 +106,22 @@ class RootWindow(QMainWindow):
         sync_rounded_window_shape(self)
         super().showEvent(event)
 
+    def bring_to_front(self) -> None:
+        """Restore and focus this window (used when a second instance is launched)."""
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+        try:
+            # Windows: force foreground when another process launched us.
+            import ctypes
+
+            ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
+        except Exception:
+            pass
+
     def _destroy_app_shell(self) -> None:
         self._stop_push_notifications()
         if self._app_shell is None:

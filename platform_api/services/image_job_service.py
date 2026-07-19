@@ -622,8 +622,10 @@ class ImageJobService:
                 user_id=user_id,
                 source_job_id=job.source_job_id,
             )
-            if source_job.output_image_path:
-                return self._read_image_file(source_job.output_image_path)
+            try:
+                return await self._read_source_job_image_bytes(user_id, source_job)
+            except Exception:
+                return None
 
         sample_path = await self._resolve_runtime_sample_path(
             job=job,
@@ -699,11 +701,7 @@ class ImageJobService:
             user_id=user_id,
             source_job_id=job.source_job_id,
         )
-        if not source_job.output_image_path:
-            raise ValidationError(
-                "Thumbnail composite requires a completed background image.",
-                details={"job_id": str(job.id)},
-            )
+        background_path = await self._resolve_source_background_path(user_id, source_job)
 
         style_path = await self._resolve_runtime_sample_path(
             job=job,
@@ -741,12 +739,40 @@ class ImageJobService:
             slai_retry_attempts=slai_retry_attempts,
         )
         final_bytes = compose_thumbnail_onto_background(
-            background_path=source_job.output_image_path,
+            background_path=background_path,
             overlay_png_bytes=outcome.image_bytes,
             resolution=resolution,
             style_strength=style_strength,
         )
         return final_bytes, outcome.provider, outcome.sub_model
+
+    async def _read_source_job_image_bytes(self, user_id: UUID, source_job: ImageJob) -> bytes:
+        cache_path = self._server_image_cache_path(source_job.id)
+        if cache_path.is_file():
+            return cache_path.read_bytes()
+
+        output_path = str(source_job.output_image_path or "").strip()
+        if output_path and not self._looks_like_foreign_client_path(output_path):
+            return self._read_image_file(output_path)
+
+        image_bytes, _ = await self.read_job_output_bytes(source_job.id, user_id)
+        return image_bytes
+
+    async def _resolve_source_background_path(self, user_id: UUID, source_job: ImageJob) -> str:
+        cache_path = self._server_image_cache_path(source_job.id)
+        if cache_path.is_file():
+            return str(cache_path)
+
+        output_path = str(source_job.output_image_path or "").strip()
+        if output_path and not self._looks_like_foreign_client_path(output_path):
+            candidate = Path(output_path).expanduser()
+            if candidate.is_file():
+                return str(candidate.resolve())
+
+        image_bytes, _ = await self.read_job_output_bytes(source_job.id, user_id)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(image_bytes)
+        return str(cache_path)
 
     async def _wait_for_source_job_output(
         self,
@@ -765,7 +791,10 @@ class ImageJobService:
                     details={"source_job_id": str(source_job_id)},
                 )
             last_job = source_job
-            if source_job.status == TaskStatus.SUCCESS and source_job.output_image_path:
+            if source_job.status == TaskStatus.SUCCESS and (
+                source_job.output_image_path
+                or self._server_image_cache_path(source_job.id).is_file()
+            ):
                 return source_job
             if source_job.status == TaskStatus.FAILED:
                 raise ValidationError(
@@ -835,12 +864,16 @@ class ImageJobService:
 
     @staticmethod
     def _looks_like_foreign_client_path(path: str) -> bool:
-        import sys
+        from platform_api.services.client_path_utils import is_windows_absolute_path
 
         text = str(path or "").strip()
-        if not text or sys.platform == "win32":
+        if not text:
             return False
-        return len(text) >= 2 and text[1] == ":" and text[0].isalpha()
+        if is_windows_absolute_path(text):
+            import sys
+
+            return sys.platform != "win32"
+        return False
 
     def _server_image_cache_path(self, job_id: UUID) -> Path:
         from platform_api.config import get_settings
@@ -863,7 +896,9 @@ class ImageJobService:
                 channel_role=job.channel_role,
                 role_disambiguate=self._batch_roles_share_run_dir(batch),
             )
-            return str((Path(run_dir).expanduser() / f"{stem}.png").resolve())
+            from platform_api.services.client_path_utils import join_client_output_path
+
+            return join_client_output_path(run_dir, f"{stem}.png")
 
         output_dir = str(settings.get("imageOutputDir", "") or "").strip()
         if not output_dir:
@@ -919,7 +954,9 @@ class ImageJobService:
                 logger.warning("Could not write image output to local path %s: %s", client_path, exc)
 
         if client_path:
-            return client_path
+            from platform_api.services.channel_asset_service import normalize_client_path
+
+            return normalize_client_path(client_path)
 
         output_dir = str(settings.get("imageOutputDir", "") or "").strip()
         if not output_dir:

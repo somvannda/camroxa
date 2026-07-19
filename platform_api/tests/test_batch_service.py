@@ -8,8 +8,8 @@ from uuid import UUID, uuid4
 import pytest
 
 from platform_api.exceptions import InsufficientCreditsError, ValidationError
-from platform_api.models.domain import Batch, Song
-from platform_api.models.enums import ChannelRole, ImageKind
+from platform_api.models.domain import Batch, Song, SunoTask
+from platform_api.models.enums import ChannelRole, ImageKind, TaskStatus
 from platform_api.ports.generation_port import DraftRequest, SongDraft
 from platform_api.services.batch_service import SONG_STATUS_DRAFT_READY
 from platform_api.services.batch_service import BatchService
@@ -473,8 +473,8 @@ async def test_create_batch_includes_image_cost_when_auto_image_is_enabled(
         settings_service,
     )
 
-    # Draft reuse album after song1 (27) + Suno music_generation×4 (12) + album-level images 2×2×5 (20) = 59
-    with pytest.raises(InsufficientCreditsError, match="Required: 59"):
+    # Draft reuse album after song1 (27) + Suno music×4 (28) + album-level images 2×2×5 (20) = 75
+    with pytest.raises(InsufficientCreditsError, match="Required: 75"):
         await service.create_batch(
             user_id="00000000-0000-0000-0000-000000000001",
             ok_profile_id="00000000-0000-0000-0000-000000000002",
@@ -1652,3 +1652,99 @@ def test_resolve_batch_run_dir_keeps_alt_separate_from_ok() -> None:
     assert BatchService._resolve_batch_run_dir(batch, ChannelRole.ALT) != BatchService._resolve_batch_run_dir(
         batch, ChannelRole.OK
     )
+
+
+def test_build_draft_requests_preserves_ai_free_structure_mode() -> None:
+    batch = Batch(song_count=2, structure_mode="ai_free")
+    service = BatchService(
+        batch_repo=AsyncMock(),
+        credit_service=AsyncMock(),
+        pricing_service=AsyncMock(),
+        generation_service=AsyncMock(),
+        profile_repo=AsyncMock(),
+        ai_routing_service=AsyncMock(),
+    )
+    requests = service._build_draft_requests(batch)
+    assert len(requests) == 2
+    assert all(request.structure_mode == "ai_free" for request in requests)
+
+
+def test_derive_batch_status_processing_when_drafts_done_before_suno() -> None:
+    batch = Batch(song_count=2, auto_gsuno=True)
+    counters = {
+        "total_songs": 2,
+        "drafts_completed": 2,
+        "drafts_failed": 0,
+        "suno_submitted": 0,
+        "suno_completed": 0,
+        "suno_failed": 0,
+    }
+    service = make_service(
+        batch_repo=AsyncMock(),
+        credit_service=AsyncMock(),
+        pricing_service=AsyncMock(),
+        generation_service=AsyncMock(),
+        profile_repo=AsyncMock(),
+        ai_routing_service=AsyncMock(),
+    )
+    assert service._derive_batch_status(batch, counters) == "processing"
+
+
+@pytest.mark.asyncio
+async def test_sanitize_suno_payload_uses_learned_terms_and_persists(
+    monkeypatch: pytest.MonkeyPatch,
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    from platform_api.services.suno_blocklist_service import SunoBlocklistService
+    from platform_api.tests.test_suno_blocklist_service import FakeSunoBlocklistRepo
+
+    blocklist_service = SunoBlocklistService(FakeSunoBlocklistRepo())
+    monkeypatch.setattr(
+        "platform_api.dependencies.get_suno_blocklist_service",
+        lambda: blocklist_service,
+    )
+    song_id = uuid4()
+    batch_id = uuid4()
+    song = Song(
+        id=song_id,
+        batch_id=batch_id,
+        user_id=uuid4(),
+        title="Neon lowlight",
+        album="Album",
+        lyrics="Pressure in the lowlight",
+        batch_index=0,
+    )
+    batch = Batch(id=batch_id, user_id=song.user_id, ok_profile_id=uuid4(), song_count=1)
+    latest_task = SunoTask(
+        song_id=song_id,
+        status=TaskStatus.FAILED,
+        error_message="Your lyrics contain producer tag lowlight - we don't reference specific artists",
+    )
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(return_value=latest_task)
+    batch_repo.update_song_draft = AsyncMock()
+
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    service._resolve_song_style = AsyncMock(return_value="Dream pop lowlight")
+
+    payload = await service._sanitize_suno_payload(song, batch)
+
+    assert "lowlight" not in payload.lyrics.lower()
+    assert "afterglow" in payload.lyrics.lower()
+    assert payload.title.lower().endswith("afterglow")
+    assert "afterglow" in payload.style.lower()
+    assert payload.is_retry is True
+    assert payload.blocked_terms == ("lowlight",)
+    batch_repo.update_song_draft.assert_awaited_once()
+    assert song.lyrics == payload.lyrics

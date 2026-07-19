@@ -69,7 +69,9 @@ def build_spectrum_template_patch(template: dict[str, Any], draft: VideoTemplate
 
 def build_background_template_patch(template: dict[str, Any], draft: VideoTemplateDraft) -> dict[str, Any]:
     current = to_record(template.get("backgroundSettings"))
+    background_path = str(draft.get("backgroundPath", "")).strip()
     return {
+        "previewBackground": background_path,
         "backgroundSettings": {
             **current,
             "enabled": draft["backgroundEnabled"],
@@ -87,7 +89,7 @@ def build_background_template_patch(template: dict[str, Any], draft: VideoTempla
             "motionSpeed": draft["backgroundMotionSpeed"],
             "userOffsetX": to_number(current.get("userOffsetX"), 0),
             "userOffsetY": to_number(current.get("userOffsetY"), 0),
-        }
+        },
     }
 
 

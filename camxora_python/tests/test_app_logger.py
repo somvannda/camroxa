@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shared.services.app_logger import AppLogger, LogLevel, redact_text
+from shared.services.app_logger import AppLogger, LogLevel, redact_text, sanitize_error_body
 
 
 def test_redact_text_masks_secrets() -> None:
@@ -16,6 +16,15 @@ def test_redact_text_masks_secrets() -> None:
     assert "supersecret" not in out
     assert jwt not in out
     assert "[REDACTED]" in out
+
+
+def test_sanitize_error_body_omits_html_gateway_dumps() -> None:
+    html = "<!DOCTYPE html><html><head><title>502</title></head><body>nginx/1.18.0</body></html>"
+    out = sanitize_error_body(html, status=502)
+    assert "nginx/1.18.0" not in out
+    assert "omitted HTML/gateway" in out
+    assert "502" in out
+    assert redact_text(f"GET /progress → 502: {html}").count("<html") == 0
 
 
 def test_app_logger_ring_buffer_and_snapshot() -> None:

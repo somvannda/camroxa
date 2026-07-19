@@ -162,7 +162,12 @@ def build_pipeline_render_scene_request(
 ) -> PipelineRenderSceneRequest:
     from features.video.lib.video_template_draft import build_video_template_draft
 
-    draft = build_video_template_draft(template, logo_path=str(workspace.get("logoPath") or ""))
+    draft = build_video_template_draft(
+        template,
+        logo_path=str(workspace.get("logoPath") or ""),
+        # Preview-only template background must never feed pipeline assets.
+        background_path="",
+    )
     audio_path = str(selected_mp3_path or workspace.get("selectedMp3Path") or "").strip() or None
     resolution = REEL_EXPORT_RESOLUTION if branch == "reel" else str(workspace.get("outputResolution") or DEFAULT_OUTPUT_RESOLUTION)
     output = build_video_render_output_settings(resolution, fps)
@@ -171,6 +176,7 @@ def build_pipeline_render_scene_request(
         template=template,
         draft=draft,
         assets=RenderSceneAssets(
+            # Always the batch AI background from progress meta — never template previewBackground.
             background_path=str(background_path or "").strip() or None,
             logo_path=str(workspace.get("logoPath") or "").strip() or None,
             audio_path=audio_path,

@@ -30,6 +30,20 @@ def test_extract_clip_audio_url_falls_back_to_stream_when_no_download_url() -> N
     assert _extract_clip_audio_url(clip) == "https://cdn.example.com/stream.m3u8"
 
 
+def test_normalize_http_download_url_rejects_none_literal() -> None:
+    from platform_api.services.suno_audio_resolver import (
+        build_download_url_candidates,
+        normalize_http_download_url,
+    )
+
+    assert normalize_http_download_url("None") == ""
+    assert normalize_http_download_url("null") == ""
+    assert normalize_http_download_url("https://cdn.example.com/ok.mp3") == "https://cdn.example.com/ok.mp3"
+    assert build_download_url_candidates("None", "https://cdn.example.com/ok.mp3") == [
+        "https://cdn.example.com/ok.mp3"
+    ]
+
+
 def test_parse_suno_generate_poll_uses_download_urls() -> None:
     parsed = parse_suno_generate_poll(
         {

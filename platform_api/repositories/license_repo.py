@@ -404,6 +404,49 @@ class LicenseRepository:
         )
         return result is True
 
+    async def requires_active_license_for_wallet(self, user_id: UUID) -> bool:
+        """True when the user's latest plan is a subscription (wallet needs active license)."""
+        from platform_api.models.enums import PlanType
+
+        row = await self._pool.fetchrow(
+            """
+            SELECT p.name, p.price_cents, p.billing_cycle_days, p.monthly_song_limit
+            FROM licenses l
+            INNER JOIN plans p ON p.id = l.plan_id
+            WHERE l.user_id = $1
+            ORDER BY l.activated_at DESC NULLS LAST, l.created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None:
+            return False
+        name = (row["name"] or "").strip().lower()
+        if name == PlanType.LIFETIME:
+            return False
+        if name in (PlanType.MONTHLY, PlanType.YEARLY):
+            return True
+        return (
+            row.get("billing_cycle_days") is not None
+            and row.get("monthly_song_limit") is not None
+            and int(row.get("price_cents") or 0) > 0
+        )
+
+    async def get_user_license_expires_at(self, user_id: UUID) -> datetime | None:
+        """Return expires_at for the user's current active license, if any."""
+        return await self._pool.fetchval(
+            """
+            SELECT expires_at
+            FROM licenses
+            WHERE user_id = $1
+              AND status = 'active'
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY activated_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            user_id,
+        )
+
     async def has_duplicate_plan(self, user_id: UUID, plan_id: UUID) -> bool:
         """Check if a user already has an active license for the same plan.
 
