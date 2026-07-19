@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from shared.models.desktop import VideoWorkspaceState
 from shared.models.platform import ProgressRow
 from shared.services.file_service import DirectoryEntry, list_directory_entries
+
+# Standard pipeline status vocabulary (Progress + Workflow surfaces).
+STATUS_NOT_STARTED = "Not started"
+STATUS_PENDING = "Pending"
+STATUS_IN_PROGRESS = "In Progress"
+STATUS_COMPLETED = "Completed"
+
+# Display stage labels aligned with Export / Merge column activities.
+STAGE_EXPORT = "Export"
+STAGE_MERGE = "Merge"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,18 +57,26 @@ def _join_windows_path(directory: str, name: str) -> str:
     return f"{base}\\{name}" if base else name
 
 
-def _is_terminal_stage(stage: str) -> bool:
+def _normalize_stage_key(stage: str) -> str:
     normalized = str(stage or "").strip().lower()
-    return normalized in {"youtube", "done", "error"}
+    if normalized in {"converter", "export"}:
+        return "export"
+    if normalized in {"merger", "merge"}:
+        return "merge"
+    return normalized
+
+
+def _is_terminal_stage(stage: str) -> bool:
+    return _normalize_stage_key(stage) in {"youtube", "done", "error"}
 
 
 def _stage_rank(stage: str) -> int:
-    normalized = str(stage or "").strip().lower()
+    normalized = _normalize_stage_key(stage)
     ranks = {
         "music": 1,
         "image": 2,
-        "converter": 3,
-        "merger": 4,
+        "export": 3,
+        "merge": 4,
         "youtube": 5,
         "done": 6,
         "error": 7,
@@ -71,6 +90,63 @@ def _should_override_stage(api_stage: str, runtime_stage: str) -> bool:
     if _is_terminal_stage(api_stage):
         return False
     return _stage_rank(runtime_stage) >= _stage_rank(api_stage)
+
+
+def _standardize_runtime_status(status: str) -> str:
+    key = str(status or "").strip().lower()
+    if key in {"completed", "done", "success"}:
+        return STATUS_COMPLETED
+    if key in {"partial", "converting", "merging", "rendering", "downloading", "uploading", "running", "processing"}:
+        return STATUS_IN_PROGRESS
+    if key in {"queued", "waiting", "preparing"}:
+        return STATUS_PENDING
+    if key in {"not started", "idle", "—", "-", ""}:
+        return STATUS_NOT_STARTED
+    if key == "failed":
+        return "Failed"
+    if key == "blocked":
+        return "Blocked"
+    return str(status or "").strip() or STATUS_PENDING
+
+
+def run_includes_reel(
+    row: ProgressRow,
+    runtime: ProgressRuntimePresentation | None = None,
+) -> bool:
+    """True when reel is part of this run (9x16 assets or real reel branch progress)."""
+    if row.meta.reel_ready:
+        return True
+    if row.meta.background_9x16_path or row.meta.thumbnail_9x16_path:
+        return True
+
+    converter = runtime.converter if runtime else row.converter
+    merge = runtime.merge if runtime else row.merge
+    combined = f"{converter}\n{merge}".lower()
+
+    count_match = re.search(r"reel\s+(\d+)\s*/\s*(\d+)", combined)
+    if count_match is not None and int(count_match.group(1)) > 0:
+        return True
+    if any(
+        token in combined
+        for token in (
+            "reel merged",
+            "reel single",
+            "reel completed",
+            "exporting reel",
+            "merging reel",
+        )
+    ):
+        return True
+    return False
+
+
+def _branch_merge_label(*, completed: bool, single_track: bool, branch: str) -> str:
+    prefix = "Long" if branch == "long" else "Reel"
+    if completed:
+        return f"{prefix} completed"
+    if single_track:
+        return f"{prefix} single"
+    return f"{prefix} pending"
 
 
 def inspect_video_run_entries(directory: str, entries: list[DirectoryEntry]) -> VideoRunInspection:
@@ -122,6 +198,7 @@ def resolve_progress_runtime_presentation(
     reel_count = len(inspection.reel_output_paths) if inspection else 0
     merged_long_count = len(inspection.merged_long_paths) if inspection else 0
     merged_reel_count = len(inspection.merged_reel_paths) if inspection else 0
+    include_reel = run_includes_reel(row)
     normalized_run_dir = _normalize_path(row.meta.run_dir)
     export = workspace.export if workspace else None
     active_run_dir = _normalize_path((export.output_dir if export else None) or "")
@@ -129,6 +206,15 @@ def resolve_progress_runtime_presentation(
     active_branch = "reel" if export and export.branch == "reel" else "long"
     merge_running = bool(is_active_run and export and export.merge_running)
     export_running = bool(is_active_run and export and export.running and not export.merge_running)
+    has_local_video_evidence = bool(
+        inspection
+        and (
+            long_count > 0
+            or reel_count > 0
+            or merged_long_count > 0
+            or merged_reel_count > 0
+        )
+    )
 
     long_ratio = min(long_count / expected, 1) if expected > 0 else 0
     reel_ratio = min(reel_count / expected, 1) if expected > 0 else 0
@@ -145,7 +231,8 @@ def resolve_progress_runtime_presentation(
 
     long_merge_ratio = 1 if merged_long_count > 0 else 0
     reel_merge_ratio = 1 if merged_reel_count > 0 else 0
-    if expected < 2 and (long_count > 0 or reel_count > 0 or export_running or merge_running):
+    single_track = expected < 2
+    if single_track and (long_count > 0 or reel_count > 0 or export_running or merge_running):
         long_merge_ratio = 1
         reel_merge_ratio = 1
     elif merge_running:
@@ -154,19 +241,28 @@ def resolve_progress_runtime_presentation(
         else:
             long_merge_ratio = 0.5
 
-    converter_percent = _clamp_percent(((long_ratio + reel_ratio) / 2) * 100)
-    merge_percent = _clamp_percent(((long_merge_ratio + reel_merge_ratio) / 2) * 100)
+    if include_reel:
+        converter_percent = _clamp_percent(((long_ratio + reel_ratio) / 2) * 100)
+        merge_percent = _clamp_percent(((long_merge_ratio + reel_merge_ratio) / 2) * 100)
+    else:
+        converter_percent = _clamp_percent(long_ratio * 100)
+        merge_percent = _clamp_percent(long_merge_ratio * 100)
 
     converter = row.converter
     if export_running and export:
         converter = export.current_status.strip() or (
-            f"Converting {'reel' if active_branch == 'reel' else 'long'} videos…"
+            f"Exporting {'reel' if active_branch == 'reel' else 'long'} videos…"
         )
     elif long_count > 0 or reel_count > 0:
-        converter = (
-            f"Long {min(long_count, expected)}/{expected} · "
-            f"Reel {min(reel_count, expected)}/{expected}"
-        )
+        if include_reel:
+            converter = (
+                f"Long {min(long_count, expected)}/{expected} · "
+                f"Reel {min(reel_count, expected)}/{expected}"
+            )
+        else:
+            converter = f"Long {min(long_count, expected)}/{expected}"
+    elif (row.meta.long_ready or row.meta.reel_ready) and "waiting for image assets" in str(converter).lower():
+        converter = "Pending · no exports yet"
 
     merge = row.merge
     if merge_running and export:
@@ -174,56 +270,78 @@ def resolve_progress_runtime_presentation(
             f"Merging {'reel' if active_branch == 'reel' else 'long'} outputs…"
         )
     elif merged_long_count > 0 or merged_reel_count > 0:
-        long_label = "Long merged" if merged_long_count > 0 else ("Long single" if expected < 2 else "Long pending")
-        reel_label = "Reel merged" if merged_reel_count > 0 else ("Reel single" if expected < 2 else "Reel pending")
-        merge = f"{long_label} · {reel_label}"
-    elif expected < 2 and (long_count > 0 or reel_count > 0):
+        long_label = _branch_merge_label(
+            completed=merged_long_count > 0,
+            single_track=single_track,
+            branch="long",
+        )
+        if include_reel:
+            reel_label = _branch_merge_label(
+                completed=merged_reel_count > 0,
+                single_track=single_track,
+                branch="reel",
+            )
+            merge = f"{long_label} · {reel_label}"
+        else:
+            merge = long_label
+    elif single_track and (long_count > 0 or reel_count > 0):
         merge = "Not required for a single-track run"
     elif long_count > 0 or reel_count > 0:
-        merge = "Ready for merge once enough branch outputs exist"
+        merge = "Pending · waiting for branch exports"
 
     runtime_stage = row.stage
     runtime_status = row.status
     runtime_notes = row.notes
 
+    export_complete = long_count >= expected and (reel_count >= expected if include_reel else True)
+    merge_complete = (
+        merged_long_count > 0
+        if not include_reel
+        else (
+            (merged_long_count > 0 or long_count > 0)
+            if single_track
+            else (merged_long_count > 0 and merged_reel_count > 0)
+        )
+    )
+
     if merge_running:
-        runtime_stage = "Merger"
-        runtime_status = "Merging"
+        runtime_stage = STAGE_MERGE
+        runtime_status = STATUS_IN_PROGRESS
         runtime_notes = (
             export.current_status.strip() if export and export.current_status.strip() else
             "Desktop merge is running for this batch/channel run."
         )
-    elif export_running:
-        runtime_stage = "Converter"
-        runtime_status = "Converting"
-        runtime_notes = (
-            export.current_status.strip() if export and export.current_status.strip() else
-            "Desktop video export is running for this batch/channel run."
-        )
     elif merged_long_count > 0 or merged_reel_count > 0:
-        runtime_stage = "Merger"
-        merge_complete = (
-            (merged_long_count > 0 or long_count > 0)
-            if expected < 2
-            else (merged_long_count > 0 and merged_reel_count > 0)
-        )
-        runtime_status = "Completed" if merge_complete else "Partial"
+        runtime_stage = STAGE_MERGE
+        runtime_status = STATUS_COMPLETED if merge_complete else STATUS_IN_PROGRESS
         runtime_notes = (
             "Merged outputs were detected locally in the run directory."
             if merge_complete
             else "Only part of the merge branches are ready locally; the other branch is still pending."
         )
+    elif export_running:
+        runtime_stage = STAGE_EXPORT
+        runtime_status = STATUS_IN_PROGRESS
+        runtime_notes = (
+            export.current_status.strip() if export and export.current_status.strip() else
+            "Desktop video export is running for this batch/channel run."
+        )
     elif long_count > 0 or reel_count > 0:
-        runtime_stage = "Converter"
-        convert_complete = long_count >= expected and reel_count >= expected
-        runtime_status = "Completed" if convert_complete else "Partial"
+        runtime_stage = STAGE_EXPORT
+        runtime_status = STATUS_COMPLETED if export_complete else STATUS_IN_PROGRESS
         runtime_notes = (
             "Exported MP4 outputs were detected locally in the run directory."
-            if convert_complete
-            else "Long and reel exports are only partially present in the run directory."
+            if export_complete
+            else (
+                "Long and reel exports are only partially present in the run directory."
+                if include_reel
+                else "Long exports are only partially present in the run directory."
+            )
         )
 
-    if not _should_override_stage(row.stage, runtime_stage):
+    if has_local_video_evidence:
+        runtime_status = _standardize_runtime_status(runtime_status)
+    elif not _should_override_stage(row.stage, runtime_stage):
         runtime_stage = row.stage
         runtime_status = row.status
         runtime_notes = row.notes

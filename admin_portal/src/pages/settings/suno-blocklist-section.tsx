@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { Loader2, Pencil, Plus, ShieldAlert, Trash2 } from 'lucide-react';
 
 import {
   useCreateSunoBlocklistTerm,
   useDeleteSunoBlocklistTerm,
+  usePromoteSunoBlocklistTerm,
   useSunoBlocklist,
+  useSunoFailureMetrics,
   useUpdateSunoBlocklistTerm,
 } from '@/hooks/use-suno-blocklist';
 import { toast } from '@/hooks/use-toast';
@@ -25,10 +28,13 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import type { SunoBlocklistSeverity, SunoBlocklistTerm } from '@/types/suno-blocklist';
 
 export function SunoBlocklistSection() {
+  const [searchParams] = useSearchParams();
   const { data, isLoading, isError, refetch } = useSunoBlocklist();
+  const { data: metricsData } = useSunoFailureMetrics(30);
   const createTerm = useCreateSunoBlocklistTerm();
   const updateTerm = useUpdateSunoBlocklistTerm();
   const deleteTerm = useDeleteSunoBlocklistTerm();
+  const promoteTerm = usePromoteSunoBlocklistTerm();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<SunoBlocklistTerm | null>(null);
@@ -38,6 +44,9 @@ export function SunoBlocklistSection() {
   const [severity, setSeverity] = useState<SunoBlocklistSeverity>('block');
   const [enabled, setEnabled] = useState(true);
   const [notes, setNotes] = useState('');
+  const [promoteTermValue, setPromoteTermValue] = useState(() => searchParams.get('term') ?? '');
+  const [promoteReplacement, setPromoteReplacement] = useState('');
+  const [promoteNotes, setPromoteNotes] = useState('');
 
   const items = useMemo(() => data?.items ?? [], [data?.items]);
   const enabledCount = useMemo(() => items.filter((item) => item.enabled).length, [items]);
@@ -146,6 +155,30 @@ export function SunoBlocklistSection() {
     });
   };
 
+  const handlePromote = () => {
+    const normalizedTerm = promoteTermValue.trim().toLowerCase();
+    if (!normalizedTerm) return;
+    promoteTerm.mutate(
+      {
+        term: normalizedTerm,
+        replacement: promoteReplacement.trim() || null,
+        severity: 'block',
+        notes: promoteNotes.trim() || 'Promoted from admin quick form',
+      },
+      {
+        onSuccess: () => {
+          toast({ title: 'Learned term promoted to blocklist' });
+          setPromoteTermValue('');
+          setPromoteReplacement('');
+          setPromoteNotes('');
+        },
+        onError: (error: Error) => {
+          toast({ title: 'Promote failed', description: error.message, variant: 'destructive' });
+        },
+      },
+    );
+  };
+
   if (isLoading) {
     return <Skeleton className="h-64 w-full" />;
   }
@@ -156,6 +189,66 @@ export function SunoBlocklistSection() {
 
   return (
     <div className="space-y-4">
+      <Card className="border-slate-800 bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Suno Failure Metrics (30d)</CardTitle>
+          <CardDescription>
+            Failed Suno tasks grouped by failure type and first submit vs retry.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {metricsData?.buckets?.length ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {metricsData.buckets.map((bucket) => (
+                <div
+                  key={`${bucket.failure_type}-${bucket.submit_kind}`}
+                  className="rounded-md border border-slate-700 p-3 text-sm"
+                >
+                  <p className="font-medium text-slate-100">{bucket.failure_type}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">{bucket.submit_kind}</p>
+                  <p className="mt-1 text-2xl font-semibold text-amber-300">{bucket.count}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">No failed Suno tasks in the selected window.</p>
+          )}
+          <p className="mt-3 text-xs text-slate-500">
+            Total failed tasks: {metricsData?.total ?? 0}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-800 bg-slate-900/50">
+        <CardHeader>
+          <CardTitle className="text-lg">Promote Learned Term</CardTitle>
+          <CardDescription>
+            Upsert a Suno-learned block term into the runtime registry (source=learned).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-4">
+          <Input
+            value={promoteTermValue}
+            onChange={(e) => setPromoteTermValue(e.target.value)}
+            placeholder="blocked term"
+          />
+          <Input
+            value={promoteReplacement}
+            onChange={(e) => setPromoteReplacement(e.target.value)}
+            placeholder="replacement (optional)"
+          />
+          <Input
+            value={promoteNotes}
+            onChange={(e) => setPromoteNotes(e.target.value)}
+            placeholder="notes (optional)"
+          />
+          <Button onClick={handlePromote} disabled={!promoteTermValue.trim() || promoteTerm.isPending}>
+            {promoteTerm.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Promote
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card className="border-slate-800 bg-slate-900/50">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>

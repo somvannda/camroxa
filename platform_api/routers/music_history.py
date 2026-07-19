@@ -55,6 +55,7 @@ def _is_schema_drift_error(error: Exception) -> bool:
             or "folder_name" in message
             or "youtube_upload_jobs" in message
             or "error_message" in message
+            or "suno_last_sanitize" in message
         )
     )
 
@@ -174,6 +175,7 @@ async def list_music_history(
                 s.status,
                 s.created_at,
                 s.updated_at,
+                s.suno_last_sanitize,
                 st.status AS suno_status,
                 st.error_message AS suno_error_message,
                 COALESCE(st.downloaded_ok, false) AS downloaded_ok,
@@ -228,6 +230,7 @@ async def list_music_history(
                 s.status,
                 s.created_at,
                 s.updated_at,
+                s.suno_last_sanitize,
                 st.status AS suno_status,
                 st.error_message AS suno_error_message,
                 COALESCE(st.downloaded_ok, false) AS downloaded_ok,
@@ -297,6 +300,19 @@ async def list_music_history(
             alt_profile_folder=batch_meta.get("alt_profile_folder"),
             alt_profile_name=batch_meta.get("alt_profile_name"),
         )
+        suno_last_raw = _row_value(row, "suno_last_sanitize")
+        suno_last_sanitize = None
+        if isinstance(suno_last_raw, dict):
+            suno_last_sanitize = suno_last_raw
+        elif suno_last_raw is not None:
+            import json
+
+            try:
+                parsed = json.loads(str(suno_last_raw))
+                if isinstance(parsed, dict):
+                    suno_last_sanitize = parsed
+            except json.JSONDecodeError:
+                suno_last_sanitize = None
         songs_by_batch[str(row["batch_id"])].append(
             MusicHistorySongResponse(
                 song_id=song_id,
@@ -320,6 +336,7 @@ async def list_music_history(
                 downloaded_alt=bool(row["downloaded_alt"]),
                 image_jobs_completed=int(image_meta.get("completed", 0)),
                 image_jobs_total=int(image_meta.get("total", 0)),
+                suno_last_sanitize=suno_last_sanitize,
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )

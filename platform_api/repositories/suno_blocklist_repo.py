@@ -41,16 +41,37 @@ class SunoBlocklistRepository:
         )
         return self._row_to_dict(row) if row else None
 
-    async def get_enabled_terms(self) -> list[dict[str, Any]]:
-        rows = await self._pool.fetch(
-            """
-            SELECT id, term, replacement, severity, source, enabled, notes,
-                   created_at, updated_at
-            FROM suno_blocklist_terms
-            WHERE enabled = TRUE
-            ORDER BY LOWER(term) ASC
-            """
-        )
+    async def get_enabled_terms(
+        self,
+        *,
+        channel_profile_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        if channel_profile_id is None:
+            rows = await self._pool.fetch(
+                """
+                SELECT id, term, replacement, severity, source, enabled, notes,
+                       channel_profile_id, created_at, updated_at
+                FROM suno_blocklist_terms
+                WHERE enabled = TRUE
+                  AND channel_profile_id IS NULL
+                ORDER BY LOWER(term) ASC
+                """
+            )
+        else:
+            rows = await self._pool.fetch(
+                """
+                SELECT id, term, replacement, severity, source, enabled, notes,
+                       channel_profile_id, created_at, updated_at
+                FROM suno_blocklist_terms
+                WHERE enabled = TRUE
+                  AND (
+                    channel_profile_id IS NULL
+                    OR channel_profile_id = $1
+                  )
+                ORDER BY LOWER(term) ASC
+                """,
+                channel_profile_id,
+            )
         return [self._row_to_dict(row) for row in rows]
 
     async def create(

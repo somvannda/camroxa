@@ -9,6 +9,7 @@ from shared.lib.channel_asset_paths import (
     resolve_local_channel_asset_paths,
 )
 from shared.lib.progress_presentation import format_images_compact, format_music_compact
+from shared.lib.video_runtime_inspection import STATUS_IN_PROGRESS, STATUS_PENDING
 from shared.models.platform import ProgressRow
 from shared.services.file_service import sanitize_local_path
 
@@ -75,24 +76,35 @@ def _apply_local_stage_truth(row: ProgressRow, *, assets_ready: bool, music_read
             }
         )
 
-    if stage_key in {"converter", "merger"} and not assets_ready:
+    if stage_key in {"converter", "export", "merger", "merge"} and not assets_ready:
         return row.model_copy(
             update={
                 "stage": "Image",
-                "status": "Rendering",
+                "status": STATUS_IN_PROGRESS,
                 "notes": "Background/thumbnail files are not present locally yet.",
-                "converter": "Waiting for image assets",
+                "converter": "Not started · waiting for image assets",
                 "merge": "—",
             }
         )
 
-    if stage_key == "image" and assets_ready:
+    converter_lower = str(row.converter or "").strip().lower()
+    waiting_for_assets = "waiting for image assets" in converter_lower
+    if assets_ready and (stage_key == "image" or waiting_for_assets):
+        if stage_key in {"youtube", "done"}:
+            return row
         return row.model_copy(
             update={
-                "status": status if status else "Queued",
+                "stage": "Export",
+                "status": STATUS_PENDING if status in {"", "Rendering", STATUS_IN_PROGRESS} else status,
                 "notes": notes or "Image assets are ready locally; waiting for video export.",
+                "converter": "Pending · no exports yet",
             }
         )
+
+    if stage_key == "converter":
+        return row.model_copy(update={"stage": "Export"})
+    if stage_key == "merger":
+        return row.model_copy(update={"stage": "Merge"})
 
     return row
 
@@ -101,7 +113,7 @@ def apply_local_progress_overlays(rows: list[ProgressRow]) -> list[ProgressRow]:
     patched: list[ProgressRow] = []
     for row in rows:
         run_dir = sanitize_local_path(str(row.meta.run_dir or "").strip())
-        assets = resolve_local_channel_asset_paths(run_dir) if run_dir else {
+        assets = resolve_local_channel_asset_paths(run_dir, channel_role=row.meta.role) if run_dir else {
             "background_16x9_path": None,
             "background_9x16_path": None,
             "thumbnail_16x9_path": None,

@@ -3,14 +3,32 @@
 from __future__ import annotations
 
 import time
+from typing import Literal
 
 from PySide6.QtCore import QObject, QTimer
 
-from features.video.lib.desktop_video_automation import select_next_auto_video_candidate
+from features.video.lib.desktop_video_automation import (
+    build_auto_video_candidate_from_row,
+    select_next_auto_video_candidate,
+)
 from features.video.services.pipeline_automation_service import PipelineAutomationService
 from shared.models.desktop import VideoWorkspaceState
+from shared.models.platform import ProgressRow
 from shared.services.platform_api import PlatformApi
 from shared.workers.data_workers import VideoPipelineOrchestrationPayload, VideoPipelineOrchestrationWorker
+
+ManualPipelineAction = Literal["rebuild_export", "force_export", "merge"]
+
+_bound_coordinator: "VideoPipelineCoordinator | None" = None
+
+
+def bind_video_pipeline_coordinator(coordinator: "VideoPipelineCoordinator") -> None:
+    global _bound_coordinator
+    _bound_coordinator = coordinator
+
+
+def get_video_pipeline_coordinator() -> "VideoPipelineCoordinator | None":
+    return _bound_coordinator
 
 
 class VideoPipelineCoordinator(QObject):
@@ -25,6 +43,7 @@ class VideoPipelineCoordinator(QObject):
         self._automation = PipelineAutomationService(self._api, self)
         self._cooldown_until: dict[str, float] = {}
         self._active = False
+        self._pending_manual: tuple[ProgressRow, ManualPipelineAction, str] | None = None
 
     def start(self) -> None:
         self._active = True
@@ -81,6 +100,88 @@ class VideoPipelineCoordinator(QObject):
             self._cooldown_until[cooldown_key] = time.time() + 120.0
         else:
             self._cooldown_until[cooldown_key] = time.time() + 12.0
+
+    def run_manual_action(
+        self,
+        row: ProgressRow,
+        action: ManualPipelineAction,
+        *,
+        branch: str = "long",
+    ) -> None:
+        if self._automation.is_busy():
+            from shared.services.shell_status import emit_shell_status
+
+            emit_shell_status("Video pipeline is already running.", tone="warning")
+            return
+        if self._worker is not None and self._worker.isRunning():
+            from shared.services.shell_status import emit_shell_status
+
+            emit_shell_status("Video pipeline is still loading settings.", tone="warning")
+            return
+
+        self._pending_manual = (row, action, branch)
+        worker = VideoPipelineOrchestrationWorker(self._api, parent=self)
+        worker.succeeded.connect(self._on_manual_payload_ready)
+        worker.failed.connect(self._on_manual_action_failed)
+        worker.finished.connect(self._on_worker_finished)
+        self._worker = worker
+        worker.start()
+
+    def _on_manual_payload_ready(self, payload: object) -> None:
+        pending = getattr(self, "_pending_manual", None)
+        if pending is None:
+            self._on_payload_ready(payload)
+            return
+        row, action, branch = pending
+        self._pending_manual = None
+        if not isinstance(payload, VideoPipelineOrchestrationPayload):
+            return
+
+        profiles_by_id = {profile.id: profile for profile in payload.profiles}
+        profile = profiles_by_id.get(row.meta.profile_id)
+        if profile is None:
+            from shared.services.shell_status import emit_shell_status
+
+            emit_shell_status("Unable to start video action: channel profile not found.", tone="warning")
+            return
+
+        normalized_branch = "reel" if str(branch or "").strip().lower() == "reel" else "long"
+        overlay_rows = [item for item in payload.rows if item.meta.batch_id == row.meta.batch_id]
+        overlay_row = next(
+            (
+                item
+                for item in overlay_rows
+                if item.meta.profile_id == row.meta.profile_id and item.meta.role == row.meta.role
+            ),
+            row,
+        )
+        candidate = build_auto_video_candidate_from_row(overlay_row, profile, normalized_branch)
+        if candidate is None:
+            from shared.services.shell_status import emit_shell_status
+
+            emit_shell_status(
+                "Unable to start video action: image assets or template are not ready for this run.",
+                tone="warning",
+            )
+            return
+
+        if action == "merge":
+            self._automation.start_manual_merge(candidate, settings=payload.settings)
+            return
+
+        force_regenerate = action == "force_export"
+        self._automation.start(
+            candidate,
+            settings=payload.settings,
+            force_regenerate=force_regenerate,
+            auto_merge=False,
+        )
+
+    def _on_manual_action_failed(self, message: str) -> None:
+        self._pending_manual = None
+        from shared.services.shell_status import emit_shell_status
+
+        emit_shell_status(message or "Video pipeline action failed.", tone="warning")
 
     def _on_poll_failed(self, _message: str) -> None:
         return

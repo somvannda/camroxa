@@ -148,3 +148,27 @@ def select_next_auto_video_candidate(
             )
 
     return None
+
+
+def build_auto_video_candidate_from_row(
+    row: ProgressRow,
+    profile: ProfileResponse,
+    branch: VideoPipelineBranch,
+) -> AutoVideoCandidate | None:
+    inputs = resolve_video_pipeline_inputs(row, branch, profile)
+    template_id = str(inputs.recommended_template_id or "").strip()
+    run_dir = str(inputs.run_dir or "").strip()
+    background_path = str(inputs.background_path or "").strip()
+    if not inputs.ready or not run_dir or not background_path or not template_id:
+        return None
+    return AutoVideoCandidate(
+        key=build_video_pipeline_run_key(row),
+        branch=branch,
+        batch_id=row.meta.batch_id,
+        role=row.meta.role,
+        run_dir=run_dir,
+        background_path=background_path,
+        template_id=template_id,
+        output_resolution=profile.output_resolution if branch == "long" else None,
+        profile_id=str(row.meta.profile_id or "") or None,
+    )

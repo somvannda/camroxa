@@ -204,6 +204,7 @@ class MusicView(QWidget):
         )
         self._song_card.field_changed.connect(self._on_song_fields_changed)
         self._song_card.suno_auto_fixed.connect(self._on_suno_auto_fixed)
+        self._song_card.suno_online_check_requested.connect(self._on_suno_online_check_requested)
         self._primary_card.toggled.connect(lambda profile_id: self._toggle_profile("primary", profile_id))
         self._secondary_card.toggled.connect(lambda profile_id: self._toggle_profile("secondary", profile_id))
         self._automation_card.generate_requested.connect(self._create_batches)
@@ -386,6 +387,58 @@ class MusicView(QWidget):
             block_terms=list(blocklist.block_terms),
             warn_terms=list(blocklist.warn_terms),
         )
+        self._song_card.set_learned_suno_terms(self._merged_learned_suno_terms())
+
+    def _merged_learned_suno_terms(self, extra: list[str] | None = None) -> list[str]:
+        merged = [str(term).strip().lower() for term in self._music_settings.learned_suno_terms if str(term).strip()]
+        seen = set(merged)
+        for term in extra or []:
+            normalized = str(term).strip().lower()
+            if normalized and normalized not in seen:
+                merged.append(normalized)
+                seen.add(normalized)
+        return merged
+
+    def _remember_learned_suno_terms(self, terms: list[str]) -> None:
+        merged = self._merged_learned_suno_terms(terms)
+        if tuple(merged) == self._music_settings.learned_suno_terms:
+            return
+        self._music_settings = replace(self._music_settings, learned_suno_terms=tuple(merged))
+        self._schedule_settings_save()
+        self._song_card.set_learned_suno_terms(merged)
+
+    def _on_suno_online_check_requested(self, title: str, lyrics: str) -> None:
+        import threading
+
+        learned_terms = self._merged_learned_suno_terms()
+
+        def run() -> None:
+            try:
+                from shared.lib.suno_lyrics_sanitize import SunoLyricsRiskHit
+                from shared.models.platform import LyricsSunoCheckRequest
+
+                response = self._api.check_lyrics_suno(
+                    LyricsSunoCheckRequest(
+                        title=title,
+                        lyrics=lyrics,
+                        learned_terms=learned_terms,
+                    )
+                )
+                hits = [
+                    SunoLyricsRiskHit(
+                        term=hit.term,
+                        severity=hit.severity if hit.severity in {"block", "warn"} else "warn",
+                        start=hit.start,
+                        end=hit.end,
+                        suggestion=hit.suggestion,
+                    )
+                    for hit in response.hits
+                ]
+                QTimer.singleShot(0, lambda: self._song_card.apply_online_suno_hits(hits))
+            except Exception:
+                return
+
+        threading.Thread(target=run, daemon=True).start()
 
     def refresh_data(self) -> None:
         if account_cache_mismatch(self._loaded_user_id, self._cache):
@@ -1205,6 +1258,32 @@ class MusicView(QWidget):
         )
         failure_message = str(row.song.suno_error_message or "").strip()
         learned_terms: list[str] = []
+        stored_sanitize = row.song.suno_last_sanitize if isinstance(row.song.suno_last_sanitize, dict) else None
+        if stored_sanitize:
+            from shared.lib.suno_lyrics_sanitize import SunoSanitizeReplacement, format_suno_replacements
+
+            replacements_raw = stored_sanitize.get("replacements") or []
+            stored_replacements: list[SunoSanitizeReplacement] = []
+            for item in replacements_raw:
+                if not isinstance(item, dict):
+                    continue
+                stored_replacements.append(
+                    SunoSanitizeReplacement(
+                        field=str(item.get("field") or "text"),
+                        source=str(item.get("source") or ""),
+                        target=str(item.get("target") or ""),
+                    )
+                )
+            summary = format_suno_replacements(stored_replacements)
+            if summary:
+                self._flash_status(
+                    f"Suno sanitize applied on submit: {summary}",
+                    tone="success",
+                )
+            for term in stored_sanitize.get("blocked_terms") or []:
+                normalized = str(term).strip().lower()
+                if normalized:
+                    learned_terms.append(normalized)
         if failure_message:
             from shared.lib.suno_lyrics_sanitize import (
                 extract_blocked_terms_from_suno_error,
@@ -1212,8 +1291,17 @@ class MusicView(QWidget):
                 infer_suno_replacements_from_learned_terms,
             )
 
-            learned_terms = extract_blocked_terms_from_suno_error(failure_message)
-            self._song_card.set_learned_suno_terms(learned_terms)
+            learned_terms.extend(extract_blocked_terms_from_suno_error(failure_message))
+        if learned_terms:
+            self._remember_learned_suno_terms(learned_terms)
+        elif not stored_sanitize:
+            self._song_card.set_learned_suno_terms(self._merged_learned_suno_terms())
+        if failure_message and not stored_sanitize:
+            from shared.lib.suno_lyrics_sanitize import (
+                format_suno_replacements,
+                infer_suno_replacements_from_learned_terms,
+            )
+
             inferred = infer_suno_replacements_from_learned_terms(
                 title=self._composer.title,
                 lyrics=self._composer.lyrics,
@@ -1225,8 +1313,8 @@ class MusicView(QWidget):
                     f"Suno-safe wording on draft: {summary}",
                     tone="success",
                 )
-        else:
-            self._song_card.set_learned_suno_terms([])
+        elif not learned_terms and not stored_sanitize:
+            self._song_card.set_learned_suno_terms(self._merged_learned_suno_terms())
         song_status = str(row.song.status or "").strip().lower()
         suno_status = str(row.song.suno_status or "").strip().lower()
         if failure_message and (song_status == "suno_failed" or suno_status == "suno_failed"):

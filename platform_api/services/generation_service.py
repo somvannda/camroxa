@@ -1744,11 +1744,32 @@ class GenerationService:
 
         blocked = extract_blocked_terms_from_suno_error(failure_hint)
         runtime_config = await get_suno_blocklist_service().get_runtime_config()
-        return sanitize_lyrics_for_suno(
+        cleaned = sanitize_lyrics_for_suno(
             cleaned,
             blocked_terms=blocked,
             runtime_config=runtime_config,
         )
+        from platform_api.services.suno_lyrics_sanitize import (
+            find_suno_risk_terms_in_text,
+            sanitize_lyrics_for_suno_with_changes,
+        )
+
+        block_hits = [
+            hit
+            for hit in find_suno_risk_terms_in_text(
+                cleaned,
+                learned_terms=blocked,
+                runtime_config=runtime_config,
+            )
+            if hit.severity == "block"
+        ]
+        if block_hits:
+            cleaned, _ = sanitize_lyrics_for_suno_with_changes(
+                cleaned,
+                blocked_terms=blocked,
+                runtime_config=runtime_config,
+            )
+        return cleaned
 
     # ------------------------------------------------------------------
     # submit_draft (Requirements 10.1, 10.3-10.7, 7.3, 7.6)

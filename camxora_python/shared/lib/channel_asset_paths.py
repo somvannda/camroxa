@@ -27,16 +27,38 @@ def _resolve_named_asset(run_dir: str, stem: str) -> str | None:
     return None
 
 
-def resolve_local_channel_asset_paths(run_dir: str) -> dict[str, str | None]:
+def _role_stem_suffix(channel_role: str | None) -> str | None:
+    normalized = str(channel_role or "").strip().upper()
+    if normalized in {"OK", "PRIMARY"}:
+        return "ok"
+    if normalized in {"ALT", "SECONDARY"}:
+        return "alt"
+    return None
+
+
+def resolve_local_channel_asset_paths(
+    run_dir: str,
+    *,
+    channel_role: str | None = None,
+) -> dict[str, str | None]:
     normalized = sanitize_local_path(str(run_dir or "").strip())
     if not normalized:
         return {key: None for key in _ASSET_PATH_KEYS}
 
+    role_key = _role_stem_suffix(channel_role)
+
+    def resolve_stem(stem: str) -> str | None:
+        if role_key:
+            resolved = _resolve_named_asset(normalized, f"{stem}-{role_key}")
+            if resolved:
+                return resolved
+        return _resolve_named_asset(normalized, stem)
+
     return {
-        "background_16x9_path": _resolve_named_asset(normalized, "background-16x9"),
-        "background_9x16_path": _resolve_named_asset(normalized, "background-9x16"),
-        "thumbnail_16x9_path": _resolve_named_asset(normalized, "thumbnail-16x9"),
-        "thumbnail_9x16_path": _resolve_named_asset(normalized, "thumbnail-9x16"),
+        "background_16x9_path": resolve_stem("background-16x9"),
+        "background_9x16_path": resolve_stem("background-9x16"),
+        "thumbnail_16x9_path": resolve_stem("thumbnail-16x9"),
+        "thumbnail_9x16_path": resolve_stem("thumbnail-9x16"),
     }
 
 

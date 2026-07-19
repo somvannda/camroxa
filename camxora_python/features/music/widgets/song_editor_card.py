@@ -22,6 +22,7 @@ from features.music.widgets.lyrics_suno_highlighter import (
     clear_lyrics_suno_highlights,
 )
 from shared.lib.suno_lyrics_sanitize import (
+    SunoLyricsRiskHit,
     SunoPlatformBlocklist,
     SunoSanitizeReplacement,
     find_suno_risk_terms_in_text,
@@ -31,6 +32,7 @@ from shared.lib.suno_lyrics_sanitize import (
 from shared.themes.deep_blue import SHELL_TEXT_EDIT_ID, SUBTITLE_LABEL_ID
 
 _SUNO_SCAN_DEBOUNCE_MS = 400
+_SUNO_ONLINE_SCAN_DEBOUNCE_MS = 900
 
 
 class SongEditorCard(QFrame):
@@ -41,6 +43,7 @@ class SongEditorCard(QFrame):
     copy_both_requested = Signal()
     field_changed = Signal()
     suno_auto_fixed = Signal(str)
+    suno_online_check_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -144,11 +147,16 @@ class SongEditorCard(QFrame):
         root.addWidget(self._lyrics, stretch=1)
 
         self._learned_suno_terms: list[str] = []
+        self._online_suno_hits: list[SunoLyricsRiskHit] = []
         self._platform_blocklist: SunoPlatformBlocklist | None = None
         self._suno_scan_timer = QTimer(self)
         self._suno_scan_timer.setSingleShot(True)
         self._suno_scan_timer.setInterval(_SUNO_SCAN_DEBOUNCE_MS)
         self._suno_scan_timer.timeout.connect(self._run_suno_scan)
+        self._online_scan_timer = QTimer(self)
+        self._online_scan_timer.setSingleShot(True)
+        self._online_scan_timer.setInterval(_SUNO_ONLINE_SCAN_DEBOUNCE_MS)
+        self._online_scan_timer.timeout.connect(self._request_online_suno_scan)
 
         self._title.textChanged.connect(self._on_title_changed)
         self._album.textChanged.connect(lambda *_: self.field_changed.emit())
@@ -169,10 +177,23 @@ class SongEditorCard(QFrame):
     def _on_title_changed(self) -> None:
         self.field_changed.emit()
         self._suno_scan_timer.start()
+        self._online_scan_timer.start()
 
     def _on_lyrics_changed(self) -> None:
         self.field_changed.emit()
         self._suno_scan_timer.start()
+        self._online_scan_timer.start()
+
+    def _request_online_suno_scan(self) -> None:
+        title = self._title.text().strip()
+        lyrics = self._lyrics.toPlainText()
+        if not title and not lyrics.strip():
+            return
+        self.suno_online_check_requested.emit(title, lyrics)
+
+    def apply_online_suno_hits(self, hits: list[SunoLyricsRiskHit] | None) -> None:
+        self._online_suno_hits = list(hits or [])
+        self._run_suno_scan()
 
     def set_learned_suno_terms(self, terms: list[str] | None) -> None:
         self._learned_suno_terms = [str(term).strip().lower() for term in (terms or []) if str(term).strip()]
@@ -231,7 +252,7 @@ class SongEditorCard(QFrame):
             return
 
         title_hits, lyrics_hits = self._collect_suno_hits()
-        hits = title_hits + lyrics_hits
+        hits = title_hits + lyrics_hits + self._online_suno_hits
         apply_lyrics_suno_highlights(self._lyrics, lyrics_hits)
         block_count = sum(1 for hit in hits if hit.severity == "block")
         warn_count = sum(1 for hit in hits if hit.severity == "warn")

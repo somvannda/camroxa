@@ -65,8 +65,8 @@ STAGE_OPTIONS = (
     ("All stages", "all"),
     ("Music", "music"),
     ("Image", "image"),
-    ("Converter", "converter"),
-    ("Merger", "merger"),
+    ("Export", "export"),
+    ("Merge", "merge"),
     ("YouTube", "youtube"),
     ("Done", "done"),
     ("Error", "error"),
@@ -184,6 +184,15 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.enqueue_images_requested.connect(self._enqueue_images)
         self._rows_card.retry_drafts_requested.connect(self._retry_failed_drafts)
         self._rows_card.retry_suno_requested.connect(self._retry_failed_suno)
+        self._rows_card.force_export_regenerate_requested.connect(
+            lambda row: self._run_video_pipeline_action(row, "force_export")
+        )
+        self._rows_card.rebuild_export_requested.connect(
+            lambda row: self._run_video_pipeline_action(row, "rebuild_export")
+        )
+        self._rows_card.start_merge_requested.connect(
+            lambda row: self._run_video_pipeline_action(row, "merge")
+        )
         self._rows_card.row_selected.connect(self._on_row_selected)
 
         self._detail_card = ProgressDetailCard()
@@ -391,7 +400,17 @@ class ProgressView(PollablePageMixin, QScrollArea):
         entries = self._effective_rows()
         if stage == "all":
             return entries
-        return [entry for entry in entries if entry.effective_stage.lower() == stage]
+        return [entry for entry in entries if self._matches_stage_filter(entry.effective_stage, stage)]
+
+    @staticmethod
+    def _matches_stage_filter(effective_stage: str, stage_filter: str) -> bool:
+        normalized = str(effective_stage or "").strip().lower()
+        aliases = {
+            "export": {"export", "converter"},
+            "merge": {"merge", "merger"},
+        }
+        allowed = aliases.get(stage_filter, {stage_filter})
+        return normalized in allowed
 
     def _render(self) -> None:
         self._update_stats()
@@ -425,7 +444,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         converter = sum(
             1
             for entry in entries
-            if entry.effective_stage.lower() in {"converter", "merger"}
+            if str(entry.effective_stage or "").strip().lower() in {"export", "converter", "merge", "merger"}
         )
         failed = sum(
             1
@@ -652,3 +671,22 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.set_syncing_batch_id("")
         self._detail_card.set_syncing_batch_id("")
         self._render_table()
+
+    def _run_video_pipeline_action(self, row: ProgressRow | None, action: str) -> None:
+        if row is None:
+            self._show_retry_notice("Select a run before starting video work.", tone="warning")
+            return
+        from shared.services.video_pipeline_coordinator import get_video_pipeline_coordinator
+
+        coordinator = get_video_pipeline_coordinator()
+        if coordinator is None:
+            self._show_retry_notice("Video pipeline is not available yet.", tone="warning")
+            return
+        labels = {
+            "force_export": "Force regenerating MP4 exports…",
+            "rebuild_export": "Rebuilding missing MP4 exports…",
+            "merge": "Starting video merge…",
+        }
+        self._show_retry_notice(labels.get(action, "Starting video action…"), tone="neutral")
+        coordinator.run_manual_action(row, action)  # type: ignore[arg-type]
+        self.refresh_data()

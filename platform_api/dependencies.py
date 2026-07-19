@@ -480,6 +480,42 @@ def get_client_log_service():
     return ClientLogService(repo=get_client_log_repo())
 
 
+def get_desktop_release_upload_service(request: Any | None = None):
+    """Return the desktop installer upload service."""
+    from platform_api.services.desktop_release_upload_service import DesktopReleaseUploadService
+
+    settings = get_settings()
+    api_download_base_url = ""
+    if request is not None:
+        api_download_base_url = (
+            f"{str(request.base_url).rstrip('/')}/api/v1/public/desktop-release/files"
+        )
+    return DesktopReleaseUploadService(
+        storage_root=settings.desktop_release_storage_path,
+        public_base_url=settings.desktop_release_public_base_url,
+        api_download_base_url=api_download_base_url,
+        max_bytes=settings.desktop_release_max_upload_mb * 1024 * 1024,
+    )
+
+
+async def get_desktop_release_upload_service_resolved(
+    pool: Any,
+    request: Any | None = None,
+) -> Any:
+    """Installer service with absolute public download URLs when possible."""
+    from platform_api.services.desktop_release_upload_service import DesktopReleaseUploadService
+    from platform_api.services.public_url_service import resolve_public_api_base_url
+
+    settings = get_settings()
+    service = get_desktop_release_upload_service(request)
+    if settings.desktop_release_public_base_url.strip():
+        return service
+
+    api_base = await resolve_public_api_base_url(pool, settings=settings)
+    files_base = f"{api_base.rstrip('/')}/api/v1/public/desktop-release/files"
+    return service.with_download_bases(api_download_base_url=files_base)
+
+
 def get_notification_service():
     """Dependency that returns the NotificationService instance."""
     from platform_api.services.notification_service import (

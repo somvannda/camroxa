@@ -26,8 +26,14 @@ function resolvePlatformApiBaseUrl(): string {
   );
 }
 
-export async function getPublicBlogPosts(): Promise<PublicBlogPostSummary[]> {
-  const response = await fetch(`${resolvePlatformApiBaseUrl()}/blog-posts/public`, {
+export async function getPublicBlogPosts(category?: string): Promise<PublicBlogPostSummary[]> {
+  const url = new URL(`${resolvePlatformApiBaseUrl()}/blog-posts/public`);
+  const normalizedCategory = category?.trim();
+  if (normalizedCategory) {
+    url.searchParams.set("category", normalizedCategory);
+  }
+
+  const response = await fetch(url.toString(), {
     next: { revalidate: BLOG_REVALIDATE_SECONDS },
   });
 

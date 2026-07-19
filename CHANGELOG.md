@@ -1,11 +1,30 @@
-# Changelog
+# Changelog — Desktop app (`camxora_python`)
 
-All notable changes to the Camxora desktop app are documented here.
+All notable changes to the **Camxora desktop app** (PySide6 client) are documented here.
+
+This is **not** the changelog for user portal, music portal, admin portal, platform API, or website — see [`docs/CHANGELOG_GUIDE.md`](docs/CHANGELOG_GUIDE.md).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.2.2] - 2026-07-19
+
+### Added
+
+- Suno sanitize metadata on history, learned-term cache, and online lyrics scan merge
+- Desktop distribution: public release API, website `/download` + `/changelog`, admin installer upload
+
+### Fixed
+
+- Progress page Stage / Progress % / Export / Merge alignment when merged MP4s exist on disk (incl. long-only beattok runs) and when export workspace state is stale
+- Stuck `suno_pending` reconciliation and one-pass auto-sanitize / auto-retry on sensitive Suno failures
+
+### Changed
+
+- Progress pipeline vocabulary standardized to Not started, Pending, In Progress, Completed; stage label **Converter → Export**, **Merger → Merge**
+- Video pipeline automation / channel asset path handling improvements
 
 ## [0.2.1] - 2026-07-19
 

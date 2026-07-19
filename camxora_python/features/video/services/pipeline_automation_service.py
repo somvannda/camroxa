@@ -9,7 +9,11 @@ from typing import Any
 from PySide6.QtCore import QObject
 
 from features.video.lib.desktop_video_automation import AutoVideoCandidate
-from features.video.lib.pipeline_merge import is_auto_merge_enabled_for_branch
+from features.video.lib.pipeline_merge import (
+    build_merged_output_path,
+    is_auto_merge_enabled_for_branch,
+    list_branch_export_outputs,
+)
 from features.video.lib.video_billing import consume_video_operation, refund_video_operation
 from features.video.lib.render_scene_request import (
     PIPELINE_EXPORT_FPS,
@@ -55,9 +59,23 @@ class PipelineAutomationService(QObject):
             or (self._merge_worker is not None and self._merge_worker.isRunning())
         )
 
-    def start(self, candidate: AutoVideoCandidate, *, settings: dict[str, Any]) -> bool:
+    def start(
+        self,
+        candidate: AutoVideoCandidate,
+        *,
+        settings: dict[str, Any],
+        force_regenerate: bool = False,
+        auto_merge: bool | None = None,
+    ) -> bool:
         if self.is_busy():
             return False
+        if force_regenerate:
+            self._clear_branch_exports(
+                candidate.run_dir,
+                candidate.batch_id,
+                candidate.role,
+                candidate.branch,
+            )
         self._auth_blocked = False
         self._settings = dict(settings or {})
         workspace = self._store.set_template(candidate.template_id)
@@ -109,7 +127,11 @@ class PipelineAutomationService(QObject):
         except (TypeError, ValueError):
             worker_limit = 1
 
-        auto_merge = is_auto_merge_enabled_for_branch(self._settings, branch)
+        auto_merge = (
+            bool(auto_merge)
+            if auto_merge is not None
+            else is_auto_merge_enabled_for_branch(self._settings, branch)
+        )
         shuffle_merge = bool(self._settings.get("videoShuffleMerge", False))
         ordered_mp4s = [
             build_pipeline_export_output_path(mp3_path=item.path, output_dir=run_dir, branch=branch)
@@ -542,3 +564,79 @@ class PipelineAutomationService(QObject):
 
     def _on_merge_finished(self) -> None:
         self._merge_worker = None
+
+    @staticmethod
+    def _clear_branch_exports(run_dir: str, batch_id: str, role: str, branch: str) -> None:
+        normalized_branch = "reel" if str(branch or "").strip().lower() == "reel" else "long"
+        for path in list_branch_export_outputs(run_dir, normalized_branch):
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+        merged_path = build_merged_output_path(
+            output_dir=run_dir,
+            batch_id=batch_id,
+            role=role,
+            branch=normalized_branch,
+        )
+        try:
+            Path(merged_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def start_manual_merge(
+        self,
+        candidate: AutoVideoCandidate,
+        *,
+        settings: dict[str, Any],
+    ) -> bool:
+        if self.is_busy():
+            emit_shell_status("Video pipeline is already running.", tone="warning")
+            return False
+        self._auth_blocked = False
+        self._settings = dict(settings or {})
+        branch = "reel" if candidate.branch == "reel" else "long"
+        run_dir = str(candidate.run_dir or "").strip()
+        if not run_dir or not Path(run_dir).is_dir():
+            emit_shell_status("Merge skipped: run directory is missing.")
+            return False
+        mp4_paths = list_branch_export_outputs(run_dir, branch)
+        if not mp4_paths:
+            emit_shell_status("Merge skipped: no exported MP4 files were found in the run folder.")
+            return False
+        profile_id = str(getattr(candidate, "profile_id", None) or "").strip() or None
+        ref_base = f"{candidate.batch_id}:{candidate.role}:{branch}"
+        self._merge_context = {
+            "run_dir": run_dir,
+            "branch": branch,
+            "batch_id": candidate.batch_id,
+            "role": candidate.role,
+            "auto_merge": False,
+            "shuffle": bool(self._settings.get("videoShuffleMerge", False)),
+            "mp4_paths": mp4_paths,
+            "completed": len(mp4_paths),
+            "total": len(mp4_paths),
+            "profile_id": profile_id,
+            "ref_base": ref_base,
+        }
+        workspace = self._store.read_workspace_state(self._settings)
+        branch_label = "Reel" if branch == "reel" else "Long"
+        self._publish_workspace(
+            workspace.model_copy(
+                update={
+                    "export": workspace.export.model_copy(
+                        update={
+                            "running": True,
+                            "merge_running": True,
+                            "branch": branch_label,
+                            "current_status": f"Starting {branch_label.lower()} merge…",
+                            "output_dir": run_dir,
+                        }
+                    )
+                }
+            )
+        )
+        self._busy = True
+        self._start_merge()
+        emit_shell_status(f"Started {branch_label.lower()} merge for {Path(run_dir).name}.")
+        return True

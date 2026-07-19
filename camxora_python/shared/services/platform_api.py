@@ -39,6 +39,8 @@ from shared.models.platform import (
     ImageSamplePackListResponse,
     LyricsPolishRequest,
     LyricsPolishResponse,
+    LyricsSunoCheckRequest,
+    LyricsSunoCheckResponse,
     MusicPlanPreflightRequest,
     MusicPlanPreflightResponse,
     MusicDownloadSyncItem,
@@ -358,6 +360,16 @@ class PlatformApi:
             timeout=300.0,
         )
         return LyricsPolishResponse.model_validate(data)
+
+    def check_lyrics_suno(self, payload: LyricsSunoCheckRequest) -> LyricsSunoCheckResponse:
+        data = self._client.request(
+            "/generation/lyrics-suno-check",
+            method="POST",
+            auth=True,
+            body=payload.model_dump(exclude_none=True),
+            timeout=30.0,
+        )
+        return LyricsSunoCheckResponse.model_validate(data)
 
     def create_batch(self, payload: BatchCreateRequest) -> BatchCreateResponse:
         data = self._client.request(

@@ -34,7 +34,8 @@ class FakeSunoBlocklistRepo:
     async def get_by_id(self, term_id: UUID) -> dict | None:
         return self.rows.get(term_id)
 
-    async def get_enabled_terms(self) -> list[dict]:
+    async def get_enabled_terms(self, *, channel_profile_id: UUID | None = None) -> list[dict]:
+        del channel_profile_id
         return [row for row in self.rows.values() if row["enabled"]]
 
     async def create(

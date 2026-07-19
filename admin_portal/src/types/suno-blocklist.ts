@@ -34,6 +34,18 @@ export interface UpdateSunoBlocklistRequest {
   clear_replacement?: boolean;
 }
 
+export interface SunoFailureMetricBucket {
+  failure_type: string;
+  submit_kind: 'first_submit' | 'retry';
+  count: number;
+}
+
+export interface SunoFailureMetricsResponse {
+  days: number;
+  total: number;
+  buckets: SunoFailureMetricBucket[];
+}
+
 export interface PromoteSunoBlocklistRequest {
   term: string;
   replacement?: string | null;

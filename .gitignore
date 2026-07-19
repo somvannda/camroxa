@@ -57,6 +57,7 @@ camxora_python/vendor/vcredist/
 # Local runtime data
 uploads/
 marketplace_storage/
+desktop_release_storage/
 
 # Database backups (contain secrets)
 *.sql

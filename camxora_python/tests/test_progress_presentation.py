@@ -57,9 +57,9 @@ def test_format_images_compact_uses_status_badges() -> None:
 
 
 def test_format_video_compact_joins_converter_and_merge() -> None:
-    text = format_video_compact("Long 1/2 · Reel 0/2", "Ready for merge")
+    text = format_video_compact("Long 1/2 · Reel 0/2", "Pending · waiting for branch exports")
     assert "Long 1/2" in text
-    assert "Ready for merge" in text
+    assert "Pending · waiting for branch exports" in text
 
 
 def test_format_youtube_compact_uses_meta_counts() -> None:
@@ -67,7 +67,7 @@ def test_format_youtube_compact_uses_meta_counts() -> None:
     row.youtube = "—"
     row.meta.youtube_pending = 0
     row.meta.youtube_success = 1
-    assert format_youtube_compact(row) == "Ready ✓"
+    assert format_youtube_compact(row) == "Completed ✓"
 
 
 def test_compute_stage_progress_percent_for_music_and_merger() -> None:
@@ -81,8 +81,8 @@ def test_compute_stage_progress_percent_for_music_and_merger() -> None:
     ) == "50%"
     assert compute_stage_progress_percent(
         row,
-        effective_stage="Merger",
-        effective_status="Merging",
+        effective_stage="Merge",
+        effective_status="In Progress",
         merge_percent=40,
     ) == "40%"
 
@@ -98,10 +98,10 @@ def test_format_album_label() -> None:
 
 
 def test_format_export_and_merge_compact_shorten_long_text() -> None:
-    assert format_export_compact("Waiting for image assets") == "Needs images"
+    assert format_export_compact("Waiting for image assets") == "Not started"
     assert format_export_compact("Long 2/2 · Reel 0/2") == "L 2/2 · R 0/2"
-    assert format_merge_compact("Ready for merge once enough branch outputs exist") == "Ready"
-    assert format_merge_compact("Long merged · Reel pending") == "Long ✓"
+    assert format_merge_compact("Pending · waiting for branch exports") == "Pending"
+    assert format_merge_compact("Long completed · Reel pending") == "Long completed"
 
 
 def test_resolve_progress_error_message_collects_notes_and_failures() -> None:

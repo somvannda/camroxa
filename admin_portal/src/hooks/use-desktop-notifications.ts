@@ -23,6 +23,20 @@ export type PublishSoftwareUpdateResponse = {
   published_at: string;
 };
 
+export type UploadDesktopSoftwareUpdateResponse = {
+  download_url: string;
+  filename: string;
+  size_bytes: number;
+  draft_saved?: boolean;
+};
+
+export type DesktopInstallerFile = {
+  filename: string;
+  download_url: string;
+  size_bytes: number;
+  modified_at: string;
+};
+
 export type PushNotificationHistoryItem = {
   id: string;
   title: string;
@@ -69,6 +83,50 @@ export function usePublishSoftwareUpdate() {
       httpClient.post<PublishSoftwareUpdateResponse>('/api/v1/admin/desktop/software-update/publish'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+    },
+  });
+}
+
+export function useUploadDesktopSoftwareUpdate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { file: File; version?: string }) => {
+      const form = new FormData();
+      form.append('file', payload.file);
+      if (payload.version?.trim()) {
+        form.append('version', payload.version.trim());
+      }
+      return httpClient.post<UploadDesktopSoftwareUpdateResponse>(
+        '/api/v1/admin/desktop/software-update/upload',
+        form,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+      queryClient.invalidateQueries({ queryKey: ['desktop-installers'] });
+    },
+  });
+}
+
+export function useDesktopInstallers() {
+  return useQuery({
+    queryKey: ['desktop-installers'],
+    queryFn: () =>
+      httpClient.get<{ items: DesktopInstallerFile[] }>(
+        '/api/v1/admin/desktop/software-update/installers',
+      ),
+  });
+}
+
+export function useDeleteDesktopInstaller() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (filename: string) =>
+      httpClient.delete<{ status: string; filename: string }>(
+        `/api/v1/admin/desktop/software-update/installers/${encodeURIComponent(filename)}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['desktop-installers'] });
     },
   });
 }

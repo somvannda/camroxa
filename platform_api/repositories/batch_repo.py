@@ -673,6 +673,125 @@ class BatchRepository:
             lyrics,
         )
 
+    async def update_song_suno_sanitize_metadata(
+        self,
+        song_id: UUID,
+        metadata: dict[str, Any],
+    ) -> None:
+        """Persist Suno sanitize replacement metadata on a song."""
+        import json
+
+        await self._pool.execute(
+            """
+            UPDATE songs
+            SET suno_last_sanitize = $2::jsonb,
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            song_id,
+            json.dumps(metadata),
+        )
+
+    async def increment_suno_auto_retry_count(self, song_id: UUID) -> int:
+        """Increment and return the song's Suno auto-retry counter."""
+        row = await self._pool.fetchrow(
+            """
+            UPDATE songs
+            SET suno_auto_retry_count = COALESCE(suno_auto_retry_count, 0) + 1,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING suno_auto_retry_count
+            """,
+            song_id,
+        )
+        if row is None:
+            return 0
+        return int(row["suno_auto_retry_count"] or 0)
+
+    async def get_suno_auto_retry_count(self, song_id: UUID) -> int:
+        """Return how many automatic Suno retries have been attempted for a song."""
+        value = await self._pool.fetchval(
+            """
+            SELECT COALESCE(suno_auto_retry_count, 0)
+            FROM songs
+            WHERE id = $1
+            """,
+            song_id,
+        )
+        return int(value or 0)
+
+    async def count_suno_tasks_for_song(self, song_id: UUID) -> int:
+        """Return total Suno task rows linked to a song."""
+        value = await self._pool.fetchval(
+            """
+            SELECT COUNT(*)::int
+            FROM suno_tasks
+            WHERE song_id = $1
+            """,
+            song_id,
+        )
+        return int(value or 0)
+
+    async def list_stuck_suno_pending_songs(
+        self,
+        *,
+        user_id: UUID,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Songs stuck at suno_pending while the latest Suno task is terminal failure."""
+        rows = await self._pool.fetch(
+            """
+            SELECT
+                s.id AS song_id,
+                s.batch_id,
+                st.status AS suno_status,
+                st.error_message
+            FROM songs s
+            JOIN LATERAL (
+                SELECT status, error_message
+                FROM suno_tasks
+                WHERE song_id = s.id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) st ON TRUE
+            WHERE s.user_id = $1
+              AND s.status = 'suno_pending'
+              AND st.status IN ('failed', 'error', 'cancelled', 'timeout')
+            ORDER BY s.updated_at ASC
+            LIMIT $2
+            """,
+            user_id,
+            max(1, min(int(limit or 25), 50)),
+        )
+        return [dict(row) for row in rows]
+
+    async def list_suno_failure_metrics_rows(
+        self,
+        *,
+        days: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Return failed Suno tasks with submit-order hints for admin metrics."""
+        rows = await self._pool.fetch(
+            """
+            SELECT
+                st.id,
+                st.song_id,
+                st.status,
+                st.error_message,
+                st.created_at,
+                ROW_NUMBER() OVER (
+                    PARTITION BY st.song_id
+                    ORDER BY st.created_at ASC, st.id ASC
+                ) AS submit_order
+            FROM suno_tasks st
+            WHERE st.status IN ('failed', 'error', 'cancelled', 'timeout')
+              AND st.created_at >= NOW() - make_interval(days => $1)
+            ORDER BY st.created_at DESC
+            """,
+            max(1, min(int(days or 30), 365)),
+        )
+        return [dict(row) for row in rows]
+
     # ------------------------------------------------------------------
     # Suno Task Management
     # ------------------------------------------------------------------
@@ -1501,6 +1620,14 @@ class BatchRepository:
     @staticmethod
     def _row_to_song(row: Any) -> Song:
         """Map a database row to a Song domain object."""
+        suno_last_sanitize = BatchRepository._row_value(row, "suno_last_sanitize")
+        if isinstance(suno_last_sanitize, str):
+            import json
+
+            try:
+                suno_last_sanitize = json.loads(suno_last_sanitize)
+            except json.JSONDecodeError:
+                suno_last_sanitize = None
         return Song(
             id=row["id"],
             batch_id=row["batch_id"],
@@ -1512,6 +1639,8 @@ class BatchRepository:
             description_id=row["description_id"],
             structure_id=row["structure_id"],
             status=row["status"],
+            suno_last_sanitize=suno_last_sanitize if isinstance(suno_last_sanitize, dict) else None,
+            suno_auto_retry_count=int(BatchRepository._row_value(row, "suno_auto_retry_count", 0) or 0),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

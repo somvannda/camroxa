@@ -145,6 +145,11 @@ class Settings(BaseSettings):
     sample_pack_url_import_max_mb: int = 1024
     image_output_cache_dir: str = "./image_output_cache"
 
+    # --- Desktop release installer uploads (admin portal) ---
+    desktop_release_storage_path: str = "./desktop_release_storage"
+    desktop_release_public_base_url: str = ""
+    desktop_release_max_upload_mb: int = 500
+
     # --- Billing / CutLuy ---
     cutluy_api_base_url: str = "https://cutluy.com"
     cutluy_secret_key: str = ""

@@ -276,6 +276,7 @@ class MusicHistorySongResponse(BaseModel):
     downloaded_alt: bool = False
     image_jobs_completed: int = 0
     image_jobs_total: int = 0
+    suno_last_sanitize: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 

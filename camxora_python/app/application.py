@@ -18,7 +18,7 @@ from shared.services.music_download_coordinator import MusicDownloadCoordinator
 from shared.services.session_service import SessionService
 from shared.services.setup_readiness_service import refresh_setup_readiness
 from shared.services.shell_status import ShellStatusBus
-from shared.services.video_pipeline_coordinator import VideoPipelineCoordinator
+from shared.services.video_pipeline_coordinator import VideoPipelineCoordinator, bind_video_pipeline_coordinator
 from shared.widgets.flash_status_footer import FlashStatusFooter
 from shared.widgets.shell_footer_bar import ShellFooterBar
 from shared.widgets.page_header import PageHeader
@@ -106,6 +106,7 @@ class AppShellWidget(QWidget):
         self._image_outputs = ImageOutputSyncCoordinator(self._api, self)
         self._image_outputs.start()
         self._video_pipeline = VideoPipelineCoordinator(self._api, self)
+        bind_video_pipeline_coordinator(self._video_pipeline)
         self._video_pipeline.start()
 
         self._session_keepalive = QTimer(self)

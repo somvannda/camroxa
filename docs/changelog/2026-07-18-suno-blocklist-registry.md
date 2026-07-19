@@ -1,7 +1,7 @@
 # Admin-managed Suno blocklist term registry
 
 **Date:** 2026-07-18  
-**Status:** implemented (sandbox pending deploy)
+**Status:** deployed
 
 ## Summary
 

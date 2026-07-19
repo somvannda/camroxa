@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
@@ -360,25 +360,49 @@ async def delete_blog_post(post_id: UUID, _: Any = require_admin) -> None:
 
 
 @router.get("/blog-posts/public", response_model=list[PublicBlogPostSummaryResponse], status_code=200)
-async def list_public_blog_posts() -> list[PublicBlogPostSummaryResponse]:
+async def list_public_blog_posts(
+    category: str | None = Query(default=None, max_length=120),
+) -> list[PublicBlogPostSummaryResponse]:
     pool = get_db_pool()
-    rows = await pool.fetch(
-        """
-        SELECT
-            slug,
-            title,
-            excerpt,
-            cover_image_url,
-            category,
-            author_name,
-            COALESCE(published_at, updated_at, created_at) AS published_at,
-            updated_at
-        FROM blog_posts
-        WHERE is_published = TRUE
-          AND COALESCE(published_at, created_at) <= NOW()
-        ORDER BY COALESCE(published_at, created_at) DESC, updated_at DESC
-        """
-    )
+    normalized_category = _normalize_optional_text(category)
+    if normalized_category:
+        rows = await pool.fetch(
+            """
+            SELECT
+                slug,
+                title,
+                excerpt,
+                cover_image_url,
+                category,
+                author_name,
+                COALESCE(published_at, updated_at, created_at) AS published_at,
+                updated_at
+            FROM blog_posts
+            WHERE is_published = TRUE
+              AND COALESCE(published_at, created_at) <= NOW()
+              AND LOWER(TRIM(category)) = LOWER(TRIM($1))
+            ORDER BY COALESCE(published_at, created_at) DESC, updated_at DESC
+            """,
+            normalized_category,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT
+                slug,
+                title,
+                excerpt,
+                cover_image_url,
+                category,
+                author_name,
+                COALESCE(published_at, updated_at, created_at) AS published_at,
+                updated_at
+            FROM blog_posts
+            WHERE is_published = TRUE
+              AND COALESCE(published_at, created_at) <= NOW()
+            ORDER BY COALESCE(published_at, created_at) DESC, updated_at DESC
+            """
+        )
     return [
         PublicBlogPostSummaryResponse(
             slug=str(row["slug"]),

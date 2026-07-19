@@ -17,7 +17,7 @@ class ProgressStatsRow(QWidget):
         layout.setSpacing(8)
 
         self._active_card = StatCard("Active Runs", "0")
-        self._converter_card = StatCard("Converter / Merger", "0")
+        self._converter_card = StatCard("Export / Merge", "0")
         self._waiting_card = StatCard("Waiting On User", "0")
         self._failed_card = StatCard("Failed / Blocked", "0")
         for card in (

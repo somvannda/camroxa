@@ -298,6 +298,7 @@ class MusicHistorySong(BaseModel):
     downloaded_alt: bool = False
     image_jobs_completed: int = 0
     image_jobs_total: int = 0
+    suno_last_sanitize: dict[str, object] | None = None
     created_at: str = ""
     updated_at: str = ""
 
@@ -394,6 +395,28 @@ class LyricsPolishRequest(BaseModel):
 class LyricsPolishResponse(BaseModel):
     lyrics: str
     suno_queued: bool = False
+
+
+class LyricsSunoRiskHit(BaseModel):
+    term: str
+    severity: str
+    start: int
+    end: int
+    suggestion: str
+
+
+class LyricsSunoCheckRequest(BaseModel):
+    title: str = ""
+    lyrics: str = ""
+    learned_terms: list[str] = Field(default_factory=list)
+
+
+class LyricsSunoCheckResponse(BaseModel):
+    hits: list[LyricsSunoRiskHit] = Field(default_factory=list)
+    sanitized_preview: str = ""
+    sanitized_title: str = ""
+    block_count: int = 0
+    warn_count: int = 0
 
 
 class MusicPlanPreflightRequest(BaseModel):

@@ -75,6 +75,11 @@ _WARN_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
         "producer tag",
         "Remove producer tag references.",
     ),
+    (
+        re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b"),
+        "Capitalized Name",
+        "Possible artist-name pattern (warn-only; may false-positive on ordinary phrases).",
+    ),
 )
 
 

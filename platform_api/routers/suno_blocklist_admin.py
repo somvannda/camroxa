@@ -166,3 +166,48 @@ async def promote_suno_blocklist_term(
     except PlatformAPIError as exc:
         _raise_http(exc)
     return _row_to_response(row)
+
+
+class SunoFailureMetricBucket(BaseModel):
+    failure_type: str
+    submit_kind: Literal["first_submit", "retry"]
+    count: int
+
+
+class SunoFailureMetricsResponse(BaseModel):
+    days: int
+    total: int
+    buckets: list[SunoFailureMetricBucket]
+
+
+@router.get("/failure-metrics", response_model=SunoFailureMetricsResponse)
+async def get_suno_failure_metrics(
+    _ctx: AdminDep,
+    days: int = 30,
+) -> SunoFailureMetricsResponse:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.repositories.batch_repo import BatchRepository
+    from platform_api.services.suno_status_messages import classify_suno_failure_type
+
+    repo = BatchRepository(get_db_pool())
+    rows = await repo.list_suno_failure_metrics_rows(days=days)
+    bucket_counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        failure_type = classify_suno_failure_type(error_message=row.get("error_message"))
+        submit_kind = "first_submit" if int(row.get("submit_order") or 1) <= 1 else "retry"
+        key = (failure_type, submit_kind)
+        bucket_counts[key] = bucket_counts.get(key, 0) + 1
+
+    buckets = [
+        SunoFailureMetricBucket(
+            failure_type=failure_type,
+            submit_kind=submit_kind,  # type: ignore[arg-type]
+            count=count,
+        )
+        for (failure_type, submit_kind), count in sorted(bucket_counts.items())
+    ]
+    return SunoFailureMetricsResponse(
+        days=max(1, min(int(days or 30), 365)),
+        total=len(rows),
+        buckets=buckets,
+    )

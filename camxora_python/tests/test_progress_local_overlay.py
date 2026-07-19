@@ -67,7 +67,7 @@ def test_overlay_keeps_ready_assets_when_files_exist(tmp_path) -> None:
 
     assert row.meta.long_ready is True
     assert row.meta.bg_status == "READY"
-    assert row.stage == "Converter"
+    assert row.stage == "Export"
 
 
 def test_overlay_downgrades_music_when_mp3s_missing(tmp_path) -> None:
@@ -95,3 +95,36 @@ def test_overlay_downgrades_converter_when_images_missing_but_music_local(tmp_pa
     assert row.stage == "Image"
     assert row.meta.long_ready is False
     assert row.meta.bg_status == "SYNC"
+
+
+def test_overlay_promotes_image_stage_when_assets_exist(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "background-16x9.png").write_bytes(b"bg")
+    (run_dir / "thumbnail-16x9.png").write_bytes(b"th")
+    (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
+
+    source = _row(run_dir=str(run_dir)).model_copy(
+        update={"stage": "Image", "converter": "Waiting for image assets"},
+    )
+    row = apply_local_progress_overlays([source])[0]
+
+    assert row.stage == "Export"
+    assert "Pending · no exports yet" in row.converter
+
+
+def test_overlay_resolves_role_specific_asset_names(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "background-16x9-alt.png").write_bytes(b"bg")
+    (run_dir / "thumbnail-16x9-alt.png").write_bytes(b"th")
+    (run_dir / "1. Track_Alt.mp3").write_bytes(b"mp3")
+
+    source = _row(run_dir=str(run_dir)).model_copy(
+        update={"stage": "Image", "converter": "Waiting for image assets"},
+    )
+    source.meta = source.meta.model_copy(update={"role": "Alt"})
+    row = apply_local_progress_overlays([source])[0]
+
+    assert row.meta.long_ready is True
+    assert row.stage == "Export"

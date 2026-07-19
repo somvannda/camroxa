@@ -6,6 +6,7 @@ import type {
   PromoteSunoBlocklistRequest,
   SunoBlocklistListResponse,
   SunoBlocklistTerm,
+  SunoFailureMetricsResponse,
   UpdateSunoBlocklistRequest,
 } from '@/types/suno-blocklist';
 
@@ -62,5 +63,15 @@ export function usePromoteSunoBlocklistTerm() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sunoBlocklistKeys.all });
     },
+  });
+}
+
+export function useSunoFailureMetrics(days = 30) {
+  return useQuery({
+    queryKey: ['suno-blocklist', 'failure-metrics', days] as const,
+    queryFn: () =>
+      httpClient.get<SunoFailureMetricsResponse>(
+        `/api/v1/admin/suno-blocklist/failure-metrics?days=${days}`,
+      ),
   });
 }

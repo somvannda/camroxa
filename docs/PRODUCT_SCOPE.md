@@ -22,6 +22,8 @@ This document defines which codebases are **in scope** for new work versus **exc
 
 **Integration model:** `camxora_python` talks to **`platform_api`**. Portals and `music_web` are separate frontends on the same API. Admin workflows (uploads, catalog, routing) go through **`admin_portal` → `platform_api`**.
 
+**Changelogs:** Each surface has its own release log. See [`CHANGELOG_GUIDE.md`](./CHANGELOG_GUIDE.md).
+
 ---
 
 ## Out of scope (excluded)

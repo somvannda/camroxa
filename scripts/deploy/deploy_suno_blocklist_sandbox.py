@@ -29,6 +29,7 @@ tar -xzf /tmp/camxora-src.tar.gz -C $REPO platform_api admin_portal
 chown -R camxora:camxora $REPO/platform_api $REPO/admin_portal
 sudo -u camxora bash -lc "cd $REPO/platform_api && source .venv/bin/activate && alembic upgrade head"
 sudo -u postgres psql -d camxora_platform -t -A -c "SELECT version_num FROM alembic_version;"
+sudo -u postgres psql -d camxora_platform -t -A -c "SELECT column_name FROM information_schema.columns WHERE table_name='songs' AND column_name IN ('suno_last_sanitize','suno_auto_retry_count');"
 sudo -u postgres psql -d camxora_platform -t -A -c "SELECT COUNT(*) FROM suno_blocklist_terms;"
 systemctl restart camxora-api
 sleep 2

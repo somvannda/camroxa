@@ -12,4 +12,4 @@ def get_app_version() -> str:
     try:
         return version("camxora")
     except PackageNotFoundError:
-        return "0.2.1"
+        return "0.2.2"

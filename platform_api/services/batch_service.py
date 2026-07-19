@@ -13,7 +13,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from platform_api.services.billing_calendar import billing_today
 from pathlib import Path
@@ -2022,12 +2022,17 @@ class BatchService:
         limit: int = 10,
     ) -> int:
         """Poll Suno for in-flight tasks when callbacks are unavailable (local dev)."""
+        reconciled = await self._reconcile_stuck_suno_pending_songs(
+            user_id=user_id,
+            limit=max(limit, 10),
+        )
+
         rows = await self._batch_repo.list_reconcilable_suno_tasks(
             user_id=UUID(user_id),
             limit=limit,
         )
         if not rows:
-            return 0
+            return reconciled
 
         reconciled = 0
         batches_to_run_images: set[UUID] = set()
@@ -2115,6 +2120,33 @@ class BatchService:
         for batch_id in batches_to_run_images:
             self._schedule_image_jobs_run(user_id=user_id, batch_id=batch_id)
         return reconciled
+
+    async def _reconcile_stuck_suno_pending_songs(
+        self,
+        *,
+        user_id: str,
+        limit: int = 25,
+    ) -> int:
+        """Fix songs left at suno_pending after the latest Suno task already failed."""
+        rows = await self._batch_repo.list_stuck_suno_pending_songs(
+            user_id=UUID(user_id),
+            limit=limit,
+        )
+        fixed = 0
+        batch_ids: set[UUID] = set()
+        for row in rows:
+            song_id_raw = row.get("song_id")
+            if not song_id_raw:
+                continue
+            song_id = UUID(str(song_id_raw))
+            await self.update_song_to_suno_failed(song_id)
+            batch_id_raw = row.get("batch_id")
+            if batch_id_raw:
+                batch_ids.add(UUID(str(batch_id_raw)))
+            fixed += 1
+        for batch_id in batch_ids:
+            await self.refresh_batch_status(batch_id)
+        return fixed
 
     def _schedule_image_jobs_run(self, *, user_id: str, batch_id: UUID) -> None:
         if self._image_job_service is None:
@@ -2339,6 +2371,10 @@ class BatchService:
             from platform_api.services.suno_lyrics_sanitize import extract_blocked_terms_from_suno_error
 
             blocked_terms = extract_blocked_terms_from_suno_error(error_message)
+            failure_type = classify_suno_failure_type(
+                status=status.value,
+                error_message=error_message,
+            )
             self._log_suno_failure_metric(
                 batch_id=batch_id,
                 song_id=song_id,
@@ -2347,6 +2383,20 @@ class BatchService:
                 is_retry=latest_task is not None,
                 blocked_terms=blocked_terms,
             )
+
+            if failure_type in {"SENSITIVE_WORD_ERROR", "producer_tag"} and blocked_terms:
+                await self._promote_suno_blocked_terms(blocked_terms)
+
+            if song is not None and failure_type in {"SENSITIVE_WORD_ERROR", "producer_tag"}:
+                retried = await self._try_auto_retry_suno_after_failure(
+                    song=song,
+                    batch_id=batch_id,
+                    user_id=str(song.user_id),
+                )
+                if retried:
+                    await self.refresh_batch_status(batch_id)
+                    return []
+
             await self.update_song_to_suno_failed(song_id)
             if not already_failed:
                 batch = await self._batch_repo.get_batch_by_id(batch_id)
@@ -2714,7 +2764,9 @@ class BatchService:
         if latest_task is None:
             latest_task = await self._batch_repo.get_latest_suno_task_for_song(song.id)
 
-        runtime_config = await get_suno_blocklist_service().get_runtime_config()
+        runtime_config = await get_suno_blocklist_service().get_runtime_config(
+            channel_profile_id=batch.ok_profile_id,
+        )
 
         blocked_terms: list[str] = []
         if latest_task is not None and is_suno_failure_status(latest_task.status):
@@ -2759,6 +2811,23 @@ class BatchService:
             song.title = resolved_title
             song.lyrics = lyrics
 
+        if replacements:
+            await self._batch_repo.update_song_suno_sanitize_metadata(
+                song.id,
+                {
+                    "replacements": [
+                        {
+                            "field": item.field,
+                            "source": item.source,
+                            "target": item.target,
+                        }
+                        for item in replacements
+                    ],
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "blocked_terms": list(blocked_terms),
+                },
+            )
+
         return SunoSanitizedPayload(
             title=resolved_title,
             lyrics=lyrics,
@@ -2789,6 +2858,101 @@ class BatchService:
             blocked_terms_extracted=blocked_terms,
         )
 
+    async def _promote_suno_blocked_terms(self, blocked_terms: list[str]) -> None:
+        """Promote parsed Suno block terms into the learned blocklist registry."""
+        if not blocked_terms:
+            return
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.suno_lyrics_sanitize import DEFAULT_REPLACEMENTS
+
+        service = get_suno_blocklist_service()
+        for term in blocked_terms:
+            normalized = str(term or "").strip().lower()
+            if not normalized:
+                continue
+            replacement = DEFAULT_REPLACEMENTS.get(normalized)
+            try:
+                await service.promote_learned_term(
+                    term=normalized,
+                    replacement=replacement,
+                    severity="block",
+                    notes="Auto-promoted from Suno callback failure",
+                )
+            except Exception:
+                logger.exception("Failed to promote learned Suno term %s", normalized)
+
+    async def _try_auto_retry_suno_after_failure(
+        self,
+        *,
+        song: Song,
+        batch_id: UUID,
+        user_id: str,
+    ) -> bool:
+        """Sanitize and resubmit once after a sensitive-word/producer-tag failure."""
+        retry_count = await self._batch_repo.get_suno_auto_retry_count(song.id)
+        if retry_count >= 1:
+            return False
+
+        batch = await self._batch_repo.get_batch_by_id(batch_id)
+        if batch is None:
+            return False
+
+        await self._batch_repo.increment_suno_auto_retry_count(song.id)
+        suno_model = await self._resolve_suno_model(batch.user_id)
+        try:
+            await self._submit_song_to_suno(
+                song=song,
+                batch=batch,
+                user_id=user_id,
+                model=suno_model,
+                is_retry=True,
+            )
+            logger.info(
+                "Auto-retried Suno for song %s in batch %s after sensitive-word failure",
+                song.id,
+                batch_id,
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "Auto-retry Suno failed for song %s in batch %s: %s",
+                song.id,
+                batch_id,
+                str(exc)[:200],
+            )
+            return False
+
+    async def _assert_suno_payload_has_no_block_terms(
+        self,
+        payload: SunoSanitizedPayload,
+        *,
+        batch: Batch,
+    ) -> None:
+        """Reject Suno submit when block-severity terms remain after sanitize."""
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.suno_lyrics_sanitize import find_suno_risk_terms_in_text
+
+        runtime_config = await get_suno_blocklist_service().get_runtime_config(
+            channel_profile_id=batch.ok_profile_id,
+        )
+        for field_name, text in (
+            ("title", payload.title),
+            ("lyrics", payload.lyrics),
+            ("style", payload.style),
+        ):
+            hits = find_suno_risk_terms_in_text(
+                text,
+                learned_terms=payload.blocked_terms,
+                runtime_config=runtime_config,
+            )
+            block_hits = [hit for hit in hits if hit.severity == "block"]
+            if block_hits:
+                terms = ", ".join(hit.term for hit in block_hits[:5])
+                raise ValidationError(
+                    "Suno-safe lyrics still contain blocked terms after sanitize.",
+                    details={"field": field_name, "terms": terms},
+                )
+
     async def _submit_song_to_suno(
         self,
         song: Song,
@@ -2813,6 +2977,7 @@ class BatchService:
             batch,
             is_retry=is_retry,
         )
+        await self._assert_suno_payload_has_no_block_terms(payload, batch=batch)
 
         charged = 0
         music_provider = "suno"

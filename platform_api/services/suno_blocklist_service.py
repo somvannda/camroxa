@@ -22,7 +22,7 @@ class SunoBlocklistRepositoryProtocol(Protocol):
 
     async def get_by_id(self, term_id: UUID) -> dict[str, Any] | None: ...
 
-    async def get_enabled_terms(self) -> list[dict[str, Any]]: ...
+    async def get_enabled_terms(self, *, channel_profile_id: UUID | None = None) -> list[dict[str, Any]]: ...
 
     async def create(
         self,
@@ -63,8 +63,8 @@ class SunoBlocklistRepositoryProtocol(Protocol):
 class SunoBlocklistService:
     def __init__(self, repo: SunoBlocklistRepositoryProtocol) -> None:
         self._repo = repo
-        self._runtime_cache: SunoRuntimeBlocklist | None = None
-        self._runtime_cache_at: float = 0.0
+        self._runtime_cache: dict[str, SunoRuntimeBlocklist] = {}
+        self._runtime_cache_at: dict[str, float] = {}
 
     async def list_terms(self) -> list[dict[str, Any]]:
         return await self._repo.list_all()
@@ -163,16 +163,24 @@ class SunoBlocklistService:
         self.invalidate_runtime_cache()
         return row
 
-    async def get_runtime_config(self, *, force_refresh: bool = False) -> SunoRuntimeBlocklist:
+    async def get_runtime_config(
+        self,
+        *,
+        channel_profile_id: UUID | None = None,
+        force_refresh: bool = False,
+    ) -> SunoRuntimeBlocklist:
+        cache_key = str(channel_profile_id) if channel_profile_id is not None else "global"
         now = time.monotonic()
+        cached = self._runtime_cache.get(cache_key)
+        cached_at = self._runtime_cache_at.get(cache_key, 0.0)
         if (
             not force_refresh
-            and self._runtime_cache is not None
-            and (now - self._runtime_cache_at) < _RUNTIME_CACHE_TTL_SECONDS
+            and cached is not None
+            and (now - cached_at) < _RUNTIME_CACHE_TTL_SECONDS
         ):
-            return self._runtime_cache
+            return cached
 
-        rows = await self._repo.get_enabled_terms()
+        rows = await self._repo.get_enabled_terms(channel_profile_id=channel_profile_id)
         replacements = dict(DEFAULT_REPLACEMENTS)
         block_terms: set[str] = set()
         warn_terms: set[str] = set()
@@ -198,13 +206,13 @@ class SunoBlocklistService:
             block_terms=frozenset(block_terms),
             warn_terms=frozenset(warn_terms),
         )
-        self._runtime_cache = config
-        self._runtime_cache_at = now
+        self._runtime_cache[cache_key] = config
+        self._runtime_cache_at[cache_key] = now
         return config
 
     def invalidate_runtime_cache(self) -> None:
-        self._runtime_cache = None
-        self._runtime_cache_at = 0.0
+        self._runtime_cache.clear()
+        self._runtime_cache_at.clear()
 
     @staticmethod
     def _normalize_term(value: str) -> str:

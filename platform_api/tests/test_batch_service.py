@@ -1727,6 +1727,7 @@ async def test_sanitize_suno_payload_uses_learned_terms_and_persists(
     )
     batch_repo.get_latest_suno_task_for_song = AsyncMock(return_value=latest_task)
     batch_repo.update_song_draft = AsyncMock()
+    batch_repo.update_song_suno_sanitize_metadata = AsyncMock()
 
     service = make_service(
         batch_repo,
@@ -1747,4 +1748,5 @@ async def test_sanitize_suno_payload_uses_learned_terms_and_persists(
     assert payload.is_retry is True
     assert payload.blocked_terms == ("lowlight",)
     batch_repo.update_song_draft.assert_awaited_once()
+    batch_repo.update_song_suno_sanitize_metadata.assert_awaited_once()
     assert song.lyrics == payload.lyrics

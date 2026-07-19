@@ -102,6 +102,14 @@ async def get_software_update_config(pool: Any) -> SoftwareUpdateConfig:
     )
 
 
+async def get_published_desktop_release(pool: Any) -> SoftwareUpdateConfig | None:
+    """Return the latest published desktop release, or None if never published."""
+    config = await get_software_update_config(pool)
+    if not config.version.strip() or not (config.published_at or "").strip():
+        return None
+    return config
+
+
 async def save_software_update_config(
     pool: Any,
     *,
@@ -119,6 +127,24 @@ async def save_software_update_config(
         value_type="boolean",
     )
     await _upsert_system_setting(pool, key=SOFTWARE_UPDATE_RELEASE_NOTES_KEY, value=release_notes.strip())
+    return await get_software_update_config(pool)
+
+
+async def apply_uploaded_installer_to_draft(
+    pool: Any,
+    *,
+    download_url: str,
+    version: str | None = None,
+) -> SoftwareUpdateConfig:
+    """Persist generated installer URL (and optional version) into the software-update draft."""
+    await _upsert_system_setting(
+        pool,
+        key=SOFTWARE_UPDATE_DOWNLOAD_URL_KEY,
+        value=str(download_url or "").strip(),
+    )
+    normalized_version = str(version or "").strip()
+    if normalized_version:
+        await _upsert_system_setting(pool, key=SOFTWARE_UPDATE_VERSION_KEY, value=normalized_version)
     return await get_software_update_config(pool)
 
 

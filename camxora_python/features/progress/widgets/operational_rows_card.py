@@ -102,6 +102,9 @@ class OperationalRowsCard(QFrame):
     enqueue_images_requested = Signal(str)
     retry_drafts_requested = Signal(str, list)
     retry_suno_requested = Signal(str, list)
+    force_export_regenerate_requested = Signal(object)
+    rebuild_export_requested = Signal(object)
+    start_merge_requested = Signal(object)
     row_selected = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -305,6 +308,28 @@ class OperationalRowsCard(QFrame):
             return True
         return False
 
+    @staticmethod
+    def _can_start_video_export(entry: EffectiveProgressRow) -> bool:
+        meta = entry.row.meta
+        if not str(meta.run_dir or "").strip():
+            return False
+        if entry.effective_stage.strip().lower() in {"youtube", "done", "error"}:
+            return False
+        return bool(meta.long_ready or meta.reel_ready)
+
+    @staticmethod
+    def _can_start_video_merge(entry: EffectiveProgressRow) -> bool:
+        meta = entry.row.meta
+        if not str(meta.run_dir or "").strip():
+            return False
+        stage = entry.effective_stage.strip().lower()
+        if stage in {"youtube", "done", "error"}:
+            return False
+        export_text = str(entry.effective_converter or entry.row.converter or "").lower()
+        if "long " in export_text or "reel " in export_text or "merged" in export_text or "completed" in export_text:
+            return True
+        return bool(meta.long_ready or meta.reel_ready)
+
     def _row_at(self, row_index: int) -> EffectiveProgressRow | None:
         if 0 <= row_index < len(self._rows):
             return self._rows[row_index]
@@ -357,9 +382,24 @@ class OperationalRowsCard(QFrame):
         if entry is None:
             return
 
+        clicked_column = index.column()
         menu = QMenu(self)
         meta = entry.row.meta
         recovery_added = False
+
+        if clicked_column == _COL_EXPORT:
+            if self._can_start_video_export(entry):
+                action = menu.addAction("Force Regenerate MP4")
+                action.triggered.connect(partial(self.force_export_regenerate_requested.emit, entry.row))
+                action = menu.addAction("Rebuild MP4")
+                action.triggered.connect(partial(self.rebuild_export_requested.emit, entry.row))
+            menu.addSeparator()
+
+        if clicked_column == _COL_MERGE:
+            if self._can_start_video_merge(entry):
+                action = menu.addAction("Start Merging Video")
+                action.triggered.connect(partial(self.start_merge_requested.emit, entry.row))
+            menu.addSeparator()
 
         copy_action = menu.addAction("Copy Batch ID")
         copy_action.setEnabled(bool(str(meta.batch_id or "").strip()))

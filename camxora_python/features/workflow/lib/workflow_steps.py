@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-from shared.lib.video_runtime_inspection import ProgressRuntimePresentation
+from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, run_includes_reel
 from shared.models.platform import ProgressRow
 
 STEP_ORDER = ("music", "image", "converter", "merger", "youtube")
@@ -21,6 +21,7 @@ ACTIVE_VERB_STATUSES = frozenset(
         "uploading",
         "processing",
         "queued",
+        "in progress",
     }
 )
 
@@ -56,43 +57,19 @@ def looks_partial_text(value: str) -> bool:
     return (
         "pending" in text
         or "partial" in text
+        or "in progress" in text
         or bool(re.search(r"/\s*0\b", text))
         or bool(re.search(r"\b0/", text))
     )
 
 
-def run_includes_reel(
-    row: ProgressRow,
-    runtime: ProgressRuntimePresentation | None = None,
-) -> bool:
-    """True when reel is part of this run (9x16 assets or real reel branch progress).
-
-    Asset-gate phrases like ``Reel Ready`` / ``Reel Missing`` alone do **not** count —
-    the progress API always emits those even for long-only jobs.
-    """
-    if row.meta.reel_ready:
-        return True
-    if row.meta.background_9x16_path or row.meta.thumbnail_9x16_path:
-        return True
-
-    converter = runtime.converter if runtime else row.converter
-    merge = runtime.merge if runtime else row.merge
-    combined = f"{converter}\n{merge}".lower()
-
-    count_match = re.search(r"reel\s+(\d+)\s*/\s*(\d+)", combined)
-    if count_match is not None and int(count_match.group(1)) > 0:
-        return True
-    if any(
-        token in combined
-        for token in (
-            "reel merged",
-            "reel single",
-            "converting reel",
-            "merging reel",
-        )
-    ):
-        return True
-    return False
+def normalize_pipeline_stage(stage: str) -> str:
+    key = normalize_key(stage)
+    if key in {"export", "converter"}:
+        return "converter"
+    if key in {"merge", "merger"}:
+        return "merger"
+    return key
 
 
 def format_branch_copy(text: str, *, include_reel: bool) -> str:
@@ -142,7 +119,7 @@ def looks_complete_merge_pair(text: str, *, include_reel: bool = True) -> bool:
     if not normalized:
         return False
     if not include_reel:
-        if "reel pending" in normalized and "long merged" not in normalized and "long single" not in normalized:
+        if "reel pending" in normalized and "long merged" not in normalized and "long completed" not in normalized and "long single" not in normalized:
             return False
         # Ignore trailing reel-pending noise left by runtime merge labels.
         long_only = re.sub(r"\s*[·•]\s*reel\b.*$", "", normalized)
@@ -150,13 +127,15 @@ def looks_complete_merge_pair(text: str, *, include_reel: bool = True) -> bool:
             return False
         return (
             "long merged" in long_only
+            or "long completed" in long_only
             or "long single" in long_only
             or "not required" in long_only
         )
     if "pending" in normalized:
         return False
-    return "long merged" in normalized and (
+    return ("long merged" in normalized or "long completed" in normalized) and (
         "reel merged" in normalized
+        or "reel completed" in normalized
         or "reel single" in normalized
         or "not required" in normalized
     )
@@ -190,7 +169,7 @@ def resolve_run_status_label(
     include_reel: bool | None = None,
 ) -> str:
     """Honest run-level status: Completed only when Done; Partial/Ready otherwise."""
-    stage_key = normalize_key(stage)
+    stage_key = normalize_pipeline_stage(stage)
     status_key = normalize_key(status)
     reel_included = run_includes_reel(row) if include_reel is None else include_reel
 
@@ -204,36 +183,36 @@ def resolve_run_status_label(
     converter = converter_text if converter_text is not None else row.converter
     merge = merge_text if merge_text is not None else row.merge
 
-    if stage_key == "converter":
+    if stage_key == "converter" or stage_key == "export":
         if is_active_verb_status(status):
-            return status.strip() or "Converting"
+            return "In Progress"
         if (
-            status_key == "partial"
+            status_key in {"partial", "in progress"}
             or looks_partial_text(converter)
             or (
                 status_key == "completed"
                 and not looks_complete_branch_pair(converter, include_reel=reel_included)
             )
         ):
-            return "Partial"
+            return "In Progress"
         if status_key == "completed":
-            return "Ready"
+            return "Completed"
 
-    if stage_key == "merger":
+    if stage_key == "merger" or stage_key == "merge":
         if is_active_verb_status(status):
-            return status.strip() or "Merging"
-        if status_key == "partial" or looks_partial_text(merge):
+            return "In Progress"
+        if status_key in {"partial", "in progress"} or looks_partial_text(merge):
             if not reel_included and looks_complete_merge_pair(merge, include_reel=False):
-                return "Ready"
-            return "Partial"
+                return "Completed"
+            return "In Progress"
         if status_key == "completed":
-            return "Ready" if looks_complete_merge_pair(merge, include_reel=reel_included) else "Partial"
+            return "Completed" if looks_complete_merge_pair(merge, include_reel=reel_included) else "In Progress"
 
     if status_key in {"completed", "done"}:
-        return "Ready"
-    if status_key == "partial":
-        return "Partial"
-    return str(status or "").strip() or "Waiting"
+        return "Completed"
+    if status_key in {"partial", "in progress"}:
+        return "In Progress"
+    return str(status or "").strip() or "Pending"
 
 
 def lane_needs_attention(
@@ -241,7 +220,7 @@ def lane_needs_attention(
     runtime: ProgressRuntimePresentation | None = None,
 ) -> bool:
     """Failed/blocked rows plus pending image or merge blockers."""
-    stage = normalize_key(runtime.stage if runtime else row.stage)
+    stage = normalize_pipeline_stage(runtime.stage if runtime else row.stage)
     status = normalize_key(runtime.status if runtime else row.status)
     merge_text = normalize_key(runtime.merge if runtime else row.merge)
     youtube_status = normalize_key(row.meta.youtube_status)
@@ -260,10 +239,10 @@ def lane_needs_attention(
     images_incomplete = (
         row.meta.bg_total > 0 and row.meta.bg_ready < row.meta.bg_total
     ) or (row.meta.th_total > 0 and row.meta.th_ready < row.meta.th_total)
-    if images_incomplete and stage in {"image", "converter", "merger", "youtube"}:
+    if images_incomplete and stage in {"image", "converter", "merger", "export", "merge", "youtube"}:
         return True
 
-    if stage == "merger" and ("pending" in merge_text or status == "partial"):
+    if stage in {"merger", "merge"} and ("pending" in merge_text or status in {"partial", "in progress"}):
         return True
     return False
 
@@ -303,7 +282,7 @@ def _state_for(
     row_done: bool,
     detail_text: str,
 ) -> str:
-    stage = effective_stage.lower()
+    stage = normalize_pipeline_stage(effective_stage)
     if failed and step_key in STEP_ORDER and stage == step_key:
         return "failed"
     order = list(STEP_ORDER)
@@ -348,7 +327,7 @@ def build_workflow_steps(
 
     effective_stage = runtime.stage if runtime else row.stage
     effective_status = runtime.status if runtime else row.status
-    stage_lower = effective_stage.lower()
+    stage_lower = normalize_pipeline_stage(effective_stage)
     failed = stage_lower == "error" or effective_status.lower() == "failed"
     row_done = row.stage == "Done"
     include_reel = run_includes_reel(row, runtime)
@@ -381,7 +360,7 @@ def build_workflow_steps(
     merge_percent = 100 if downstream_complete else (runtime.merge_percent if runtime else 0)
 
     def status_detail(step_name: str) -> str:
-        if effective_stage != step_name:
+        if normalize_pipeline_stage(effective_stage) != normalize_key(step_name):
             return "--"
         if step_name == "YouTube":
             return youtube_detail
@@ -483,7 +462,7 @@ def build_current_focus(
     row: ProgressRow,
     runtime: ProgressRuntimePresentation | None = None,
 ) -> str:
-    stage = str((runtime.stage if runtime else row.stage) or "").strip().lower()
+    stage = normalize_pipeline_stage(str((runtime.stage if runtime else row.stage) or ""))
     include_reel = run_includes_reel(row, runtime)
     if stage == "music":
         if row.meta.download_pending > 0:

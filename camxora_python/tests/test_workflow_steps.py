@@ -68,7 +68,7 @@ def test_resolve_run_status_label_partial_converter() -> None:
         converter="Long 1/2 · Reel 0/2",
         meta={"background_9x16_path": "D:/bg.png"},
     )
-    assert resolve_run_status_label("Converter", "Completed", row) == "Partial"
+    assert resolve_run_status_label("Converter", "Completed", row) == "In Progress"
 
 
 def test_resolve_run_status_label_completed_only_when_done() -> None:
@@ -80,7 +80,7 @@ def test_resolve_run_status_label_completed_only_when_done() -> None:
         merge="Long merged · Reel pending",
         meta={"background_9x16_path": "D:/bg.png"},
     )
-    assert resolve_run_status_label("Merger", "Completed", row) == "Partial"
+    assert resolve_run_status_label("Merger", "Completed", row) == "In Progress"
 
 
 def test_format_upload_status_not_started() -> None:
@@ -153,7 +153,7 @@ def test_run_excludes_reel_without_signals() -> None:
 
 def test_format_branch_copy_strips_reel() -> None:
     assert format_branch_copy("Long 2/2 · Reel 0/2", include_reel=False) == "Long 2/2"
-    assert format_branch_copy("Long merged · Reel pending", include_reel=False) == "Long merged"
+    assert format_branch_copy("Long completed · Reel pending", include_reel=False) == "Long completed"
 
 
 def test_long_only_merge_ready_when_reel_not_included() -> None:
@@ -164,7 +164,7 @@ def test_long_only_merge_ready_when_reel_not_included() -> None:
         merge="Long merged · Reel pending",
         meta={"long_ready": True},
     )
-    assert resolve_run_status_label("Merger", "Completed", row, include_reel=False) == "Ready"
+    assert resolve_run_status_label("Merger", "Completed", row, include_reel=False) == "Completed"
 
 
 def test_build_workflow_steps_hides_reel_in_details() -> None:

@@ -36,6 +36,7 @@ class MusicSettingsState:
     auto_reel_after_video: bool = False
     auto_upload_youtube: bool = False
     polish_strength: int = 85
+    learned_suno_terms: tuple[str, ...] = ()
 
 
 def _clamp(value: int, minimum: int, maximum: int) -> int:
@@ -106,6 +107,22 @@ def language_options_from_response(items: list[object]) -> list[tuple[str, str]]
     return options or list(DEFAULT_LANGUAGE_OPTIONS)
 
 
+def read_string_list_setting(
+    settings: dict[str, Any] | None,
+    key: str,
+    *,
+    fallback: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    value = (settings or {}).get(key)
+    if isinstance(value, list):
+        items = [str(item).strip().lower() for item in value if str(item).strip()]
+        return tuple(items) if items else fallback
+    if isinstance(value, str):
+        items = [part.strip().lower() for part in value.split(",") if part.strip()]
+        return tuple(items) if items else fallback
+    return fallback
+
+
 def blank_music_settings_state() -> MusicSettingsState:
     return MusicSettingsState()
 
@@ -146,6 +163,11 @@ def build_music_settings_state(
             0,
             100,
         ),
+        learned_suno_terms=read_string_list_setting(
+            settings,
+            "learnedSunoTerms",
+            fallback=defaults.learned_suno_terms,
+        ),
     )
 
 
@@ -178,6 +200,7 @@ def build_music_settings_patch(settings: MusicSettingsState) -> dict[str, object
         "autoReelAfterVideo": settings.auto_reel_after_video,
         "autoUploadYouTube": settings.auto_upload_youtube,
         "lyricsPolishStrength": settings.polish_strength,
+        "learnedSunoTerms": list(settings.learned_suno_terms),
     }
 
 

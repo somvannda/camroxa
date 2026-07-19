@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -1618,6 +1618,24 @@ class PublishSoftwareUpdateResponse(BaseModel):
     published_at: str
 
 
+class UploadDesktopSoftwareUpdateResponse(BaseModel):
+    download_url: str
+    filename: str
+    size_bytes: int
+    draft_saved: bool = True
+
+
+class DesktopInstallerFileResponse(BaseModel):
+    filename: str
+    download_url: str
+    size_bytes: int
+    modified_at: str
+
+
+class DesktopInstallerListResponse(BaseModel):
+    items: list[DesktopInstallerFileResponse]
+
+
 class SendPushNotificationRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
     message: str = Field(..., min_length=1, max_length=2000)
@@ -1687,6 +1705,88 @@ async def update_desktop_software_update_config(
         release_notes=config.release_notes,
         published_at=config.published_at,
     )
+
+
+@router.post(
+    "/desktop/software-update/upload",
+    response_model=UploadDesktopSoftwareUpdateResponse,
+    summary="Upload desktop installer package (Admin)",
+)
+async def upload_desktop_software_update(
+    ctx: AdminDep,
+    request: Request,
+    file: UploadFile = File(...),
+    version: str | None = Form(default=None),
+) -> UploadDesktopSoftwareUpdateResponse:
+    from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
+    from platform_api.exceptions import ValidationError
+    from platform_api.services.desktop_notification_admin_service import apply_uploaded_installer_to_draft
+    from platform_api.services.desktop_release_upload_service import extract_version_from_installer_filename
+
+    content = await file.read()
+    pool = get_db_pool()
+    service = await get_desktop_release_upload_service_resolved(pool, request)
+    try:
+        result = service.store_installer(
+            content,
+            original_filename=file.filename or "Camxora.zip",
+            version=version,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    draft_version = str(version or "").strip() or extract_version_from_installer_filename(result.filename)
+    await apply_uploaded_installer_to_draft(
+        pool,
+        download_url=result.download_url,
+        version=draft_version or None,
+    )
+
+    return UploadDesktopSoftwareUpdateResponse(
+        download_url=result.download_url,
+        filename=result.filename,
+        size_bytes=result.size_bytes,
+        draft_saved=True,
+    )
+
+
+@router.get(
+    "/desktop/software-update/installers",
+    response_model=DesktopInstallerListResponse,
+    summary="List uploaded desktop installer files (Admin)",
+)
+async def list_desktop_installers(ctx: AdminDep, request: Request) -> DesktopInstallerListResponse:
+    from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
+
+    pool = get_db_pool()
+    service = await get_desktop_release_upload_service_resolved(pool, request)
+    items = [
+        DesktopInstallerFileResponse(
+            filename=record.filename,
+            download_url=record.download_url,
+            size_bytes=record.size_bytes,
+            modified_at=record.modified_at,
+        )
+        for record in service.list_installers()
+    ]
+    return DesktopInstallerListResponse(items=items)
+
+
+@router.delete(
+    "/desktop/software-update/installers/{filename}",
+    summary="Delete an uploaded desktop installer file (Admin)",
+)
+async def delete_desktop_installer(ctx: AdminDep, filename: str, request: Request) -> dict[str, str]:
+    from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
+    from platform_api.exceptions import ValidationError
+
+    pool = get_db_pool()
+    service = await get_desktop_release_upload_service_resolved(pool, request)
+    try:
+        service.delete_installer(filename)
+    except ValidationError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"status": "deleted", "filename": filename}
 
 
 @router.post(

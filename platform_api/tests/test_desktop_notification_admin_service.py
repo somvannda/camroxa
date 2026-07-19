@@ -6,7 +6,11 @@ import pytest
 
 from platform_api.services.desktop_notification_admin_service import (
     NOTIFICATION_MESSAGE_EVENT,
+    SOFTWARE_UPDATE_DOWNLOAD_URL_KEY,
+    SOFTWARE_UPDATE_PUBLISHED_AT_KEY,
     SOFTWARE_UPDATE_VERSION_KEY,
+    apply_uploaded_installer_to_draft,
+    get_published_desktop_release,
     get_software_update_config,
     publish_software_update,
     save_software_update_config,
@@ -65,6 +69,37 @@ async def test_save_software_update_config_persists_values() -> None:
     )
     assert config.version == "3.0.0"
     assert pool.settings[SOFTWARE_UPDATE_VERSION_KEY] == "3.0.0"
+
+
+@pytest.mark.asyncio
+async def test_apply_uploaded_installer_to_draft_persists_download_url() -> None:
+    pool = _FakePool()
+    config = await apply_uploaded_installer_to_draft(
+        pool,
+        download_url="https://api.example.com/files/Camxora-2.5.0.zip",
+        version="2.5.0",
+    )
+    assert config.download_url.endswith("Camxora-2.5.0.zip")
+    assert config.version == "2.5.0"
+    assert pool.settings[SOFTWARE_UPDATE_DOWNLOAD_URL_KEY].endswith("Camxora-2.5.0.zip")
+    assert pool.settings[SOFTWARE_UPDATE_VERSION_KEY] == "2.5.0"
+
+
+@pytest.mark.asyncio
+async def test_get_published_desktop_release_requires_version_and_published_at() -> None:
+    unpublished_pool = _FakePool({SOFTWARE_UPDATE_VERSION_KEY: "2.5.0"})
+    assert await get_published_desktop_release(unpublished_pool) is None
+
+    published_pool = _FakePool(
+        {
+            SOFTWARE_UPDATE_VERSION_KEY: "2.5.0",
+            SOFTWARE_UPDATE_PUBLISHED_AT_KEY: "2026-07-19T03:00:00+00:00",
+        }
+    )
+    config = await get_published_desktop_release(published_pool)
+    assert config is not None
+    assert config.version == "2.5.0"
+    assert config.published_at == "2026-07-19T03:00:00+00:00"
 
 
 @pytest.mark.asyncio
