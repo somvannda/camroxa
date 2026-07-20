@@ -17,6 +17,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - **Export workers setting:** Preferences **Export Workers** (>1) now runs parallel one-shot visualizer subprocesses; the warm daemon stays single-job and is only used when workers=1 (billing/quota unchanged — charged once per batch by track count)
 - **Export hang / cancel:** daemon/subprocess exports honor a cancel flag between frames and while blocked on the encode queue; Cancel waits ~2s for soft stop then kills the process tree; auto-video stays paused 45s after a user cancel so the same batch does not instantly restart
 - **Stop Exporting:** Progress right-click **Stop Exporting** hard-stops the job and pauses auto-video + pipeline helper until you manually Start Export / Rebuild / Continue Progress / Start Merging on a row
+- **Start Merging:** no longer fails with “still loading settings”; queued merge wins over auto-export. Continue Progress prefers merge when local MP4s already exist (Auto Merge still requires Music → Auto Merge). Merge no longer requires the Video catalog template — only exported MP4s in the run folder
+- **Rebuild / Force Regenerate MP4:** no longer force `auto_merge=False`; after export they honor Music → **Auto Merge** the same as auto-video (export → merge)
 
 ### Added
 

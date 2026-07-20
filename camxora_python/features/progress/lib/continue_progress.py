@@ -95,6 +95,14 @@ def resolve_continue_progress(
                 batch_id=batch_id,
             )
 
+    if _prefer_merge_over_export(entry):
+        return ContinueProgressPlan(
+            action="start_merge",
+            label="Continue / start video merge",
+            row=row,
+            batch_id=batch_id,
+        )
+
     if _can_continue_export(entry):
         return ContinueProgressPlan(
             action="start_export",
@@ -125,6 +133,31 @@ def resolve_continue_progress(
         row=row,
         batch_id=batch_id,
     )
+
+
+def _prefer_merge_over_export(entry: EffectiveProgressRow) -> bool:
+    """When local MP4s already exist for the run, Continue should merge — not re-export."""
+    meta = entry.row.meta
+    run_dir = str(meta.run_dir or "").strip()
+    if not run_dir:
+        return False
+    stage = entry.effective_stage.strip().lower()
+    if stage in {"youtube", "done", "error"}:
+        return False
+    try:
+        from features.video.lib.pipeline_merge import list_branch_export_outputs
+    except Exception:
+        return False
+    long_mp4s = list_branch_export_outputs(run_dir, "long")
+    expected = int(meta.expected or 0)
+    if expected > 0 and len(long_mp4s) >= expected:
+        return True
+    if stage in {"merge", "merger"} and long_mp4s:
+        return True
+    converter = str(entry.effective_converter or entry.row.converter or "").lower()
+    if long_mp4s and ("completed" in converter or "merged" in converter):
+        return True
+    return False
 
 
 def _can_continue_export(entry: EffectiveProgressRow) -> bool:

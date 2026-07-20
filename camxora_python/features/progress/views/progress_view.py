@@ -912,20 +912,44 @@ class ProgressView(PollablePageMixin, QScrollArea):
             self._show_retry_notice("Select a run before starting video work.", tone="warning")
             return
         self._resume_auto_pipeline_for_manual_start()
-        from features.video.lib.export_readiness import evaluate_video_export_readiness
 
-        readiness = evaluate_video_export_readiness(
-            row,
-            self._profile_for_row(row),
-            workspace=get_video_workspace_service().get_workspace_state(),
-            progress_load_error=self._progress_load_error if self._is_error else None,
-            auth_blocked=False,
-        )
-        if not readiness.ready:
-            detail = "\n".join(f"• {issue}" for issue in readiness.issues)
-            self._show_retry_notice(f"Export not ready:\n{detail}", tone="warning")
-            self._update_export_validation()
-            return
+        # Merge only needs exported MP4s in the run folder — do not require the
+        # Video catalog template (that gate was blocking Start Merging / Continue).
+        if action != "merge":
+            from features.video.lib.export_readiness import evaluate_video_export_readiness
+
+            readiness = evaluate_video_export_readiness(
+                row,
+                self._profile_for_row(row),
+                workspace=get_video_workspace_service().get_workspace_state(),
+                progress_load_error=self._progress_load_error if self._is_error else None,
+                auth_blocked=False,
+            )
+            if not readiness.ready:
+                detail = "\n".join(f"• {issue}" for issue in readiness.issues)
+                self._show_retry_notice(f"Export not ready:\n{detail}", tone="warning")
+                self._update_export_validation()
+                return
+        else:
+            run_dir = str(row.meta.run_dir or "").strip()
+            if not run_dir:
+                self._show_retry_notice("Merge not ready: run folder path is missing.", tone="warning")
+                return
+            from pathlib import Path
+
+            from features.video.lib.pipeline_merge import list_branch_export_outputs
+
+            if not Path(run_dir).is_dir():
+                self._show_retry_notice(f"Merge not ready: run folder does not exist:\n{run_dir}", tone="warning")
+                return
+            if not list_branch_export_outputs(run_dir, "long") and not list_branch_export_outputs(
+                run_dir, "reel"
+            ):
+                self._show_retry_notice(
+                    "Merge not ready: no exported MP4 files found in the run folder.",
+                    tone="warning",
+                )
+                return
 
         coordinator = get_video_pipeline_coordinator()
         if coordinator is None:

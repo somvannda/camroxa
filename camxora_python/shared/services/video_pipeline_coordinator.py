@@ -89,6 +89,13 @@ class VideoPipelineCoordinator(QObject):
     def _on_payload_ready(self, payload: object) -> None:
         if not isinstance(payload, VideoPipelineOrchestrationPayload):
             return
+
+        # Manual Start Merging / Rebuild queued while a poll worker was loading —
+        # always prefer that over auto-export (was dropping merge with "still loading").
+        if self._pending_manual is not None:
+            self._on_manual_payload_ready(payload)
+            return
+
         workspace = payload.workspace
         if not isinstance(workspace, VideoWorkspaceState):
             return
@@ -166,22 +173,28 @@ class VideoPipelineCoordinator(QObject):
         from shared.services.auto_pipeline_pause import resume_auto_pipeline
         from shared.services.shell_status import emit_shell_status
 
-        # Explicit Start/Rebuild/Merge from Progress clears Stop Exporting pause.
-        resume_auto_pipeline()
-        self._user_cancel_until = 0.0
-
         if self._automation.recover_stale_state():
             emit_shell_status("Cleared stale video export state.", tone="neutral")
         if self._automation.is_busy():
             emit_shell_status("Video pipeline is already running.", tone="warning")
             return
+
+        # Explicit Start/Rebuild/Merge from Progress clears Stop Exporting pause.
+        # Keep pending_manual set BEFORE any poll completes so auto-export cannot steal.
+        resume_auto_pipeline()
+        self._user_cancel_until = 0.0
+        self._pending_manual = (row, action, branch)
+
         if self._worker is not None and self._worker.isRunning():
-            emit_shell_status("Video pipeline is still loading settings.", tone="warning")
+            # Reuse the in-flight settings load — _on_payload_ready routes to merge/export.
+            emit_shell_status(
+                "Queued — starting when settings finish loading…",
+                tone="neutral",
+            )
             return
 
-        self._pending_manual = (row, action, branch)
         worker = VideoPipelineOrchestrationWorker(self._api, parent=self)
-        worker.succeeded.connect(self._on_manual_payload_ready)
+        worker.succeeded.connect(self._on_payload_ready)
         worker.failed.connect(self._on_manual_action_failed)
         worker.finished.connect(self._on_worker_finished)
         self._worker = worker
@@ -190,7 +203,6 @@ class VideoPipelineCoordinator(QObject):
     def _on_manual_payload_ready(self, payload: object) -> None:
         pending = getattr(self, "_pending_manual", None)
         if pending is None:
-            self._on_payload_ready(payload)
             return
         row, action, branch = pending
         self._pending_manual = None
@@ -232,15 +244,23 @@ class VideoPipelineCoordinator(QObject):
 
         self._automation.recover_stale_state()
         if action == "merge":
-            self._automation.start_manual_merge(candidate, settings=payload.settings)
+            started = self._automation.start_manual_merge(candidate, settings=payload.settings)
+            if not started:
+                from shared.services.shell_status import emit_shell_status
+
+                emit_shell_status(
+                    "Merge did not start — check the run folder for exported MP4s.",
+                    tone="warning",
+                )
             return
 
         force_regenerate = action == "force_export"
+        # Same as auto-video: honor Music → Auto Merge so rebuild/force continues
+        # export → merge instead of stopping after MP4 jobs.
         self._automation.start(
             candidate,
             settings=payload.settings,
             force_regenerate=force_regenerate,
-            auto_merge=False,
         )
 
     def _on_manual_action_failed(self, message: str) -> None:
@@ -251,6 +271,12 @@ class VideoPipelineCoordinator(QObject):
 
     def _on_poll_failed(self, message: str) -> None:
         from shared.services.shell_status import emit_shell_status
+
+        if self._pending_manual is not None:
+            self._on_manual_action_failed(
+                message or "Unable to load settings for the requested video action."
+            )
+            return
 
         self._api_outage = True
         # Wedged busy flags during an outage prevent resume after recovery.

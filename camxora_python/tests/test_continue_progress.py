@@ -88,6 +88,24 @@ def test_continue_starts_merge_on_merge_stage() -> None:
     assert plan.action == "start_merge"
 
 
+def test_continue_starts_merge_when_exports_complete(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    for i in range(3):
+        path = run_dir / f"{i}. track_OK.mp4"
+        path.write_bytes(b"0" * 60_000)
+    plan = resolve_continue_progress(
+        _entry(
+            stage="export",
+            status="pending",
+            converter="long 3/3 completed",
+            run_dir=str(run_dir),
+            long_ready=True,
+        )
+    )
+    assert plan.action == "start_merge"
+
+
 def test_continue_none_when_done() -> None:
     plan = resolve_continue_progress(_entry(stage="done", long_ready=True))
     assert plan.action == "none"
