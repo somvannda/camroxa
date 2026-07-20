@@ -102,6 +102,59 @@ class PipelineAutomationService(QObject):
         self.recover_stale_state()
         return self._busy or self._workers_running()
 
+    def cancel_active(self) -> bool:
+        """Stop the in-flight pipeline export or merge (if any).
+
+        Returns True when a live worker was asked to stop, or when stale
+        busy/export flags were cleared so another Start Export can run.
+        """
+        cancelled_live = False
+        export_worker = self._export_worker
+        if export_worker is not None and export_worker.isRunning():
+            export_worker.cancel()
+            cancelled_live = True
+        merge_worker = self._merge_worker
+        if merge_worker is not None and merge_worker.isRunning():
+            merge_worker.cancel()
+            cancelled_live = True
+
+        # Always poke the warm visualizer daemon — ExportJob.cancel does this
+        # for registered jobs, but a hung daemon with no active job ref still
+        # blocks Start Export via any_video_pipeline_threads_running().
+        try:
+            from features.video.services.visualizer_daemon import get_visualizer_daemon
+
+            get_visualizer_daemon().cancel_active()
+        except Exception:
+            pass
+
+        if cancelled_live:
+            emit_shell_status("Stopping active video export/merge…", tone="neutral")
+            return True
+
+        if self.recover_stale_state() or self._busy:
+            self._busy = False
+            workspace = self._current_workspace()
+            if workspace is not None and (
+                workspace.export.running or workspace.export.merge_running
+            ):
+                self._publish_workspace(
+                    workspace.model_copy(
+                        update={
+                            "export": workspace.export.model_copy(
+                                update={
+                                    "running": False,
+                                    "merge_running": False,
+                                    "current_status": "Export stopped.",
+                                }
+                            )
+                        }
+                    )
+                )
+            emit_shell_status("Cleared stuck video export state.", tone="neutral")
+            return True
+        return False
+
     def start(
         self,
         candidate: AutoVideoCandidate,

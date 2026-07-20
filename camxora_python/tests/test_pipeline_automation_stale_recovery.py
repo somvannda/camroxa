@@ -105,6 +105,52 @@ def test_any_video_pipeline_threads_running_tracks_live_threads() -> None:
     assert any_video_pipeline_threads_running() is False
 
 
+def test_cancel_active_stops_live_export_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    api = MagicMock()
+    service = PipelineAutomationService(api)
+    worker = MagicMock()
+    worker.isRunning.return_value = True
+    worker.cancel = MagicMock()
+    service._export_worker = worker
+    service._busy = True
+
+    statuses: list[str] = []
+    monkeypatch.setattr(
+        "features.video.services.pipeline_automation_service.emit_shell_status",
+        lambda msg, tone="neutral": statuses.append(str(msg)),
+    )
+
+    assert service.cancel_active() is True
+    worker.cancel.assert_called_once()
+    assert any("Stopping active" in s for s in statuses)
+
+
+def test_cancel_active_clears_stale_busy_without_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = MagicMock()
+    service = PipelineAutomationService(api)
+    get_video_workspace_service().set_workspace_state(_stale_workspace())
+    service._busy = True
+    published: list[VideoWorkspaceState] = []
+
+    monkeypatch.setattr(service, "_publish_workspace", published.append)
+    monkeypatch.setattr(
+        "features.video.services.pipeline_automation_service.any_video_pipeline_threads_running",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "features.video.services.pipeline_automation_service.emit_shell_status",
+        lambda *_args, **_kwargs: None,
+    )
+
+    assert service.cancel_active() is True
+    assert service._busy is False
+    assert published
+    assert published[-1].export.running is False
+    assert published[-1].export.merge_running is False
+
+
 def test_any_video_pipeline_threads_running_ignores_deleted_cpp_wrappers() -> None:
     from shared.services import video_pipeline_activity as activity
 

@@ -336,8 +336,19 @@ class PlatformApi:
             auth=True,
         )
 
-    def list_music_history(self, *, limit: int = 8) -> MusicHistoryListResponse:
-        data = self._client.request("/music/history", auth=True, params={"limit": limit})
+    def list_music_history(
+        self,
+        *,
+        limit: int = 25,
+        from_date: str | None = None,
+        to_date: str | None = None,
+    ) -> MusicHistoryListResponse:
+        params: dict[str, object] = {"limit": max(1, min(100, int(limit)))}
+        if from_date:
+            params["from_date"] = from_date
+        if to_date:
+            params["to_date"] = to_date
+        data = self._client.request("/music/history", auth=True, params=params)
         return MusicHistoryListResponse.model_validate(data)
 
     def list_music_languages(self) -> MusicLanguageListResponse:

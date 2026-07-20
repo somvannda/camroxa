@@ -109,6 +109,21 @@ def _is_failure_status(status: str | None, suno_status: str | None) -> bool:
     return False
 
 
+def classify_song_pipeline_bucket(
+    status: str | None,
+    suno_status: str | None = None,
+) -> str:
+    """Coarse History filter bucket: success | failed | pending."""
+    if _is_failure_status(status, suno_status):
+        return "failed"
+    song_status = _normalize(status)
+    provider_status = _normalize(suno_status)
+    for candidate in (provider_status, song_status):
+        if candidate in _SUCCESS_STATUSES:
+            return "success"
+    return "pending"
+
+
 def is_song_suno_retry_eligible(
     status: str | None,
     suno_status: str | None = None,

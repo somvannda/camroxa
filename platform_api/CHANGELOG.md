@@ -9,6 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Background **image job auto-retry**: transient provider failures re-queue as `pending` up to `image_job_max_attempts` (default 3); fail-budget / quota / insufficient credits stay terminal.
+- `GET /music/history`: optional `from_date` / `to_date` query filters; limit raised to **100** (default 25).
+- Parse history `from_date`/`to_date` to `datetime.date` before asyncpg binds (fixes 500 `'str' object has no attribute 'toordinal'`).
+- **Suno reject auto-recovery:** content-policy/`REJECTED` failures rewrite lyrics via lyric LLM then resubmit (max 2 auto attempts).
+
 ### Fixed
 
 - Dashboard weekly `usage_by_day` window now includes **today** (`today-6..today`); previously ended at yesterday and hid same-day Manual exports.

@@ -1446,6 +1446,46 @@ class BatchRepository:
             attempt_count,
         )
 
+    async def requeue_auto_retry_failed_jobs(
+        self,
+        user_id: UUID,
+        *,
+        batch_id: UUID | None = None,
+        max_attempts: int = 3,
+        limit: int = 200,
+    ) -> int:
+        """Re-queue failed jobs that still have auto-retry attempts left.
+
+        Skips fail-budget / quota messages so we do not spin forever when blocked.
+        """
+        max_attempts = max(1, min(8, int(max_attempts)))
+        limit = max(1, min(500, int(limit)))
+        result = await self._pool.execute(
+            """
+            UPDATE image_jobs
+            SET status = 'pending',
+                updated_at = NOW()
+            WHERE id IN (
+                SELECT id
+                FROM image_jobs
+                WHERE user_id = $1
+                  AND ($2::uuid IS NULL OR batch_id = $2)
+                  AND status = 'failed'
+                  AND COALESCE(attempt_count, 0) < $3
+                  AND COALESCE(error, '') !~* 'daily fail/retry budget exceeded'
+                  AND COALESCE(error, '') !~* 'insufficient credits'
+                  AND COALESCE(error, '') !~* 'quota exceeded'
+                ORDER BY updated_at ASC
+                LIMIT $4
+            )
+            """,
+            user_id,
+            batch_id,
+            max_attempts,
+            limit,
+        )
+        return int(str(result).split()[-1]) if result else 0
+
     async def reset_image_jobs(
         self,
         user_id: UUID,

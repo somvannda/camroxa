@@ -2961,14 +2961,31 @@ class BatchService:
         batch_id: UUID,
         user_id: str,
     ) -> bool:
-        """Sanitize and resubmit once after a sensitive-word/producer-tag failure."""
+        """Rewrite (when needed) and resubmit after content-policy / sensitive failures.
+
+        Caps at 2 automatic attempts per song. First attempt rewrites lyrics via the
+        lyric LLM when available; later attempts resubmit with sanitize-only safety.
+        """
         retry_count = await self._batch_repo.get_suno_auto_retry_count(song.id)
-        if retry_count >= 1:
+        max_auto_retries = 2
+        if retry_count >= max_auto_retries:
             return False
 
         batch = await self._batch_repo.get_batch_by_id(batch_id)
         if batch is None:
             return False
+
+        failure_hint = await self.latest_suno_failure_hint(song.id)
+        rewritten = await self._auto_rewrite_song_lyrics_for_suno_retry(
+            song=song,
+            batch=batch,
+            user_id=user_id,
+            failure_hint=failure_hint,
+        )
+        if rewritten:
+            refreshed = await self._batch_repo.get_song_by_id(song.id)
+            if refreshed is not None:
+                song = refreshed
 
         await self._batch_repo.increment_suno_auto_retry_count(song.id)
         suno_model = await self._resolve_suno_model(batch.user_id)
@@ -2981,9 +2998,12 @@ class BatchService:
                 is_retry=True,
             )
             logger.info(
-                "Auto-retried Suno for song %s in batch %s after sensitive-word failure",
+                "Auto-retried Suno for song %s in batch %s after content-policy failure "
+                "(rewrite=%s attempt=%s)",
                 song.id,
                 batch_id,
+                rewritten,
+                retry_count + 1,
             )
             return True
         except Exception as exc:
@@ -2994,6 +3014,101 @@ class BatchService:
                 str(exc)[:200],
             )
             return False
+
+    async def _auto_rewrite_song_lyrics_for_suno_retry(
+        self,
+        *,
+        song: Song,
+        batch: Batch,
+        user_id: str,
+        failure_hint: str | None,
+    ) -> bool:
+        """Polish song lyrics for a safer Suno resubmit. Returns True when lyrics changed."""
+        lyrics = str(song.lyrics or "").strip()
+        if not lyrics or self._generation_service is None:
+            return False
+        if self._ai_routing_service is None:
+            return False
+
+        try:
+            text_chain = await self._ai_routing_service.resolve_text_chain("lyric")
+        except Exception:
+            logger.exception("Auto-rewrite skipped: lyric routing failed for song %s", song.id)
+            return False
+
+        polish_chain = [
+            (item.provider, item.sub_model or "")
+            for item in text_chain
+            if str(getattr(item, "provider", "") or "").strip().lower() != "suno"
+        ]
+        if not polish_chain:
+            return False
+
+        bill_provider, bill_model = polish_chain[0]
+        charged = None
+        if self._enforcement_service is not None:
+            try:
+                charged = await self._enforcement_service.check_and_deduct(
+                    user_id=UUID(user_id),
+                    channel_profile_id=batch.ok_profile_id,
+                    operation_type="lyric",
+                    ai_service=bill_provider,
+                    sub_model=bill_model or None,
+                )
+            except Exception as exc:
+                logger.info(
+                    "Auto-rewrite skipped for song %s (billing/quota): %s",
+                    song.id,
+                    str(exc)[:160],
+                )
+                return False
+
+        try:
+            polished = await self._generation_service.polish_lyrics_text(
+                user_id,
+                lyrics,
+                75,
+                bill_provider,
+                bill_model,
+                provider_chain=polish_chain,
+                title=song.title,
+                suno_failure_hint=failure_hint,
+            )
+        except Exception as exc:
+            if charged is not None and self._enforcement_service is not None:
+                try:
+                    await self._enforcement_service.refund_failed_operation(
+                        UUID(user_id),
+                        batch.ok_profile_id,
+                        "lyric",
+                        bill_provider,
+                        charged_credit_units=int(
+                            getattr(charged, "charged_credit_units", 0) or 0
+                        ),
+                        sub_model=bill_model or None,
+                        reason="auto_suno_rewrite_failed",
+                        ref_id=str(song.id),
+                    )
+                except Exception:
+                    pass
+            logger.warning(
+                "Auto-rewrite failed for song %s: %s",
+                song.id,
+                str(exc)[:200],
+            )
+            return False
+
+        cleaned = str(polished or "").strip()
+        if not cleaned or cleaned == lyrics:
+            return False
+
+        await self._batch_repo.update_song_draft(
+            song.id,
+            str(song.title or "").strip() or "Untitled",
+            str(song.album or "").strip() or "",
+            cleaned,
+        )
+        return True
 
     async def _assert_suno_payload_has_no_block_terms(
         self,

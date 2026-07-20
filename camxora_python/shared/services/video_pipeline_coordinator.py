@@ -117,6 +117,14 @@ class VideoPipelineCoordinator(QObject):
     def auth_blocked(self) -> bool:
         return self._automation.auth_blocked()
 
+    def is_busy(self) -> bool:
+        return self._automation.is_busy()
+
+    def cancel_active_export(self) -> bool:
+        """Cancel the active pipeline export/merge so another job can start."""
+        self._pending_manual = None
+        return self._automation.cancel_active()
+
     def run_manual_action(
         self,
         row: ProgressRow,

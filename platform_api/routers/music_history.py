@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -20,6 +20,17 @@ from platform_api.models.schemas import (
 from platform_api.services.run_directory_planner import resolve_history_output_dirs
 
 router = APIRouter(prefix="/music", tags=["music"])
+
+
+def _parse_query_date(value: str | None) -> date | None:
+    """Parse yyyy-MM-dd into a date for asyncpg ($n::date bindings)."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
 
 
 async def _get_batch_service() -> BatchService:
@@ -64,11 +75,21 @@ def _is_schema_drift_error(error: Exception) -> bool:
 async def list_music_history(
     batch_service: BatchServiceDep,
     ctx: AuthContext = Depends(get_current_user),
-    limit: int = Query(default=8, ge=1, le=25),
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    from_date: Annotated[
+        str | None,
+        Query(description="Inclusive yyyy-MM-dd filter"),
+    ] = None,
+    to_date: Annotated[
+        str | None,
+        Query(description="Inclusive yyyy-MM-dd filter"),
+    ] = None,
 ) -> MusicHistoryListResponse:
     """Return recent batch/song history for the authenticated user."""
     user_id = UUID(ctx.user_id)
     pool = get_db_pool()
+    filter_from = _parse_query_date(from_date)
+    filter_to = _parse_query_date(to_date)
 
     # Reconcile in-flight Suno tasks so history reflects provider success even when
     # webhooks were rejected or delayed (client refresh should not depend on MP3 sync).
@@ -105,11 +126,23 @@ async def list_music_history(
             LEFT JOIN channel_profiles okp ON okp.id = b.ok_profile_id
             LEFT JOIN channel_profiles altp ON altp.id = b.alt_profile_id
             WHERE b.user_id = $1
+              AND (
+                $3::date IS NULL
+                OR COALESCE(b.planned_to_date, (b.created_at AT TIME ZONE 'UTC')::date) >= $3::date
+                OR (b.created_at AT TIME ZONE 'UTC')::date >= $3::date
+              )
+              AND (
+                $4::date IS NULL
+                OR COALESCE(b.planned_from_date, (b.created_at AT TIME ZONE 'UTC')::date) <= $4::date
+                OR (b.created_at AT TIME ZONE 'UTC')::date <= $4::date
+              )
             ORDER BY b.created_at DESC
             LIMIT $2
             """,
             user_id,
             limit,
+            filter_from,
+            filter_to,
         )
     except Exception as error:
         if not _is_schema_drift_error(error):
@@ -136,11 +169,21 @@ async def list_music_history(
             LEFT JOIN channel_profiles okp ON okp.id = b.ok_profile_id
             LEFT JOIN channel_profiles altp ON altp.id = b.alt_profile_id
             WHERE b.user_id = $1
+              AND (
+                $3::date IS NULL
+                OR (b.created_at AT TIME ZONE 'UTC')::date >= $3::date
+              )
+              AND (
+                $4::date IS NULL
+                OR (b.created_at AT TIME ZONE 'UTC')::date <= $4::date
+              )
             ORDER BY b.created_at DESC
             LIMIT $2
             """,
             user_id,
             limit,
+            filter_from,
+            filter_to,
         )
 
     if not batch_rows:

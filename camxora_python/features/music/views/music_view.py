@@ -33,6 +33,7 @@ from shared.lib.music_composer import (
     matches_history_filters,
     read_settings_dict,
     sanitize_selected_profile_ids,
+    song_matches_history_status_filter,
     toggle_selected_profile_ids,
 )
 from shared.lib.music_costs import (
@@ -75,6 +76,7 @@ from shared.workers.data_workers import (
     MusicWorkspaceWorker,
     MusicPlanPreflightWorker,
     PatchSettingsWorker,
+    PipelineRecoveryWorker,
     PolishLyricsWorker,
     RetrySongDraftWorker,
     RetrySongSunoWorker,
@@ -221,7 +223,7 @@ class MusicView(QWidget):
         content_layout.addLayout(main_row)
 
         self._history_card = HistoryCard()
-        self._history_card.filters_changed.connect(self._render_history)
+        self._history_card.filters_changed.connect(self._on_history_filters_changed)
         self._history_card.row_selected.connect(self._select_history_row)
         self._history_card.open_folder_requested.connect(self._open_history_folder)
         self._history_card.retry_draft_requested.connect(self._retry_history_draft)
@@ -230,6 +232,7 @@ class MusicView(QWidget):
         self._history_card.continue_video_requested.connect(self._continue_history_video)
         self._history_card.retry_batch_requested.connect(self._retry_history_batch)
         self._history_card.refresh_requested.connect(self._refresh_history_status)
+        self._history_card.recover_failed_requested.connect(self._recover_failed_pipeline)
         content_layout.addWidget(self._history_card)
 
         self._content.hide()
@@ -466,12 +469,38 @@ class MusicView(QWidget):
         if self._history_worker is not None and self._history_worker.isRunning():
             self._pending_history_refresh = True
             return
-        worker = MusicHistoryRefreshWorker(self._api, parent=self)
+        limit = self._history_fetch_limit()
+        values = self._history_card.filter_values()
+        worker = MusicHistoryRefreshWorker(self._api, limit=limit, parent=self)
+        worker.set_date_filters(
+            from_date=str(values.get("from_date") or ""),
+            to_date=str(values.get("to_date") or ""),
+        )
         worker.succeeded.connect(self._on_history_refreshed)
         worker.failed.connect(self._on_history_refresh_failed)
         worker.finished.connect(self._finish_history_worker)
         self._history_worker = worker
         worker.start()
+
+    def _on_history_filters_changed(self) -> None:
+        """Re-render locally; refetch from API when date window changes."""
+        values = self._history_card.filter_values()
+        from_date = str(values.get("from_date") or "")
+        to_date = str(values.get("to_date") or "")
+        key = f"{from_date}|{to_date}|{self._history_fetch_limit()}"
+        previous = getattr(self, "_history_filter_fetch_key", None)
+        self._render_history()
+        if key != previous:
+            self._history_filter_fetch_key = key
+            self.refresh_history()
+
+    def _history_fetch_limit(self) -> int:
+        """Cap history fetch by settings window and API max (100)."""
+        try:
+            window = int(getattr(self._music_settings, "history_window", 50) or 50)
+        except (TypeError, ValueError):
+            window = 50
+        return max(8, min(100, window))
 
     def _finish_history_worker(self) -> None:
         self._history_worker = None
@@ -483,6 +512,12 @@ class MusicView(QWidget):
         if not isinstance(payload, MusicHistoryListResponse):
             return
         self._history = payload
+        values = self._history_card.filter_values()
+        self._history_filter_fetch_key = (
+            f"{values.get('from_date') or ''}|"
+            f"{values.get('to_date') or ''}|"
+            f"{self._history_fetch_limit()}"
+        )
         self._render_history()
 
     def _on_history_refresh_failed(self, message: str) -> None:
@@ -1031,21 +1066,50 @@ class MusicView(QWidget):
         self._render_history()
 
     def _render_history(self) -> None:
+        values = self._history_card.filter_values()
         filters = HistoryFiltersState(
-            from_date=str(self._history_card.filter_values()["from_date"]),
-            to_date=str(self._history_card.filter_values()["to_date"]),
-            last_batch_only=bool(self._history_card.filter_values()["last_batch_only"]),
+            from_date=str(values.get("from_date") or ""),
+            to_date=str(values.get("to_date") or ""),
+            last_batch_only=bool(values.get("last_batch_only")),
+            status=str(values.get("status") or "all"),
+            batch_id=str(values.get("batch_id") or ""),
         )
+        self._history_card.set_batch_filter_options(list(self._history.batches or []))
         rows: list[HistoryRow] = []
         row_number = 1
+        matched_batches = 0
+        matched_songs = 0
         for batch_index, batch in enumerate(self._history.batches):
             if not matches_history_filters(batch, filters, batch_index):
                 continue
+            song_rows = [
+                song
+                for song in batch.songs
+                if song_matches_history_status_filter(
+                    status=song.status,
+                    suno_status=song.suno_status,
+                    status_filter=filters.status,
+                )
+            ]
+            if filters.status not in {"", "all"} and not song_rows:
+                continue
+            matched_batches += 1
             rows.append(HistoryRow(batch=batch, is_batch_separator=True))
-            for song in batch.songs:
+            for song in song_rows:
                 rows.append(HistoryRow(row_number=row_number, batch=batch, song=song))
                 row_number += 1
-        self._history_card.set_summary(self._history.summary, self._history.updated_at)
+                matched_songs += 1
+        loaded_batches = len(self._history.batches or [])
+        loaded_songs = sum(len(batch.songs or []) for batch in (self._history.batches or []))
+        if matched_batches == loaded_batches and matched_songs == loaded_songs:
+            summary = self._history.summary or f"{loaded_batches} batches · {loaded_songs} songs"
+        else:
+            summary = (
+                f"{matched_batches} batch{'es' if matched_batches != 1 else ''} · "
+                f"{matched_songs} song{'s' if matched_songs != 1 else ''} shown "
+                f"(of {loaded_batches} loaded)"
+            )
+        self._history_card.set_summary(summary, self._history.updated_at)
         self._history_card.set_rows(rows, self._selected_history_song_id)
 
     def _open_history_folder(self, path: str, _label: str) -> None:
@@ -1204,6 +1268,44 @@ class MusicView(QWidget):
                 tone="success",
             )
         self._error_banner.hide()
+        self.refresh_data()
+
+    def _recover_failed_pipeline(self) -> None:
+        from features.music.lib.pipeline_recovery import collect_recovery_targets
+
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status("A recovery/retry is already running.", tone="warning")
+            return
+        targets = collect_recovery_targets(list(self._history.batches or []))
+        if not targets:
+            self._flash_status("No failed songs to recover in loaded history.", tone="neutral")
+            return
+        worker = PipelineRecoveryWorker(self._api, targets, parent=self)
+        worker.progressed.connect(lambda msg: self._flash_status(msg, tone="neutral"))
+        worker.succeeded.connect(self._on_pipeline_recovery_succeeded)
+        worker.failed.connect(self._show_workspace_error)
+        worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
+        self._retry_worker = worker
+        log_info(f"Pipeline recovery started for {len(targets)} song(s)…", category="music")
+        self._flash_status(f"Recovering {len(targets)} failed song(s)…")
+        worker.start()
+
+    def _on_pipeline_recovery_succeeded(self, payload: object) -> None:
+        data = payload if isinstance(payload, dict) else {}
+        recovered = int(data.get("recovered") or 0)
+        rewrite = int(data.get("rewrite") or 0)
+        draft = int(data.get("draft") or 0)
+        suno = int(data.get("suno") or 0)
+        parts = [f"{recovered} recovered"]
+        if draft:
+            parts.append(f"{draft} draft")
+        if rewrite:
+            parts.append(f"{rewrite} rewrite→Suno")
+        if suno:
+            parts.append(f"{suno} Suno retry")
+        self._flash_status(" · ".join(parts), tone="success")
+        self._error_banner.hide()
+        self.refresh_history()
         self.refresh_data()
 
     def _on_history_retry_succeeded(self, payload: object) -> None:

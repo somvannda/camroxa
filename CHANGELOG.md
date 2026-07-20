@@ -9,8 +9,16 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Daemon export cancel:** Cancel Active Export now kills the warm visualizer daemon + ffmpeg process tree (previously only terminated one-shot subprocess jobs, so hung NVENC pipes left “already running” forever)
+
 ### Added
 
+- **Progress right-click Cancel:** Operational rows context menu includes **Cancel Active Export/Merge** to stop the single local pipeline job (or clear stuck busy state) so another **Start Export** can run
+- **Music History filters:** Status (All/Success/Failed/Pending) + Batch dropdown; calendar filter matches planned run date **or** created day; Show all clears status/batch too; fetches up to history window (API max 100)
+- **Pipeline Recover failed:** History button scans loaded failures — retry drafts, rewrite→Suno on content-policy rejects, retry other Suno fails
+- **Pipeline helper agent (background):** shell coordinator auto-scans history and recovers failed drafts/Suno (cooldown + per-session caps)
 - **REQ-2.3 slice 2 bars:** GPU spectrum covers mirror/symmetrical/drift/floating/ignition/neon (plus prior thin/grid); beads + waveforms remain CPU
 - **REQ-3.5 NativeEncodeBridge NVENC:** Windows DLL encodes H.264 via runtime `nvEncodeAPI64.dll` (D3D11 + CPU NV12 upload, Annex-B); export path uses it when `CAMXORA_NATIVE_ENCODE=1` then remuxes audio with ffmpeg `-c:v copy`; pipe fallback on failure; `CAMXORA_NATIVE_ENCODE_STUB=1` keeps stub path
 - **Export GPU tier helper:** `visualizer/export_gpu_tier.py` classifies NVIDIA GPUs as `low|mid|high` (`CAMXORA_GPU_TIER` override or nvidia-smi); low tier tightens Draft/Fast/Balanced particle caps and prefers yuv420p on `quality` speed (Master uncapped)

@@ -70,3 +70,60 @@ def test_daemon_disabled_by_env_returns_none(monkeypatch) -> None:
         )
         is None
     )
+
+
+def test_cancel_active_kills_process_tree(monkeypatch) -> None:
+    from features.video.services import visualizer_daemon as vd
+
+    killed: list[object] = []
+
+    class _FakeProc:
+        def __init__(self) -> None:
+            self.pid = 4242
+
+        def poll(self) -> int | None:
+            return None
+
+    def _fake_kill(proc: object) -> None:
+        killed.append(proc)
+
+    monkeypatch.setattr(vd, "_terminate_process_tree", _fake_kill)
+    client = VisualizerDaemonClient()
+    fake = _FakeProc()
+    client._proc = fake  # type: ignore[assignment]
+    client.cancel_active()
+    assert killed == [fake]
+    assert client._proc is None
+    assert client._cancel_requested is True
+
+
+def test_export_job_cancel_calls_daemon_when_no_proc(monkeypatch) -> None:
+    from features.video.services.export_job import ExportJob, ExportSettings
+
+    calls: list[str] = []
+
+    class _Daemon:
+        def cancel_active(self) -> None:
+            calls.append("cancel_active")
+
+    monkeypatch.setattr(
+        "features.video.services.visualizer_daemon.get_visualizer_daemon",
+        lambda: _Daemon(),
+    )
+    job = ExportJob(
+        mp3_path="a.mp3",
+        template={},
+        background_path="bg.png",
+        logo_path="logo.png",
+        settings=ExportSettings(
+            ffmpeg_path="ffmpeg",
+            output_dir=".",
+            output_path="out.mp4",
+            fps=24,
+            width=1280,
+            height=720,
+        ),
+    )
+    job.cancel()
+    assert job._cancel_requested is True
+    assert calls == ["cancel_active"]

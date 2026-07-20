@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -19,11 +20,15 @@ async def run_image_jobs_until_empty(
     user_id: str,
     batch_id: str,
 ) -> None:
-    """Run pending image jobs for a batch until the queue is drained."""
+    """Run pending image jobs for a batch until the queue is drained.
+
+    Auto-retries (pending after transient failure) are drained in the same loop.
+    """
     image_log.log_runner_started(user_id=user_id, batch_id=batch_id)
     total_ran = 0
+    idle_rounds = 0
     try:
-        for iteration in range(1, 51):
+        for iteration in range(1, 81):
             ran = await service.run_pending_jobs(
                 user_id=user_id,
                 batch_id=batch_id,
@@ -34,9 +39,15 @@ async def run_image_jobs_until_empty(
                 iteration=iteration,
                 ran=ran,
             )
-            if ran <= 0:
+            if ran > 0:
+                total_ran += ran
+                idle_rounds = 0
+                continue
+            idle_rounds += 1
+            # One empty claim after auto-retry requeue is enough to stop.
+            if idle_rounds >= 2:
                 break
-            total_ran += ran
+            await asyncio.sleep(1.5)
     except Exception as exc:
         message = str(exc) or exc.__class__.__name__
         image_log.log_runner_crashed(user_id=user_id, batch_id=batch_id, error=message)

@@ -31,6 +31,34 @@ def _visualizer_daemon_enabled() -> bool:
     )
 
 
+def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
+    """Kill daemon + child ffmpeg (Windows needs /T; terminate alone leaves orphans)."""
+    if proc.poll() is not None:
+        return
+    if sys.platform == "win32":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                check=False,
+                capture_output=True,
+                timeout=15,
+            )
+            return
+        except Exception as exc:
+            log.debug("taskkill failed: %s", exc)
+    try:
+        proc.terminate()
+    except OSError:
+        pass
+    try:
+        proc.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
 class VisualizerDaemonClient:
     """Process-global warm visualizer subprocess (one job at a time)."""
 
@@ -39,6 +67,17 @@ class VisualizerDaemonClient:
         self._proc: subprocess.Popen[str] | None = None
         self._project_dir = ""
         self._disabled = False
+        self._cancel_requested = False
+
+    def cancel_active(self) -> None:
+        """Force-stop the in-flight daemon job (and ffmpeg children)."""
+        self._cancel_requested = True
+        with self._lock:
+            proc = self._proc
+            self._proc = None
+        if proc is None:
+            return
+        _terminate_process_tree(proc)
 
     def shutdown(self) -> None:
         with self._lock:
@@ -55,7 +94,7 @@ class VisualizerDaemonClient:
         try:
             proc.wait(timeout=3.0)
         except subprocess.TimeoutExpired:
-            proc.terminate()
+            _terminate_process_tree(proc)
 
     def run_command(
         self,
@@ -69,6 +108,7 @@ class VisualizerDaemonClient:
         """Run via daemon when available. Returns None if caller should fall back."""
         if not _visualizer_daemon_enabled() or self._disabled:
             return None
+        self._cancel_requested = False
         job_id = uuid.uuid4().hex
         with self._lock:
             if not self._ensure_process(cmd, cwd, env):
@@ -85,8 +125,11 @@ class VisualizerDaemonClient:
             return None
 
         exit_code = 1
+        job_done = False
         try:
             for line in proc.stdout:
+                if self._cancel_requested:
+                    break
                 stripped = line.strip()
                 if not stripped:
                     continue
@@ -102,20 +145,38 @@ class VisualizerDaemonClient:
                             exit_code = int(event.get("exitCode", 1))
                         except (TypeError, ValueError):
                             exit_code = 1
+                        job_done = True
                         break
                     if on_event:
                         on_event(event)
                 elif on_event:
                     on_event({"status": "log", "message": stripped})
         except Exception as exc:
-            log.warning("visualizer daemon read failed: %s", exc)
+            if self._cancel_requested:
+                log.info("visualizer daemon cancelled: %s", exc)
+            else:
+                log.warning("visualizer daemon read failed: %s", exc)
             self._reset_process()
+            if self._cancel_requested:
+                if on_exit:
+                    on_exit(1)
+                return 1
             return None
+
+        if self._cancel_requested:
+            self._reset_process()
+            if on_exit:
+                on_exit(1)
+            return 1
 
         if proc.poll() is not None:
             self._reset_process()
         if on_exit:
             on_exit(exit_code)
+        if not job_done:
+            # Process died mid-job without job_done — do not silently re-run as subprocess.
+            self._reset_process()
+            return 1
         if exit_code != 0:
             self._reset_process()
             return None
@@ -183,10 +244,7 @@ class VisualizerDaemonClient:
             proc = self._proc
             self._proc = None
         if proc is not None and proc.poll() is None:
-            try:
-                proc.terminate()
-            except OSError:
-                pass
+            _terminate_process_tree(proc)
 
 
 _client: VisualizerDaemonClient | None = None

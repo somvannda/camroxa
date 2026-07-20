@@ -29,6 +29,8 @@ class HistoryFiltersState:
     from_date: str = ""
     to_date: str = ""
     last_batch_only: bool = False
+    status: str = "all"  # all | success | failed | pending
+    batch_id: str = ""  # empty = all batches
 
 
 @dataclass
@@ -146,22 +148,104 @@ def build_reservation_token() -> str:
     return str(uuid.uuid4())
 
 
+def _ymd(value: str | None) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text[:10]
+    return ""
+
+
 def normalize_history_boundary(batch: MusicHistoryBatch, side: str) -> str:
     if side == "from":
-        return batch.from_date or batch.created_at[:10]
-    return batch.to_date or batch.updated_at[:10]
+        return _ymd(batch.from_date) or _ymd(batch.created_at)
+    return _ymd(batch.to_date) or _ymd(batch.updated_at) or _ymd(batch.created_at)
 
 
-def matches_history_filters(batch: MusicHistoryBatch, filters: HistoryFiltersState, batch_index: int) -> bool:
+def history_batch_filter_dates(batch: MusicHistoryBatch) -> list[str]:
+    """Dates that should match a calendar filter for this batch.
+
+    Includes planned run dates and created/updated calendar days so a batch
+    planned for a future run day still appears when filtering by the day it
+    was generated.
+    """
+    dates: list[str] = []
+    for raw in (
+        batch.from_date,
+        batch.to_date,
+        batch.created_at,
+        batch.updated_at,
+    ):
+        day = _ymd(raw)
+        if day and day not in dates:
+            dates.append(day)
+    return dates
+
+
+def matches_history_date_range(
+    batch: MusicHistoryBatch,
+    *,
+    from_date: str = "",
+    to_date: str = "",
+) -> bool:
+    filter_from = _ymd(from_date)
+    filter_to = _ymd(to_date)
+    if not filter_from and not filter_to:
+        return True
+
+    dates = history_batch_filter_dates(batch)
+    if not dates:
+        return True
+
+    for day in dates:
+        if filter_from and day < filter_from:
+            continue
+        if filter_to and day > filter_to:
+            continue
+        return True
+
+    batch_from = normalize_history_boundary(batch, "from")
+    batch_to = normalize_history_boundary(batch, "to") or batch_from
+    if batch_from and batch_to:
+        if filter_from and batch_to < filter_from:
+            return False
+        if filter_to and batch_from > filter_to:
+            return False
+        return True
+    return False
+
+
+def matches_history_filters(
+    batch: MusicHistoryBatch,
+    filters: HistoryFiltersState,
+    batch_index: int,
+) -> bool:
     if filters.last_batch_only and batch_index > 0:
         return False
-    batch_from = normalize_history_boundary(batch, "from")
-    batch_to = normalize_history_boundary(batch, "to")
-    if filters.from_date and batch_to < filters.from_date:
+    wanted_batch = str(filters.batch_id or "").strip()
+    if wanted_batch and str(batch.batch_id) != wanted_batch:
         return False
-    if filters.to_date and batch_from > filters.to_date:
+    if not matches_history_date_range(
+        batch,
+        from_date=filters.from_date,
+        to_date=filters.to_date,
+    ):
         return False
     return True
+
+
+def song_matches_history_status_filter(
+    *,
+    status: str | None,
+    suno_status: str | None,
+    status_filter: str,
+) -> bool:
+    """Return True when a song matches the History status dropdown."""
+    from shared.lib.music_status import classify_song_pipeline_bucket
+
+    wanted = str(status_filter or "all").strip().lower() or "all"
+    if wanted in {"", "all"}:
+        return True
+    return classify_song_pipeline_bucket(status, suno_status) == wanted
 
 
 def effect_preview_from_creativity(creativity: int) -> dict[str, int]:

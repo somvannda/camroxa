@@ -215,6 +215,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.start_merge_requested.connect(
             lambda row: self._run_video_pipeline_action(row, "merge")
         )
+        self._rows_card.cancel_job_requested.connect(self._cancel_active_video_job)
         self._rows_card.row_selected.connect(self._on_row_selected)
 
         self._detail_card = ProgressDetailCard()
@@ -745,6 +746,38 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._detail_card.set_syncing_batch_id("")
         self._render_table()
 
+    def _cancel_active_video_job(self, row: ProgressRow | None = None) -> None:
+        """Right-click: stop the active local export/merge so another Start Export can run."""
+        _ = row  # reserved for future row-scoped cancel; pipeline is single-slot today
+        coordinator = get_video_pipeline_coordinator()
+        if coordinator is None:
+            self._show_retry_notice("Video pipeline is not available yet.", tone="warning")
+            return
+        if not coordinator.is_busy():
+            # Still attempt clear — recovers stale busy flags from a crashed worker.
+            cleared = coordinator.cancel_active_export()
+            if cleared:
+                self._show_retry_notice(
+                    "Cleared stuck export state. You can Start Export on another row.",
+                    tone="success",
+                )
+            else:
+                self._show_retry_notice(
+                    "No active export/merge is running. Use Start Export on a ready row.",
+                    tone="neutral",
+                )
+            self.refresh_data()
+            return
+        cancelled = coordinator.cancel_active_export()
+        if cancelled:
+            self._show_retry_notice(
+                "Stopping active export/merge… You can start another job when it finishes.",
+                tone="success",
+            )
+        else:
+            self._show_retry_notice("Could not cancel the active video job.", tone="warning")
+        self.refresh_data()
+
     def _run_video_pipeline_action(self, row: ProgressRow | None, action: str) -> None:
         if row is None:
             self._show_retry_notice("Select a run before starting video work.", tone="warning")
@@ -767,6 +800,13 @@ class ProgressView(PollablePageMixin, QScrollArea):
         coordinator = get_video_pipeline_coordinator()
         if coordinator is None:
             self._show_retry_notice("Video pipeline is not available yet.", tone="warning")
+            return
+        if coordinator.is_busy():
+            self._show_retry_notice(
+                "Video pipeline is already running. Right-click a row → "
+                "Cancel Active Export/Merge, then Start Export again.",
+                tone="warning",
+            )
             return
         labels = {
             "force_export": "Force regenerating MP4 exports…",

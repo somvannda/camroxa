@@ -71,7 +71,16 @@ class ExportJob:
             try:
                 self.proc.terminate()
             except OSError:
-                return
+                pass
+            return
+        # Daemon path: ExportJob.proc is unset; cancel must kill the warm worker
+        # + ffmpeg children or Cancel Active Export leaves the pipeline stuck.
+        try:
+            from features.video.services.visualizer_daemon import get_visualizer_daemon
+
+            get_visualizer_daemon().cancel_active()
+        except Exception:
+            pass
 
     def run_blocking(self) -> int:
         tpl_b64 = _b64_template(self.template)
@@ -149,11 +158,16 @@ class ExportJob:
                 on_event=self.on_event,
                 on_exit=self.on_exit,
             )
+            if self._cancel_requested:
+                self.backend_used = "daemon"
+                return 1
             if daemon_code is not None:
                 self.backend_used = "daemon"
                 return int(daemon_code)
         except Exception:
-            pass
+            if self._cancel_requested:
+                self.backend_used = "daemon"
+                return 1
         self.backend_used = "subprocess"
         self.proc = popen_hidden(
             cmd,

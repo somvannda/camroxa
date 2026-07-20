@@ -108,6 +108,7 @@ class OperationalRowsCard(QFrame):
     rebuild_export_requested = Signal(object)
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
+    cancel_job_requested = Signal(object)
     row_selected = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -410,6 +411,12 @@ class OperationalRowsCard(QFrame):
         menu = QMenu(self)
         meta = entry.row.meta
         recovery_added = False
+
+        # Always available: free the single local export/merge slot so another
+        # Start Export can run (pipeline only allows one active job at a time).
+        cancel_action = menu.addAction("Cancel Active Export/Merge")
+        cancel_action.triggered.connect(partial(self.cancel_job_requested.emit, entry.row))
+        menu.addSeparator()
 
         if clicked_column == _COL_EXPORT:
             if self._can_show_start_export(entry):

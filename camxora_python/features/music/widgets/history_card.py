@@ -9,6 +9,7 @@ from PySide6.QtCore import QDate, Qt, Signal, QTimer
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDateEdit,
     QFrame,
     QHBoxLayout,
@@ -30,6 +31,13 @@ from shared.themes.deep_blue import SHELL_DATE_EDIT_ID, SUBTITLE_LABEL_ID
 from shared.widgets.data_table import create_data_table
 
 EMPTY_MESSAGE = "No history rows match the current filters."
+
+_STATUS_FILTER_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("all", "All statuses"),
+    ("success", "Success"),
+    ("failed", "Failed"),
+    ("pending", "Pending"),
+)
 
 
 def batch_retry_targets(batch: MusicHistoryBatch) -> tuple[list[str], list[str]]:
@@ -108,6 +116,7 @@ class HistoryCard(QFrame):
     continue_video_requested = Signal(object)
     retry_batch_requested = Signal(str, list, list)
     refresh_requested = Signal()
+    recover_failed_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -133,17 +142,38 @@ class HistoryCard(QFrame):
         self._to_date.setCalendarPopup(True)
         self._to_date.setDate(today)
         self._last_batch = QCheckBox("Last batch")
-        show_all = QPushButton("Show all")
-        show_all.clicked.connect(self._clear_filters)
+        self._status_filter = QComboBox()
+        for value, label in _STATUS_FILTER_OPTIONS:
+            self._status_filter.addItem(label, value)
+        self._batch_filter = QComboBox()
+        self._batch_filter.setMinimumWidth(220)
+        self._batch_filter.addItem("All batches", "")
+        self._show_all_btn = QPushButton("Show all")
+        self._show_all_btn.clicked.connect(self._clear_filters)
+        self._recover_btn = QPushButton("Recover failed")
+        self._recover_btn.setToolTip(
+            "Scan loaded history and recover failures: retry drafts, "
+            "rewrite+Suno on content-policy rejects, retry other Suno fails."
+        )
+        self._recover_btn.clicked.connect(self.recover_failed_requested.emit)
         filters.addWidget(QLabel("From"))
         filters.addWidget(self._from_date)
         filters.addWidget(QLabel("To"))
         filters.addWidget(self._to_date)
+        filters.addWidget(QLabel("Status"))
+        filters.addWidget(self._status_filter)
+        filters.addWidget(QLabel("Batch"))
+        filters.addWidget(self._batch_filter)
         filters.addWidget(self._last_batch)
-        filters.addWidget(show_all)
+        filters.addWidget(self._show_all_btn)
+        filters.addWidget(self._recover_btn)
         filters.addStretch()
         root.addLayout(filters)
 
+        self._filter_hint = QLabel("")
+        self._filter_hint.setObjectName(SUBTITLE_LABEL_ID)
+        self._filter_hint.setWordWrap(True)
+        root.addWidget(self._filter_hint)
         meta = QHBoxLayout()
         self._summary = QLabel("No history yet.")
         self._summary.setObjectName(SUBTITLE_LABEL_ID)
@@ -198,28 +228,78 @@ class HistoryCard(QFrame):
         self._from_date.dateChanged.connect(self._on_date_filter_changed)
         self._to_date.dateChanged.connect(self._on_date_filter_changed)
         self._last_batch.stateChanged.connect(lambda *_: self.filters_changed.emit())
+        self._status_filter.currentIndexChanged.connect(lambda *_: self.filters_changed.emit())
+        self._batch_filter.currentIndexChanged.connect(lambda *_: self.filters_changed.emit())
+        self._update_filter_hint()
 
     def _on_date_filter_changed(self) -> None:
         self._date_filter_active = True
+        self._from_date.setEnabled(True)
+        self._to_date.setEnabled(True)
+        self._update_filter_hint()
         self.filters_changed.emit()
 
     def _clear_filters(self) -> None:
         self._date_filter_active = False
         self._last_batch.setChecked(False)
+        self._status_filter.blockSignals(True)
+        self._batch_filter.blockSignals(True)
+        self._status_filter.setCurrentIndex(0)
+        self._batch_filter.setCurrentIndex(0)
+        self._status_filter.blockSignals(False)
+        self._batch_filter.blockSignals(False)
+        self._update_filter_hint()
         self.filters_changed.emit()
 
+    def _update_filter_hint(self) -> None:
+        if self._date_filter_active:
+            self._filter_hint.setText(
+                "Date filter uses planned run date and the day the batch was created."
+            )
+        else:
+            self._filter_hint.setText(
+                "Showing all loaded batches (date filter off). Change From/To to filter by date."
+            )
+
     def filter_values(self) -> dict[str, object]:
+        status = str(self._status_filter.currentData() or "all")
+        batch_id = str(self._batch_filter.currentData() or "")
         if not self._date_filter_active:
             return {
                 "from_date": "",
                 "to_date": "",
                 "last_batch_only": self._last_batch.isChecked(),
+                "status": status,
+                "batch_id": batch_id,
             }
         return {
             "from_date": self._from_date.date().toString("yyyy-MM-dd"),
             "to_date": self._to_date.date().toString("yyyy-MM-dd"),
             "last_batch_only": self._last_batch.isChecked(),
+            "status": status,
+            "batch_id": batch_id,
         }
+
+    def set_batch_filter_options(self, batches: list[MusicHistoryBatch]) -> None:
+        """Refresh Batch dropdown from currently loaded history (preserve selection)."""
+        current = str(self._batch_filter.currentData() or "")
+        self._batch_filter.blockSignals(True)
+        self._batch_filter.clear()
+        self._batch_filter.addItem("All batches", "")
+        seen: set[str] = set()
+        for batch in batches:
+            batch_id = str(batch.batch_id or "").strip()
+            if not batch_id or batch_id in seen:
+                continue
+            seen.add(batch_id)
+            run_date = format_run_date_label(batch.from_date or batch.to_date)
+            ok_name = batch.ok_profile_name or "Primary"
+            alt_name = batch.alt_profile_name or "Secondary"
+            label = f"{batch_id[:8]} · {ok_name} → {alt_name} · {run_date}"
+            self._batch_filter.addItem(label, batch_id)
+        index = self._batch_filter.findData(current)
+        self._batch_filter.setCurrentIndex(index if index >= 0 else 0)
+        self._batch_filter.blockSignals(False)
 
     def set_summary(self, summary: str, updated_at: str | None) -> None:
         self._summary.setText(summary)

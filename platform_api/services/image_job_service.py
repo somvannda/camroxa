@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID
 
-from platform_api.exceptions import ValidationError
+from platform_api.exceptions import InsufficientCreditsError, QuotaExceededError, ValidationError
 from platform_api.models.domain import Batch, ImageJob
 from platform_api.models.enums import ChannelRole, ImageKind, TaskStatus
 from platform_api.ports.generation_port import ImageRequest
@@ -27,6 +27,33 @@ from platform_api.services.slai_image_config_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+_NON_RETRYABLE_ERROR_MARKERS = (
+    "daily fail/retry budget exceeded",
+    "fail_budget_exceeded",
+    "insufficient credits",
+    "generation quota exceeded",
+    "quota exceeded",
+)
+
+
+def _image_job_max_attempts() -> int:
+    try:
+        from platform_api.config import get_settings
+
+        return max(1, min(8, int(get_settings().image_job_max_attempts)))
+    except Exception:
+        return 3
+
+
+def _is_non_retryable_image_error(exc: BaseException) -> bool:
+    if isinstance(exc, (QuotaExceededError, InsufficientCreditsError, ValidationError)):
+        return True
+    details = getattr(exc, "details", None)
+    if isinstance(details, dict) and str(details.get("error_code") or "").upper() == "FAIL_BUDGET_EXCEEDED":
+        return True
+    message = str(exc or "").strip().lower()
+    return any(marker in message for marker in _NON_RETRYABLE_ERROR_MARKERS)
 
 
 def _parse_optional_uuid(value: str | None, *, field: str) -> UUID | None:
@@ -103,6 +130,14 @@ class ImageJobRepositoryProtocol(Protocol):
         *,
         job_ids: list[UUID] | None = None,
         batch_id: UUID | None = None,
+    ) -> int: ...
+    async def requeue_auto_retry_failed_jobs(
+        self,
+        user_id: UUID,
+        *,
+        batch_id: UUID | None = None,
+        max_attempts: int = 3,
+        limit: int = 200,
     ) -> int: ...
     async def clear_image_jobs(
         self,
@@ -282,6 +317,18 @@ class ImageJobService:
 
         max_workers = int(settings.get("perfImageWorkers", 4) or 4)
         max_workers = max(1, min(8, max_workers))
+
+        # Pick up failed jobs that still have auto-retry attempts (e.g. after API restart).
+        requeue = getattr(self._repo, "requeue_auto_retry_failed_jobs", None)
+        if requeue is not None:
+            requeued = await requeue(
+                user_uuid,
+                batch_id=resolved_batch_id,
+                max_attempts=_image_job_max_attempts(),
+                limit=min(200, max(limit, 1)),
+            )
+            if requeued:
+                image_log.log_retry_reset(batch_id=batch_id, updated=requeued)
 
         claimed_jobs = await self._repo.claim_image_jobs_for_run(
             user_uuid,
@@ -585,24 +632,44 @@ class ImageJobService:
                             operation_type=operation_type,
                         )
                 message = str(exc) or exc.__class__.__name__
+                next_attempt = max(1, attempt_count + 1)
+                max_attempts = _image_job_max_attempts()
+                auto_retry = next_attempt < max_attempts and not _is_non_retryable_image_error(exc)
+                next_status = TaskStatus.PENDING if auto_retry else TaskStatus.FAILED
                 await self._repo.update_image_job_status(
                     job.id,
                     user_id,
-                    status=TaskStatus.FAILED,
+                    status=next_status,
                     error=message[:500],
-                    attempt_count=max(1, attempt_count + 1),
+                    attempt_count=next_attempt,
                 )
-                logger.warning(
-                    "Image job failed: job_id=%s status=%s error=%s",
-                    job.id,
-                    TaskStatus.FAILED.value,
-                    message[:200],
-                )
-                image_log.log_job_failed(
-                    job_id=job.id,
-                    kind=str(getattr(job.kind, "value", job.kind)),
-                    error=message,
-                )
+                if auto_retry:
+                    logger.warning(
+                        "Image job failed; auto-retry queued: job_id=%s attempt=%s/%s error=%s",
+                        job.id,
+                        next_attempt,
+                        max_attempts,
+                        message[:200],
+                    )
+                    image_log.log_job_auto_retry(
+                        job_id=job.id,
+                        kind=str(getattr(job.kind, "value", job.kind)),
+                        attempt=next_attempt,
+                        max_attempts=max_attempts,
+                        error=message,
+                    )
+                else:
+                    logger.warning(
+                        "Image job failed: job_id=%s status=%s error=%s",
+                        job.id,
+                        next_status.value,
+                        message[:200],
+                    )
+                    image_log.log_job_failed(
+                        job_id=job.id,
+                        kind=str(getattr(job.kind, "value", job.kind)),
+                        error=message,
+                    )
                 return False
 
     async def _resolve_job_batch(self, job: ImageJob, user_id: UUID) -> Batch | None:

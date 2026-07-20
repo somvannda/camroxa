@@ -226,6 +226,24 @@ def log_job_failed(*, job_id: object, kind: str, error: str) -> None:
     )
 
 
+def log_job_auto_retry(
+    *,
+    job_id: object,
+    kind: str,
+    attempt: int,
+    max_attempts: int,
+    error: str,
+) -> None:
+    _progress(
+        "Job %s auto-retry queued — kind=%s attempt=%s/%s error=%s",
+        short_id(job_id),
+        kind,
+        attempt,
+        max_attempts,
+        error[:300],
+    )
+
+
 def log_runner_crashed(*, user_id: str, batch_id: str, error: str) -> None:
     _progress_warn(
         "Runner crashed for user %s batch=%s: %s",

@@ -167,6 +167,7 @@ def classify_suno_failure_type(
     """Classify Suno failures for metrics and retry guidance."""
     normalized = normalize_suno_status(status)
     if normalized in {
+        "REJECTED",
         "SENSITIVE_WORD_ERROR",
         "SENSITIVE_CONTENT",
         "CONTENT_POLICY",
@@ -177,6 +178,15 @@ def classify_suno_failure_type(
     text = str(error_message or "").strip().lower()
     if "producer tag" in text:
         return "producer_tag"
-    if "sensitive" in text and ("word" in text or "content" in text or "policy" in text):
+    if any(
+        token in text
+        for token in (
+            "sensitive",
+            "content policy",
+            "policy violation",
+            "rejected",
+            "moderat",
+        )
+    ):
         return "SENSITIVE_WORD_ERROR"
     return "other"

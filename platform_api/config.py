@@ -182,6 +182,10 @@ class Settings(BaseSettings):
     # further AI quota reservations are blocked until the next day.
     daily_fail_absorb_budget: int = 25
 
+    # Auto-retry failed image jobs in the background runner (attempt_count < this).
+    # First try is attempt 0→1; with max=3 the job can fail twice then succeed on 3rd, or stop at FAILED.
+    image_job_max_attempts: int = 3
+
     @field_validator("jwt_secret")
     @classmethod
     def normalize_jwt_secret(cls, value: str) -> str:

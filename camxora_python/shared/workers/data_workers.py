@@ -445,7 +445,7 @@ class MusicWorkspaceWorker(QThread):
                 future_settings = pool.submit(self._api.get_settings)
                 future_descriptions = pool.submit(self._api.list_prompt_description_names)
                 future_structures = pool.submit(self._api.list_prompt_structure_names)
-                future_history = pool.submit(self._api.list_music_history, limit=8)
+                future_history = pool.submit(self._api.list_music_history, limit=25)
                 future_costs = pool.submit(self._fetch_operation_costs)
                 future_languages = pool.submit(self._fetch_language_options)
                 future_youtube = pool.submit(self._api.list_youtube_connections)
@@ -550,14 +550,26 @@ class MusicHistoryRefreshWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, api: PlatformApi, *, limit: int = 8, parent=None) -> None:
+    def __init__(self, api: PlatformApi, *, limit: int = 25, parent=None) -> None:
         super().__init__(parent)
         self._api = api
-        self._limit = limit
+        self._limit = max(1, min(100, int(limit)))
+        self._from_date = ""
+        self._to_date = ""
+
+    def set_date_filters(self, *, from_date: str = "", to_date: str = "") -> None:
+        self._from_date = str(from_date or "").strip()
+        self._to_date = str(to_date or "").strip()
 
     def run(self) -> None:
         try:
-            self.succeeded.emit(self._api.list_music_history(limit=self._limit))
+            self.succeeded.emit(
+                self._api.list_music_history(
+                    limit=self._limit,
+                    from_date=self._from_date or None,
+                    to_date=self._to_date or None,
+                )
+            )
         except PlatformApiError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:
@@ -944,6 +956,204 @@ class BatchRetryFailuresWorker(QThread):
             self.failed.emit(last_error or "Failed to retry batch.")
             return
         self.succeeded.emit(queued)
+
+
+class PipelineRecoveryWorker(QThread):
+    """Recover failed pipeline songs: draft retry, Suno retry, or rewrite→Suno."""
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+    progressed = Signal(str)
+
+    def __init__(self, api: PlatformApi, targets: list, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._targets = list(targets)
+
+    def run(self) -> None:
+        from shared.models.platform import LyricsPolishRequest
+
+        if not self._targets:
+            self.failed.emit("No failed songs to recover.")
+            return
+
+        draft_ok = 0
+        suno_ok = 0
+        rewrite_ok = 0
+        last_error = ""
+        total = len(self._targets)
+        for index, target in enumerate(self._targets, start=1):
+            kind = str(getattr(target, "kind", "") or "")
+            batch_id = str(getattr(target, "batch_id", "") or "")
+            song_id = str(getattr(target, "song_id", "") or "")
+            self.progressed.emit(f"Recovering {index}/{total} ({kind})…")
+            try:
+                if kind == "draft":
+                    self._api.retry_song_draft(batch_id, song_id)
+                    draft_ok += 1
+                elif kind == "suno_rewrite":
+                    lyrics = str(getattr(target, "lyrics", "") or "").strip()
+                    channel_id = str(getattr(target, "channel_profile_id", "") or "").strip() or None
+                    if not lyrics or not channel_id:
+                        self._api.retry_song_suno(batch_id, song_id)
+                        suno_ok += 1
+                        continue
+                    response = self._api.polish_lyrics(
+                        LyricsPolishRequest(
+                            lyrics=lyrics,
+                            strength=75,
+                            channel_profile_id=channel_id,
+                            batch_id=batch_id,
+                            song_id=song_id,
+                            title=getattr(target, "title", None),
+                            album=getattr(target, "album", None),
+                            description=getattr(target, "description", None),
+                            structure=getattr(target, "structure", None),
+                        )
+                    )
+                    rewrite_ok += 1
+                    if not bool(getattr(response, "suno_queued", False)):
+                        self._api.retry_song_suno(batch_id, song_id)
+                        suno_ok += 1
+                else:
+                    self._api.retry_song_suno(batch_id, song_id)
+                    suno_ok += 1
+            except PlatformApiError as exc:
+                last_error = str(exc)
+            except Exception as exc:
+                last_error = str(exc) or "Recovery step failed."
+
+        recovered = draft_ok + suno_ok + rewrite_ok
+        if recovered <= 0:
+            self.failed.emit(last_error or "Failed to recover pipeline songs.")
+            return
+        self.succeeded.emit(
+            {
+                "recovered": recovered,
+                "draft": draft_ok,
+                "suno": suno_ok,
+                "rewrite": rewrite_ok,
+                "total": total,
+                "last_error": last_error,
+            }
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineRecoveryScanResult:
+    """Outcome of one background pipeline-recovery scan cycle."""
+
+    candidate_count: int = 0
+    recovered: int = 0
+    draft: int = 0
+    suno: int = 0
+    rewrite: int = 0
+    attempted_targets: tuple = ()
+
+
+class PipelineRecoveryScanWorker(QThread):
+    """Fetch recent history, select failed songs, and run recovery."""
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        history_limit: int = 25,
+        max_targets: int = 3,
+        target_filter=None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("PipelineRecoveryScanWorker")
+        self._api = api
+        self._history_limit = max(1, min(100, int(history_limit)))
+        self._max_targets = max(1, min(20, int(max_targets)))
+        self._target_filter = target_filter
+
+    def run(self) -> None:
+        from features.music.lib.pipeline_recovery import collect_recovery_targets
+        from shared.models.platform import LyricsPolishRequest
+
+        try:
+            history = self._api.list_music_history(limit=self._history_limit)
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+            return
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to load music history for recovery.")
+            return
+
+        candidates = collect_recovery_targets(list(history.batches or []))
+        if self._target_filter is not None:
+            try:
+                candidates = list(self._target_filter(candidates) or [])
+            except Exception as exc:
+                self.failed.emit(str(exc) or "Recovery filter failed.")
+                return
+        targets = candidates[: self._max_targets]
+        if not targets:
+            self.succeeded.emit(
+                PipelineRecoveryScanResult(candidate_count=len(candidates))
+            )
+            return
+
+        draft_ok = 0
+        suno_ok = 0
+        rewrite_ok = 0
+        for target in targets:
+            kind = str(getattr(target, "kind", "") or "")
+            batch_id = str(getattr(target, "batch_id", "") or "")
+            song_id = str(getattr(target, "song_id", "") or "")
+            try:
+                if kind == "draft":
+                    self._api.retry_song_draft(batch_id, song_id)
+                    draft_ok += 1
+                elif kind == "suno_rewrite":
+                    lyrics = str(getattr(target, "lyrics", "") or "").strip()
+                    channel_id = (
+                        str(getattr(target, "channel_profile_id", "") or "").strip() or None
+                    )
+                    if not lyrics or not channel_id:
+                        self._api.retry_song_suno(batch_id, song_id)
+                        suno_ok += 1
+                        continue
+                    response = self._api.polish_lyrics(
+                        LyricsPolishRequest(
+                            lyrics=lyrics,
+                            strength=75,
+                            channel_profile_id=channel_id,
+                            batch_id=batch_id,
+                            song_id=song_id,
+                            title=getattr(target, "title", None),
+                            album=getattr(target, "album", None),
+                            description=getattr(target, "description", None),
+                            structure=getattr(target, "structure", None),
+                        )
+                    )
+                    rewrite_ok += 1
+                    if not bool(getattr(response, "suno_queued", False)):
+                        self._api.retry_song_suno(batch_id, song_id)
+                        suno_ok += 1
+                else:
+                    self._api.retry_song_suno(batch_id, song_id)
+                    suno_ok += 1
+            except Exception:
+                continue
+
+        recovered = draft_ok + suno_ok + rewrite_ok
+        self.succeeded.emit(
+            PipelineRecoveryScanResult(
+                candidate_count=len(candidates),
+                recovered=recovered,
+                draft=draft_ok,
+                suno=suno_ok,
+                rewrite=rewrite_ok,
+                attempted_targets=tuple(targets),
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)

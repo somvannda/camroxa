@@ -19,6 +19,7 @@ from shared.services.progress_local_sync_coordinator import (
     bind_progress_local_sync_coordinator,
 )
 from shared.services.music_download_coordinator import MusicDownloadCoordinator
+from shared.services.pipeline_recovery_coordinator import PipelineRecoveryCoordinator
 from shared.services.session_service import SessionService
 from shared.services.setup_readiness_service import refresh_setup_readiness
 from shared.services.shell_status import ShellStatusBus
@@ -109,6 +110,8 @@ class AppShellWidget(QWidget):
         bind_session(self._session)
         self._music_downloads = MusicDownloadCoordinator(self._api, self)
         self._music_downloads.start()
+        self._pipeline_recovery = PipelineRecoveryCoordinator(self._api, self)
+        self._pipeline_recovery.start()
         self._image_outputs = ImageOutputSyncCoordinator(self._api, self)
         self._image_outputs.start()
         self._progress_local_sync = ProgressLocalSyncCoordinator(self._api, self)
@@ -178,6 +181,7 @@ class AppShellWidget(QWidget):
             pass
         for attr in (
             "_music_downloads",
+            "_pipeline_recovery",
             "_image_outputs",
             "_progress_local_sync",
             "_video_pipeline",

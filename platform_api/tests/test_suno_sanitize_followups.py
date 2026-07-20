@@ -195,3 +195,11 @@ async def test_polish_lyrics_auto_fixes_remaining_block_terms(
 
     assert "lowlight" not in polished.lower()
     assert "afterglow" in polished.lower()
+
+
+def test_classify_suno_failure_type_rejects_as_sensitive() -> None:
+    assert classify_suno_failure_type(status="REJECTED") == "SENSITIVE_WORD_ERROR"
+    assert (
+        classify_suno_failure_type(status="FAILED", error_message="content policy reject")
+        == "SENSITIVE_WORD_ERROR"
+    )
