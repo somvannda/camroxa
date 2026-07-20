@@ -1103,7 +1103,7 @@ class SettingsView(QWidget):
                     path_row(
                         line_edit=field,
                         on_browse=picker,
-                        on_open=lambda f=field: self._open_path_field(f),
+                        on_open=lambda field=field: self._open_path_field(field),
                     ),
                 )
             )
@@ -1179,7 +1179,7 @@ class SettingsView(QWidget):
                         path_row(
                             line_edit=field,
                             on_browse=picker,
-                            on_open=lambda f=field: self._open_path_field(f),
+                            on_open=lambda field=field: self._open_path_field(field),
                         ),
                     )
                 )

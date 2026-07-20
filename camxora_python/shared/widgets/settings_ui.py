@@ -140,15 +140,20 @@ def path_row(
     open_label: str = "Open",
     extra_widgets: list[QWidget] | None = None,
 ) -> QWidget:
+    # QPushButton.clicked emits a checked:bool. Callables that accept one arg
+    # (e.g. lambda f=field: ...) would bind that bool and break. Ignore it.
+    def _ignore_checked(callback):
+        return lambda *_args, _cb=callback: _cb()
+
     row = QHBoxLayout()
     row.setContentsMargins(0, 0, 0, 0)
     row.addWidget(line_edit, stretch=1)
     browse = QPushButton(browse_label)
     browse.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-    browse.clicked.connect(on_browse)
+    browse.clicked.connect(_ignore_checked(on_browse))
     open_btn = QPushButton(open_label)
     open_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-    open_btn.clicked.connect(on_open)
+    open_btn.clicked.connect(_ignore_checked(on_open))
     row.addWidget(browse)
     row.addWidget(open_btn)
     for widget in extra_widgets or ():

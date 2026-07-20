@@ -36,6 +36,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Settings path Open:** `path_row` ignores `QPushButton.clicked(bool)` so Open no longer passes `False` into `_open_path_field` (`'bool' object has no attribute 'text'`)
 - **Video template save:** unlinked templates now upsert to the server (first channel profile); link in Settings for pipeline use
 - **Music Suno/draft retry:** no longer crashes on `MusicHistoryListResponse.rows` after retry succeeds
 - **VideoManualExportWorker quit:** block window close until export cancel/join finishes (no batch chain during teardown); last-resort terminate if still stuck
