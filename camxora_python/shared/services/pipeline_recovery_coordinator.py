@@ -89,6 +89,10 @@ class PipelineRecoveryCoordinator(QObject):
     def _poll(self) -> None:
         if not self._active or not self._enabled:
             return
+        from shared.services.auto_pipeline_pause import is_auto_pipeline_paused
+
+        if is_auto_pipeline_paused():
+            return
         if self._worker is not None and self._worker.isRunning():
             return
         worker = PipelineRecoveryScanWorker(

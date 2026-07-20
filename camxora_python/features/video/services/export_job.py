@@ -64,25 +64,35 @@ class ExportJob:
         self.proc: subprocess.Popen[str] | None = None
         self._cancel_requested = False
         self.backend_used: str = ""
+        from features.video.lib.export_cancel import new_cancel_path
+
+        self._cancel_path = new_cancel_path()
 
     def cancel(self) -> None:
         self._cancel_requested = True
+        from features.video.lib.export_cancel import request_export_cancel
+
+        # Soft-cancel first so the render loop can exit between frames / unblock
+        # the encode queue without needing an immediate process kill.
+        request_export_cancel(self._cancel_path)
         if self.proc and self.proc.poll() is None:
             try:
                 self.proc.terminate()
             except OSError:
                 pass
             return
-        # Daemon path: ExportJob.proc is unset; cancel must kill the warm worker
-        # + ffmpeg children or Cancel Active Export leaves the pipeline stuck.
+        # Daemon path: ExportJob.proc is unset; ask the warm worker to stop, then
+        # hard-kill the process tree if it does not exit promptly.
         try:
             from features.video.services.visualizer_daemon import get_visualizer_daemon
 
-            get_visualizer_daemon().cancel_active()
+            get_visualizer_daemon().cancel_active(cancel_path=self._cancel_path)
         except Exception:
             pass
 
-    def run_blocking(self) -> int:
+    def run_blocking(self, *, allow_daemon: bool = True) -> int:
+        from features.video.lib.export_cancel import CANCEL_ENV, clear_export_cancel
+
         tpl_b64 = _b64_template(self.template)
         from shared.lib.resource_paths import get_package_root
         from shared.lib.runtime_paths import is_frozen_runtime
@@ -148,26 +158,44 @@ class ExportJob:
         env["PYTHONPATH"] = (
             f"{project_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(project_dir)
         )
+        env[CANCEL_ENV] = self._cancel_path
+        clear_export_cancel(self._cancel_path)
         try:
-            from features.video.services.visualizer_daemon import get_visualizer_daemon
+            return self._run_blocking_with_env(cmd, project_dir=project_dir, env=env, allow_daemon=allow_daemon)
+        finally:
+            clear_export_cancel(self._cancel_path)
 
-            daemon_code = get_visualizer_daemon().run_command(
-                cmd,
-                cwd=str(project_dir),
-                env=env,
-                on_event=self.on_event,
-                on_exit=self.on_exit,
-            )
-            if self._cancel_requested:
-                self.backend_used = "daemon"
-                return 1
-            if daemon_code is not None:
-                self.backend_used = "daemon"
-                return int(daemon_code)
-        except Exception:
-            if self._cancel_requested:
-                self.backend_used = "daemon"
-                return 1
+    def _run_blocking_with_env(
+        self,
+        cmd: list[str],
+        *,
+        project_dir: Path,
+        env: dict[str, str],
+        allow_daemon: bool,
+    ) -> int:
+        # Warm daemon is single-job. Parallel export workers must use one-shot
+        # subprocesses or they serialize (or race) on the shared daemon stdin.
+        if allow_daemon:
+            try:
+                from features.video.services.visualizer_daemon import get_visualizer_daemon
+
+                daemon_code = get_visualizer_daemon().run_command(
+                    cmd,
+                    cwd=str(project_dir),
+                    env=env,
+                    on_event=self.on_event,
+                    on_exit=self.on_exit,
+                )
+                if self._cancel_requested:
+                    self.backend_used = "daemon"
+                    return 1
+                if daemon_code is not None:
+                    self.backend_used = "daemon"
+                    return int(daemon_code)
+            except Exception:
+                if self._cancel_requested:
+                    self.backend_used = "daemon"
+                    return 1
         self.backend_used = "subprocess"
         self.proc = popen_hidden(
             cmd,

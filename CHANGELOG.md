@@ -12,6 +12,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Daemon export cancel:** Cancel Active Export now kills the warm visualizer daemon + ffmpeg process tree (previously only terminated one-shot subprocess jobs, so hung NVENC pipes left “already running” forever)
+- **Continue Progress + API recovery:** Progress right-click **Continue Progress** advances the row’s next stage; auto-video clears stale busy/cooldowns and resumes when the API recovers after 502/outage
+- **Export context menu:** **Start Export / Force Regenerate MP4 / Rebuild MP4 / Start Merging** appear on right-click of any Progress cell (not only the Export/Merge columns)
+- **Export workers setting:** Preferences **Export Workers** (>1) now runs parallel one-shot visualizer subprocesses; the warm daemon stays single-job and is only used when workers=1 (billing/quota unchanged — charged once per batch by track count)
+- **Export hang / cancel:** daemon/subprocess exports honor a cancel flag between frames and while blocked on the encode queue; Cancel waits ~2s for soft stop then kills the process tree; auto-video stays paused 45s after a user cancel so the same batch does not instantly restart
+- **Stop Exporting:** Progress right-click **Stop Exporting** hard-stops the job and pauses auto-video + pipeline helper until you manually Start Export / Rebuild / Continue Progress / Start Merging on a row
 
 ### Added
 

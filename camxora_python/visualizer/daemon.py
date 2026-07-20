@@ -35,7 +35,13 @@ def run_daemon_loop() -> int:
             continue
         code = 1
         prior_daemon_flag = os.environ.get("CAMXORA_DAEMON_JOB")
+        prior_cancel_path = os.environ.get("CAMXORA_EXPORT_CANCEL_PATH")
         os.environ["CAMXORA_DAEMON_JOB"] = "1"
+        cancel_path = str(message.get("cancelPath") or "").strip()
+        if cancel_path:
+            os.environ["CAMXORA_EXPORT_CANCEL_PATH"] = cancel_path
+        else:
+            os.environ.pop("CAMXORA_EXPORT_CANCEL_PATH", None)
         try:
             from visualizer.main import normalize_visualizer_job_argv, run_visualizer_argv
 
@@ -54,6 +60,10 @@ def run_daemon_loop() -> int:
                 os.environ.pop("CAMXORA_DAEMON_JOB", None)
             else:
                 os.environ["CAMXORA_DAEMON_JOB"] = prior_daemon_flag
+            if prior_cancel_path is None:
+                os.environ.pop("CAMXORA_EXPORT_CANCEL_PATH", None)
+            else:
+                os.environ["CAMXORA_EXPORT_CANCEL_PATH"] = prior_cancel_path
         _send({"status": "job_done", "jobId": job_id, "exitCode": code})
     return 0
 

@@ -64,14 +64,33 @@ class VisualizerDaemonClient:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._job_lock = threading.Lock()
         self._proc: subprocess.Popen[str] | None = None
         self._project_dir = ""
         self._disabled = False
         self._cancel_requested = False
 
-    def cancel_active(self) -> None:
-        """Force-stop the in-flight daemon job (and ffmpeg children)."""
+    def cancel_active(self, *, cancel_path: str | None = None) -> None:
+        """Force-stop the in-flight daemon job (and ffmpeg children).
+
+        Soft-cancel via flag file first (render loop checks it between frames),
+        then hard-kill the process tree if the job does not exit quickly.
+        """
         self._cancel_requested = True
+        if cancel_path:
+            from features.video.lib.export_cancel import request_export_cancel
+
+            request_export_cancel(cancel_path)
+            # Give the render loop a brief window to exit cleanly.
+            deadline = time.monotonic() + 2.0
+            while time.monotonic() < deadline:
+                with self._lock:
+                    proc = self._proc
+                if proc is None or proc.poll() is not None:
+                    with self._lock:
+                        self._proc = None
+                    return
+                time.sleep(0.1)
         with self._lock:
             proc = self._proc
             self._proc = None
@@ -105,9 +124,32 @@ class VisualizerDaemonClient:
         on_event: ExportEventHandler | None,
         on_exit: ExportExitHandler | None,
     ) -> int | None:
-        """Run via daemon when available. Returns None if caller should fall back."""
+        """Run via daemon when available. Returns None if caller should fall back.
+
+        The warm daemon accepts only one job at a time — callers that need
+        parallel exports must skip the daemon and use one-shot subprocesses.
+        """
         if not _visualizer_daemon_enabled() or self._disabled:
             return None
+        # Serialize the full job so concurrent callers cannot interleave stdin/stdout.
+        with self._job_lock:
+            return self._run_command_locked(
+                cmd,
+                cwd=cwd,
+                env=env,
+                on_event=on_event,
+                on_exit=on_exit,
+            )
+
+    def _run_command_locked(
+        self,
+        cmd: list[str],
+        *,
+        cwd: str,
+        env: dict[str, str],
+        on_event: ExportEventHandler | None,
+        on_exit: ExportExitHandler | None,
+    ) -> int | None:
         self._cancel_requested = False
         job_id = uuid.uuid4().hex
         with self._lock:
@@ -117,7 +159,17 @@ class VisualizerDaemonClient:
         assert proc is not None and proc.stdout is not None
         try:
             assert proc.stdin is not None
-            proc.stdin.write(json.dumps({"type": "job", "jobId": job_id, "argv": cmd}) + "\n")
+            proc.stdin.write(
+                json.dumps(
+                    {
+                        "type": "job",
+                        "jobId": job_id,
+                        "argv": cmd,
+                        "cancelPath": str(env.get("CAMXORA_EXPORT_CANCEL_PATH") or ""),
+                    }
+                )
+                + "\n"
+            )
             proc.stdin.flush()
         except OSError as exc:
             log.warning("visualizer daemon write failed: %s", exc)

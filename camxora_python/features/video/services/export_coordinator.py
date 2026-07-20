@@ -110,6 +110,7 @@ def run_subprocess_export(
     on_event: ExportEventHandler | None = None,
     fallback_from: str = "",
     on_job_started: Callable[[ExportJob], None] | None = None,
+    allow_daemon: bool = True,
 ) -> tuple[int, str, ExportJob]:
     """Run a single daemon/subprocess export (pipeline or manual fallback path)."""
     job = ExportJob(
@@ -130,7 +131,7 @@ def run_subprocess_export(
         on_event(_enrich_event(event, backend_used=backend, fallback_from=fallback_from))
 
     job.on_event = _on_event
-    code = int(job.run_blocking())
+    code = int(job.run_blocking(allow_daemon=allow_daemon))
     backend_used = getattr(job, "backend_used", "") or "subprocess"
     return code, backend_used, job
 

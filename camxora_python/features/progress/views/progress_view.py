@@ -110,6 +110,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._syncing_batch_id = ""
         self._progress_load_error = ""
         self._selected_entry: EffectiveProgressRow | None = None
+        self._pending_continue: object | None = None
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
 
@@ -216,6 +217,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
             lambda row: self._run_video_pipeline_action(row, "merge")
         )
         self._rows_card.cancel_job_requested.connect(self._cancel_active_video_job)
+        self._rows_card.stop_exporting_requested.connect(self._stop_exporting)
+        self._rows_card.continue_progress_requested.connect(self._continue_progress)
         self._rows_card.row_selected.connect(self._on_row_selected)
 
         self._detail_card = ProgressDetailCard()
@@ -778,10 +781,137 @@ class ProgressView(PollablePageMixin, QScrollArea):
             self._show_retry_notice("Could not cancel the active video job.", tone="warning")
         self.refresh_data()
 
+    def _stop_exporting(self, row: ProgressRow | None = None) -> None:
+        """Hard stop + pause auto-video / helper agents until a manual Start."""
+        _ = row
+        from shared.services.auto_pipeline_pause import pause_auto_pipeline
+        from shared.services.shell_status import emit_shell_status
+
+        pause_auto_pipeline("Stopped exporting by user")
+        coordinator = get_video_pipeline_coordinator()
+        if coordinator is not None:
+            coordinator.cancel_active_export()
+            # Keep the persistent pause (cancel_active only sets a short cooldown).
+            pause_auto_pipeline("Stopped exporting by user")
+        emit_shell_status(
+            "Exporting stopped. Auto pipeline paused until you Start Export on a row.",
+            tone="warning",
+        )
+        self._show_retry_notice(
+            "Exporting stopped. Auto-video and helpers stay paused until you "
+            "Start Export, Rebuild, Continue Progress, or Start Merging on a row.",
+            tone="success",
+        )
+        self.refresh_data()
+
+    def _resume_auto_pipeline_for_manual_start(self) -> None:
+        from shared.services.auto_pipeline_pause import resume_auto_pipeline
+        from shared.services.shell_status import emit_shell_status
+
+        if resume_auto_pipeline():
+            emit_shell_status("Auto pipeline resumed (manual start).", tone="neutral")
+
+    def _continue_progress(self, entry: object) -> None:
+        """Right-click Continue Progress: advance this row from its current stage."""
+        from features.progress.lib.continue_progress import (
+            ContinueProgressPlan,
+            resolve_continue_progress,
+        )
+        from shared.lib.manual_asset_paths import manual_inspection_key
+
+        if not isinstance(entry, EffectiveProgressRow):
+            self._show_retry_notice("Select a progress row to continue.", tone="warning")
+            return
+
+        key = manual_inspection_key(
+            entry.row.meta.batch_id,
+            entry.row.meta.profile_id,
+            entry.row.meta.role,
+        )
+        plan = resolve_continue_progress(
+            entry,
+            manual_mode=self._image_source_mode == "manual",
+            inspection=self._manual_inspections.get(key),
+        )
+        self._dispatch_continue_plan(plan)
+
+    def _dispatch_continue_plan(self, plan: object) -> None:
+        from features.progress.lib.continue_progress import ContinueProgressPlan
+
+        if not isinstance(plan, ContinueProgressPlan):
+            return
+        if plan.action == "none":
+            self._show_retry_notice(plan.label, tone="neutral")
+            return
+
+        if plan.action in {"start_export", "start_merge"}:
+            coordinator = get_video_pipeline_coordinator()
+            if coordinator is not None and coordinator.is_busy():
+                coordinator.cancel_active_export()
+                # Live cancel is async — retry shortly instead of failing immediately.
+                if coordinator.is_busy():
+                    self._pending_continue = plan
+                    self._show_retry_notice(
+                        "Stopping stuck export… Continue Progress will retry when free.",
+                        tone="neutral",
+                    )
+                    from PySide6.QtCore import QTimer
+
+                    QTimer.singleShot(2_000, self._flush_pending_continue)
+                    return
+                self._show_retry_notice(
+                    "Cleared stuck export state, then continuing…",
+                    tone="neutral",
+                )
+
+        self._pending_continue = None
+        self._resume_auto_pipeline_for_manual_start()
+        self._show_retry_notice(f"Continue Progress: {plan.label}…", tone="neutral")
+        if plan.action == "retry_drafts":
+            self._retry_failed_drafts(plan.batch_id, plan.song_ids)
+        elif plan.action == "retry_suno":
+            self._retry_failed_suno(plan.batch_id, plan.song_ids)
+        elif plan.action == "enqueue_images":
+            self._enqueue_images(plan.batch_id)
+        elif plan.action == "retry_images":
+            self._retry_images(plan.batch_id)
+        elif plan.action == "sync_manual":
+            self._sync_manual_assets(plan.batch_id)
+        elif plan.action == "start_export":
+            self._run_video_pipeline_action(plan.row, "rebuild_export")
+        elif plan.action == "start_merge":
+            self._run_video_pipeline_action(plan.row, "merge")
+
+    def _flush_pending_continue(self) -> None:
+        plan = self._pending_continue
+        if plan is None:
+            return
+        coordinator = get_video_pipeline_coordinator()
+        if coordinator is not None and coordinator.is_busy():
+            # One more cancel poke, then wait again (up to ~10s total via re-arm).
+            coordinator.cancel_active_export()
+            attempts = int(getattr(self, "_pending_continue_attempts", 0) or 0) + 1
+            self._pending_continue_attempts = attempts
+            if attempts < 5:
+                from PySide6.QtCore import QTimer
+
+                QTimer.singleShot(2_000, self._flush_pending_continue)
+                return
+            self._pending_continue = None
+            self._pending_continue_attempts = 0
+            self._show_retry_notice(
+                "Export is still busy. Use Cancel Active Export/Merge, then Continue Progress again.",
+                tone="warning",
+            )
+            return
+        self._pending_continue_attempts = 0
+        self._dispatch_continue_plan(plan)
+
     def _run_video_pipeline_action(self, row: ProgressRow | None, action: str) -> None:
         if row is None:
             self._show_retry_notice("Select a run before starting video work.", tone="warning")
             return
+        self._resume_auto_pipeline_for_manual_start()
         from features.video.lib.export_readiness import evaluate_video_export_readiness
 
         readiness = evaluate_video_export_readiness(

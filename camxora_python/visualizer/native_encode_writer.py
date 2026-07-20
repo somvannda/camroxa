@@ -163,6 +163,16 @@ class NativeEncodeWriter:
                 self._raise_if_error()
                 return
             try:
+                from features.video.lib.export_cancel import export_cancel_requested
+
+                if export_cancel_requested():
+                    self._cancelled = True
+                    self._finished = True
+                    self._stop.set()
+                    return
+            except Exception:
+                pass
+            try:
                 self._queue.put(payload, timeout=0.05)
                 break
             except queue.Full:

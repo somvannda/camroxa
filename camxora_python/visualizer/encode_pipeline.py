@@ -97,6 +97,18 @@ class PipelinedEncodeWriter:
             if self._stop.is_set():
                 self._raise_if_error()
                 return
+            # Cooperative cancel while blocked on a full encode queue (daemon
+            # exports previously had no cancel_check between frames).
+            try:
+                from features.video.lib.export_cancel import export_cancel_requested
+
+                if export_cancel_requested():
+                    self._cancelled = True
+                    self._closed = True
+                    self._stop.set()
+                    return
+            except Exception:
+                pass
             try:
                 self._queue.put(payload, timeout=0.05)
                 break

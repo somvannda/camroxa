@@ -136,7 +136,9 @@ def _main_impl() -> int:
             return 0
         
         # Do not catch exceptions here! Let the GPU renderer crash so we can see the exact error traceback
-        return run_gpu_render(gopts)
+        from features.video.lib.export_cancel import export_cancel_requested
+
+        return run_gpu_render(gopts, cancel_check=export_cancel_requested)
 
     _send({"status": "running", "message": "Analyzing audio...", "progress": 0.0})
     point_count = 1024 # Sync with gpu_render

@@ -48,6 +48,8 @@ class VideoPipelineCoordinator(QObject):
         self._pending_manual: tuple[ProgressRow, ManualPipelineAction, str] | None = None
         self._last_poll_error_at = 0.0
         self._last_poll_error_message = ""
+        self._api_outage = False
+        self._user_cancel_until = 0.0
 
     def start(self) -> None:
         self._active = True
@@ -61,6 +63,12 @@ class VideoPipelineCoordinator(QObject):
         if worker is not None and worker.isRunning():
             # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
             worker.wait(1_500)
+
+    def kick(self) -> None:
+        """Force an immediate orchestration poll (e.g. after API recovery or Continue)."""
+        if not self._active:
+            return
+        self._poll()
 
     def _poll(self) -> None:
         if not self._active:
@@ -83,6 +91,26 @@ class VideoPipelineCoordinator(QObject):
             return
         workspace = payload.workspace
         if not isinstance(workspace, VideoWorkspaceState):
+            return
+
+        recovered_from_outage = self._api_outage
+        if recovered_from_outage:
+            self._api_outage = False
+            self._automation.recover_stale_state()
+            self._cooldown_until.clear()
+            from shared.services.shell_status import emit_shell_status
+
+            emit_shell_status(
+                "API recovered — resuming auto-video pipeline…",
+                tone="success",
+            )
+
+        if time.time() < float(self._user_cancel_until or 0.0):
+            return
+
+        from shared.services.auto_pipeline_pause import is_auto_pipeline_paused
+
+        if is_auto_pipeline_paused():
             return
 
         self._automation.recover_stale_state()
@@ -123,6 +151,9 @@ class VideoPipelineCoordinator(QObject):
     def cancel_active_export(self) -> bool:
         """Cancel the active pipeline export/merge so another job can start."""
         self._pending_manual = None
+        # Prevent auto-video from immediately re-starting the same batch after
+        # the user explicitly cancelled (feels like "stuck / won't stop").
+        self._user_cancel_until = time.time() + 45.0
         return self._automation.cancel_active()
 
     def run_manual_action(
@@ -132,7 +163,12 @@ class VideoPipelineCoordinator(QObject):
         *,
         branch: str = "long",
     ) -> None:
+        from shared.services.auto_pipeline_pause import resume_auto_pipeline
         from shared.services.shell_status import emit_shell_status
+
+        # Explicit Start/Rebuild/Merge from Progress clears Stop Exporting pause.
+        resume_auto_pipeline()
+        self._user_cancel_until = 0.0
 
         if self._automation.recover_stale_state():
             emit_shell_status("Cleared stale video export state.", tone="neutral")
@@ -216,6 +252,9 @@ class VideoPipelineCoordinator(QObject):
     def _on_poll_failed(self, message: str) -> None:
         from shared.services.shell_status import emit_shell_status
 
+        self._api_outage = True
+        # Wedged busy flags during an outage prevent resume after recovery.
+        self._automation.recover_stale_state()
         text = str(message or "").strip() or "Auto-video paused: unable to load progress rows."
         now = time.time()
         if text == self._last_poll_error_message and (now - self._last_poll_error_at) < 60.0:

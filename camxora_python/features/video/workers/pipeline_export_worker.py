@@ -75,6 +75,8 @@ class VideoPipelineExportWorker(QThread):
             worker_limit = 1
         worker_count = min(worker_limit, len(mp3_paths))
         export_gate.set_limit(worker_limit)
+        # Parallel tracks cannot share the single-job warm daemon.
+        allow_daemon = worker_count <= 1
 
         total = len(mp3_paths)
         completed = 0
@@ -110,6 +112,7 @@ class VideoPipelineExportWorker(QThread):
                 "totalJobs": total,
                 "currentMp3Path": current_path,
                 "outputPath": output_path,
+                "workers": worker_count,
             }
             if video_codec:
                 payload["videoCodec"] = video_codec
@@ -192,6 +195,7 @@ class VideoPipelineExportWorker(QThread):
                             fallback_from=str(event.get("fallbackFrom") or "").strip() or None,
                         ),
                         on_job_started=_register_active_job,
+                        allow_daemon=allow_daemon,
                     )
                 finally:
                     with self._jobs_lock:
@@ -231,7 +235,10 @@ class VideoPipelineExportWorker(QThread):
 
                 branch_label = "Long" if request.branch == "long" else "Reel"
                 emit_progress(
-                    message=f"Exporting {branch_label} {index}/{total} · {Path(mp3_path).name}",
+                    message=(
+                        f"Exporting {branch_label} {index}/{total} · {Path(mp3_path).name}"
+                        f" · {worker_count} worker{'s' if worker_count != 1 else ''}"
+                    ),
                     current_path=mp3_path,
                 )
                 try:
@@ -254,7 +261,8 @@ class VideoPipelineExportWorker(QThread):
                 )
 
         started_at = time.time()
-        emit_progress(message=f"Starting {request.branch} export…")
+        worker_label = f"{worker_count} worker{'s' if worker_count != 1 else ''}"
+        emit_progress(message=f"Starting {request.branch} export · {worker_label}…")
         try:
             with ThreadPoolExecutor(max_workers=worker_count) as pool:
                 futures = [pool.submit(worker_loop) for _ in range(worker_count)]

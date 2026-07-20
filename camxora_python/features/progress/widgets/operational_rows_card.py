@@ -109,6 +109,8 @@ class OperationalRowsCard(QFrame):
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
     cancel_job_requested = Signal(object)
+    stop_exporting_requested = Signal(object)
+    continue_progress_requested = Signal(object)
     row_selected = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -407,32 +409,44 @@ class OperationalRowsCard(QFrame):
         if entry is None:
             return
 
-        clicked_column = index.column()
         menu = QMenu(self)
         meta = entry.row.meta
         recovery_added = False
 
-        # Always available: free the single local export/merge slot so another
-        # Start Export can run (pipeline only allows one active job at a time).
+        # Hard stop: cancel live work and keep auto-video / helper agents paused
+        # until the user explicitly Start Export / Continue / Merge on a row.
+        stop_action = menu.addAction("Stop Exporting")
+        stop_action.triggered.connect(partial(self.stop_exporting_requested.emit, entry.row))
+
+        # Soft cancel only (auto may resume later unless Stop Exporting was used).
         cancel_action = menu.addAction("Cancel Active Export/Merge")
         cancel_action.triggered.connect(partial(self.cancel_job_requested.emit, entry.row))
+
+        continue_action = menu.addAction("Continue Progress")
+        continue_action.triggered.connect(
+            partial(self.continue_progress_requested.emit, entry)
+        )
         menu.addSeparator()
 
-        if clicked_column == _COL_EXPORT:
-            if self._can_show_start_export(entry):
-                action = menu.addAction("Start Export")
-                action.triggered.connect(partial(self.start_export_requested.emit, entry.row))
-            if self._can_start_video_export(entry):
-                action = menu.addAction("Force Regenerate MP4")
-                action.triggered.connect(partial(self.force_export_regenerate_requested.emit, entry.row))
-                action = menu.addAction("Rebuild MP4")
-                action.triggered.connect(partial(self.rebuild_export_requested.emit, entry.row))
+        # Export recovery is available on any column — users often right-click the
+        # Stage/Music cells after Cancel and previously saw no Rebuild/Force options.
+        export_actions_added = False
+        if self._can_show_start_export(entry):
+            action = menu.addAction("Start Export")
+            action.triggered.connect(partial(self.start_export_requested.emit, entry.row))
+            export_actions_added = True
+        if self._can_start_video_export(entry):
+            action = menu.addAction("Force Regenerate MP4")
+            action.triggered.connect(partial(self.force_export_regenerate_requested.emit, entry.row))
+            action = menu.addAction("Rebuild MP4")
+            action.triggered.connect(partial(self.rebuild_export_requested.emit, entry.row))
+            export_actions_added = True
+        if export_actions_added:
             menu.addSeparator()
 
-        if clicked_column == _COL_MERGE:
-            if self._can_start_video_merge(entry):
-                action = menu.addAction("Start Merging Video")
-                action.triggered.connect(partial(self.start_merge_requested.emit, entry.row))
+        if self._can_start_video_merge(entry):
+            action = menu.addAction("Start Merging Video")
+            action.triggered.connect(partial(self.start_merge_requested.emit, entry.row))
             menu.addSeparator()
 
         copy_action = menu.addAction("Copy Batch ID")

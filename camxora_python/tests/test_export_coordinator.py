@@ -117,7 +117,7 @@ def test_start_export_routes_in_process_first(monkeypatch: pytest.MonkeyPatch) -
         def __init__(self, **kwargs: object) -> None:
             calls.append("subprocess")
 
-        def run_blocking(self) -> int:
+        def run_blocking(self, *args, **kwargs) -> int:
             return 0
 
     monkeypatch.setattr(
@@ -154,7 +154,7 @@ def test_start_export_falls_back_to_subprocess(monkeypatch: pytest.MonkeyPatch) 
         def __init__(self, **kwargs: object) -> None:
             self.on_event = kwargs.get("on_event")
 
-        def run_blocking(self) -> int:
+        def run_blocking(self, *args, **kwargs) -> int:
             if callable(self.on_event):
                 self.on_event({"status": "running", "message": "daemon job accepted", "progress": 0.5})
             return 0
@@ -197,7 +197,7 @@ def test_start_export_logs_backend_on_completion(
         def __init__(self, **kwargs: object) -> None:
             pass
 
-        def run_blocking(self) -> int:
+        def run_blocking(self, *args, **kwargs) -> int:
             return 0
 
         def cancel(self) -> None:
@@ -225,7 +225,7 @@ def test_run_subprocess_export_reports_daemon_backend(monkeypatch: pytest.Monkey
         def __init__(self, **kwargs: object) -> None:
             self.on_event = kwargs.get("on_event")
 
-        def run_blocking(self) -> int:
+        def run_blocking(self, *args, **kwargs) -> int:
             if callable(self.on_event):
                 self.on_event({"status": "running", "progress": 0.25})
             return 0
@@ -264,7 +264,7 @@ def test_cancel_export_stops_active_backend(monkeypatch: pytest.MonkeyPatch) -> 
         def __init__(self, **kwargs: object) -> None:
             pass
 
-        def run_blocking(self) -> int:
+        def run_blocking(self, *args, **kwargs) -> int:
             started.set()
             release.wait(timeout=3.0)
             return 1

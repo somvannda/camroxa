@@ -103,12 +103,17 @@ def test_export_job_cancel_calls_daemon_when_no_proc(monkeypatch) -> None:
     calls: list[str] = []
 
     class _Daemon:
-        def cancel_active(self) -> None:
+        def cancel_active(self, **kwargs) -> None:  # noqa: ANN003
             calls.append("cancel_active")
+            assert "cancel_path" in kwargs
 
     monkeypatch.setattr(
         "features.video.services.visualizer_daemon.get_visualizer_daemon",
         lambda: _Daemon(),
+    )
+    monkeypatch.setattr(
+        "features.video.lib.export_cancel.request_export_cancel",
+        lambda path: None,
     )
     job = ExportJob(
         mp3_path="a.mp3",
