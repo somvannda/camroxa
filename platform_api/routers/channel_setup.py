@@ -366,22 +366,22 @@ async def _build_onboarding_draft_response(
     payload: dict[str, Any] | None = None,
 ) -> OnboardingDraftResponse:
     from platform_api.services.onboarding_entitlement_service import (
-        ONBOARDING_AI_LIMITS,
+        effective_onboarding_ai_limit,
         get_onboarding_usage,
     )
 
     name_used = await get_onboarding_usage(pool, user_id, "channel_name")
-    name_limit = ONBOARDING_AI_LIMITS["channel_name"]
+    name_limit = await effective_onboarding_ai_limit(pool, user_id, "channel_name")
     logo_used = await get_onboarding_usage(pool, user_id, "channel_logo")
-    logo_limit = ONBOARDING_AI_LIMITS["channel_logo"]
+    logo_limit = await effective_onboarding_ai_limit(pool, user_id, "channel_logo")
     cover_used = await get_onboarding_usage(pool, user_id, "channel_cover")
-    cover_limit = ONBOARDING_AI_LIMITS["channel_cover"]
+    cover_limit = await effective_onboarding_ai_limit(pool, user_id, "channel_cover")
     description_used = await get_onboarding_usage(pool, user_id, "channel_description")
-    description_limit = ONBOARDING_AI_LIMITS["channel_description"]
+    description_limit = await effective_onboarding_ai_limit(pool, user_id, "channel_description")
     keywords_used = await get_onboarding_usage(pool, user_id, "channel_keywords")
-    keywords_limit = ONBOARDING_AI_LIMITS["channel_keywords"]
+    keywords_limit = await effective_onboarding_ai_limit(pool, user_id, "channel_keywords")
     tags_used = await get_onboarding_usage(pool, user_id, "channel_tags")
-    tags_limit = ONBOARDING_AI_LIMITS["channel_tags"]
+    tags_limit = await effective_onboarding_ai_limit(pool, user_id, "channel_tags")
     return OnboardingDraftResponse(
         payload=payload or {},
         name_generate_limit=name_limit,

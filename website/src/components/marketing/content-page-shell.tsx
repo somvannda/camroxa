@@ -7,7 +7,7 @@ import {
 type ContentPageShellProps = {
   eyebrow: string;
   title: string;
-  description: string;
+  description: React.ReactNode;
   children: React.ReactNode;
   aside?: React.ReactNode;
 };
@@ -31,9 +31,13 @@ export function ContentPageShell(props: ContentPageShellProps) {
             <h1 className="mt-6 font-display text-4xl font-semibold tracking-[-0.06em] text-white md:text-6xl">
               {props.title}
             </h1>
-            <p className="mt-5 max-w-3xl text-base leading-8 text-slate-200/70 md:text-lg">
-              {props.description}
-            </p>
+            <div className="mt-5 max-w-3xl space-y-4 text-base leading-8 text-slate-200/70 md:text-lg">
+              {typeof props.description === "string" ? (
+                <p>{props.description}</p>
+              ) : (
+                props.description
+              )}
+            </div>
           </div>
 
           <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-6 ring-1 ring-white/6">
@@ -41,14 +45,14 @@ export function ContentPageShell(props: ContentPageShellProps) {
               <div className="space-y-4">
                 <div>
                   <div className="text-xs uppercase tracking-[0.22em] text-slate-400">
-                    Why CAMXORA
+                    Why Camxora
                   </div>
                   <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-                    Desktop-first by design.
+                    Faceless desktop studio, end to end.
                   </div>
                 </div>
                 <p className="text-sm leading-6 text-slate-200/72">
-                  One system across website, account, pricing, and studio workflow.
+                  Lyrics to YouTube-ready video in one Windows studio — with honest upload roadmap.
                 </p>
               </div>
             )}

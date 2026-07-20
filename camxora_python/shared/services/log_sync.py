@@ -37,6 +37,7 @@ class SyncLogsWorker(QThread):
 
     def __init__(self, api: PlatformApi, payload: dict[str, Any], parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("SyncLogsWorker")
         self._api = api
         self._payload = payload
 

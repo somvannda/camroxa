@@ -9,11 +9,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Dashboard weekly `usage_by_day` window now includes **today** (`today-6..today`); previously ended at yesterday and hid same-day Manual exports.
+
 ### Added
 
-- `POST /api/v1/admin/desktop/software-update/upload` — admin installer upload (`.zip`, `.exe`, `.msi`, up to 500 MB).
-- `GET /api/v1/public/desktop-release/files/{filename}` — serve uploaded packages when no CDN base URL is configured.
-- Settings: `PLATFORM_DESKTOP_RELEASE_STORAGE_PATH`, `PLATFORM_DESKTOP_RELEASE_PUBLIC_BASE_URL`, `PLATFORM_DESKTOP_RELEASE_MAX_UPLOAD_MB`.
+- `video_manual` local consume/refund (same price/quota pool as `video`, separate usage key).
+- Dashboard stats: `studio_exports`, `manual_exports`, `youtube_uploads`; daily usage breakdown fields.
+- Quota status already exposed `daily_videos_*` / `daily_merges_*` (now surfaced in portal UI).
+
+### Changed
+
+- `videos_generated` alias = studio + manual track exports; `videos_uploaded` remains YouTube successes.
 
 ## [2026-07-19]
 

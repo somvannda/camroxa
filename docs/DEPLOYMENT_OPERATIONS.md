@@ -87,19 +87,42 @@ Expected: `300s` on all API proxy locations (except WebSocket `86400`).
 
 ---
 
-## 3. Required nginx upload body size (create-profile)
+## 3. Required nginx upload body size
 
 ### Why this matters
 
-`POST /api/v1/channel-setup/create-profile` sends **logo + cover images as base64 inside JSON**. A single 1920×1080 PNG can be **2–5 MB** encoded; nginx default `client_max_body_size` is **1 MB** → **413 Content Too Large** before the request reaches FastAPI.
+Several admin flows upload large payloads. Nginx default `client_max_body_size` is **1 MB** → **413 Content Too Large** before the request reaches FastAPI.
+
+| Flow | Typical size | Minimum nginx limit |
+|------|----------------|---------------------|
+| `POST /api/v1/channel-setup/create-profile` (logo + cover base64 JSON) | 2–5 MB per image | **50m** |
+| `POST /api/v1/admin/desktop/software-update/upload` (desktop installer `.zip`/`.exe`/`.msi`) | up to **500 MB** (API limit) | **550m** |
+| Admin image sample pack ZIP upload | varies | **550m** recommended on admin `/api/` |
 
 ### Required settings
 
-Every nginx `location` that proxies to `platform_api` must include:
+Every nginx `location` that proxies to `platform_api` must set `client_max_body_size` high enough for the largest expected upload on that route.
+
+**API + admin portal (sandbox example):**
 
 ```nginx
-client_max_body_size 50m;
+# api.sandbox.camxora.com — full API including direct admin calls
+location / {
+    client_max_body_size 550m;
+    ...
+}
+
+# admin.sandbox.camxora.com — SPA + /api/ reverse proxy
+location /api/ {
+    client_max_body_size 550m;
+    proxy_connect_timeout 600s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+    ...
+}
 ```
+
+Create-profile-only hosts can keep **50m** if they never receive installer uploads.
 
 Apply together with the timeout settings in §2.
 

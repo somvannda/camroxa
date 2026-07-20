@@ -614,7 +614,8 @@ async def get_quota_status(
         today = billing_today()
         getter = getattr(usage_repo, "get_account_daily_count", None)
         if getter is not None:
-            videos_used_today = await getter(user_id, "video", today)
+            videos_used_today = int(await getter(user_id, "video", today) or 0)
+            videos_used_today += int(await getter(user_id, "video_manual", today) or 0)
             merges_used_today = await getter(user_id, "video_merge", today)
         else:
             videos_used_today = 0

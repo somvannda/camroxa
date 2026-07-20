@@ -4,12 +4,13 @@
 import time
 import threading
 from pathlib import Path
+from typing import Any
 import numpy as np
 
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtCore import Signal, QTimer, QByteArray, Qt, QRectF, QSize, QMetaObject, Slot
-from PySide6.QtGui import QPainter, QColor, QPen, QFont
+from PySide6.QtCore import Signal, QTimer, QByteArray, Qt, QRectF, QSize, QMetaObject, Slot, Q_ARG
+from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPixmap
 
 import moderngl
 from visualizer.gpu_render import (
@@ -25,14 +26,33 @@ from visualizer.gpu_render import (
     ParticleSystem,
     ParticleConfig,
 )
-from visualizer._spectrum_fast import resolve_bar_pixel_width
+from visualizer._spectrum_fast import resolve_bar_pixel_width, smooth_fft_envelope
 from features.video.lib.particle_color_engine import (
     build_particle_rgba_rows,
     extract_particle_color_model,
     palette_colors_to_rgb_tuple,
 )
 from visualizer.audio import AudioAnalyzer
+from visualizer.automation import apply_automations
 from visualizer.contracts import PreviewConfig
+from visualizer.frame_integrator import (
+    BgVibrateConfig,
+    BgVibrateState,
+    BgVibrateStepInput,
+    CameraShakeConfig,
+    CameraShakeState,
+    CameraShakeStepInput,
+    KickBassEnvelopeConfig,
+    KickBassEnvelopeState,
+    KickBassEnvelopeStepInput,
+    integrate_bg_vibrate,
+    integrate_camera_shake,
+    integrate_kick_bass_envelopes,
+    integrate_particle_audio,
+    ParticleAudioConfig,
+    ParticleAudioState,
+    ParticleAudioStepInput,
+)
 from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
 
 
@@ -84,11 +104,6 @@ def _text_quad_center_offset(anchor: str, tw: float, th: float) -> tuple[float, 
     else:
         oy = 0.0
     return (ox, oy)
-
-def _smooth_env(prev: float, target: float, smoothing: float) -> float:
-    s = float(max(0.0, min(0.99, smoothing)))
-    t = float(max(0.0, min(1.0, target)))
-    return float(float(prev) * s + t * (1.0 - s))
 
 class _QtGLContextLoader:
 
@@ -232,17 +247,14 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._audio_load_lock = threading.Lock()
         self.fft_log = np.zeros(64, dtype=np.float32)
         self.fft_smoothed = np.zeros(64, dtype=np.float32)
-        self.shake_state_x = 0.0
-        self.shake_state_y = 0.0
-        self.bg_shake_state_x = 0.0
-        self.bg_shake_state_y = 0.0
-        self.p_bass_fast = 0.0
-        self.p_bass_slow = 0.0
-        self.p_kick_env = 0.0
+        self.shake_state = CameraShakeState()
+        self.bg_shake_state = BgVibrateState()
+        self.kick_bass_state = KickBassEnvelopeState()
         self.bg_audio_env = 0.0
         self.logo_audio_env = 0.0
         self.particle_audio_env = 0.0
         self.p_trigger_env = 0.0
+        self._particle_audio_state = ParticleAudioState()
         self.dt = 1.0 / 60.0
         self._frame_counter = 0
         self._screen_fbo = None
@@ -261,6 +273,25 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._text_drag_dy = 0.0
         self._bg_tex_size = (1.0, 1.0)
         self._perf_last_paint_at = 0.0
+        self._export_overlay_active = False
+        self._export_overlay_message = ""
+        self._last_clean_preview: QPixmap | None = None
+        self._export_freeze_label = QLabel(self)
+        self._export_freeze_label.setScaledContents(True)
+        self._export_freeze_label.setStyleSheet("background-color: #0a0e27;")
+        self._export_freeze_label.hide()
+        self._export_freeze_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._export_overlay_label = QLabel(self)
+        self._export_overlay_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._export_overlay_label.setStyleSheet(
+            "background-color: rgba(8, 16, 40, 160); color: #ffffff; font-size: 16px;"
+        )
+        self._export_overlay_label.hide()
+        self._export_overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._export_offscreen_surface = None
+        self._export_gl_context = None
+        self._blocking_export_gl_result = None
+        self._blocking_export_gl_error = None
         self._perf_frame_ms = 0.0
         self._perf_fps = 0.0
         self._log(f"[{time.strftime('%H:%M:%S')}] SpectrumPreview init")
@@ -310,30 +341,21 @@ class VideoSpectrumPreview(QOpenGLWidget):
         onset: float = 0.0,
         beat: float = 0.0,
     ) -> None:
-        ps_smooth = float(max(0.0, min(0.99, float(ps.get("smoothing", 0.65)))))
-        # Match Electron: sustain from bass/kick plus onset/beat so react color
-        # still flashes when band energy is flat but the track hits.
-        particle_audio_raw = float(
-            max(
-                0.0,
-                min(
-                    1.0,
-                    max(kick_pow, bass, float(onset) * 0.9, float(beat) * 0.95),
-                ),
-            )
+        out = integrate_particle_audio(
+            self._particle_audio_state,
+            ParticleAudioStepInput(
+                bass=bass,
+                kick_pow=kick_pow,
+                onset=onset,
+                beat=beat,
+            ),
+            ParticleAudioConfig(
+                smoothing=float(ps.get("smoothing", 0.65)),
+                spawn_trigger=str(ps.get("spawnTrigger", "both") or "both"),
+            ),
         )
-        self.particle_audio_env = _smooth_env(self.particle_audio_env, particle_audio_raw, ps_smooth)
-        spawn_trigger = str(ps.get("spawnTrigger", "both") or "both")
-        kick_like = float(max(kick_pow, float(beat)))
-        bass_like = float(max(bass, float(onset) * 0.85, particle_audio_raw * 0.65))
-        if spawn_trigger == "kick":
-            trig_raw = kick_like
-        elif spawn_trigger == "bass":
-            trig_raw = bass_like
-        else:
-            trig_raw = float(max(kick_like, bass_like))
-        trig_raw = float(max(0.0, min(1.0, trig_raw)))
-        self.p_trigger_env = _smooth_env(self.p_trigger_env, trig_raw, ps_smooth)
+        self.particle_audio_env = out.particle_audio_env
+        self.p_trigger_env = out.p_trigger_env
 
     def _resolve_particle_spawn_rate(self, *, ps: dict, ps_spawn: float, prb: float) -> float:
         spawn_mode = str(ps.get("spawnMode", "always") or "always")
@@ -685,6 +707,169 @@ class VideoSpectrumPreview(QOpenGLWidget):
             }
         return {"status": "running", "message": "GPU preview compositor is running."}
 
+    def _sync_export_overlay_geometry(self) -> None:
+        rect = (0, 0, max(1, int(self.width())), max(1, int(self.height())))
+        for label in (
+            getattr(self, "_export_freeze_label", None),
+            getattr(self, "_export_overlay_label", None),
+        ):
+            if label is not None:
+                label.setGeometry(*rect)
+
+    def _cache_clean_preview_frame(self) -> None:
+        """Store a known-good preview snapshot while the live compositor is healthy."""
+        if self._export_overlay_active or not getattr(self, "_gl_ready", False):
+            return
+        # Snapshot occasionally — enough for freeze UX, low grab cost.
+        if int(self._frame_counter) % 15 != 0:
+            return
+        try:
+            img = self.grabFramebuffer()
+            if img.isNull():
+                return
+            self._last_clean_preview = QPixmap.fromImage(img)
+        except Exception:
+            pass
+
+    def _apply_freeze_pixmap(self, pix: QPixmap | None) -> None:
+        freeze = getattr(self, "_export_freeze_label", None)
+        if freeze is None:
+            return
+        if pix is None or pix.isNull():
+            freeze.clear()
+            return
+        freeze.setPixmap(
+            pix.scaled(
+                max(1, int(self.width())),
+                max(1, int(self.height())),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+    def prepare_export_surface(self) -> Any:
+        """Create QOffscreenSurface on the GUI thread (Qt requirement)."""
+        from PySide6.QtGui import QOffscreenSurface
+
+        share_ctx = self.context()
+        if share_ctx is None:
+            raise RuntimeError("Preview OpenGL context is not available")
+        surface = QOffscreenSurface()
+        surface.setFormat(share_ctx.format())
+        surface.create()
+        if not surface.isValid():
+            raise RuntimeError("Failed to create export offscreen surface")
+        self._export_offscreen_surface = surface
+        self._export_gl_context = None
+        return surface
+
+    def blocking_prepare_export_surface(self) -> Any:
+        from PySide6.QtCore import QThread
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None and QThread.currentThread() == app.thread():
+            return self.prepare_export_surface()
+        self._blocking_export_gl_result = None
+        self._blocking_export_gl_error = None
+        ok = QMetaObject.invokeMethod(
+            self,
+            "_prepare_export_surface_on_gui",
+            Qt.ConnectionType.BlockingQueuedConnection,
+        )
+        if not ok:
+            raise RuntimeError("Failed to dispatch export surface setup to GUI thread")
+        if self._blocking_export_gl_error is not None:
+            raise self._blocking_export_gl_error
+        if self._blocking_export_gl_result is None:
+            raise RuntimeError("Export surface setup returned nothing")
+        return self._blocking_export_gl_result
+
+    @Slot()
+    def _prepare_export_surface_on_gui(self) -> None:
+        try:
+            self._blocking_export_gl_result = self.prepare_export_surface()
+            self._blocking_export_gl_error = None
+        except Exception as exc:
+            self._blocking_export_gl_error = exc
+            self._blocking_export_gl_result = None
+
+    # Back-compat aliases used by older call sites / tests.
+    def prepare_export_shared_gl(self) -> Any:
+        return self.prepare_export_surface()
+
+    def blocking_prepare_export_shared_gl(self) -> Any:
+        return self.blocking_prepare_export_surface()
+
+    @Slot()
+    def _prepare_export_shared_gl_on_gui(self) -> None:
+        self._prepare_export_surface_on_gui()
+
+    def set_export_overlay(self, active: bool, message: str = "") -> None:
+        """Show or hide in-process export status on the preview surface."""
+        self._export_overlay_active = bool(active)
+        self._export_overlay_message = str(message or ("Exporting…" if active else ""))
+        overlay = getattr(self, "_export_overlay_label", None)
+        freeze = getattr(self, "_export_freeze_label", None)
+        if overlay is not None:
+            overlay.setText(self._export_overlay_message)
+        self._sync_export_overlay_geometry()
+        if active:
+            # Prefer last clean snapshot from live playback — never grab GL right as
+            # export starts (that frame is often already half-corrupt under load).
+            cached = self._last_clean_preview
+            if cached is not None and not cached.isNull():
+                self._apply_freeze_pixmap(cached)
+            else:
+                try:
+                    img = self.grabFramebuffer()
+                    if not img.isNull():
+                        self._apply_freeze_pixmap(QPixmap.fromImage(img))
+                    else:
+                        self._apply_freeze_pixmap(None)
+                except Exception:
+                    self._apply_freeze_pixmap(None)
+            if freeze is not None:
+                freeze.show()
+                freeze.raise_()
+            if overlay is not None:
+                overlay.show()
+                overlay.raise_()
+            self.timer.stop()
+        else:
+            if freeze is not None:
+                freeze.hide()
+                freeze.clear()
+            if overlay is not None:
+                overlay.hide()
+            if not self.timer.isActive():
+                self.timer.start(1000 // 60)
+            self.update()
+
+    @Slot(bool, str)
+    def _set_export_overlay_on_gui(self, active: bool, message: str = "") -> None:
+        self.set_export_overlay(active, message)
+
+    def invoke_set_export_overlay(self, active: bool, message: str = "") -> None:
+        connection = (
+            Qt.ConnectionType.BlockingQueuedConnection
+            if active
+            else Qt.ConnectionType.QueuedConnection
+        )
+        try:
+            ok = QMetaObject.invokeMethod(
+                self,
+                "_set_export_overlay_on_gui",
+                connection,
+                Q_ARG(bool, bool(active)),
+                Q_ARG(str, str(message or "")),
+            )
+            if ok:
+                return
+        except Exception:
+            pass
+        self.set_export_overlay(active, message)
+
     def playback_snapshot(self) -> dict:
         return {
             "isPlaying": bool(self.audio_playing),
@@ -934,8 +1119,11 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 if cached_analyzer:
                     analyzer = cached_analyzer
                 else:
-                    from visualizer.audio import AudioAnalyzer
-                    analyzer = AudioAnalyzer(active_path, fps=60, point_count=1024)
+                    from shared.services.audio_analysis_cache import load_audio_analyzer
+
+                    analyzer, _cache_hit = load_audio_analyzer(
+                        active_path, fps=60, point_count=1024, use_cache=True
+                    )
                     if not hasattr(self, '_audio_analyzer_cache'):
                         self._audio_analyzer_cache = {}
                         self._audio_analyzer_cache_order = []
@@ -1180,9 +1368,15 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self._gl_ready = False
             self.ctx = None
 
+    def resizeEvent(self, ev):
+        self._sync_export_overlay_geometry()
+        super().resizeEvent(ev)
+
     def paintGL(self):
         paint_started = time.perf_counter()
         try:
+            if self._export_overlay_active:
+                return
             if not self.ctx or not getattr(self, "_gl_ready", False):
                 return
             self._use_qt_framebuffer()
@@ -1238,26 +1432,31 @@ class VideoSpectrumPreview(QOpenGLWidget):
             aud_bar_height = float(max(0.25, min(8.0, aud_bar_height)))
             aud_smooth = float(tpl_audio.get('smoothing', 0.8))
             aud_smooth = float(max(0.0, min(0.99, aud_smooth)))
-            self.p_bass_fast = self.p_bass_fast * (1.0 - (1.0 - float(np.exp(-self.dt / 0.06)))) + bass * (1.0 - float(np.exp(-self.dt / 0.06)))
-            self.p_bass_slow = self.p_bass_slow * (1.0 - (1.0 - float(np.exp(-self.dt / 0.35)))) + bass * (1.0 - float(np.exp(-self.dt / 0.35)))
-            raw_kick = float(max(0.0, self.p_bass_fast - self.p_bass_slow))
-            kick0 = float(max(0.0, min(1.0, raw_kick * 4.0)))
-            self.p_kick_env = float(max(kick0, self.p_kick_env * float(np.exp(-self.dt / 0.18))))
-            kick_pow = float(max(0.0, min(1.0, self.p_kick_env))) ** 2
+            ls_early = self.template.get('logoSettings', {}) if isinstance(self.template.get('logoSettings'), dict) else {}
+            logo_smooth = float(ls_early.get('smoothing', 0.75))
+            env_out = integrate_kick_bass_envelopes(
+                self.kick_bass_state,
+                KickBassEnvelopeStepInput(bass=bass),
+                KickBassEnvelopeConfig(bg_smoothing=bg_smooth, logo_smoothing=logo_smooth),
+                dt=self.dt,
+            )
+            kick_pow = env_out.kick_pow
+            self.bg_audio_env = env_out.bg_audio_env
             base_h = float(self.template.get('renderBaseHeight', 450.0))
             base_h = float(max(1.0, min(4000.0, base_h)))
             sf = float(h) / base_h
-            bg_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.6))))
-            self.bg_audio_env = _smooth_env(self.bg_audio_env, bg_audio_raw, bg_smooth)
-            if bg_motion_mode in ('vibrate', 'both'):
-                bg_shake_target = float(max(0.0, bg_react) * self.bg_audio_env * 18.0 * sf * bg_motion_vibrate_strength)
-                jitter_x = (time.time() * 0.81 + frame_idx * 0.013) % 1.0
-                jitter_y = (time.time() * 0.83 + frame_idx * 0.017) % 1.0
-                self.bg_shake_state_x = self.bg_shake_state_x * bg_smooth + (jitter_x * 2.0 - 1.0) * bg_shake_target * (1.0 - bg_smooth)
-                self.bg_shake_state_y = self.bg_shake_state_y * bg_smooth + (jitter_y * 2.0 - 1.0) * bg_shake_target * (1.0 - bg_smooth)
-            else:
-                self.bg_shake_state_x = 0.0
-                self.bg_shake_state_y = 0.0
+            bg_vibrate_out = integrate_bg_vibrate(
+                self.bg_shake_state,
+                BgVibrateStepInput(frame_index=frame_idx, bg_audio_env=self.bg_audio_env),
+                BgVibrateConfig(
+                    motion_mode=bg_motion_mode,
+                    react_bass=bg_react,
+                    smoothing=bg_smooth,
+                    vibrate_strength=bg_motion_vibrate_strength,
+                    scale_factor=sf,
+                ),
+                dt=self.dt,
+            )
             self.prog_scene['tex_bg'].value = 0
             if hasattr(self, 'tex_bg'):
                 self.tex_bg.use(location=0)
@@ -1279,8 +1478,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
             off_uv_y = float(user_off_y / max(1.0, float(h)))
             if bg_motion_mode in ('vibrate', 'both'):
                 self.prog_scene['bg_offset'].value = (
-                    float(off_uv_x + self.bg_shake_state_x / max(1.0, float(w))),
-                    float(off_uv_y + self.bg_shake_state_y / max(1.0, float(h))),
+                    float(off_uv_x + bg_vibrate_out.x / max(1.0, float(w))),
+                    float(off_uv_y + bg_vibrate_out.y / max(1.0, float(h))),
                 )
             else:
                 self.prog_scene['bg_offset'].value = (float(off_uv_x), float(off_uv_y))
@@ -1333,15 +1532,37 @@ class VideoSpectrumPreview(QOpenGLWidget):
             anchor = str(pos_cfg.get('anchor', 'center'))
             off_x = float(pos_cfg.get('x', 0.0)) * sf
             off_y = float(pos_cfg.get('y', 0.0)) * sf
+            fx_motion = self.template.get("effects") if isinstance(self.template.get("effects"), dict) else {}
+            shake_raw = fx_motion.get("camera_shake") if isinstance(fx_motion.get("camera_shake"), dict) else {}
+            shake_enabled = bool(shake_raw.get("enabled", False))
+            shake_intensity = float(shake_raw.get("intensity", 8.0))
+            shake_smoothing = float(shake_raw.get("smoothing", 0.85))
+            autos = self.template.get("automations") if isinstance(self.template.get("automations"), list) else []
+            auto_state = apply_automations(
+                {"camera_shake.intensity": shake_intensity},
+                feats,
+                autos,
+            )
+            shake_out = integrate_camera_shake(
+                self.shake_state,
+                CameraShakeStepInput(
+                    frame_index=frame_idx,
+                    bass=bass,
+                    beat=float(feats.get("beat", 0.0) or 0.0),
+                    intensity=float(auto_state.get("camera_shake.intensity", shake_intensity)),
+                ),
+                CameraShakeConfig(enabled=shake_enabled, smoothing=shake_smoothing),
+                dt=self.dt,
+            )
             cx, cy = _get_anchor_coords(anchor, off_x, off_y, w, h)
+            cx += shake_out.x
+            cy += shake_out.y
             ls = self.template.get('logoSettings', {}) if isinstance(self.template.get('logoSettings'), dict) else {}
             logo_enabled = bool(ls.get('enabled', True))
             logo_size_base = float(ls.get('size', 192.0))
             logo_scale_base = float(ls.get('scale', 1.0))
             logo_react = float(ls.get('reactivity', 0.0))
-            logo_smooth = float(ls.get('smoothing', 0.75))
-            logo_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.8))))
-            self.logo_audio_env = _smooth_env(self.logo_audio_env, logo_audio_raw, logo_smooth)
+            self.logo_audio_env = env_out.logo_audio_env
             logo_visual_radius = logo_size_base * 0.5 * sf * logo_scale_base
             preview_bindings = (
                 self.template.get("previewBindings")
@@ -1396,7 +1617,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 raw_val = val1 * (1.0 - frac) + val2 * frac
                 freq_boost = 1.0 + (b_idx / float(BINS)) ** 2 * 2.0
                 self.fft_log[b_idx] = float(max(0.01, min(1.0, raw_val * freq_boost)))
-            self.fft_smoothed = self.fft_smoothed * aud_smooth + self.fft_log * (1.0 - aud_smooth)
+            self.fft_smoothed = smooth_fft_envelope(self.fft_smoothed, self.fft_log, aud_smooth)
             rg = float(max(0.1, min(8.0, aud_sens)))
             fft_s = np.clip(self.fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
             spectrum_enabled = bool(self.template.get("spectrumEnabled", True))
@@ -1723,6 +1944,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
             import traceback
             traceback.print_exc()
         finally:
+            if not self._export_overlay_active:
+                self._cache_clean_preview_frame()
             elapsed_ms = max(0.0, (time.perf_counter() - paint_started) * 1000.0)
             if elapsed_ms > 0:
                 self._perf_frame_ms = elapsed_ms

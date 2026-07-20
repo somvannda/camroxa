@@ -533,13 +533,16 @@ async def _fulfill_profile_addon_payment(
         if plan is None:
             raise NotFoundError("Associated plan not found.")
 
-        validate_profile_addon_request(
-            plan=plan,
-            current_addon_slots=int(license_obj.profile_addon_slots or 0),
-            current_addon_pending=int(getattr(license_obj, "profile_addon_pending", 0) or 0),
-            add_channels=addon_channels,
-        )
-        await license_repo.add_profile_addon_pending(license_id, addon_channels)
+        try:
+            validate_profile_addon_request(
+                plan=plan,
+                current_addon_slots=int(license_obj.profile_addon_slots or 0),
+                current_addon_pending=int(getattr(license_obj, "profile_addon_pending", 0) or 0),
+                add_channels=addon_channels,
+            )
+            await license_repo.add_profile_addon_pending(license_id, addon_channels)
+        except ValueError as exc:
+            raise ValidationError(str(exc), details={"addon_channels": addon_channels}) from exc
 
         fulfilled = await connection.fetchrow(
             """
@@ -1800,12 +1803,15 @@ async def cutluy_webhook(
             {"received": True, "fulfilled": False, "reason": "payment_not_found"}
         )
 
+    # Cast $2 explicitly: asyncpg otherwise fails with
+    # "inconsistent types deduced for parameter $2: text versus character varying"
+    # when the same param is assigned to a varchar column and compared to a literal.
     updated = await pool.fetchrow(
         """
         UPDATE billing_payments
-        SET status = $2,
+        SET status = $2::varchar,
             approved_at = CASE
-                WHEN $2 = 'paid' THEN COALESCE(approved_at, NOW())
+                WHEN $2::varchar = 'paid'::varchar THEN COALESCE(approved_at, NOW())
                 ELSE approved_at
             END,
             raw_response = COALESCE(raw_response, '{}'::jsonb) || $3::jsonb,

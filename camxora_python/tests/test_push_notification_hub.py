@@ -1,9 +1,25 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+
+import pytest
 
 from shared.models.push_events import NOTIFICATION_MESSAGE, SOFTWARE_UPDATE_AVAILABLE, WORKSPACE_CHANGED
 from shared.services.push_notification_hub import PushNotificationHub
+from shared.services.software_update_service import SoftwareUpdateService
+
+
+@pytest.fixture(autouse=True)
+def _reset_update_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "shared.constants.app_version.get_app_version",
+        lambda: "0.1.0",
+    )
+    monkeypatch.setattr(
+        "shared.services.software_update_service.get_app_version",
+        lambda: "0.1.0",
+    )
+    SoftwareUpdateService._instance = None
 
 
 def test_push_notification_hub_dispatches_workspace_event() -> None:
@@ -39,6 +55,28 @@ def test_push_notification_hub_collects_software_updates() -> None:
     assert item.title == "Required software update"
     assert item.id
     assert isinstance(item.created_at, datetime)
+    assert SoftwareUpdateService.instance().should_block_app()
+
+
+def test_push_notification_hub_skips_same_or_older_software_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "shared.constants.app_version.get_app_version",
+        lambda: "2.4.0",
+    )
+    monkeypatch.setattr(
+        "shared.services.software_update_service.get_app_version",
+        lambda: "2.4.0",
+    )
+    hub = PushNotificationHub()
+    hub.clear_inbox()
+    hub.dispatch(
+        SOFTWARE_UPDATE_AVAILABLE,
+        {"version": "2.4.0", "mandatory": True, "release_notes": "Already installed."},
+    )
+    assert hub.inbox_items == []
+    assert not SoftwareUpdateService.instance().should_block_app()
 
 
 def test_push_notification_hub_dismiss_removes_item() -> None:

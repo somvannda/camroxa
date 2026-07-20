@@ -73,16 +73,31 @@ class PushNotificationHub(QObject):
         safe_payload = dict(payload or {})
         self.event_received.emit(normalized_event, safe_payload)
 
+        if normalized_event == SOFTWARE_UPDATE_AVAILABLE:
+            from shared.constants.app_version import get_app_version
+            from shared.lib.version_compare import is_remote_version_newer
+            from shared.services.software_update_service import SoftwareUpdateService
+
+            version = str(safe_payload.get("version") or "").strip()
+            if not version or not is_remote_version_newer(get_app_version(), version):
+                # Already current — clear any stale mandatory gate and skip inbox noise.
+                SoftwareUpdateService.instance().reconcile_with_installed_version()
+                return
+
+            inbox_item = self._build_inbox_item(normalized_event, safe_payload)
+            if inbox_item is None:
+                return
+            self._inbox.insert(0, inbox_item)
+            self.inbox_changed.emit()
+            update_payload = dict(inbox_item.payload)
+            update_payload["notification_id"] = inbox_item.id
+            SoftwareUpdateService.instance().apply_push_payload(update_payload)
+            return
+
         inbox_item = self._build_inbox_item(normalized_event, safe_payload)
         if inbox_item is not None:
             self._inbox.insert(0, inbox_item)
             self.inbox_changed.emit()
-            if normalized_event == SOFTWARE_UPDATE_AVAILABLE:
-                payload = dict(inbox_item.payload)
-                payload["notification_id"] = inbox_item.id
-                from shared.services.software_update_service import SoftwareUpdateService
-
-                SoftwareUpdateService.instance().apply_push_payload(payload)
 
     def _build_inbox_item(
         self,

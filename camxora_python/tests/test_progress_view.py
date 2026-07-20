@@ -5,9 +5,16 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication, QLabel
 
-from features.progress.views.progress_view import ProgressView
+from features.progress.views.progress_view import ProgressView, STAGE_OPTIONS
 from features.progress.widgets.error_banner import ERROR_MESSAGE
-from features.progress.widgets.operational_rows_card import EMPTY_MESSAGE, LOADING_MESSAGE
+from features.progress.widgets.operational_rows_card import (
+    EMPTY_MESSAGE,
+    LOADING_MESSAGE,
+    EffectiveProgressRow,
+    OperationalRowsCard,
+    _COL_CHANNEL,
+    _COL_EXPORT,
+)
 from shared.models.platform import ProgressListResponse, ProgressRow, ProgressRowMeta, UserSettingsResponse
 from shared.services.platform_api import PlatformApi
 from shared.workers.data_workers import WorkflowLoadResult
@@ -98,3 +105,79 @@ def test_manual_mode_banner(qapp: QApplication) -> None:
     view.show()
     view._on_settings_loaded(UserSettingsResponse.model_validate({"imageSourceMode": "manual"}))
     assert not view._manual_banner.isHidden()
+
+
+def _effective_row(**overrides: object) -> EffectiveProgressRow:
+    row = _sample_row()
+    if "row" in overrides and isinstance(overrides["row"], ProgressRow):
+        row = overrides["row"]
+    return EffectiveProgressRow(
+        row=row,
+        effective_status=str(overrides.get("effective_status", row.status)),
+        effective_converter=str(overrides.get("effective_converter", row.converter)),
+        effective_merge=str(overrides.get("effective_merge", row.merge)),
+        effective_stage=str(overrides.get("effective_stage", row.stage)),
+        effective_notes=str(overrides.get("effective_notes", row.notes)),
+        effective_converter_percent=overrides.get("effective_converter_percent"),  # type: ignore[arg-type]
+        effective_merge_percent=overrides.get("effective_merge_percent"),  # type: ignore[arg-type]
+    )
+
+
+def test_set_rows_clears_stale_export_widgets(qapp: QApplication) -> None:
+    card = OperationalRowsCard()
+    export_pending = _effective_row(
+        effective_stage="Export",
+        effective_status="Pending",
+        effective_converter="Pending · no exports yet",
+    )
+    music_row = _effective_row(effective_stage="Music", effective_status="Running")
+
+    card.set_rows([export_pending, export_pending, export_pending])
+    for row_index in range(3):
+        assert card._table.cellWidget(row_index, _COL_EXPORT) is not None
+
+    card.set_rows([music_row, music_row, music_row])
+    for row_index in range(3):
+        assert card._table.cellWidget(row_index, _COL_EXPORT) is None
+        channel_item = card._table.item(row_index, _COL_CHANNEL)
+        assert channel_item is not None
+        assert "OK Channel" in channel_item.text()
+
+
+def test_stage_filter_meta_shows_loaded_and_visible_counts(qapp: QApplication) -> None:
+    view = ProgressView(PlatformApi())
+    rows = [
+        _sample_row().model_copy(update={"stage": "Music", "channel": f"Channel {index}"})
+        for index in range(3)
+    ]
+    result = WorkflowLoadResult(
+        response=ProgressListResponse(rows=rows, summary="3 rows loaded"),
+        runtime_by_key={},
+    )
+    view._on_loaded(result)
+
+    export_index = next(index for index, (label, _) in enumerate(STAGE_OPTIONS) if label == "Export")
+    view._stage_filter.setCurrentIndex(export_index)
+    view._render_table()
+
+    assert "0 visible rows" in view._meta_label.text()
+    assert "3 loaded rows" in view._meta_label.text()
+    assert view._rows_card._table.item(0, 0).text() == EMPTY_MESSAGE
+
+
+def test_stage_filter_matches_converter_alias(qapp: QApplication) -> None:
+    view = ProgressView(PlatformApi())
+    row = _sample_row().model_copy(update={"stage": "Converter"})
+    result = WorkflowLoadResult(
+        response=ProgressListResponse(rows=[row], summary="1 rows loaded"),
+        runtime_by_key={},
+    )
+    view._on_loaded(result)
+
+    export_index = next(index for index, (label, _) in enumerate(STAGE_OPTIONS) if label == "Export")
+    view._stage_filter.setCurrentIndex(export_index)
+    view._render_table()
+
+    assert "1 visible row" in view._meta_label.text()
+    assert view._rows_card._table.rowCount() == 1
+    assert view._rows_card._table.item(0, _COL_CHANNEL) is not None

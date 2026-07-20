@@ -129,7 +129,7 @@ class WindowTitleBar(QFrame):
         title.setFont(title_font)
         title_col.addWidget(title)
 
-        subtitle = QLabel("DESKTOP STUDIO")
+        subtitle = QLabel("FACELESS DESKTOP STUDIO")
         subtitle.setObjectName("window_brand_subtitle")
         subtitle_font = QFont(subtitle.font())
         subtitle_font.setFamilies(["Inter", "Segoe UI", "Arial"])

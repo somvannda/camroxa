@@ -9,9 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard Overview **Your limits** panel: monthly and daily remaining as `X / Y` for Suno, images, drafts, track exports, and merges; per-channel daily preview.
+- 7-day trend chart series for studio exports, manual exports, and YouTube uploads.
+
 ### Changed
 
-- Download links (footer, marketing shell, onboarding done page) point to the marketing website `/download`, which now shows the published desktop release from the public API.
+- Credits panel labels distinguish month vs today for track exports and merges.
 
 ## [2026-07-19]
 

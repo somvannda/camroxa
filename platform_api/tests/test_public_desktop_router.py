@@ -29,6 +29,12 @@ class TestPublicDesktopRelease:
         with patch("platform_api.routers.public_desktop.get_db_pool", return_value=object()), patch(
             "platform_api.routers.public_desktop.get_published_desktop_release",
             new=AsyncMock(return_value=published),
+        ), patch(
+            "platform_api.routers.public_desktop.get_download_count_for_version",
+            new=AsyncMock(return_value=7),
+        ), patch(
+            "platform_api.routers.public_desktop.get_total_downloads",
+            new=AsyncMock(return_value=42),
         ):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -42,6 +48,8 @@ class TestPublicDesktopRelease:
             "release_notes": "Bug fixes and performance improvements.",
             "mandatory": True,
             "published_at": "2026-07-19T03:00:00+00:00",
+            "download_count": 7,
+            "total_downloads": 42,
         }
 
     async def test_returns_404_when_not_published(self, app) -> None:

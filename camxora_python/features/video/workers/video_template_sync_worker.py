@@ -38,6 +38,7 @@ class VideoTemplateSyncWorker(QThread):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("VideoTemplateSyncWorker")
         self._api = api
         self._workspace = workspace
         self._save_patch = save_patch
@@ -90,8 +91,26 @@ class VideoTemplateSyncWorker(QThread):
 
             if synced:
                 self.succeeded.emit(f"Synced template to {synced} profile link(s) on the server.")
-            else:
-                self.succeeded.emit("Saved locally. No profile currently links this template on the server.")
+                return
+
+            fallback_profile = next((profile for profile in self._profiles if _profile_id(profile)), None)
+            if fallback_profile is None:
+                self.succeeded.emit(
+                    "Saved locally. Create a channel profile to sync templates to the server."
+                )
+                return
+
+            self._api.upsert_profile_video_template(
+                _profile_id(fallback_profile),
+                template_id,
+                name=name,
+                kind="long",
+                template_json=template_json,
+                set_as_profile_default=False,
+            )
+            self.succeeded.emit(
+                "Synced template to the server. Link it to a channel profile in Settings to use it in the pipeline."
+            )
         except PlatformApiError as exc:
             self.failed.emit(str(exc) or "Saved locally; server sync failed.")
         except Exception as exc:

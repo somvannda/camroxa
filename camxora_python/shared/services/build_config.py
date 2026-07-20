@@ -156,3 +156,11 @@ def footer_environment_badge() -> tuple[str | None, str]:
             return "Local API", api_url
         return "Dev API", api_url
     return None, api_url
+
+
+def footer_version_badge() -> tuple[str, str]:
+    """Short footer label + tooltip for the running desktop build."""
+    from shared.constants.app_version import get_app_version
+
+    version = get_app_version()
+    return f"v{version}", f"Camxora desktop {version}"

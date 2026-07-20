@@ -29,9 +29,32 @@ cd camxora_python
 
 This:
 
-1. Downloads bundled **FFmpeg** + **VC++ redistributable** into `vendor/`
+1. Downloads bundled **FFmpeg** + **VC++ redistributable** into `vendor/` (skipped when already cached)
 2. Builds `dist/Camxora/Camxora.exe` with FFmpeg at `dist/Camxora/ffmpeg/`
 3. (With `-BuildInno`) compiles `CamxoraSetup-<version>.exe` which silently installs VC++ during setup
+
+### Faster rebuilds
+
+Most rebuild time used to come from three avoidable steps: full `pip install` every run, wiping PyInstaller’s `build/` cache, and `collect_all()` on huge packages (numpy/OpenGL/…). The script now:
+
+- Skips `pip` when deps already import (use `-ForceInstall` to refresh)
+- Skips FFmpeg/VC++ download when `vendor/` is populated
+- Keeps `build/` between runs (pass `-Clean` only after packaging bugs)
+- Collects native libs/data selectively instead of `collect_all` on the whole GPU stack
+
+Typical iterative rebuild:
+
+```powershell
+.\scripts\build-desktop.ps1 -Environment sandbox -BuildInno
+```
+
+First-time / broken package / dependency bump:
+
+```powershell
+.\scripts\build-desktop.ps1 -Environment sandbox -BuildInno -ForceInstall -Clean
+```
+
+Phase timings (`=== … ===` / `--- … done in Ns ---`) print during the build so you can see whether time is in pip, PyInstaller, or Inno.
 
 End users only run the Setup.exe — no pip, no manual FFmpeg browse for the happy path.
 

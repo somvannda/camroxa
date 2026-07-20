@@ -12,8 +12,12 @@ from PySide6.QtWidgets import (
 
 from app.router import AppRouter
 from shared.constants.navigation import ShellRouteKey
-from shared.services.build_config import footer_environment_badge
+from shared.services.build_config import footer_environment_badge, footer_version_badge
 from shared.services.image_output_sync_coordinator import ImageOutputSyncCoordinator
+from shared.services.progress_local_sync_coordinator import (
+    ProgressLocalSyncCoordinator,
+    bind_progress_local_sync_coordinator,
+)
 from shared.services.music_download_coordinator import MusicDownloadCoordinator
 from shared.services.session_service import SessionService
 from shared.services.setup_readiness_service import refresh_setup_readiness
@@ -94,6 +98,8 @@ class AppShellWidget(QWidget):
         self._status_bar.set_message(self._route_ready_message)
         env_label, env_tooltip = footer_environment_badge()
         self._status_bar.set_environment_badge(env_label, tooltip=env_tooltip)
+        version_label, version_tooltip = footer_version_badge()
+        self._status_bar.set_version_badge(version_label, tooltip=version_tooltip)
         content_layout.addWidget(self._status_bar)
 
         root.addWidget(content, stretch=1)
@@ -105,6 +111,9 @@ class AppShellWidget(QWidget):
         self._music_downloads.start()
         self._image_outputs = ImageOutputSyncCoordinator(self._api, self)
         self._image_outputs.start()
+        self._progress_local_sync = ProgressLocalSyncCoordinator(self._api, self)
+        bind_progress_local_sync_coordinator(self._progress_local_sync)
+        self._progress_local_sync.start()
         self._video_pipeline = VideoPipelineCoordinator(self._api, self)
         bind_video_pipeline_coordinator(self._video_pipeline)
         self._video_pipeline.start()
@@ -146,6 +155,42 @@ class AppShellWidget(QWidget):
             else f"{profile_count} profiles"
         )
         self._status_bar.set_summary(credits=credits, allowance=allowance)
+
+    def prepare_app_quit(self) -> None:
+        """Cancel video exports and prevent batch chaining during window close."""
+        page = None
+        try:
+            page = self._router._page_by_key.get("video")  # noqa: SLF001 — quit path only
+        except Exception:
+            page = None
+        prepare = getattr(page, "prepare_app_quit", None)
+        if callable(prepare):
+            try:
+                prepare()
+            except Exception:
+                pass
+
+    def shutdown_background_workers(self) -> None:
+        """Stop polling coordinators before the shell/window is destroyed."""
+        try:
+            self._session_keepalive.stop()
+        except Exception:
+            pass
+        for attr in (
+            "_music_downloads",
+            "_image_outputs",
+            "_progress_local_sync",
+            "_video_pipeline",
+        ):
+            coordinator = getattr(self, attr, None)
+            if coordinator is None:
+                continue
+            stop = getattr(coordinator, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception:
+                    pass
 
     def _restore_status_message(self) -> None:
         self._status_bar.set_message(self._route_ready_message)

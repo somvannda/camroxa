@@ -11,13 +11,32 @@ from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 from shared.widgets.usage_chart import UsageChartWidget, UsageLegend
 
 
+def _usage_fingerprint(entries: list[DailyUsage]) -> tuple:
+    return tuple(
+        (
+            entry.date,
+            entry.songs,
+            entry.images,
+            entry.videos,
+            entry.studio_exports,
+            entry.manual_exports,
+            entry.youtube_uploads,
+        )
+        for entry in entries
+    )
+
+
 class WeeklyUsageCard(QFrame):
-    SUBTITLE = "Songs, images, and videos generated over the recent 7-day window."
+    SUBTITLE = (
+        "7-day curves: Songs · Images · Studio exports (pipeline) · "
+        "Manual exports (Video page) · YouTube uploads."
+    )
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("account_card")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._usage_fingerprint: tuple = ()
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 14, 16, 14)
         root.setSpacing(10)
@@ -73,8 +92,8 @@ class WeeklyUsageCard(QFrame):
         self._empty_days.setObjectName(SUBTITLE_LABEL_ID)
         self._empty_days.hide()
         chart_layout.addWidget(self._empty_days)
-        legend = UsageLegend(horizontal=True)
-        chart_layout.addWidget(legend)
+        self._legend = UsageLegend(horizontal=True)
+        chart_layout.addWidget(self._legend)
         root.addWidget(chart_panel, stretch=1)
 
     def set_plan(self, plan_type: str, expiry_text: str) -> None:
@@ -82,7 +101,12 @@ class WeeklyUsageCard(QFrame):
         self._plan_expiry.setText(expiry_text)
 
     def set_usage(self, entries: list[DailyUsage]) -> None:
+        fingerprint = _usage_fingerprint(entries)
+        if fingerprint == self._usage_fingerprint:
+            return
+        self._usage_fingerprint = fingerprint
         self._chart.set_entries(entries)
+        self._legend.set_active_mask(self._chart.active_series_mask())
         self._clear_day_grid()
         if not entries:
             self._empty_days.show()
@@ -95,7 +119,8 @@ class WeeklyUsageCard(QFrame):
             date_label.setObjectName(SUBTITLE_LABEL_ID)
             date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             col.addWidget(date_label)
-            total = entry.songs + entry.images + entry.videos
+            studio = entry.studio_exports if (entry.studio_exports or entry.manual_exports) else entry.videos
+            total = entry.songs + entry.images + studio + entry.manual_exports + entry.youtube_uploads
             count_label = QLabel(f"{total} items")
             count_label.setObjectName(SUBTITLE_LABEL_ID)
             count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

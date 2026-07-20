@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, QTimer
 
+from shared.services.app_thread_registry import track_app_thread
 from shared.services.platform_api import PlatformApi
 from shared.workers.data_workers import MusicDownloadSyncResult, MusicDownloadSyncWorker
 
@@ -33,18 +34,21 @@ class MusicDownloadCoordinator(QObject):
         self._timer.stop()
         worker = self._worker
         if worker is not None and worker.isRunning():
-            worker.wait(2_000)
+            # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
+            worker.wait(1_500)
 
     def _poll(self) -> None:
         if not self._active:
             return
         if self._worker is not None and self._worker.isRunning():
             return
-        worker = MusicDownloadSyncWorker(self._api, limit=24, parent=self)
+        # parent=None: window close must not destroy a live QThread.
+        worker = MusicDownloadSyncWorker(self._api, limit=24, parent=None)
         worker.succeeded.connect(self._on_sync_succeeded)
         worker.failed.connect(self._on_sync_failed)
         worker.finished.connect(self._on_worker_finished)
         self._worker = worker
+        track_app_thread(worker)
         worker.start()
 
     def _on_sync_succeeded(self, payload: object) -> None:

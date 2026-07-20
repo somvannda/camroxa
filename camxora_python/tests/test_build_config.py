@@ -61,3 +61,10 @@ def test_footer_badge_local_development(monkeypatch: pytest.MonkeyPatch) -> None
     label, tooltip = build_config.footer_environment_badge()
     assert label == "Local API"
     assert "localhost" in tooltip
+
+
+def test_footer_version_badge() -> None:
+    label, tooltip = build_config.footer_version_badge()
+    assert label.startswith("v")
+    assert label[1:] in tooltip
+    assert "Camxora desktop" in tooltip

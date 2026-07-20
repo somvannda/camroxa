@@ -9,12 +9,14 @@ from platform_api.services.desktop_notification_admin_service import (
     SOFTWARE_UPDATE_DOWNLOAD_URL_KEY,
     SOFTWARE_UPDATE_PUBLISHED_AT_KEY,
     SOFTWARE_UPDATE_VERSION_KEY,
+    _summarize_release_notes_excerpt,
     apply_uploaded_installer_to_draft,
     get_published_desktop_release,
     get_software_update_config,
     publish_software_update,
     save_software_update_config,
     send_push_notification,
+    unpublish_software_update,
 )
 
 
@@ -110,16 +112,43 @@ async def test_publish_software_update_requires_version() -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_software_update_broadcasts_to_users() -> None:
+async def test_publish_software_update_requires_download_url() -> None:
     pool = _FakePool({SOFTWARE_UPDATE_VERSION_KEY: "2.5.0"})
+    with pytest.raises(ValueError, match="Download URL is required"):
+        await publish_software_update(pool)
+
+
+@pytest.mark.asyncio
+async def test_publish_software_update_broadcasts_to_users() -> None:
+    pool = _FakePool(
+        {
+            SOFTWARE_UPDATE_VERSION_KEY: "2.5.0",
+            SOFTWARE_UPDATE_DOWNLOAD_URL_KEY: "https://example.com/Camxora-2.5.0.zip",
+        }
+    )
     with patch(
         "platform_api.services.desktop_notification_admin_service.notify_software_update_available",
         new=AsyncMock(),
     ) as notify_mock:
-        config, recipients = await publish_software_update(pool)
+        config, recipients, changelog_slug = await publish_software_update(pool)
     assert recipients == 2
     assert config.version == "2.5.0"
+    assert config.published_at
+    assert changelog_slug is None
     assert notify_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_unpublish_software_update_clears_public_visibility() -> None:
+    pool = _FakePool(
+        {
+            SOFTWARE_UPDATE_VERSION_KEY: "2.5.0",
+            SOFTWARE_UPDATE_PUBLISHED_AT_KEY: "2026-07-19T00:00:00+00:00",
+        }
+    )
+    config = await unpublish_software_update(pool)
+    assert config.published_at in {"", None}
+    assert pool.settings[SOFTWARE_UPDATE_PUBLISHED_AT_KEY] == ""
 
 
 @pytest.mark.asyncio
@@ -144,3 +173,22 @@ async def test_send_push_notification_broadcasts_message_event() -> None:
     first_call = notification_service.push.await_args_list[0]
     assert first_call.args[1] == NOTIFICATION_MESSAGE_EVENT
     assert first_call.args[2]["title"] == "Maintenance"
+
+
+def test_summarize_release_notes_excerpt_uses_added_bullets() -> None:
+    notes = """## [0.2.3] - 2026-07-19
+
+### Added
+
+- Footer version badge (v0.2.3) next to the Sandbox API badge
+- Start Export button on pending export rows
+
+### Fixed
+
+- Stale video export state no longer blocks Rebuild MP4
+"""
+    excerpt = _summarize_release_notes_excerpt(notes)
+    assert excerpt.startswith("Footer version badge")
+    assert "Start Export button" in excerpt
+    assert "[0.2.3]" not in excerpt
+    assert "### Added" not in excerpt

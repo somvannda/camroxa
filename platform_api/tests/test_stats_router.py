@@ -13,7 +13,12 @@ class FakeStatsPool:
         if "FROM credit_wallets" in query:
             return {"balance": 10_000}
         if "FROM licenses l" in query:
-            return {"id": "license-1", "monthly_song_quota": 40}
+            return {
+                "id": "license-1",
+                "monthly_song_quota": 40,
+                "monthly_image_quota": 60,
+                "monthly_draft_quota": 100,
+            }
         return None
 
     async def fetchval(self, query: str, *args):
@@ -23,15 +28,23 @@ class FakeStatsPool:
             return 8
         if "COUNT(*) FROM image_jobs" in query:
             return 3
-        if "COUNT(*) FROM youtube_upload_jobs" in query:
-            raise RuntimeError("table not available in this test")
+        if "FROM youtube_upload_jobs" in query:
+            if "status = 'success'" in query:
+                return 2
+            return 4
+        if "operation_type = 'video_manual'" in query:
+            return 3
+        if "operation_type = 'video'" in query:
+            return 5
         if "SELECT songs_used FROM plan_usage" in query:
             return 9
         return 0
 
     async def fetch(self, query: str, *args):
         if "FROM youtube_upload_jobs" in query:
-            raise RuntimeError("table not available in this test")
+            return []
+        if "FROM usage_tracking" in query:
+            return []
         return []
 
 
@@ -70,12 +83,19 @@ async def test_dashboard_stats_uses_monthly_song_limit_alias(monkeypatch: pytest
     assert result.credits_spent == 0.5
     assert result.songs_generated == 8
     assert result.images_generated == 3
-    assert result.videos_uploaded == 0
+    assert result.studio_exports == 5
+    assert result.manual_exports == 3
+    assert result.youtube_uploads == 2
+    assert result.videos_generated == 8
+    assert result.videos_uploaded == 2
     assert result.songs_quota == 40
     assert result.songs_remaining == 31
     assert result.images_quota == 60
     assert result.images_remaining == 55
     assert isinstance(result.usage_by_day, list)
+    assert len(result.usage_by_day) == 7
+    today = datetime.now(timezone.utc).date().isoformat()
+    assert result.usage_by_day[-1].date == today
 
 
 class FakePublicStatsPool:
@@ -90,8 +110,14 @@ class FakePublicStatsPool:
             return 78
         if "FROM image_jobs" in query:
             return 90
+        if "operation_type = 'video_manual'" in query:
+            return 7
+        if "operation_type = 'video'" in query:
+            return 11
         if "FROM youtube_upload_jobs" in query:
-            return 2
+            if "status = 'success'" in query:
+                return 2
+            return 5
         return 0
 
 
@@ -106,5 +132,8 @@ async def test_public_stats_returns_totals(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.batches_total == 56
     assert result.songs_total == 78
     assert result.images_total == 90
-    assert result.videos_total == 2
+    assert result.videos_total == 5
+    assert result.studio_exports_total == 11
+    assert result.manual_exports_total == 7
+    assert result.youtube_uploads_total == 2
     assert isinstance(result.updated_at, datetime)

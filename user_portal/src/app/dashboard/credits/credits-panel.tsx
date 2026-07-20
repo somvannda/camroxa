@@ -350,7 +350,7 @@ export function CreditsPanel({
               }
             />
             <SummaryRow
-              label="Videos remaining"
+              label="Track exports remaining (month)"
               value={
                 state.quota?.videos_remaining !== null &&
                 state.quota?.videos_remaining !== undefined
@@ -363,13 +363,39 @@ export function CreditsPanel({
               }
             />
             <SummaryRow
-              label="Merges remaining"
+              label="Merges remaining (month)"
               value={
                 state.quota?.merges_remaining !== null &&
                 state.quota?.merges_remaining !== undefined
                   ? `${formatNumber(state.quota.merges_remaining)}${
                       state.quota.merges_quota != null
                         ? ` / ${formatNumber(state.quota.merges_quota)}`
+                        : ""
+                    }`
+                  : "Not available"
+              }
+            />
+            <SummaryRow
+              label="Track exports remaining (today)"
+              value={
+                state.quota?.daily_videos_remaining !== null &&
+                state.quota?.daily_videos_remaining !== undefined
+                  ? `${formatNumber(state.quota.daily_videos_remaining)}${
+                      state.quota.daily_videos_limit != null
+                        ? ` / ${formatNumber(state.quota.daily_videos_limit)}`
+                        : ""
+                    }`
+                  : "Not available"
+              }
+            />
+            <SummaryRow
+              label="Merges remaining (today)"
+              value={
+                state.quota?.daily_merges_remaining !== null &&
+                state.quota?.daily_merges_remaining !== undefined
+                  ? `${formatNumber(state.quota.daily_merges_remaining)}${
+                      state.quota.daily_merges_limit != null
+                        ? ` / ${formatNumber(state.quota.daily_merges_limit)}`
                         : ""
                     }`
                   : "Not available"

@@ -1,22 +1,18 @@
 "use client";
 
 import * as React from "react";
+import { Search, X } from "lucide-react";
 
 import { useControlPanel } from "@/components/dashboard/control-panel-provider";
 import {
-  ActivityRow,
   EmptyPanel,
   PanelSection,
   SectionTitle,
-  StatTile,
-  SummaryRow,
-  UsageBar,
   formatCreditValue,
   formatDateTime,
-  formatNumber,
-  titleCase,
 } from "@/components/dashboard/control-panel-ui";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   formatUsageTransactionLabel,
   resolveBillingMode,
@@ -25,10 +21,10 @@ import {
 } from "@/lib/credits";
 
 function billingBadgeClass(mode: BillingMode): string {
-  if (mode === "plan_allowance") return "text-sky-300";
-  if (mode === "platform_absorb") return "text-amber-300";
-  if (mode === "wallet") return "text-rose-300";
-  return "text-emerald-300";
+  if (mode === "plan_allowance") return "bg-sky-500/15 text-sky-300 ring-sky-400/20";
+  if (mode === "platform_absorb") return "bg-amber-500/15 text-amber-300 ring-amber-400/20";
+  if (mode === "wallet") return "bg-rose-500/15 text-rose-300 ring-rose-400/20";
+  return "bg-emerald-500/15 text-emerald-300 ring-emerald-400/20";
 }
 
 function amountClass(mode: BillingMode, direction: string): string {
@@ -45,134 +41,123 @@ function formatLedgerAmount(transaction: WalletTransaction, mode: BillingMode): 
   return `${transaction.direction === "credit" ? "+" : "−"}${formatCreditValue(transaction.amount)}`;
 }
 
+const BILLING_OPTIONS: Array<{ value: "all" | BillingMode; label: string; hint: string }> = [
+  { value: "all", label: "All billing", hint: "Every ledger row" },
+  { value: "plan_allowance", label: "Plan allowance", hint: "Covered by your subscription quota" },
+  { value: "wallet", label: "Wallet credits", hint: "Charged from purchased credits" },
+  { value: "platform_absorb", label: "Absorbed", hint: "Platform covered the cost" },
+];
+
 export default function DashboardActivityPage() {
   const { state } = useControlPanel();
-  const [resourceFilter, setResourceFilter] = React.useState<"all" | "songs" | "images" | "videos">("all");
-  const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "pending" | "failed">("all");
   const [billingFilter, setBillingFilter] = React.useState<"all" | BillingMode>("all");
+  const [search, setSearch] = React.useState("");
 
-  const batches = state.musicHistory?.batches ?? [];
-  const totalSongsInBatches = batches.reduce((sum, batch) => sum + batch.song_count, 0);
-  const totalImageJobs = batches.reduce(
-    (sum, batch) => sum + batch.songs.reduce((songSum, song) => songSum + song.image_jobs_total, 0),
-    0,
-  );
-  const completedUploads = batches.reduce(
-    (sum, batch) =>
-      sum +
-      batch.songs.filter(
-        (song) => song.youtube_status?.toLowerCase() === "uploaded" || song.youtube_status?.toLowerCase() === "published",
-      ).length,
-    0,
-  );
-  const usageByDay = state.stats?.usage_by_day ?? [];
-  const peakDay = usageByDay.reduce((max, day) => Math.max(max, day.songs + day.images + day.videos), 0);
   const walletLoaded = state.wallet != null;
+  const normalizedSearch = search.trim().toLowerCase();
+
   const recentTransactions = (state.wallet?.recent_transactions ?? []).filter((tx) => {
-    if (billingFilter === "all") return true;
-    return resolveBillingMode(tx) === billingFilter;
-  });
-
-  const filteredUsage = usageByDay.map((day) => ({
-    ...day,
-    songs: resourceFilter === "all" || resourceFilter === "songs" ? day.songs : 0,
-    images: resourceFilter === "all" || resourceFilter === "images" ? day.images : 0,
-    videos: resourceFilter === "all" || resourceFilter === "videos" ? day.videos : 0,
-  }));
-
-  const filteredActivity = (state.stats?.recent_activity ?? []).filter((item) => {
-    const kind = item.kind.toLowerCase();
-    const status = item.status.toLowerCase();
-    const resourceMatch =
-      resourceFilter === "all" ||
-      (resourceFilter === "songs" && kind === "song") ||
-      (resourceFilter === "images" && kind === "image") ||
-      (resourceFilter === "videos" && kind === "video");
-    const statusMatch =
-      statusFilter === "all" ||
-      (statusFilter === "success" && ["paid", "success", "completed", "active", "redeemed"].includes(status)) ||
-      (statusFilter === "pending" && ["pending", "processing", "running"].includes(status)) ||
-      (statusFilter === "failed" && ["failed", "blocked", "expired", "cancelled", "rejected", "suspended"].includes(status));
-    return resourceMatch && statusMatch;
-  });
-
-  const filteredBatches = batches.filter((batch) => {
-    if (resourceFilter === "images") {
-      return batch.songs.some((song) => song.image_jobs_total > 0);
+    if (billingFilter !== "all" && resolveBillingMode(tx) !== billingFilter) {
+      return false;
     }
-    if (resourceFilter === "videos") {
-      return batch.songs.some((song) => Boolean(song.youtube_status));
-    }
-    return true;
+    if (!normalizedSearch) return true;
+    const haystack = `${tx.purpose ?? ""} ${tx.reason ?? ""} ${formatUsageTransactionLabel(tx)}`.toLowerCase();
+    return haystack.includes(normalizedSearch);
   });
+
+  const activeBilling = BILLING_OPTIONS.find((option) => option.value === billingFilter) ?? BILLING_OPTIONS[0];
 
   return (
     <div className="grid gap-5">
       <SectionTitle
         title="Usage"
-        description="Billing ledger, production metrics, and recent batch output."
+        description="Wallet and plan ledger for generation charges. Trends and activity live on Overview."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatTile label="Songs" value={formatNumber(totalSongsInBatches)} hint="In loaded batch history" />
-        <StatTile label="Image jobs" value={formatNumber(totalImageJobs)} hint="Cover and asset generation" />
-        <StatTile label="Uploads done" value={formatNumber(completedUploads)} hint="YouTube marked complete" />
-        <StatTile label="Videos total" value={formatNumber(state.stats?.videos_generated ?? 0)} hint="Recorded video jobs" />
-      </div>
-
       <PanelSection
-        title="Filters"
-        description="Narrow ledger rows and analytics by resource, status, and billing mode."
+        title="Find ledger rows"
+        description="Filter by how the work was billed, or search by operation name."
       >
-        <div className="grid gap-3">
-          <div className="flex flex-wrap gap-2">
-            {(["all", "songs", "images", "videos"] as const).map((value) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={resourceFilter === value ? "default" : "outline"}
-                className="h-8"
-                onClick={() => setResourceFilter(value)}
-              >
-                {titleCase(value)}
-              </Button>
-            ))}
+        <div className="grid gap-4">
+          <div>
+            <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+              Billing mode
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {BILLING_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setBillingFilter(option.value)}
+                  className={`rounded-xl border px-3 py-2 text-left transition ${
+                    billingFilter === option.value
+                      ? "border-violet-400/40 bg-violet-500/15 text-white"
+                      : "border-slate-700 bg-slate-950/40 text-slate-300 hover:border-slate-600 hover:bg-slate-900/60"
+                  }`}
+                >
+                  <div className="text-sm font-medium">{option.label}</div>
+                  <div className="mt-0.5 text-[11px] text-slate-500">{option.hint}</div>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {(["all", "success", "pending", "failed"] as const).map((value) => (
-              <Button
-                key={value}
-                type="button"
-                size="sm"
-                variant={statusFilter === value ? "default" : "outline"}
-                className="h-8"
-                onClick={() => setStatusFilter(value)}
-              >
-                {titleCase(value)}
-              </Button>
-            ))}
+
+          <div>
+            <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+              Search
+            </div>
+            <div className="relative max-w-xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search operation, reason, or billing label…"
+                className="h-11 border-slate-700 bg-slate-950/50 pl-10 pr-10 text-slate-100 placeholder:text-slate-500"
+              />
+              {search ? (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  onClick={() => setSearch("")}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                ["all", "All billing"],
-                ["plan_allowance", "Plan"],
-                ["wallet", "Wallet"],
-                ["platform_absorb", "Absorbed"],
-              ] as const
-            ).map(([value, label]) => (
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs text-slate-400">
+            <span>
+              Showing <span className="font-medium text-slate-200">{recentTransactions.length}</span> row
+              {recentTransactions.length === 1 ? "" : "s"}
+              {billingFilter !== "all" ? (
+                <>
+                  {" "}
+                  · <span className="text-slate-300">{activeBilling.label}</span>
+                </>
+              ) : null}
+              {normalizedSearch ? (
+                <>
+                  {" "}
+                  · matching “<span className="text-slate-300">{search.trim()}</span>”
+                </>
+              ) : null}
+            </span>
+            {billingFilter !== "all" || search ? (
               <Button
-                key={value}
                 type="button"
                 size="sm"
-                variant={billingFilter === value ? "default" : "outline"}
-                className="h-8"
-                onClick={() => setBillingFilter(value)}
+                variant="ghost"
+                className="h-8 text-slate-300"
+                onClick={() => {
+                  setBillingFilter("all");
+                  setSearch("");
+                }}
               >
-                {label}
+                Clear filters
               </Button>
-            ))}
+            ) : null}
           </div>
         </div>
       </PanelSection>
@@ -199,8 +184,12 @@ export default function DashboardActivityPage() {
                       <td className="px-3 py-2 text-slate-200">
                         {transaction.purpose || transaction.reason}
                       </td>
-                      <td className={`px-3 py-2 text-xs ${billingBadgeClass(mode)}`}>
-                        {formatUsageTransactionLabel(transaction)}
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ring-1 ${billingBadgeClass(mode)}`}
+                        >
+                          {formatUsageTransactionLabel(transaction)}
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-slate-400">{formatDateTime(transaction.created_at)}</td>
                       <td className={`px-3 py-2 text-right font-medium ${amountClass(mode, transaction.direction)}`}>
@@ -213,77 +202,9 @@ export default function DashboardActivityPage() {
             </table>
           </div>
         ) : (
-          <EmptyPanel text="No ledger rows for this filter yet." />
+          <EmptyPanel text="No ledger rows match these filters." />
         )}
       </PanelSection>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-        <PanelSection title="7-day trend" description={`Filtered by ${titleCase(resourceFilter)}.`}>
-          <div className="grid gap-3 md:grid-cols-7">
-            {filteredUsage.length > 0 ? (
-              filteredUsage.map((day) => <UsageBar key={day.date} day={day} peakDay={peakDay} />)
-            ) : (
-              <EmptyPanel text="No usage data yet." />
-            )}
-          </div>
-        </PanelSection>
-
-        <PanelSection title="Summary">
-          <div className="grid gap-2 text-sm">
-            <SummaryRow label="Filtered events" value={formatNumber(filteredActivity.length)} />
-            <SummaryRow label="Batches in view" value={formatNumber(filteredBatches.length)} />
-            <SummaryRow label="Songs generated" value={formatNumber(state.stats?.songs_generated ?? 0)} />
-            <SummaryRow label="Images generated" value={formatNumber(state.stats?.images_generated ?? 0)} />
-            <SummaryRow label="Credits spent" value={formatCreditValue(state.stats?.credits_spent ?? 0)} />
-          </div>
-        </PanelSection>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-2">
-        <PanelSection title="Recent activity" description="Latest song, image, and video events.">
-          {filteredActivity.length > 0 ? (
-            <div className="grid gap-2">
-              {filteredActivity.slice(0, 10).map((item, index) => (
-                <ActivityRow key={`${item.timestamp}-${item.kind}-${index}`} item={item} />
-              ))}
-            </div>
-          ) : (
-            <EmptyPanel text="No activity matches the current filters." />
-          )}
-        </PanelSection>
-
-        <PanelSection title="Recent batches" description="Output sets from the desktop app.">
-          {filteredBatches.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Profile</th>
-                    <th className="px-3 py-2">Songs</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBatches.map((batch) => (
-                    <tr key={batch.batch_id} className="border-b border-slate-800/70">
-                      <td className="px-3 py-2 text-slate-200">
-                        {batch.ok_profile_name ?? "Primary"}
-                        {batch.alt_profile_name ? ` + ${batch.alt_profile_name}` : ""}
-                      </td>
-                      <td className="px-3 py-2 text-slate-400">{batch.song_count}</td>
-                      <td className="px-3 py-2 text-slate-400">{titleCase(batch.status)}</td>
-                      <td className="px-3 py-2 text-slate-400">{formatDateTime(batch.updated_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <EmptyPanel text="No batches match the current filters." />
-          )}
-        </PanelSection>
-      </div>
     </div>
   );
 }

@@ -29,7 +29,13 @@ from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, V
 from shared.models.desktop import VideoExportState, VideoWorkspaceState
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
+from shared.lib.export_codec import format_export_status_message
+from shared.lib.export_tiers import resolve_export_tier_settings
 from shared.services.shell_status import emit_shell_status
+from shared.services.video_pipeline_activity import (
+    any_video_pipeline_threads_running,
+    track_video_pipeline_thread,
+)
 from shared.services.video_workspace_service import get_video_workspace_service
 
 
@@ -53,11 +59,48 @@ class PipelineAutomationService(QObject):
     def auth_blocked(self) -> bool:
         return self._auth_blocked
 
-    def is_busy(self) -> bool:
-        return self._busy or bool(
+    def _workers_running(self) -> bool:
+        return bool(
             (self._export_worker is not None and self._export_worker.isRunning())
             or (self._merge_worker is not None and self._merge_worker.isRunning())
         )
+
+    def recover_stale_state(self) -> bool:
+        """Clear stuck busy/export flags when no export or merge worker is alive."""
+        workers_live = self._workers_running() or any_video_pipeline_threads_running()
+        workspace = self._current_workspace()
+        export_flagged = bool(
+            workspace and (workspace.export.running or workspace.export.merge_running)
+        )
+        stale_busy = self._busy and not workers_live
+        stale_flags = export_flagged and not workers_live
+        if not stale_busy and not stale_flags:
+            return False
+
+        if stale_busy:
+            self._busy = False
+
+        if stale_flags and workspace is not None:
+            self._publish_workspace(
+                workspace.model_copy(
+                    update={
+                        "export": workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "merge_running": False,
+                                "current_status": (
+                                    "Recovered stale export state — ready for a new export."
+                                ),
+                            }
+                        )
+                    }
+                )
+            )
+        return True
+
+    def is_busy(self) -> bool:
+        self.recover_stale_state()
+        return self._busy or self._workers_running()
 
     def start(
         self,
@@ -105,11 +148,15 @@ class PipelineAutomationService(QObject):
             return False
 
         branch = "reel" if candidate.branch == "reel" else "long"
+        tier = resolve_export_tier_settings(self._settings, pipeline=True)
+        from features.video.lib.render_scene_request import REEL_EXPORT_RESOLUTION
+
+        output_resolution = REEL_EXPORT_RESOLUTION if branch == "reel" else tier.resolution
         scene = build_pipeline_render_scene_request(
             template=template,
             workspace={
                 "templateId": workspace.template_id,
-                "outputResolution": workspace.output_resolution,
+                "outputResolution": output_resolution,
                 "logoPath": workspace.logo_path,
                 "selectedMp3Path": mp3_list[0].path,
             },
@@ -119,7 +166,7 @@ class PipelineAutomationService(QObject):
             batch_id=candidate.batch_id,
             role=candidate.role,
             selected_mp3_path=mp3_list[0].path,
-            fps=self._resolve_export_fps(workspace),
+            fps=tier.fps,
         )
         workers_raw = self._settings.get("videoExportWorkers", self._settings.get("perfExportWorkers", 1))
         try:
@@ -185,10 +232,10 @@ class PipelineAutomationService(QObject):
             running=True,
             branch=branch_label,
             workers=worker_limit,
-            fps=self._resolve_export_fps(workspace),
+            fps=tier.fps,
             auto_merge=auto_merge,
             shuffle_merge=shuffle_merge,
-            current_status=f"Starting {branch_label} auto-export…",
+            current_status=f"Starting {branch_label} auto-export ({tier.label})…",
             output_dir=run_dir,
             total_jobs=len(mp3_list),
             completed_jobs=0,
@@ -212,15 +259,16 @@ class PipelineAutomationService(QObject):
                 width=int(scene.output.width),
                 height=int(scene.output.height),
                 fps=int(scene.output.fps),
-                speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+                speed_mode=tier.speed_mode,
             ),
-            parent=self,
+            parent=None,
         )
         worker.progressed.connect(self._on_export_progress)
         worker.succeeded.connect(self._on_export_succeeded)
         worker.failed.connect(self._on_export_failed)
         worker.finished.connect(self._on_export_finished)
         self._export_worker = worker
+        track_video_pipeline_thread(worker)
         worker.start()
         emit_shell_status(f"Auto-video started {branch_label.lower()} export for {Path(run_dir).name}.")
         return True
@@ -271,10 +319,14 @@ class PipelineAutomationService(QObject):
         workspace = self._current_workspace()
         if not isinstance(payload, dict) or workspace is None:
             return
+        raw_message = str(payload.get("message") or payload.get("status") or "Exporting…")
+        video_codec = str(payload.get("videoCodec") or workspace.export.video_codec or "").strip() or None
         updates: dict[str, object] = {
             "running": True,
-            "current_status": str(payload.get("message") or payload.get("status") or "Exporting…"),
+            "current_status": format_export_status_message(raw_message, video_codec=video_codec),
         }
+        if video_codec:
+            updates["video_codec"] = video_codec
         for key, export_key in (
             ("completedJobs", "completed_jobs"),
             ("totalJobs", "total_jobs"),
@@ -346,6 +398,14 @@ class PipelineAutomationService(QObject):
             )
         )
         emit_shell_status(message)
+        self._schedule_progress_local_sync()
+
+    def _schedule_progress_local_sync(self) -> None:
+        from shared.services.progress_local_sync_coordinator import get_progress_local_sync_coordinator
+
+        coordinator = get_progress_local_sync_coordinator()
+        if coordinator is not None:
+            coordinator.sync_now()
 
     def _start_merge(self) -> None:
         context = dict(self._merge_context)
@@ -427,25 +487,33 @@ class PipelineAutomationService(QObject):
                 mp4_paths=tuple(str(path) for path in (context.get("mp4_paths") or []) if str(path).strip()),
                 shuffle=bool(context.get("shuffle", True)),
             ),
-            parent=self,
+            parent=None,
         )
         worker.progressed.connect(self._on_merge_progress)
         worker.succeeded.connect(self._on_merge_succeeded)
         worker.failed.connect(self._on_merge_failed)
         worker.finished.connect(self._on_merge_finished)
         self._merge_worker = worker
+        track_video_pipeline_thread(worker)
         worker.start()
 
-    def _refund_video_charge(self, reason: str) -> None:
+    def _refund_video_charge(self, reason: str, *, count: int | None = None) -> None:
         charge = dict(self._video_charge or {})
         if not charge:
             return
+        original_count = max(1, int(charge.get("count") or 1))
+        refund_count = original_count if count is None else max(0, min(original_count, int(count)))
+        if refund_count <= 0:
+            self._video_charge = {}
+            return
+        charged = int(charge.get("charged_credit_units") or 0)
+        refund_credits = int(round(charged * refund_count / original_count)) if charged else 0
         try:
             refund_video_operation(
                 self._api,
                 operation_type=str(charge.get("operation_type") or "video"),
-                charged_credit_units=int(charge.get("charged_credit_units") or 0),
-                count=int(charge.get("count") or 1),
+                charged_credit_units=refund_credits,
+                count=refund_count,
                 channel_profile_id=charge.get("channel_profile_id"),
                 ref_id=str(charge.get("ref_id") or "") or None,
                 reason=reason,
@@ -471,6 +539,32 @@ class PipelineAutomationService(QObject):
         except Exception:
             pass
         self._merge_charge = {}
+
+    @staticmethod
+    def _is_user_initiated_stop(message: str) -> bool:
+        text = str(message or "").strip().lower()
+        return "export stopped" in text
+
+    def _apply_video_refund_for_outcome(self, message: str, *, user_stop: bool) -> None:
+        charge = dict(self._video_charge or {})
+        if not charge:
+            return
+        workspace = self._current_workspace()
+        completed = int(workspace.export.completed_jobs or 0) if workspace is not None else 0
+        charged = max(1, int(charge.get("count") or 1))
+        keep = completed + (1 if user_stop else 0)
+        refund_count = max(0, charged - keep)
+        if refund_count <= 0:
+            self._video_charge = {}
+            return
+        self._refund_video_charge(
+            (
+                "Auto-video export stopped (unused tracks)."
+                if user_stop
+                else (message or "Auto-video export failed.")
+            ),
+            count=refund_count,
+        )
 
     def _on_merge_progress(self, payload: object) -> None:
         workspace = self._current_workspace()
@@ -517,9 +611,13 @@ class PipelineAutomationService(QObject):
             )
         )
         emit_shell_status(message)
+        self._schedule_progress_local_sync()
 
     def _on_merge_failed(self, message: str) -> None:
-        self._refund_merge_charge(message or "Auto-merge failed.")
+        if self._is_user_initiated_stop(message):
+            self._merge_charge = {}
+        else:
+            self._refund_merge_charge(message or "Auto-merge failed.")
         workspace = self._current_workspace()
         self._busy = False
         if workspace is not None:
@@ -540,7 +638,8 @@ class PipelineAutomationService(QObject):
         emit_shell_status(message or "Auto-merge failed.")
 
     def _on_export_failed(self, message: str) -> None:
-        self._refund_video_charge(message or "Auto-video export failed.")
+        user_stop = self._is_user_initiated_stop(message)
+        self._apply_video_refund_for_outcome(message or "", user_stop=user_stop)
         workspace = self._current_workspace()
         self._busy = False
         if workspace is not None:

@@ -844,7 +844,7 @@ async def generate_image(
 # Local video / merge billing (desktop export + auto-merge)
 # ---------------------------------------------------------------------------
 
-_LOCAL_VIDEO_OPS = frozenset({"video", "video_merge"})
+_LOCAL_VIDEO_OPS = frozenset({"video", "video_manual", "video_merge"})
 _LOCAL_AI_SERVICE = "local"
 
 
@@ -853,7 +853,10 @@ class LocalVideoConsumeRequest(BaseModel):
 
     operation_type: str = Field(
         ...,
-        description="Must be 'video' (per-track export) or 'video_merge' (concat)",
+        description=(
+            "Must be 'video' (studio/pipeline per-track), "
+            "'video_manual' (manual Video-page per-track), or 'video_merge' (concat)"
+        ),
     )
     channel_profile_id: UUID | None = None
     count: int = Field(default=1, ge=1, le=50)
@@ -899,7 +902,7 @@ async def consume_local_video_operation(
     op = str(request.operation_type or "").strip().lower()
     if op not in _LOCAL_VIDEO_OPS:
         raise ValidationError(
-            "operation_type must be 'video' or 'video_merge'.",
+            "operation_type must be 'video', 'video_manual', or 'video_merge'.",
             details={"operation_type": request.operation_type},
         )
     await _assert_owned_channel_profile(
@@ -927,7 +930,10 @@ async def consume_local_video_operation(
     from platform_api.services.credit_pricing_service import lookup_pricing_entry
 
     pricing_repo = get_credit_repo()
-    entry = await lookup_pricing_entry(pricing_repo, _LOCAL_AI_SERVICE, op, None)
+    pricing_op = "video" if op == "video_manual" else op
+    entry = await lookup_pricing_entry(pricing_repo, _LOCAL_AI_SERVICE, pricing_op, None)
+    if entry is None and op == "video_manual":
+        entry = await lookup_pricing_entry(pricing_repo, _LOCAL_AI_SERVICE, "video", None)
     list_units = int(entry["credits_per_operation"]) if entry else total_charged
 
     return LocalVideoConsumeResponse(
@@ -955,7 +961,7 @@ async def refund_local_video_operation(
     op = str(request.operation_type or "").strip().lower()
     if op not in _LOCAL_VIDEO_OPS:
         raise ValidationError(
-            "operation_type must be 'video' or 'video_merge'.",
+            "operation_type must be 'video', 'video_manual', or 'video_merge'.",
             details={"operation_type": request.operation_type},
         )
     await _assert_owned_channel_profile(
@@ -974,3 +980,76 @@ async def refund_local_video_operation(
         count=int(request.count),
     )
     return {"status": "refunded", "operation_type": op}
+
+
+class LocalVideoTelemetryRequest(BaseModel):
+    """Desktop posts this after an export/merge finishes (success or user-stop)."""
+
+    operation_type: str = Field(
+        ...,
+        description="'video' (studio/pipeline), 'video_manual', or 'video_merge'",
+    )
+    ref_id: str | None = Field(default=None, max_length=255)
+    track_count: int = Field(default=0, ge=0, le=500)
+    completed_count: int = Field(default=0, ge=0, le=500)
+    duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
+    codec: str | None = Field(default=None, max_length=64)
+    resolution: str | None = Field(default=None, max_length=32)
+    fps: int | None = Field(default=None, ge=1, le=120)
+    export_tier: str | None = Field(default=None, max_length=32)
+    speed_mode: str | None = Field(default=None, max_length=32)
+    hw_cpu: str | None = Field(default=None, max_length=255)
+    hw_gpu: str | None = Field(default=None, max_length=255)
+    hw_encoder: str | None = Field(default=None, max_length=64)
+    app_version: str | None = Field(default=None, max_length=64)
+
+
+@router.post(
+    "/video/telemetry",
+    status_code=200,
+    summary="Record desktop export duration and hardware hints",
+)
+async def record_local_video_telemetry(
+    request: LocalVideoTelemetryRequest,
+    http_request: Request,
+    ctx: CurrentUserDep,
+) -> dict[str, str]:
+    await enforce_rate_limit(http_request, ctx.user_id)
+    op = str(request.operation_type or "").strip().lower()
+    if op not in _LOCAL_VIDEO_OPS:
+        raise ValidationError(
+            "operation_type must be 'video', 'video_manual', or 'video_merge'.",
+            details={"operation_type": request.operation_type},
+        )
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    await pool.execute(
+        """
+        INSERT INTO video_export_telemetry (
+            user_id, operation_type, ref_id, track_count, completed_count,
+            duration_ms, codec, resolution, fps, export_tier, speed_mode,
+            hw_cpu, hw_gpu, hw_encoder, app_version
+        ) VALUES (
+            $1::uuid, $2::varchar, $3::varchar, $4, $5,
+            $6, $7::varchar, $8::varchar, $9, $10::varchar, $11::varchar,
+            $12::varchar, $13::varchar, $14::varchar, $15::varchar
+        )
+        """,
+        ctx.user_id,
+        op,
+        request.ref_id,
+        int(request.track_count or 0),
+        int(request.completed_count or 0),
+        request.duration_ms,
+        request.codec,
+        request.resolution,
+        request.fps,
+        request.export_tier,
+        request.speed_mode,
+        request.hw_cpu,
+        request.hw_gpu,
+        request.hw_encoder,
+        request.app_version,
+    )
+    return {"status": "recorded", "operation_type": op}

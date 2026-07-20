@@ -7,6 +7,9 @@ export type DailyUsage = {
   songs: number;
   images: number;
   videos: number;
+  studio_exports?: number;
+  manual_exports?: number;
+  youtube_uploads?: number;
 };
 
 export type RecentActivity = {
@@ -28,8 +31,14 @@ export type DashboardStats = {
   images_quota: number | null;
   drafts_remaining?: number | null;
   drafts_quota?: number | null;
+  studio_exports?: number;
+  manual_exports?: number;
+  youtube_uploads?: number;
   videos_generated: number;
   videos_uploaded: number;
+  avg_studio_export_ms?: number | null;
+  avg_manual_export_ms?: number | null;
+  last_export_at?: string | null;
   usage_by_day: DailyUsage[];
   recent_activity: RecentActivity[];
 };

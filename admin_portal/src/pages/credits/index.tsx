@@ -78,7 +78,8 @@ const OPERATION_TYPES = [
   { value: 'background_image', label: 'Background Image' },
   { value: 'thumbnail_image', label: 'Thumbnail Image' },
   { value: 'music', label: 'Music (Suno)' },
-  { value: 'video', label: 'Video generation (local export)' },
+  { value: 'video', label: 'Studio export (local, per track)' },
+  { value: 'video_manual', label: 'Manual export (local, per track)' },
   { value: 'video_merge', label: 'Auto merge video (local)' },
 ] as const;
 

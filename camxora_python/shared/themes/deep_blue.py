@@ -208,8 +208,112 @@ QPushButton#notification_action_button:hover {
 }
 
 QFrame#software_update_gate {
-    background-color: rgba(2, 6, 23, 0.94);
+    background-color: rgba(2, 6, 23, 0.92);
     border: none;
+}
+
+QFrame#software_update_card {
+    background-color: #0b1224;
+    border: 1px solid rgba(74, 192, 255, 0.22);
+    border-radius: 16px;
+}
+
+QLabel#software_update_logo {
+    background: transparent;
+    border: none;
+}
+
+QLabel#software_update_brand {
+    background: transparent;
+    border: none;
+    color: #e2e8f0;
+    font-size: 11pt;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+}
+
+QLabel#software_update_title {
+    background: transparent;
+    border: none;
+    color: #4ac0ff;
+    font-size: 16pt;
+    font-weight: 700;
+}
+
+QLabel#software_update_body {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 10pt;
+    line-height: 1.35;
+}
+
+QLabel#software_update_versions {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 9pt;
+}
+
+QLabel#software_update_section {
+    background: transparent;
+    border: none;
+    color: #cbd5e1;
+    font-size: 9pt;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+QLabel#software_update_whats_new {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 9pt;
+}
+
+QLabel#software_update_status {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 9pt;
+}
+
+QProgressBar#software_update_progress {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: none;
+    border-radius: 4px;
+    min-height: 8px;
+    max-height: 8px;
+    text-align: center;
+}
+
+QProgressBar#software_update_progress::chunk {
+    background-color: #4ac0ff;
+    border-radius: 4px;
+}
+
+QPushButton#software_update_primary {
+    background-color: #1a6afe;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 10pt;
+    font-weight: 600;
+    min-height: 40px;
+}
+
+QPushButton#software_update_primary:hover {
+    background-color: #2a7aff;
+}
+
+QPushButton#software_update_primary:pressed {
+    background-color: #1558d6;
+}
+
+QPushButton#software_update_primary:disabled {
+    background-color: #1a2a3c;
+    color: #5a6a7a;
 }
 
 QFrame#window_title_bar {
@@ -397,7 +501,8 @@ QLabel#shell_footer_metric {
     font-size: 8pt;
 }
 
-QLabel#shell_footer_env_badge {
+QLabel#shell_footer_env_badge,
+QLabel#shell_footer_version_badge {
     color: #7dd3fc;
     font-size: 8pt;
     padding: 2px 8px;
@@ -1681,21 +1786,49 @@ QWidget#video_workspace QTextEdit {
     border: 1px solid #2a4a6c;
 }
 
-/* Export queue Speed/FPS/Workers — .QWidget flat-host rule above strips combo chrome. */
-QWidget#video_export_fields QComboBox,
-QWidget#video_export_fields QSpinBox,
-QWidget#video_export_fields QDoubleSpinBox {
+/* Export queue fields — compact Tier/Speed/FPS/Workers. */
+QFrame#video_export_fields {
+    background-color: transparent;
+    border: none;
+}
+
+QFrame#video_export_fields QComboBox,
+QFrame#video_export_fields QSpinBox,
+QFrame#video_export_fields QDoubleSpinBox {
     background-color: #0f1923;
     border: 1px solid #2a4a6c;
     border-radius: 3px;
-    min-height: 28px;
-    max-height: 28px;
-    padding: 2px 8px;
+    min-height: 22px;
+    max-height: 24px;
+    min-width: 100px;
+    padding: 0px 4px;
+    padding-right: 18px;
+    color: #e0e0e0;
+    font-size: 8.5pt;
 }
 
-QWidget#video_export_fields QSpinBox,
-QWidget#video_export_fields QDoubleSpinBox {
-    padding-right: 18px;
+QFrame#video_export_fields QComboBox::drop-down {
+    border: none;
+    width: 18px;
+}
+
+QFrame#video_export_fields QSpinBox,
+QFrame#video_export_fields QDoubleSpinBox {
+    padding-right: 16px;
+}
+
+QFrame#video_export_fields QComboBox QAbstractItemView {
+    background-color: #0f1923;
+    border: 1px solid #2a4a6c;
+    color: #e0e0e0;
+    outline: none;
+    min-width: 140px;
+    font-size: 8.5pt;
+}
+
+QFrame#video_export_fields QComboBox QAbstractItemView::item {
+    min-height: 20px;
+    padding: 2px 6px;
 }
 
 QWidget#video_workspace QComboBox QAbstractItemView {

@@ -3,16 +3,34 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
-
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QPainterPath, QRegion
-
-if TYPE_CHECKING:
-    from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 # Subtle outer radius — matches studio cards (4–6px) without looking bubbly.
 WINDOW_CORNER_RADIUS = 8
+
+
+def center_window_on_screen(window: QWidget) -> None:
+    """Center *window* on its current (or primary) screen's available work area."""
+    if window.isMaximized() or window.isFullScreen():
+        return
+
+    screen = window.screen()
+    if screen is None:
+        app = QApplication.instance()
+        if app is not None:
+            screen = app.primaryScreen()
+    if screen is None:
+        return
+
+    geo = screen.availableGeometry()
+    frame = window.frameGeometry()
+    width = frame.width() if frame.width() > 0 else window.width()
+    height = frame.height() if frame.height() > 0 else window.height()
+    x = geo.x() + max(0, (geo.width() - width) // 2)
+    y = geo.y() + max(0, (geo.height() - height) // 2)
+    window.move(x, y)
 
 
 def configure_rounded_window(window: QWidget, *, radius: int = WINDOW_CORNER_RADIUS) -> None:

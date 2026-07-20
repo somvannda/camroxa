@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject
 
 from shared.lib.ws_url import build_platform_ws_auth_headers, build_platform_ws_url
 from shared.models.push_events import WORKSPACE_CHANGED
+from shared.services.app_thread_registry import track_app_thread
 from shared.services.push_notification_hub import PushNotificationHub
 from shared.services.session_service import SessionService
 from shared.services.setup_readiness_service import refresh_setup_readiness
@@ -26,22 +27,28 @@ class PushNotificationRuntime(QObject):
 
     def start(self) -> None:
         self.stop()
+        # parent=None: RootWindow teardown must not destroy a live WS QThread.
         self._worker = PushNotificationWorker(
             ws_url_provider=self._build_ws_url,
             ws_headers_provider=self._build_ws_headers,
-            parent=self,
+            parent=None,
         )
         self._worker.notification_received.connect(self._hub.dispatch)
         self._worker.connection_state_changed.connect(self._on_connection_state)
+        track_app_thread(self._worker)
         self._worker.start()
 
     def stop(self) -> None:
         if self._worker is not None:
-            self._worker.request_stop()
-            self._worker.wait(2500)
-            self._worker = None
+            worker = self._worker
+            worker.request_stop()
+            # Interrupt closes the WS; join long enough for a clean exit.
+            if worker.wait(8_000):
+                self._worker = None
+            # If still running, keep the Python ref + app_thread_registry entry
+            # so window teardown cannot GC a live QThread.
         if self._refresh_worker is not None and self._refresh_worker.isRunning():
-            self._refresh_worker.wait(1500)
+            self._refresh_worker.wait(1_500)
         self._refresh_worker = None
         self._hub.clear_inbox()
 
@@ -77,11 +84,12 @@ class PushNotificationRuntime(QObject):
             self._session.api,
             self._session.workspace_cache,
             scope=scope,
-            parent=self,
+            parent=None,
         )
         worker.succeeded.connect(self._on_workspace_refreshed)
         worker.finished.connect(lambda: setattr(self, "_refresh_worker", None))
         self._refresh_worker = worker
+        track_app_thread(worker)
         worker.start()
 
     def _on_workspace_refreshed(self, payload: object) -> None:

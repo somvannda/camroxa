@@ -110,7 +110,24 @@ def test_overlay_promotes_image_stage_when_assets_exist(tmp_path) -> None:
     row = apply_local_progress_overlays([source])[0]
 
     assert row.stage == "Export"
+    assert row.status == "Pending"
     assert "Pending · no exports yet" in row.converter
+
+
+def test_overlay_maps_queued_converter_to_export_pending(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "background-16x9.png").write_bytes(b"bg")
+    (run_dir / "thumbnail-16x9.png").write_bytes(b"th")
+    (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
+
+    source = _row(run_dir=str(run_dir)).model_copy(
+        update={"stage": "Converter", "status": "Queued", "converter": "Assets ready · no exports yet"},
+    )
+    row = apply_local_progress_overlays([source])[0]
+
+    assert row.stage == "Export"
+    assert row.status == "Pending"
 
 
 def test_overlay_resolves_role_specific_asset_names(tmp_path) -> None:

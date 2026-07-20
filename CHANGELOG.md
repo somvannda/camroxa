@@ -9,6 +9,91 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **REQ-2.3 slice 2 bars:** GPU spectrum covers mirror/symmetrical/drift/floating/ignition/neon (plus prior thin/grid); beads + waveforms remain CPU
+- **REQ-3.5 NativeEncodeBridge NVENC:** Windows DLL encodes H.264 via runtime `nvEncodeAPI64.dll` (D3D11 + CPU NV12 upload, Annex-B); export path uses it when `CAMXORA_NATIVE_ENCODE=1` then remuxes audio with ffmpeg `-c:v copy`; pipe fallback on failure; `CAMXORA_NATIVE_ENCODE_STUB=1` keeps stub path
+- **Export GPU tier helper:** `visualizer/export_gpu_tier.py` classifies NVIDIA GPUs as `low|mid|high` (`CAMXORA_GPU_TIER` override or nvidia-smi); low tier tightens Draft/Fast/Balanced particle caps and prefers yuv420p on `quality` speed (Master uncapped)
+- **Shell app thread registry:** track/join background sync + push QThreads on quit (`shared/services/app_thread_registry.py`)
+- **Encode throughput (Phase 2b):** fast/very_fast pipe uses planar `yuv420p` (OpenCV I420 + reusable dst) instead of interleaved NV12; CPU readback pool via `Buffer.read_into`; `CAMXORA_EXPORT_PIPE` override (`rgba|nv12|yuv420p`)
+- **Encode throughput (Phase 2a):** OpenCV NV12 pack (~10× vs float NumPy), pack-on-writer overlap, deeper encode queue (default 6; `CAMXORA_ENCODE_QUEUE`), NVENC `-tune ll` / `-zerolatency` for fast/very_fast; `CAMXORA_ENCODE_METRICS` reports pack avg
+- **REQ-2.3 GPU spectrum (slice 1):** optional export bar path via FFT 1D texture + instanced draw; `CAMXORA_GPU_SPECTRUM=1` enables, default off with CPU fallback
+- **REQ-2.5 ExportCoordinator:** unified manual export API (`start_export`, `cancel_export`, `on_progress`) routing in-process GL → daemon → subprocess with `ExportGate` enforcement
+- **REQ-2.4 pipelined encode writer:** bounded queue + writer thread between GPU readback and ffmpeg stdin; `CAMXORA_PIPELINED_ENCODE=0` restores sync writes; `CAMXORA_ENCODE_METRICS=1` reports p95 block times
+- Manual export billing (`video_manual`) with refunds on technical fail; user stop keeps completed + in-progress, refunds never-started only
+- Dashboard remaining card: **X of Y left**, account daily track-export/merge caps; weekly usage soft curves; zero series dimmed in legend
+
+### Changed
+
+- **Native NVENC (pipelined NV12):** API v2 `camxora_eb_submit_nv12` + OpenCV pack on `camxora-native-encode` writer thread; `CAMXORA_NATIVE_ENCODE=1` again selects native export (was gated off for sync RGBA slowness)
+- **Dashboard weekly chart:** drop Qt Charts (`QSplineSeries` + animations) for a cached QPainter chart — fixes sticky/laggy dashboard scrolling and shell-wide jank
+
+- **Encode throughput (Phase 2e):** Manual Export billing is async (UI no longer stalls 1–2s); app close mid-export joins export QThreads in `closeEvent`; unset Speed defaults to Fast; Balanced skips spectrum glow (Master unchanged); GPU bar path covers thin-lines / signal-needles / grid-steps / pixel-bars
+- **Encode throughput (Phase 2d):** export-only speed-mode tradeoffs for heavy templates — skip/reduce spectrum glow passes and cap particle count/spawn on Draft/Fast/Balanced (Master untouched); Bass Drive-class templates should close the gap vs Beattok without regressing light templates
+- **Encode throughput (Phase 2c):** Balanced/draft speed modes use planar `yuv420p` pack-on-writer (same as fast); ffmpeg `-thread_queue_size 64` + one-frame stdin bufsize; drop duplicate per-frame FFT fetch after 60 Hz smooth advance
+- Fast exports tag ffmpeg `-color_range tv` for OpenCV BT.601 limited-range YUV (`yuv420p` default; `nv12` override still available); explicit `quality` speed keeps RGBA/`pc`
+- KPI labels: Studio Exports, Manual Exports, YouTube Uploads
+
+### Fixed
+
+- **Video template save:** unlinked templates now upsert to the server (first channel profile); link in Settings for pipeline use
+- **Music Suno/draft retry:** no longer crashes on `MusicHistoryListResponse.rows` after retry succeeds
+- **VideoManualExportWorker quit:** block window close until export cancel/join finishes (no batch chain during teardown); last-resort terminate if still stuck
+- **PushNotificationWorker quit:** close active WebSocket on `request_stop` (was blocked up to 65s in `recv`) so mid-export close no longer logs `QThread: Destroyed while thread 'PushNotificationWorker' is still running`
+- **Quit mid-export panel refresh:** `any_video_pipeline_threads_running` no longer raises when a `deleteLater`'d `VideoManualExportWorker` wrapper remains in the tracker; untrack before `deleteLater`
+- **Empty-name QThread on mid-export quit:** shell sync/push/orchestration workers were unnamed + widget-parented; close now stops coordinators and joins `app_thread_registry` before tearing down the window (export workers were already named)
+- **App quit mid-export QThread teardown:** `RootWindow.closeEvent` + named export workers so close no longer logs `QThread: Destroyed while thread '' is still running`
+- **Stop Export QThread teardown:** join with timeout + `deleteLater` (detach lingering workers) so cancel no longer logs `QThread: Destroyed while thread is still running`
+- **GPU spectrum export:** color texture size/dtype mismatch (`f1` vs RGBA32F) in `register_layer()`; benchmark A no longer crashes with `CAMXORA_GPU_SPECTRUM=1`
+- Visualizer daemon argv normalization preserves empty `--logo` values (fixes immediate export exit code 1)
+- GPU export async readback uses correct moderngl `ctx.buffer(reserve=…)` allocation
+
+## [0.3.0] - 2026-07-19
+
+### Added
+
+- **Phase 1 export performance:** audio analysis disk cache, warm visualizer daemon, export quality tiers (Draft / Standard / Master), NV12 pipe for fast exports, async double-buffered framebuffer readback
+- Export footer shows active codec (NVENC vs CPU x264) and pipe format during encode
+- **Tier** control on Video export panel; pipeline auto-export defaults to **Draft** (720p, very fast)
+
+### Changed
+
+- Pipeline and export defaults use **fast** speed mode; manual single export skips spawn throttle
+- Export path removes redundant FFmpeg CPU vflip and disables MSAA on export (preview unchanged)
+
+### Fixed
+
+- GPU export progress is monotonic through init (no reset after encoder start)
+- Second export of the same MP3 reuses cached STFT analysis instead of re-running librosa
+
+## [0.2.5] - 2026-07-19
+
+### Fixed
+
+- GPU video export progress no longer sits at 0% with a frozen "Initializing GPU renderer..." message; the Progress workspace shows live status (OpenGL, assets, audio analysis, encoder prep) and overall percent advances during multi-track exports
+
+## [0.2.4] - 2026-07-19
+
+### Fixed
+
+- Progress table no longer shows stale text in empty rows after refresh (clearContents + 
+emoveCellWidget in operational rows card)
+- Packaged builds read `resources/app-version.txt` when frozen so the footer version badge matches the installer (not stale metadata)
+## [0.2.3] - 2026-07-19
+
+### Added
+
+- Footer version badge (`v0.2.3`) next to the Sandbox API badge so testers can confirm which build is running
+- Bidirectional progress sync: local run-folder truth for export start + background push to `POST /progress/sync-local` after images/export
+- Progress export readiness checklist in the footer (run folder PNGs, MP3s, profile template, catalog, auth, `/progress` load)
+- **Start Export** button on pending export rows (same path as Rebuild MP4)
+- MP3 on-disk naming helpers (`_OK.mp3` / `_Alt.mp3`) in validation messages
+
+### Fixed
+
+- Stale video export state no longer blocks Force Regenerate / Rebuild MP4 with “pipeline already running” when no worker is alive
+- Auto-video uses local disk readiness instead of stale API metadata; orchestration poll failures surface in the footer
+
 ## [0.2.2] - 2026-07-19
 
 ### Added

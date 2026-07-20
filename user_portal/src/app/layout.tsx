@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     template: "%s | Camxora Account",
   },
   description:
-    "Camxora account access for sign-in, sign-up, onboarding, billing, and desktop studio activation.",
+    "Camxora account access for sign-in, sign-up, onboarding, billing, and faceless desktop studio activation.",
   applicationName: "Camxora Account",
   icons: {
     icon: [{ url: "/camxora-logo.svg", type: "image/svg+xml" }],

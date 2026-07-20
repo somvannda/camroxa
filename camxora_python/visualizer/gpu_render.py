@@ -8,7 +8,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import glfw
 import moderngl
@@ -28,6 +28,25 @@ from PIL import Image
 from .audio import AudioAnalyzer
 from .automation import apply_automations
 from .config import load_template_any, load_template_any_raw
+from .frame_integrator import (
+    BgVibrateConfig,
+    BgVibrateState,
+    BgVibrateStepInput,
+    CameraShakeConfig,
+    CameraShakeState,
+    CameraShakeStepInput,
+    KickBassEnvelopeConfig,
+    KickBassEnvelopeState,
+    KickBassEnvelopeStepInput,
+    integrate_bg_vibrate,
+    integrate_camera_shake,
+    integrate_kick_bass_envelopes,
+    integrate_particle_audio,
+    ParticleAudioConfig,
+    ParticleAudioState,
+    ParticleAudioStepInput,
+    smooth_env,
+)
 from .effects import BloomConfig, RgbSplitConfig
 from .particles import ParticleConfig, ParticleSystem
 
@@ -197,21 +216,33 @@ def _resolve_spectrum_layer_radius(
     return float(max(0.0, logo_visual_radius + radius_offset))
 
 
-def _init_glfw_hidden(width: int, height: int) -> None:
+def _init_glfw_hidden(width: int, height: int, *, samples: int = 4) -> None:
     if not glfw.init():
         raise RuntimeError("Failed to init GLFW")
     glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
-    glfw.window_hint(glfw.SAMPLES, 4)
+    glfw.window_hint(glfw.SAMPLES, max(0, int(samples)))
     glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
     glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, glfw.TRUE)
+    try:
+        glfw.window_hint(glfw.FOCUSED, glfw.FALSE)
+    except Exception:
+        pass
     win = glfw.create_window(width, height, "MG_GPU", None, None)
     if not win:
         glfw.terminate()
         raise RuntimeError("Failed to create hidden OpenGL window")
     glfw.make_context_current(win)
     glfw.swap_interval(0)
+    # Invisible HWND still defaults to an app-window taskbar slot on Windows;
+    # exclude it so export does not replace Camxora's branded taskbar icon.
+    try:
+        from shared.lib.win32_window import exclude_glfw_window_from_taskbar
+
+        exclude_glfw_window_from_taskbar(win)
+    except Exception:
+        pass
 
 
 def _make_ctx() -> moderngl.Context:
@@ -551,6 +582,43 @@ def _compile(ctx: moderngl.Context):
     prog_lines = ctx.program(vertex_shader=vs_lines, fragment_shader=fs_color)
     prog_points = ctx.program(vertex_shader=vs_points, fragment_shader=fs_points)
     return prog_scene, prog_logo, prog_post, prog_lines, prog_points, prog_text
+
+
+def _compile_readback_flip(ctx: moderngl.Context):
+    """Final export blit — flip Y so OpenGL readback row order matches video top-down."""
+    vs_quad = """
+    #version 330
+    in vec2 in_pos;
+    in vec2 in_uv;
+    out vec2 v_uv;
+    void main() {
+        v_uv = in_uv;
+        gl_Position = vec4(in_pos, 0.0, 1.0);
+    }
+    """
+    fs_readback_flip = """
+    #version 330
+    uniform sampler2D tex_in;
+    in vec2 v_uv;
+    out vec4 frag;
+    void main() {
+        frag = texture(tex_in, vec2(v_uv.x, 1.0 - v_uv.y));
+    }
+    """
+    return ctx.program(vertex_shader=vs_quad, fragment_shader=fs_readback_flip)
+
+
+def _blit_readback_oriented(
+    *,
+    src_tex: moderngl.Texture,
+    fbo_readback: moderngl.Framebuffer,
+    prog: moderngl.Program,
+    vao: moderngl.VertexArray,
+) -> None:
+    fbo_readback.use()
+    src_tex.use(location=0)
+    prog["tex_in"].value = 0
+    vao.render(mode=moderngl.TRIANGLE_STRIP)
 
 
 def _compile_particle_quads(ctx: moderngl.Context):
@@ -1514,25 +1582,220 @@ def _quad_vao(ctx: moderngl.Context, prog: moderngl.Program) -> moderngl.VertexA
 import uuid
 
 from shared.lib.subprocess_utils import popen_hidden
+from shared.lib.export_codec import export_video_codec_label
 
 
-def _start_ffmpeg(ffmpeg_path: str, mp3_path: str, out_path: str, w: int, h: int, fps: int, speed_mode: str) -> subprocess.Popen:
+_EXPORT_INIT_PROGRESS_MAX = 0.12
+_EXPORT_RENDER_PROGRESS_SPAN = 0.88
+
+
+def _encode_frame_progress(frame_index: int, total_frames: int) -> float:
+    total = max(1, int(total_frames))
+    idx = max(0, min(int(frame_index), total - 1))
+    return _EXPORT_INIT_PROGRESS_MAX + _EXPORT_RENDER_PROGRESS_SPAN * ((idx + 1) / total)
+
+
+_EXPORT_PROFILE_SAMPLE_EVERY = 60
+
+
+def _export_profile_enabled() -> bool:
+    raw = str(os.environ.get("CAMXORA_EXPORT_PROFILE", "0") or "0").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+class _ExportFrameProfiler:
+    """Rolling per-phase frame timings (optional ``CAMXORA_EXPORT_PROFILE=1``)."""
+
+    def __init__(self, *, emit: Callable[[dict], None], sample_every: int = _EXPORT_PROFILE_SAMPLE_EVERY) -> None:
+        self._emit = emit
+        self._sample_every = max(1, int(sample_every))
+        self._audio_ms: list[float] = []
+        self._gl_ms: list[float] = []
+        self._readback_ms: list[float] = []
+        self._encode_ms: list[float] = []
+        self._since_emit = 0
+
+    def record(self, *, audio_ms: float, gl_ms: float, readback_ms: float, encode_ms: float) -> None:
+        self._audio_ms.append(float(audio_ms))
+        self._gl_ms.append(float(gl_ms))
+        self._readback_ms.append(float(readback_ms))
+        self._encode_ms.append(float(encode_ms))
+        self._since_emit += 1
+        if self._since_emit >= self._sample_every:
+            self._emit_rolling()
+            self._since_emit = 0
+
+    def flush(self) -> None:
+        if self._audio_ms and self._since_emit > 0:
+            self._emit_rolling()
+
+    @staticmethod
+    def _avg(values: list[float]) -> float | None:
+        if not values:
+            return None
+        return float(sum(values) / len(values))
+
+    def _emit_rolling(self) -> None:
+        profile = {
+            "sampleFrames": len(self._audio_ms),
+            "audioStepAvgMs": self._avg(self._audio_ms),
+            "glRenderAvgMs": self._avg(self._gl_ms),
+            "readbackAvgMs": self._avg(self._readback_ms),
+            "encodeWriteAvgMs": self._avg(self._encode_ms),
+        }
+        parts: list[str] = []
+        for label, key in (
+            ("audio", "audioStepAvgMs"),
+            ("gl", "glRenderAvgMs"),
+            ("readback", "readbackAvgMs"),
+            ("encode", "encodeWriteAvgMs"),
+        ):
+            value = profile.get(key)
+            if isinstance(value, (int, float)):
+                parts.append(f"{label}={value:.2f} ms")
+        self._emit(
+            {
+                "status": "running",
+                "message": "Export frame profile (rolling avg): " + ", ".join(parts),
+                "exportFrameProfile": profile,
+            }
+        )
+        self._audio_ms.clear()
+        self._gl_ms.clear()
+        self._readback_ms.clear()
+        self._encode_ms.clear()
+
+
+def normalize_export_speed_mode(speed_mode: str | None) -> str:
     mode = str(speed_mode or "balanced").strip().lower()
-    if mode == "very_fast":
+    if mode in {"very_fast", "draft", "fast", "balanced", "quality", "master"}:
+        return mode
+    return "balanced"
+
+
+def export_glow_pass_limit(speed_mode: str | None) -> int:
+    """How many spectrum bloom/glow passes to draw during export.
+
+    Preview always draws up to two additive glow layers under the main pass.
+    Heavy templates (e.g. Bass Drive liquid + glow=100) pay that cost every
+    frame on the CPU waveform path. Speed tiers trade glow for throughput:
+
+    - ``very_fast`` / ``draft`` / ``fast`` / ``balanced``: skip glow (0)
+    - ``quality`` / ``master``: full dual glow (2)
+
+    On ``low`` GPU tier (GTX 1050 Ti-class), Balanced already skips glow; Master
+    stays full so high-end quality is unchanged.
+    """
+    mode = normalize_export_speed_mode(speed_mode)
+    if mode in {"very_fast", "draft", "fast", "balanced"}:
+        return 0
+    return 2
+
+
+def export_particle_caps(speed_mode: str | None, *, max_count: int, spawn_rate: float) -> tuple[int, float]:
+    """Cap particle count/spawn for export speed modes (preview unchanged).
+
+    Bass Drive ships ~1200 max / 400 spawn vs Beattok ~475 / 100 — the gap is
+    mostly particle load. Caps leave light templates alone and tame heavy ones.
+
+    ``low`` GPU tier (``CAMXORA_GPU_TIER=low`` or auto <6GB / 1050-class) uses
+    tighter Draft/Fast/Balanced caps. Master/quality stay uncapped.
+    """
+    from visualizer.export_gpu_tier import detect_export_gpu_tier
+
+    mode = normalize_export_speed_mode(speed_mode)
+    count = int(max(0, max_count))
+    rate = float(max(0.0, spawn_rate))
+    low_gpu = detect_export_gpu_tier() == "low"
+    if mode in {"very_fast", "draft"}:
+        cap_count, cap_rate = (150, 50.0) if low_gpu else (250, 80.0)
+        return min(count, cap_count), min(rate, cap_rate)
+    if mode == "fast":
+        cap_count, cap_rate = (250, 80.0) if low_gpu else (400, 120.0)
+        return min(count, cap_count), min(rate, cap_rate)
+    if mode == "balanced":
+        cap_count, cap_rate = (350, 100.0) if low_gpu else (600, 200.0)
+        return min(count, cap_count), min(rate, cap_rate)
+    return count, rate
+
+
+def build_nvenc_export_args(speed_mode: str, *, pipe_pix_fmt: str = "rgba", color_range: str = "pc") -> list[str]:
+    """NVENC output flags by speed mode (REQ-2.x encode throughput).
+
+    Presets/CQ match pre-throughput baselines so file size stays predictable.
+    Low-latency / ``-bf 0`` are opt-in via ``CAMXORA_NVENC_LL=1`` — they inflate
+    bitrate and often feel slower on desktop exports.
+    """
+    import os
+
+    mode = normalize_export_speed_mode(speed_mode)
+    range_tag = str(color_range or "pc").strip().lower()
+    if range_tag not in {"pc", "tv"}:
+        range_tag = "pc"
+    _ = pipe_pix_fmt  # API reserved for pipe-specific codec flags
+    if mode in {"very_fast", "draft"}:
         nvenc_preset = "p1"
         nvenc_cq = "27"
-        x264_preset = "ultrafast"
-        x264_crf = "26"
     elif mode == "fast":
         nvenc_preset = "p3"
         nvenc_cq = "23"
+    elif mode in {"quality", "master"}:
+        nvenc_preset = "p5"
+        nvenc_cq = "19"
+    else:
+        # balanced / Standard default
+        nvenc_preset = "p3"
+        nvenc_cq = "23"
+    args: list[str] = [
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        nvenc_preset,
+        "-rc",
+        "constqp",
+        "-cq",
+        nvenc_cq,
+        "-color_range",
+        range_tag,
+        "-pix_fmt",
+        "yuv420p",
+    ]
+    ll_raw = str(os.environ.get("CAMXORA_NVENC_LL", "0") or "0").strip().lower()
+    if ll_raw in {"1", "true", "yes", "on"}:
+        args += ["-tune", "ll", "-zerolatency", "1", "-bf", "0"]
+    return args
+
+
+def _start_ffmpeg(
+    ffmpeg_path: str,
+    mp3_path: str,
+    out_path: str,
+    w: int,
+    h: int,
+    fps: int,
+    speed_mode: str,
+    *,
+    pipe_pix_fmt: str = "rgba",
+) -> tuple[subprocess.Popen, str]:
+    mode = str(speed_mode or "balanced").strip().lower()
+    pipe_fmt = str(pipe_pix_fmt or "rgba").strip().lower()
+    if pipe_fmt not in {"rgba", "nv12", "yuv420p"}:
+        pipe_fmt = "rgba"
+    if pipe_fmt in {"nv12", "yuv420p"} and (int(w) % 2 != 0 or int(h) % 2 != 0):
+        pipe_fmt = "rgba"
+    if mode == "very_fast":
+        x264_preset = "ultrafast"
+        x264_crf = "26"
+    elif mode == "fast":
         x264_preset = "superfast"
         x264_crf = "23"
     else:
-        nvenc_preset = "p5"
-        nvenc_cq = "19"
         x264_preset = "veryfast"
         x264_crf = "20"
+    from visualizer.readback import pipe_frame_byte_size, pipe_needs_cpu_pack, yuv_pipe_color_range
+
+    color_range = yuv_pipe_color_range() if pipe_needs_cpu_pack(pipe_fmt) else "pc"
+    # Deeper demux queue reduces stdin back-pressure when pack/write outpaces NVENC briefly.
     cmd: list[str] = [
         ffmpeg_path,
         "-hide_banner",
@@ -1545,29 +1808,26 @@ def _start_ffmpeg(ffmpeg_path: str, mp3_path: str, out_path: str, w: int, h: int
         "-f",
         "rawvideo",
         "-pix_fmt",
-        "rgba",
+        pipe_fmt,
         "-s",
         f"{w}x{h}",
         "-r",
         str(fps),
+        "-thread_queue_size",
+        "64",
         "-i",
         "pipe:0",
+        "-thread_queue_size",
+        "64",
         "-i",
         mp3_path,
         "-af",
         "aresample=async=1000",
-        "-vf",
-        "vflip,scale=in_range=pc:out_range=pc",
-        "-c:v",
-        "h264_nvenc",
-        "-preset",
-        nvenc_preset,
-        "-cq",
-        nvenc_cq,
-        "-color_range",
-        "pc",
-        "-pix_fmt",
-        "yuv420p",
+    ]
+    if pipe_fmt == "rgba":
+        cmd += ["-vf", "scale=in_range=pc:out_range=pc"]
+    cmd += build_nvenc_export_args(mode, pipe_pix_fmt=pipe_fmt, color_range=color_range)
+    cmd += [
         "-c:a",
         "aac",
         "-b:a",
@@ -1576,16 +1836,20 @@ def _start_ffmpeg(ffmpeg_path: str, mp3_path: str, out_path: str, w: int, h: int
         out_path,
     ]
     err_file = open(Path(out_path).parent / f"ffmpeg_error_{uuid.uuid4().hex[:8]}.log", "w+", encoding="utf-8")
-    enc = popen_hidden(cmd, stdin=subprocess.PIPE, stderr=err_file)
+    # One-frame stdin buffer (~3 MiB yuv420p / ~8 MiB rgba) avoids 8 KiB default churn.
+    _stdin_buf = max(1024 * 1024, pipe_frame_byte_size(w, h, pipe_fmt))
+    enc = popen_hidden(cmd, stdin=subprocess.PIPE, stderr=err_file, bufsize=_stdin_buf)
     time.sleep(0.2)
+    video_codec = "h264_nvenc"
     if enc.poll() is not None:
         err_file.seek(0)
         err_txt = err_file.read()
         cmd2 = cmd[:]
         cmd2[cmd2.index("h264_nvenc")] = "libx264"
-        if "-cq" in cmd2:
-            i = cmd2.index("-cq")
-            del cmd2[i : i + 2]
+        for flag in ("-cq", "-rc", "-tune", "-zerolatency", "-bf"):
+            while flag in cmd2:
+                i = cmd2.index(flag)
+                del cmd2[i : i + 2]
         if "-preset" in cmd2:
             i = cmd2.index("-preset")
             cmd2[i + 1] = x264_preset
@@ -1594,7 +1858,8 @@ def _start_ffmpeg(ffmpeg_path: str, mp3_path: str, out_path: str, w: int, h: int
             cmd2.insert(cmd2.index("-pix_fmt") + 1, x264_crf)
         err_file.seek(0)
         err_file.truncate()
-        enc = popen_hidden(cmd2, stdin=subprocess.PIPE, stderr=err_file)
+        enc = popen_hidden(cmd2, stdin=subprocess.PIPE, stderr=err_file, bufsize=_stdin_buf)
+        video_codec = "libx264"
         time.sleep(0.2)
         if enc.poll() is not None:
             err_file.seek(0)
@@ -1603,7 +1868,8 @@ def _start_ffmpeg(ffmpeg_path: str, mp3_path: str, out_path: str, w: int, h: int
     
     # attach err_file to enc so we can close/read it later
     enc._err_file = err_file
-    return enc
+    enc._pipe_pix_fmt = pipe_fmt
+    return enc, video_codec
 
 
 def _stem(p: str) -> str:
@@ -1668,25 +1934,34 @@ def _smooth_env(
     dt: float | None = None,
     ref_fps: float = 60.0,
 ) -> float:
-    """Exponential envelope smooth.
+    """Backward-compatible alias; see ``frame_integrator.smooth_env``."""
+    return smooth_env(prev, target, smoothing, dt=dt, ref_fps=ref_fps)
 
-    ``smoothing`` is the per-frame retention coeff as tuned in live preview (60 Hz).
-    When ``dt`` is provided (export at 24 fps), convert so wall-clock response matches preview.
-    """
-    s = float(max(0.0, min(0.99, smoothing)))
-    if dt is not None and float(dt) > 0.0 and float(ref_fps) > 0.0:
-        s = float(s ** (float(ref_fps) * float(dt)))
-        s = float(max(0.0, min(0.99, s)))
-    t = float(max(0.0, min(1.0, target)))
-    return float((float(prev) * s) + (t * (1.0 - s)))
-
-def run_gpu_render(opts: GpuOptions) -> int:
+def run_gpu_render(
+    opts: GpuOptions,
+    *,
+    single_frame_png: str | None = None,
+    single_frame_index: int | None = None,
+    on_event: Callable[[dict], None] | None = None,
+    existing_analyzer: Any | None = None,
+    ctx_factory: Callable[[], moderngl.Context] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+    cancel_hooks: dict[str, Any] | None = None,
+) -> int:
     fps = int(max(1, min(60, int(opts.fps))))
     if fps <= 0:
         fps = 30
     # Keep encode FPS (24/30/…) for speed, but analyze audio at preview rate so
     # spectrum/particles react identically to paintGL (frame_idx = time * 60).
     ANALYSIS_FPS = 60
+    export_speed_mode = normalize_export_speed_mode(getattr(opts, "speed_mode", "balanced"))
+    glow_pass_limit = export_glow_pass_limit(export_speed_mode)
+
+    def _emit_event(payload: dict) -> None:
+        if on_event is not None:
+            on_event(payload)
+        else:
+            _send(payload)
 
     template = _load_template(opts)
 
@@ -1697,9 +1972,15 @@ def run_gpu_render(opts: GpuOptions) -> int:
     base_h = float(max(1.0, min(4000.0, base_h)))
     sf = float(h) / base_h
 
-    _send({"status": "running", "message": "Initializing GPU renderer...", "progress": 0.0})
-    _init_glfw_hidden(w, h)
-    ctx = _make_ctx()
+    _emit_event({"status": "running", "message": "Initializing GPU renderer...", "progress": 0.0})
+    if ctx_factory is not None:
+        _emit_event({"status": "running", "message": "Using shared OpenGL context...", "progress": 0.02})
+        ctx = ctx_factory()
+    else:
+        _emit_event({"status": "running", "message": "Creating OpenGL context...", "progress": 0.02})
+        _init_glfw_hidden(w, h, samples=0)
+        ctx = _make_ctx()
+    _emit_event({"status": "running", "message": "Loading background and logo assets...", "progress": 0.04})
 
     bg_disable_aspect = False
 
@@ -1747,11 +2028,32 @@ def run_gpu_render(opts: GpuOptions) -> int:
     tex_out.filter = (moderngl.LINEAR, moderngl.LINEAR)
     fbo_out = ctx.framebuffer(color_attachments=[tex_out])
 
+    tex_readback = ctx.texture((w, h), 4)
+    tex_readback.filter = (moderngl.LINEAR, moderngl.LINEAR)
+    fbo_readback = ctx.framebuffer(color_attachments=[tex_readback])
+    prog_readback_flip = _compile_readback_flip(ctx)
+    vao_readback_flip = _quad_vao(ctx, prog_readback_flip)
+
     line_vbo = ctx.buffer(reserve=4 * 6 * 512)
     vao_lines = ctx.vertex_array(prog_lines, [(line_vbo, "2f 4f", "in_pos", "in_col")])
     prog_lines["clip_enabled"].value = 0
     prog_lines["clip_center_px"].value = (0.0, 0.0)
     prog_lines["clip_radius_px"].value = 0.0
+
+    gpu_spectrum = None
+    gpu_layer_keys: dict[int, int] = {}
+    from .spectrum_gpu import (
+        SpectrumGpuRenderer,
+        gpu_bar_half_width_scale,
+        gpu_bar_style_mode,
+        gpu_spectrum_enabled,
+        is_gpu_bar_style_slice1,
+        is_waveform_spectrum_style,
+        quantize_fft_for_gpu_bar_style,
+    )
+
+    if gpu_spectrum_enabled():
+        gpu_spectrum = SpectrumGpuRenderer(ctx)
 
     pt_vbo = ctx.buffer(reserve=4 * 3 * 1024)
     vao_pts = ctx.vertex_array(prog_points, [(pt_vbo, "2f 1f", "in_pos", "in_size")])
@@ -1763,6 +2065,8 @@ def run_gpu_render(opts: GpuOptions) -> int:
         [(particle_quad_vbo, "2f 2f 4f", "in_pos", "in_uv", "in_col")],
     )
 
+    _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
+
     # In the new format, the root template IS the spectrum container
     spectrum_container = template
     point_count = 1024 # Fixed to 1024 for high-res FFT
@@ -1772,7 +2076,50 @@ def run_gpu_render(opts: GpuOptions) -> int:
     bg_scale = 1.0
     bg_offset = (0.0, 0.0)
 
-    analyzer = AudioAnalyzer(opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count)
+    from shared.services.audio_analysis_cache import get_audio_analysis_cache, set_audio_analysis_cache
+
+    if existing_analyzer is not None:
+        analyzer = existing_analyzer
+        _emit_event(
+            {
+                "status": "running",
+                "message": "Reusing preview audio analysis",
+                "progress": 0.09,
+                "cacheHit": True,
+            }
+        )
+    else:
+        cached_analyzer = get_audio_analysis_cache(
+            opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count
+        )
+        if cached_analyzer is not None:
+            analyzer = cached_analyzer
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis loaded from cache",
+                    "progress": 0.09,
+                    "cacheHit": True,
+                }
+            )
+        else:
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Analyzing audio (first track can take a minute)…",
+                    "progress": 0.08,
+                }
+            )
+            analyzer = AudioAnalyzer(opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count)
+            set_audio_analysis_cache(analyzer, opts.mp3_path)
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis complete, preparing encoder...",
+                    "progress": 0.09,
+                    "cacheHit": False,
+                }
+            )
     duration_sec = float(analyzer.info.duration_sec)
     # Encode at export fps, but sample audio analysis at preview fps (60).
     total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
@@ -1780,10 +2127,15 @@ def run_gpu_render(opts: GpuOptions) -> int:
     particles_cfg_raw = template.get("particlesSettings", {}) if isinstance(template.get("particlesSettings"), dict) else {}
     if not particles_cfg_raw and isinstance(template.get("particles"), dict):
         particles_cfg_raw = template.get("particles")  # legacy fallback
+    _pt_max = int(particles_cfg_raw.get("maxCount", particles_cfg_raw.get("count", 400)))
+    _pt_spawn = float(particles_cfg_raw.get("spawnRate", particles_cfg_raw.get("spawn_rate", 40.0)))
+    _pt_max, _pt_spawn = export_particle_caps(
+        export_speed_mode, max_count=_pt_max, spawn_rate=_pt_spawn
+    )
     particles_cfg = ParticleConfig(
         enabled=bool(particles_cfg_raw.get("enabled", True)),
-        max_count=int(particles_cfg_raw.get("maxCount", particles_cfg_raw.get("count", 400))),
-        spawn_rate=float(particles_cfg_raw.get("spawnRate", particles_cfg_raw.get("spawn_rate", 40.0))),
+        max_count=_pt_max,
+        spawn_rate=_pt_spawn,
         lifetime_sec=float(particles_cfg_raw.get("lifetimeSec", particles_cfg_raw.get("lifetime_sec", 1.6))),
         spawn_radius=0.0,
         size=float(particles_cfg_raw.get("size", 2.0)) * sf,
@@ -1883,12 +2235,136 @@ def run_gpu_render(opts: GpuOptions) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = str(out_dir / f"{_stem(opts.mp3_path)}.mp4")
 
-    _send({"status": "running", "message": "Starting encoder...", "progress": 0.0})
-    enc = _start_ffmpeg(opts.ffmpeg_path, opts.mp3_path, out_path, w, h, fps, str(getattr(opts, "speed_mode", "balanced")))
+    golden_png = str(single_frame_png or "").strip() or None
+    golden_idx = int(single_frame_index) if single_frame_index is not None else None
+    golden_mode = golden_png is not None and golden_idx is not None
+    pipe_writer = None
+    native_writer = None
+    if golden_mode:
+        total_frames = int(max(1, golden_idx + 1))
+        enc = None
+        video_codec = ""
+        async_reader = None
 
-    _send({"status": "running", "message": "Encoder started, setting up shaders...", "progress": 0.0})
+        def _write_pipe_frame(_raw_rgba: bytes) -> None:
+            return
+    else:
+        _emit_event({"status": "running", "message": "Starting encoder...", "progress": 0.1})
+        from visualizer.readback import (
+            AsyncFramebufferReader,
+            PipeFramePacker,
+            pipe_needs_cpu_pack,
+            prepare_pipe_payload,
+            resolve_pipe_pix_fmt,
+        )
+        from visualizer.encode_pipeline import (
+            PipelinedEncodeWriter,
+            pipelined_encode_enabled,
+            resolve_encode_queue_size,
+        )
+        from visualizer.native_encode_writer import (
+            remux_native_h264_with_audio,
+            try_open_native_encode_writer,
+        )
+
+        native_h264_path = str(Path(out_path).with_suffix(".native.h264"))
+        native_writer = try_open_native_encode_writer(
+            width=w,
+            height=h,
+            fps=fps,
+            h264_path=native_h264_path,
+        )
+        encode_q = resolve_encode_queue_size()
+        async_reader = AsyncFramebufferReader(
+            ctx,
+            width=w,
+            height=h,
+            components=4,
+            cpu_pool_size=encode_q + 2,
+        )
+        pipe_writer: PipelinedEncodeWriter | None = None
+        pack_on_writer = False
+        pipe_pix_fmt = "rgba"
+        enc = None
+        video_codec = "native_nvenc"
+
+        if native_writer is not None:
+            if cancel_hooks is not None:
+                cancel_hooks["pipe_writer"] = native_writer
+
+            def _write_pipe_frame(raw_rgba: bytes | bytearray) -> None:
+                native_writer.submit(raw_rgba)
+
+            codec_label = "NVENC (native)"
+            pipe_label = "RGBA→NVENC"
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": f"Encoder started ({codec_label})",
+                    "progress": 0.11,
+                    "videoCodec": video_codec,
+                    "pipePixFmt": "rgba",
+                    "encodeBackend": "native_nvenc",
+                }
+            )
+        else:
+            pipe_pix_fmt = resolve_pipe_pix_fmt(export_speed_mode)
+            enc, video_codec = _start_ffmpeg(
+                opts.ffmpeg_path,
+                opts.mp3_path,
+                out_path,
+                w,
+                h,
+                fps,
+                export_speed_mode,
+                pipe_pix_fmt=pipe_pix_fmt,
+            )
+            pack_on_writer = pipe_needs_cpu_pack(pipe_pix_fmt)
+            if pipelined_encode_enabled():
+                pack_fn = PipeFramePacker(w, h, pipe_pix_fmt) if pack_on_writer else None
+                pipe_writer = PipelinedEncodeWriter(
+                    enc,
+                    queue_size=encode_q,
+                    err_file=getattr(enc, "_err_file", None),
+                    pack_fn=pack_fn,
+                )
+                if cancel_hooks is not None:
+                    cancel_hooks["pipe_writer"] = pipe_writer
+
+            def _write_pipe_frame(raw_rgba: bytes | bytearray) -> None:
+                # When pack_fn is set, enqueue raw RGBA and convert on the writer thread.
+                if pipe_writer is not None and pack_on_writer:
+                    pipe_writer.submit(raw_rgba)
+                    return
+                payload = prepare_pipe_payload(raw_rgba, w, h, pipe_pix_fmt)
+                if pipe_writer is not None:
+                    pipe_writer.submit(payload)
+                    return
+                if enc is None or enc.stdin is None:
+                    raise RuntimeError("FFmpeg stdin is not available")
+                try:
+                    enc.stdin.write(payload)
+                except (BrokenPipeError, OSError) as e:
+                    if hasattr(enc, "_err_file"):
+                        enc._err_file.seek(0)
+                        err_txt = enc._err_file.read()
+                    else:
+                        err_txt = ""
+                    raise RuntimeError(f"FFmpeg pipe closed unexpectedly: {err_txt} (OS Error: {e})")
+
+            codec_label = export_video_codec_label(video_codec)
+            pipe_label = pipe_pix_fmt.upper()
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": f"Encoder started ({codec_label}, {pipe_label} pipe)" if codec_label else f"Encoder started ({pipe_label} pipe)",
+                    "progress": 0.11,
+                    "videoCodec": video_codec,
+                    "pipePixFmt": pipe_pix_fmt,
+                    "encodeBackend": "ffmpeg_pipe",
+                }
+            )
     try:
-        _send({"status": "running", "message": "[DEBUG] Setting tex_bg...", "progress": 0.0})
         prog_scene["tex_bg"].value = 0
         tex_bg.use(location=0)
         
@@ -1923,44 +2399,42 @@ def run_gpu_render(opts: GpuOptions) -> int:
             if "logo_rot_rad" in prog_logo:
                 prog_logo["logo_rot_rad"].value = 0.0
 
-        _send({"status": "running", "message": "[DEBUG] Setting prog_post uniforms...", "progress": 0.0})
         prog_post["tex_in"].value = 0
         prog_post["out_size"].value = (float(w), float(h))
     except Exception as e:
         import traceback
-        _send({"status": "failed", "message": f"Shader setup failed: {e}\n{traceback.format_exc()}", "progress": 0.0})
+        _emit_event({"status": "failed", "message": f"Shader setup failed: {e}\n{traceback.format_exc()}", "progress": 0.0})
         raise e
 
-    shake_state_x = 0.0
-    shake_state_y = 0.0
-    bg_shake_state_x = 0.0
-    bg_shake_state_y = 0.0
-
-    # Encode may be 24 fps while preview paints at 60 Hz.
+    shake_state = CameraShakeState()
+    bg_shake_state = BgVibrateState()
     # Use encode-frame dt so particle spawn/motion and envelope time constants
     # advance in wall-clock time (same as integrating preview's 1/60 steps).
     encode_dt = 1.0 / max(1.0, float(fps))
     dt = encode_dt
-    p_bass_fast = 0.0
-    p_bass_slow = 0.0
-    p_kick_env = 0.0
-    bg_audio_env = 0.0
-    logo_audio_env = 0.0
-    particle_audio_env = 0.0
-    p_trigger_env = 0.0
-    kick_fast_a = 1.0 - float(np.exp(-encode_dt / 0.06))
-    kick_slow_a = 1.0 - float(np.exp(-encode_dt / 0.35))
-    kick_decay = float(np.exp(-encode_dt / 0.18))
+    kick_bass_state = KickBassEnvelopeState()
+    kick_bass_config = KickBassEnvelopeConfig(
+        bg_smoothing=bg_smoothing,
+        logo_smoothing=logo_smoothing,
+    )
+    particle_audio_state = ParticleAudioState()
     audio_settings = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
     aud_smooth = float(max(0.0, min(0.99, float(audio_settings.get("smoothing", 0.8) or 0.8))))
     fft_smoothed = np.zeros(64, dtype=np.float32)
     particles_warmed = False
 
-    _send({"status": "running", "message": "Preparing first frame...", "progress": 0.0})
+    _emit_event(
+        {
+            "status": "running",
+            "message": "Preparing first frame...",
+            "progress": _EXPORT_INIT_PROGRESS_MAX,
+            "videoCodec": video_codec,
+        }
+    )
 
     # --- Pre-compute spectrum mapping (once, outside frame loop) ---
     from ._spectrum_fast import (
-        precompute_fft_mapping, fft_to_log_bins, smooth_and_mirror,
+        precompute_fft_mapping, fft_to_log_bins, smooth_and_mirror, smooth_fft_envelope,
         generate_points_curved, generate_points_linear,
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
     )
@@ -1982,18 +2456,167 @@ def run_gpu_render(opts: GpuOptions) -> int:
     _tpl_attached_layer_base_offset = _resolve_attached_layer_base_offset(_tpl_spectrum_layers, sf)
     last_analysis_idx = -1
 
+    if gpu_spectrum is not None and _tpl_spectrum_enabled:
+        _gpu_preregister_layers = _tpl_spectrum_layers
+        if not _gpu_preregister_layers:
+            try:
+                from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+
+                fallback = normalize_renderer_template(default_renderer_template()).get("layers") or []
+                _gpu_preregister_layers = [dict(x) for x in fallback if isinstance(x, dict)]
+            except Exception:
+                _gpu_preregister_layers = []
+    else:
+        _gpu_preregister_layers = []
+
+    if gpu_spectrum is not None and _tpl_spectrum_enabled and _gpu_preregister_layers:
+        BINS_PRE = 64
+        bar_height_mult_pre = _audio_bar_height_mult(template)
+        logo_base_radius_pre = float(logo_raw.get("size", 192.0)) * 0.5 * sf if isinstance(logo_raw, dict) else 96.0 * sf
+        logo_visual_radius_pre = logo_base_radius_pre * logo_scale_base
+        for layer_idx, sl_pre in enumerate(_gpu_preregister_layers):
+            style_pre = _resolve_export_spectrum_style(_tpl_style_preset, sl_pre)
+            if is_waveform_spectrum_style(style_pre) or not is_gpu_bar_style_slice1(style_pre):
+                continue
+            curved_pre = bool(sl_pre.get("curved", False))
+            mirrored_pre = bool(sl_pre.get("mirrored", False))
+            bar_width_pre = float(sl_pre.get("barWidth", 4.0)) * sf
+            thickness_pre = float(sl_pre.get("thickness", 30.0)) * sf * bar_height_mult_pre
+            gravity_pre = str(sl_pre.get("gravity", "normal")).lower().strip()
+            radius_offset_pre = float(sl_pre.get("radiusOffset", 0.0)) * sf
+            radius_pre = _resolve_spectrum_layer_radius(
+                attached_to_logo=_tpl_attached_to_logo,
+                attached_base_radius=_tpl_attached_base_radius,
+                attached_layer_base_offset=_tpl_attached_layer_base_offset,
+                logo_visual_radius=logo_visual_radius_pre,
+                bar_width=bar_width_pre,
+                radius_offset=radius_offset_pre,
+            )
+            color_cfg_pre = sl_pre.get("color", {})
+            c_pre = color_cfg_pre.get("solidColor", "#ffffff")
+            if isinstance(c_pre, str) and c_pre.startswith("#"):
+                c_pre = c_pre.lstrip("#")
+                c_pre = tuple(int(c_pre[i : i + 2], 16) for i in (0, 2, 4))
+            op_pre = float(sl_pre.get("opacity", 1.0))
+            try:
+                spec_col_pre = (
+                    float(c_pre[0]) / 255.0,
+                    float(c_pre[1]) / 255.0,
+                    float(c_pre[2]) / 255.0,
+                    float(max(0.0, min(1.0, op_pre))),
+                )
+            except Exception:
+                spec_col_pre = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op_pre))))
+            glow_strength_pre = float(max(0.0, min(100.0, float(sl_pre.get("glow", 0.0))))) / 100.0
+            glow_softness_pre = float(max(0.0, min(30.0, float(sl_pre.get("blur", 0.0)))))
+            n_pre = BINS_PRE
+            total_length_pre = 0.0
+            if curved_pre:
+                total_angle_pre = np.pi * 2.0 if mirrored_pre else np.pi
+                total_length_pre = radius_pre * total_angle_pre
+            else:
+                total_length_pre = (
+                    float(h * 0.8) if gravity_pre in ("left", "right") else float(w * 0.8)
+                )
+            start_angle_pre = np.pi / 2.0
+            if gravity_pre == "top":
+                start_angle_pre = -np.pi / 2.0
+            elif gravity_pre == "left":
+                start_angle_pre = np.pi
+            elif gravity_pre == "right":
+                start_angle_pre = 0.0
+            if curved_pre:
+                px_pre, py_pre, dx_pre, dy_pre = generate_points_curved(
+                    n_pre, radius_pre, mirrored_pre, start_angle_pre
+                )
+            else:
+                px_pre, py_pre, dx_pre, dy_pre = generate_points_linear(
+                    n_pre, total_length_pre, gravity_pre
+                )
+            base_total_length_pre = total_length_pre
+            pass_specs_pre: list[dict] = []
+            if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
+                pass_specs_pre.append(
+                    {
+                        "alpha": op_pre * (0.14 + glow_strength_pre * 0.22),
+                        "bar_width": bar_width_pre + ((glow_softness_pre * 1.8) + (glow_strength_pre * 18.0)) * sf,
+                        "thickness": thickness_pre + ((glow_softness_pre * 2.2) + (glow_strength_pre * 22.0)) * sf,
+                    }
+                )
+                if glow_pass_limit >= 2:
+                    pass_specs_pre.append(
+                        {
+                            "alpha": op_pre * (0.08 + glow_strength_pre * 0.15),
+                            "bar_width": bar_width_pre + ((glow_softness_pre * 3.0) + (glow_strength_pre * 32.0)) * sf,
+                            "thickness": thickness_pre + ((glow_softness_pre * 3.4) + (glow_strength_pre * 34.0)) * sf,
+                        }
+                    )
+            pass_specs_pre.append(
+                {
+                    "alpha": op_pre,
+                    "bar_width": bar_width_pre,
+                    "thickness": thickness_pre,
+                }
+            )
+            pass_colors_pre: list[np.ndarray] = []
+            for pass_cfg_pre in pass_specs_pre:
+                pass_alpha_pre = float(max(0.0, min(1.0, float(pass_cfg_pre["alpha"]))))
+                pass_colors_pre.append(
+                    _build_spectrum_vertex_colors(color_cfg_pre, spec_col_pre, n_pre, pass_alpha_pre)
+                )
+                bw_pre = resolve_bar_pixel_width(
+                    float(pass_cfg_pre["bar_width"]),
+                    base_total_length_pre / max(1, n_pre),
+                )
+                bw_pre = float(bw_pre) * float(gpu_bar_half_width_scale(style_pre))
+                pass_cfg_pre["bar_half_width"] = float(bw_pre) * 0.5
+            if gpu_spectrum.register_layer(
+                layer_idx,
+                px=px_pre,
+                py=py_pre,
+                dx=dx_pre,
+                dy=dy_pre,
+                pass_specs=pass_specs_pre,
+                pass_colors=pass_colors_pre,
+            ):
+                gpu_layer_keys[layer_idx] = layer_idx
+
+    frame_profiler: _ExportFrameProfiler | None = None
+    if _export_profile_enabled() and not golden_mode:
+        frame_profiler = _ExportFrameProfiler(emit=_emit_event)
+
     for i in range(total_frames):
+        if cancel_check is not None and cancel_check():
+            _emit_event({"status": "failed", "message": "Export cancelled.", "progress": 0.0})
+            if pipe_writer is not None:
+                pipe_writer.cancel()
+            elif native_writer is not None:
+                native_writer.cancel()
+            elif enc is not None and enc.poll() is None:
+                try:
+                    enc.terminate()
+                except OSError:
+                    pass
+            if ctx_factory is None and not os.environ.get("CAMXORA_DAEMON_JOB"):
+                try:
+                    glfw.terminate()
+                except Exception:
+                    pass
+            return 1
+        _t_frame = time.perf_counter() if frame_profiler is not None else 0.0
         # Sample analysis at preview rate (60 Hz) for identical FFT/features at wall time T.
         time_sec = float(i) / float(max(1.0, float(fps)))
         analysis_idx = int(max(0, min(int(analyzer.info.frames) - 1, int(time_sec * float(ANALYSIS_FPS)))))
         # Advance temporal FFT smooth through every skipped 60 Hz analysis frame so
         # aud_smooth matches preview (which updates once per 60 Hz paint).
+        fft = None
         for aidx in range(max(0, last_analysis_idx + 1), analysis_idx + 1):
-            fft_step = analyzer.fft_for_frame(aidx)
-            fft_log_step = fft_to_log_bins(fft_step, _fft_idx1, _fft_idx2, _fft_frac)
-            fft_smoothed = fft_smoothed * aud_smooth + fft_log_step * (1.0 - aud_smooth)
+            fft = analyzer.fft_for_frame(aidx)
+            fft_log_step = fft_to_log_bins(fft, _fft_idx1, _fft_idx2, _fft_frac)
+            fft_smoothed = smooth_fft_envelope(fft_smoothed, fft_log_step, aud_smooth)
         last_analysis_idx = analysis_idx
-        fft = analyzer.fft_for_frame(analysis_idx)
+        if fft is None:
+            fft = analyzer.fft_for_frame(analysis_idx)
         feats = analyzer.features_for_frame(analysis_idx)
         base_state = {
             "camera_shake.intensity": shake_intensity,
@@ -2006,34 +2629,27 @@ def run_gpu_render(opts: GpuOptions) -> int:
         bass = float(feats.get("bass", 0.0))
 
         # Kick / audio envelopes BEFORE spectrum (matches preview paintGL order).
-        p_bass_fast = p_bass_fast * (1.0 - kick_fast_a) + bass * kick_fast_a
-        p_bass_slow = p_bass_slow * (1.0 - kick_slow_a) + bass * kick_slow_a
-        raw_kick = float(max(0.0, p_bass_fast - p_bass_slow))
-        kick0 = float(max(0.0, min(1.0, raw_kick * 4.0)))
-        p_kick_env = float(max(kick0, p_kick_env * kick_decay))
-        kick_pow = float(max(0.0, min(1.0, p_kick_env))) ** 2
-        bg_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.6))))
-        bg_audio_env = _smooth_env(bg_audio_env, bg_audio_raw, bg_smoothing, dt=encode_dt)
-        logo_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.8))))
-        logo_audio_env = _smooth_env(logo_audio_env, logo_audio_raw, logo_smoothing, dt=encode_dt)
+        env_out = integrate_kick_bass_envelopes(
+            kick_bass_state,
+            KickBassEnvelopeStepInput(bass=bass),
+            kick_bass_config,
+            dt=encode_dt,
+        )
+        kick_pow = env_out.kick_pow
+        bg_audio_env = env_out.bg_audio_env
+        logo_audio_env = env_out.logo_audio_env
         ps_smoothing = float(max(0.0, min(0.99, particles_cfg_raw.get("smoothing", 0.65))))
         onset = float(feats.get("onset", 0.0) or 0.0)
         beat = float(feats.get("beat", 0.0) or 0.0)
-        particle_audio_raw = float(
-            max(0.0, min(1.0, max(kick_pow, bass, onset * 0.9, beat * 0.95)))
-        )
-        particle_audio_env = _smooth_env(particle_audio_env, particle_audio_raw, ps_smoothing, dt=encode_dt)
         spawn_trigger = str(particles_cfg_raw.get("spawnTrigger", "both") or "both")
-        kick_like = float(max(kick_pow, beat))
-        bass_like = float(max(bass, onset * 0.85, particle_audio_raw * 0.65))
-        if spawn_trigger == "kick":
-            trig_raw = kick_like
-        elif spawn_trigger == "bass":
-            trig_raw = bass_like
-        else:
-            trig_raw = float(max(kick_like, bass_like))
-        trig_raw = float(max(0.0, min(1.0, trig_raw)))
-        p_trigger_env = _smooth_env(p_trigger_env, trig_raw, ps_smoothing, dt=encode_dt)
+        particle_out = integrate_particle_audio(
+            particle_audio_state,
+            ParticleAudioStepInput(bass=bass, kick_pow=kick_pow, onset=onset, beat=beat),
+            ParticleAudioConfig(smoothing=ps_smoothing, spawn_trigger=spawn_trigger),
+            dt=encode_dt,
+        )
+        particle_audio_env = particle_out.particle_audio_env
+        p_trigger_env = particle_out.p_trigger_env
 
         if tex_logo is not None and logo_enabled:
             base_radius = logo_base_radius
@@ -2056,23 +2672,21 @@ def run_gpu_render(opts: GpuOptions) -> int:
             # ModernGL / OpenGL has Y=0 at the BOTTOM.
             # `l_pos[1]` is the exact target pixel (e.g. 1080 for Top, 0 for Bottom).
             # The shader expects `logo_px` to be an offset from the CENTER (w/2, h/2).
-            prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state_x), l_pos[1] - float(h)*0.5 + float(shake_state_y))
+            prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
 
-        if shake_enabled:
-            target = float(state.get("camera_shake.intensity", shake_intensity)) * (
-                0.35 + float(feats.get("bass", 0.0)) * 1.2 + float(feats.get("beat", 0.0)) * 1.5
-            )
-            jitter_x = (time.time() * 0.9 + i * 0.013) % 1.0
-            jitter_y = (time.time() * 0.9 + i * 0.017) % 1.0
-            tx = (jitter_x * 2.0 - 1.0) * target
-            ty = (jitter_y * 2.0 - 1.0) * target
-            s = max(0.0, min(0.99, shake_smoothing))
-            shake_state_x = shake_state_x * s + tx * (1.0 - s)
-            shake_state_y = shake_state_y * s + ty * (1.0 - s)
-        else:
-            shake_state_x = 0.0
-            shake_state_y = 0.0
+        shake_out = integrate_camera_shake(
+            shake_state,
+            CameraShakeStepInput(
+                frame_index=i,
+                bass=float(feats.get("bass", 0.0)),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                intensity=float(state.get("camera_shake.intensity", shake_intensity)),
+            ),
+            CameraShakeConfig(enabled=shake_enabled, smoothing=shake_smoothing),
+            dt=encode_dt,
+        )
 
+        _t_audio = time.perf_counter() if frame_profiler is not None else 0.0
         fbo_scene.use()
         ctx.viewport = (0, 0, w, h)
         ctx.clear(0.0, 0.0, 0.0, 1.0)
@@ -2081,18 +2695,21 @@ def run_gpu_render(opts: GpuOptions) -> int:
         tex_bg.use(location=0)
         if tex_logo is not None and logo_enabled:
             tex_logo.use(location=1)
-        if bg_motion_mode in ("vibrate", "both"):
-            bg_shake_target = float(max(0.0, bg_react_bass) * bg_audio_env * 18.0 * sf * bg_motion_vibrate_strength)
-            bg_jx = (time.time() * 0.81 + i * 0.013) % 1.0
-            bg_jy = (time.time() * 0.83 + i * 0.017) % 1.0
-            bg_shake_state_x = bg_shake_state_x * bg_smoothing + ((bg_jx * 2.0 - 1.0) * bg_shake_target) * (1.0 - bg_smoothing)
-            bg_shake_state_y = bg_shake_state_y * bg_smoothing + ((bg_jy * 2.0 - 1.0) * bg_shake_target) * (1.0 - bg_smoothing)
-        else:
-            bg_shake_state_x = 0.0
-            bg_shake_state_y = 0.0
+        bg_vibrate_out = integrate_bg_vibrate(
+            bg_shake_state,
+            BgVibrateStepInput(frame_index=i, bg_audio_env=bg_audio_env),
+            BgVibrateConfig(
+                motion_mode=bg_motion_mode,
+                react_bass=bg_react_bass,
+                smoothing=bg_smoothing,
+                vibrate_strength=bg_motion_vibrate_strength,
+                scale_factor=sf,
+            ),
+            dt=encode_dt,
+        )
         prog_scene["bg_offset"].value = (
-            float((-bg_user_off_x / max(1.0, float(w))) + (bg_shake_state_x / max(1.0, float(w)))),
-            float((bg_user_off_y / max(1.0, float(h))) + (bg_shake_state_y / max(1.0, float(h)))),
+            float((-bg_user_off_x / max(1.0, float(w))) + (bg_vibrate_out.x / max(1.0, float(w)))),
+            float((bg_user_off_y / max(1.0, float(h))) + (bg_vibrate_out.y / max(1.0, float(h)))),
         )
         if bg_motion_mode in ("zoom", "both"):
             bg_scale_live = float(1.0 + min(2.5, max(0.0, bg_audio_env * bg_react_bass * 0.04 * bg_motion_zoom_strength)))
@@ -2160,10 +2777,10 @@ def run_gpu_render(opts: GpuOptions) -> int:
         fft_s = np.clip(fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
         
         c_pos = _get_anchor_coords(_tpl_anchor_val, _tpl_off_x, _tpl_off_y, w, h)
-        cx = c_pos[0] + float(shake_state_x)
-        cy = c_pos[1] + float(shake_state_y)
+        cx = c_pos[0] + float(shake_out.x)
+        cy = c_pos[1] + float(shake_out.y)
         
-        for sl in spectrum_layers:
+        for layer_idx, sl in enumerate(spectrum_layers):
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
             curved = bool(sl.get("curved", False))
             mirrored = bool(sl.get("mirrored", False))
@@ -2230,7 +2847,7 @@ def run_gpu_render(opts: GpuOptions) -> int:
             base_total_length = total_length
             prog_lines["clip_enabled"].value = 0
             pass_specs: list[dict] = []
-            if glow_strength > 0.0:
+            if glow_strength > 0.0 and glow_pass_limit >= 1:
                 pass_specs.append(
                     {
                         "is_glow": True,
@@ -2240,15 +2857,16 @@ def run_gpu_render(opts: GpuOptions) -> int:
                         "fill_circle": False,
                     }
                 )
-                pass_specs.append(
-                    {
-                        "is_glow": True,
-                        "alpha": op * (0.08 + glow_strength * 0.15),
-                        "bar_width": bar_width + ((glow_softness * 3.0) + (glow_strength * 32.0)) * sf,
-                        "thickness": thickness + ((glow_softness * 3.4) + (glow_strength * 34.0)) * sf,
-                        "fill_circle": False,
-                    }
-                )
+                if glow_pass_limit >= 2:
+                    pass_specs.append(
+                        {
+                            "is_glow": True,
+                            "alpha": op * (0.08 + glow_strength * 0.15),
+                            "bar_width": bar_width + ((glow_softness * 3.0) + (glow_strength * 32.0)) * sf,
+                            "thickness": thickness + ((glow_softness * 3.4) + (glow_strength * 34.0)) * sf,
+                            "fill_circle": False,
+                        }
+                    )
             pass_specs.append(
                 {
                     "is_glow": False,
@@ -2259,7 +2877,7 @@ def run_gpu_render(opts: GpuOptions) -> int:
                 }
             )
 
-            for pass_cfg in pass_specs:
+            for pass_i, pass_cfg in enumerate(pass_specs):
                 if pass_cfg["is_glow"]:
                     ctx.blend_func = moderngl.ADDITIVE_BLENDING
                 elif blend_mode in ("screen", "add", "lighten"):
@@ -2327,6 +2945,27 @@ def run_gpu_render(opts: GpuOptions) -> int:
                         line_vbo.orphan(size=verts.nbytes)
                     line_vbo.write(verts.tobytes())
                     vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(2 * nn))
+                elif gpu_spectrum is not None and layer_idx in gpu_layer_keys:
+                    gpu_fft = quantize_fft_for_gpu_bar_style(
+                        style_preset,
+                        render_fft,
+                        thickness=pass_thickness,
+                        sf=sf,
+                    )
+                    half_w = float(bw) * 0.5 * float(gpu_bar_half_width_scale(style_preset))
+                    gpu_spectrum.draw_pass(
+                        gpu_layer_keys[layer_idx],
+                        pass_i,
+                        gpu_fft,
+                        cx=cx,
+                        cy=cy,
+                        w=w,
+                        h=h,
+                        pass_thickness=pass_thickness,
+                        bar_half_width=half_w,
+                        style_mode=int(gpu_bar_style_mode(style_preset)),
+                        style_sf=float(sf),
+                    )
                 else:
                     bar_out = build_bar_vertices(
                         px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
@@ -2354,6 +2993,9 @@ def run_gpu_render(opts: GpuOptions) -> int:
         pt_size = float(particles_cfg_raw.get("size", 2.0))
         pt_color = tuple(_as_rgb(particles_cfg_raw.get("color", "#ffffff")))
         pt_count = int(particles_cfg_raw.get("maxCount", particles_cfg_raw.get("count", 400)))
+        pt_count, spawn_rate = export_particle_caps(
+            export_speed_mode, max_count=pt_count, spawn_rate=spawn_rate
+        )
         pt_opacity = float(particles_cfg_raw.get("opacity", particles_cfg.opacity))
         # Match preview reactivity range (0–1), not the old export 0.1–0.5 clamp.
         prb = float(max(0.0, min(1.0, prb)))
@@ -2488,53 +3130,136 @@ def run_gpu_render(opts: GpuOptions) -> int:
             text_cache,
         )
 
-        raw = fbo_out.read(components=4, alignment=1)
-        if enc.stdin is None:
-            raise RuntimeError("FFmpeg stdin is not available")
-        try:
-            enc.stdin.write(raw)
-        except (BrokenPipeError, OSError) as e:
+        _t_gl = time.perf_counter() if frame_profiler is not None else 0.0
+        _blit_readback_oriented(
+            src_tex=tex_out,
+            fbo_readback=fbo_readback,
+            prog=prog_readback_flip,
+            vao=vao_readback_flip,
+        )
+        if golden_mode and i == golden_idx:
+            raw = fbo_readback.read(components=4, alignment=1)
+            arr = np.frombuffer(raw, dtype=np.uint8).reshape((h, w, 4))
+            img = Image.fromarray(arr, mode="RGBA")
+            Path(golden_png).parent.mkdir(parents=True, exist_ok=True)
+            img.save(golden_png)
+            break
+        if not golden_mode:
+            raw_prev = async_reader.queue_frame(fbo_readback)
+            _t_readback = time.perf_counter() if frame_profiler is not None else 0.0
+            if raw_prev is not None:
+                _write_pipe_frame(raw_prev)
+            if frame_profiler is not None:
+                frame_profiler.record(
+                    audio_ms=(_t_audio - _t_frame) * 1000.0,
+                    gl_ms=(_t_gl - _t_audio) * 1000.0,
+                    readback_ms=(_t_readback - _t_gl) * 1000.0,
+                    encode_ms=(time.perf_counter() - _t_readback) * 1000.0,
+                )
+
+        if i == 0 or (i + 1) % 10 == 0 or i + 1 == total_frames:
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": f"Rendering {i + 1}/{total_frames}",
+                    "progress": _encode_frame_progress(i, total_frames),
+                    "frame": i + 1,
+                    "totalFrames": total_frames,
+                    "videoCodec": video_codec,
+                }
+            )
+
+    if frame_profiler is not None:
+        frame_profiler.flush()
+
+    if golden_mode:
+        _emit_event(
+            {
+                "status": "done",
+                "message": "Golden export frame saved",
+                "progress": 1.0,
+                "outputPath": golden_png,
+            }
+        )
+        if ctx_factory is None and not os.environ.get("CAMXORA_DAEMON_JOB"):
+            try:
+                glfw.terminate()
+            except Exception:
+                pass
+        for tx in text_cache.get("tex", []):
+            try:
+                if tx is not None:
+                    tx.release()
+            except Exception:
+                pass
+        return 0
+
+    raw_last = async_reader.flush()
+    if raw_last is not None:
+        _write_pipe_frame(raw_last)
+
+    _emit_event({"status": "running", "message": "Finalizing MP4...", "progress": 0.99, "videoCodec": video_codec})
+    if native_writer is not None:
+        native_writer.finish()
+        remux_native_h264_with_audio(
+            ffmpeg_path=opts.ffmpeg_path,
+            h264_path=native_writer.h264_path,
+            mp3_path=opts.mp3_path,
+            out_path=out_path,
+        )
+    elif pipe_writer is not None:
+        pipe_writer.finish()
+        if os.environ.get("CAMXORA_ENCODE_METRICS", "").strip().lower() in {"1", "true", "yes", "on"}:
+            stats = pipe_writer.stats()
+            pack_avg = stats.get("packAvgMs")
+            pack_part = f", pack avg={pack_avg:.2f} ms" if isinstance(pack_avg, (int, float)) else ""
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": (
+                        "Encode pipe metrics: "
+                        f"submit p95={stats.get('submitBlockP95Ms')} ms, "
+                        f"stdin p95={stats.get('stdinBlockP95Ms')} ms"
+                        f"{pack_part}"
+                    ),
+                    "progress": 0.995,
+                    "encodePipeMetrics": stats,
+                }
+            )
+        if enc is not None:
+            code = enc.wait()
+            if code != 0:
+                if hasattr(enc, "_err_file"):
+                    enc._err_file.seek(0)
+                    err_txt = enc._err_file.read()
+                else:
+                    err_txt = ""
+                raise RuntimeError(err_txt.strip() or f"FFmpeg failed (exit code {code})")
+            if hasattr(enc, "_err_file"):
+                enc._err_file.close()
+    elif enc is not None:
+        if enc.stdin is not None:
+            try:
+                enc.stdin.close()
+            except Exception:
+                pass
+        code = enc.wait()
+        if code != 0:
             if hasattr(enc, "_err_file"):
                 enc._err_file.seek(0)
                 err_txt = enc._err_file.read()
             else:
                 err_txt = ""
-            raise RuntimeError(f"FFmpeg pipe closed unexpectedly: {err_txt} (OS Error: {e})")
+            raise RuntimeError(err_txt.strip() or f"FFmpeg failed (exit code {code})")
+        if hasattr(enc, "_err_file"):
+            enc._err_file.close()
 
-        if i == 0 or (i + 1) % 10 == 0 or i + 1 == total_frames:
-            _send(
-                {
-                    "status": "running",
-                    "message": f"Rendering {i + 1}/{total_frames}",
-                    "progress": float((i + 1) / max(1, total_frames)),
-                    "frame": i + 1,
-                    "totalFrames": total_frames,
-                }
-            )
-
-    _send({"status": "running", "message": "Finalizing MP4...", "progress": 0.99})
-    if enc.stdin is not None:
+    _emit_event({"status": "done", "message": "Exported MP4", "progress": 1.0, "outputPath": out_path})
+    if ctx_factory is None and not os.environ.get("CAMXORA_DAEMON_JOB"):
         try:
-            enc.stdin.close()
+            glfw.terminate()
         except Exception:
             pass
-    code = enc.wait()
-    if code != 0:
-        if hasattr(enc, "_err_file"):
-            enc._err_file.seek(0)
-            err_txt = enc._err_file.read()
-        else:
-            err_txt = ""
-        raise RuntimeError(err_txt.strip() or f"FFmpeg failed (exit code {code})")
-        
-    if hasattr(enc, "_err_file"):
-        enc._err_file.close()
-
-    _send({"status": "done", "message": "Exported MP4", "progress": 1.0, "outputPath": out_path})
-    try:
-        glfw.terminate()
-    except Exception:
-        pass
     for tx in text_cache.get("tex", []):
         try:
             if tx is not None:
@@ -2544,7 +3269,24 @@ def run_gpu_render(opts: GpuOptions) -> int:
     return 0
 
 
-def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int = 150) -> str:
+def render_export_png(opts: GpuOptions, out_png_path: str, export_frame: int = 24) -> str:
+    """Render one export-path frame to PNG (no ffmpeg). REQ-2.7 golden parity."""
+    run_gpu_render(
+        opts,
+        single_frame_png=out_png_path,
+        single_frame_index=int(export_frame),
+    )
+    return out_png_path
+
+
+def render_preview_png(
+    opts: GpuOptions,
+    out_png_path: str,
+    preview_frame: int = 150,
+    *,
+    msaa_samples: int = 4,
+    analysis_fps: int | None = None,
+) -> str:
     fps = int(max(1, min(60, int(opts.fps))))
     if fps <= 0:
         fps = 30
@@ -2559,7 +3301,7 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
     sf = float(h) / base_h
 
     _send({"status": "running", "message": "Initializing GPU preview...", "progress": 0.0})
-    _init_glfw_hidden(w, h)
+    _init_glfw_hidden(w, h, samples=int(msaa_samples))
     ctx = _make_ctx()
 
     bg_rgba = _load_image_rgba(opts.background_path, (w, h))
@@ -2600,6 +3342,12 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
     tex_out.filter = (moderngl.LINEAR, moderngl.LINEAR)
     fbo_out = ctx.framebuffer(color_attachments=[tex_out])
 
+    tex_readback = ctx.texture((w, h), 4)
+    tex_readback.filter = (moderngl.LINEAR, moderngl.LINEAR)
+    fbo_readback = ctx.framebuffer(color_attachments=[tex_readback])
+    prog_readback_flip = _compile_readback_flip(ctx)
+    vao_readback_flip = _quad_vao(ctx, prog_readback_flip)
+
     line_vbo = ctx.buffer(reserve=4 * 6 * 1024)
     vao_lines = ctx.vertex_array(prog_lines, [(line_vbo, "2f 4f", "in_pos", "in_col")])
     prog_lines["clip_enabled"].value = 0
@@ -2618,7 +3366,8 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
     bg_offset = (0.0, 0.0)
 
     has_audio = bool(opts.mp3_path and Path(opts.mp3_path).exists())
-    analyzer = AudioAnalyzer(opts.mp3_path, fps=fps, point_count=point_count) if has_audio else None
+    afps = int(max(1, min(120, int(analysis_fps if analysis_fps is not None else fps))))
+    analyzer = AudioAnalyzer(opts.mp3_path, fps=afps, point_count=point_count) if has_audio else None
     total_frames = int(analyzer.info.frames) if analyzer is not None else int(max(1, int(preview_frame) + 1))
     tgt = int(max(0, min(total_frames - 1, int(preview_frame))))
 
@@ -2738,20 +3487,14 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
         raise e
 
     dt = 1.0 / max(1.0, float(fps))
-    shake_state_x = 0.0
-    shake_state_y = 0.0
-    bg_shake_state_x = 0.0
-    bg_shake_state_y = 0.0
-    p_bass_fast = 0.0
-    p_bass_slow = 0.0
-    p_kick_env = 0.0
-    bg_audio_env = 0.0
-    logo_audio_env = 0.0
-    particle_audio_env = 0.0
-    p_trigger_env = 0.0
-    kick_fast_a = 1.0 - float(np.exp(-dt / 0.06))
-    kick_slow_a = 1.0 - float(np.exp(-dt / 0.35))
-    kick_decay = float(np.exp(-dt / 0.18))
+    shake_state = CameraShakeState()
+    bg_shake_state = BgVibrateState()
+    kick_bass_state = KickBassEnvelopeState()
+    kick_bass_config = KickBassEnvelopeConfig(
+        bg_smoothing=bg_smoothing,
+        logo_smoothing=logo_smoothing,
+    )
+    particle_audio_state = ParticleAudioState()
 
     def synth_fft(i: int) -> np.ndarray:
         n = int(point_count)
@@ -2793,7 +3536,7 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
             logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
             
             l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
-            prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state_x), l_pos[1] - float(h)*0.5 + float(shake_state_y))
+            prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
 
         # Ensure particles use new schema properties
         spawn_rate = float(particles_cfg_raw.get("spawnRate", particles_cfg_raw.get("spawn_rate", 40.0)))
@@ -2807,26 +3550,28 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
 
         bass = float(feats.get("bass", 0.0))
         prb = float(max(0.1, min(0.5, prb)))
-        
-        p_bass_fast = p_bass_fast * (1.0 - kick_fast_a) + bass * kick_fast_a
-        p_bass_slow = p_bass_slow * (1.0 - kick_slow_a) + bass * kick_slow_a
-        raw_kick = float(max(0.0, p_bass_fast - p_bass_slow))
-        kick0 = float(max(0.0, min(1.0, raw_kick * 4.0)))
-        p_kick_env = float(max(kick0, p_kick_env * kick_decay))
-        kick_pow = float(max(0.0, min(1.0, p_kick_env))) ** 2
-        bg_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.6))))
-        bg_audio_env = _smooth_env(bg_audio_env, bg_audio_raw, bg_smoothing)
-        logo_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.8))))
-        logo_audio_env = _smooth_env(logo_audio_env, logo_audio_raw, logo_smoothing)
-        if bg_motion_mode in ("vibrate", "both"):
-            bg_shake_target = float(max(0.0, bg_react_bass) * bg_audio_env * 18.0 * sf * bg_motion_vibrate_strength)
-            bg_jx = (time.time() * 0.81 + i * 0.013) % 1.0
-            bg_jy = (time.time() * 0.83 + i * 0.017) % 1.0
-            bg_shake_state_x = bg_shake_state_x * bg_smoothing + ((bg_jx * 2.0 - 1.0) * bg_shake_target) * (1.0 - bg_smoothing)
-            bg_shake_state_y = bg_shake_state_y * bg_smoothing + ((bg_jy * 2.0 - 1.0) * bg_shake_target) * (1.0 - bg_smoothing)
-        else:
-            bg_shake_state_x = 0.0
-            bg_shake_state_y = 0.0
+
+        env_out = integrate_kick_bass_envelopes(
+            kick_bass_state,
+            KickBassEnvelopeStepInput(bass=bass),
+            kick_bass_config,
+            dt=dt,
+        )
+        kick_pow = env_out.kick_pow
+        bg_audio_env = env_out.bg_audio_env
+        logo_audio_env = env_out.logo_audio_env
+        bg_vibrate_out = integrate_bg_vibrate(
+            bg_shake_state,
+            BgVibrateStepInput(frame_index=i, bg_audio_env=bg_audio_env),
+            BgVibrateConfig(
+                motion_mode=bg_motion_mode,
+                react_bass=bg_react_bass,
+                smoothing=bg_smoothing,
+                vibrate_strength=bg_motion_vibrate_strength,
+                scale_factor=sf,
+            ),
+            dt=dt,
+        )
         prog_scene["bg_brightness"].value = float(max(0.0, min(3.0, bg_brightness * (1.0 + bg_audio_env * bg_react_bass))))
         if "bg_contrast" in prog_scene:
             prog_scene["bg_contrast"].value = float(bg_contrast)
@@ -2843,25 +3588,19 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
         ps_smoothing = float(max(0.0, min(0.99, particles_cfg_raw.get("smoothing", 0.65))))
         onset = float(feats.get("onset", 0.0) or 0.0)
         beat = float(feats.get("beat", 0.0) or 0.0)
-        particle_audio_raw = float(
-            max(0.0, min(1.0, max(kick_pow, bass, onset * 0.9, beat * 0.95)))
-        )
-        particle_audio_env = _smooth_env(particle_audio_env, particle_audio_raw, ps_smoothing)
-        
-        spawn_mode = str(particles_cfg_raw.get("spawnMode", "always") or "always")
         spawn_trigger = str(particles_cfg_raw.get("spawnTrigger", "both") or "both")
+        particle_out = integrate_particle_audio(
+            particle_audio_state,
+            ParticleAudioStepInput(bass=bass, kick_pow=kick_pow, onset=onset, beat=beat),
+            ParticleAudioConfig(smoothing=ps_smoothing, spawn_trigger=spawn_trigger),
+            dt=dt,
+        )
+        particle_audio_env = particle_out.particle_audio_env
+        p_trigger_env = particle_out.p_trigger_env
+
+        spawn_mode = str(particles_cfg_raw.get("spawnMode", "always") or "always")
         spawn_threshold = float(particles_cfg_raw.get("spawnThreshold", 0.15) or 0.15)
         spawn_threshold = float(max(0.0, min(1.0, spawn_threshold)))
-        kick_like = float(max(kick_pow, beat))
-        bass_like = float(max(bass, onset * 0.85, particle_audio_raw * 0.65))
-        if spawn_trigger == "kick":
-            trig_raw = kick_like
-        elif spawn_trigger == "bass":
-            trig_raw = bass_like
-        else:
-            trig_raw = float(max(kick_like, bass_like))
-        trig_raw = float(max(0.0, min(1.0, trig_raw)))
-        p_trigger_env = _smooth_env(p_trigger_env, trig_raw, ps_smoothing)
 
         if spawn_mode == "reactiveOnly" and p_trigger_env < spawn_threshold:
             spawn_rate = 0.0
@@ -2898,20 +3637,17 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
         if i != tgt:
             continue
 
-        if shake_enabled:
-            target = float(state.get("camera_shake.intensity", shake_intensity)) * (
-                0.35 + float(feats.get("bass", 0.0)) * 1.2 + float(feats.get("beat", 0.0)) * 1.5
-            )
-            jitter_x = (time.time() * 0.9 + i * 0.013) % 1.0
-            jitter_y = (time.time() * 0.9 + i * 0.017) % 1.0
-            tx = (jitter_x * 2.0 - 1.0) * target
-            ty = (jitter_y * 2.0 - 1.0) * target
-            s = max(0.0, min(0.99, shake_smoothing))
-            shake_state_x = shake_state_x * s + tx * (1.0 - s)
-            shake_state_y = shake_state_y * s + ty * (1.0 - s)
-        else:
-            shake_state_x = 0.0
-            shake_state_y = 0.0
+        shake_out = integrate_camera_shake(
+            shake_state,
+            CameraShakeStepInput(
+                frame_index=i,
+                bass=float(feats.get("bass", 0.0)),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                intensity=float(state.get("camera_shake.intensity", shake_intensity)),
+            ),
+            CameraShakeConfig(enabled=shake_enabled, smoothing=shake_smoothing),
+            dt=dt,
+        )
 
         fbo_scene.use()
         ctx.viewport = (0, 0, w, h)
@@ -2925,8 +3661,8 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
         prog_scene["bg_scale"].value = (bg_scale_live, bg_scale_live)
         if bg_motion_mode in ("vibrate", "both"):
             prog_scene["bg_offset"].value = (
-                float(bg_shake_state_x / max(1.0, float(w))),
-                float(bg_shake_state_y / max(1.0, float(h))),
+                float(bg_vibrate_out.x / max(1.0, float(w))),
+                float(bg_vibrate_out.y / max(1.0, float(h))),
             )
         else:
             prog_scene["bg_offset"].value = (0.0, 0.0)
@@ -2960,8 +3696,8 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
         vao_quad_scene.render(mode=moderngl.TRIANGLE_STRIP)
 
         scale = float(state.get("spectrum.scale", 1.0))
-        cx = float(w) * 0.5 + float(shake_state_x)
-        cy = float(h) * 0.5 + float(shake_state_y)
+        cx = float(w) * 0.5 + float(shake_out.x)
+        cy = float(h) * 0.5 + float(shake_out.y)
 
         raw_layers = spectrum_container.get("layers", [])
         spectrum_layers: list[dict] = [x for x in raw_layers if isinstance(x, dict)]
@@ -3013,8 +3749,8 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
         off_y = float(template.get("position", {}).get("y", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
         
         c_pos = _get_anchor_coords(anchor_val, off_x, off_y, w, h)
-        cx = c_pos[0] + float(shake_state_x)
-        cy = c_pos[1] + float(shake_state_y)
+        cx = c_pos[0] + float(shake_out.x)
+        cy = c_pos[1] + float(shake_out.y)
         
         for sl in spectrum_layers:
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
@@ -3383,9 +4119,14 @@ def render_preview_png(opts: GpuOptions, out_png_path: str, preview_frame: int =
             text_cache,
         )
 
-        raw = fbo_out.read(components=4, alignment=1)
+        _blit_readback_oriented(
+            src_tex=tex_out,
+            fbo_readback=fbo_readback,
+            prog=prog_readback_flip,
+            vao=vao_readback_flip,
+        )
+        raw = fbo_readback.read(components=4, alignment=1)
         arr = np.frombuffer(raw, dtype=np.uint8).reshape((h, w, 4))
-        arr = np.flipud(arr)
         img = Image.fromarray(arr, mode="RGBA")
         Path(out_png_path).parent.mkdir(parents=True, exist_ok=True)
         img.save(out_png_path)
@@ -3431,17 +4172,22 @@ def run_live_preview(opts: GpuOptions) -> int:
         raise RuntimeError("Failed to create visible OpenGL window")
     glfw.make_context_current(win)
     glfw.swap_interval(1)
+    try:
+        from shared.lib.win32_window import exclude_glfw_window_from_taskbar, glfw_window_hwnd
+
+        exclude_glfw_window_from_taskbar(win)
+        native_hwnd = glfw_window_hwnd(win)
+    except Exception:
+        native_hwnd = 0
+        if sys.platform == "win32":
+            try:
+                get_win32_window = getattr(glfw, "get_win32_window", None)
+                if callable(get_win32_window):
+                    native_hwnd = int(get_win32_window(win))
+            except Exception:
+                native_hwnd = 0
 
     ctx = _make_ctx()
-
-    native_hwnd = 0
-    if sys.platform == "win32":
-        try:
-            get_win32_window = getattr(glfw, "get_win32_window", None)
-            if callable(get_win32_window):
-                native_hwnd = int(get_win32_window(win))
-        except Exception:
-            native_hwnd = 0
 
     def apply_template_patch(dst: dict, patch: dict) -> dict:
         out = dict(dst) if isinstance(dst, dict) else {}
@@ -3738,20 +4484,10 @@ def run_live_preview(opts: GpuOptions) -> int:
     )
     
     dt = 1.0 / float(fps)
-    shake_state_x = 0.0
-    shake_state_y = 0.0
-    bg_shake_state_x = 0.0
-    bg_shake_state_y = 0.0
-    p_bass_fast = 0.0
-    p_bass_slow = 0.0
-    p_kick_env = 0.0
-    bg_audio_env = 0.0
-    logo_audio_env = 0.0
-    particle_audio_env = 0.0
-    p_trigger_env = 0.0
-    kick_fast_a = 1.0 - float(np.exp(-dt / 0.06))
-    kick_slow_a = 1.0 - float(np.exp(-dt / 0.35))
-    kick_decay = float(np.exp(-dt / 0.18))
+    shake_state = CameraShakeState()
+    bg_shake_state = BgVibrateState()
+    kick_bass_state = KickBassEnvelopeState()
+    particle_audio_state = ParticleAudioState()
     
     def synth_fft(i: int) -> np.ndarray:
         n = int(point_count)
@@ -3941,35 +4677,35 @@ def run_live_preview(opts: GpuOptions) -> int:
         }
         state = apply_automations(base_state, feats, autos)
         bass = float(feats.get("bass", 0.0))
-        p_bass_fast = p_bass_fast * (1.0 - kick_fast_a) + bass * kick_fast_a
-        p_bass_slow = p_bass_slow * (1.0 - kick_slow_a) + bass * kick_slow_a
-        raw_kick = float(max(0.0, p_bass_fast - p_bass_slow))
-        kick0 = float(max(0.0, min(1.0, raw_kick * 4.0)))
-        p_kick_env = float(max(kick0, p_kick_env * kick_decay))
-        kick_pow = float(max(0.0, min(1.0, p_kick_env))) ** 2
-
-        bg_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.6))))
-        bg_audio_env = _smooth_env(bg_audio_env, bg_audio_raw, bg_smoothing)
-        logo_audio_raw = float(max(0.0, min(1.0, max(bass, kick_pow * 0.8))))
-        logo_audio_env = _smooth_env(logo_audio_env, logo_audio_raw, logo_smoothing)
-
-        if bg_motion_mode in ("vibrate", "both"):
-            bg_shake_target = float(max(0.0, bg_react_bass) * bg_audio_env * 18.0 * sf * bg_motion_vibrate_strength)
-            bg_jx = (time.time() * 0.81 + frame_idx * 0.013) % 1.0
-            bg_jy = (time.time() * 0.83 + frame_idx * 0.017) % 1.0
-            bg_shake_state_x = bg_shake_state_x * bg_smoothing + ((bg_jx * 2.0 - 1.0) * bg_shake_target) * (1.0 - bg_smoothing)
-            bg_shake_state_y = bg_shake_state_y * bg_smoothing + ((bg_jy * 2.0 - 1.0) * bg_shake_target) * (1.0 - bg_smoothing)
-        else:
-            bg_shake_state_x = 0.0
-            bg_shake_state_y = 0.0
+        env_out = integrate_kick_bass_envelopes(
+            kick_bass_state,
+            KickBassEnvelopeStepInput(bass=bass),
+            KickBassEnvelopeConfig(bg_smoothing=bg_smoothing, logo_smoothing=logo_smoothing),
+            dt=dt,
+        )
+        kick_pow = env_out.kick_pow
+        bg_audio_env = env_out.bg_audio_env
+        logo_audio_env = env_out.logo_audio_env
+        bg_vibrate_out = integrate_bg_vibrate(
+            bg_shake_state,
+            BgVibrateStepInput(frame_index=frame_idx, bg_audio_env=bg_audio_env),
+            BgVibrateConfig(
+                motion_mode=bg_motion_mode,
+                react_bass=bg_react_bass,
+                smoothing=bg_smoothing,
+                vibrate_strength=bg_motion_vibrate_strength,
+                scale_factor=sf,
+            ),
+            dt=dt,
+        )
 
         if bg_motion_mode in ("zoom", "both"):
             bg_scale_live = float(1.0 + min(2.5, max(0.0, bg_audio_env * bg_react_bass * 0.04 * bg_motion_zoom_strength)))
         else:
             bg_scale_live = 1.0
         bg_offset_uv = (
-            float(bg_shake_state_x / max(1.0, float(w))),
-            float(bg_shake_state_y / max(1.0, float(h))),
+            float(bg_vibrate_out.x / max(1.0, float(w))),
+            float(bg_vibrate_out.y / max(1.0, float(h))),
         )
 
         prog_scene["tex_bg"].value = 0
@@ -4034,20 +4770,17 @@ def run_live_preview(opts: GpuOptions) -> int:
         prog_post["tex_in"].value = 0
         prog_post["out_size"].value = (float(w), float(h))
 
-        if shake_enabled:
-            target = float(state.get("camera_shake.intensity", shake_intensity)) * (
-                0.35 + float(feats.get("bass", 0.0)) * 1.2 + float(feats.get("beat", 0.0)) * 1.5
-            )
-            jitter_x = (time.time() * 0.9 + frame_idx * 0.013) % 1.0
-            jitter_y = (time.time() * 0.9 + frame_idx * 0.017) % 1.0
-            tx = (jitter_x * 2.0 - 1.0) * target
-            ty = (jitter_y * 2.0 - 1.0) * target
-            s = max(0.0, min(0.99, shake_smoothing))
-            shake_state_x = shake_state_x * s + tx * (1.0 - s)
-            shake_state_y = shake_state_y * s + ty * (1.0 - s)
-        else:
-            shake_state_x = 0.0
-            shake_state_y = 0.0
+        shake_out = integrate_camera_shake(
+            shake_state,
+            CameraShakeStepInput(
+                frame_index=frame_idx,
+                bass=float(feats.get("bass", 0.0)),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                intensity=float(state.get("camera_shake.intensity", shake_intensity)),
+            ),
+            CameraShakeConfig(enabled=shake_enabled, smoothing=shake_smoothing),
+            dt=dt,
+        )
 
         fbo_scene.use()
         ctx.viewport = (0, 0, w, h)
@@ -4096,8 +4829,8 @@ def run_live_preview(opts: GpuOptions) -> int:
         off_y = float(template.get("position", {}).get("y", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
         
         c_pos = _get_anchor_coords(anchor_val, off_x, off_y, w, h)
-        cx = c_pos[0] + float(shake_state_x)
-        cy = c_pos[1] + float(shake_state_y)
+        cx = c_pos[0] + float(shake_out.x)
+        cy = c_pos[1] + float(shake_out.y)
         attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
         attached_base_radius = float(
             max(0.0, ((float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base) * logo_visible_radius_ratio) + spectrum_logo_gap)
@@ -4367,25 +5100,19 @@ def run_live_preview(opts: GpuOptions) -> int:
         ps_smoothing = float(max(0.0, min(0.99, particles_cfg_raw.get("smoothing", 0.65))))
         onset = float(feats.get("onset", 0.0) or 0.0)
         beat = float(feats.get("beat", 0.0) or 0.0)
-        particle_audio_raw = float(
-            max(0.0, min(1.0, max(kick_pow, bass, onset * 0.9, beat * 0.95)))
-        )
-        particle_audio_env = _smooth_env(particle_audio_env, particle_audio_raw, ps_smoothing)
-        
-        spawn_mode = str(particles_cfg_raw.get("spawnMode", "always") or "always")
         spawn_trigger = str(particles_cfg_raw.get("spawnTrigger", "both") or "both")
+        particle_out = integrate_particle_audio(
+            particle_audio_state,
+            ParticleAudioStepInput(bass=bass, kick_pow=kick_pow, onset=onset, beat=beat),
+            ParticleAudioConfig(smoothing=ps_smoothing, spawn_trigger=spawn_trigger),
+            dt=dt,
+        )
+        particle_audio_env = particle_out.particle_audio_env
+        p_trigger_env = particle_out.p_trigger_env
+
+        spawn_mode = str(particles_cfg_raw.get("spawnMode", "always") or "always")
         spawn_threshold = float(particles_cfg_raw.get("spawnThreshold", 0.15) or 0.15)
         spawn_threshold = float(max(0.0, min(1.0, spawn_threshold)))
-        kick_like = float(max(kick_pow, beat))
-        bass_like = float(max(bass, onset * 0.85, particle_audio_raw * 0.65))
-        if spawn_trigger == "kick":
-            trig_raw = kick_like
-        elif spawn_trigger == "bass":
-            trig_raw = bass_like
-        else:
-            trig_raw = float(max(kick_like, bass_like))
-        trig_raw = float(max(0.0, min(1.0, trig_raw)))
-        p_trigger_env = _smooth_env(p_trigger_env, trig_raw, ps_smoothing)
 
         if spawn_mode == "reactiveOnly" and p_trigger_env < spawn_threshold:
             spawn_rate = 0.0
@@ -4481,7 +5208,7 @@ def run_live_preview(opts: GpuOptions) -> int:
                 logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
                 
                 l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
-                prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state_x), l_pos[1] - float(h)*0.5 + float(shake_state_y))
+                prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_out.x), l_pos[1] - float(h)*0.5 + float(shake_out.y))
             tex_logo.use(location=1)
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
 

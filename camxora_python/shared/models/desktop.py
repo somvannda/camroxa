@@ -48,6 +48,7 @@ class VideoExportState(BaseModel):
     total_jobs: int = Field(default=0, alias="totalJobs")
     completed_jobs: int = Field(default=0, alias="completedJobs")
     progress_percent: int | None = Field(default=None, alias="progressPercent")
+    video_codec: str | None = Field(default=None, alias="videoCodec")
     estimated_remaining_sec: int | None = Field(default=None, alias="estimatedRemainingSec")
     started_at_ms: int | None = Field(default=None, alias="startedAtMs")
     last_output_path: str | None = Field(default=None, alias="lastOutputPath")

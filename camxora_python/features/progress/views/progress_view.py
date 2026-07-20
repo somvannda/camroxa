@@ -25,6 +25,7 @@ from features.progress.widgets.stats_row import ProgressStatsRow
 from shared.lib.formatting import today_ymd
 from shared.lib.manual_asset_paths import ManualAssetInspection, manual_inspection_key, normalize_image_source_mode
 from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, progress_runtime_key
+from shared.models.auth import ProfileResponse
 from shared.models.platform import (
     ProgressFilters,
     ProgressRow,
@@ -32,6 +33,9 @@ from shared.models.platform import (
 )
 from shared.services.file_service import ensure_directory, open_path
 from shared.services.platform_api import PlatformApi
+from shared.services.video_pipeline_coordinator import get_video_pipeline_coordinator
+from shared.services.video_workspace_service import get_video_workspace_service
+from shared.services.workspace_cache import WorkspaceCache
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import (
@@ -78,10 +82,17 @@ class ProgressView(PollablePageMixin, QScrollArea):
 
     poll_interval_ms = DEFAULT_POLL_MS
 
-    def __init__(self, api: PlatformApi, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        api: PlatformApi,
+        parent: QWidget | None = None,
+        *,
+        cache: WorkspaceCache | None = None,
+    ) -> None:
         QScrollArea.__init__(self, parent)
         self._init_pollable()
         self._api = api
+        self._cache = cache or WorkspaceCache()
         self._worker: WorkflowLoadWorker | None = None
         self._settings_worker: SettingsWorker | None = None
         self._inspection_worker: ManualInspectionWorker | None = None
@@ -97,6 +108,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._is_error = False
         self._ever_loaded = False
         self._syncing_batch_id = ""
+        self._progress_load_error = ""
+        self._selected_entry: EffectiveProgressRow | None = None
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
 
@@ -171,6 +184,12 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._meta_label.setWordWrap(True)
         root.addWidget(self._meta_label)
 
+        self._export_validation_label = QLabel("")
+        self._export_validation_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._export_validation_label.setWordWrap(True)
+        self._export_validation_label.hide()
+        root.addWidget(self._export_validation_label)
+
         self._error_banner = ProgressErrorBanner()
         self._error_banner.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self._error_banner.hide()
@@ -188,6 +207,9 @@ class ProgressView(PollablePageMixin, QScrollArea):
             lambda row: self._run_video_pipeline_action(row, "force_export")
         )
         self._rows_card.rebuild_export_requested.connect(
+            lambda row: self._run_video_pipeline_action(row, "rebuild_export")
+        )
+        self._rows_card.start_export_requested.connect(
             lambda row: self._run_video_pipeline_action(row, "rebuild_export")
         )
         self._rows_card.start_merge_requested.connect(
@@ -335,9 +357,12 @@ class ProgressView(PollablePageMixin, QScrollArea):
 
     def _on_row_selected(self, entry: object) -> None:
         if isinstance(entry, EffectiveProgressRow):
+            self._selected_entry = entry
             self._detail_card.set_entry(entry)
         else:
+            self._selected_entry = None
             self._detail_card.set_entry(None)
+        self._update_export_validation()
 
     def _enter_loading_state(self) -> None:
         self._loading = True
@@ -348,9 +373,10 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._stats_row.set_summary_counts(active=0, converter=0, waiting=0, failed=0)
         self._update_meta_label(0)
 
-    def _on_failed(self, _message: str) -> None:
+    def _on_failed(self, message: str) -> None:
         self._loading = False
         self._is_error = True
+        self._progress_load_error = str(message or "").strip()
         self._error_banner.show()
         if self._rows:
             self._render()
@@ -358,7 +384,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows = []
         self._runtime_by_key = {}
         self._manual_inspections = {}
-        self._summary_label.setText(f"Unable to load progress rows. {_message}")
+        self._summary_label.setText(f"Unable to load progress rows. {message}")
         self._rows_card.show_empty()
         self._stats_row.set_summary_counts(active=0, converter=0, waiting=0, failed=0)
         self._update_meta_label(0)
@@ -368,6 +394,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
             return
         self._loading = False
         self._is_error = False
+        self._progress_load_error = ""
         self._ever_loaded = True
         self._error_banner.hide()
         self._rows = payload.response.rows
@@ -415,6 +442,44 @@ class ProgressView(PollablePageMixin, QScrollArea):
     def _render(self) -> None:
         self._update_stats()
         self._render_table()
+        self._update_export_validation()
+
+    def _profile_for_row(self, row: ProgressRow | None) -> ProfileResponse | None:
+        if row is None:
+            return None
+        _me, profiles, *_rest = self._cache.snapshot_core()
+        if not profiles:
+            return None
+        profile_id = str(row.meta.profile_id or "").strip()
+        for profile in profiles:
+            if str(profile.id) == profile_id:
+                return profile
+        return None
+
+    def _update_export_validation(self) -> None:
+        from features.video.lib.export_readiness import evaluate_video_export_readiness
+
+        entry = self._selected_entry
+        if entry is None:
+            self._export_validation_label.hide()
+            return
+
+        coordinator = get_video_pipeline_coordinator()
+        auth_blocked = bool(coordinator is not None and coordinator.auth_blocked())
+        readiness = evaluate_video_export_readiness(
+            entry.row,
+            self._profile_for_row(entry.row),
+            workspace=get_video_workspace_service().get_workspace_state(),
+            progress_load_error=self._progress_load_error if self._is_error else None,
+            auth_blocked=auth_blocked,
+        )
+        if readiness.ready:
+            self._export_validation_label.hide()
+            return
+
+        lines = "\n".join(f"• {issue}" for issue in readiness.issues)
+        self._export_validation_label.setText(f"Export not ready:\n{lines}")
+        self._export_validation_label.show()
 
     def _render_table(self) -> None:
         filtered = self._filtered_effective_rows()
@@ -431,9 +496,17 @@ class ProgressView(PollablePageMixin, QScrollArea):
 
     def _update_meta_label(self, visible_count: int) -> None:
         stage_label = self._stage_filter.currentText()
-        row_suffix = "" if visible_count == 1 else "s"
+        loaded_count = len(self._rows)
+        visible_suffix = "" if visible_count == 1 else "s"
+        if loaded_count and visible_count != loaded_count:
+            loaded_suffix = "" if loaded_count == 1 else "s"
+            self._meta_label.setText(
+                f"{visible_count} visible row{visible_suffix} · "
+                f"{loaded_count} loaded row{loaded_suffix} · {stage_label}"
+            )
+            return
         self._meta_label.setText(
-            f"{visible_count} visible row{row_suffix} · {stage_label}"
+            f"{visible_count} visible row{visible_suffix} · {stage_label}"
         )
 
     def _update_stats(self) -> None:
@@ -676,7 +749,20 @@ class ProgressView(PollablePageMixin, QScrollArea):
         if row is None:
             self._show_retry_notice("Select a run before starting video work.", tone="warning")
             return
-        from shared.services.video_pipeline_coordinator import get_video_pipeline_coordinator
+        from features.video.lib.export_readiness import evaluate_video_export_readiness
+
+        readiness = evaluate_video_export_readiness(
+            row,
+            self._profile_for_row(row),
+            workspace=get_video_workspace_service().get_workspace_state(),
+            progress_load_error=self._progress_load_error if self._is_error else None,
+            auth_blocked=False,
+        )
+        if not readiness.ready:
+            detail = "\n".join(f"• {issue}" for issue in readiness.issues)
+            self._show_retry_notice(f"Export not ready:\n{detail}", tone="warning")
+            self._update_export_validation()
+            return
 
         coordinator = get_video_pipeline_coordinator()
         if coordinator is None:

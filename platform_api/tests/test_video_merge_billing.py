@@ -17,6 +17,7 @@ from platform_api.services.usage_enforcement_service import UsageEnforcementServ
 def test_quota_operation_type_video_and_merge() -> None:
     assert quota_operation_type("video") == "video"
     assert quota_operation_type("video_export") == "video"
+    assert quota_operation_type("video_manual") == "video"
     assert quota_operation_type("video_merge") == "video_merge"
     assert quota_operation_type("auto_merge") == "video_merge"
     assert counts_toward_video_quota("video")

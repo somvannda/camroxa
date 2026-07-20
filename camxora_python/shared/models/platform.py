@@ -15,6 +15,9 @@ class DailyUsage(BaseModel):
     songs: int = 0
     images: int = 0
     videos: int = 0
+    studio_exports: int = 0
+    manual_exports: int = 0
+    youtube_uploads: int = 0
 
 
 class RecentActivity(BaseModel):
@@ -36,8 +39,14 @@ class DashboardStatsResponse(BaseModel):
     drafts_remaining: int | None = None
     drafts_quota: int | None = None
     images_generated: int = 0
+    studio_exports: int = 0
+    manual_exports: int = 0
+    youtube_uploads: int = 0
     videos_generated: int = 0
     videos_uploaded: int = 0
+    avg_studio_export_ms: int | None = None
+    avg_manual_export_ms: int | None = None
+    last_export_at: datetime | None = None
     usage_by_day: list[DailyUsage] = Field(default_factory=list)
     recent_activity: list[RecentActivity] = Field(default_factory=list)
 
@@ -527,6 +536,25 @@ class MusicDownloadSyncItem(BaseModel):
 
 
 class MusicDownloadSyncResponse(BaseModel):
+    updated: int = 0
+
+
+class ProgressLocalSyncItem(BaseModel):
+    batch_id: str
+    profile_id: str
+    role: str = "OK"
+    run_dir: str | None = None
+    long_ready: bool | None = None
+    reel_ready: bool | None = None
+    local_mp3_count: int | None = None
+    expected: int | None = None
+    background_16x9_path: str | None = None
+    background_9x16_path: str | None = None
+    thumbnail_16x9_path: str | None = None
+    thumbnail_9x16_path: str | None = None
+
+
+class ProgressLocalSyncResponse(BaseModel):
     updated: int = 0
 
 

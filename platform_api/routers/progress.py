@@ -5,14 +5,16 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.models.schemas import ProgressListResponse, ProgressRow, ProgressRowMeta
+from platform_api.services.batch_service import BatchService
 from platform_api.services.channel_asset_service import (
     compute_long_ready,
     compute_reel_ready,
@@ -27,6 +29,15 @@ from platform_api.services.video_run_inspection import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["progress"])
+
+
+async def _get_batch_service() -> BatchService:
+    raise NotImplementedError(
+        "BatchService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
 
 
 def _utc_now() -> datetime:
@@ -815,3 +826,37 @@ async def list_progress_rows(
     now = _utc_now()
     summary = f"{len(rows)} rows loaded · refreshed at {_iso_time(now)}"
     return ProgressListResponse(rows=rows, summary=summary, updated_at=now)
+
+
+class ProgressLocalSyncItemRequest(BaseModel):
+    batch_id: str
+    profile_id: str
+    role: str = "OK"
+    run_dir: str | None = None
+    long_ready: bool | None = None
+    reel_ready: bool | None = None
+    local_mp3_count: int | None = None
+    expected: int | None = None
+    background_16x9_path: str | None = None
+    background_9x16_path: str | None = None
+    thumbnail_16x9_path: str | None = None
+    thumbnail_9x16_path: str | None = None
+
+
+class ProgressLocalSyncRequest(BaseModel):
+    items: list[ProgressLocalSyncItemRequest] = Field(default_factory=list)
+
+
+class ProgressLocalSyncResponse(BaseModel):
+    updated: int = 0
+
+
+@router.post("/progress/sync-local", response_model=ProgressLocalSyncResponse, status_code=200)
+async def sync_local_progress(
+    request: ProgressLocalSyncRequest,
+    service: BatchServiceDep,
+    ctx: AuthContext = Depends(get_current_user),
+) -> ProgressLocalSyncResponse:
+    payload = [item.model_dump(exclude_none=True) for item in request.items]
+    updated = await service.sync_local_progress_from_desktop(user_id=ctx.user_id, items=payload)
+    return ProgressLocalSyncResponse(updated=updated)

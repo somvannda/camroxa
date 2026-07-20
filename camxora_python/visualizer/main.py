@@ -30,7 +30,30 @@ def _stem(p: str) -> str:
     return Path(p).stem or "output"
 
 
+def normalize_visualizer_job_argv(argv: list[str]) -> list[str]:
+    """Strip launcher flags so argparse sees mp3_path as the first positional arg."""
+    parts = [str(part) for part in argv if part is not None]
+    if len(parts) > 1 and parts[1] == "--visualizer":
+        return [parts[0], *parts[2:]]
+    if len(parts) > 2 and parts[1] == "-m" and parts[2] == "visualizer.main":
+        return ["visualizer.main", *parts[3:]]
+    return parts
+
+
 def main() -> int:
+    return run_visualizer_argv(sys.argv)
+
+
+def run_visualizer_argv(argv: list[str]) -> int:
+    saved_argv = sys.argv[:]
+    sys.argv = list(argv)
+    try:
+        return _main_impl()
+    finally:
+        sys.argv = saved_argv
+
+
+def _main_impl() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mp3_path")
     parser.add_argument("template_path")

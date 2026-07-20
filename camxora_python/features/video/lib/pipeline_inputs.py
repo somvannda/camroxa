@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
+from shared.lib.channel_asset_paths import (
+    compute_long_ready,
+    compute_reel_ready,
+    count_channel_mp3_files,
+    resolve_local_channel_asset_paths,
+)
 from shared.models.auth import ProfileResponse
 from shared.models.platform import ProgressRow
 
@@ -45,6 +52,77 @@ def filter_pipeline_progress_rows(rows: list[ProgressRow]) -> list[ProgressRow]:
             continue
         filtered.append(row)
     return filtered
+
+
+def resolve_local_video_pipeline_inputs(
+    row: ProgressRow | None,
+    branch: VideoPipelineBranch,
+    profile: ProfileResponse | None = None,
+) -> ResolvedVideoPipelineInputs:
+    """Resolve pipeline assets from the local run folder (disk truth for automation)."""
+    meta = row.meta if row is not None else None
+    is_long = branch == "long"
+    run_dir = str(meta.run_dir or "").strip() if meta is not None else ""
+    recommended_template_id = (
+        (profile.video_template_id if is_long else profile.reel_template_id) if profile is not None else None
+    )
+    if not run_dir:
+        return ResolvedVideoPipelineInputs(
+            branch=branch,
+            ready=False,
+            run_dir=None,
+            source_mode=meta.source_mode if meta is not None else None,
+            background_path=None,
+            thumbnail_path=None,
+            recommended_template_id=recommended_template_id,
+            recommended_template_label="Long template" if is_long else "Reel template",
+        )
+
+    assets = resolve_local_channel_asset_paths(run_dir, channel_role=meta.role if meta is not None else None)
+    background_path = assets["background_16x9_path"] if is_long else assets["background_9x16_path"]
+    thumbnail_path = assets["thumbnail_16x9_path"] if is_long else assets["thumbnail_9x16_path"]
+    ready = compute_long_ready(assets) if is_long else compute_reel_ready(assets)
+    if ready:
+        for path in (background_path, thumbnail_path):
+            if not path or not Path(str(path)).is_file():
+                ready = False
+                break
+
+    return ResolvedVideoPipelineInputs(
+        branch=branch,
+        ready=ready,
+        run_dir=run_dir,
+        source_mode=meta.source_mode if meta is not None else None,
+        background_path=background_path,
+        thumbnail_path=thumbnail_path,
+        recommended_template_id=recommended_template_id,
+        recommended_template_label="Long template" if is_long else "Reel template",
+    )
+
+
+def local_audio_downloads_ready(row: ProgressRow) -> bool:
+    """True when local MP3 files satisfy expected count (disk truth for export/automation)."""
+    from shared.lib.progress_local_sync import local_mp3_files_ready
+
+    meta = row.meta
+    expected = max(1, int(meta.expected or 0))
+    run_dir = str(meta.run_dir or "").strip()
+    if run_dir and local_mp3_files_ready(row):
+        return True
+
+    downloaded = max(0, int(meta.saved or 0))
+    download_ready = max(0, int(meta.download_ready or 0))
+    pending_download = max(0, int(meta.download_pending or 0))
+    if not (
+        downloaded >= expected
+        and download_ready >= expected
+        and pending_download <= 0
+    ):
+        return False
+
+    if not run_dir:
+        return True
+    return count_channel_mp3_files(run_dir, meta.role) >= expected
 
 
 def resolve_video_pipeline_inputs(

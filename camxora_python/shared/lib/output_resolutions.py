@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 OUTPUT_RESOLUTION_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("1024x768", "Draft export (4:3) — 1024×768 — fast preview-quality"),
     ("1280x720", "Landscape 720p (16:9) — 1280×720"),
     ("1920x1080", "Landscape 1080p (16:9) — 1920×1080"),
     ("1080x1920", "Shorts/Reels (9:16) — 1080×1920"),

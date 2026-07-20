@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -48,6 +49,7 @@ class ExportQueuePanel(QWidget):
     auto_merge_toggled = Signal(bool)
     shuffle_merge_toggled = Signal(bool)
     speed_mode_changed = Signal(str)
+    export_tier_changed = Signal(str)
     fps_changed = Signal(int)
     workers_changed = Signal(int)
 
@@ -67,9 +69,6 @@ class ExportQueuePanel(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
-        queue_title = QLabel("Export Queue")
-        queue_title.setObjectName(SUBTITLE_LABEL_ID)
-        root.addWidget(queue_title)
         columns = QHBoxLayout()
         columns.setContentsMargins(0, 0, 0, 0)
         columns.setSpacing(10)
@@ -103,16 +102,19 @@ class ExportQueuePanel(QWidget):
         track_layout.addWidget(self._empty_tracks)
         columns.addWidget(track_card, 1)
 
-        right_column = QVBoxLayout()
+        # Wrap the right stack in a widget so stretch 1:1 matches the track card width.
+        right_host = QWidget()
+        right_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        right_column = QVBoxLayout(right_host)
         right_column.setContentsMargins(0, 0, 0, 0)
         right_column.setSpacing(8)
-        columns.addLayout(right_column, 1)
+        columns.addWidget(right_host, 1)
 
         actions_card = QFrame()
         actions_card.setObjectName("account_card")
         actions_layout = QVBoxLayout(actions_card)
-        actions_layout.setContentsMargins(12, 12, 12, 12)
-        actions_layout.setSpacing(8)
+        actions_layout.setContentsMargins(12, 10, 12, 10)
+        actions_layout.setSpacing(6)
         actions_title = QLabel("Actions")
         actions_title.setObjectName(SUBTITLE_LABEL_ID)
         actions_layout.addWidget(actions_title)
@@ -127,8 +129,12 @@ class ExportQueuePanel(QWidget):
         self._open_file_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._open_file_btn.clicked.connect(self.open_output_file_requested.emit)
         # python_app-style toggle: starts the batch, becomes Stop while running.
-        self._export_toggle_btn = QPushButton("Export")
+        self._export_toggle_btn = QPushButton("Manual Export")
         self._export_toggle_btn.setObjectName(START_BUTTON_ID)
+        self._export_toggle_btn.setToolTip(
+            "Manual export: render the selected MP3 list on this Video page.\n"
+            "Counts as Manual exports (not Studio/pipeline)."
+        )
         self._export_toggle_btn.clicked.connect(self._on_export_toggle_clicked)
 
         export_row = QHBoxLayout()
@@ -143,14 +149,10 @@ class ExportQueuePanel(QWidget):
         helper_row.addWidget(self._open_file_btn, 1)
         actions_layout.addLayout(helper_row)
 
-        # Compact options: checkboxes left, fixed-width controls right (no stretch).
-        options_row = QHBoxLayout()
-        options_row.setContentsMargins(0, 0, 0, 0)
-        options_row.setSpacing(16)
-
-        toggles_col = QVBoxLayout()
-        toggles_col.setContentsMargins(0, 0, 0, 0)
-        toggles_col.setSpacing(6)
+        # Merge toggles on their own row.
+        toggles_row = QHBoxLayout()
+        toggles_row.setContentsMargins(0, 0, 0, 0)
+        toggles_row.setSpacing(16)
         self._auto_merge_toggle = QCheckBox("Auto merge MP4")
         self._auto_merge_toggle.toggled.connect(self._on_auto_merge_toggled)
         self._shuffle_merge_toggle = QCheckBox("Shuffle merge")
@@ -159,23 +161,38 @@ class ExportQueuePanel(QWidget):
             "When unchecked, merge follows the track list order."
         )
         self._shuffle_merge_toggle.toggled.connect(self._on_shuffle_merge_toggled)
-        toggles_col.addWidget(self._auto_merge_toggle)
-        toggles_col.addWidget(self._shuffle_merge_toggle)
-        toggles_col.addStretch(1)
-        options_row.addLayout(toggles_col, 0)
+        toggles_row.addWidget(self._auto_merge_toggle)
+        toggles_row.addWidget(self._shuffle_merge_toggle)
+        toggles_row.addStretch(1)
+        actions_layout.addLayout(toggles_row)
 
-        fields_host = QWidget()
+        # 2 dropdowns per row — compact controls.
+        fields_host = QFrame()
         fields_host.setObjectName("video_export_fields")
-        fields_col = QVBoxLayout(fields_host)
-        fields_col.setContentsMargins(0, 0, 0, 0)
-        fields_col.setSpacing(6)
+        fields_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        fields_grid = QGridLayout(fields_host)
+        fields_grid.setContentsMargins(0, 0, 0, 0)
+        fields_grid.setHorizontalSpacing(8)
+        fields_grid.setVerticalSpacing(4)
+        fields_grid.setColumnStretch(1, 1)
+        fields_grid.setColumnStretch(3, 1)
+
+        self._tier_combo = QComboBox()
+        self._tier_combo.addItem("Draft (720p)", "draft")
+        self._tier_combo.addItem("Standard (1080p)", "standard")
+        self._tier_combo.addItem("Master (custom)", "master")
+        self._tier_combo.setToolTip(
+            "Draft is fastest for pipeline-style batch exports.\n"
+            "Standard is the default for manual exports.\n"
+            "Master uses your resolution, FPS, and speed settings."
+        )
+        self._tier_combo.currentIndexChanged.connect(self._on_tier_changed)
 
         self._speed_combo = QComboBox()
-        self._speed_combo.addItem("Balanced", "balanced")
         self._speed_combo.addItem("Fast", "fast")
+        self._speed_combo.addItem("Balanced", "balanced")
         self._speed_combo.addItem("Very Fast", "very_fast")
         self._speed_combo.currentIndexChanged.connect(self._on_speed_changed)
-        fields_col.addLayout(self._compact_field_row("Speed", self._speed_combo))
 
         self._fps_combo = QComboBox()
         for fps_value in (24, 30, 48, 60):
@@ -185,23 +202,28 @@ class ExportQueuePanel(QWidget):
             "Default 24 is fastest."
         )
         self._fps_combo.currentIndexChanged.connect(self._on_fps_changed)
-        fields_col.addLayout(self._compact_field_row("FPS", self._fps_combo))
 
         self._workers_spin = QSpinBox()
         self._workers_spin.setRange(1, 10)
         self._workers_spin.valueChanged.connect(self._on_workers_changed)
-        fields_col.addLayout(self._compact_field_row("Workers", self._workers_spin))
 
-        options_row.addWidget(fields_host, 0)
-        options_row.addStretch(1)
-        actions_layout.addLayout(options_row)
-        right_column.addWidget(actions_card)
+        # Row 1: Tier + Speed · Row 2: FPS + Workers
+        self._place_export_field(fields_grid, 0, 0, "Tier", self._tier_combo)
+        self._place_export_field(fields_grid, 0, 2, "Speed", self._speed_combo)
+        self._place_export_field(fields_grid, 1, 0, "FPS", self._fps_combo)
+        self._place_export_field(fields_grid, 1, 2, "Workers", self._workers_spin)
+
+        actions_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        actions_layout.addWidget(fields_host)
+        actions_layout.addStretch(1)
+        right_column.addWidget(actions_card, 1)
 
         status_card = QFrame()
         status_card.setObjectName("account_card")
+        status_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         status_layout = QVBoxLayout(status_card)
-        status_layout.setContentsMargins(12, 12, 12, 12)
-        status_layout.setSpacing(6)
+        status_layout.setContentsMargins(10, 8, 10, 8)
+        status_layout.setSpacing(4)
         status_title = QLabel("Status")
         status_title.setObjectName(SUBTITLE_LABEL_ID)
         status_layout.addWidget(status_title)
@@ -209,11 +231,13 @@ class ExportQueuePanel(QWidget):
         self._progress.setRange(0, 100)
         self._progress.setTextVisible(True)
         self._progress.setFormat("Overall: 0%")
+        self._progress.setFixedHeight(18)
         status_layout.addWidget(self._progress)
         self._merge_progress = QProgressBar()
         self._merge_progress.setRange(0, 0)  # busy indicator while merging
         self._merge_progress.setTextVisible(True)
         self._merge_progress.setFormat("Merging…")
+        self._merge_progress.setFixedHeight(18)
         self._merge_progress.hide()
         status_layout.addWidget(self._merge_progress)
         self._stop_merge_btn = QPushButton("Stop Merge")
@@ -222,48 +246,51 @@ class ExportQueuePanel(QWidget):
         self._stop_merge_btn.hide()
         status_layout.addWidget(self._stop_merge_btn)
 
-        current_track_title = QLabel("Current Track")
-        current_track_title.setObjectName(SUBTITLE_LABEL_ID)
-        status_layout.addWidget(current_track_title)
-        self._current_track = QLabel("")
+        # Compact single-line fields — no section titles (saves vertical room for Actions).
+        self._current_track = QLabel("Track: —")
+        self._current_track.setObjectName(SUBTITLE_LABEL_ID)
+        self._current_track.setWordWrap(False)
         status_layout.addWidget(self._current_track)
 
-        details_title = QLabel("Details")
-        details_title.setObjectName(SUBTITLE_LABEL_ID)
-        status_layout.addWidget(details_title)
         self._status_message = QLabel("Ready")
         self._status_message.setObjectName(SUBTITLE_LABEL_ID)
         self._status_message.setWordWrap(True)
         status_layout.addWidget(self._status_message)
 
-        output_title = QLabel("Output")
-        output_title.setObjectName(SUBTITLE_LABEL_ID)
-        status_layout.addWidget(output_title)
-        self._detail_output = QLabel("Output Folder: Not selected")
+        self._detail_output = QLabel("Output: Not selected")
         self._detail_output.setObjectName(SUBTITLE_LABEL_ID)
         self._detail_output.setWordWrap(True)
         status_layout.addWidget(self._detail_output)
-        right_column.addWidget(status_card)
-        right_column.addStretch()
+        right_column.addWidget(status_card, 0)
 
-    _EXPORT_FIELD_HEIGHT = 28
+    _EXPORT_FIELD_HEIGHT = 24
+    _EXPORT_LABEL_WIDTH = 52
+    _EXPORT_CONTROL_MIN_WIDTH = 100
 
-    def _compact_field_row(self, label_text: str, control: QWidget) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
+    def _place_export_field(
+        self,
+        grid: QGridLayout,
+        row: int,
+        col: int,
+        label_text: str,
+        control: QWidget,
+    ) -> None:
         label = QLabel(label_text)
         label.setObjectName(SUBTITLE_LABEL_ID)
-        label.setFixedWidth(56)
+        label.setFixedWidth(self._EXPORT_LABEL_WIDTH)
         label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
-        control.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        control.setFixedWidth(118)
-        control.setMinimumHeight(self._EXPORT_FIELD_HEIGHT)
         control.setFixedHeight(self._EXPORT_FIELD_HEIGHT)
-        row.addWidget(label, 0, Qt.AlignmentFlag.AlignVCenter)
-        row.addWidget(control, 0, Qt.AlignmentFlag.AlignVCenter)
-        row.addStretch(1)
-        return row
+        control.setMinimumWidth(self._EXPORT_CONTROL_MIN_WIDTH)
+        control.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        if isinstance(control, QComboBox):
+            control.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            control.setMinimumContentsLength(6)
+            view = control.view()
+            if view is not None:
+                view.setMinimumWidth(140)
+                view.setTextElideMode(Qt.TextElideMode.ElideNone)
+        grid.addWidget(label, row, col, Qt.AlignmentFlag.AlignVCenter)
+        grid.addWidget(control, row, col + 1, Qt.AlignmentFlag.AlignVCenter)
 
     def _on_auto_merge_toggled(self, checked: bool) -> None:
         if not self._binding_options:
@@ -273,10 +300,16 @@ class ExportQueuePanel(QWidget):
         if not self._binding_options:
             self.shuffle_merge_toggled.emit(bool(checked))
 
+    def _on_tier_changed(self, _index: int) -> None:
+        if self._binding_options:
+            return
+        tier = str(self._tier_combo.currentData() or "standard")
+        self.export_tier_changed.emit(tier)
+
     def _on_speed_changed(self, _index: int) -> None:
         if self._binding_options:
             return
-        mode = str(self._speed_combo.currentData() or "balanced")
+        mode = str(self._speed_combo.currentData() or "fast")
         self.speed_mode_changed.emit(mode)
 
     def _on_fps_changed(self, _index: int) -> None:
@@ -364,7 +397,8 @@ class ExportQueuePanel(QWidget):
         *,
         busy: bool = False,
         stop_export_pending: bool = False,
-        speed_mode: str = "balanced",
+        speed_mode: str = "fast",
+        export_tier: str = "standard",
     ) -> None:
         selected_mp3 = ""
         export = VideoExportState()
@@ -407,7 +441,7 @@ class ExportQueuePanel(QWidget):
             self._export_toggle_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         else:
             self._export_toggle_btn.setEnabled(has_tracks and not busy)
-            self._export_toggle_btn.setText("Starting Export..." if busy else "Export")
+            self._export_toggle_btn.setText("Starting Export..." if busy else "Manual Export")
             self._export_toggle_btn.setObjectName(START_BUTTON_ID)
         self._export_toggle_btn.style().unpolish(self._export_toggle_btn)
         self._export_toggle_btn.style().polish(self._export_toggle_btn)
@@ -420,13 +454,16 @@ class ExportQueuePanel(QWidget):
         try:
             self._auto_merge_toggle.setChecked(bool(export.auto_merge))
             self._shuffle_merge_toggle.setChecked(bool(export.shuffle_merge))
-            speed_index = self._speed_combo.findData(str(speed_mode or "balanced"))
+            tier_index = self._tier_combo.findData(str(export_tier or "standard"))
+            self._tier_combo.setCurrentIndex(tier_index if tier_index >= 0 else 1)
+            speed_index = self._speed_combo.findData(str(speed_mode or "fast"))
             self._speed_combo.setCurrentIndex(speed_index if speed_index >= 0 else 0)
             fps_index = self._fps_combo.findData(int(export.fps or 24))
             self._fps_combo.setCurrentIndex(fps_index if fps_index >= 0 else 0)
             self._workers_spin.setValue(max(1, min(10, int(export.workers or 1))))
             self._auto_merge_toggle.setEnabled(not running)
             self._shuffle_merge_toggle.setEnabled(not running)
+            self._tier_combo.setEnabled(not running)
             self._speed_combo.setEnabled(not running)
             self._fps_combo.setEnabled(not running)
             self._workers_spin.setEnabled(not running)
@@ -445,10 +482,10 @@ class ExportQueuePanel(QWidget):
         self._stop_merge_btn.setVisible(merging and not stop_export_pending)
 
         current_track = Path(selected_mp3).name if (running and selected_mp3.strip()) else ""
-        self._current_track.setText(current_track or "—")
+        self._current_track.setText(f"Track: {current_track}" if current_track else "Track: —")
         self._status_message.setText(export.current_status or "Ready")
 
-        output_lines = [f"Output Folder: {export.output_dir or 'Not selected'}"]
+        output_lines = [f"Output: {export.output_dir or 'Not selected'}"]
         if export.current_output_path:
             output_lines.append(f"Target: {export.current_output_path}")
         elif export.last_output_path:

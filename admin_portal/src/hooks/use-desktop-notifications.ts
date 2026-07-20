@@ -2,14 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import httpClient from '@/lib/http-client';
 
-export type SoftwareUpdateConfig = {
-  version: string;
-  download_url: string;
-  mandatory: boolean;
-  release_notes: string;
-  published_at: string | null;
-};
-
 export type UpdateSoftwareUpdateConfigInput = {
   version: string;
   download_url: string;
@@ -17,10 +9,32 @@ export type UpdateSoftwareUpdateConfigInput = {
   release_notes: string;
 };
 
+export type SoftwareUpdateConfig = {
+  version: string;
+  download_url: string;
+  mandatory: boolean;
+  release_notes: string;
+  published_at: string | null;
+  is_published?: boolean;
+};
+
+export type PublishSoftwareUpdateInput = {
+  notify_desktop_users?: boolean;
+  create_changelog?: boolean;
+};
+
 export type PublishSoftwareUpdateResponse = {
   recipients: number;
   version: string;
   published_at: string;
+  changelog_slug?: string | null;
+};
+
+export type PublishInstallerInput = {
+  release_notes?: string;
+  mandatory?: boolean;
+  notify_desktop_users?: boolean;
+  create_changelog?: boolean;
 };
 
 export type UploadDesktopSoftwareUpdateResponse = {
@@ -35,6 +49,8 @@ export type DesktopInstallerFile = {
   download_url: string;
   size_bytes: number;
   modified_at: string;
+  version?: string | null;
+  download_count?: number;
 };
 
 export type PushNotificationHistoryItem = {
@@ -79,10 +95,43 @@ export function useUpdateSoftwareUpdateConfig() {
 export function usePublishSoftwareUpdate() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      httpClient.post<PublishSoftwareUpdateResponse>('/api/v1/admin/desktop/software-update/publish'),
+    mutationFn: (input?: PublishSoftwareUpdateInput) =>
+      httpClient.post<PublishSoftwareUpdateResponse>(
+        '/api/v1/admin/desktop/software-update/publish',
+        input ?? {},
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+      queryClient.invalidateQueries({ queryKey: ['blog-posts'] });
+    },
+  });
+}
+
+export function useUnpublishSoftwareUpdate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      httpClient.post<{ version: string; is_published: boolean }>(
+        '/api/v1/admin/desktop/software-update/unpublish',
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+    },
+  });
+}
+
+export function usePublishDesktopInstaller() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { filename: string; body: PublishInstallerInput }) =>
+      httpClient.post<PublishSoftwareUpdateResponse>(
+        `/api/v1/admin/desktop/software-update/installers/${encodeURIComponent(payload.filename)}/publish`,
+        payload.body,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+      queryClient.invalidateQueries({ queryKey: ['desktop-installers'] });
+      queryClient.invalidateQueries({ queryKey: ['blog-posts'] });
     },
   });
 }

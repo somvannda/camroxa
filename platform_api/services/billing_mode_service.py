@@ -64,11 +64,28 @@ def quota_operation_type(operation_type: str) -> str:
         "channel_setup",
     ):
         return "background_image"
-    if normalized in ("video", "video_generation", "video_export"):
+    if normalized in ("video", "video_generation", "video_export", "video_manual"):
         return "video"
     if normalized in ("video_merge", "merge", "auto_merge"):
         return "video_merge"
     return normalized or "music"
+
+
+def usage_storage_type(operation_type: str) -> str:
+    """Counter key written to ``usage_tracking`` (may be finer than quota pool).
+
+    Studio/pipeline exports stay on ``video``. Manual Video-page exports use
+    ``video_manual`` so dashboards can split the two while sharing one quota.
+    """
+    normalized = str(operation_type or "").strip().lower()
+    if normalized == "video_manual":
+        return "video_manual"
+    return quota_operation_type(normalized)
+
+
+def video_usage_counter_types() -> tuple[str, ...]:
+    """All usage_tracking keys that consume monthly/daily video allowance."""
+    return ("video", "video_manual")
 
 
 # One Suno submit returns Primary + Secondary channel tracks — two track files.
@@ -188,6 +205,9 @@ async def subscription_covers_operation(
 
     if quota_op == "video":
         video_count = await usage_repo.get_monthly_count(user_id, "video", period_start)
+        video_count += await usage_repo.get_monthly_count(
+            user_id, "video_manual", period_start
+        )
         return _within(video_count)
 
     if quota_op == "video_merge":

@@ -32,6 +32,12 @@ class ShellFooterBar(QFrame):
         self._env_badge.hide()
         layout.addWidget(self._env_badge)
 
+        self._version_badge = QLabel("")
+        self._version_badge.setObjectName("shell_footer_version_badge")
+        self._version_badge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self._version_badge.hide()
+        layout.addWidget(self._version_badge)
+
         self._credits = QLabel("Credits: --")
         self._credits.setObjectName("shell_footer_metric")
         layout.addWidget(self._credits)
@@ -68,6 +74,17 @@ class ShellFooterBar(QFrame):
         self._env_badge.setText(text)
         self._env_badge.setToolTip(str(tooltip or "").strip())
         self._env_badge.show()
+
+    def set_version_badge(self, label: str | None, *, tooltip: str = "") -> None:
+        text = str(label or "").strip()
+        if not text:
+            self._version_badge.hide()
+            self._version_badge.setText("")
+            self._version_badge.setToolTip("")
+            return
+        self._version_badge.setText(text)
+        self._version_badge.setToolTip(str(tooltip or "").strip())
+        self._version_badge.show()
 
     def _refresh_message_text(self) -> None:
         if not self._full_message:

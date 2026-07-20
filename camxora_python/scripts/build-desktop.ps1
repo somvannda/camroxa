@@ -3,11 +3,20 @@ param(
     [ValidateSet("sandbox", "production")]
     [string]$Environment = "sandbox",
 
+    # Force pip even when deps already import cleanly.
+    [Parameter(Mandatory = $false)]
+    [switch]$ForceInstall,
+
+    # Kept for compatibility; same as default when deps are already present.
     [Parameter(Mandatory = $false)]
     [switch]$SkipInstall,
 
     [Parameter(Mandatory = $false)]
     [switch]$SkipInstallerAssets,
+
+    # Wipe build/ + dist\Camxora before packaging (slow; use after packaging bugs).
+    [Parameter(Mandatory = $false)]
+    [switch]$Clean,
 
     [Parameter(Mandatory = $false)]
     [switch]$BuildInno
@@ -16,6 +25,21 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+
+function Write-Phase([string]$Name) {
+    $script:LastPhase = $Name
+    $script:PhaseStarted = Get-Date
+    Write-Host ""
+    Write-Host ("=== {0} ===" -f $Name)
+}
+
+function Write-PhaseDone {
+    if (-not $script:PhaseStarted) { return }
+    $elapsed = (Get-Date) - $script:PhaseStarted
+    Write-Host ("--- {0} done in {1:N1}s ---" -f $script:LastPhase, $elapsed.TotalSeconds)
+}
+
+$buildStarted = Get-Date
 
 $envFile = if ($Environment -eq "production") { ".env.production" } else { ".env.sandbox" }
 $exampleFile = "$envFile.example"
@@ -41,7 +65,39 @@ Get-Content $envFile | ForEach-Object {
 
 $env:CAMXORA_ENV_FILE = $envFile
 
-if (-not $SkipInstall) {
+function Test-DesktopBuildDeps {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    python -W ignore -c @"
+import importlib
+required = [
+    'PyInstaller', 'PySide6', 'app', 'moderngl', 'pygame', 'glfw',
+    'OpenGL', 'librosa', 'soundfile', 'cv2', 'numpy', 'PIL',
+]
+missing = []
+for name in required:
+    try:
+        importlib.import_module(name)
+    except Exception as exc:
+        missing.append(f'{name}: {exc}')
+if missing:
+    raise SystemExit(1)
+"@
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prevEap
+    return ($code -eq 0)
+}
+
+$shouldInstall = $ForceInstall -or (-not $SkipInstall -and -not (Test-DesktopBuildDeps))
+if ($SkipInstall -and $ForceInstall) {
+    throw "Use either -SkipInstall or -ForceInstall, not both."
+}
+
+if ($shouldInstall) {
+    Write-Phase "pip install"
+    if (-not $ForceInstall) {
+        Write-Host "Dependencies missing or incomplete â€” running pip install (use -ForceInstall to always run)."
+    }
     # PowerShell Stop treats pip stderr WARNINGs as terminating NativeCommandError.
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
@@ -51,14 +107,27 @@ if (-not $SkipInstall) {
     if ($pipCode -ne 0) {
         throw "pip install failed with exit code $pipCode"
     }
+    Write-PhaseDone
+} else {
+    Write-Host "Skipping pip install (deps already importable). Use -ForceInstall to refresh."
 }
+
+$vendorFfmpeg = Join-Path $Root "vendor\ffmpeg\ffmpeg.exe"
+$vendorVc = Join-Path $Root "vendor\vcredist\vc_redist.x64.exe"
+$assetsReady = (Test-Path $vendorFfmpeg) -and (Test-Path $vendorVc)
 
 if (-not $SkipInstallerAssets) {
-    Write-Host "Preparing bundled FFmpeg + VC++ redistributable..."
-    & (Join-Path $PSScriptRoot "prepare-installer-assets.ps1")
+    if ($assetsReady) {
+        Write-Host "Skipping installer asset download (vendor FFmpeg + VC++ already present)."
+    } else {
+        Write-Phase "installer assets"
+        Write-Host "Preparing bundled FFmpeg + VC++ redistributable..."
+        & (Join-Path $PSScriptRoot "prepare-installer-assets.ps1")
+        Write-PhaseDone
+    }
 }
 
-Write-Host "Checking GPU preview imports before packaging..."
+Write-Phase "GPU import check"
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 python -W ignore -c @"
@@ -78,10 +147,30 @@ $ErrorActionPreference = $prevEap
 if ($gpuCheckCode -ne 0) {
     throw "GPU dependency check failed - fix pip install before packaging"
 }
+Write-PhaseDone
 
-if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
-if (Test-Path "dist\Camxora") { Remove-Item -Recurse -Force "dist\Camxora" }
+if ($Clean) {
+    Write-Phase "clean build artifacts"
+    if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+    if (Test-Path "dist\Camxora") { Remove-Item -Recurse -Force "dist\Camxora" }
+    Write-Host "Removed build/ and dist\Camxora (full clean)."
+    Write-PhaseDone
+} else {
+    # Keep build/ so PyInstaller can reuse Analysis TOC. Only refresh the onedir output.
+    if (Test-Path "dist\Camxora") {
+        Write-Host "Removing previous dist\Camxora (keeping build/ cache). Pass -Clean for a full wipe."
+        Remove-Item -Recurse -Force "dist\Camxora"
+    }
+}
 
+$version = (Select-String -Path (Join-Path $Root "pyproject.toml") -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+$versionFile = Join-Path $Root "resources\app-version.txt"
+# utf8NoBOM: Windows PowerShell's "utf8" encoding writes a BOM that breaks semver parsing.
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($versionFile, $version, $utf8NoBom)
+Write-Host "Stamped app version $version into resources/app-version.txt"
+
+Write-Phase "PyInstaller"
 Write-Host "Building Camxora ($Environment)..."
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
@@ -91,6 +180,7 @@ $ErrorActionPreference = $prevEap
 if ($pyInstallerCode -ne 0) {
     throw "PyInstaller failed with exit code $pyInstallerCode"
 }
+Write-PhaseDone
 
 $outDir = Join-Path $Root "dist\Camxora"
 $exe = Join-Path $outDir "Camxora.exe"
@@ -111,6 +201,7 @@ Copy-Item (Join-Path $resourcesSrc "*") $resourcesDest -Force -Recurse
 foreach ($required in @(
     "app-icon.ico",
     "app-logo.svg",
+    "app-version.txt",
     "window-close.svg",
     "window-minimize.svg",
     "window-maximize.svg"
@@ -132,24 +223,26 @@ if (Test-Path $factoryTemplates) {
 }
 
 # Place FFmpeg next to Camxora.exe so resolve_ffmpeg_path finds it after install.
-$vendorFfmpeg = Join-Path $Root "vendor\ffmpeg"
+$vendorFfmpegDir = Join-Path $Root "vendor\ffmpeg"
 $distFfmpeg = Join-Path $outDir "ffmpeg"
-if (Test-Path (Join-Path $vendorFfmpeg "ffmpeg.exe")) {
+if (Test-Path (Join-Path $vendorFfmpegDir "ffmpeg.exe")) {
     New-Item -ItemType Directory -Force -Path $distFfmpeg | Out-Null
-    Copy-Item (Join-Path $vendorFfmpeg "ffmpeg.exe") (Join-Path $distFfmpeg "ffmpeg.exe") -Force
-    if (Test-Path (Join-Path $vendorFfmpeg "ffprobe.exe")) {
-        Copy-Item (Join-Path $vendorFfmpeg "ffprobe.exe") (Join-Path $distFfmpeg "ffprobe.exe") -Force
+    Copy-Item (Join-Path $vendorFfmpegDir "ffmpeg.exe") (Join-Path $distFfmpeg "ffmpeg.exe") -Force
+    if (Test-Path (Join-Path $vendorFfmpegDir "ffprobe.exe")) {
+        Copy-Item (Join-Path $vendorFfmpegDir "ffprobe.exe") (Join-Path $distFfmpeg "ffprobe.exe") -Force
     }
     Write-Host "Bundled FFmpeg into $distFfmpeg"
 }
 
-Write-Host "Verifying package contents..."
+Write-Phase "verify package"
 python (Join-Path $PSScriptRoot "verify-desktop-dist.py") $outDir
 if ($LASTEXITCODE -ne 0) {
     throw "Package verification failed"
 }
+Write-PhaseDone
 
 if ($BuildInno) {
+    Write-Phase "Inno Setup"
     $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
     if (-not $iscc) {
         $candidates = @(
@@ -176,13 +269,16 @@ if ($BuildInno) {
         throw "Inno Setup build failed"
     }
     Write-Host "Installer written to dist\installer\"
+    Write-PhaseDone
 }
 
+$total = (Get-Date) - $buildStarted
 Write-Host ""
-Write-Host "Built $Environment desktop bundle:"
+Write-Host "Built $Environment desktop bundle in $([int]$total.TotalSeconds)s:"
 Write-Host "  $outDir"
 Write-Host "  API: $env:CAMXORA_API_BASE_URL"
 Write-Host "  Portal: $env:CAMXORA_PORTAL_BASE_URL"
 $ffmpegOut = Join-Path $outDir "ffmpeg\ffmpeg.exe"
 Write-Host "  FFmpeg: $ffmpegOut"
 Write-Host "  Ship CamxoraSetup-*.exe (Inno) or the entire dist\Camxora folder."
+Write-Host "  Tip: rebuilds keep build/ cache; use -Clean only when packaging looks stale."

@@ -1,0 +1,30 @@
+{
+  "style": "straight-bars",
+  "renderBaseHeight": 450,
+  "spectrumEnabled": true,
+  "layers": [
+    {
+      "style": "bars",
+      "gravity": "bottom",
+      "curved": false,
+      "mirrored": false,
+      "barWidth": 4,
+      "thickness": 30,
+      "opacity": 0.9,
+      "color": { "mode": "solid", "solidColor": "#7466F1" }
+    }
+  ],
+  "textOverlays": [],
+  "logoSettings": { "enabled": false },
+  "particlesSettings": { "enabled": false },
+  "backgroundSettings": {
+    "motionMode": "none",
+    "reactivity": 0.0
+  },
+  "effects": {
+    "camera_shake": { "enabled": false },
+    "bloom": { "enabled": false },
+    "rgb_split": { "enabled": false }
+  },
+  "audioSettings": { "smoothing": 0.8, "sensitivity": 1.0 }
+}

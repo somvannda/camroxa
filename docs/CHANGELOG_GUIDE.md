@@ -57,7 +57,7 @@ Required sections: Summary, Product impact, Technical impact, Files touched, Mig
 
 | Channel | Managed in | Shown to |
 |---------|------------|----------|
-| Website **/changelog** | Admin → **Blog Posts**, category `Release notes` | Public visitors |
+| Website **/changelog** | Admin → **Blog Posts**, category `Release notes` (also created when publishing a desktop software update with changelog enabled) | Public visitors |
 | Website **/download** short notes | Admin → **Software Updates** → release notes field | Download page + desktop push body |
 | Desktop semver history | Root `CHANGELOG.md` + `pyproject.toml` version | Release engineers, support |
 

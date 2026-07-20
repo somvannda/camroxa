@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from shared.lib.mp3_naming import mp3_suffix_for_role
 from shared.services.file_service import sanitize_local_path
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
@@ -75,7 +76,7 @@ def count_channel_mp3_files(run_dir: str, role: str) -> int:
     if not directory.is_dir():
         return 0
 
-    suffix = "_OK.mp3" if str(role or "").strip().upper() == "OK" else "_Alt.mp3"
+    suffix = mp3_suffix_for_role(role)
     count = 0
     try:
         for child in directory.iterdir():

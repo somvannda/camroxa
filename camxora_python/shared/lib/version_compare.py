@@ -7,8 +7,16 @@ import re
 _VERSION_PATTERN = re.compile(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?")
 
 
+def normalize_version_text(value: str | None) -> str:
+    """Strip BOM/whitespace and an optional leading ``v`` before comparing."""
+    text = str(value or "").replace("\ufeff", "").strip()
+    if len(text) >= 2 and text[0] in {"v", "V"} and text[1].isdigit():
+        return text[1:].strip()
+    return text
+
+
 def parse_version(value: str | None) -> tuple[int, int, int]:
-    text = str(value or "").strip()
+    text = normalize_version_text(value)
     if not text:
         return (0, 0, 0)
     match = _VERSION_PATTERN.match(text)

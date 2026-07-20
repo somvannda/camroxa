@@ -250,7 +250,7 @@ function buildComparisonSections(
     },
     {
       label: "Auto YouTube Upload",
-      values: cellForAllFamilies(families, check),
+      values: families.map(() => ({ kind: "text", value: "Coming soon" })),
     },
   ];
 
@@ -388,7 +388,7 @@ function ComparisonDataRow({
 
 function PricingNotes({ plans }: { plans: PublicPlan[] }) {
   const notes = [
-    "Each channel profile connects to your YouTube channel and is managed through the same account controls as billing.",
+    "Each channel profile can connect to a YouTube channel. Auto upload is coming soon — export finished videos today.",
     "Need more channels without changing plans? Add +2 channel profiles at a time (up to 10 channels per account). Monthly quotas increase only after you finish onboarding for the new profiles.",
     "Draft, Suno package, and image allowances reset at the start of each billing cycle.",
     "Wallet credits can be purchased separately for overage without upgrading your plan.",

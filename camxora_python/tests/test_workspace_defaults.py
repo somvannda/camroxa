@@ -28,6 +28,17 @@ def test_apply_workspace_path_defaults_preserves_user_paths(tmp_path: Path, monk
     assert "downloadsDir" not in patch
 
 
+def test_apply_workspace_defaults_seeds_fast_speed_when_unset(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    settings, patch = apply_workspace_path_defaults({})
+    assert settings["videoExportSpeedMode"] == "fast"
+    assert patch["videoExportSpeedMode"] == "fast"
+
+    settings2, patch2 = apply_workspace_path_defaults({"videoExportSpeedMode": "balanced"})
+    assert settings2["videoExportSpeedMode"] == "balanced"
+    assert "videoExportSpeedMode" not in patch2
+
+
 def test_resolve_ffmpeg_path_prefers_existing_hint(tmp_path: Path) -> None:
     ffmpeg = tmp_path / "ffmpeg.exe"
     ffmpeg.write_bytes(b"bin")

@@ -147,6 +147,10 @@ async def get_monthly_quota_status(
         used += await usage_repo.get_monthly_count(
             user_id, "thumbnail_image", period_start
         )
+    if quota_field == "videos":
+        used += await usage_repo.get_monthly_count(
+            user_id, "video_manual", period_start
+        )
     remaining = max(0, int(limit) - used)
     return int(limit), remaining
 

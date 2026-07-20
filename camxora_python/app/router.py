@@ -105,7 +105,7 @@ class AppRouter:
         if route.key == "profile":
             return self._mark_shell_page(ProfileView(self._api, cache=self._cache))
         if route.key == "progress":
-            return self._mark_shell_page(ProgressView(self._api))
+            return self._mark_shell_page(ProgressView(self._api, cache=self._cache))
         if route.key == "workflow":
             return self._mark_shell_page(WorkflowView(self._api, cache=self._cache))
         if route.key == "music":

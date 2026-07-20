@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, QTimer
 
+from shared.services.app_thread_registry import track_app_thread
 from shared.services.platform_api import PlatformApi
 from shared.workers.data_workers import ImageOutputSyncWorker
 
@@ -29,17 +30,28 @@ class ImageOutputSyncCoordinator(QObject):
         self._timer.stop()
         worker = self._worker
         if worker is not None and worker.isRunning():
-            worker.wait(2_000)
+            # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
+            worker.wait(1_500)
 
     def _poll(self) -> None:
         if not self._active:
             return
         if self._worker is not None and self._worker.isRunning():
             return
-        worker = ImageOutputSyncWorker(self._api, limit=40, parent=self)
+        # parent=None: window close must not destroy a live QThread.
+        worker = ImageOutputSyncWorker(self._api, limit=40, parent=None)
+        worker.succeeded.connect(lambda _count: self._after_sync())
         worker.finished.connect(self._on_worker_finished)
         self._worker = worker
+        track_app_thread(worker)
         worker.start()
+
+    def _after_sync(self) -> None:
+        from shared.services.progress_local_sync_coordinator import get_progress_local_sync_coordinator
+
+        coordinator = get_progress_local_sync_coordinator()
+        if coordinator is not None:
+            coordinator.sync_now()
 
     def _on_worker_finished(self) -> None:
         self._worker = None

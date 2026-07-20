@@ -117,6 +117,44 @@ export function SummaryRow(props: { label: string; value: string }) {
   );
 }
 
+export function SummaryGauge(props: {
+  label: string;
+  value: number;
+  max: number;
+  color: string;
+  detail: string;
+}) {
+  const pct = props.max > 0 ? Math.min(100, Math.round((props.value / props.max) * 100)) : 0;
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (pct / 100) * circumference;
+
+  return (
+    <div className="flex flex-col items-center rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-5">
+      <svg width="96" height="96" viewBox="0 0 96 96" className="mb-3">
+        <circle cx="48" cy="48" r={radius} fill="none" stroke="rgba(148,163,184,0.15)" strokeWidth="8" />
+        <circle
+          cx="48"
+          cy="48"
+          r={radius}
+          fill="none"
+          stroke={props.color}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          transform="rotate(-90 48 48)"
+        />
+        <text x="48" y="52" textAnchor="middle" className="fill-white text-sm font-semibold">
+          {pct}%
+        </text>
+      </svg>
+      <div className="text-sm font-medium text-white">{props.label}</div>
+      <div className="mt-1 text-xs text-slate-400">{props.detail}</div>
+    </div>
+  );
+}
+
 export function PaymentRow(props: { payment: BillingPayment }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm">

@@ -178,6 +178,7 @@ class MusicDownloadSyncWorker(QThread):
 
     def __init__(self, api: PlatformApi, *, limit: int = 24, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("MusicDownloadSyncWorker")
         self._api = api
         self._limit = limit
 
@@ -285,6 +286,7 @@ class VideoPipelineOrchestrationWorker(QThread):
 
     def __init__(self, api: PlatformApi, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("VideoPipelineOrchestrationWorker")
         self._api = api
 
     def run(self) -> None:
@@ -568,6 +570,7 @@ class PatchSettingsWorker(QThread):
 
     def __init__(self, api: PlatformApi, patch: dict[str, object], parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("PatchSettingsWorker")
         self._api = api
         self._patch = patch
 
@@ -1159,6 +1162,7 @@ class ImageOutputSyncWorker(QThread):
 
     def __init__(self, api: PlatformApi, *, limit: int = 40, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("ImageOutputSyncWorker")
         self._api = api
         self._limit = limit
 
@@ -1214,6 +1218,54 @@ class ImageOpenWorker(QThread):
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Failed to open image file.")
+
+
+class ProgressLocalSyncWorker(QThread):
+    """Detect local run-folder truth ahead of API metadata and sync it back."""
+
+    succeeded = Signal(int)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, *, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ProgressLocalSyncWorker")
+        self._api = api
+
+    def run(self) -> None:
+        from shared.lib.progress_local_overlay import apply_local_progress_overlays
+        from shared.lib.progress_local_sync import build_local_progress_sync_items
+        from shared.models.platform import ProgressFilters, ProgressLocalSyncItem
+
+        try:
+            response = self._api.list_progress(ProgressFilters(limit=80, active_only=True))
+            rows = apply_local_progress_overlays(list(response.rows))
+            local_items = build_local_progress_sync_items(rows)
+            if not local_items:
+                self.succeeded.emit(0)
+                return
+            payload = [
+                ProgressLocalSyncItem(
+                    batch_id=item.batch_id,
+                    profile_id=item.profile_id,
+                    role=item.role,
+                    run_dir=item.run_dir,
+                    long_ready=item.long_ready,
+                    reel_ready=item.reel_ready,
+                    local_mp3_count=item.local_mp3_count,
+                    expected=item.expected,
+                    background_16x9_path=item.background_16x9_path,
+                    background_9x16_path=item.background_9x16_path,
+                    thumbnail_16x9_path=item.thumbnail_16x9_path,
+                    thumbnail_9x16_path=item.thumbnail_9x16_path,
+                )
+                for item in local_items
+            ]
+            result = self._api.sync_local_progress(payload)
+            self.succeeded.emit(int(result.updated or 0))
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Progress local sync failed.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1502,6 +1554,7 @@ class VideoWorkspaceWorker(QThread):
 
     def __init__(self, api: PlatformApi, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("VideoWorkspaceWorker")
         self._api = api
 
     def run(self) -> None:
@@ -1532,6 +1585,7 @@ class VideoPatchTemplateWorker(QThread):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("VideoPatchTemplateWorker")
         self._store = store
         self._patch = patch
         self._settings = settings
@@ -1607,6 +1661,7 @@ class WorkspacePushRefreshWorker(QThread):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("WorkspacePushRefreshWorker")
         self._api = api
         self._cache = cache
         self._scope = scope

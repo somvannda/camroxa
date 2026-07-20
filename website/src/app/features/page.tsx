@@ -3,6 +3,7 @@ import {
   Boxes,
   Image as ImageIcon,
   Music,
+  Package,
   ShieldCheck,
   Video,
   Workflow,
@@ -13,26 +14,26 @@ import { ContentPageShell } from "@/components/marketing/content-page-shell";
 export const metadata: Metadata = {
   title: "Features",
   description:
-    "Explore Camxora desktop features: music batches, image generation, video templates, progress tracking, and YouTube publishing.",
+    "Camxora helps you write lyrics, create music, generate artwork, build videos, and export YouTube-ready MP4s — without showing your face.",
 };
 
 export default function FeaturesPage() {
   return (
     <ContentPageShell
       eyebrow="Features"
-      title="What you can do inside the Camxora desktop app."
-      description="Every feature maps to a real workspace in Camxora — from song generation and image prep to video templates, exports, and channel uploads."
+      title="Everything you need to ship faceless music videos."
+      description="Camxora is a Windows desktop studio for lyrics, music, artwork, video templates, and export — with auto YouTube upload coming soon."
       aside={
         <div className="space-y-5">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Built for creators</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              A full studio, not a single AI demo.
+              Outcomes first. Tools second.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
-            Manage multiple channel profiles, run batches, and keep music-to-video production moving
-            without leaving the app.
+            Run multiple channel profiles, finish more videos each week, and keep branding
+            consistent — without a camera or a stack of separate AI apps.
           </p>
         </div>
       }
@@ -41,45 +42,52 @@ export default function FeaturesPage() {
         {[
           {
             icon: Music,
-            title: "Music workspace",
+            title: "Write better lyrics & songs",
             detail:
-              "Plan batches by date and channel pair, generate drafts, polish lyrics, and automate Suno when you are ready.",
-            bullets: ["Multi-day batch planning", "Draft, polish, and Suno automation"],
+              "Plan batches by date and channel, draft lyrics, polish them, and generate music when you are ready.",
+            bullets: ["Batch planning by channel", "Draft, polish, and music generation"],
           },
           {
             icon: ImageIcon,
-            title: "Image workspace",
+            title: "Create matching artwork",
             detail:
-              "Create backgrounds and thumbnails that stay consistent with each song and profile.",
-            bullets: ["Background & thumbnail jobs", "Profile-aligned visuals"],
+              "Generate backgrounds and thumbnails that stay consistent with each song and channel profile.",
+            bullets: ["Backgrounds & thumbnails", "Profile-aligned visuals"],
           },
           {
             icon: Video,
-            title: "Video studio",
+            title: "Build music videos",
             detail:
-              "Build reusable templates with spectrum, particles, logo, and text — then preview and export MP4s.",
-            bullets: ["Live GPU preview", "Template save & marketplace packs"],
+              "Design reusable templates with spectrum, particles, logo, and text — then preview and export MP4s.",
+            bullets: ["Live preview", "Templates & export"],
+          },
+          {
+            icon: Package,
+            title: "Marketplace templates",
+            detail:
+              "Download ready video templates and set them up in your workspace with one click. Free packs and premium packs available.",
+            bullets: ["One-click download & setup", "Free + premium marketplace"],
           },
           {
             icon: Workflow,
-            title: "Progress & workflow",
+            title: "Track every stage",
             detail:
-              "Follow every run from music through upload, with stage filters and recovery actions when something stalls.",
-            bullets: ["Stage-by-stage monitoring", "Retry and recovery tools"],
+              "Follow each run from music through merge, with clear status and recovery when something stalls.",
+            bullets: ["Stage-by-stage progress", "Retry and recovery tools"],
           },
           {
             icon: Boxes,
-            title: "Channel profiles",
+            title: "Run multiple channels",
             detail:
-              "Run multiple channels under one account, each with its own templates, YouTube connection, and output paths.",
-            bullets: ["Per-channel templates", "YouTube connect & publish defaults"],
+              "Manage several channel profiles under one account, each with its own templates and output paths.",
+            bullets: ["Per-channel templates", "YouTube connect ready for upcoming upload"],
           },
           {
             icon: ShieldCheck,
             title: "Account & credits",
             detail:
-              "Sign in once, use plan credits for generation, and keep settings synced between the portal and desktop.",
-            bullets: ["Plan-based access", "Desktop preferences & readiness checks"],
+              "Sign in once, use plan credits for generation, and keep settings synced between portal and desktop.",
+            bullets: ["Plan-based access", "Desktop preferences synced"],
           },
         ].map(({ icon: Icon, title, detail, bullets }) => (
           <div
@@ -102,6 +110,18 @@ export default function FeaturesPage() {
           </div>
         ))}
       </div>
+
+      <section className="mt-4 rounded-[28px] border border-amber-400/20 bg-amber-500/10 p-6 ring-1 ring-amber-400/10">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-amber-100/80">Coming soon</div>
+        <div className="mt-3 font-display text-2xl font-semibold text-white">
+          Auto YouTube upload
+        </div>
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-200/80">
+          This release exports YouTube-ready videos. Connecting channels and uploading automatically
+          ships in a later update — so you can invest in the pipeline now without overpromising
+          publish automation.
+        </p>
+      </section>
     </ContentPageShell>
   );
 }

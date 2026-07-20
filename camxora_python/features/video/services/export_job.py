@@ -63,6 +63,7 @@ class ExportJob:
         self.on_exit = on_exit
         self.proc: subprocess.Popen[str] | None = None
         self._cancel_requested = False
+        self.backend_used: str = ""
 
     def cancel(self) -> None:
         self._cancel_requested = True
@@ -138,6 +139,22 @@ class ExportJob:
         env["PYTHONPATH"] = (
             f"{project_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(project_dir)
         )
+        try:
+            from features.video.services.visualizer_daemon import get_visualizer_daemon
+
+            daemon_code = get_visualizer_daemon().run_command(
+                cmd,
+                cwd=str(project_dir),
+                env=env,
+                on_event=self.on_event,
+                on_exit=self.on_exit,
+            )
+            if daemon_code is not None:
+                self.backend_used = "daemon"
+                return int(daemon_code)
+        except Exception:
+            pass
+        self.backend_used = "subprocess"
         self.proc = popen_hidden(
             cmd,
             cwd=str(project_dir),
@@ -150,6 +167,7 @@ class ExportJob:
         )
         assert self.proc.stdout is not None
         last_progress_emit = 0.0
+        last_progress_message = ""
         last_error_lines: list[str] = []
         try:
             for line in self.proc.stdout:
@@ -168,11 +186,13 @@ class ExportJob:
                             msg = str(event.get("message") or "").strip()
                             if msg:
                                 last_error_lines.append(msg)
-                        if status == "running" and event.get("progress") is not None:
+                        if status == "running":
                             now = time.monotonic()
-                            if (now - last_progress_emit) < 0.5:
+                            message = str(event.get("message") or "")
+                            if (now - last_progress_emit) < 0.5 and message == last_progress_message:
                                 continue
                             last_progress_emit = now
+                            last_progress_message = message
                         self.on_event(event)
                 elif stripped:
                     # Keep a short traceback / log tail for failed exits.

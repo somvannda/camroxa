@@ -1210,16 +1210,13 @@ class MusicView(QWidget):
         from shared.models.platform import SongRetryResponse
 
         if isinstance(payload, SongRetryResponse):
+            from features.music.lib.history_retry import history_track_number
+
             self._latest_batch_id = payload.batch_id
             self._latest_batch_summary = "Retry in progress"
             self._last_batch_status_key = None
             self._batch_timer.start()
-            track_no = None
-            if payload.song_id and self._history.rows:
-                for entry in self._history.rows:
-                    if entry.song and entry.song.song_id == payload.song_id:
-                        track_no = int(entry.song.batch_index) + 1
-                        break
+            track_no = history_track_number(self._history, payload.song_id) if payload.song_id else None
             track_label = f" #{track_no}" if track_no else ""
             if self._pending_history_retry_kind == "suno":
                 self._flash_status(

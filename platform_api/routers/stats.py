@@ -37,11 +37,46 @@ async def get_public_stats() -> PublicStatsResponse:
     images_total = await get_db_pool().fetchval("SELECT COUNT(*) FROM image_jobs")
 
     videos_total = 0
+    youtube_uploads_total = 0
+    studio_exports_total = 0
+    manual_exports_total = 0
     try:
-        videos_count = await get_db_pool().fetchval("SELECT COUNT(*) FROM youtube_upload_jobs")
-        videos_total = int(videos_count) if videos_count else 0
+        youtube_uploads_total = int(
+            await get_db_pool().fetchval(
+                "SELECT COUNT(*) FROM youtube_upload_jobs WHERE status = 'success'"
+            )
+            or 0
+        )
+        videos_total = int(
+            await get_db_pool().fetchval("SELECT COUNT(*) FROM youtube_upload_jobs") or 0
+        )
     except Exception:
+        youtube_uploads_total = 0
         videos_total = 0
+    try:
+        studio_exports_total = int(
+            await get_db_pool().fetchval(
+                """
+                SELECT COALESCE(SUM(daily_count), 0)
+                FROM usage_tracking
+                WHERE operation_type = 'video'
+                """
+            )
+            or 0
+        )
+        manual_exports_total = int(
+            await get_db_pool().fetchval(
+                """
+                SELECT COALESCE(SUM(daily_count), 0)
+                FROM usage_tracking
+                WHERE operation_type = 'video_manual'
+                """
+            )
+            or 0
+        )
+    except Exception:
+        studio_exports_total = 0
+        manual_exports_total = 0
 
     return PublicStatsResponse(
         updated_at=now,
@@ -51,6 +86,9 @@ async def get_public_stats() -> PublicStatsResponse:
         songs_total=int(songs_total) if songs_total else 0,
         images_total=int(images_total) if images_total else 0,
         videos_total=videos_total,
+        studio_exports_total=studio_exports_total,
+        manual_exports_total=manual_exports_total,
+        youtube_uploads_total=youtube_uploads_total,
     )
 
 
@@ -64,7 +102,10 @@ async def get_dashboard_stats(ctx: AuthContext = Depends(get_current_user)) -> D
     user_id = ctx.user_id
 
     now = datetime.now(timezone.utc)
-    seven_days_ago = (now - timedelta(days=7)).date()
+    # Inclusive 7-day window ending today (UTC): today-6 .. today.
+    # Using days=7 previously ended at yesterday and hid same-day Manual exports.
+    today = now.date()
+    seven_days_ago = today - timedelta(days=6)
 
     # --- Credits ---
     wallet_row = await get_db_pool().fetchrow(
@@ -95,29 +136,95 @@ async def get_dashboard_stats(ctx: AuthContext = Depends(get_current_user)) -> D
     )
     images_generated = int(images_count) if images_count else 0
 
-    # --- Videos (YouTube uploads) — table may not exist yet ---
-    videos_generated = 0
-    videos_uploaded = 0
-    video_map: dict[str, int] = {}
+    # --- Videos: studio exports, manual exports, YouTube uploads ---
+    studio_exports = 0
+    manual_exports = 0
+    youtube_uploads = 0
+    youtube_map: dict[str, int] = {}
+    studio_map: dict[str, int] = {}
+    manual_map: dict[str, int] = {}
     try:
-        videos_count = await get_db_pool().fetchval(
-            "SELECT COUNT(*) FROM youtube_upload_jobs WHERE user_id = $1", user_id
+        studio_exports = int(
+            await get_db_pool().fetchval(
+                """
+                SELECT COALESCE(SUM(daily_count), 0)
+                FROM usage_tracking
+                WHERE user_id = $1 AND operation_type = 'video'
+                """,
+                user_id,
+            )
+            or 0
         )
-        videos_generated = int(videos_count) if videos_count else 0
-        videos_uploaded_count = await get_db_pool().fetchval(
-            "SELECT COUNT(*) FROM youtube_upload_jobs WHERE user_id = $1 AND status = 'success'",
+        manual_exports = int(
+            await get_db_pool().fetchval(
+                """
+                SELECT COALESCE(SUM(daily_count), 0)
+                FROM usage_tracking
+                WHERE user_id = $1 AND operation_type = 'video_manual'
+                """,
+                user_id,
+            )
+            or 0
+        )
+        studio_rows = await get_db_pool().fetch(
+            """
+            SELECT usage_date AS d, COALESCE(SUM(daily_count), 0) AS cnt
+            FROM usage_tracking
+            WHERE user_id = $1
+              AND operation_type = 'video'
+              AND usage_date >= $2
+            GROUP BY usage_date
+            ORDER BY usage_date
+            """,
             user_id,
+            seven_days_ago,
         )
-        videos_uploaded = int(videos_uploaded_count) if videos_uploaded_count else 0
-        video_rows = await get_db_pool().fetch(
-            """SELECT DATE(created_at) as d, COUNT(*) as cnt
-               FROM youtube_upload_jobs WHERE user_id = $1 AND created_at >= $2
-               GROUP BY d ORDER BY d""",
-            user_id, seven_days_ago,
+        studio_map = {str(r["d"]): int(r["cnt"]) for r in studio_rows}
+        manual_rows = await get_db_pool().fetch(
+            """
+            SELECT usage_date AS d, COALESCE(SUM(daily_count), 0) AS cnt
+            FROM usage_tracking
+            WHERE user_id = $1
+              AND operation_type = 'video_manual'
+              AND usage_date >= $2
+            GROUP BY usage_date
+            ORDER BY usage_date
+            """,
+            user_id,
+            seven_days_ago,
         )
-        video_map = {str(r["d"]): int(r["cnt"]) for r in video_rows}
+        manual_map = {str(r["d"]): int(r["cnt"]) for r in manual_rows}
     except Exception:
-        pass
+        studio_exports = 0
+        manual_exports = 0
+
+    try:
+        youtube_uploads = int(
+            await get_db_pool().fetchval(
+                """
+                SELECT COUNT(*) FROM youtube_upload_jobs
+                WHERE user_id = $1 AND status = 'success'
+                """,
+                user_id,
+            )
+            or 0
+        )
+        video_rows = await get_db_pool().fetch(
+            """
+            SELECT DATE(created_at) as d, COUNT(*) as cnt
+            FROM youtube_upload_jobs
+            WHERE user_id = $1 AND created_at >= $2 AND status = 'success'
+            GROUP BY d ORDER BY d
+            """,
+            user_id,
+            seven_days_ago,
+        )
+        youtube_map = {str(r["d"]): int(r["cnt"]) for r in video_rows}
+    except Exception:
+        youtube_uploads = 0
+
+    videos_generated = studio_exports + manual_exports
+    videos_uploaded = youtube_uploads
 
     # --- License / quota (authoritative: usage_tracking) ---
     from platform_api.dependencies import get_plan_repo, get_usage_tracking_repo
@@ -205,11 +312,17 @@ async def get_dashboard_stats(ctx: AuthContext = Depends(get_current_user)) -> D
     usage_by_day = []
     for i in range(7):
         day = (seven_days_ago + timedelta(days=i)).isoformat()
+        studio = studio_map.get(day, 0)
+        manual = manual_map.get(day, 0)
+        youtube = youtube_map.get(day, 0)
         usage_by_day.append(DailyUsage(
             date=day,
             songs=song_map.get(day, 0),
             images=image_map.get(day, 0),
-            videos=video_map.get(day, 0),
+            videos=studio + manual,
+            studio_exports=studio,
+            manual_exports=manual,
+            youtube_uploads=youtube,
         ))
 
     # --- Recent activity (last 20 events) ---
@@ -256,13 +369,46 @@ async def get_dashboard_stats(ctx: AuthContext = Depends(get_current_user)) -> D
     for r in video_events_rows:
         recent.append(RecentActivity(
             timestamp=r["ts"],
-            kind="Video",
+            kind="YouTube",
             detail="YouTube Upload",
             status=str(r["status"]),
         ))
 
     recent.sort(key=lambda x: x.timestamp, reverse=True)
     recent = recent[:20]
+
+    avg_studio_export_ms = None
+    avg_manual_export_ms = None
+    last_export_at = None
+    try:
+        perf_rows = await get_db_pool().fetch(
+            """
+            SELECT operation_type,
+                   AVG(duration_ms)::bigint AS avg_ms,
+                   MAX(created_at) AS last_at
+            FROM video_export_telemetry
+            WHERE user_id = $1
+              AND created_at >= $2
+              AND duration_ms IS NOT NULL
+              AND duration_ms > 0
+              AND operation_type IN ('video', 'video_manual')
+            GROUP BY operation_type
+            """,
+            user_id,
+            seven_days_ago,
+        )
+        for row in perf_rows:
+            op = str(row["operation_type"] or "")
+            avg_ms = int(row["avg_ms"] or 0) if row["avg_ms"] is not None else None
+            last_at = row["last_at"]
+            if last_at is not None and (last_export_at is None or last_at > last_export_at):
+                last_export_at = last_at
+            if op == "video":
+                avg_studio_export_ms = avg_ms
+            elif op == "video_manual":
+                avg_manual_export_ms = avg_ms
+    except Exception:
+        pass
 
     return DashboardStatsResponse(
         credits_spent=credits_spent,
@@ -276,8 +422,14 @@ async def get_dashboard_stats(ctx: AuthContext = Depends(get_current_user)) -> D
         drafts_remaining=drafts_remaining,
         drafts_quota=drafts_quota,
         images_generated=images_generated,
+        studio_exports=studio_exports,
+        manual_exports=manual_exports,
+        youtube_uploads=youtube_uploads,
         videos_generated=videos_generated,
         videos_uploaded=videos_uploaded,
+        avg_studio_export_ms=avg_studio_export_ms,
+        avg_manual_export_ms=avg_manual_export_ms,
+        last_export_at=last_export_at,
         usage_by_day=usage_by_day,
         recent_activity=recent,
     )

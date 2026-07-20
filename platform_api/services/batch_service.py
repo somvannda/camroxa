@@ -2255,6 +2255,79 @@ class BatchService:
                 updated += 1
         return updated
 
+    async def sync_local_progress_from_desktop(
+        self,
+        *,
+        user_id: str,
+        items: list[dict[str, Any]],
+    ) -> int:
+        """Upsert channel asset manifests from desktop-local run-folder truth."""
+        if not items:
+            return 0
+
+        settings: dict[str, Any] = {}
+        if self._settings_service is not None:
+            settings = await self._settings_service.get_merged_settings(
+                user_id=UUID(user_id),
+                include_sensitive=False,
+            )
+        source_mode = self._normalize_image_source_mode(settings)
+        user_uuid = UUID(user_id)
+        updated = 0
+        batches_to_refresh: set[UUID] = set()
+
+        for item in items:
+            batch_id_raw = str(item.get("batch_id") or "").strip()
+            profile_id_raw = str(item.get("profile_id") or "").strip()
+            if not batch_id_raw or not profile_id_raw:
+                continue
+            batch = await self._batch_repo.get_batch_for_user(UUID(batch_id_raw), user_uuid)
+            if batch is None:
+                continue
+
+            role_raw = str(item.get("role") or "OK").strip().upper()
+            role = ChannelRole.OK if role_raw in {"OK", "PRIMARY"} else ChannelRole.ALT
+            run_dir = str(item.get("run_dir") or "").strip() or self._resolve_batch_run_dir(batch, role)
+            if not run_dir:
+                continue
+
+            role_disambiguate = self._batch_roles_share_run_dir(batch)
+            scanned = build_batch_channel_assets(
+                batch_id=batch.id,
+                user_id=batch.user_id,
+                profile_id=UUID(profile_id_raw),
+                role=role,
+                run_dir=run_dir,
+                source_mode=source_mode,
+                role_disambiguate=role_disambiguate,
+            )
+
+            def pick_path(key: str) -> str | None:
+                explicit = str(item.get(key) or "").strip()
+                if explicit:
+                    return explicit
+                return getattr(scanned, key, None)
+
+            asset = BatchChannelAssets(
+                batch_id=batch.id,
+                user_id=batch.user_id,
+                profile_id=UUID(profile_id_raw),
+                role=role,
+                run_dir=run_dir,
+                source_mode=source_mode,
+                background_16x9_path=pick_path("background_16x9_path"),
+                background_9x16_path=pick_path("background_9x16_path"),
+                thumbnail_16x9_path=pick_path("thumbnail_16x9_path"),
+                thumbnail_9x16_path=pick_path("thumbnail_9x16_path"),
+            )
+            await self._batch_repo.upsert_batch_channel_assets(asset)
+            updated += 1
+            batches_to_refresh.add(batch.id)
+
+        for batch_id in batches_to_refresh:
+            await self.refresh_batch_status(batch_id)
+        return updated
+
     async def on_suno_task_completed(
         self,
         song_id: UUID,

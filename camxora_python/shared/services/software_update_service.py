@@ -41,7 +41,8 @@ class SoftwareUpdateService(QObject):
 
     update_changed = Signal(object)
     install_started = Signal()
-    install_progress = Signal(str)
+    install_progress = Signal(str, int)  # message, percent (-1 = indeterminate)
+    install_succeeded = Signal()
     install_failed = Signal(str)
 
     _instance: SoftwareUpdateService | None = None
@@ -64,6 +65,8 @@ class SoftwareUpdateService(QObject):
     def apply_push_payload(self, payload: dict[str, Any]) -> SoftwareUpdateOffer | None:
         offer = SoftwareUpdateOffer.from_payload(payload)
         if offer is None:
+            # Already on this version (or newer) — drop any stale blocking offer.
+            self.reconcile_with_installed_version()
             return None
         notification_id = str(payload.get("notification_id") or offer.notification_id or "").strip()
         offer = SoftwareUpdateOffer(
@@ -93,7 +96,15 @@ class SoftwareUpdateService(QObject):
         self.update_changed.emit(offer)
         return offer
 
+    def reconcile_with_installed_version(self) -> None:
+        """Clear pending updates that the running install already satisfies."""
+        if self._pending is None:
+            return
+        if not is_remote_version_newer(get_app_version(), self._pending.version):
+            self.clear_pending()
+
     def should_block_app(self) -> bool:
+        self.reconcile_with_installed_version()
         return self._pending is not None and self._pending.mandatory
 
     def can_dismiss(self, notification_id: str) -> bool:
@@ -134,11 +145,18 @@ class SoftwareUpdateService(QObject):
         return True
 
     def _on_install_succeeded(self, _installer_path: object) -> None:
+        from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
 
-        app = QApplication.instance()
-        if app is not None:
-            app.quit()
+        self.install_succeeded.emit()
+
+        def _quit_for_restart() -> None:
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+
+        # Brief pause so the gate can show “restarting…” before the process exits.
+        QTimer.singleShot(900, _quit_for_restart)
 
     def _on_install_failed(self, message: str) -> None:
         self.install_failed.emit(str(message or "Unable to install update."))

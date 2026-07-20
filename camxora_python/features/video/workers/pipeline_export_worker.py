@@ -17,6 +17,10 @@ from features.video.lib.render_scene_request import (
     is_valid_export_output,
 )
 from features.video.lib.text_domain_runtime import inject_text_domains_into_template
+from features.video.services.export_coordinator import (
+    PipelineCoordinatorExportRequest,
+    run_subprocess_export,
+)
 from features.video.services.export_job import ExportJob, ExportSettings, find_ffmpeg_from_path_hint
 
 
@@ -34,7 +38,7 @@ class PipelineExportRequest:
     width: int
     height: int
     fps: int = 30
-    speed_mode: str = "balanced"
+    speed_mode: str = "fast"
 
 
 class VideoPipelineExportWorker(QThread):
@@ -44,6 +48,7 @@ class VideoPipelineExportWorker(QThread):
 
     def __init__(self, request: PipelineExportRequest, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("VideoPipelineExportWorker")
         self._request = request
         self._cancel_requested = False
         self._active_jobs: dict[str, ExportJob] = {}
@@ -79,21 +84,41 @@ class VideoPipelineExportWorker(QThread):
         queue: list[str] = list(mp3_paths)
         queue_lock = threading.Lock()
 
-        def emit_progress(*, message: str, current_path: str = "", output_path: str = "") -> None:
+        def emit_progress(
+            *,
+            message: str,
+            current_path: str = "",
+            output_path: str = "",
+            track_progress: float | None = None,
+            video_codec: str | None = None,
+            backend_used: str | None = None,
+            fallback_from: str | None = None,
+            status: str = "running",
+        ) -> None:
             with progress_lock:
                 done = completed
-            percent = int(round((done / total) * 100)) if total > 0 else 0
-            self.progressed.emit(
-                {
-                    "status": "running",
-                    "message": message,
-                    "progressPercent": percent,
-                    "completedJobs": done,
-                    "totalJobs": total,
-                    "currentMp3Path": current_path,
-                    "outputPath": output_path,
-                }
-            )
+            if track_progress is not None and total > 0:
+                blended = (done + max(0.0, min(1.0, float(track_progress)))) / total
+                percent = int(round(blended * 100))
+            else:
+                percent = int(round((done / total) * 100)) if total > 0 else 0
+            payload: dict[str, object] = {
+                "status": status,
+                "message": message,
+                "progressPercent": percent,
+                "completedJobs": done,
+                "totalJobs": total,
+                "currentMp3Path": current_path,
+                "outputPath": output_path,
+            }
+            if video_codec:
+                payload["videoCodec"] = video_codec
+            if backend_used:
+                payload["backendUsed"] = backend_used
+                payload["backend"] = backend_used
+            if fallback_from:
+                payload["fallbackFrom"] = fallback_from
+            self.progressed.emit(payload)
 
         def run_single_job(mp3_path: str) -> str:
             if self._cancel_requested:
@@ -129,7 +154,7 @@ class VideoPipelineExportWorker(QThread):
                     track_paths=list(mp3_paths),
                     active_track_path=mp3_path,
                 )
-                job = ExportJob(
+                export_request = PipelineCoordinatorExportRequest(
                     mp3_path=mp3_path,
                     template=job_template,
                     background_path=request.background_path,
@@ -143,16 +168,31 @@ class VideoPipelineExportWorker(QThread):
                         height=int(request.height),
                         speed_mode=request.speed_mode,
                     ),
-                    on_event=lambda event, path=mp3_path: emit_progress(
-                        message=str(event.get("message") or event.get("status") or "Exporting…"),
-                        current_path=path,
-                        output_path=long_output_path,
-                    ),
+                    speed_mode=request.speed_mode,
                 )
-                with self._jobs_lock:
-                    self._active_jobs[mp3_path] = job
                 try:
-                    code = job.run_blocking()
+                    def _register_active_job(export_job: ExportJob, path: str = mp3_path) -> None:
+                        with self._jobs_lock:
+                            self._active_jobs[path] = export_job
+
+                    code, backend_used, job = run_subprocess_export(
+                        export_request,
+                        on_event=lambda event, path=mp3_path: emit_progress(
+                            status=str(event.get("status") or "running"),
+                            message=str(event.get("message") or event.get("status") or "Exporting…"),
+                            current_path=path,
+                            output_path=long_output_path,
+                            track_progress=(
+                                float(event["progress"])
+                                if isinstance(event.get("progress"), (int, float))
+                                else None
+                            ),
+                            video_codec=str(event.get("videoCodec") or "").strip() or None,
+                            backend_used=str(event.get("backendUsed") or event.get("backend") or "").strip() or None,
+                            fallback_from=str(event.get("fallbackFrom") or "").strip() or None,
+                        ),
+                        on_job_started=_register_active_job,
+                    )
                 finally:
                     with self._jobs_lock:
                         self._active_jobs.pop(mp3_path, None)

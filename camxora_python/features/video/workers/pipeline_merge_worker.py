@@ -34,6 +34,7 @@ class VideoPipelineMergeWorker(QThread):
 
     def __init__(self, request: PipelineMergeRequest, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("VideoPipelineMergeWorker")
         self._request = request
         self._cancel_requested = False
 

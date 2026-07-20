@@ -10,7 +10,7 @@ from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 
 
 class DailyChannelQuotaCard(QFrame):
-    SUBTITLE = "Remaining song and image capacity per channel for today."
+    SUBTITLE = "Per-channel song and image capacity today. Account track-export / merge daily caps are on Remaining This Month."
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

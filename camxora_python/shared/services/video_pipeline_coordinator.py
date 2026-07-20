@@ -14,7 +14,9 @@ from features.video.lib.desktop_video_automation import (
 from features.video.services.pipeline_automation_service import PipelineAutomationService
 from shared.models.desktop import VideoWorkspaceState
 from shared.models.platform import ProgressRow
+from shared.services.app_thread_registry import track_app_thread
 from shared.services.platform_api import PlatformApi
+from shared.services.video_workspace_service import get_video_workspace_service
 from shared.workers.data_workers import VideoPipelineOrchestrationPayload, VideoPipelineOrchestrationWorker
 
 ManualPipelineAction = Literal["rebuild_export", "force_export", "merge"]
@@ -44,6 +46,8 @@ class VideoPipelineCoordinator(QObject):
         self._cooldown_until: dict[str, float] = {}
         self._active = False
         self._pending_manual: tuple[ProgressRow, ManualPipelineAction, str] | None = None
+        self._last_poll_error_at = 0.0
+        self._last_poll_error_message = ""
 
     def start(self) -> None:
         self._active = True
@@ -55,7 +59,8 @@ class VideoPipelineCoordinator(QObject):
         self._timer.stop()
         worker = self._worker
         if worker is not None and worker.isRunning():
-            worker.wait(2_000)
+            # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
+            worker.wait(1_500)
 
     def _poll(self) -> None:
         if not self._active:
@@ -64,11 +69,13 @@ class VideoPipelineCoordinator(QObject):
             return
         if self._worker is not None and self._worker.isRunning():
             return
-        worker = VideoPipelineOrchestrationWorker(self._api, parent=self)
+        # parent=None: window close must not destroy a live QThread.
+        worker = VideoPipelineOrchestrationWorker(self._api, parent=None)
         worker.succeeded.connect(self._on_payload_ready)
         worker.failed.connect(self._on_poll_failed)
         worker.finished.connect(self._on_worker_finished)
         self._worker = worker
+        track_app_thread(worker)
         worker.start()
 
     def _on_payload_ready(self, payload: object) -> None:
@@ -77,6 +84,12 @@ class VideoPipelineCoordinator(QObject):
         workspace = payload.workspace
         if not isinstance(workspace, VideoWorkspaceState):
             return
+
+        self._automation.recover_stale_state()
+        if isinstance(workspace, VideoWorkspaceState):
+            active = get_video_workspace_service().get_workspace_state()
+            if active is not None:
+                workspace = active
 
         candidate = select_next_auto_video_candidate(
             rows=payload.rows,
@@ -101,6 +114,9 @@ class VideoPipelineCoordinator(QObject):
         else:
             self._cooldown_until[cooldown_key] = time.time() + 12.0
 
+    def auth_blocked(self) -> bool:
+        return self._automation.auth_blocked()
+
     def run_manual_action(
         self,
         row: ProgressRow,
@@ -108,14 +124,14 @@ class VideoPipelineCoordinator(QObject):
         *,
         branch: str = "long",
     ) -> None:
-        if self._automation.is_busy():
-            from shared.services.shell_status import emit_shell_status
+        from shared.services.shell_status import emit_shell_status
 
+        if self._automation.recover_stale_state():
+            emit_shell_status("Cleared stale video export state.", tone="neutral")
+        if self._automation.is_busy():
             emit_shell_status("Video pipeline is already running.", tone="warning")
             return
         if self._worker is not None and self._worker.isRunning():
-            from shared.services.shell_status import emit_shell_status
-
             emit_shell_status("Video pipeline is still loading settings.", tone="warning")
             return
 
@@ -155,16 +171,22 @@ class VideoPipelineCoordinator(QObject):
             ),
             row,
         )
-        candidate = build_auto_video_candidate_from_row(overlay_row, profile, normalized_branch)
+        candidate = build_auto_video_candidate_from_row(
+            overlay_row,
+            profile,
+            normalized_branch,
+            workspace=payload.workspace if isinstance(payload.workspace, VideoWorkspaceState) else None,
+        )
         if candidate is None:
             from shared.services.shell_status import emit_shell_status
 
             emit_shell_status(
-                "Unable to start video action: image assets or template are not ready for this run.",
+                "Unable to start video action: local run folder is missing MP3s, image assets, or a catalog template.",
                 tone="warning",
             )
             return
 
+        self._automation.recover_stale_state()
         if action == "merge":
             self._automation.start_manual_merge(candidate, settings=payload.settings)
             return
@@ -183,8 +205,16 @@ class VideoPipelineCoordinator(QObject):
 
         emit_shell_status(message or "Video pipeline action failed.", tone="warning")
 
-    def _on_poll_failed(self, _message: str) -> None:
-        return
+    def _on_poll_failed(self, message: str) -> None:
+        from shared.services.shell_status import emit_shell_status
+
+        text = str(message or "").strip() or "Auto-video paused: unable to load progress rows."
+        now = time.time()
+        if text == self._last_poll_error_message and (now - self._last_poll_error_at) < 60.0:
+            return
+        self._last_poll_error_at = now
+        self._last_poll_error_message = text
+        emit_shell_status(f"Auto-video paused: {text}", tone="warning")
 
     def _on_worker_finished(self) -> None:
         self._worker = None

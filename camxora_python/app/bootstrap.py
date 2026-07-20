@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import sys
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from app.root_window import RootWindow
-from shared.lib.app_icon import load_app_icon
+from shared.lib.app_icon import APP_USER_MODEL_ID, apply_app_window_icon
 from shared.lib.single_instance import SingleInstanceGuard, notify_already_running
 from shared.themes import apply_theme
 
@@ -19,7 +20,7 @@ def _set_windows_app_id() -> None:
     try:
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Camxora.DesktopStudio")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
     except Exception:
         pass
 
@@ -35,7 +36,7 @@ def run() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Camxora")
     app.setOrganizationName("Camxora")
-    app.setWindowIcon(load_app_icon())
+    apply_app_window_icon()
     apply_theme(app)
 
     guard = SingleInstanceGuard(app)
@@ -44,6 +45,32 @@ def run() -> int:
         return 0
 
     def _shutdown_child_processes() -> None:
+        try:
+            from shared.services.video_pipeline_activity import set_app_quitting
+
+            set_app_quitting(True)
+        except Exception:
+            pass
+        try:
+            from shared.services.app_thread_registry import shutdown_app_threads
+
+            shutdown_app_threads(wait_ms=10_000)
+        except Exception:
+            pass
+        try:
+            from shared.services.video_pipeline_activity import shutdown_video_pipeline_threads
+
+            # Belt-and-suspenders after RootWindow.closeEvent: export QThreads use
+            # parent=None but still need an explicit cancel+join on app quit.
+            shutdown_video_pipeline_threads(wait_ms=12_000)
+        except Exception:
+            pass
+        try:
+            from features.video.services.visualizer_daemon import shutdown_visualizer_daemon
+
+            shutdown_visualizer_daemon()
+        except Exception:
+            pass
         try:
             from shared.lib.subprocess_utils import terminate_job
 
@@ -63,6 +90,9 @@ def run() -> int:
     window = RootWindow()
     guard.set_activate_handler(window.bring_to_front)
     window.show()
+    # Window hwnd exists only after show; native taskbar branding needs a second pass.
+    apply_app_window_icon(window)
+    QTimer.singleShot(0, lambda: apply_app_window_icon(window))
 
     return app.exec()
 

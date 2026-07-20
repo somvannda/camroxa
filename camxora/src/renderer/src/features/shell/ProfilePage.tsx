@@ -177,7 +177,9 @@ export function ProfilePage(): React.JSX.Element {
           <div className="mt-4 grid gap-3">
             <SummaryField label="Songs generated" value={formatCount(stats?.songs_generated)} />
             <SummaryField label="Images generated" value={formatCount(stats?.images_generated)} />
-            <SummaryField label="Videos generated" value={formatCount(stats?.videos_generated)} />
+            <SummaryField label="Studio exports" value={formatCount(stats?.studio_exports ?? stats?.videos_generated)} />
+            <SummaryField label="Manual exports" value={formatCount(stats?.manual_exports)} />
+            <SummaryField label="YouTube uploads" value={formatCount(stats?.youtube_uploads ?? stats?.videos_uploaded)} />
             <SummaryField label="Credits spent" value={formatCount(stats?.credits_spent)} />
           </div>
         </Card>

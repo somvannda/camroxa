@@ -36,7 +36,9 @@ from platform_api.services.billing_mode_service import (
     is_subscription_plan,
     quota_operation_type,
     subscription_covers_operation,
+    usage_storage_type,
     uses_account_daily_quota,
+    video_usage_counter_types,
 )
 from platform_api.services.billing_calendar import billing_today, next_billing_midnight
 from platform_api.services import credit_progress_log as credit_log
@@ -321,6 +323,10 @@ class UsageEnforcementService:
         pricing_entry = await lookup_pricing_entry(
             self._pricing_repo, ai_service, operation_type, sub_model
         )
+        if pricing_entry is None and str(operation_type).strip().lower() == "video_manual":
+            pricing_entry = await lookup_pricing_entry(
+                self._pricing_repo, ai_service, "video", sub_model
+            )
         if pricing_entry is None:
             raise ExternalServiceError(
                 f"No pricing configured for ai_service '{ai_service}' "
@@ -1489,8 +1495,39 @@ class UsageEnforcementService:
 
     @staticmethod
     def _pool_operation_type(operation_type: str) -> str:
-        """Counter key for product pools (lyric/title/album → draft)."""
-        return quota_operation_type(operation_type)
+        """Counter key for product pools (lyric/title/album → draft; video_manual stays split)."""
+        return usage_storage_type(operation_type)
+
+    async def _sum_usage_counters(
+        self,
+        *,
+        user_id: UUID,
+        counter_types: tuple[str, ...],
+        period_start: date | None = None,
+        usage_date: date | None = None,
+        account_daily: bool = False,
+        channel_profile_id: UUID | None = None,
+    ) -> int:
+        total = 0
+        for counter in counter_types:
+            if usage_date is not None:
+                if account_daily:
+                    getter = getattr(self._usage_repo, "get_account_daily_count", None)
+                    if getter is not None:
+                        total += int(await getter(user_id, counter, usage_date) or 0)
+                    else:
+                        total += await self._get_daily_count_cached(
+                            user_id, channel_profile_id, counter, usage_date
+                        )
+                else:
+                    total += await self._get_daily_count_cached(
+                        user_id, channel_profile_id, counter, usage_date
+                    )
+            elif period_start is not None:
+                total += int(
+                    await self._usage_repo.get_monthly_count(user_id, counter, period_start) or 0
+                )
+        return total
 
     async def _sync_plan_usage_reporting(
         self,
@@ -1551,7 +1588,8 @@ class UsageEnforcementService:
         today: date,
     ) -> tuple[int, int, int]:
         """Return (daily_limit, banked_units, daily_count) after accrual."""
-        quota_op = self._pool_operation_type(operation_type)
+        storage_op = self._pool_operation_type(operation_type)
+        quota_op = quota_operation_type(operation_type)
         daily_limit = self._get_daily_limit(plan, quota_op)
         account_daily = uses_account_daily_quota(quota_op)
         bank_profile_id = None if account_daily else channel_profile_id
@@ -1569,16 +1607,25 @@ class UsageEnforcementService:
             )
 
         if account_daily:
-            getter = getattr(self._usage_repo, "get_account_daily_count", None)
-            if getter is not None:
-                daily_count = await getter(user_id, quota_op, today)
-            else:
-                daily_count = await self._get_daily_count_cached(
-                    user_id, channel_profile_id, quota_op, today
+            if counts_toward_video_quota(operation_type):
+                daily_count = await self._sum_usage_counters(
+                    user_id=user_id,
+                    counter_types=video_usage_counter_types(),
+                    usage_date=today,
+                    account_daily=True,
+                    channel_profile_id=channel_profile_id,
                 )
+            else:
+                getter = getattr(self._usage_repo, "get_account_daily_count", None)
+                if getter is not None:
+                    daily_count = await getter(user_id, quota_op, today)
+                else:
+                    daily_count = await self._get_daily_count_cached(
+                        user_id, channel_profile_id, quota_op, today
+                    )
         else:
             daily_count = await self._get_daily_count_cached(
-                user_id, channel_profile_id, quota_op, today
+                user_id, channel_profile_id, storage_op, today
             )
         return daily_limit, banked_units, daily_count
 
@@ -1683,9 +1730,16 @@ class UsageEnforcementService:
                     },
                 )
             period_start = self._period_start(ctx, today)
-            monthly_count = await self._usage_repo.get_monthly_count(
-                user_id, quota_op, period_start
-            )
+            if counts_toward_video_quota(operation_type):
+                monthly_count = await self._sum_usage_counters(
+                    user_id=user_id,
+                    counter_types=video_usage_counter_types(),
+                    period_start=period_start,
+                )
+            else:
+                monthly_count = await self._usage_repo.get_monthly_count(
+                    user_id, quota_op, period_start
+                )
             if quota_op == "background_image":
                 monthly_count += await self._usage_repo.get_monthly_count(
                     user_id, "thumbnail_image", period_start
@@ -1808,7 +1862,7 @@ class UsageEnforcementService:
             return plan.daily_image_limit_per_channel
         if operation_type in ("draft", "lyric", "title", "album", "lyrics"):
             return int(getattr(plan, "daily_draft_limit_per_channel", 300) or 300)
-        if operation_type in ("video", "video_generation", "video_export"):
+        if operation_type in ("video", "video_generation", "video_export", "video_manual"):
             return int(getattr(plan, "daily_video_limit", 10) or 10)
         if operation_type in ("video_merge", "merge", "auto_merge"):
             return int(getattr(plan, "daily_merge_limit", 1) or 1)
@@ -1828,7 +1882,7 @@ class UsageEnforcementService:
             return plan.monthly_image_limit
         if operation_type in ("draft", "lyric", "title", "album", "lyrics"):
             return getattr(plan, "monthly_draft_limit", None)
-        if operation_type in ("video", "video_generation", "video_export"):
+        if operation_type in ("video", "video_generation", "video_export", "video_manual"):
             return getattr(plan, "monthly_video_limit", None)
         if operation_type in ("video_merge", "merge", "auto_merge"):
             return getattr(plan, "monthly_merge_limit", None)

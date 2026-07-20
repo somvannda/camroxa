@@ -69,14 +69,63 @@ async def user_has_paid_for_onboarding(pool: Any, user_id: UUID) -> bool:
     return paid_license is not None
 
 
+async def get_onboarding_profile_target(pool: Any, user_id: UUID) -> int:
+    """Profiles the user should finish before onboarding AI turns off.
+
+    Includes base plan allowance plus active and pending add-on slots so a paid
+    +2-channel purchase re-opens onboarding AI until those profiles exist.
+    """
+    row = await pool.fetchrow(
+        """
+        SELECT
+            COALESCE(p.profile_allowance, 0)::int AS base_allowance,
+            COALESCE(l.profile_addon_slots, 0)::int AS addon_slots,
+            COALESCE(l.profile_addon_pending, 0)::int AS addon_pending
+        FROM licenses l
+        JOIN plans p ON p.id = l.plan_id
+        WHERE l.user_id = $1
+          AND l.status = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > NOW())
+        ORDER BY l.created_at DESC
+        LIMIT 1
+        """,
+        user_id,
+    )
+    if row is None:
+        return ONBOARDING_PROFILE_TARGET
+    target = (
+        int(row["base_allowance"] or 0)
+        + int(row["addon_slots"] or 0)
+        + int(row["addon_pending"] or 0)
+    )
+    return max(ONBOARDING_PROFILE_TARGET, target)
+
+
 async def user_in_onboarding(pool: Any, user_id: UUID) -> bool:
-    """True while the user has not finished the two-profile onboarding journey."""
+    """True while the user still needs to finish channel profiles (initial or add-on)."""
     row = await pool.fetchrow(
         "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
         user_id,
     )
     count = int(row["cnt"] or 0) if row else 0
-    return count < ONBOARDING_PROFILE_TARGET
+    target = await get_onboarding_profile_target(pool, user_id)
+    return count < target
+
+
+async def effective_onboarding_ai_limit(
+    pool: Any,
+    user_id: UUID,
+    operation_type: str,
+) -> int:
+    """Per-operation cap scaled by how many 2-channel onboarding bundles are open."""
+    if operation_type not in ONBOARDING_AI_LIMITS:
+        raise ValidationError(
+            "Unsupported onboarding AI operation.",
+            details={"operation_type": operation_type},
+        )
+    target = await get_onboarding_profile_target(pool, user_id)
+    bundles = max(1, (target + ONBOARDING_PROFILE_TARGET - 1) // ONBOARDING_PROFILE_TARGET)
+    return int(ONBOARDING_AI_LIMITS[operation_type]) * bundles
 
 
 async def get_onboarding_usage(pool: Any, user_id: UUID, operation_type: str) -> int:
@@ -114,11 +163,12 @@ async def assert_onboarding_ai_allowed(
 
     if not await user_in_onboarding(pool, user_id):
         raise ForbiddenError(
-            "Onboarding AI is only available while finishing your initial channel setup.",
+            "Onboarding AI is only available while finishing channel setup "
+            "(including newly purchased add-on profiles).",
             details={"error_code": "ONBOARDING_ALREADY_COMPLETE"},
         )
 
-    limit = ONBOARDING_AI_LIMITS[operation_type]
+    limit = await effective_onboarding_ai_limit(pool, user_id, operation_type)
     current = await get_onboarding_usage(pool, user_id, operation_type)
     if current + increment > limit:
         raise ForbiddenError(

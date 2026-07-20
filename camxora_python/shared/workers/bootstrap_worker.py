@@ -15,6 +15,7 @@ class ApiHealthWorker(QThread):
 
     def __init__(self, api_base_url: str, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("ApiHealthWorker")
         self._api_base_url = api_base_url
 
     def run(self) -> None:
@@ -32,6 +33,7 @@ class BootstrapWorker(QThread):
 
     def __init__(self, session: SessionService, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("BootstrapWorker")
         self._session = session
 
     def run(self) -> None:
@@ -60,6 +62,7 @@ class AuthWorker(QThread):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("AuthWorker")
         self._session = session
         self._mode = mode
         self._email = email

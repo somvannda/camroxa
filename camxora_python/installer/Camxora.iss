@@ -13,7 +13,7 @@
 #ifdef CamxoraVersion
   #define MyAppVersion CamxoraVersion
 #else
-  #define MyAppVersion "0.2.2"
+  #define MyAppVersion "0.3.0"
 #endif
 #define MyAppPublisher "Camxora"
 #define MyAppExeName "Camxora.exe"
@@ -28,6 +28,9 @@
 AppId={{A7C2E8D1-4F19-4B6A-9C31-CAMXORA2026}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+VersionInfoVersion={#MyAppVersion}.0
+AppVerName={#MyAppName} {#MyAppVersion}
+InfoAfterFile=release-notes.txt
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
@@ -59,8 +62,9 @@ Source: "{#CamxoraVendorDir}\ffmpeg\*"; DestDir: "{app}\ffmpeg"; Flags: ignoreve
 Source: "{#CamxoraVendorDir}\vcredist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; AppUserModelID must match shared.lib.app_icon.APP_USER_MODEL_ID for stable taskbar branding.
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "Camxora.DesktopStudio"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "Camxora.DesktopStudio"
 
 [Run]
 ; Install VC++ runtime quietly when present (safe no-op if already installed)

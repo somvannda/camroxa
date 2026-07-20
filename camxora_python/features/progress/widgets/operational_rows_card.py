@@ -10,9 +10,11 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMenu,
+    QPushButton,
     QSizePolicy,
     QTableWidgetItem,
     QVBoxLayout,
@@ -104,6 +106,7 @@ class OperationalRowsCard(QFrame):
     retry_suno_requested = Signal(str, list)
     force_export_regenerate_requested = Signal(object)
     rebuild_export_requested = Signal(object)
+    start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
     row_selected = Signal(object)
 
@@ -206,6 +209,7 @@ class OperationalRowsCard(QFrame):
 
         self._table.blockSignals(True)
         self._table.clearSpans()
+        self._table.clearContents()
         self._table.setRowCount(len(rows))
         for row_index, entry in enumerate(rows):
             row = entry.row
@@ -235,10 +239,17 @@ class OperationalRowsCard(QFrame):
             tooltips[_COL_MERGE] = merge_full
             if row.album:
                 tooltips[_COL_ALBUM] = str(row.album).strip()
+            show_start_export = self._can_show_start_export(entry)
             for col_index, value in enumerate(values):
+                if col_index == _COL_EXPORT and show_start_export:
+                    continue
+                if col_index == _COL_EXPORT:
+                    self._table.removeCellWidget(row_index, col_index)
                 item = self._make_cell_item(value, center=col_index in _CENTER_ALIGNED_COLUMNS)
                 item.setToolTip(tooltips[col_index].replace("\n", " · "))
                 self._table.setItem(row_index, col_index, item)
+            if show_start_export:
+                self._set_start_export_button(row_index, entry.row)
 
         self._table.resizeRowsToContents()
         self._apply_column_widths()
@@ -318,6 +329,19 @@ class OperationalRowsCard(QFrame):
         return bool(meta.long_ready or meta.reel_ready)
 
     @staticmethod
+    def _can_show_start_export(entry: EffectiveProgressRow) -> bool:
+        stage = entry.effective_stage.strip().lower()
+        if stage not in {"export", "converter"}:
+            return False
+        status = entry.effective_status.strip().lower()
+        converter_text = str(entry.effective_converter or entry.row.converter or "").lower()
+        if status in {"pending", "queued", "waiting"}:
+            return True
+        if "pending" in converter_text or "no exports yet" in converter_text:
+            return True
+        return False
+
+    @staticmethod
     def _can_start_video_merge(entry: EffectiveProgressRow) -> bool:
         meta = entry.row.meta
         if not str(meta.run_dir or "").strip():
@@ -388,6 +412,9 @@ class OperationalRowsCard(QFrame):
         recovery_added = False
 
         if clicked_column == _COL_EXPORT:
+            if self._can_show_start_export(entry):
+                action = menu.addAction("Start Export")
+                action.triggered.connect(partial(self.start_export_requested.emit, entry.row))
             if self._can_start_video_export(entry):
                 action = menu.addAction("Force Regenerate MP4")
                 action.triggered.connect(partial(self.force_export_regenerate_requested.emit, entry.row))
@@ -471,9 +498,25 @@ class OperationalRowsCard(QFrame):
         if menu.actions():
             menu.exec(self._table.viewport().mapToGlobal(position))
 
+    def _set_start_export_button(self, row_index: int, row: ProgressRow) -> None:
+        self._table.removeCellWidget(row_index, _COL_EXPORT)
+        stale_item = self._table.takeItem(row_index, _COL_EXPORT)
+        if stale_item is not None:
+            del stale_item
+
+        button = QPushButton("Start Export")
+        button.setProperty("uiRole", "gradientPrimary")
+        button.clicked.connect(partial(self.start_export_requested.emit, row))
+        wrap = QWidget()
+        layout = QHBoxLayout(wrap)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.addWidget(button)
+        self._table.setCellWidget(row_index, _COL_EXPORT, wrap)
+
     def _set_message(self, message: str) -> None:
         self._rows = []
         self._table.clearSpans()
+        self._table.clearContents()
         self._table.setRowCount(1)
         self._table.setSpan(0, 0, 1, len(TABLE_HEADERS))
         for col in range(len(TABLE_HEADERS)):

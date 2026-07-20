@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -148,22 +149,151 @@ async def apply_uploaded_installer_to_draft(
     return await get_software_update_config(pool)
 
 
-async def publish_software_update(pool: Any) -> tuple[SoftwareUpdateConfig, int]:
+async def unpublish_software_update(pool: Any) -> SoftwareUpdateConfig:
+    """Remove public visibility without clearing draft version/download URL."""
+    await _upsert_system_setting(pool, key=SOFTWARE_UPDATE_PUBLISHED_AT_KEY, value="")
+    return await get_software_update_config(pool)
+
+
+def _slugify_release_title(title: str) -> str:
+    import re
+
+    slug = re.sub(r"[^a-z0-9]+", "-", str(title or "").strip().lower()).strip("-")
+    return slug[:180] or "release"
+
+
+async def _ensure_unique_blog_slug(pool: Any, slug: str) -> str:
+    candidate = slug
+    suffix = 2
+    while True:
+        row = await pool.fetchrow("SELECT 1 FROM blog_posts WHERE slug = $1 LIMIT 1", candidate)
+        if row is None:
+            return candidate
+        candidate = f"{slug[:170]}-{suffix}"
+        suffix += 1
+
+
+def _summarize_release_notes_excerpt(notes: str, *, max_len: int = 280) -> str:
+    """Build a readable excerpt from Keep-a-Changelog markdown release notes."""
+    text = str(notes or "").replace("\r\n", "\n").strip()
+    if not text:
+        return ""
+
+    added_items: list[str] = []
+    in_added = False
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("### "):
+            in_added = stripped.lower() == "### added"
+            continue
+        if in_added and stripped.startswith("- "):
+            item = stripped[2:].strip()
+            if item:
+                added_items.append(item)
+
+    if not added_items:
+        for line in text.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                item = stripped[2:].strip()
+                if item:
+                    added_items.append(item)
+
+    if added_items:
+        summary = "; ".join(added_items[:2])
+        if len(added_items) > 2:
+            summary = f"{summary}; and more."
+    else:
+        summary = re.sub(r"^#+\s*", "", text.replace("\n", " "), flags=re.MULTILINE).strip()
+
+    if len(summary) > max_len:
+        return f"{summary[: max_len - 1].rstrip()}…"
+    return summary
+
+
+async def create_release_changelog_post(
+    pool: Any,
+    *,
+    version: str,
+    release_notes: str,
+) -> str | None:
+    """Create a published blog post in category Release notes. Returns slug or None if skipped."""
+    normalized_version = str(version or "").strip()
+    notes = str(release_notes or "").strip()
+    if not normalized_version:
+        return None
+
+    title = f"Camxora Desktop {normalized_version}"
+    excerpt_source = notes or f"Camxora Desktop {normalized_version} release."
+    excerpt = _summarize_release_notes_excerpt(excerpt_source)
+    if not excerpt:
+        excerpt = f"Camxora Desktop {normalized_version} release."
+    content = notes or f"Camxora Desktop {normalized_version} is now available."
+
+    slug_base = _slugify_release_title(f"camxora-desktop-{normalized_version}")
+    slug = await _ensure_unique_blog_slug(pool, slug_base)
+    published_at = datetime.now(timezone.utc)
+    post_id = uuid.uuid4()
+
+    await pool.execute(
+        """
+        INSERT INTO blog_posts (
+            id, slug, title, excerpt, content, cover_image_url, category,
+            author_name, seo_title, seo_description, is_published, published_at,
+            created_at, updated_at
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, NULL, $6, $7, $8, $9, TRUE, $10, NOW(), NOW()
+        )
+        """,
+        post_id,
+        slug,
+        title,
+        excerpt,
+        content,
+        "Release notes",
+        "Camxora",
+        title,
+        excerpt,
+        published_at,
+    )
+    return slug
+
+
+async def publish_software_update(
+    pool: Any,
+    *,
+    notify_desktop_users: bool = True,
+    create_changelog: bool = False,
+) -> tuple[SoftwareUpdateConfig, int, str | None]:
     config = await get_software_update_config(pool)
     if not config.version.strip():
         raise ValueError("Software update version is required before publishing.")
+    if not config.download_url.strip():
+        raise ValueError("Download URL is required before publishing.")
 
     published_at = datetime.now(timezone.utc).isoformat()
     await _upsert_system_setting(pool, key=SOFTWARE_UPDATE_PUBLISHED_AT_KEY, value=published_at)
 
-    user_ids = await list_active_user_ids(pool)
-    for user_id in user_ids:
-        await notify_software_update_available(
-            user_id,
+    recipients = 0
+    if notify_desktop_users:
+        user_ids = await list_active_user_ids(pool)
+        for user_id in user_ids:
+            await notify_software_update_available(
+                user_id,
+                version=config.version.strip(),
+                download_url=config.download_url.strip() or None,
+                mandatory=config.mandatory,
+                release_notes=config.release_notes.strip() or None,
+            )
+        recipients = len(user_ids)
+
+    changelog_slug = None
+    if create_changelog:
+        changelog_slug = await create_release_changelog_post(
+            pool,
             version=config.version.strip(),
-            download_url=config.download_url.strip() or None,
-            mandatory=config.mandatory,
-            release_notes=config.release_notes.strip() or None,
+            release_notes=config.release_notes.strip(),
         )
 
     published_config = SoftwareUpdateConfig(
@@ -173,7 +303,7 @@ async def publish_software_update(pool: Any) -> tuple[SoftwareUpdateConfig, int]
         release_notes=config.release_notes,
         published_at=published_at,
     )
-    return published_config, len(user_ids)
+    return published_config, recipients, changelog_slug
 
 
 async def _load_push_history(pool: Any) -> list[PushNotificationHistoryItem]:

@@ -3,12 +3,16 @@ import Link from "next/link";
 import { ArrowRight, Download, ExternalLink } from "lucide-react";
 
 import { ContentPageShell } from "@/components/marketing/content-page-shell";
+import { ReleaseNotesContent } from "@/components/marketing/release-notes-content";
 import { getPublicDesktopRelease } from "@/lib/desktop-release";
 import { getUserPortalBaseUrl } from "@/lib/site-urls";
+import { summarizeReleaseNotes } from "@/lib/release-notes";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Download",
-  description: "Download the Camxora desktop studio for Windows.",
+  description: "Download Camxora for Windows and start building faceless YouTube music videos.",
 };
 
 function formatDate(value: string): string {
@@ -17,6 +21,14 @@ function formatDate(value: string): string {
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function summarizeReleaseNotesPreview(notes: string): string {
+  return summarizeReleaseNotes(notes, 220);
+}
+
+function formatDownloadCount(value: number): string {
+  return new Intl.NumberFormat("en-US").format(Math.max(0, value));
 }
 
 export default async function DownloadPage() {
@@ -32,19 +44,20 @@ export default async function DownloadPage() {
 
   return (
     <ContentPageShell
-      eyebrow="Desktop App"
-      title="Download the CAMXORA desktop studio."
-      description="The website explains the product and handles access. The desktop app is where the production workflow happens."
+      eyebrow="Download"
+      title="Install Camxora and start your first song-to-video run."
+      description="Create an account, choose a plan, then download the Windows app — where lyrics, music, artwork, and video export live."
       aside={
         <div className="space-y-5">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Desktop focus</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              The app is the production surface.
+              The app is where creation happens.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
-            Account setup and billing stay outside the studio so the app can stay focused on work.
+            Billing stays in the portal. Preview, export, and merge stay in Camxora. Auto YouTube
+            upload is coming soon.
           </p>
         </div>
       }
@@ -70,11 +83,17 @@ export default async function DownloadPage() {
                     Latest release
                   </div>
                   <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white">
-                    CAMXORA Desktop v{release.version}
+                    Camxora Desktop v{release.version}
                   </div>
                   <div className="mt-2 text-sm text-slate-400">
                     Published {formatDate(release.published_at)}
                     {release.mandatory ? " · Required update" : null}
+                    {typeof release.download_count === "number"
+                      ? ` · ${formatDownloadCount(release.download_count)} download${release.download_count === 1 ? "" : "s"} for v${release.version}`
+                      : null}
+                    {typeof release.total_downloads === "number" && release.total_downloads > release.download_count
+                      ? ` · ${formatDownloadCount(release.total_downloads)} total`
+                      : null}
                   </div>
                 </div>
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]">
@@ -95,7 +114,7 @@ export default async function DownloadPage() {
                   </a>
                 ) : (
                   <div className="text-sm leading-7 text-slate-200/72">
-                    A download URL has not been configured yet. Check back after the next publish.
+                    A download URL has not been published yet. Check back after the next release.
                   </div>
                 )}
                 <Link
@@ -110,11 +129,19 @@ export default async function DownloadPage() {
               {release.release_notes ? (
                 <div className="mt-8 rounded-2xl border border-white/8 bg-black/20 p-5">
                   <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
-                    Release notes
+                    What&apos;s new
                   </div>
-                  <div className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-200/72">
-                    {release.release_notes}
-                  </div>
+                  <p className="mt-3 text-sm leading-7 text-slate-200/80">
+                    {summarizeReleaseNotesPreview(release.release_notes)}
+                  </p>
+                  <details className="mt-4">
+                    <summary className="cursor-pointer text-sm font-medium text-white/90">
+                      Full release notes
+                    </summary>
+                    <div className="mt-4">
+                      <ReleaseNotesContent content={release.release_notes} className="text-sm md:text-base" />
+                    </div>
+                  </details>
                 </div>
               ) : null}
             </>
@@ -125,8 +152,7 @@ export default async function DownloadPage() {
                 No public desktop release yet.
               </div>
               <p className="mt-4 text-sm leading-7 text-slate-200/72">
-                The installer will appear here once an admin publishes a software update from the admin
-                portal.
+                The installer will appear here once a software update is published.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <a
@@ -148,18 +174,20 @@ export default async function DownloadPage() {
         </div>
 
         <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 text-sm leading-7 text-slate-200/72 ring-1 ring-white/6">
-          Recommended flow: create your account, choose a plan, then download and sign in on desktop.
+          Recommended path: create your account → choose a plan → download Camxora → sign in on
+          desktop and start a batch.
         </div>
       </div>
 
       <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 ring-1 ring-white/6">
-        <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Why it matters</div>
+        <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">What you can do today</div>
         <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white">
-          The desktop download should feel connected to the full product.
+          Export YouTube-ready music videos.
         </div>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200/72 md:text-base">
-          This page stays in sync with admin-published software updates, so website downloads, user
-          portal links, and in-app update prompts all point to the same release.
+          Lyrics, music, images, templates, export, and merge are in the app now. Auto YouTube upload
+          will follow in a later release — this page always points to the same published installer as
+          the portal and in-app updates.
         </p>
       </section>
     </ContentPageShell>

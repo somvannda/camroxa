@@ -146,14 +146,20 @@ export function HomePage(): React.JSX.Element {
       accentClassName: 'bg-emerald-500/20',
     },
     {
-      title: 'Videos Generated',
-      value: isLoading ? '--' : formatCompactNumber(data?.stats.videos_generated ?? 0),
+      title: 'Studio Exports',
+      value: isLoading ? '--' : formatCompactNumber(data?.stats.studio_exports ?? data?.stats.videos_generated ?? 0),
       icon: Video,
       accentClassName: 'bg-amber-500/20',
     },
     {
-      title: 'YouTube Uploaded',
-      value: isLoading ? '--' : formatCompactNumber(data?.stats.videos_generated ?? 0),
+      title: 'Manual Exports',
+      value: isLoading ? '--' : formatCompactNumber(data?.stats.manual_exports ?? 0),
+      icon: Video,
+      accentClassName: 'bg-orange-500/20',
+    },
+    {
+      title: 'YouTube Uploads',
+      value: isLoading ? '--' : formatCompactNumber(data?.stats.youtube_uploads ?? data?.stats.videos_uploaded ?? 0),
       icon: Youtube,
       accentClassName: 'bg-rose-500/20',
     },
@@ -170,7 +176,7 @@ export function HomePage(): React.JSX.Element {
         </Card>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {kpis.map((item) => (
           <KpiCard
             key={item.title}

@@ -1,0 +1,17 @@
+﻿Camxora 0.3.0 (Sandbox)
+
+What's new
+----------
+• Phase 1 export speed: audio analysis cache, warm visualizer daemon, Draft/Standard/Master tiers
+• Fast exports use NV12 pipe + async GPU readback (less CPU/GPU stall)
+• Export status shows codec (NVENC / CPU x264) and live init steps
+
+Fixes
+-----
+• Export progress no longer jumps backward at encoder start
+• Re-exporting the same song skips long librosa analysis when cache is warm
+
+Notes
+-----
+• Pipeline auto-export uses Draft tier (1280×720, very fast) by default
+• Install over 0.2.x; footer should show v0.3.0 after install

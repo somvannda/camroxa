@@ -503,7 +503,8 @@ class SetupNotificationButton(QWidget):
             in_progress=True,
         )
 
-    def _on_update_install_progress(self, message: str) -> None:
+    def _on_update_install_progress(self, message: str, percent: int = -1) -> None:
+        del percent
         notification_id = self._resolve_update_notification_id()
         if notification_id is None:
             return

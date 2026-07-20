@@ -26,6 +26,7 @@ class ShellWarmupWorker(QThread):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("ShellWarmupWorker")
         self._api = api
         self._cache = cache
 

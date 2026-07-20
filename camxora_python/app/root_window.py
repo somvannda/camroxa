@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QTimer, Qt
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 
 from app.application import AppShellWidget
@@ -11,8 +11,12 @@ from features.account.views.auth_view import AuthView
 from features.account.views.startup_view import StartupView
 from features.onboarding.views.onboarding_views import OnboardingWelcomeView, OnboardingWizardView
 from shared.constants.auth import REGISTRATION_ENABLED
-from shared.lib.app_icon import load_app_icon
-from shared.lib.window_chrome import configure_rounded_window, sync_rounded_window_shape
+from shared.lib.app_icon import apply_app_window_icon
+from shared.lib.window_chrome import (
+    center_window_on_screen,
+    configure_rounded_window,
+    sync_rounded_window_shape,
+)
 from shared.services.push_notification_runtime import PushNotificationRuntime
 from shared.services.session_service import BootstrapDestination, BootstrapResult, SessionService
 from shared.services.setup_readiness_service import refresh_setup_readiness
@@ -39,12 +43,14 @@ class RootWindow(QMainWindow):
         self._session = session or SessionService()
         self._worker: BootstrapWorker | AuthWorker | ShellWarmupWorker | None = None
         self._push_runtime: PushNotificationRuntime | None = None
+        self._centered_on_launch = False
 
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setWindowTitle("Camxora")
-        self.setWindowIcon(load_app_icon())
+        apply_app_window_icon(self)
         self.setMinimumSize(self.MIN_WIDTH, self.MIN_HEIGHT)
         self.resize(self.MIN_WIDTH, self.MIN_HEIGHT)
+        center_window_on_screen(self)
 
         self._stack = QStackedWidget()
         self._title_bar = WindowTitleBar(self)
@@ -91,10 +97,76 @@ class RootWindow(QMainWindow):
         self._onboarding_wizard.refresh_requested.connect(self._retry_bootstrap_after_onboarding)
         self._onboarding_wizard.skip_to_app.connect(self._show_app_shell)
 
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API
+        # Stop shell background workers before destroying the window hierarchy.
+        # Sync/push QThreads used to be parented under the shell and destroyed
+        # mid-run with an empty objectName while Manual Export was still alive.
+        from PySide6.QtWidgets import QApplication
+
+        from shared.services.video_pipeline_activity import (
+            any_video_pipeline_threads_running,
+            set_app_quitting,
+            shutdown_video_pipeline_threads,
+            terminate_video_pipeline_threads,
+        )
+
+        set_app_quitting(True)
+        try:
+            if self._app_shell is not None:
+                self._app_shell.prepare_app_quit()
+        except Exception:
+            pass
+        try:
+            self._stop_push_notifications()
+        except Exception:
+            pass
+        try:
+            if self._app_shell is not None:
+                self._app_shell.shutdown_background_workers()
+        except Exception:
+            pass
+        try:
+            from shared.services.app_thread_registry import shutdown_app_threads
+
+            # Single budget for remaining sync/push workers (~10s), then export join.
+            shutdown_app_threads(wait_ms=10_000)
+        except Exception:
+            pass
+        try:
+            shutdown_video_pipeline_threads(wait_ms=20_000)
+        except Exception:
+            pass
+        # Drain finished handlers now that stop/quit flags block batch chaining.
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+            shutdown_video_pipeline_threads(wait_ms=5_000)
+        except Exception:
+            pass
+
+        if any_video_pipeline_threads_running():
+            retries = int(getattr(self, "_quit_join_retries", 0) or 0)
+            if retries < 40:
+                self._quit_join_retries = retries + 1
+                event.ignore()
+                QTimer.singleShot(500, self.close)
+                return
+            try:
+                terminate_video_pipeline_threads()
+            except Exception:
+                pass
+
+        self._quit_join_retries = 0
+        super().closeEvent(event)
+
     def changeEvent(self, event: QEvent) -> None:  # noqa: N802 - Qt API
         if event.type() == QEvent.Type.WindowStateChange:
             self._title_bar.sync_window_state()
             sync_rounded_window_shape(self)
+        if event.type() in {QEvent.Type.ActivationChange, QEvent.Type.WindowActivate}:
+            # GPU export / preview can steal the taskbar surface; restamp branding.
+            apply_app_window_icon(self)
         super().changeEvent(event)
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt API
@@ -105,6 +177,19 @@ class RootWindow(QMainWindow):
     def showEvent(self, event: QEvent) -> None:  # noqa: N802 - Qt API
         sync_rounded_window_shape(self)
         super().showEvent(event)
+        # Native taskbar icon needs a real HWND; apply again after the window is visible.
+        apply_app_window_icon(self)
+        # Screen geometry is reliable after the first show; center once on launch only.
+        if not self._centered_on_launch:
+            center_window_on_screen(self)
+            self._centered_on_launch = True
+            # One deferred pass covers Windows DPI / frame-size settling after map.
+            QTimer.singleShot(0, self._center_after_map)
+
+    def _center_after_map(self) -> None:
+        if self.isMaximized() or self.isFullScreen():
+            return
+        center_window_on_screen(self)
 
     def bring_to_front(self) -> None:
         """Restore and focus this window (used when a second instance is launched)."""
@@ -126,6 +211,10 @@ class RootWindow(QMainWindow):
         self._stop_push_notifications()
         if self._app_shell is None:
             return
+        try:
+            self._app_shell.shutdown_background_workers()
+        except Exception:
+            pass
         try:
             self._app_shell.logout_requested.disconnect(self._on_logout)
         except (RuntimeError, TypeError):

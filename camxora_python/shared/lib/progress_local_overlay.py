@@ -95,14 +95,21 @@ def _apply_local_stage_truth(row: ProgressRow, *, assets_ready: bool, music_read
         return row.model_copy(
             update={
                 "stage": "Export",
-                "status": STATUS_PENDING if status in {"", "Rendering", STATUS_IN_PROGRESS} else status,
+                "status": STATUS_PENDING
+                if status in {"", "Rendering", STATUS_IN_PROGRESS, "Queued", "Waiting"}
+                else status,
                 "notes": notes or "Image assets are ready locally; waiting for video export.",
                 "converter": "Pending · no exports yet",
             }
         )
 
     if stage_key == "converter":
-        return row.model_copy(update={"stage": "Export"})
+        normalized_status = (
+            STATUS_PENDING
+            if status in {"", "Rendering", STATUS_IN_PROGRESS, "Queued", "Waiting"}
+            else status
+        )
+        return row.model_copy(update={"stage": "Export", "status": normalized_status})
     if stage_key == "merger":
         return row.model_copy(update={"stage": "Merge"})
 

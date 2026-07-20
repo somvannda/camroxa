@@ -76,6 +76,9 @@ export type DailyUsageResponse = {
   songs: number
   images: number
   videos: number
+  studio_exports?: number
+  manual_exports?: number
+  youtube_uploads?: number
 }
 
 export type RecentActivityResponse = {
@@ -93,7 +96,11 @@ export type DashboardStatsResponse = {
   songs_remaining: number | null
   songs_quota: number | null
   images_generated: number
+  studio_exports?: number
+  manual_exports?: number
+  youtube_uploads?: number
   videos_generated: number
+  videos_uploaded?: number
   usage_by_day: DailyUsageResponse[]
   recent_activity: RecentActivityResponse[]
 }
@@ -977,7 +984,7 @@ export async function apiGenerateImage(input: ImageGenerationRequest): Promise<I
 }
 
 export type LocalVideoConsumeRequest = {
-  operation_type: 'video' | 'video_merge'
+  operation_type: 'video' | 'video_manual' | 'video_merge'
   channel_profile_id?: string | null
   count?: number
   ref_id?: string | null
@@ -1002,7 +1009,7 @@ export async function apiConsumeLocalVideo(
 }
 
 export async function apiRefundLocalVideo(input: {
-  operation_type: 'video' | 'video_merge'
+  operation_type: 'video' | 'video_manual' | 'video_merge'
   channel_profile_id?: string | null
   charged_credit_units?: number
   count?: number

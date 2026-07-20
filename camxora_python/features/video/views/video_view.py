@@ -7,7 +7,7 @@ import os
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QFrame,
@@ -124,6 +124,7 @@ from features.video.lib.pipeline_inputs import (
 )
 from features.video.lib.pipeline_merge import is_auto_merge_enabled_for_branch
 from features.video.lib.video_billing import consume_video_operation, refund_video_operation
+from features.video.lib.export_telemetry import collect_hardware_hints, report_video_telemetry_async
 from features.video.lib.render_scene_request import (
     PIPELINE_EXPORT_FPS,
     build_manual_render_scene_request,
@@ -168,6 +169,8 @@ from features.video.lib.text_domain_registry import (
     album_settings_from_draft,
     title_settings_from_draft,
 )
+from shared.lib.export_codec import format_export_status_message, normalize_export_speed_mode
+from shared.lib.export_tiers import normalize_export_tier, resolve_export_tier_settings
 from shared.lib.page_account_scope import account_cache_mismatch, cached_user_id
 from shared.models.desktop import (
     VideoExportState,
@@ -181,6 +184,7 @@ from shared.services.app_logger import log_error
 from shared.services.action_feedback import notify_action
 from shared.services.shell_status import restore_shell_status
 from shared.services.video_template_catalog import emit_video_template_catalog_changed
+from shared.services.video_pipeline_activity import track_video_pipeline_thread
 from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID, VIDEO_WORKSPACE_ID
@@ -189,6 +193,7 @@ from shared.workers.data_workers import PatchSettingsWorker, VideoPatchTemplateW
 from features.video.workers.manual_export_worker import ManualExportRequest, VideoManualExportWorker
 from features.video.workers.pipeline_export_worker import PipelineExportRequest, VideoPipelineExportWorker
 from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, VideoPipelineMergeWorker
+from features.video.workers.video_billing_worker import VideoBillingWorker
 from features.video.workers.video_template_sync_worker import VideoTemplateSyncWorker
 
 LOADING_MESSAGE = "Loading video workspace..."
@@ -278,10 +283,12 @@ class VideoView(QWidget):
         self._export_worker: VideoManualExportWorker | None = None
         self._pipeline_export_worker: VideoPipelineExportWorker | None = None
         self._pipeline_merge_worker: VideoPipelineMergeWorker | None = None
+        self._billing_worker: VideoBillingWorker | None = None
         self._pipeline_merge_context: dict[str, object] | None = None
         self._video_billing_charge: dict[str, object] = {}
         self._merge_billing_charge: dict[str, object] = {}
         self._settings_patch_worker: PatchSettingsWorker | None = None
+        self._pending_manual_billing: dict[str, object] | None = None
         self._resolution_save_pending = False
         self._export_start_pending = False
         self._pipeline_start_pending = False
@@ -295,6 +302,9 @@ class VideoView(QWidget):
         self._batch_output_dir = ""
         self._batch_outputs: list[str] = []
         self._selected_pipeline_branch = "long"
+        # Keep finished workers alive until wait()+deleteLater (avoids QThread
+        # "Destroyed while thread is still running" on Stop / page teardown).
+        self._lingering_export_threads: list[QThread] = []
         self._preview_remount_pending = False
         self._refresh_force_hydrate = False
         self._diagnostics_panel: VideoWorkspaceDiagnosticsPanel | None = None
@@ -501,6 +511,7 @@ class VideoView(QWidget):
         self._export_panel.auto_merge_toggled.connect(self._set_auto_merge)
         self._export_panel.shuffle_merge_toggled.connect(self._set_shuffle_merge)
         self._export_panel.speed_mode_changed.connect(self._set_export_speed_mode)
+        self._export_panel.export_tier_changed.connect(self._set_export_tier)
         self._export_panel.fps_changed.connect(self._set_export_fps)
         self._export_panel.workers_changed.connect(self._set_export_workers)
         # python_app layout: export queue console docks under the preview.
@@ -1085,11 +1096,34 @@ class VideoView(QWidget):
             or bool(self._pipeline_export_worker and self._pipeline_export_worker.isRunning())
             or bool(self._pipeline_merge_worker and self._pipeline_merge_worker.isRunning())
         )
+        if (
+            self._workspace
+            and (self._workspace.export.running or self._workspace.export.merge_running)
+            and not export_busy
+        ):
+            from shared.services.video_pipeline_activity import any_video_pipeline_threads_running
+
+            if not any_video_pipeline_threads_running():
+                self._workspace = self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "merge_running": False,
+                                "current_status": (
+                                    "Recovered stale export state — ready for a new export."
+                                ),
+                            }
+                        )
+                    }
+                )
+                get_video_workspace_service().set_workspace_state(self._workspace)
         self._export_panel.bind_workspace(
             self._workspace,
             busy=export_busy,
             stop_export_pending=self._stop_export_pending,
-            speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+            speed_mode=normalize_export_speed_mode(self._settings.get("videoExportSpeedMode")),
+            export_tier=normalize_export_tier(self._settings.get("videoExportTier"), default="standard"),
         )
 
     def _selected_pipeline_row(self) -> ProgressRow | None:
@@ -1265,35 +1299,251 @@ class VideoView(QWidget):
                 width=int(scene.output.width),
                 height=int(scene.output.height),
                 fps=int(scene.output.fps),
-                speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+                speed_mode=normalize_export_speed_mode(self._settings.get("videoExportSpeedMode")),
             ),
-            parent=self,
+            parent=None,
         )
         worker.progressed.connect(self._on_pipeline_export_progress)
         worker.succeeded.connect(self._on_pipeline_export_succeeded)
         worker.failed.connect(self._on_pipeline_export_failed)
         worker.finished.connect(self._on_pipeline_export_worker_finished)
+        worker.setObjectName("VideoPipelineExportWorker")
         self._pipeline_export_worker = worker
+        track_video_pipeline_thread(worker)
+        try:
+            from shared.lib.app_icon import refresh_app_window_icon
+
+            refresh_app_window_icon(self)
+        except Exception:
+            pass
         worker.start()
+        try:
+            from shared.lib.app_icon import refresh_app_window_icon
+
+            QTimer.singleShot(250, lambda: refresh_app_window_icon(self))
+            QTimer.singleShot(1500, lambda: refresh_app_window_icon(self))
+        except Exception:
+            pass
         notify_action(f"Started {branch_label} export from the selected pipeline run.")
+
+    def _refund_billing_charge(
+        self,
+        charge: dict[str, object],
+        *,
+        reason: str,
+        count: int | None = None,
+    ) -> dict[str, object]:
+        """Refund a consume charge; returns remaining charge (empty if fully refunded)."""
+        if not charge:
+            return {}
+        original_count = max(1, int(charge.get("count") or 1))
+        refund_count = original_count if count is None else max(0, min(original_count, int(count)))
+        if refund_count <= 0:
+            return dict(charge)
+        charged = int(charge.get("charged_credit_units") or 0)
+        refund_credits = int(round(charged * refund_count / original_count)) if charged else 0
+        try:
+            refund_video_operation(
+                self._api,
+                operation_type=str(charge.get("operation_type") or "video"),
+                charged_credit_units=refund_credits,
+                count=refund_count,
+                channel_profile_id=charge.get("channel_profile_id"),
+                ref_id=str(charge.get("ref_id") or "") or None,
+                reason=reason,
+            )
+        except Exception:
+            pass
+        remaining = original_count - refund_count
+        if remaining <= 0:
+            return {}
+        return {
+            **charge,
+            "count": remaining,
+            "charged_credit_units": max(0, charged - refund_credits),
+        }
+
+    def _refund_video_billing_charge(self, reason: str, *, count: int | None = None) -> None:
+        self._video_billing_charge = self._refund_billing_charge(
+            dict(self._video_billing_charge or {}),
+            reason=reason,
+            count=count,
+        )
+
+    def _refund_merge_billing_charge(self, reason: str) -> None:
+        self._merge_billing_charge = self._refund_billing_charge(
+            dict(self._merge_billing_charge or {}),
+            reason=reason,
+        )
+
+    def _clear_video_billing_charge(self) -> None:
+        self._video_billing_charge = {}
+
+    def _clear_merge_billing_charge(self) -> None:
+        self._merge_billing_charge = {}
+
+    def _report_export_telemetry(
+        self,
+        *,
+        operation_type: str,
+        track_count: int,
+        completed_count: int,
+        duration_ms: int | None = None,
+        codec: str | None = None,
+        ref_id: str | None = None,
+    ) -> None:
+        if duration_ms is None and self._workspace is not None:
+            started = int(self._workspace.export.started_at_ms or 0)
+            if started > 0:
+                duration_ms = max(0, int(time.time() * 1000) - started)
+        if codec is None and self._workspace is not None:
+            codec = str(self._workspace.export.video_codec or "").strip() or None
+        resolution = None
+        width = int(self._settings.get("videoOutputWidth") or 0)
+        height = int(self._settings.get("videoOutputHeight") or 0)
+        if width > 0 and height > 0:
+            resolution = f"{width}x{height}"
+        hw = collect_hardware_hints(codec=codec)
+        app_version = None
+        try:
+            from importlib.metadata import version
+
+            app_version = version("camxora")
+        except Exception:
+            app_version = None
+        payload = {
+            "operation_type": operation_type,
+            "ref_id": ref_id,
+            "track_count": max(0, int(track_count)),
+            "completed_count": max(0, int(completed_count)),
+            "duration_ms": duration_ms,
+            "codec": codec,
+            "resolution": resolution,
+            "fps": int(self._workspace.export.fps) if self._workspace else None,
+            "export_tier": normalize_export_tier(
+                self._settings.get("videoExportTier"), default="standard"
+            ),
+            "speed_mode": normalize_export_speed_mode(self._settings.get("videoExportSpeedMode")),
+            "hw_cpu": hw.get("hw_cpu"),
+            "hw_gpu": hw.get("hw_gpu"),
+            "hw_encoder": hw.get("hw_encoder"),
+            "app_version": app_version,
+        }
+        report_video_telemetry_async(self._api, payload)
+
+    @staticmethod
+    def _is_user_initiated_stop(message: str = "", *, stopped_flag: bool = False) -> bool:
+        if stopped_flag:
+            return True
+        text = str(message or "").strip().lower()
+        return "export stopped" in text or text == "video export stopped."
+
+    @staticmethod
+    def _refundable_units(
+        charged: int,
+        completed: int,
+        *,
+        user_stop: bool,
+        in_progress: bool = False,
+    ) -> int:
+        """Units to refund. User stop keeps completed + in-progress; technical fail refunds all non-completed."""
+        if charged <= 0:
+            return 0
+        keep = max(0, int(completed))
+        if user_stop and in_progress:
+            keep += 1
+        return max(0, int(charged) - keep)
+
+    def _apply_video_refund_for_outcome(
+        self,
+        *,
+        reason: str,
+        completed: int,
+        user_stop: bool,
+        in_progress: bool = False,
+    ) -> None:
+        charged = int(self._video_billing_charge.get("count") or 0)
+        refund_count = self._refundable_units(
+            charged,
+            completed,
+            user_stop=user_stop,
+            in_progress=in_progress,
+        )
+        if refund_count:
+            self._refund_video_billing_charge(reason, count=refund_count)
+        else:
+            self._clear_video_billing_charge()
+
+    def _release_export_qthread(self, worker: QThread | None, *, wait_ms: int = 3_000) -> None:
+        """Join then deleteLater so Stop/teardown never destroys a live QThread."""
+        if worker is None:
+            return
+        from shared.services.video_pipeline_activity import untrack_video_pipeline_thread
+
+        try:
+            still_running = bool(worker.isRunning())
+        except RuntimeError:
+            untrack_video_pipeline_thread(worker)
+            return
+        if still_running:
+            cancel = getattr(worker, "cancel", None)
+            if callable(cancel):
+                try:
+                    cancel()
+                except Exception:
+                    pass
+            if not worker.wait(max(0, int(wait_ms))):
+                # Still running: detach from this view so page teardown can't
+                # destroy the C++ QThread while the OS thread is alive.
+                worker.setParent(None)
+                self._lingering_export_threads.append(worker)
+
+                def _drop_lingering(_w: QThread = worker) -> None:
+                    try:
+                        self._lingering_export_threads.remove(_w)
+                    except ValueError:
+                        pass
+                    untrack_video_pipeline_thread(_w)
+                    _w.deleteLater()
+
+                worker.finished.connect(_drop_lingering)
+                return
+        untrack_video_pipeline_thread(worker)
+        worker.deleteLater()
 
     def _stop_active_export(self) -> None:
         self._stop_export_pending = True
+        queued_remaining = len(self._batch_queue)
         self._batch_queue = []
         self._update_export_panel()
-        if self._export_worker is not None and self._export_worker.isRunning():
-            self._export_worker.cancel()
+        if self._billing_worker is not None and self._billing_worker.isRunning():
+            # Billing still in flight — keep stop pending; success handler refunds.
             notify_action("Stopping export…")
             return
+        if self._export_worker is not None and self._export_worker.isRunning():
+            notify_action("Stopping export…")
+            self._release_export_qthread(self._export_worker, wait_ms=8_000)
+            return
         if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
-            self._pipeline_export_worker.cancel()
             notify_action("Stopping pipeline export…")
+            self._release_export_qthread(self._pipeline_export_worker, wait_ms=8_000)
             return
         if self._pipeline_merge_worker is not None and self._pipeline_merge_worker.isRunning():
-            self._pipeline_merge_worker.cancel()
+            # Merge already started — user stop keeps the merge charge (compute spent).
             notify_action("Stopping video merge…")
+            self._release_export_qthread(self._pipeline_merge_worker, wait_ms=8_000)
             return
         self._stop_export_pending = False
+        # Between tracks: nothing in progress — refund only never-started queue items.
+        if queued_remaining:
+            self._apply_video_refund_for_outcome(
+                reason="Manual export stopped (unused tracks).",
+                completed=int(self._batch_completed or 0),
+                user_stop=True,
+                in_progress=False,
+            )
+        else:
+            self._clear_video_billing_charge()
         if self._workspace:
             self._publish_workspace(
                 self._workspace.model_copy(
@@ -1390,11 +1640,13 @@ class VideoView(QWidget):
     def _patch_export_setting(self, patch: dict[str, object], status: str) -> None:
         """Persist an export option like python_app's _persist_setting_patch."""
         self._settings.update(patch)
-        worker = PatchSettingsWorker(self._api, dict(patch), parent=self)
+        # parent=None so closing Video mid-save cannot destroy a live QThread.
+        worker = PatchSettingsWorker(self._api, dict(patch), parent=None)
         worker.succeeded.connect(lambda *_: notify_action(status, tone="success"))
         worker.failed.connect(
             lambda message: notify_action(message or "Unable to save export settings.", tone="error")
         )
+        self._settings_patch_worker = worker
         worker.start()
 
     def _set_auto_merge(self, enabled: bool) -> None:
@@ -1424,10 +1676,12 @@ class VideoView(QWidget):
         )
 
     def _set_export_speed_mode(self, mode: str) -> None:
-        normalized = str(mode or "balanced").strip() or "balanced"
-        if normalized not in {"balanced", "fast", "very_fast"}:
-            normalized = "balanced"
+        normalized = normalize_export_speed_mode(mode)
         self._patch_export_setting({"videoExportSpeedMode": normalized}, "Export speed updated.")
+
+    def _set_export_tier(self, tier: str) -> None:
+        normalized = normalize_export_tier(tier)
+        self._patch_export_setting({"videoExportTier": normalized}, f"Export tier set to {normalized.title()}.")
 
     def _resolve_export_fps(self) -> int:
         if self._workspace:
@@ -1493,6 +1747,7 @@ class VideoView(QWidget):
             track_paths=track_paths,
             active_track_path=selected_mp3 or None,
         )
+        tier = resolve_export_tier_settings(self._settings, pipeline=False)
         return build_manual_render_scene_request(
             template=renderer_template,
             template_draft=self._template_draft,
@@ -1501,11 +1756,11 @@ class VideoView(QWidget):
                 "logoPath": self._workspace.logo_path,
                 "backgroundPath": self._workspace.background_path,
                 "selectedMp3Path": selected_mp3,
-                "outputResolution": self._workspace.output_resolution,
+                "outputResolution": tier.resolution,
             },
             background_path=self._workspace.background_path,
             selected_mp3_path=selected_mp3,
-            fps=self._resolve_export_fps(),
+            fps=tier.fps if tier.tier != "master" else self._resolve_export_fps(),
         )
 
     def _start_manual_export(self) -> None:
@@ -1536,6 +1791,8 @@ class VideoView(QWidget):
         if not output_dir:
             return
 
+        # Paint "Starting…" immediately — billing runs on a short QThread so the
+        # Manual Export click stays responsive (was a 1–2s sync network stall).
         self._batch_queue = list(tracks)
         self._batch_total = len(tracks)
         self._batch_completed = 0
@@ -1543,6 +1800,7 @@ class VideoView(QWidget):
         self._batch_output_dir = output_dir
         self._batch_outputs = []
         started_at_ms = int(time.time() * 1000)
+        self._export_start_pending = True
         self._publish_workspace(
             self._workspace.model_copy(
                 update={
@@ -1552,7 +1810,7 @@ class VideoView(QWidget):
                         fps=self._resolve_export_fps(),
                         auto_merge=self._workspace.export.auto_merge,
                         shuffle_merge=self._workspace.export.shuffle_merge,
-                        current_status=f"Starting batch: {len(tracks)} track(s) → {output_dir}",
+                        current_status=f"Preparing export · {len(tracks)} track(s)…",
                         output_dir=output_dir,
                         total_jobs=self._batch_total,
                         completed_jobs=0,
@@ -1562,7 +1820,124 @@ class VideoView(QWidget):
                 }
             )
         )
+        self._update_export_panel()
+        notify_action(f"Preparing export · {len(tracks)} track(s)…", tone="neutral")
+
+        profile_id = None
+        manual_ref = f"video_manual:{int(time.time())}"
+        self._pending_manual_billing = {
+            "operation_type": "video_manual",
+            "count": len(tracks),
+            "channel_profile_id": profile_id,
+            "ref_id": manual_ref,
+            "track_count": len(tracks),
+            "output_dir": output_dir,
+        }
+        if self._billing_worker is not None and self._billing_worker.isRunning():
+            self._release_export_qthread(self._billing_worker, wait_ms=2_000)
+        worker = VideoBillingWorker(
+            self._api,
+            operation_type="video_manual",
+            count=len(tracks),
+            channel_profile_id=profile_id,
+            ref_id=manual_ref,
+            parent=None,
+        )
+        worker.succeeded.connect(self._on_manual_billing_succeeded)
+        worker.failed.connect(self._on_manual_billing_failed)
+        worker.finished.connect(self._on_billing_worker_finished)
+        self._billing_worker = worker
+        track_video_pipeline_thread(worker)
+        worker.start()
+
+    def _on_billing_worker_finished(self) -> None:
+        self._billing_worker = None
+
+    def _clear_manual_export_pending(self, *, status: str) -> None:
+        self._export_start_pending = False
+        self._pending_manual_billing = None
+        self._batch_queue = []
+        self._batch_total = 0
+        self._batch_output_dir = ""
+        self._batch_outputs = []
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "current_status": status,
+                            }
+                        )
+                    }
+                )
+            )
+        self._update_export_panel()
+
+    def _on_manual_billing_succeeded(self, result: object) -> None:
+        pending = dict(self._pending_manual_billing or {})
+        self._pending_manual_billing = None
+        if self._stop_export_pending:
+            # User stopped while billing was in flight — refund the charge and bail.
+            try:
+                from features.video.lib.video_billing import VideoBillingResult, refund_video_operation
+
+                charged = int(getattr(result, "charged_credit_units", 0) or 0)
+                if isinstance(result, VideoBillingResult):
+                    charged = int(result.charged_credit_units or 0)
+                refund_video_operation(
+                    self._api,
+                    operation_type=str(pending.get("operation_type") or "video_manual"),
+                    charged_credit_units=charged,
+                    count=max(1, int(pending.get("count") or 1)),
+                    channel_profile_id=pending.get("channel_profile_id"),
+                    ref_id=str(pending.get("ref_id") or "") or None,
+                    reason="Manual export stopped before start.",
+                )
+            except Exception:
+                pass
+            self._stop_export_pending = False
+            self._clear_manual_export_pending(status="Export stopped.")
+            notify_action("Export stopped.", tone="neutral")
+            return
+
+        from features.video.lib.video_billing import VideoBillingResult
+
+        charged = 0
+        if isinstance(result, VideoBillingResult):
+            charged = int(result.charged_credit_units or 0)
+        else:
+            charged = int(getattr(result, "charged_credit_units", 0) or 0)
+
+        track_count = max(1, int(pending.get("track_count") or pending.get("count") or 1))
+        output_dir = str(pending.get("output_dir") or self._batch_output_dir or "")
+        self._video_billing_charge = {
+            "operation_type": str(pending.get("operation_type") or "video_manual"),
+            "count": track_count,
+            "charged_credit_units": charged,
+            "channel_profile_id": pending.get("channel_profile_id"),
+            "ref_id": pending.get("ref_id"),
+        }
+        if self._workspace:
+            self._publish_workspace(
+                self._workspace.model_copy(
+                    update={
+                        "export": self._workspace.export.model_copy(
+                            update={
+                                "current_status": f"Starting batch: {track_count} track(s) → {output_dir}",
+                            }
+                        )
+                    }
+                )
+            )
         self._start_next_batch_export()
+
+    def _on_manual_billing_failed(self, message: str) -> None:
+        detail = str(message or "billing failed").strip() or "billing failed"
+        self._stop_export_pending = False
+        self._clear_manual_export_pending(status=f"Manual export blocked (billing): {detail}")
+        notify_action(f"Manual export blocked (billing): {detail}", tone="warning")
 
     def _start_next_batch_export(self) -> None:
         if not self._batch_queue:
@@ -1596,23 +1971,43 @@ class VideoView(QWidget):
                 )
             )
 
+        tier = resolve_export_tier_settings(self._settings, pipeline=False)
         self._export_start_pending = True
         self._update_export_panel()
+        try:
+            from shared.lib.app_icon import refresh_app_window_icon
+
+            refresh_app_window_icon(self)
+        except Exception:
+            pass
+        preview = self._stage.preview_widget() if self._stage.gpu_preview_available() else None
         worker = VideoManualExportWorker(
             ManualExportRequest(
                 scene=scene,
                 settings=self._settings,
-                speed_mode=str(self._settings.get("videoExportSpeedMode") or "balanced"),
+                speed_mode=tier.speed_mode,
                 output_dir=self._batch_output_dir,
+                preview=preview,
             ),
-            parent=self,
+            parent=None,
         )
+        worker.setObjectName("VideoManualExportWorker")
         worker.progressed.connect(self._on_export_progress)
         worker.succeeded.connect(self._on_export_succeeded)
         worker.failed.connect(self._on_export_failed)
         worker.finished.connect(self._on_export_worker_finished)
         self._export_worker = worker
+        track_video_pipeline_thread(worker)
         worker.start()
+        try:
+            from shared.lib.app_icon import refresh_app_window_icon
+            from PySide6.QtCore import QTimer
+
+            # GLFW export windows appear after the worker starts; restamp once they map.
+            QTimer.singleShot(250, lambda: refresh_app_window_icon(self))
+            QTimer.singleShot(1500, lambda: refresh_app_window_icon(self))
+        except Exception:
+            pass
         notify_action(f"Exporting {Path(audio_path).name}…", tone="neutral")
 
     def _stop_manual_export(self) -> None:
@@ -1628,23 +2023,28 @@ class VideoView(QWidget):
         if not isinstance(payload, dict) or not self._workspace:
             return
         percent = payload.get("progressPercent")
-        message = str(payload.get("message") or payload.get("status") or "Exporting…")
+        video_codec = str(payload.get("videoCodec") or self._workspace.export.video_codec or "").strip() or None
+        message = format_export_status_message(
+            str(payload.get("message") or payload.get("status") or "Exporting…"),
+            video_codec=video_codec,
+        )
         overall = (
             self._batch_overall_percent(percent)
             if isinstance(percent, int)
             else self._workspace.export.progress_percent
         )
+        export_updates: dict[str, object] = {
+            "running": True,
+            "current_status": message,
+            "progress_percent": overall,
+            "completed_jobs": self._batch_completed,
+        }
+        if video_codec:
+            export_updates["video_codec"] = video_codec
         self._publish_workspace(
             self._workspace.model_copy(
                 update={
-                    "export": self._workspace.export.model_copy(
-                        update={
-                            "running": True,
-                            "current_status": message,
-                            "progress_percent": overall,
-                            "completed_jobs": self._batch_completed,
-                        }
-                    )
+                    "export": self._workspace.export.model_copy(update=export_updates)
                 }
             )
         )
@@ -1690,14 +2090,35 @@ class VideoView(QWidget):
         notify_action(message or "Track export failed.", tone="error")
         log_error(message or "Track export failed.", category="video")
 
+    def prepare_app_quit(self) -> None:
+        """Stop batch chaining and cancel live exports before window teardown."""
+        self._stop_export_pending = True
+        self._batch_queue = []
+        self._export_start_pending = False
+        for worker in (self._export_worker, self._pipeline_export_worker, self._billing_worker):
+            if worker is None:
+                continue
+            try:
+                if worker.isRunning():
+                    cancel = getattr(worker, "cancel", None)
+                    if callable(cancel):
+                        cancel()
+            except RuntimeError:
+                pass
+
     def _on_export_worker_finished(self) -> None:
         # Batch chaining lives here so the finished worker is fully released
         # before the next one starts (python_app keeps going after failures).
         self._export_start_pending = False
+        worker = self._export_worker
         self._export_worker = None
-        if self._stop_export_pending:
+        self._release_export_qthread(worker, wait_ms=1_000)
+        from shared.services.video_pipeline_activity import is_app_quitting
+
+        if is_app_quitting() or self._stop_export_pending:
             self._batch_queue = []
-            self._finalize_batch_export(stopped=True)
+            if not is_app_quitting():
+                self._finalize_batch_export(stopped=True)
             return
         if self._batch_queue:
             self._start_next_batch_export()
@@ -1711,6 +2132,25 @@ class VideoView(QWidget):
         completed = self._batch_completed
         total = max(1, int(self._batch_total or 1))
         failures = self._batch_failures
+        manual_ref = str(self._video_billing_charge.get("ref_id") or "") or None
+        # User stop: keep completed + cancelled in-progress track; refund never-started only.
+        # Technical fail: refund every track that did not produce an output.
+        self._apply_video_refund_for_outcome(
+            reason=(
+                "Manual export stopped (unused tracks)."
+                if stopped
+                else "Manual export tracks failed."
+            ),
+            completed=completed,
+            user_stop=stopped,
+            in_progress=stopped,
+        )
+        self._report_export_telemetry(
+            operation_type="video_manual",
+            track_count=total,
+            completed_count=completed,
+            ref_id=manual_ref,
+        )
         if stopped:
             self._stop_export_pending = False
             message = f"Export stopped · {completed}/{total} video(s) finished."
@@ -1775,13 +2215,19 @@ class VideoView(QWidget):
         completed = payload.get("completedJobs")
         total = payload.get("totalJobs")
         percent = payload.get("progressPercent")
-        message = str(payload.get("message") or payload.get("status") or "Exporting…")
+        video_codec = str(payload.get("videoCodec") or self._workspace.export.video_codec or "").strip() or None
+        message = format_export_status_message(
+            str(payload.get("message") or payload.get("status") or "Exporting…"),
+            video_codec=video_codec,
+        )
         current_path = str(payload.get("currentMp3Path") or "")
         output_path = str(payload.get("outputPath") or "")
         updates: dict[str, object] = {
             "running": True,
             "current_status": message,
         }
+        if video_codec:
+            updates["video_codec"] = video_codec
         if isinstance(completed, int):
             updates["completed_jobs"] = completed
         if isinstance(total, int):
@@ -1808,6 +2254,21 @@ class VideoView(QWidget):
         last_output = str(payload.get("lastOutputPath") or "").strip() or None
         completed = int(payload.get("completed") or self._workspace.export.total_jobs or 0)
         total = int(payload.get("total") or self._workspace.export.total_jobs or completed)
+        studio_ref = str(self._video_billing_charge.get("ref_id") or "") or None
+        # Partial delivery without user stop = technical shortfall → refund undelivered.
+        self._apply_video_refund_for_outcome(
+            reason="Pipeline export completed with fewer tracks than charged.",
+            completed=completed,
+            user_stop=False,
+            in_progress=False,
+        )
+        self._report_export_telemetry(
+            operation_type="video",
+            track_count=total,
+            completed_count=completed,
+            codec=str(payload.get("videoCodec") or "").strip() or None,
+            ref_id=studio_ref,
+        )
         merge_context = dict(self._pipeline_merge_context or {})
         merge_context["completed"] = completed
         merge_context["total"] = total
@@ -1911,13 +2372,14 @@ class VideoView(QWidget):
                 mp4_paths=mp4_paths,
                 shuffle=bool(context.get("shuffle", True)),
             ),
-            parent=self,
+            parent=None,
         )
         worker.progressed.connect(self._on_pipeline_merge_progress)
         worker.succeeded.connect(self._on_pipeline_merge_succeeded)
         worker.failed.connect(self._on_pipeline_merge_failed)
         worker.finished.connect(self._on_pipeline_merge_worker_finished)
         self._pipeline_merge_worker = worker
+        track_video_pipeline_thread(worker)
         worker.start()
         notify_action("Merging video outputs…", tone="neutral")
 
@@ -1941,6 +2403,7 @@ class VideoView(QWidget):
 
     def _on_pipeline_merge_succeeded(self, payload: object) -> None:
         self._stop_export_pending = False
+        self._clear_merge_billing_charge()
         if not isinstance(payload, dict) or not self._workspace:
             return
         message = str(payload.get("message") or "Pipeline merge completed.")
@@ -1969,7 +2432,16 @@ class VideoView(QWidget):
         notify_action(message, tone="success")
 
     def _on_pipeline_merge_failed(self, message: str) -> None:
+        user_stop = self._is_user_initiated_stop(
+            message,
+            stopped_flag=self._stop_export_pending,
+        )
         self._stop_export_pending = False
+        if user_stop:
+            # User cancelled after merge started — keep merge charge.
+            self._clear_merge_billing_charge()
+        else:
+            self._refund_merge_billing_charge(message or "Video merge failed.")
         if self._workspace:
             self._publish_workspace(
                 self._workspace.model_copy(
@@ -1989,13 +2461,36 @@ class VideoView(QWidget):
         log_error(message or "Video merge failed.", category="video")
 
     def _on_pipeline_merge_worker_finished(self) -> None:
+        worker = self._pipeline_merge_worker
         self._pipeline_merge_worker = None
         self._pipeline_merge_context = None
+        self._release_export_qthread(worker, wait_ms=1_000)
         self._update_export_panel()
 
     def _on_pipeline_export_failed(self, message: str) -> None:
         self._pipeline_start_pending = False
+        user_stop = self._is_user_initiated_stop(
+            message,
+            stopped_flag=self._stop_export_pending,
+        )
         self._stop_export_pending = False
+        completed = int(self._workspace.export.completed_jobs or 0) if self._workspace else 0
+        self._apply_video_refund_for_outcome(
+            reason=(
+                "Pipeline export stopped (unused tracks)."
+                if user_stop
+                else (message or "Pipeline export failed.")
+            ),
+            completed=completed,
+            user_stop=user_stop,
+            in_progress=user_stop,
+        )
+        self._report_export_telemetry(
+            operation_type="video",
+            track_count=int(self._video_billing_charge.get("count") or completed or 0),
+            completed_count=completed,
+            ref_id=str(self._video_billing_charge.get("ref_id") or "") or None,
+        )
         if self._workspace:
             self._publish_workspace(
                 self._workspace.model_copy(
@@ -2014,8 +2509,19 @@ class VideoView(QWidget):
 
     def _on_pipeline_export_worker_finished(self) -> None:
         self._pipeline_start_pending = False
+        # If cancel finished without a failed signal, still apply user-stop refund rules once.
+        if self._stop_export_pending and self._video_billing_charge:
+            completed = int(self._workspace.export.completed_jobs or 0) if self._workspace else 0
+            self._apply_video_refund_for_outcome(
+                reason="Pipeline export stopped (unused tracks).",
+                completed=completed,
+                user_stop=True,
+                in_progress=True,
+            )
         self._stop_export_pending = False
+        worker = self._pipeline_export_worker
         self._pipeline_export_worker = None
+        self._release_export_qthread(worker, wait_ms=1_000)
         self._update_export_panel()
 
     def _open_export_output_folder(self) -> None:
@@ -2224,7 +2730,7 @@ class VideoView(QWidget):
         worker = PatchSettingsWorker(
             self._api,
             {"outputResolution": normalized, "imageResolution": normalized},
-            parent=self,
+            parent=None,
         )
         worker.succeeded.connect(self._on_output_resolution_saved)
         worker.failed.connect(self._on_output_resolution_save_failed)

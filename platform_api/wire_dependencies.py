@@ -211,6 +211,10 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[image_jobs_get_batch_svc] = real_batch_service
     app.dependency_overrides[music_downloads_get_batch_svc] = real_batch_service
 
+    from platform_api.routers.progress import _get_batch_service as progress_get_batch_svc
+
+    app.dependency_overrides[progress_get_batch_svc] = real_batch_service
+
     # --- music_history.py ---
     from platform_api.routers.music_history import (
         _get_batch_service as music_history_get_batch_svc,

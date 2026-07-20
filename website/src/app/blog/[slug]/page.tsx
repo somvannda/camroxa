@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ContentPageShell } from "@/components/marketing/content-page-shell";
+import { ReleaseNotesContent } from "@/components/marketing/release-notes-content";
 import { getPublicBlogPost, getPublicBlogPosts } from "@/lib/blog";
+import { displayPostExcerpt } from "@/lib/release-notes";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -23,6 +25,13 @@ function renderParagraphs(content: string) {
     .filter(Boolean);
 }
 
+function isReleaseNotesPost(category: string | null | undefined, content: string): boolean {
+  if ((category ?? "").toLowerCase() === "release notes") {
+    return true;
+  }
+  return /^##\s*\[/m.test(content) || /###\s+(Added|Fixed|Changed)/im.test(content);
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const post = await getPublicBlogPost(slug);
@@ -36,7 +45,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   return {
     title: post.seo_title ?? post.title,
-    description: post.seo_description ?? post.excerpt,
+    description: post.seo_description ?? displayPostExcerpt(post.excerpt, post.content),
   };
 }
 
@@ -57,11 +66,14 @@ export default async function BlogPostPage({ params }: PageProps) {
     notFound();
   }
 
+  const excerpt = displayPostExcerpt(post.excerpt, post.content);
+  const releaseNotes = isReleaseNotesPost(post.category, post.content);
+
   return (
     <ContentPageShell
       eyebrow={post.category ?? "Blog"}
       title={post.title}
-      description={post.excerpt}
+      description={excerpt}
       aside={
         <div className="space-y-5">
           <div>
@@ -77,13 +89,17 @@ export default async function BlogPostPage({ params }: PageProps) {
       }
     >
       <article className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-6 ring-1 ring-white/6 md:p-8">
-        <div className="space-y-6">
-          {renderParagraphs(post.content).map((paragraph, index) => (
-            <p key={index} className="text-base leading-8 text-slate-200/80 md:text-lg">
-              {paragraph}
-            </p>
-          ))}
-        </div>
+        {releaseNotes ? (
+          <ReleaseNotesContent content={post.content} />
+        ) : (
+          <div className="space-y-6">
+            {renderParagraphs(post.content).map((paragraph, index) => (
+              <p key={index} className="text-base leading-8 text-slate-200/80 md:text-lg">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        )}
       </article>
     </ContentPageShell>
   );

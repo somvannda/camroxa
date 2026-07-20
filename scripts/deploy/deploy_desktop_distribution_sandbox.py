@@ -105,6 +105,7 @@ sudo -u camxora bash -lc "
   rm -rf .next
   npm ci || npm install --no-audit --no-fund
   cat > .env.production <<ENVEOF
+NEXT_PUBLIC_PLATFORM_API_BASE_URL=$API_URL/api/v1
 NEXT_PUBLIC_API_BASE_URL=$API_URL
 NEXT_PUBLIC_SITE_URL=$SITE_URL
 NEXT_PUBLIC_CAMXORA_ENV=sandbox

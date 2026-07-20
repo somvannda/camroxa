@@ -10,6 +10,7 @@ REQUIRED_RELATIVE_PATHS = (
     "Camxora.exe",
     "_internal/resources/app-logo.svg",
     "_internal/resources/app-icon.ico",
+    "_internal/resources/app-version.txt",
     "_internal/resources/window-close.svg",
     "_internal/resources/window-minimize.svg",
     "_internal/resources/window-maximize.svg",

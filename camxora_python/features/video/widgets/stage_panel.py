@@ -210,6 +210,9 @@ class VideoStagePanel(SettingsPanel):
     def gpu_preview_available(self) -> bool:
         return _GPU_PREVIEW_AVAILABLE and self._preview is not None
 
+    def preview_widget(self):
+        return self._preview
+
     def preview_runtime_nonce(self) -> int:
         return int(self._preview_runtime_nonce)
 

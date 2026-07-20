@@ -20,6 +20,9 @@ class FakePool:
     def __init__(self) -> None:
         self.paid = False
         self.profile_count = 0
+        self.base_allowance = 2
+        self.addon_slots = 0
+        self.addon_pending = 0
         self.usage: dict[tuple, int] = {}
         self.events: list[tuple[str, tuple]] = []
 
@@ -27,6 +30,12 @@ class FakePool:
         q = " ".join(query.split())
         if "FROM billing_payments" in q and self.paid:
             return {"?": 1}
+        if "FROM licenses l" in q and "JOIN plans p" in q and "profile_allowance" in q:
+            return {
+                "base_allowance": self.base_allowance,
+                "addon_slots": self.addon_slots,
+                "addon_pending": self.addon_pending,
+            }
         if "FROM licenses l" in q and self.paid:
             return {"?": 1}
         if "FROM channel_profiles" in q:
@@ -67,8 +76,32 @@ async def test_completed_onboarding_blocked() -> None:
     pool = FakePool()
     pool.paid = True
     pool.profile_count = 2
-    with pytest.raises(ForbiddenError, match="initial channel setup"):
+    with pytest.raises(ForbiddenError, match="finishing channel setup"):
         await assert_onboarding_ai_allowed(pool, uuid4(), "channel_name")
+
+
+@pytest.mark.asyncio
+async def test_addon_pending_reopens_onboarding_ai() -> None:
+    pool = FakePool()
+    pool.paid = True
+    pool.profile_count = 2
+    pool.addon_pending = 2
+    await assert_onboarding_ai_allowed(pool, uuid4(), "channel_cover")
+
+
+@pytest.mark.asyncio
+async def test_addon_pending_scales_usage_limits() -> None:
+    pool = FakePool()
+    pool.paid = True
+    pool.profile_count = 2
+    pool.addon_pending = 2
+    user_id = uuid4()
+    # First onboarding already consumed the base limit; scaled limit should allow more.
+    pool.usage[(user_id, "channel_logo")] = ONBOARDING_AI_LIMITS["channel_logo"]
+    await assert_onboarding_ai_allowed(pool, user_id, "channel_logo")
+    pool.usage[(user_id, "channel_logo")] = ONBOARDING_AI_LIMITS["channel_logo"] * 2
+    with pytest.raises(ForbiddenError, match="limit reached"):
+        await assert_onboarding_ai_allowed(pool, user_id, "channel_logo")
 
 
 @pytest.mark.asyncio
@@ -90,6 +123,8 @@ async def test_user_in_onboarding_helper() -> None:
     assert await user_in_onboarding(pool, uuid4()) is True
     pool.profile_count = 2
     assert await user_in_onboarding(pool, uuid4()) is False
+    pool.addon_pending = 2
+    assert await user_in_onboarding(pool, uuid4()) is True
 
 
 @pytest.mark.asyncio

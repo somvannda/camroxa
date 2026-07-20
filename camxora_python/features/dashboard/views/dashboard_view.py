@@ -22,9 +22,11 @@ KPI_CONFIG = (
     ("Credits Spent", "credits", lambda s: s.credits_spent),
     ("Songs Generated", "music", lambda s: s.songs_generated),
     ("Images Generated", "image", lambda s: s.images_generated),
-    ("Videos Generated", "video", lambda s: s.videos_generated),
-    ("YouTube Uploaded", "youtube", lambda s: s.videos_generated),
+    ("Studio Exports", "video", lambda s: getattr(s, "studio_exports", 0) or 0),
+    ("Manual Exports", "video", lambda s: getattr(s, "manual_exports", 0) or 0),
+    ("YouTube Uploads", "youtube", lambda s: getattr(s, "youtube_uploads", None) or s.videos_uploaded),
 )
+# Studio = Progress/pipeline · Manual = Video-page Manual Export button
 
 
 class DashboardView(QScrollArea):

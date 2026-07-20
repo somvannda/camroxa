@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useUsage, useUsageFilters } from '@/hooks/use-usage';
+import { useUsage, useUsageFilters, useExportTelemetry } from '@/hooks/use-usage';
 import type { UsageListParams } from '@/types/api';
 import type { UsageEntry } from '@/types/models';
 import { formatAdminDateTime } from '@/lib/format-datetime';
@@ -371,6 +371,9 @@ export default function UsagePage() {
 
   const { data, isLoading, isError, error, refetch, isFetching } = useUsage(params);
   const filtersQuery = useUsageFilters();
+  const exportTelemetry = useExportTelemetry(
+    appliedFilters.userId ? { user_id: appliedFilters.userId } : undefined,
+  );
 
   const providerOptions = filtersQuery.data?.providers ?? [];
   const operationOptions = filtersQuery.data?.operations ?? [];
@@ -529,6 +532,84 @@ export default function UsagePage() {
               </p>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-800/80 bg-slate-950/50 p-5 shadow-xl shadow-black/20">
+          <div className="mb-1 text-sm font-medium text-slate-200">Desktop export timing</div>
+          <p className="mb-4 text-xs text-slate-500">
+            Studio = Progress/pipeline exports · Manual = Video-page Manual Export. Duration and
+            encoder hints help compare hardware.
+            {appliedFilters.userId ? ' Filtered to the selected user.' : ''}
+          </p>
+          {exportTelemetry.isError ? (
+            <div className="text-sm text-rose-300">
+              {(exportTelemetry.error as Error)?.message ?? 'Failed to load export telemetry'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="pb-2 font-medium">When</th>
+                    <th className="pb-2 font-medium">User</th>
+                    <th className="pb-2 font-medium">Type</th>
+                    <th className="pb-2 font-medium">Tracks</th>
+                    <th className="pb-2 font-medium">Duration</th>
+                    <th className="pb-2 font-medium">Codec / HW</th>
+                    <th className="pb-2 font-medium">Tier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(exportTelemetry.data?.items ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-slate-500">
+                        {exportTelemetry.isLoading
+                          ? 'Loading…'
+                          : 'No export telemetry yet. Runs after desktop posts duration.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    (exportTelemetry.data?.items ?? []).map((row) => (
+                      <tr key={row.id} className="border-b border-slate-900/80 text-slate-300">
+                        <td className="py-2 pr-3 whitespace-nowrap">
+                          {row.created_at ? formatAdminDateTime(row.created_at) : '—'}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <Link
+                            to={`/users/${row.user_id}`}
+                            className="text-blue-400 hover:underline"
+                          >
+                            {row.user_email || truncateId(row.user_id, 10)}
+                          </Link>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatOperationLabel(row.operation_type)}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {row.completed_count}/{row.track_count}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {row.duration_ms != null
+                            ? `${(row.duration_ms / 1000).toFixed(1)}s`
+                            : '—'}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <div>{row.codec || '—'}</div>
+                          <div className="text-xs text-slate-500">
+                            {[row.hw_encoder, row.hw_gpu, row.resolution].filter(Boolean).join(' · ') ||
+                              '—'}
+                          </div>
+                        </td>
+                        <td className="py-2">
+                          {[row.export_tier, row.speed_mode].filter(Boolean).join(' / ') || '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">

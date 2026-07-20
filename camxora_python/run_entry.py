@@ -7,15 +7,20 @@ import sys
 
 def _run_visualizer(argv: list[str]) -> int:
     """Re-enter as the GPU export CLI when launched from a frozen ExportJob."""
-    sys.argv = [argv[0], *argv[2:]]
-    from visualizer.main import main as visualizer_main
+    from visualizer.main import run_visualizer_argv
 
-    return int(visualizer_main())
+    return int(run_visualizer_argv([argv[0], *argv[2:]]))
 
 
 def main() -> int:
     if len(sys.argv) > 1 and sys.argv[1] == "--visualizer":
         return _run_visualizer(sys.argv)
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--visualizer-daemon":
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        from visualizer.daemon import run_daemon_loop
+
+        return int(run_daemon_loop())
 
     from shared.lib.env_loader import load_desktop_env
 

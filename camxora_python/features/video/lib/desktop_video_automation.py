@@ -6,10 +6,14 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from features.video.lib.pipeline_inputs import (
+    ResolvedVideoPipelineInputs,
     VideoPipelineBranch,
     build_video_pipeline_run_key,
-    resolve_video_pipeline_inputs,
+    local_audio_downloads_ready,
+    resolve_local_video_pipeline_inputs,
 )
+from features.video.services.video_local_store import VideoLocalStore
+from shared.lib.music_settings import read_boolean_setting
 from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, VideoRunInspection
 from shared.models.auth import ProfileResponse
 from shared.models.desktop import VideoWorkspaceState
@@ -29,13 +33,6 @@ class AutoVideoCandidate:
     profile_id: str | None = None
 
 
-def _read_boolean_setting(settings: dict[str, Any] | None, key: str, fallback: bool = False) -> bool:
-    if not isinstance(settings, dict):
-        return fallback
-    value = settings.get(key)
-    return value if isinstance(value, bool) else fallback
-
-
 def _is_terminal_stage(stage: str) -> bool:
     normalized = str(stage or "").strip().lower()
     return normalized in {"youtube", "done", "error"}
@@ -45,20 +42,40 @@ def _has_expected_outputs(paths: tuple[str, ...] | list[str] | None, expected: i
     return len(paths or ()) >= max(1, expected)
 
 
-def _has_downloaded_audio_ready(row: ProgressRow) -> bool:
-    meta = row.meta
-    expected = max(1, int(meta.expected or 0))
-    downloaded = max(0, int(meta.saved or 0))
-    download_ready = max(0, int(meta.download_ready or 0))
-    pending_download = max(0, int(meta.download_pending or 0))
-    return downloaded >= expected and download_ready >= expected and pending_download <= 0
-
-
 def _workspace_has_template(workspace: VideoWorkspaceState | None, template_id: str) -> bool:
     normalized = str(template_id or "").strip()
-    if not normalized or workspace is None:
+    if not normalized:
         return False
-    return any(str(item.id or "").strip() == normalized for item in workspace.templates)
+    if workspace is not None and any(
+        str(item.id or "").strip() == normalized for item in workspace.templates
+    ):
+        return True
+    templates = VideoLocalStore().read_templates()
+    return any(str(item.get("id") or "").strip() == normalized for item in templates)
+
+
+def _branch_is_ready(
+    row: ProgressRow,
+    profile: ProfileResponse,
+    branch: VideoPipelineBranch,
+    *,
+    workspace: VideoWorkspaceState | None,
+) -> tuple[ResolvedVideoPipelineInputs | None, str | None]:
+    inputs = resolve_local_video_pipeline_inputs(row, branch, profile)
+    template_id = str(inputs.recommended_template_id or "").strip()
+    run_dir = str(inputs.run_dir or "").strip()
+    background_path = str(inputs.background_path or "").strip()
+    if not inputs.ready:
+        return None, "local image assets are missing"
+    if not run_dir:
+        return None, "run directory is missing"
+    if not background_path:
+        return None, "branch background image is missing"
+    if not template_id:
+        return None, "channel profile has no template assigned"
+    if not _workspace_has_template(workspace, template_id):
+        return None, f"template {template_id} is not in the local video catalog"
+    return inputs, None
 
 
 def select_next_auto_video_candidate(
@@ -70,13 +87,13 @@ def select_next_auto_video_candidate(
     runtime_by_key: dict[str, ProgressRuntimePresentation],
     workspace: VideoWorkspaceState | None,
 ) -> AutoVideoCandidate | None:
-    if not _read_boolean_setting(settings, "autoVideoAfterSuno", False):
+    if not read_boolean_setting(settings, "autoVideoAfterSuno", False):
         return None
     if workspace is not None and (workspace.export.running or workspace.export.merge_running):
         return None
 
     profiles_by_id = {profile.id: profile for profile in profiles}
-    auto_reel_enabled = _read_boolean_setting(settings, "autoReelAfterVideo", False)
+    auto_reel_enabled = read_boolean_setting(settings, "autoReelAfterVideo", False)
 
     for row in rows:
         key = build_video_pipeline_run_key(row)
@@ -90,12 +107,12 @@ def select_next_auto_video_candidate(
             continue
 
         expected = max(1, int(row.meta.expected or 0))
-        if not _has_downloaded_audio_ready(row):
+        if not local_audio_downloads_ready(row):
             continue
 
         inspection = inspections.get(key)
-        long_inputs = resolve_video_pipeline_inputs(row, "long", profile)
-        reel_inputs = resolve_video_pipeline_inputs(row, "reel", profile)
+        long_inputs, _long_reason = _branch_is_ready(row, profile, "long", workspace=workspace)
+        reel_inputs, _reel_reason = _branch_is_ready(row, profile, "reel", workspace=workspace)
         long_outputs_ready = _has_expected_outputs(
             inspection.long_output_paths if inspection else (),
             expected,
@@ -105,33 +122,22 @@ def select_next_auto_video_candidate(
             expected,
         )
 
-        if (
-            long_inputs.ready
-            and long_inputs.run_dir
-            and long_inputs.background_path
-            and long_inputs.recommended_template_id
-            and _workspace_has_template(workspace, long_inputs.recommended_template_id)
-            and not long_outputs_ready
-        ):
+        if long_inputs is not None and not long_outputs_ready:
             return AutoVideoCandidate(
                 key=key,
                 branch="long",
                 batch_id=row.meta.batch_id,
                 role=row.meta.role,
-                run_dir=long_inputs.run_dir,
-                background_path=long_inputs.background_path,
-                template_id=long_inputs.recommended_template_id,
+                run_dir=str(long_inputs.run_dir or ""),
+                background_path=str(long_inputs.background_path or ""),
+                template_id=str(long_inputs.recommended_template_id or ""),
                 output_resolution=profile.output_resolution,
                 profile_id=str(row.meta.profile_id or "") or None,
             )
 
         if (
             auto_reel_enabled
-            and reel_inputs.ready
-            and reel_inputs.run_dir
-            and reel_inputs.background_path
-            and reel_inputs.recommended_template_id
-            and _workspace_has_template(workspace, reel_inputs.recommended_template_id)
+            and reel_inputs is not None
             and long_outputs_ready
             and not reel_outputs_ready
         ):
@@ -140,9 +146,9 @@ def select_next_auto_video_candidate(
                 branch="reel",
                 batch_id=row.meta.batch_id,
                 role=row.meta.role,
-                run_dir=reel_inputs.run_dir,
-                background_path=reel_inputs.background_path,
-                template_id=reel_inputs.recommended_template_id,
+                run_dir=str(reel_inputs.run_dir or ""),
+                background_path=str(reel_inputs.background_path or ""),
+                template_id=str(reel_inputs.recommended_template_id or ""),
                 output_resolution=None,
                 profile_id=str(row.meta.profile_id or "") or None,
             )
@@ -154,12 +160,16 @@ def build_auto_video_candidate_from_row(
     row: ProgressRow,
     profile: ProfileResponse,
     branch: VideoPipelineBranch,
+    *,
+    workspace: VideoWorkspaceState | None = None,
 ) -> AutoVideoCandidate | None:
-    inputs = resolve_video_pipeline_inputs(row, branch, profile)
+    inputs, _reason = _branch_is_ready(row, profile, branch, workspace=workspace)
+    if inputs is None:
+        return None
     template_id = str(inputs.recommended_template_id or "").strip()
     run_dir = str(inputs.run_dir or "").strip()
     background_path = str(inputs.background_path or "").strip()
-    if not inputs.ready or not run_dir or not background_path or not template_id:
+    if not run_dir or not background_path or not template_id:
         return None
     return AutoVideoCandidate(
         key=build_video_pipeline_run_key(row),

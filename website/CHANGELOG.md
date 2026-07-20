@@ -10,14 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- `/compare` conversion landing: stack vs Camxora, dual/multi-channel, AI routing, monetization-path refund, marketplace templates (one-click setup; free + premium).
+- Compare link in header/footer nav and sitemap.
+- Marketplace callouts on home, features, and pricing.
+
+### Changed
+
+- Terms § Credits System: video track-export / merge usage restore rules (technical fail vs user stop).
+- Support Help Center: plan refunds vs export cancel/usage restore; FAQ for stopping an export.
 
 ## [2026-07-19]
 
 ### Added
 
 - `/download` page loads published desktop release from `GET /api/v1/public/desktop-release` (version, download button, release notes).
-- `/changelog` page listing blog posts with category **Release notes**.
+- `/changelog` page listing published blog posts with category **Release notes** (admin portal only).
 - Changelog link in site header/footer navigation.
 
 ### Changed

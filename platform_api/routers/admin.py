@@ -746,6 +746,104 @@ async def get_usage_filters(
     )
 
 
+class ExportTelemetryEntry(BaseModel):
+    id: str
+    user_id: str
+    user_email: str = ""
+    operation_type: str
+    ref_id: str | None = None
+    track_count: int = 0
+    completed_count: int = 0
+    duration_ms: int | None = None
+    codec: str | None = None
+    resolution: str | None = None
+    fps: int | None = None
+    export_tier: str | None = None
+    speed_mode: str | None = None
+    hw_cpu: str | None = None
+    hw_gpu: str | None = None
+    hw_encoder: str | None = None
+    app_version: str | None = None
+    created_at: str | None = None
+
+
+class ExportTelemetryListResponse(BaseModel):
+    items: list[ExportTelemetryEntry]
+    total: int
+
+
+@router.get(
+    "/export-telemetry",
+    response_model=ExportTelemetryListResponse,
+    summary="List desktop video export duration/hardware telemetry",
+)
+async def list_export_telemetry(
+    ctx: AdminDep,
+    user_id: str | None = Query(default=None),
+    operation_type: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ExportTelemetryListResponse:
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    clauses = ["1=1"]
+    args: list[Any] = []
+    if user_id:
+        args.append(user_id)
+        clauses.append(f"t.user_id = ${len(args)}::uuid")
+    if operation_type:
+        args.append(operation_type.strip().lower())
+        clauses.append(f"t.operation_type = ${len(args)}::varchar")
+    where = " AND ".join(clauses)
+    total = int(
+        await pool.fetchval(
+            f"SELECT COUNT(*) FROM video_export_telemetry t WHERE {where}",
+            *args,
+        )
+        or 0
+    )
+    args.extend([limit, offset])
+    rows = await pool.fetch(
+        f"""
+        SELECT t.*, u.email AS user_email
+        FROM video_export_telemetry t
+        LEFT JOIN users u ON u.id = t.user_id
+        WHERE {where}
+        ORDER BY t.created_at DESC
+        LIMIT ${len(args) - 1} OFFSET ${len(args)}
+        """,
+        *args,
+    )
+    items = [
+        ExportTelemetryEntry(
+            id=str(row["id"]),
+            user_id=str(row["user_id"]),
+            user_email=str(row["user_email"] or ""),
+            operation_type=str(row["operation_type"] or ""),
+            ref_id=row["ref_id"],
+            track_count=int(row["track_count"] or 0),
+            completed_count=int(row["completed_count"] or 0),
+            duration_ms=int(row["duration_ms"]) if row["duration_ms"] is not None else None,
+            codec=row["codec"],
+            resolution=row["resolution"],
+            fps=int(row["fps"]) if row["fps"] is not None else None,
+            export_tier=row["export_tier"],
+            speed_mode=row["speed_mode"],
+            hw_cpu=row["hw_cpu"],
+            hw_gpu=row["hw_gpu"],
+            hw_encoder=row["hw_encoder"],
+            app_version=row["app_version"],
+            created_at=row["created_at"].isoformat()
+            if hasattr(row["created_at"], "isoformat")
+            else row["created_at"],
+        )
+        for row in rows
+    ]
+    return ExportTelemetryListResponse(items=items, total=total)
+
+
 @router.get(
     "/usage",
     response_model=UsageListResponse,
@@ -1603,6 +1701,26 @@ class SoftwareUpdateConfigResponse(BaseModel):
     mandatory: bool
     release_notes: str
     published_at: str | None = None
+    is_published: bool = False
+
+
+class PublishSoftwareUpdateRequest(BaseModel):
+    notify_desktop_users: bool = True
+    create_changelog: bool = False
+
+
+class PublishSoftwareUpdateResponse(BaseModel):
+    recipients: int
+    version: str
+    published_at: str
+    changelog_slug: str | None = None
+
+
+class PublishInstallerRequest(BaseModel):
+    mandatory: bool | None = None
+    release_notes: str | None = Field(default=None, max_length=4000)
+    notify_desktop_users: bool = True
+    create_changelog: bool = True
 
 
 class UpdateSoftwareUpdateConfigRequest(BaseModel):
@@ -1612,10 +1730,9 @@ class UpdateSoftwareUpdateConfigRequest(BaseModel):
     release_notes: str = Field(default="", max_length=4000)
 
 
-class PublishSoftwareUpdateResponse(BaseModel):
-    recipients: int
+class UnpublishSoftwareUpdateResponse(BaseModel):
     version: str
-    published_at: str
+    is_published: bool = False
 
 
 class UploadDesktopSoftwareUpdateResponse(BaseModel):
@@ -1630,6 +1747,8 @@ class DesktopInstallerFileResponse(BaseModel):
     download_url: str
     size_bytes: int
     modified_at: str
+    version: str | None = None
+    download_count: int = 0
 
 
 class DesktopInstallerListResponse(BaseModel):
@@ -1676,6 +1795,7 @@ async def get_desktop_software_update_config(ctx: AdminDep) -> SoftwareUpdateCon
         mandatory=config.mandatory,
         release_notes=config.release_notes,
         published_at=config.published_at,
+        is_published=bool((config.published_at or "").strip()),
     )
 
 
@@ -1704,6 +1824,7 @@ async def update_desktop_software_update_config(
         mandatory=config.mandatory,
         release_notes=config.release_notes,
         published_at=config.published_at,
+        is_published=bool((config.published_at or "").strip()),
     )
 
 
@@ -1757,18 +1878,25 @@ async def upload_desktop_software_update(
 )
 async def list_desktop_installers(ctx: AdminDep, request: Request) -> DesktopInstallerListResponse:
     from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
+    from platform_api.services.desktop_release_download_stats import get_download_counts
+    from platform_api.services.desktop_release_upload_service import extract_version_from_installer_filename
 
     pool = get_db_pool()
     service = await get_desktop_release_upload_service_resolved(pool, request)
-    items = [
-        DesktopInstallerFileResponse(
-            filename=record.filename,
-            download_url=record.download_url,
-            size_bytes=record.size_bytes,
-            modified_at=record.modified_at,
+    counts = await get_download_counts(pool)
+    items = []
+    for record in service.list_installers():
+        version = extract_version_from_installer_filename(record.filename)
+        items.append(
+            DesktopInstallerFileResponse(
+                filename=record.filename,
+                download_url=record.download_url,
+                size_bytes=record.size_bytes,
+                modified_at=record.modified_at,
+                version=version,
+                download_count=int(counts.get(version or "", 0)) if version else 0,
+            )
         )
-        for record in service.list_installers()
-    ]
     return DesktopInstallerListResponse(items=items)
 
 
@@ -1792,14 +1920,22 @@ async def delete_desktop_installer(ctx: AdminDep, filename: str, request: Reques
 @router.post(
     "/desktop/software-update/publish",
     response_model=PublishSoftwareUpdateResponse,
-    summary="Publish desktop software update notification (Admin)",
+    summary="Publish desktop software update (public download + optional notifications/changelog)",
 )
-async def publish_desktop_software_update(ctx: AdminDep) -> PublishSoftwareUpdateResponse:
+async def publish_desktop_software_update(
+    ctx: AdminDep,
+    request: PublishSoftwareUpdateRequest | None = None,
+) -> PublishSoftwareUpdateResponse:
     from platform_api.dependencies import get_db_pool
     from platform_api.services.desktop_notification_admin_service import publish_software_update
 
+    body = request or PublishSoftwareUpdateRequest()
     try:
-        config, recipients = await publish_software_update(get_db_pool())
+        config, recipients, changelog_slug = await publish_software_update(
+            get_db_pool(),
+            notify_desktop_users=body.notify_desktop_users,
+            create_changelog=body.create_changelog,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1807,6 +1943,83 @@ async def publish_desktop_software_update(ctx: AdminDep) -> PublishSoftwareUpdat
         recipients=recipients,
         version=config.version,
         published_at=config.published_at or datetime.utcnow().isoformat() + "Z",
+        changelog_slug=changelog_slug,
+    )
+
+
+@router.post(
+    "/desktop/software-update/unpublish",
+    response_model=UnpublishSoftwareUpdateResponse,
+    summary="Unpublish desktop release (hide public download; keep draft config)",
+)
+async def unpublish_desktop_software_update(ctx: AdminDep) -> UnpublishSoftwareUpdateResponse:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.desktop_notification_admin_service import unpublish_software_update
+
+    config = await unpublish_software_update(get_db_pool())
+    return UnpublishSoftwareUpdateResponse(version=config.version, is_published=False)
+
+
+@router.post(
+    "/desktop/software-update/installers/{filename}/publish",
+    response_model=PublishSoftwareUpdateResponse,
+    summary="Select an installer file and publish it as the live desktop release",
+)
+async def publish_desktop_installer(
+    ctx: AdminDep,
+    filename: str,
+    request: PublishInstallerRequest,
+    http_request: Request,
+) -> PublishSoftwareUpdateResponse:
+    from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
+    from platform_api.exceptions import ValidationError
+    from platform_api.services.desktop_notification_admin_service import (
+        get_software_update_config,
+        publish_software_update,
+        save_software_update_config,
+    )
+    from platform_api.services.desktop_release_upload_service import extract_version_from_installer_filename
+
+    pool = get_db_pool()
+    service = await get_desktop_release_upload_service_resolved(pool, http_request)
+    record = next((item for item in service.list_installers() if item.filename == filename), None)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Installer file not found.")
+
+    version = extract_version_from_installer_filename(record.filename) or ""
+    if not version.strip():
+        raise HTTPException(status_code=400, detail="Could not determine version from installer filename.")
+
+    current = await get_software_update_config(pool)
+    release_notes = (
+        request.release_notes.strip()
+        if request.release_notes is not None
+        else current.release_notes
+    )
+    mandatory = current.mandatory if request.mandatory is None else request.mandatory
+
+    await save_software_update_config(
+        pool,
+        version=version,
+        download_url=record.download_url,
+        mandatory=mandatory,
+        release_notes=release_notes,
+    )
+
+    try:
+        config, recipients, changelog_slug = await publish_software_update(
+            pool,
+            notify_desktop_users=request.notify_desktop_users,
+            create_changelog=request.create_changelog,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return PublishSoftwareUpdateResponse(
+        recipients=recipients,
+        version=config.version,
+        published_at=config.published_at or datetime.utcnow().isoformat() + "Z",
+        changelog_slug=changelog_slug,
     )
 
 

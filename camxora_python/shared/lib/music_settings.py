@@ -49,9 +49,9 @@ def read_boolean_setting(settings: dict[str, Any] | None, key: str, fallback: bo
         return value
     if isinstance(value, str):
         normalized = value.strip().lower()
-        if normalized == "true":
+        if normalized in {"true", "on", "yes", "1"}:
             return True
-        if normalized == "false":
+        if normalized in {"false", "off", "no", "0"}:
             return False
     return fallback
 

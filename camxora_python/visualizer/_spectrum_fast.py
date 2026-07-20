@@ -65,6 +65,12 @@ def fft_to_log_bins(fft: np.ndarray, idx1: np.ndarray, idx2: np.ndarray, frac: n
     return np.clip(result, 0.01, 1.0)
 
 
+def smooth_fft_envelope(prev: np.ndarray, target: np.ndarray, smoothing: float) -> np.ndarray:
+    """Exponential smooth of log FFT bins (shared by preview paintGL and export)."""
+    s = float(max(0.0, min(0.99, smoothing)))
+    return (prev * s + target * (1.0 - s)).astype(np.float32)
+
+
 def smooth_and_mirror(fft_s: np.ndarray, mirrored: bool) -> np.ndarray:
     """Apply 5-tap smoothing and optional mirroring (vectorized).
     

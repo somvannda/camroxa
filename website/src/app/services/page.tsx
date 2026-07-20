@@ -2,48 +2,43 @@ import type { Metadata } from "next";
 import { ContentPageShell } from "@/components/marketing/content-page-shell";
 
 export const metadata: Metadata = {
-  title: "Services",
+  title: "Who it's for",
   description:
-    "How Camxora supports your channel production: account access, the Windows desktop studio, and publishing workflow.",
+    "Camxora is for faceless YouTube creators who want lyrics-to-video in one Windows app.",
 };
 
 export default function ServicesPage() {
   return (
     <ContentPageShell
-      eyebrow="Services"
-      title="How Camxora supports your music channel workflow."
-      description="Camxora combines account access, the Windows desktop studio, and publishing tools so you can produce and ship branded videos at channel scale."
+      eyebrow="Who it's for"
+      title="Built for people who want YouTube income without showing their face."
+      description="Camxora turns ideas into music videos in one desktop workflow — so creators can publish more without juggling five tools."
       aside={
         <div className="space-y-5">
           <div>
-            <div className="text-xs uppercase tracking-[0.22em] text-slate-400">How it fits together</div>
+            <div className="text-xs uppercase tracking-[0.22em] text-slate-400">The promise</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              Account for access. Desktop for production.
+              No camera. No face. More finished videos.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
-            Billing and plans live in your portal. Day-to-day generation, preview, export, and upload
-            happen in the Camxora app.
+            Account and billing stay in the portal. Day-to-day creation, export, and progress live
+            in the Camxora Windows app. Auto YouTube upload is coming soon.
           </p>
         </div>
       }
     >
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2">
         {[
           {
-            title: "Account & plans",
+            title: "YouTube creators",
             detail:
-              "Create your Camxora account, choose a plan, and manage credits for music, images, and video work.",
+              "Start or grow a music channel without a camera, microphone, studio, or editing team.",
           },
           {
-            title: "Desktop studio",
+            title: "Multi-channel creators",
             detail:
-              "Install the Windows app to generate songs, prepare assets, design video templates, and export MP4s locally.",
-          },
-          {
-            title: "Publish & monitor",
-            detail:
-              "Connect YouTube channels, set publication defaults, and track each batch from draft to upload.",
+              "Run multiple channel profiles from one account with shared credits and consistent branding.",
           },
         ].map((item) => (
           <div
@@ -58,21 +53,19 @@ export default function ServicesPage() {
 
       <section className="grid gap-6 border-t border-white/8 pt-10 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Why creators use Camxora</div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Why Camxora</div>
           <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white">
             Less tool-switching. More finished videos.
           </div>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200/72 md:text-base">
-            Instead of stitching together separate generators, editors, and uploaders, Camxora keeps
-            the full music-to-YouTube pipeline in one desktop application with clear progress for
-            every channel.
+            Instead of stitching together lyric tools, music generators, image apps, and editors,
+            Camxora keeps lyrics → music → images → video → merge in one desktop application.
           </p>
         </div>
         <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
-          <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Outcome</div>
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-400">What ships now</div>
           <div className="mt-3 text-sm leading-7 text-slate-200/72">
-            Repeatable daily or weekly runs, consistent branding, and fewer missed steps between
-            song and publish.
+            Export YouTube-ready MP4s today. Auto YouTube upload arrives in a later release.
           </div>
         </div>
       </section>

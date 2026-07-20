@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from shared.lib.app_paths import get_user_data_dir
+from shared.lib.export_codec import DEFAULT_EXPORT_SPEED_MODE
 from shared.lib.ffmpeg_paths import get_bundled_ffmpeg_path, resolve_ffmpeg_path
 
 
@@ -77,6 +78,12 @@ def apply_workspace_path_defaults(settings: dict[str, Any] | None) -> tuple[dict
         if bundled:
             current["ffmpegPath"] = bundled
             patch["ffmpegPath"] = bundled
+
+    # New installs / unset Speed → Fast. Leave Balanced (etc.) alone if already set.
+    existing_speed = str(current.get("videoExportSpeedMode") or "").strip()
+    if not existing_speed:
+        current["videoExportSpeedMode"] = DEFAULT_EXPORT_SPEED_MODE
+        patch["videoExportSpeedMode"] = DEFAULT_EXPORT_SPEED_MODE
 
     return current, patch
 

@@ -53,6 +53,8 @@ from shared.models.platform import (
     PendingMusicDownloadsResponse,
     ProgressFilters,
     ProgressListResponse,
+    ProgressLocalSyncItem,
+    ProgressLocalSyncResponse,
     PromptNameOption,
     ReservationActionResponse,
     StartYouTubeConnectionResponse,
@@ -228,6 +230,15 @@ class PlatformApi:
             params["to_date"] = resolved.to_date
         data = self._client.request("/progress", auth=True, params=params)
         return ProgressListResponse.model_validate(data)
+
+    def sync_local_progress(self, items: list[ProgressLocalSyncItem]) -> ProgressLocalSyncResponse:
+        data = self._client.request(
+            "/progress/sync-local",
+            method="POST",
+            auth=True,
+            body={"items": [item.model_dump(exclude_none=True) for item in items]},
+        )
+        return ProgressLocalSyncResponse.model_validate(data)
 
     def get_settings(self) -> UserSettingsResponse:
         data = self._client.request("/settings", auth=True)
@@ -405,6 +416,15 @@ class PlatformApi:
     def refund_local_video(self, payload: dict[str, Any]) -> dict[str, Any]:
         data = self._client.request(
             "/generation/video/refund",
+            method="POST",
+            auth=True,
+            body=payload,
+        )
+        return data if isinstance(data, dict) else dict(data)
+
+    def report_local_video_telemetry(self, payload: dict[str, Any]) -> dict[str, Any]:
+        data = self._client.request(
+            "/generation/video/telemetry",
             method="POST",
             auth=True,
             body=payload,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, ChevronDown, Download, LogOut } from "lucide-react";
 
-import { getWebsiteBaseUrl } from "@/lib/site-urls";
+import { getWebsiteBaseUrl, isSandboxEnvironment } from "@/lib/site-urls";
 
 type PortalMarketingShellProps = {
   active: "login" | "register";
@@ -25,29 +25,49 @@ type PortalMarketingShellProps = {
 export function PortalMarketingShell(props: PortalMarketingShellProps) {
   const websiteBaseUrl = getWebsiteBaseUrl();
 
-  const productLinks = [
+  const primaryNavLinks = [
     { href: `${websiteBaseUrl}/features`, label: "Features" },
     { href: `${websiteBaseUrl}/pricing`, label: "Pricing" },
-    { href: `${websiteBaseUrl}/services`, label: "Services" },
+    { href: `${websiteBaseUrl}/download`, label: "Download" },
+    { href: `${websiteBaseUrl}/about`, label: "About" },
+  ];
+  const productLinks = [
+    { href: `${websiteBaseUrl}/features`, label: "Features" },
+    { href: `${websiteBaseUrl}/services`, label: "Who it's for" },
+    { href: `${websiteBaseUrl}/pricing`, label: "Pricing" },
     { href: `${websiteBaseUrl}/download`, label: "Download" },
   ];
   const companyLinks = [
     { href: `${websiteBaseUrl}/about`, label: "About" },
     { href: `${websiteBaseUrl}/blog`, label: "Blog" },
+    { href: `${websiteBaseUrl}/changelog`, label: "Changelog" },
     { href: `${websiteBaseUrl}/contact`, label: "Contact" },
   ];
   const supportLinks = [
-    { href: `${websiteBaseUrl}/contact`, label: "Support" },
+    { href: `${websiteBaseUrl}/support`, label: "Help Center" },
+    { href: `${websiteBaseUrl}/contact`, label: "Contact" },
+    { href: `${websiteBaseUrl}/data-deletion`, label: "Data deletion" },
+  ];
+  const legalLinks = [
     { href: `${websiteBaseUrl}/terms`, label: "Terms" },
     { href: `${websiteBaseUrl}/privacy`, label: "Privacy" },
+    { href: `${websiteBaseUrl}/google-api`, label: "Google API policy" },
+    { href: `${websiteBaseUrl}/cookies`, label: "Cookies" },
+    { href: `${websiteBaseUrl}/copyright`, label: "Copyright" },
+    { href: `${websiteBaseUrl}/acceptable-use`, label: "Acceptable use" },
   ];
-  const allLinks = productLinks.concat(companyLinks);
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(1100px_circle_at_15%_10%,rgba(168,85,247,0.18),transparent_45%),radial-gradient(900px_circle_at_85%_85%,rgba(217,70,239,0.1),transparent_40%),linear-gradient(to_bottom,hsla(222,47%,5%,0.55),hsla(222,47%,5%,1))]" />
       </div>
+
+      {isSandboxEnvironment() ? (
+        <div className="border-b border-amber-400/25 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-100">
+          Sandbox environment — test payments may apply. Not the production Camxora site.
+        </div>
+      ) : null}
 
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[rgba(5,8,18,0.82)] backdrop-blur-xl">
         <div className="mx-auto w-full max-w-7xl px-6 py-4 md:px-10">
@@ -56,16 +76,16 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
               <img alt="Camxora" className="h-10 w-10" src="/camxora-logo.svg" />
               <div>
                 <div className="font-display text-lg font-semibold tracking-[-0.05em] text-white">
-                  CAMXORA
+                  Camxora
                 </div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-fuchsia-100/58">
-                  Desktop studio
+                  Faceless desktop studio
                 </div>
               </div>
             </Link>
 
             <nav className="hidden items-center gap-6 text-sm font-medium text-slate-200/74 xl:flex">
-              {allLinks.map((item) => (
+              {primaryNavLinks.map((item) => (
                 <Link key={item.href} className="transition hover:text-white" href={item.href}>
                   {item.label}
                 </Link>
@@ -120,7 +140,7 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
           </div>
 
           <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 text-sm xl:hidden">
-            {allLinks.map((item) => (
+            {primaryNavLinks.map((item) => (
               <Link
                 key={item.href}
                 className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-slate-200/72 transition hover:bg-white/[0.06] hover:text-white"
@@ -197,38 +217,39 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
 
       {props.hideFooter ? null : (
         <footer className="relative mt-auto border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,10,20,0.24),rgba(4,6,14,0.92))]">
-        <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-12 text-sm text-slate-200/68 md:px-10 lg:grid-cols-[1.5fr_1fr_1fr_1fr]">
-          <div className="max-w-md">
-            <div className="flex items-center gap-3">
-              <img alt="Camxora" className="h-10 w-10" src="/camxora-logo.svg" />
-              <div>
-                <div className="font-display text-lg font-semibold tracking-[-0.05em] text-white">
-                  CAMXORA
-                </div>
-                <div className="text-[11px] uppercase tracking-[0.22em] text-fuchsia-100/54">
-                  Desktop studio
+          <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-12 text-sm text-slate-200/68 md:px-10 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
+            <div className="max-w-md">
+              <div className="flex items-center gap-3">
+                <img alt="Camxora" className="h-10 w-10" src="/camxora-logo.svg" />
+                <div>
+                  <div className="font-display text-lg font-semibold tracking-[-0.05em] text-white">
+                    Camxora
+                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-fuchsia-100/54">
+                    Faceless desktop studio
+                  </div>
                 </div>
               </div>
+              <p className="mt-4 leading-7 text-slate-200/60">
+                Build faceless YouTube music channels — lyrics to video in one Windows app.
+              </p>
+              <div className="mt-6 text-xs uppercase tracking-[0.2em] text-slate-400">
+                Export ready today. Auto-upload coming soon.
+              </div>
             </div>
-            <p className="mt-4 leading-7 text-slate-200/60">
-              Desktop studio for branded music channel production.
-            </p>
-            <div className="mt-6 text-xs uppercase tracking-[0.2em] text-slate-400">
-              Built for music, image, video, and export workflow.
-            </div>
+
+            <FooterColumn title="Product" items={productLinks} />
+            <FooterColumn title="Company" items={[...companyLinks, { href: "/login", label: "User Portal" }]} />
+            <FooterColumn title="Support" items={supportLinks} />
+            <FooterColumn title="Legal" items={legalLinks} />
           </div>
 
-          <FooterColumn title="Product" items={productLinks} />
-          <FooterColumn title="Company" items={[...companyLinks, { href: "/login", label: "User Portal" }]} />
-          <FooterColumn title="Support" items={supportLinks} />
-        </div>
-
-        <div className="border-t border-white/6">
-          <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-6 py-4 text-xs text-slate-400 md:flex-row md:items-center md:justify-between md:px-10">
-            <div>© {new Date().getFullYear()} Camxora</div>
-            <div>One product system across website, account, and desktop.</div>
+          <div className="border-t border-white/6">
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-6 py-4 text-xs text-slate-400 md:flex-row md:items-center md:justify-between md:px-10">
+              <div>© {new Date().getFullYear()} Camxora</div>
+              <div>No camera. No face. YouTube-ready music videos.</div>
+            </div>
           </div>
-        </div>
         </footer>
       )}
     </div>

@@ -12,7 +12,6 @@ import os
 from pathlib import Path
 
 from PyInstaller.utils.hooks import (
-    collect_all,
     collect_data_files,
     collect_dynamic_libs,
     collect_submodules,
@@ -42,6 +41,7 @@ if resources_dir.is_dir():
 for chrome_name in (
     "app-icon.ico",
     "app-logo.svg",
+    "app-version.txt",
     "window-close.svg",
     "window-minimize.svg",
     "window-maximize.svg",
@@ -59,26 +59,32 @@ if factory_templates.is_file():
 datas += collect_data_files("certifi")
 binaries += collect_dynamic_libs("glfw")
 
-# Full GPU / media stack — package every submodule + native binary / data file.
-for package in (
-    "moderngl",
-    "pygame",
-    "glfw",
-    "OpenGL",
-    "librosa",
-    "soundfile",
-    "cv2",
-    "numpy",
-    "PIL",
-):
+# Native / data-heavy packages only. Avoid collect_all() on numpy / PIL / OpenGL /
+# librosa — that walks every submodule and dominates Analysis time on rebuilds.
+# PyInstaller hooks + import tracing cover the pure-Python surface.
+for package in ("cv2", "moderngl", "pygame", "glfw", "glcontext"):
     try:
-        pkg_datas, pkg_binaries, pkg_hidden = collect_all(package)
-        datas += pkg_datas
-        binaries += pkg_binaries
-        hiddenimports += pkg_hidden
+        datas += collect_data_files(package)
+        binaries += collect_dynamic_libs(package)
     except Exception:
-        # Fallback: still request the package by name so Analysis can find it.
-        hiddenimports.append(package)
+        pass
+    hiddenimports.append(package)
+
+# soundfile is a top-level module; natives live in _soundfile_data.
+try:
+    datas += collect_data_files("_soundfile_data")
+    binaries += collect_dynamic_libs("_soundfile_data")
+except Exception:
+    pass
+hiddenimports += ["soundfile", "_soundfile", "_soundfile_data"]
+
+# OpenGL needs platform .dll/.pyd data; pull files without collect_all(OpenGL).
+try:
+    datas += collect_data_files("OpenGL")
+    binaries += collect_dynamic_libs("OpenGL")
+except Exception:
+    pass
+hiddenimports.append("OpenGL")
 
 for package in ("app", "shared", "features", "visualizer", "database"):
     hiddenimports += collect_submodules(package)

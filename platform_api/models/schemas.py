@@ -434,6 +434,9 @@ class DailyUsage(BaseModel):
     songs: int = 0
     images: int = 0
     videos: int = 0
+    studio_exports: int = 0
+    manual_exports: int = 0
+    youtube_uploads: int = 0
 
 
 class RecentActivity(BaseModel):
@@ -459,8 +462,18 @@ class DashboardStatsResponse(BaseModel):
     drafts_remaining: int | None = None
     drafts_quota: int | None = None
     images_generated: int = 0
+    # Lifetime local exports (usage_tracking) + YouTube publishes.
+    studio_exports: int = 0
+    manual_exports: int = 0
+    youtube_uploads: int = 0
+    # Backward-compatible aliases:
+    # videos_generated = studio + manual exports; videos_uploaded = YouTube successes.
     videos_generated: int = 0
     videos_uploaded: int = 0
+    # Recent export performance (from video_export_telemetry, last 7 days).
+    avg_studio_export_ms: int | None = None
+    avg_manual_export_ms: int | None = None
+    last_export_at: datetime | None = None
     usage_by_day: list[DailyUsage] = []
     recent_activity: list[RecentActivity] = []
 
@@ -475,6 +488,9 @@ class PublicStatsResponse(BaseModel):
     songs_total: int = 0
     images_total: int = 0
     videos_total: int = 0
+    studio_exports_total: int = 0
+    manual_exports_total: int = 0
+    youtube_uploads_total: int = 0
 
 
 # ---------------------------------------------------------------------------

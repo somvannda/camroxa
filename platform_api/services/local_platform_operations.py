@@ -15,11 +15,18 @@ LOCAL_AI_SERVICE = "local"
 # Canonical defaults — keep in sync with migration 048_plan_video_merge_limits.
 LOCAL_PLATFORM_OPERATIONS: dict[str, dict[str, Any]] = {
     "video": {
-        "label": "Video generation (per track export)",
+        "label": "Studio export (per track)",
         "cost_usd": 0.0,
         "list_credits_display": 3.0,
         "cost_credits_display": 0.0,
-        "notes": "Local FFmpeg export — COGS $0; default list 3 credits",
+        "notes": "Pipeline/auto local FFmpeg export — COGS $0; default list 3 credits",
+    },
+    "video_manual": {
+        "label": "Manual export (per track)",
+        "cost_usd": 0.0,
+        "list_credits_display": 3.0,
+        "cost_credits_display": 0.0,
+        "notes": "Manual Video-page export — same list price as studio; COGS $0",
     },
     "video_merge": {
         "label": "Auto merge video",
