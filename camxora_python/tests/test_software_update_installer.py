@@ -46,6 +46,19 @@ def test_build_powershell_zip_script_contains_robocopy() -> None:
     assert "Start-Process -FilePath" in script
 
 
+def test_build_powershell_exe_script_waits_installs_relaunches() -> None:
+    script = SoftwareUpdateInstaller._build_powershell_exe_script(
+        parent_pid=4321,
+        package_path=Path("C:/Users/me/AppData/Local/Camxora/updates/CamxoraSetup-update.exe"),
+        launch_exe=Path("C:/Program Files/Camxora/Camxora.exe"),
+    )
+    assert "Wait-Process -Id 4321" in script
+    assert "/VERYSILENT" in script
+    assert "Start-Process -FilePath $setup" in script
+    assert "-Wait" in script
+    assert "Start-Process -FilePath $exe" in script
+
+
 def test_allow_zip_swap_update_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CAMXORA_ALLOW_ZIP_UPDATE", raising=False)
     with patch("shared.lib.runtime_paths.is_frozen_runtime", return_value=False):
@@ -66,23 +79,61 @@ def test_apply_zip_requires_packaged_build(tmp_path: Path, monkeypatch: pytest.M
             SoftwareUpdateInstaller().apply(str(package_path))
 
 
-@patch("shared.services.software_update_installer.popen_hidden")
-def test_apply_exe_launches_silent_flags(mock_popen: MagicMock) -> None:
-    with patch("shared.services.software_update_installer.sys.platform", "win32"):
-        SoftwareUpdateInstaller().apply("C:/tmp/Camxora.exe")
+@patch("shared.services.software_update_installer.popen_hidden_orphan")
+def test_apply_exe_stages_durable_and_launches_helper(
+    mock_popen: MagicMock,
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "downloaded-setup.exe"
+    package.write_bytes(b"setup-bytes")
+    work = tmp_path / "updates"
+    work.mkdir()
+    launch = tmp_path / "Camxora.exe"
+    launch.write_bytes(b"app")
+
+    with (
+        patch("shared.services.software_update_installer.sys.platform", "win32"),
+        patch("shared.services.software_update_installer.get_updates_work_dir", return_value=work),
+        patch("shared.services.software_update_installer.get_launch_executable", return_value=launch),
+    ):
+        SoftwareUpdateInstaller().apply(str(package), parent_pid=99)
+
+    durable = work / "CamxoraSetup-update.exe"
+    assert durable.is_file()
+    assert durable.read_bytes() == b"setup-bytes"
+    script = work / "apply-exe-update.ps1"
+    assert script.is_file()
+    body = script.read_text(encoding="utf-8")
+    assert "Wait-Process -Id 99" in body
+    assert "/VERYSILENT" in body
 
     mock_popen.assert_called_once()
     args = mock_popen.call_args.args[0]
-    assert args[0] == "C:/tmp/Camxora.exe"
-    assert "/VERYSILENT" in args
+    assert args[0] == "powershell"
+    assert str(script) in args
 
 
-@patch("shared.services.software_update_installer.popen_hidden")
-def test_apply_msi_launches_msiexec_quiet(mock_popen: MagicMock) -> None:
-    with patch("shared.services.software_update_installer.sys.platform", "win32"):
-        SoftwareUpdateInstaller().apply("C:/tmp/Camxora.msi")
+@patch("shared.services.software_update_installer.popen_hidden_orphan")
+def test_apply_msi_stages_durable_and_launches_helper(
+    mock_popen: MagicMock,
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "downloaded.msi"
+    package.write_bytes(b"msi-bytes")
+    work = tmp_path / "updates"
+    work.mkdir()
+    launch = tmp_path / "Camxora.exe"
+    launch.write_bytes(b"app")
 
+    with (
+        patch("shared.services.software_update_installer.sys.platform", "win32"),
+        patch("shared.services.software_update_installer.get_updates_work_dir", return_value=work),
+        patch("shared.services.software_update_installer.get_launch_executable", return_value=launch),
+    ):
+        SoftwareUpdateInstaller().apply(str(package), parent_pid=77)
+
+    durable = work / "CamxoraUpdate.msi"
+    assert durable.is_file()
     mock_popen.assert_called_once()
     args = mock_popen.call_args.args[0]
-    assert args[:3] == ["msiexec", "/i", "C:/tmp/Camxora.msi"]
-    assert "/quiet" in args
+    assert args[0] == "powershell"

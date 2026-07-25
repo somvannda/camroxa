@@ -15,6 +15,13 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [0.4.1] - 2026-07-25
+
+### Changed
+
+- **Force update install + restart:** after download, the same update dialog shows install progress, then Camxora quits so a background helper can finish the silent Setup and relaunch the app (fixes installers dying with the old process / Setup.exe being deleted too early)
+- **Update dialog progress:** transparent track + brand purple gradient fill (`#7466F1` → `#A259FF`) instead of cyan on a dark bar
+
 ## [0.4.0] - 2026-07-25
 
 ### Added

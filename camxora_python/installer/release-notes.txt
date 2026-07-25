@@ -1,20 +1,16 @@
-﻿Camxora 0.4.0 (Sandbox)
+﻿Camxora 0.4.1 (Sandbox)
 
 What's new
 ----------
-• Music Mood: Automation Mood + Shuffle, History Mood column, Settings Moods library
-• History: rewrite album/title/lyrics, multi-select status, delete failed batch, Recover failed + background helper
-• Progress: Cancel / Stop Exporting / Continue Progress / Start Merging queue fixes
-• Export: parallel workers, cooperative cancel, NVENC/encode throughput improvements
+• Force update: download → install progress in the same dialog → auto-restart
+• Update progress bar uses Camxora purple gradient (no dark track)
 
 Fixes
 -----
-• History date filter (strict range, no wipe on inverted dates)
-• Calendar pickers no longer step the month when opening
-• Music plan image credit overcount; quit-safe auto-video threads
-• Lyric rewrite quality gate + mood-aligned recovery
+• Silent installer no longer dies when Camxora exits (orphaned helper)
+• Setup.exe kept outside temp so install can finish, then app relaunches
 
 Notes
 -----
-• Requires sandbox API with moods migrations 069–071
-• Install over 0.3.x; footer should show v0.4.0 after install
+• Install over 0.3.x / 0.4.0; footer should show v0.4.1 after install
+• One-time: if stuck on an older force-update client, run this Setup manually once

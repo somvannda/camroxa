@@ -12,7 +12,7 @@ except ImportError:  # pragma: no cover - Python <3.11 fallback
 
 from shared.lib.runtime_paths import get_install_dir, is_frozen_runtime
 
-_DEFAULT_VERSION = "0.4.0"
+_DEFAULT_VERSION = "0.4.1"
 _MODULE_ROOT = Path(__file__).resolve().parents[2]
 
 

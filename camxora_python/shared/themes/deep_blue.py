@@ -279,7 +279,7 @@ QLabel#software_update_status {
 }
 
 QProgressBar#software_update_progress {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: transparent;
     border: none;
     border-radius: 4px;
     min-height: 8px;
@@ -288,7 +288,11 @@ QProgressBar#software_update_progress {
 }
 
 QProgressBar#software_update_progress::chunk {
-    background-color: #4ac0ff;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #7466F1,
+        stop: 1 #A259FF
+    );
     border-radius: 4px;
 }
 

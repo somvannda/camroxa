@@ -155,8 +155,9 @@ class SoftwareUpdateService(QObject):
             if app is not None:
                 app.quit()
 
-        # Brief pause so the gate can show “restarting…” before the process exits.
-        QTimer.singleShot(900, _quit_for_restart)
+        # Give the gate time to show “restarting…”; the orphan installer script
+        # waits for this process to exit, then finishes install and relaunches.
+        QTimer.singleShot(1400, _quit_for_restart)
 
     def _on_install_failed(self, message: str) -> None:
         self.install_failed.emit(str(message or "Unable to install update."))

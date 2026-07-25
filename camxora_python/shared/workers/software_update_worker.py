@@ -16,13 +16,15 @@ from shared.services.software_update_installer import (
 )
 
 _CHUNK_SIZE = 256 * 1024
+# Leave headroom on the progress bar for install + restart phases.
+_DOWNLOAD_PROGRESS_CAP = 85
 
 
 class SoftwareUpdateInstallWorker(QThread):
     """Background download + silent install.
 
     ``progress`` emits ``(message, percent)`` where percent is ``0–100`` for
-    determinate download progress, or ``-1`` for indeterminate install phases.
+    determinate download/install phases, or ``-1`` for indeterminate work.
     """
 
     progress = Signal(str, int)
@@ -41,17 +43,23 @@ class SoftwareUpdateInstallWorker(QThread):
         try:
             self._download(package_path)
             kind = detect_package_kind(package_path, self._download_url)
+            self.progress.emit("Preparing installer…", 88)
             if kind == "zip":
-                self.progress.emit("Installing update in the background…", -1)
+                self.progress.emit("Installing update…", 92)
             else:
-                self.progress.emit("Running installer in the background…", -1)
+                self.progress.emit("Installing update…", 92)
 
             SoftwareUpdateInstaller().apply(
                 package_path,
                 download_url=self._download_url,
                 parent_pid=os.getpid(),
             )
-            self.progress.emit("Update installed — restarting Camxora…", 100)
+            # Helper script waits for this process to exit, then finishes install
+            # and relaunches Camxora. The gate shows this message before quit.
+            self.progress.emit(
+                "Install ready — Camxora will restart to finish updating…",
+                100,
+            )
             self.succeeded.emit(package_path)
         except SoftwareUpdateInstallError as exc:
             self.failed.emit(str(exc))
@@ -78,17 +86,18 @@ class SoftwareUpdateInstallWorker(QThread):
                     handle.write(chunk)
                     downloaded += len(chunk)
                     if total > 0:
-                        pct = min(100, int(downloaded * 100 / total))
+                        raw_pct = min(100, int(downloaded * 100 / total))
+                        pct = min(_DOWNLOAD_PROGRESS_CAP, int(downloaded * _DOWNLOAD_PROGRESS_CAP / total))
                         if pct != last_pct:
                             last_pct = pct
-                            self.progress.emit(f"Downloading update… {pct}%", pct)
+                            self.progress.emit(f"Downloading update… {raw_pct}%", pct)
                     else:
                         mb = downloaded / (1024 * 1024)
                         self.progress.emit(f"Downloading update… {mb:.1f} MB", -1)
         if total > 0:
-            self.progress.emit("Download complete", 100)
+            self.progress.emit("Download complete — starting install…", _DOWNLOAD_PROGRESS_CAP)
         else:
-            self.progress.emit("Download complete", -1)
+            self.progress.emit("Download complete — starting install…", _DOWNLOAD_PROGRESS_CAP)
 
     @staticmethod
     def _guess_suffix(url: str) -> str:

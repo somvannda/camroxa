@@ -195,6 +195,7 @@ class SoftwareUpdateGateOverlay(QFrame):
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._status.setText("Preparing update…")
+        self._title.setText("Updating Camxora")
 
     def _on_install_progress(self, message: str, percent: int = -1) -> None:
         self._progress_wrap.show()
@@ -202,6 +203,13 @@ class SoftwareUpdateGateOverlay(QFrame):
         text = str(message or "").strip()
         if text:
             self._status.setText(text)
+            lower = text.lower()
+            if "download" in lower:
+                self._title.setText("Downloading update")
+            elif "install" in lower or "preparing installer" in lower:
+                self._title.setText("Installing update")
+            elif "restart" in lower:
+                self._title.setText("Restarting Camxora")
         if percent is None or int(percent) < 0:
             # Indeterminate install / unknown download size
             if self._progress.maximum() != 0:
@@ -217,12 +225,14 @@ class SoftwareUpdateGateOverlay(QFrame):
         if self._progress.maximum() == 0:
             self._progress.setRange(0, 100)
         self._progress.setValue(100)
-        self._status.setText("Update installed — restarting Camxora…")
+        self._title.setText("Restarting Camxora")
+        self._status.setText("Install ready — Camxora will restart to finish updating…")
 
     def _on_install_failed(self, message: str) -> None:
         self._progress_wrap.show()
         if self._progress.maximum() == 0:
             self._progress.setRange(0, 100)
+        self._title.setText("Update required")
         self._status.setText(str(message or "Unable to install update."))
         self._update_button.setText("Try again")
         self._update_button.setEnabled(True)

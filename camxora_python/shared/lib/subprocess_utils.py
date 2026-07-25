@@ -45,6 +45,25 @@ def popen_hidden(args: list[str] | tuple[str, ...] | str, **kwargs: Any) -> subp
     return proc
 
 
+def popen_hidden_orphan(args: list[str] | tuple[str, ...] | str, **kwargs: Any) -> subprocess.Popen[Any]:
+    """Hidden child that must outlive Camxora (software-update helpers).
+
+    Unlike ``popen_hidden``, this is **not** assigned to the kill-on-close job
+    object — otherwise quitting the app would abort the installer mid-flight.
+    """
+    merged = {**no_window_kwargs(), **kwargs}
+    if sys.platform == "win32":
+        flags = int(merged.get("creationflags") or 0)
+        flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        merged["creationflags"] = flags
+        # Detach stdin/stdout/stderr so the orphan is not tied to our console handles.
+        merged.setdefault("stdin", subprocess.DEVNULL)
+        merged.setdefault("stdout", subprocess.DEVNULL)
+        merged.setdefault("stderr", subprocess.DEVNULL)
+        merged.setdefault("close_fds", True)
+    return subprocess.Popen(args, **merged)
+
+
 def check_output_hidden(args: list[str] | tuple[str, ...] | str, **kwargs: Any) -> bytes | str:
     """subprocess.check_output with console suppression."""
     merged = {**no_window_kwargs(), **kwargs}

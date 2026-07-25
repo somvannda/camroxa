@@ -16,7 +16,7 @@ from shared.lib.runtime_paths import (
     get_launch_executable,
     get_updates_work_dir,
 )
-from shared.lib.subprocess_utils import popen_hidden
+from shared.lib.subprocess_utils import popen_hidden_orphan
 
 logger = logging.getLogger(__name__)
 
@@ -104,36 +104,59 @@ class SoftwareUpdateInstaller:
         self._launch_powershell_script(script_path)
 
     def _apply_msi(self, package_path: str, *, parent_pid: int | None) -> None:
-        del parent_pid
         if sys.platform != "win32":
             raise SoftwareUpdateInstallError("MSI auto-updates are only supported on Windows.")
 
-        popen_hidden(
-            [
-                "msiexec",
-                "/i",
-                package_path,
-                "/quiet",
-                "/norestart",
-            ],
-            close_fds=True,
+        durable = self._stage_durable_package(package_path, preferred_name="CamxoraUpdate.msi")
+        launch_exe = get_launch_executable()
+        if launch_exe is None:
+            raise SoftwareUpdateInstallError("Unable to locate the installed Camxora application.")
+
+        script_path = get_updates_work_dir() / "apply-msi-update.ps1"
+        script_path.write_text(
+            self._build_powershell_msi_script(
+                parent_pid=parent_pid or os.getpid(),
+                package_path=durable,
+                launch_exe=launch_exe,
+            ),
+            encoding="utf-8",
         )
+        self._launch_powershell_script(script_path)
 
     def _apply_exe(self, package_path: str, *, parent_pid: int | None) -> None:
-        del parent_pid
         if sys.platform != "win32":
             raise SoftwareUpdateInstallError("Silent EXE auto-updates are only supported on Windows.")
 
-        popen_hidden(
-            [
-                package_path,
-                "/VERYSILENT",
-                "/SUPPRESSMSGBOXES",
-                "/NORESTART",
-                "/CLOSEAPPLICATIONS",
-            ],
-            close_fds=True,
+        durable = self._stage_durable_package(package_path, preferred_name="CamxoraSetup-update.exe")
+        launch_exe = get_launch_executable()
+        if launch_exe is None:
+            raise SoftwareUpdateInstallError("Unable to locate the installed Camxora application.")
+
+        script_path = get_updates_work_dir() / "apply-exe-update.ps1"
+        script_path.write_text(
+            self._build_powershell_exe_script(
+                parent_pid=parent_pid or os.getpid(),
+                package_path=durable,
+                launch_exe=launch_exe,
+            ),
+            encoding="utf-8",
         )
+        self._launch_powershell_script(script_path)
+
+    @staticmethod
+    def _stage_durable_package(package_path: str, *, preferred_name: str) -> Path:
+        """Copy the download out of temp so cleanup cannot delete it mid-install."""
+        source = Path(package_path)
+        if not source.is_file():
+            raise SoftwareUpdateInstallError("Update package is missing on disk.")
+        work_dir = get_updates_work_dir()
+        suffix = source.suffix.lower() or Path(preferred_name).suffix
+        durable = work_dir / preferred_name
+        if suffix and durable.suffix.lower() != suffix:
+            durable = work_dir / f"{Path(preferred_name).stem}{suffix}"
+        if source.resolve() != durable.resolve():
+            shutil.copy2(source, durable)
+        return durable
 
     @staticmethod
     def _extract_zip(package_path: str, extract_dir: Path) -> None:
@@ -172,11 +195,64 @@ Start-Process -FilePath $exe
 """
 
     @staticmethod
+    def _build_powershell_exe_script(
+        *,
+        parent_pid: int,
+        package_path: Path,
+        launch_exe: Path,
+    ) -> str:
+        setup = str(package_path).replace("'", "''")
+        exe = str(launch_exe).replace("'", "''")
+        # Wait for Camxora to exit so Inno can overwrite locked files, then
+        # run a fully silent install and relaunch the app.
+        return f"""$ErrorActionPreference = "Stop"
+Wait-Process -Id {parent_pid} -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+$setup = '{setup}'
+$exe = '{exe}'
+$args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/FORCECLOSEAPPLICATIONS')
+$proc = Start-Process -FilePath $setup -ArgumentList $args -PassThru -Wait
+if ($null -ne $proc -and $proc.ExitCode -ne 0) {{
+  exit $proc.ExitCode
+}}
+Start-Sleep -Seconds 1
+if (Test-Path -LiteralPath $exe) {{
+  Start-Process -FilePath $exe
+}}
+"""
+
+    @staticmethod
+    def _build_powershell_msi_script(
+        *,
+        parent_pid: int,
+        package_path: Path,
+        launch_exe: Path,
+    ) -> str:
+        msi = str(package_path).replace("'", "''")
+        exe = str(launch_exe).replace("'", "''")
+        return f"""$ErrorActionPreference = "Stop"
+Wait-Process -Id {parent_pid} -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+$msi = '{msi}'
+$exe = '{exe}'
+$args = @('/i', $msi, '/quiet', '/norestart')
+$proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList $args -PassThru -Wait
+if ($null -ne $proc -and $proc.ExitCode -ne 0) {{
+  exit $proc.ExitCode
+}}
+Start-Sleep -Seconds 1
+if (Test-Path -LiteralPath $exe) {{
+  Start-Process -FilePath $exe
+}}
+"""
+
+    @staticmethod
     def _launch_powershell_script(script_path: Path) -> None:
         if sys.platform != "win32":
-            raise SoftwareUpdateInstallError("ZIP auto-updates are only supported on Windows.")
+            raise SoftwareUpdateInstallError("Silent auto-updates are only supported on Windows.")
 
-        popen_hidden(
+        # Must outlive Camxora — do not use popen_hidden (job kill-on-close).
+        popen_hidden_orphan(
             [
                 "powershell",
                 "-NoProfile",
@@ -187,5 +263,4 @@ Start-Process -FilePath $exe
                 "-File",
                 str(script_path),
             ],
-            close_fds=True,
         )
