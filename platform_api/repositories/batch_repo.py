@@ -529,8 +529,8 @@ class BatchRepository:
                 """
                 INSERT INTO songs
                     (id, batch_id, batch_index, user_id, title, album, lyrics,
-                     description_id, structure_id, status, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+                     description_id, structure_id, mood_id, status, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
                 """,
                 song.id,
                 song.batch_id,
@@ -541,6 +541,7 @@ class BatchRepository:
                 song.lyrics,
                 song.description_id,
                 song.structure_id,
+                song.mood_id,
                 song.status,
             )
         logger.debug("Created %d song records for batch %s", len(songs), songs[0].batch_id if songs else "N/A")
@@ -558,7 +559,7 @@ class BatchRepository:
         rows = await self._pool.fetch(
             """
             SELECT id, batch_id, batch_index, user_id, title, album, lyrics,
-                   description_id, structure_id, status, created_at, updated_at
+                   description_id, structure_id, mood_id, status, created_at, updated_at
             FROM songs
             WHERE batch_id = $1
             ORDER BY batch_index ASC
@@ -572,7 +573,7 @@ class BatchRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, batch_id, batch_index, user_id, title, album, lyrics,
-                   description_id, structure_id, status, created_at, updated_at
+                   description_id, structure_id, mood_id, status, created_at, updated_at
             FROM songs
             WHERE id = $1
             """,
@@ -597,7 +598,7 @@ class BatchRepository:
         rows = await self._pool.fetch(
             """
             SELECT id, batch_id, batch_index, user_id, title, album, lyrics,
-                   description_id, structure_id, status, created_at, updated_at
+                   description_id, structure_id, mood_id, status, created_at, updated_at
             FROM songs
             WHERE user_id = $1
             ORDER BY created_at DESC
@@ -623,7 +624,7 @@ class BatchRepository:
         rows = await self._pool.fetch(
             """
             SELECT id, batch_id, batch_index, user_id, title, album, lyrics,
-                   description_id, structure_id, status, created_at, updated_at
+                   description_id, structure_id, mood_id, status, created_at, updated_at
             FROM songs
             WHERE batch_id = $1 AND user_id = $2
             ORDER BY batch_index ASC
@@ -671,6 +672,30 @@ class BatchRepository:
             title,
             album,
             lyrics,
+        )
+
+    async def update_song_title_keep_status(self, song_id: UUID, title: str) -> None:
+        """Update song title without changing status or lyrics."""
+        await self._pool.execute(
+            """
+            UPDATE songs
+            SET title = $2, updated_at = NOW()
+            WHERE id = $1
+            """,
+            song_id,
+            title,
+        )
+
+    async def update_batch_songs_album(self, batch_id: UUID, album: str) -> None:
+        """Set album on every song in a batch without changing status/lyrics."""
+        await self._pool.execute(
+            """
+            UPDATE songs
+            SET album = $2, updated_at = NOW()
+            WHERE batch_id = $1
+            """,
+            batch_id,
+            album,
         )
 
     async def update_song_suno_sanitize_metadata(
@@ -1156,16 +1181,19 @@ class BatchRepository:
     # Image Job Management
     # ------------------------------------------------------------------
 
-    async def create_image_job(self, job: ImageJob) -> ImageJob:
+    async def create_image_job(self, job: ImageJob) -> ImageJob | None:
         """Insert an image job record.
+
+        Album slots are unique per ``(batch_id, profile_id, kind, channel_role)``.
+        Concurrent Suno completions may race; conflicts are ignored.
 
         Args:
             job: The ImageJob domain object to persist.
 
         Returns:
-            The persisted ImageJob.
+            The persisted ImageJob, or ``None`` when the album slot already exists.
         """
-        await self._pool.execute(
+        row = await self._pool.fetchrow(
             """
             INSERT INTO image_jobs
                 (id, song_id, user_id, batch_id, profile_id, kind,
@@ -1173,6 +1201,8 @@ class BatchRepository:
                  input_image_path, style_reference_path, source_job_id,
                  status, attempt_count, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+            ON CONFLICT DO NOTHING
+            RETURNING id
             """,
             job.id,
             job.song_id,
@@ -1191,7 +1221,7 @@ class BatchRepository:
             job.status.value,
             job.attempt_count,
         )
-        return job
+        return job if row is not None else None
 
     async def create_image_jobs(self, jobs: list[ImageJob]) -> list[ImageJob]:
         """Bulk-insert image job records.
@@ -1200,15 +1230,25 @@ class BatchRepository:
             jobs: List of ImageJob domain objects to persist.
 
         Returns:
-            The persisted image jobs.
+            The persisted image jobs (skips album-slot conflicts).
         """
+        created: list[ImageJob] = []
         for job in jobs:
-            await self.create_image_job(job)
-        if jobs:
+            persisted = await self.create_image_job(job)
+            if persisted is not None:
+                created.append(persisted)
+        if created:
             logger.info(
-                "Created %d image jobs for batch %s", len(jobs), jobs[0].batch_id
+                "Created %d image jobs for batch %s", len(created), created[0].batch_id
             )
-        return jobs
+        skipped = len(jobs) - len(created)
+        if skipped:
+            logger.info(
+                "Skipped %d duplicate album image job(s) for batch %s",
+                skipped,
+                jobs[0].batch_id,
+            )
+        return created
 
     async def get_image_jobs_by_batch(self, batch_id: UUID) -> list[ImageJob]:
         """Retrieve all image jobs for a batch.
@@ -1657,6 +1697,100 @@ class BatchRepository:
             updated_at=row["updated_at"],
         )
 
+    async def delete_batch_cascade(self, batch_id: UUID, user_id: UUID) -> bool:
+        """Hard-delete a batch and dependent pipeline rows owned by the user.
+
+        Child tables that reference songs/batches without ON DELETE CASCADE are
+        cleared first. Streaming catalog rows that optionally reference the batch
+        are nulled rather than deleted.
+
+        Returns:
+            True when the batch row was deleted.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                owned = await conn.fetchval(
+                    """
+                    SELECT 1 FROM batches
+                    WHERE id = $1 AND user_id = $2
+                    """,
+                    batch_id,
+                    user_id,
+                )
+                if owned is None:
+                    return False
+
+                await conn.execute(
+                    """
+                    DELETE FROM youtube_upload_jobs
+                    WHERE batch_id = $1
+                       OR song_id IN (SELECT id FROM songs WHERE batch_id = $1)
+                    """,
+                    batch_id,
+                )
+                await conn.execute(
+                    """
+                    DELETE FROM image_jobs
+                    WHERE batch_id = $1
+                       OR song_id IN (SELECT id FROM songs WHERE batch_id = $1)
+                    """,
+                    batch_id,
+                )
+                await conn.execute(
+                    """
+                    DELETE FROM suno_tasks
+                    WHERE batch_id = $1
+                       OR song_id IN (SELECT id FROM songs WHERE batch_id = $1)
+                    """,
+                    batch_id,
+                )
+                # Optional FKs (ON DELETE SET NULL) — clear before song/batch delete.
+                # Stream tables may be absent on older local DBs; ignore missing relations.
+                for query in (
+                    """
+                    UPDATE stream_tracks
+                    SET song_id = NULL
+                    WHERE song_id IN (SELECT id FROM songs WHERE batch_id = $1)
+                    """,
+                    """
+                    UPDATE stream_upload_jobs
+                    SET song_id = NULL,
+                        batch_id = NULL
+                    WHERE batch_id = $1
+                       OR song_id IN (SELECT id FROM songs WHERE batch_id = $1)
+                    """,
+                    """
+                    UPDATE stream_albums
+                    SET batch_id = NULL
+                    WHERE batch_id = $1
+                    """,
+                ):
+                    try:
+                        await conn.execute(query, batch_id)
+                    except Exception as exc:
+                        if "does not exist" not in str(exc).lower():
+                            raise
+                        logger.debug(
+                            "Skipping stream cleanup for batch %s: %s",
+                            batch_id,
+                            exc,
+                        )
+                await conn.execute(
+                    "DELETE FROM songs WHERE batch_id = $1",
+                    batch_id,
+                )
+                # batch_channel_assets cascades from batches
+                result = await conn.execute(
+                    """
+                    DELETE FROM batches
+                    WHERE id = $1 AND user_id = $2
+                    """,
+                    batch_id,
+                    user_id,
+                )
+                deleted = int(str(result).split()[-1]) if result else 0
+                return deleted > 0
+
     @staticmethod
     def _row_to_song(row: Any) -> Song:
         """Map a database row to a Song domain object."""
@@ -1678,6 +1812,7 @@ class BatchRepository:
             lyrics=row["lyrics"],
             description_id=row["description_id"],
             structure_id=row["structure_id"],
+            mood_id=BatchRepository._row_value(row, "mood_id"),
             status=row["status"],
             suno_last_sanitize=suno_last_sanitize if isinstance(suno_last_sanitize, dict) else None,
             suno_auto_retry_count=int(BatchRepository._row_value(row, "suno_auto_retry_count", 0) or 0),

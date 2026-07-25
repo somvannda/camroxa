@@ -260,7 +260,7 @@ class ImageView(PollablePageMixin, QScrollArea):
     def _apply_core_cache(self) -> bool:
         if self._cache is None or not self._cache.has_core():
             return False
-        _me, profiles, settings_raw, _descriptions, _structures = self._cache.snapshot_core()
+        _me, profiles, settings_raw, _descriptions, _structures, _moods = self._cache.snapshot_core()
         if not profiles or not settings_raw:
             return False
         self._is_error = False

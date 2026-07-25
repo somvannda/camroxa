@@ -182,14 +182,28 @@ def test_build_suno_style_prompt_includes_explicit_vocal_policy() -> None:
     assert "German" in style
     assert "English" in style
     assert "142 BPM" in style
-    assert len(style) <= 255
+    assert len(style) <= 1000
+
+
+def test_resolve_suno_style_keeps_full_eurodance_including_vocals() -> None:
+    from platform_api.ai.purposes.vocal_profile import resolve_suno_style_from_description
+
+    # Live Suno path uses description content as-is (no lyric sanitize strip).
+    style = resolve_suno_style_from_description(EURODANCE_DESCRIPTION)
+    assert "142 BPM" in style
+    assert "Male and Female" in style
+    assert len(style) <= 1000
+    assert len(style) > 255
 
 
 def test_truncate_suno_style_limits_length() -> None:
-    from platform_api.ai.purposes.vocal_profile import truncate_suno_style
+    from platform_api.ai.purposes.vocal_profile import (
+        SUNO_STYLE_MAX_LENGTH,
+        truncate_suno_style,
+    )
 
-    long_style = "A" * 400
-    assert len(truncate_suno_style(long_style)) == 255
+    long_style = "A" * (SUNO_STYLE_MAX_LENGTH + 200)
+    assert len(truncate_suno_style(long_style)) == SUNO_STYLE_MAX_LENGTH
 
 
 def test_bilingual_lyric_prompts_include_section_plan() -> None:

@@ -20,7 +20,7 @@ class _FakeModelCostRepo:
             },
             {
                 "ai_service": "deepseek",
-                "sub_model": "deepseek-chat",
+                "sub_model": "deepseek-v4-flash",
                 "operation_type": "title",
                 "cost_usd": 0.00012,
             },
@@ -48,8 +48,9 @@ async def test_get_available_providers_uses_db_costs_and_operation_filter() -> N
     assert lyrics_detail["operations"] == ["lyric"]
 
     deepseek = next(item for item in text if item["provider"] == "deepseek")
-    chat_detail = next(
-        d for d in deepseek["sub_models_detail"] if d["name"] == "deepseek-chat"
+    flash_detail = next(
+        d for d in deepseek["sub_models_detail"] if d["name"] == "deepseek-v4-flash"
     )
-    assert chat_detail["cost_usd_by_operation"]["title"] == 0.00012
-    assert "title" in chat_detail["operations"]
+    assert flash_detail["cost_usd_by_operation"]["title"] == 0.00012
+    assert "title" in flash_detail["operations"]
+    assert "deepseek-v4-pro" in deepseek["sub_models"]

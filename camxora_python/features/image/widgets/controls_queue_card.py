@@ -25,6 +25,7 @@ from shared.lib.formatting import format_channel_role_label
 from shared.lib.image_workspace import QueueRow, format_queue_role_status
 from shared.themes.deep_blue import SHELL_TEXT_EDIT_ID, SUBTITLE_LABEL_ID
 from shared.widgets.data_table import create_data_table
+from shared.widgets.shell_date_edit import make_shell_date_edit
 
 _COL_DATE = 0
 _COL_ALBUM = 1
@@ -198,12 +199,7 @@ class ControlsQueueCard(QFrame):
 
     @staticmethod
     def _make_date_edit():
-        from PySide6.QtWidgets import QDateEdit
-
-        edit = QDateEdit()
-        edit.setCalendarPopup(True)
-        edit.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
-        return edit
+        return make_shell_date_edit(initial=QDate.fromString(today_ymd(), "yyyy-MM-dd"))
 
     @staticmethod
     def _make_prompt_edit(placeholder: str) -> QTextEdit:

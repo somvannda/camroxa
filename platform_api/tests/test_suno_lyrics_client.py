@@ -122,7 +122,8 @@ def test_parse_suno_generate_poll_pending() -> None:
 
 def test_build_suno_lyrics_prompt_respects_200_char_limit() -> None:
     prompt = build_suno_lyrics_prompt(
-        description="Dark phonk trap with heavy 808s and neon city atmosphere " * 5,
+        mood="Bittersweet love song with intimate memories " * 5,
+        title="Midnight Quiet",
         structure="Intro: slow build\nVerse: gritty\nChorus: hook\nDrop: energy",
         language="English",
         forced_opening="Rolling through the midnight rain",

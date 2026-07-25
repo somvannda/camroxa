@@ -55,7 +55,8 @@ DEFAULT_BILINGUAL_SECTION_MAP: dict[str, str] = {
     "final-drop": "primary",
 }
 
-SUNO_STYLE_MAX_LENGTH = 255
+SUNO_STYLE_MAX_LENGTH = 1000
+"""Suno customMode style cap for V4_5 / V5 / V5_5 (V4 is 200; we ship V5+)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,7 +435,7 @@ def build_suno_style_prompt(
 
 
 def truncate_suno_style(text: str, *, max_length: int = SUNO_STYLE_MAX_LENGTH) -> str:
-    """Fit Suno style text into DB/API varchar(255) limits."""
+    """Fit Suno style text into provider + DB limits (VARCHAR(1000) on suno_tasks)."""
     compact = re.sub(r"\s+", " ", str(text or "").strip())
     if len(compact) <= max_length:
         return compact

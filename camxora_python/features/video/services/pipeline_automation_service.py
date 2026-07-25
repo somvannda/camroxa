@@ -34,6 +34,7 @@ from shared.lib.export_tiers import resolve_export_tier_settings
 from shared.services.shell_status import emit_shell_status
 from shared.services.video_pipeline_activity import (
     any_video_pipeline_threads_running,
+    is_app_quitting,
     track_video_pipeline_thread,
 )
 from shared.services.video_workspace_service import get_video_workspace_service
@@ -163,6 +164,8 @@ class PipelineAutomationService(QObject):
         force_regenerate: bool = False,
         auto_merge: bool | None = None,
     ) -> bool:
+        if is_app_quitting():
+            return False
         if self.is_busy():
             return False
         if force_regenerate:
@@ -396,6 +399,9 @@ class PipelineAutomationService(QObject):
         )
 
     def _on_export_succeeded(self, payload: object) -> None:
+        if is_app_quitting():
+            self._busy = False
+            return
         workspace = self._current_workspace()
         if not isinstance(payload, dict) or workspace is None:
             self._busy = False
@@ -454,6 +460,8 @@ class PipelineAutomationService(QObject):
         self._schedule_progress_local_sync()
 
     def _schedule_progress_local_sync(self) -> None:
+        if is_app_quitting():
+            return
         from shared.services.progress_local_sync_coordinator import get_progress_local_sync_coordinator
 
         coordinator = get_progress_local_sync_coordinator()
@@ -461,6 +469,9 @@ class PipelineAutomationService(QObject):
             coordinator.sync_now()
 
     def _start_merge(self) -> None:
+        if is_app_quitting():
+            self._busy = False
+            return
         context = dict(self._merge_context)
         run_dir = str(context.get("run_dir") or "").strip()
         branch = str(context.get("branch") or "long").strip()
@@ -742,6 +753,8 @@ class PipelineAutomationService(QObject):
         *,
         settings: dict[str, Any],
     ) -> bool:
+        if is_app_quitting():
+            return False
         if self.is_busy():
             emit_shell_status("Video pipeline is already running.", tone="warning")
             return False

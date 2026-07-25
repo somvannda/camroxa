@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -66,7 +66,7 @@ class SunoGenerationRequest(BaseModel):
     model: str = Field(pattern=r"^(V5|V5_5)$")
     title: str = Field(min_length=1, max_length=255)
     lyrics: str = Field(min_length=1)
-    style: str = Field(min_length=1, max_length=255)
+    style: str = Field(min_length=1, max_length=1000)
     instrumental: bool = False
 
 
@@ -88,6 +88,7 @@ class DraftGenerationRequest(BaseModel):
     creativity_level: int = Field(ge=0, le=100, default=50)
     description_id: str | None = None
     structure_id: str | None = None
+    mood_id: str | None = None
     structure_mode: str = Field(default="template", pattern=r"^(template|ai_free)$")
     avoid_titles: list[str] = Field(default_factory=list, max_length=200)
     avoid_albums: list[str] = Field(default_factory=list, max_length=200)
@@ -111,8 +112,10 @@ class BatchCreateRequest(BaseModel):
     alt_profile_id: str
     description_id: str | None = None
     structure_id: str | None = None
+    mood_id: str | None = None
     structure_mode: str = Field(default="template", pattern=r"^(template|ai_free)$")
     shuffle_structure: bool = False
+    shuffle_mood: bool = False
     auto_gen_image: bool = False
     auto_gsuno: bool = False
     song_count: int = Field(ge=1, le=50)
@@ -254,6 +257,37 @@ class SongSunoRetryRequest(BaseModel):
     lyrics: str | None = None
 
 
+class AlbumRewriteRequest(BaseModel):
+    """Regenerate Primary (ok) or Secondary (alt) batch album name."""
+
+    role: Literal["ok", "alt"] = "ok"
+
+
+class AlbumRewriteResponse(BaseModel):
+    """Result of rewriting a batch channel album."""
+
+    batch_id: str
+    role: str
+    album: str
+
+
+class TitleRewriteResponse(BaseModel):
+    """Result of rewriting one song title."""
+
+    batch_id: str
+    song_id: str
+    title: str
+
+
+class BatchDeleteResponse(BaseModel):
+    """Result of deleting a failed / non-audio batch."""
+
+    batch_id: str
+    deleted: bool = True
+    songs_deleted: int = 0
+    draft_quota_released: int = 0
+
+
 class MusicHistorySongResponse(BaseModel):
     """Read-only song summary used by the music history surface."""
 
@@ -266,6 +300,8 @@ class MusicHistorySongResponse(BaseModel):
     description_name: str | None = None
     structure_id: str | None = None
     structure_name: str | None = None
+    mood_id: str | None = None
+    mood_name: str | None = None
     output_dir_ok: str | None = None
     output_dir_alt: str | None = None
     status: str

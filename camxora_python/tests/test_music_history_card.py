@@ -64,7 +64,7 @@ def test_show_all_clears_date_filter(qapp: QApplication) -> None:
     values = card.filter_values()
     assert values["from_date"] == ""
     assert values["to_date"] == ""
-    assert values["status"] == "all"
+    assert values["status"] == []
     assert values["batch_id"] == ""
 
 
@@ -76,14 +76,16 @@ def test_status_and_batch_filter_values(qapp: QApplication) -> None:
             _batch("bbbbbbbb-0000-0000-0000-000000000002", song_count=1),
         ]
     )
-    status_index = card._status_filter.findData("failed")
-    assert status_index >= 0
-    card._status_filter.setCurrentIndex(status_index)
+    failed = card._status_actions["failed"]
+    pending = card._status_actions["pending"]
+    failed.setChecked(True)
+    pending.setChecked(True)
     batch_index = card._batch_filter.findData("aaaaaaaa-0000-0000-0000-000000000001")
     assert batch_index >= 0
     card._batch_filter.setCurrentIndex(batch_index)
     values = card.filter_values()
-    assert values["status"] == "failed"
+    assert values["status"] == ["failed", "pending"]
+    assert card._status_filter.text() == "Failed, Pending"
     assert values["batch_id"] == "aaaaaaaa-0000-0000-0000-000000000001"
 
 

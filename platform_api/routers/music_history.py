@@ -127,14 +127,27 @@ async def list_music_history(
             LEFT JOIN channel_profiles altp ON altp.id = b.alt_profile_id
             WHERE b.user_id = $1
               AND (
-                $3::date IS NULL
-                OR COALESCE(b.planned_to_date, (b.created_at AT TIME ZONE 'UTC')::date) >= $3::date
-                OR (b.created_at AT TIME ZONE 'UTC')::date >= $3::date
-              )
-              AND (
-                $4::date IS NULL
-                OR COALESCE(b.planned_from_date, (b.created_at AT TIME ZONE 'UTC')::date) <= $4::date
-                OR (b.created_at AT TIME ZONE 'UTC')::date <= $4::date
+                -- No date filter → include everything
+                ($3::date IS NULL AND $4::date IS NULL)
+                OR (
+                  -- Strict planned-run window overlaps [from, to]
+                  COALESCE(
+                    b.planned_to_date,
+                    b.planned_from_date,
+                    (b.created_at AT TIME ZONE 'UTC')::date
+                  ) >= COALESCE($3::date, '0001-01-01'::date)
+                  AND COALESCE(
+                    b.planned_from_date,
+                    (b.created_at AT TIME ZONE 'UTC')::date
+                  ) <= COALESCE($4::date, '9999-12-31'::date)
+                )
+                OR (
+                  -- Or batch was created on a day inside the filter
+                  (b.created_at AT TIME ZONE 'UTC')::date
+                    >= COALESCE($3::date, '0001-01-01'::date)
+                  AND (b.created_at AT TIME ZONE 'UTC')::date
+                    <= COALESCE($4::date, '9999-12-31'::date)
+                )
               )
             ORDER BY b.created_at DESC
             LIMIT $2
@@ -170,12 +183,13 @@ async def list_music_history(
             LEFT JOIN channel_profiles altp ON altp.id = b.alt_profile_id
             WHERE b.user_id = $1
               AND (
-                $3::date IS NULL
-                OR (b.created_at AT TIME ZONE 'UTC')::date >= $3::date
-              )
-              AND (
-                $4::date IS NULL
-                OR (b.created_at AT TIME ZONE 'UTC')::date <= $4::date
+                ($3::date IS NULL AND $4::date IS NULL)
+                OR (
+                  (b.created_at AT TIME ZONE 'UTC')::date
+                    >= COALESCE($3::date, '0001-01-01'::date)
+                  AND (b.created_at AT TIME ZONE 'UTC')::date
+                    <= COALESCE($4::date, '9999-12-31'::date)
+                )
               )
             ORDER BY b.created_at DESC
             LIMIT $2
@@ -213,6 +227,8 @@ async def list_music_history(
                     WHEN b.structure_mode = 'ai_free' THEN 'AI Structure'
                     ELSE ms.name
                 END AS structure_name,
+                s.mood_id,
+                mm.name AS mood_name,
                 st.output_dir_ok,
                 st.output_dir_alt,
                 s.status,
@@ -228,6 +244,7 @@ async def list_music_history(
             LEFT JOIN batches b ON b.id = s.batch_id
             LEFT JOIN music_descriptions d ON d.id = s.description_id
             LEFT JOIN music_structures ms ON ms.id = s.structure_id
+            LEFT JOIN music_moods mm ON mm.id = s.mood_id
             LEFT JOIN LATERAL (
                 SELECT status, output_dir_ok, output_dir_alt, downloaded_ok, downloaded_alt, error_message
                 FROM suno_tasks st
@@ -268,6 +285,8 @@ async def list_music_history(
                     WHEN b.structure_mode = 'ai_free' THEN 'AI Structure'
                     ELSE ms.name
                 END AS structure_name,
+                s.mood_id,
+                mm.name AS mood_name,
                 NULL::text AS output_dir_ok,
                 NULL::text AS output_dir_alt,
                 s.status,
@@ -283,6 +302,7 @@ async def list_music_history(
             LEFT JOIN batches b ON b.id = s.batch_id
             LEFT JOIN music_descriptions d ON d.id = s.description_id
             LEFT JOIN music_structures ms ON ms.id = s.structure_id
+            LEFT JOIN music_moods mm ON mm.id = s.mood_id
             LEFT JOIN LATERAL (
                 SELECT status, downloaded_ok, downloaded_alt, error_message
                 FROM suno_tasks st
@@ -367,6 +387,8 @@ async def list_music_history(
                 description_name=str(_row_value(row, "description_name")) if _row_value(row, "description_name") else None,
                 structure_id=str(_row_value(row, "structure_id")) if _row_value(row, "structure_id") else None,
                 structure_name=str(_row_value(row, "structure_name")) if _row_value(row, "structure_name") else None,
+                mood_id=str(_row_value(row, "mood_id")) if _row_value(row, "mood_id") else None,
+                mood_name=str(_row_value(row, "mood_name")) if _row_value(row, "mood_name") else None,
                 output_dir_ok=output_dir_ok,
                 output_dir_alt=output_dir_alt,
                 status=str(row["status"] or "pending"),

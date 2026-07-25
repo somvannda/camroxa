@@ -203,6 +203,20 @@ class MusicStructure:
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
 
+@dataclass
+class MusicMood:
+    """Emotional/narrative mood brief for album/title/lyric writing."""
+
+    id: UUID = field(default_factory=uuid4)
+    name: str = ""
+    content: str = ""
+    match_key: str | None = None
+    is_active: bool = True
+    user_id: UUID | None = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    updated_at: datetime = field(default_factory=datetime.utcnow)
+
+
 # ---------------------------------------------------------------------------
 # Channel Prompts (Admin-managed)
 # ---------------------------------------------------------------------------
@@ -245,6 +259,7 @@ class Song:
     lyrics: str | None = None
     description_id: UUID | None = None
     structure_id: UUID | None = None
+    mood_id: UUID | None = None
     status: str = "pending"
     suno_last_sanitize: dict[str, Any] | None = None
     suno_auto_retry_count: int = 0

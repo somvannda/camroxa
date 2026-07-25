@@ -582,7 +582,7 @@ class VideoView(QWidget):
             _workspace, settings = self._cache.snapshot_video_workspace()
             if settings:
                 return dict(settings)
-        _me, _profiles, settings_raw, _descriptions, _structures = self._cache.snapshot_core()
+        _me, _profiles, settings_raw, _descriptions, _structures, _moods = self._cache.snapshot_core()
         return dict(settings_raw) if settings_raw else {}
 
     def _try_mount_from_cache(self) -> bool:
@@ -3903,7 +3903,7 @@ class VideoView(QWidget):
         )
         profiles: list = []
         if self._cache is not None:
-            _me, profiles, _settings, _descriptions, _structures = self._cache.snapshot_core()
+            _me, profiles, _settings, _descriptions, _structures, _moods = self._cache.snapshot_core()
         worker = VideoTemplateSyncWorker(
             self._api,
             workspace=self._workspace,

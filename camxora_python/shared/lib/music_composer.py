@@ -29,7 +29,8 @@ class HistoryFiltersState:
     from_date: str = ""
     to_date: str = ""
     last_batch_only: bool = False
-    status: str = "all"  # all | success | failed | pending
+    # Empty = all; otherwise any of success | failed | pending (OR match).
+    status: tuple[str, ...] = ()
     batch_id: str = ""  # empty = all batches
 
 
@@ -158,27 +159,27 @@ def _ymd(value: str | None) -> str:
 def normalize_history_boundary(batch: MusicHistoryBatch, side: str) -> str:
     if side == "from":
         return _ymd(batch.from_date) or _ymd(batch.created_at)
-    return _ymd(batch.to_date) or _ymd(batch.updated_at) or _ymd(batch.created_at)
+    return _ymd(batch.to_date) or _ymd(batch.from_date) or _ymd(batch.created_at)
 
 
-def history_batch_filter_dates(batch: MusicHistoryBatch) -> list[str]:
-    """Dates that should match a calendar filter for this batch.
+def history_batch_planned_window(batch: MusicHistoryBatch) -> tuple[str, str] | None:
+    """Inclusive planned run window, falling back to created day when unset."""
+    start = _ymd(batch.from_date) or _ymd(batch.created_at)
+    if not start:
+        return None
+    end = _ymd(batch.to_date) or start
+    if end < start:
+        start, end = end, start
+    return start, end
 
-    Includes planned run dates and created/updated calendar days so a batch
-    planned for a future run day still appears when filtering by the day it
-    was generated.
-    """
-    dates: list[str] = []
-    for raw in (
-        batch.from_date,
-        batch.to_date,
-        batch.created_at,
-        batch.updated_at,
-    ):
-        day = _ymd(raw)
-        if day and day not in dates:
-            dates.append(day)
-    return dates
+
+def normalize_history_date_range(from_date: str = "", to_date: str = "") -> tuple[str, str]:
+    """Return inclusive yyyy-MM-dd bounds; swap when From is after To."""
+    filter_from = _ymd(from_date)
+    filter_to = _ymd(to_date)
+    if filter_from and filter_to and filter_to < filter_from:
+        return filter_to, filter_from
+    return filter_from, filter_to
 
 
 def matches_history_date_range(
@@ -187,29 +188,31 @@ def matches_history_date_range(
     from_date: str = "",
     to_date: str = "",
 ) -> bool:
-    filter_from = _ymd(from_date)
-    filter_to = _ymd(to_date)
+    """Strict inclusive calendar filter.
+
+    A batch matches when:
+    - its planned run window overlaps [from_date, to_date], or
+    - it was created on a calendar day inside that range
+
+    ``updated_at`` is ignored so later retries/rewrites do not pull old runs
+    into today's filter. Inverted From/To is normalized (swapped).
+    """
+    filter_from, filter_to = normalize_history_date_range(from_date, to_date)
     if not filter_from and not filter_to:
         return True
+    if not filter_from:
+        filter_from = "0001-01-01"
+    if not filter_to:
+        filter_to = "9999-12-31"
 
-    dates = history_batch_filter_dates(batch)
-    if not dates:
-        return True
+    window = history_batch_planned_window(batch)
+    if window is not None:
+        planned_from, planned_to = window
+        if planned_to >= filter_from and planned_from <= filter_to:
+            return True
 
-    for day in dates:
-        if filter_from and day < filter_from:
-            continue
-        if filter_to and day > filter_to:
-            continue
-        return True
-
-    batch_from = normalize_history_boundary(batch, "from")
-    batch_to = normalize_history_boundary(batch, "to") or batch_from
-    if batch_from and batch_to:
-        if filter_from and batch_to < filter_from:
-            return False
-        if filter_to and batch_from > filter_to:
-            return False
+    created = _ymd(batch.created_at)
+    if created and filter_from <= created <= filter_to:
         return True
     return False
 
@@ -224,6 +227,10 @@ def matches_history_filters(
     wanted_batch = str(filters.batch_id or "").strip()
     if wanted_batch and str(batch.batch_id) != wanted_batch:
         return False
+    # Last batch = newest loaded batch, regardless of From/To (date filter
+    # still applies when browsing all batches).
+    if filters.last_batch_only:
+        return True
     if not matches_history_date_range(
         batch,
         from_date=filters.from_date,
@@ -237,15 +244,23 @@ def song_matches_history_status_filter(
     *,
     status: str | None,
     suno_status: str | None,
-    status_filter: str,
+    status_filter: str | list[str] | tuple[str, ...],
 ) -> bool:
-    """Return True when a song matches the History status dropdown."""
+    """Return True when a song matches the History status filter (multi-select OR)."""
     from shared.lib.music_status import classify_song_pipeline_bucket
 
-    wanted = str(status_filter or "all").strip().lower() or "all"
-    if wanted in {"", "all"}:
+    if isinstance(status_filter, str):
+        tokens = [status_filter]
+    else:
+        tokens = list(status_filter or ())
+    wanted = {
+        token
+        for raw in tokens
+        if (token := str(raw or "").strip().lower()) and token != "all"
+    }
+    if not wanted:
         return True
-    return classify_song_pipeline_bucket(status, suno_status) == wanted
+    return classify_song_pipeline_bucket(status, suno_status) in wanted
 
 
 def effect_preview_from_creativity(creativity: int) -> dict[str, int]:

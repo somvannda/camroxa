@@ -612,6 +612,50 @@ class TestTwoStepLyricPrompts:
         assert "use only these lines" in prompt.lower()
         assert "[Verse]" in prompt
 
+    def test_lyric_rewrite_prompt_uses_mood_not_description(self):
+        from platform_api.services.generation_service import (
+            build_lyric_rewrite_system_prompt,
+            build_lyric_rewrite_user_prompt,
+            lyric_rewrite_temperature,
+            prepare_lyrics_for_rewrite,
+            describe_lyric_rewrite_quality_failure,
+        )
+
+        user_prompt = build_lyric_rewrite_user_prompt(
+            lyrics="[Verse]\nHello night drive neon",
+            mood="Soft ache and quiet hope",
+            title="Paper Lanterns",
+            structure="[Verse]\n[Chorus]",
+            description="Aggressive EDM festival banger with chrome synths",
+        )
+        assert "Soft ache and quiet hope" in user_prompt
+        assert "Paper Lanterns" in user_prompt
+        assert "[Verse]\n[Chorus]" in user_prompt
+        assert "Aggressive EDM" not in user_prompt
+        assert "Song theme / description" not in user_prompt
+        assert "chrome synths" not in user_prompt
+
+        system_prompt = build_lyric_rewrite_system_prompt(strength=80)
+        assert "word salad" in system_prompt.lower()
+        assert lyric_rewrite_temperature(100) <= 0.9
+        assert lyric_rewrite_temperature(0) >= 0.35
+
+        poisoned = (
+            "[Intro]\nWe chase the glowing signals before the light.\n"
+            "If this is the rush, why does it cut so deep?\n\n"
+            "[Drop]\nPhantom navigators count the hours with quiet care.\n\n"
+            "[Bridge]\nMortal breath, softly held, glowing future late keypad stock, cry rolls "
+            "number alert, fluid curtains, sunlight trends against the freak performing fire optic, "
+            "keywords without striped consumption, arrive homeowner evenly.\n\n"
+            "[Outro]\nsanitize value forbidden kitty JSONObject githubusercontent 汉字 العربية"
+        )
+        trimmed = prepare_lyrics_for_rewrite(poisoned)
+        assert "glowing signals" in trimmed
+        assert "keypad stock" not in trimmed
+        assert "sanitize value" not in trimmed
+        assert describe_lyric_rewrite_quality_failure(poisoned) is not None
+        assert describe_lyric_rewrite_quality_failure(trimmed) is None
+
     def test_parse_plain_lyric_text_strips_json_wrapper(self):
         from platform_api.services.generation_service import parse_plain_lyric_text
 

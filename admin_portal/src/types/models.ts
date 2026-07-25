@@ -317,6 +317,19 @@ export interface MusicStructure {
   updated_at: string;
 }
 
+export interface MusicMood {
+  id: string;
+  name: string;
+  content: string;
+  match_key: string | null;
+  is_active: boolean;
+  user_id?: string | null;
+  owner_label?: string;
+  usage_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PromptUsageByUser {
   user_id: string;
   user_email: string;

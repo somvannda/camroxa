@@ -33,10 +33,10 @@ class ShellWarmupWorker(QThread):
     def run(self) -> None:
         try:
             self.progress.emit("Preparing workspace", "Loading profiles and settings.", 60)
-            me, profiles, settings_raw, descriptions, structures = self._cache.snapshot_core()
+            me, profiles, settings_raw, descriptions, structures, moods = self._cache.snapshot_core()
             tasks: dict[str, object] = {}
 
-            with ThreadPoolExecutor(max_workers=6) as pool:
+            with ThreadPoolExecutor(max_workers=7) as pool:
                 if me is None:
                     tasks["me"] = pool.submit(self._api.get_me)
                 if not profiles:
@@ -47,6 +47,8 @@ class ShellWarmupWorker(QThread):
                     tasks["descriptions"] = pool.submit(self._api.list_prompt_description_names)
                 if not structures:
                     tasks["structures"] = pool.submit(self._api.list_prompt_structure_names)
+                if not moods:
+                    tasks["moods"] = pool.submit(self._api.list_prompt_mood_names)
                 tasks["languages"] = pool.submit(self._fetch_language_options)
 
                 self.progress.emit("Preparing workspace", "Fetching studio data in parallel.", 72)
@@ -62,6 +64,8 @@ class ShellWarmupWorker(QThread):
                     descriptions = tasks["descriptions"].result()  # type: ignore[union-attr]
                 if "structures" in tasks:
                     structures = tasks["structures"].result()  # type: ignore[union-attr]
+                if "moods" in tasks:
+                    moods = tasks["moods"].result()  # type: ignore[union-attr]
                 language_options = tasks["languages"].result()  # type: ignore[union-attr]
 
             self.progress.emit("Preparing workspace", "Loading dashboard overview.", 80)
@@ -71,6 +75,7 @@ class ShellWarmupWorker(QThread):
                 settings_raw=settings_raw,
                 description_options=[item for item in descriptions if isinstance(item, PromptNameOption)],
                 structure_options=[item for item in structures if isinstance(item, PromptNameOption)],
+                mood_options=[item for item in moods if isinstance(item, PromptNameOption)],
                 language_options=language_options,
             )
             if isinstance(me, UserMeResponse) and isinstance(settings_raw, dict):
@@ -95,6 +100,7 @@ class ShellWarmupWorker(QThread):
                 settings_raw=settings_raw if isinstance(settings_raw, dict) else {},
                 description_options=[item for item in descriptions if isinstance(item, PromptNameOption)],
                 structure_options=[item for item in structures if isinstance(item, PromptNameOption)],
+                mood_options=[item for item in moods if isinstance(item, PromptNameOption)],
             )
             self.progress.emit("Opening studio", "Building workspace pages.", 90)
             self.succeeded.emit()
@@ -131,6 +137,7 @@ class ShellWarmupWorker(QThread):
         settings_raw: dict,
         description_options: list[PromptNameOption],
         structure_options: list[PromptNameOption],
+        mood_options: list[PromptNameOption],
     ) -> None:
         if not profiles or not settings_raw:
             return
@@ -138,13 +145,15 @@ class ShellWarmupWorker(QThread):
             return
         from shared.models.auth import UserMeResponse
 
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             future_youtube = pool.submit(self._api.list_youtube_connections)
             future_descriptions = pool.submit(self._api.list_my_descriptions)
             future_structures = pool.submit(self._api.list_my_structures)
+            future_moods = pool.submit(self._api.list_my_moods)
             youtube_connections = future_youtube.result()
             my_description_items = future_descriptions.result()
             my_structure_items = future_structures.result()
+            my_mood_items = future_moods.result()
 
         self._cache.apply_settings_workspace(
             me=me if isinstance(me, UserMeResponse) else None,
@@ -152,7 +161,9 @@ class ShellWarmupWorker(QThread):
             settings_raw=settings_raw,
             description_options=description_options,
             structure_options=structure_options,
+            mood_options=mood_options,
             youtube_connections=youtube_connections,
             my_description_items=my_description_items,
             my_structure_items=my_structure_items,
+            my_mood_items=my_mood_items,
         )

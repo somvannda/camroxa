@@ -1,8 +1,8 @@
 """Music prompts router endpoints (Admin-only).
 
-Provides CRUD for song descriptions and song structures used internally
-by the Platform API to drive LLM-based lyric generation. All endpoints
-require Admin role.
+Provides CRUD for song descriptions, song structures, and song moods used
+internally by the Platform API to drive LLM-based lyric generation. All
+admin endpoints require Admin role.
 
 Requirements: 9.1, 9.2, 9.3
 """
@@ -120,6 +120,38 @@ class UpdateStructureRequest(BaseModel):
     is_active: bool | None = None
 
 
+class MoodResponse(BaseModel):
+    """Public representation of a song mood."""
+
+    id: str
+    name: str
+    content: str
+    match_key: str | None = None
+    is_active: bool = True
+    owner_label: str = "camxora"
+    usage_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class CreateMoodRequest(BaseModel):
+    """Request body for creating a new song mood."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    content: str = Field(..., min_length=1, max_length=5000)
+    match_key: str | None = None
+    is_active: bool = True
+
+
+class UpdateMoodRequest(BaseModel):
+    """Request body for updating an existing song mood."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    content: str | None = Field(default=None, min_length=1, max_length=5000)
+    match_key: str | None = None
+    is_active: bool | None = None
+
+
 class UserPromptRequest(BaseModel):
     """Request body for user-owned prompt create/update."""
 
@@ -139,6 +171,16 @@ class UserDescriptionResponse(BaseModel):
 
 class UserStructureResponse(BaseModel):
     """Full user-owned structure for settings editing."""
+
+    id: str
+    name: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserMoodResponse(BaseModel):
+    """Full user-owned mood for settings editing."""
 
     id: str
     name: str
@@ -260,6 +302,21 @@ def _structure_to_response(struct, *, usage_count: int = 0) -> StructureResponse
     )
 
 
+def _mood_to_response(mood, *, usage_count: int = 0) -> MoodResponse:
+    """Convert a MusicMood domain object to the response model."""
+    return MoodResponse(
+        id=str(mood.id),
+        name=mood.name,
+        content=mood.content,
+        match_key=mood.match_key,
+        is_active=mood.is_active,
+        owner_label="camxora" if mood.user_id is None else "user",
+        usage_count=usage_count,
+        created_at=mood.created_at,
+        updated_at=mood.updated_at,
+    )
+
+
 def _user_description_to_response(desc) -> UserDescriptionResponse:
     return UserDescriptionResponse(
         id=str(desc.id),
@@ -277,6 +334,16 @@ def _user_structure_to_response(struct) -> UserStructureResponse:
         content=struct.content,
         created_at=struct.created_at,
         updated_at=struct.updated_at,
+    )
+
+
+def _user_mood_to_response(mood) -> UserMoodResponse:
+    return UserMoodResponse(
+        id=str(mood.id),
+        name=mood.name,
+        content=mood.content,
+        created_at=mood.created_at,
+        updated_at=mood.updated_at,
     )
 
 
@@ -299,6 +366,14 @@ def _workspace_structure_option(struct) -> WorkspacePromptOption:
         id=str(struct.id),
         name=struct.name,
         is_owned=struct.user_id is not None,
+    )
+
+
+def _workspace_mood_option(mood) -> WorkspacePromptOption:
+    return WorkspacePromptOption(
+        id=str(mood.id),
+        name=mood.name,
+        is_owned=mood.user_id is not None,
     )
 
 
@@ -709,6 +784,160 @@ async def delete_structure(
 
 
 # ---------------------------------------------------------------------------
+# Mood Endpoints (Admin-only)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/moods",
+    response_model=list[MoodResponse],
+    status_code=200,
+    summary="List all song moods (Admin)",
+)
+async def list_moods(
+    ctx: AdminUserDep,
+    prompt_service: PromptServiceDep,
+) -> list[MoodResponse]:
+    """Return global song moods ordered by name ascending."""
+    moods = await prompt_service.list_moods()
+    usage_counts = await prompt_service.list_mood_usage_summaries()
+    return [
+        _mood_to_response(m, usage_count=usage_counts.get(m.id, 0))
+        for m in moods
+    ]
+
+
+@router.get(
+    "/moods/user-prompts",
+    response_model=list[AdminUserOwnedPromptResponse],
+    status_code=200,
+    summary="List all user-owned moods (Admin)",
+)
+async def list_user_owned_moods(
+    ctx: AdminUserDep,
+) -> list[AdminUserOwnedPromptResponse]:
+    """Return all user-owned moods with owner info and usage counts."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    rows = await pool.fetch(
+        """
+        SELECT
+            m.id,
+            m.user_id,
+            u.email AS user_email,
+            u.display_name AS user_display_name,
+            m.name,
+            m.content,
+            m.is_active,
+            COALESCE(usage.usage_count, 0)::int AS usage_count,
+            m.created_at,
+            m.updated_at
+        FROM music_moods m
+        JOIN users u ON u.id = m.user_id
+        LEFT JOIN (
+            SELECT mood_id, COUNT(*)::int AS usage_count
+            FROM songs
+            WHERE mood_id IS NOT NULL
+            GROUP BY mood_id
+        ) usage ON usage.mood_id = m.id
+        WHERE m.user_id IS NOT NULL
+        ORDER BY m.is_active DESC, usage_count DESC, m.updated_at DESC, u.email ASC, m.name ASC
+        """
+    )
+    return [
+        AdminUserOwnedPromptResponse(
+            id=str(row["id"]),
+            user_id=str(row["user_id"]),
+            user_email=str(row.get("user_email") or ""),
+            user_display_name=str(row.get("user_display_name") or ""),
+            name=str(row["name"]),
+            content=str(row["content"]),
+            is_active=bool(row.get("is_active", True)),
+            usage_count=int(row.get("usage_count") or 0),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+        for row in rows
+    ]
+
+
+@router.post(
+    "/moods",
+    response_model=MoodResponse,
+    status_code=201,
+    summary="Create a song mood (Admin)",
+)
+async def create_mood(
+    request: CreateMoodRequest,
+    ctx: AdminUserDep,
+    prompt_service: PromptServiceDep,
+) -> MoodResponse:
+    """Create a new song mood.
+
+    Admin creates song mood with name (1-100 chars, unique), content
+    (1-5000 chars), optional match_key.
+    """
+    mood = await prompt_service.create_mood(
+        name=request.name,
+        content=request.content,
+        match_key=request.match_key,
+        is_active=request.is_active,
+    )
+    return _mood_to_response(mood)
+
+
+@router.put(
+    "/moods/{mood_id}",
+    response_model=MoodResponse,
+    status_code=200,
+    summary="Update a song mood (Admin)",
+)
+async def update_mood(
+    mood_id: UUID,
+    request: UpdateMoodRequest,
+    ctx: AdminUserDep,
+    prompt_service: PromptServiceDep,
+) -> MoodResponse:
+    """Update an existing song mood.
+
+    Admin updates moods; persist changed fields and return the updated record.
+    """
+    # Build update dict from provided fields
+    fields: dict = {}
+    if request.name is not None:
+        fields["name"] = request.name
+    if request.content is not None:
+        fields["content"] = request.content
+    # match_key can be explicitly set to None to clear it
+    if "match_key" in request.model_fields_set:
+        fields["match_key"] = request.match_key
+    if "is_active" in request.model_fields_set:
+        fields["is_active"] = request.is_active
+
+    mood = await prompt_service.update_mood(mood_id, **fields)
+    return _mood_to_response(mood)
+
+
+@router.delete(
+    "/moods/{mood_id}",
+    status_code=200,
+    summary="Delete a song mood (Admin)",
+)
+async def delete_mood(
+    mood_id: UUID,
+    ctx: AdminUserDep,
+    prompt_service: PromptServiceDep,
+) -> dict[str, str]:
+    """Delete a song mood.
+
+    Admin deletes moods; removes it and dissociates from any songs.
+    """
+    await prompt_service.delete_mood(mood_id)
+    return {"message": f"Mood {mood_id} has been deleted."}
+
+
+# ---------------------------------------------------------------------------
 # Usage analytics (Admin-only)
 # ---------------------------------------------------------------------------
 
@@ -761,6 +990,30 @@ async def get_structure_usage(
     )
 
 
+@router.get(
+    "/moods/{mood_id}/usage",
+    response_model=PromptUsageResponse,
+    status_code=200,
+    summary="Get mood usage breakdown (Admin)",
+)
+async def get_mood_usage(
+    mood_id: UUID,
+    ctx: AdminUserDep,
+    prompt_service: PromptServiceDep,
+) -> PromptUsageResponse:
+    """Return how many songs used this mood and by which users."""
+    usage = await prompt_service.get_mood_usage(mood_id)
+    return PromptUsageResponse(
+        prompt_id=usage["prompt_id"],
+        prompt_name=usage["prompt_name"],
+        owner_label=usage["owner_label"],
+        usage_count=usage["usage_count"],
+        users=_usage_users_to_response(usage["users"]),
+        profiles=_usage_profiles_to_response(usage["profiles"]),
+        by_day=_usage_days_to_response(usage["by_day"]),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Workspace selectors (authenticated users)
 # ---------------------------------------------------------------------------
@@ -794,6 +1047,21 @@ async def list_structures_workspace(
     """Return camxora structure names plus the current user's own names."""
     structures = await prompt_service.list_structures_workspace(UUID(ctx.user_id))
     return [_workspace_structure_option(item) for item in structures]
+
+
+@router.get(
+    "/moods/workspace",
+    response_model=list[WorkspacePromptOption],
+    status_code=200,
+    summary="List selectable moods for Settings/Music",
+)
+async def list_moods_workspace(
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> list[WorkspacePromptOption]:
+    """Return camxora mood names plus the current user's own names."""
+    moods = await prompt_service.list_moods_workspace(UUID(ctx.user_id))
+    return [_workspace_mood_option(item) for item in moods]
 
 
 # ---------------------------------------------------------------------------
@@ -945,6 +1213,78 @@ async def delete_my_structure(
     return {"message": f"Structure {structure_id} has been archived."}
 
 
+@router.get(
+    "/me/moods",
+    response_model=list[UserMoodResponse],
+    status_code=200,
+    summary="List current user's moods",
+)
+async def list_my_moods(
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> list[UserMoodResponse]:
+    """Return full content for moods owned by the current user."""
+    moods = await prompt_service.list_user_moods(UUID(ctx.user_id))
+    return [_user_mood_to_response(item) for item in moods]
+
+
+@router.post(
+    "/me/moods",
+    response_model=UserMoodResponse,
+    status_code=201,
+    summary="Create a user-owned mood",
+)
+async def create_my_mood(
+    request: UserPromptRequest,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> UserMoodResponse:
+    """Create a mood owned by the current user."""
+    mood = await prompt_service.create_user_mood(
+        UUID(ctx.user_id),
+        name=request.name,
+        content=request.content,
+    )
+    return _user_mood_to_response(mood)
+
+
+@router.put(
+    "/me/moods/{mood_id}",
+    response_model=UserMoodResponse,
+    status_code=200,
+    summary="Update a user-owned mood",
+)
+async def update_my_mood(
+    mood_id: UUID,
+    request: UserPromptRequest,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> UserMoodResponse:
+    """Update a mood owned by the current user."""
+    mood = await prompt_service.update_user_mood(
+        mood_id,
+        UUID(ctx.user_id),
+        name=request.name,
+        content=request.content,
+    )
+    return _user_mood_to_response(mood)
+
+
+@router.delete(
+    "/me/moods/{mood_id}",
+    status_code=200,
+    summary="Archive a user-owned mood",
+)
+async def delete_my_mood(
+    mood_id: UUID,
+    ctx: CurrentUserDep,
+    prompt_service: PromptServiceDep,
+) -> dict[str, str]:
+    """Archive a mood owned by the current user (hidden from UI, kept for usage history)."""
+    await prompt_service.delete_user_mood(mood_id, UUID(ctx.user_id))
+    return {"message": f"Mood {mood_id} has been archived."}
+
+
 # ---------------------------------------------------------------------------
 # Public endpoint (no admin required) — used by onboarding wizard
 # ---------------------------------------------------------------------------
@@ -960,6 +1300,13 @@ class PublicDescriptionResponse(BaseModel):
 
 class PublicStructureResponse(BaseModel):
     """Public structure response (for Settings selectors)."""
+
+    id: str
+    name: str
+
+
+class PublicMoodResponse(BaseModel):
+    """Public mood response (for Settings selectors)."""
 
     id: str
     name: str
@@ -1022,6 +1369,38 @@ async def list_structures_public() -> list[PublicStructureResponse]:
     )
     return [
         PublicStructureResponse(
+            id=str(r["id"]),
+            name=r["name"],
+        )
+        for r in rows
+    ]
+
+
+@router.get(
+    "/moods/public",
+    response_model=list[PublicMoodResponse],
+    status_code=200,
+    summary="List music moods (public, names only)",
+)
+async def list_moods_public() -> list[PublicMoodResponse]:
+    """List all music moods without requiring admin role.
+
+    Used by the Electron Settings route to provide a safe selector-only
+    surface sourced from the same Admin Portal-managed prompt tables.
+    """
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, name
+        FROM music_moods
+        WHERE user_id IS NULL AND is_active = TRUE
+        ORDER BY name
+        """
+    )
+    return [
+        PublicMoodResponse(
             id=str(r["id"]),
             name=r["name"],
         )

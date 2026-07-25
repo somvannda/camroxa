@@ -187,7 +187,7 @@ async def test_polish_lyrics_auto_fixes_remaining_block_terms(
 
     polished = await service.polish_lyrics_text(
         user_id=str(uuid4()),
-        lyrics="Shadows in the lowlight fade",
+        lyrics="[Verse]\nShadows in the lowlight fade\nI still hear the quiet rain",
         strength=50,
         provider="deepseek",
         model_id="deepseek-chat",

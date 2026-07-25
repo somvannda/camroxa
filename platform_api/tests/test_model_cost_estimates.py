@@ -59,7 +59,8 @@ def test_mimo_lyric_cost_matches_slai_shop_calibration() -> None:
         operation_type="lyric",
     )
     assert cost is not None
-    assert 0.00008 < cost < 0.00015
+    # ~1200 tokens * $0.0001414/1K
+    assert 0.00014 < cost < 0.00020
 
 
 def test_slai_models_seed_with_usd_estimates() -> None:

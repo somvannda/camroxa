@@ -11,6 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [2026-07-25]
+
+### Fixed
+
+- Credits Edit Pricing: surface API 422 validation messages (e.g. local $0 COGS) instead of a generic axios status toast.
+
+### Added
+
+- Prompts page: Music Moods tab (Camxora + user scope) with CRUD, visibility toggle, and usage analytics — mirrors Structures.
 - Software Updates page: upload `.zip` / `.exe` / `.msi` installer packages; auto-fills download URL after upload.
 
 ## [2026-07-19]

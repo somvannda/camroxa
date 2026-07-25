@@ -16,13 +16,17 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
 from platform_api.models.schemas import (
+    AlbumRewriteRequest,
+    AlbumRewriteResponse,
     BatchCreateRequest,
     BatchCreateResponse,
+    BatchDeleteResponse,
     BatchStatusResponse,
     MusicPlanPreflightRequest,
     MusicPlanPreflightResponse,
     SongRetryResponse,
     SongSunoRetryRequest,
+    TitleRewriteResponse,
 )
 from platform_api.services.batch_service import BatchService
 
@@ -110,8 +114,10 @@ async def create_batch(
         alt_profile_id=request.alt_profile_id,
         description_id=request.description_id,
         structure_id=request.structure_id,
+        mood_id=request.mood_id,
         structure_mode=request.structure_mode,
         shuffle_structure=request.shuffle_structure,
+        shuffle_mood=request.shuffle_mood,
         auto_gen_image=request.auto_gen_image,
         auto_gsuno=request.auto_gsuno,
         song_count=request.song_count,
@@ -243,6 +249,31 @@ async def get_batch_status(
     )
 
 
+@router.delete(
+    "/{batch_id}",
+    response_model=BatchDeleteResponse,
+    status_code=200,
+    summary="Delete a failed batch with no Suno audio",
+)
+async def delete_failed_batch(
+    batch_id: str,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    batch_service: BatchServiceDep,
+) -> BatchDeleteResponse:
+    """Hard-delete a batch when every song is pending/draft-failed/draft-ready/suno-failed.
+
+    Restores leftover draft-meter slots for draft_failed songs. Does not re-credit
+    the wallet or gift song quota.
+    """
+    await enforce_rate_limit(http_request, ctx.user_id)
+    result = await batch_service.delete_failed_batch(
+        batch_id=UUID(batch_id),
+        user_id=ctx.user_id,
+    )
+    return BatchDeleteResponse(**result)
+
+
 @router.post(
     "/{batch_id}/songs/{song_id}/retry-draft",
     response_model=SongRetryResponse,
@@ -277,6 +308,51 @@ async def retry_song_draft(
         song_id=song_id,
         status="retrying",
     )
+
+
+@router.post(
+    "/{batch_id}/rewrite-album",
+    response_model=AlbumRewriteResponse,
+    summary="Rewrite Primary or Secondary album name",
+)
+async def rewrite_batch_album(
+    batch_id: str,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    batch_service: BatchServiceDep,
+    request: AlbumRewriteRequest | None = None,
+) -> AlbumRewriteResponse:
+    """Regenerate album 1 (ok) or album 2 (alt). Allowed even after Suno success."""
+    await enforce_rate_limit(http_request, ctx.user_id)
+    payload = request or AlbumRewriteRequest()
+    result = await batch_service.rewrite_batch_album(
+        batch_id=UUID(batch_id),
+        user_id=ctx.user_id,
+        role=payload.role,
+    )
+    return AlbumRewriteResponse(**result)
+
+
+@router.post(
+    "/{batch_id}/songs/{song_id}/rewrite-title",
+    response_model=TitleRewriteResponse,
+    summary="Rewrite one song title",
+)
+async def rewrite_song_title(
+    batch_id: str,
+    song_id: str,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    batch_service: BatchServiceDep,
+) -> TitleRewriteResponse:
+    """Regenerate a song title without changing lyrics or status."""
+    await enforce_rate_limit(http_request, ctx.user_id)
+    result = await batch_service.rewrite_song_title(
+        batch_id=UUID(batch_id),
+        song_id=UUID(song_id),
+        user_id=ctx.user_id,
+    )
+    return TitleRewriteResponse(**result)
 
 
 @router.post(

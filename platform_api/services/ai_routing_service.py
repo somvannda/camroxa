@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-from platform_api.ai.registry import PROVIDER_SUB_MODELS, SUB_MODEL_COST_TIERS
+from platform_api.ai.registry import PROVIDER_SUB_MODELS, SUB_MODEL_COST_TIERS, resolve_text_model_id
 from platform_api.ai.types import (
     DEFAULT_PROVIDER,
     DEFAULT_SUB_MODEL,
@@ -37,6 +37,64 @@ from platform_api.ai.types import (
     ServiceType,
 )
 from platform_api.services.model_cost_estimates import operation_types_for_model
+
+
+def expand_text_chain_with_sibling_models(
+    chain: list[RoutingResult],
+) -> list[RoutingResult]:
+    """Expand a text chain so every provider tries all registered models first.
+
+    Provider order is preserved from ``chain``. For each provider, configured
+    model(s) are tried first, then remaining registry text models, before the
+    next provider is considered.
+    """
+    if not chain:
+        return []
+
+    provider_order: list[str] = []
+    preferred_by_provider: dict[str, list[str]] = {}
+    for item in chain:
+        provider = str(item.provider or "").strip()
+        if not provider:
+            continue
+        if provider not in preferred_by_provider:
+            provider_order.append(provider)
+            preferred_by_provider[provider] = []
+        model = str(item.sub_model or "").strip() or None
+        if model is None:
+            model = DEFAULT_SUB_MODEL.get(provider)
+        if not model:
+            continue
+        canonical = resolve_text_model_id(provider, model)
+        if canonical not in preferred_by_provider[provider]:
+            preferred_by_provider[provider].append(canonical)
+
+    expanded: list[RoutingResult] = []
+    seen: set[tuple[str, str]] = set()
+    for provider in provider_order:
+        preferred = preferred_by_provider.get(provider, [])
+        registry_models = list(
+            PROVIDER_SUB_MODELS.get(provider, {}).get(ServiceType.TEXT_GENERATION, ())
+        )
+        ordered_models = [*preferred]
+        for model in registry_models:
+            if model not in ordered_models:
+                ordered_models.append(model)
+        if not ordered_models and preferred:
+            ordered_models = list(preferred)
+        for model in ordered_models:
+            key = (provider, model)
+            if key in seen:
+                continue
+            seen.add(key)
+            expanded.append(
+                RoutingResult(
+                    provider=provider,
+                    sub_model=model,
+                    service_type=ServiceType.TEXT_GENERATION.value,
+                )
+            )
+    return expanded
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +129,7 @@ _IMAGE_FALLBACK_CHAIN_KEY = "ai_routing_image_fallback_chain"
 # then each entry below (deduped) on retryable provider failures.
 DEFAULT_TEXT_FALLBACK_CHAIN: tuple[dict[str, str | None | bool], ...] = (
     {"provider": "slai", "sub_model": "xiaomi/mimo-v2.5-pro", "is_active": True},
-    {"provider": "deepseek", "sub_model": "deepseek-chat", "is_active": True},
+    {"provider": "deepseek", "sub_model": "deepseek-v4-flash", "is_active": True},
     {"provider": "openai", "sub_model": "gpt-4o-mini", "is_active": True},
 )
 
@@ -156,6 +214,9 @@ class AIRoutingService:
             provider = DEFAULT_PROVIDER[service_type]
             sub_model = DEFAULT_SUB_MODEL.get(provider)
 
+        if service_type == ServiceType.TEXT_GENERATION and provider in TEXT_LLM_PROVIDERS:
+            sub_model = resolve_text_model_id(provider, sub_model)
+
         # Check Key Pool has active keys
         pool_status = await self._key_pool.get_pool_status(provider)
         active_keys = pool_status.get("active_keys", 0)
@@ -239,7 +300,7 @@ class AIRoutingService:
                 primary.provider,
                 {"reason": "no_text_providers_with_active_keys"},
             )
-        return filtered
+        return expand_text_chain_with_sibling_models(filtered)
 
     async def get_text_fallback_chain(self) -> list[dict[str, str | None]]:
         """Return the configured global text fallback chain."""

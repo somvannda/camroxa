@@ -12,6 +12,7 @@ from features.video.lib.desktop_video_automation import (
     select_next_auto_video_candidate,
 )
 from features.video.services.pipeline_automation_service import PipelineAutomationService
+from shared.lib.qt_signals import disconnect_quietly
 from shared.models.desktop import VideoWorkspaceState
 from shared.models.platform import ProgressRow
 from shared.services.app_thread_registry import track_app_thread
@@ -59,10 +60,22 @@ class VideoPipelineCoordinator(QObject):
     def stop(self) -> None:
         self._active = False
         self._timer.stop()
+        self._pending_manual = None
         worker = self._worker
-        if worker is not None and worker.isRunning():
-            # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
-            worker.wait(1_500)
+        if worker is not None:
+            # Drop queued succeeded/failed so closeEvent processEvents cannot
+            # start a new export after coordinators were stopped.
+            self._disconnect_worker(worker)
+            if worker.isRunning():
+                # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
+                worker.wait(1_500)
+            self._worker = None
+
+    @staticmethod
+    def _disconnect_worker(worker: VideoPipelineOrchestrationWorker) -> None:
+        disconnect_quietly(worker.succeeded)
+        disconnect_quietly(worker.failed)
+        disconnect_quietly(worker.finished)
 
     def kick(self) -> None:
         """Force an immediate orchestration poll (e.g. after API recovery or Continue)."""
@@ -72,6 +85,10 @@ class VideoPipelineCoordinator(QObject):
 
     def _poll(self) -> None:
         if not self._active:
+            return
+        from shared.services.video_pipeline_activity import is_app_quitting
+
+        if is_app_quitting():
             return
         if self._automation.is_busy():
             return
@@ -87,6 +104,12 @@ class VideoPipelineCoordinator(QObject):
         worker.start()
 
     def _on_payload_ready(self, payload: object) -> None:
+        if not self._active:
+            return
+        from shared.services.video_pipeline_activity import is_app_quitting
+
+        if is_app_quitting():
+            return
         if not isinstance(payload, VideoPipelineOrchestrationPayload):
             return
 
@@ -193,14 +216,22 @@ class VideoPipelineCoordinator(QObject):
             )
             return
 
-        worker = VideoPipelineOrchestrationWorker(self._api, parent=self)
+        # parent=None + track: same quit-safety as the poll worker.
+        worker = VideoPipelineOrchestrationWorker(self._api, parent=None)
         worker.succeeded.connect(self._on_payload_ready)
         worker.failed.connect(self._on_manual_action_failed)
         worker.finished.connect(self._on_worker_finished)
         self._worker = worker
+        track_app_thread(worker)
         worker.start()
 
     def _on_manual_payload_ready(self, payload: object) -> None:
+        if not self._active:
+            return
+        from shared.services.video_pipeline_activity import is_app_quitting
+
+        if is_app_quitting():
+            return
         pending = getattr(self, "_pending_manual", None)
         if pending is None:
             return
@@ -270,6 +301,12 @@ class VideoPipelineCoordinator(QObject):
         emit_shell_status(message or "Video pipeline action failed.", tone="warning")
 
     def _on_poll_failed(self, message: str) -> None:
+        if not self._active:
+            return
+        from shared.services.video_pipeline_activity import is_app_quitting
+
+        if is_app_quitting():
+            return
         from shared.services.shell_status import emit_shell_status
 
         if self._pending_manual is not None:

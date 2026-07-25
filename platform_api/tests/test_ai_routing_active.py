@@ -51,9 +51,14 @@ async def test_resolve_text_chain_skips_inactive_fallback_entries() -> None:
     service = AIRoutingService(settings_repo=settings, key_pool_service=key_pool)
     chain = await service.resolve_text_chain("lyric")
     providers = [item.provider for item in chain]
+    provider_order = list(dict.fromkeys(providers))
 
-    assert providers == ["deepseek", "slai"]
+    assert provider_order == ["deepseek", "slai"]
     assert "openai" not in providers
+    # Intra-provider: preferred deepseek model first, then sibling(s).
+    deepseek_models = [item.sub_model for item in chain if item.provider == "deepseek"]
+    assert deepseek_models[0] == "deepseek-v4-flash"
+    assert "deepseek-v4-pro" in deepseek_models
 
 
 @pytest.mark.asyncio
@@ -82,10 +87,14 @@ async def test_resolve_text_chain_skips_inactive_primary() -> None:
     service = AIRoutingService(settings_repo=settings, key_pool_service=key_pool)
     chain = await service.resolve_text_chain("lyric")
     providers = [item.provider for item in chain]
+    provider_order = list(dict.fromkeys(providers))
 
-    assert providers == ["deepseek"]
+    assert provider_order == ["deepseek"]
     assert "openai" not in providers
-
+    assert [item.sub_model for item in chain if item.provider == "deepseek"] == [
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+    ]
 
 @pytest.mark.asyncio
 async def test_sanitize_assignments_keeps_suno_for_music_operation() -> None:

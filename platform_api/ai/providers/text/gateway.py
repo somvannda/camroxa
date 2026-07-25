@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from platform_api.ai.parsing.response_parser import extract_chat_content
 from platform_api.ai.registry import (
+    get_text_model_spec,
     json_response_format,
     resolve_text_model_id,
     resolve_text_request_timeout,
@@ -76,6 +77,8 @@ class TextProviderGateway:
         draft: bool = False,
     ) -> dict[str, Any]:
         canonical_model = resolve_text_model_id(provider, model)
+        spec = get_text_model_spec(provider, canonical_model)
+        api_model = spec.api_id if spec is not None else canonical_model
         fmt = response_format
         if fmt is None and prefer_json:
             fmt = json_response_format(provider, canonical_model)
@@ -92,7 +95,7 @@ class TextProviderGateway:
             try:
                 return await self._llm_client.chat_completion(
                     messages=messages,
-                    model=canonical_model,
+                    model=api_model,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     response_format=fmt,
@@ -106,7 +109,7 @@ class TextProviderGateway:
                 if fmt and status_code == 400:
                     return await self._llm_client.chat_completion(
                         messages=messages,
-                        model=canonical_model,
+                        model=api_model,
                         temperature=temperature,
                         max_tokens=max_tokens,
                         response_format=None,
@@ -147,7 +150,13 @@ class TextProviderGateway:
         prefer_json: bool = False,
         draft: bool = False,
     ) -> dict[str, Any]:
-        """Try providers in order; advance on retryable failures."""
+        """Try models/providers in order; advance on any provider failure.
+
+        Chain order is expected to already expand sibling models within a
+        provider before switching providers (see ``resolve_text_chain``).
+        Invalid-model 400s and other permanent errors still advance so a
+        retired model cannot block SLAI/OpenAI fallback.
+        """
         if not provider_chain:
             raise ValidationError(
                 "No text providers configured for fallback chain.",
@@ -169,10 +178,10 @@ class TextProviderGateway:
                 )
             except ExternalServiceError as exc:
                 last_error = exc
-                if not exc.is_retryable or index >= len(provider_chain) - 1:
+                if index >= len(provider_chain) - 1:
                     raise
                 logger.warning(
-                    "Text provider %s/%s failed (%s); trying next fallback provider.",
+                    "Text provider %s/%s failed (%s); trying next fallback model/provider.",
                     provider,
                     model,
                     exc,
@@ -203,35 +212,77 @@ class TextProviderGateway:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        if provider_chain:
-            response = await self.chat_completion_with_fallback(
-                provider_chain=provider_chain,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format=response_format,
-                prefer_json=prefer_json,
-                draft=draft or max_tokens >= 2048,
-            )
-        else:
-            response = await self.chat_completion(
-                provider=provider,
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                response_format=response_format,
-                prefer_json=prefer_json,
-                draft=draft or max_tokens >= 2048,
-            )
-        content = extract_chat_content(response)
-        if not content:
-            raise ExternalServiceError(
+        chain: ProviderChain = list(provider_chain) if provider_chain else [(provider, model)]
+        if not chain:
+            chain = [(provider, model)]
+
+        last_error: ExternalServiceError | None = None
+        for index, (chain_provider, chain_model) in enumerate(chain):
+            try:
+                response = await self.chat_completion(
+                    provider=chain_provider,
+                    model=chain_model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    response_format=response_format,
+                    prefer_json=prefer_json,
+                    draft=draft or max_tokens >= 2048,
+                )
+            except ExternalServiceError as exc:
+                last_error = exc
+                if index >= len(chain) - 1:
+                    raise
+                logger.warning(
+                    "Text provider %s/%s failed (%s); trying next fallback.",
+                    chain_provider,
+                    chain_model,
+                    exc,
+                )
+                continue
+
+            content = extract_chat_content(response)
+            if content:
+                return content
+
+            empty_error = ExternalServiceError(
                 "LLM returned an unexpected response shape.",
-                is_retryable=False,
-                details={"provider": provider, "model": model},
+                is_retryable=True,
+                details={
+                    "provider": chain_provider,
+                    "model": chain_model,
+                    "choice_keys": list((response.get("choices") or [{}])[0].keys())
+                    if isinstance(response.get("choices"), list) and response.get("choices")
+                    else [],
+                    "message_keys": list(
+                        (
+                            ((response.get("choices") or [{}])[0] or {}).get("message")
+                            or {}
+                        ).keys()
+                    )
+                    if isinstance(
+                        ((response.get("choices") or [{}])[0] or {}).get("message"),
+                        dict,
+                    )
+                    else [],
+                },
             )
-        return content
+            last_error = empty_error
+            if index >= len(chain) - 1:
+                raise empty_error
+            logger.warning(
+                "Text provider %s/%s returned empty content; trying next fallback.",
+                chain_provider,
+                chain_model,
+            )
+
+        if last_error is not None:
+            raise last_error
+        raise ExternalServiceError(
+            "LLM returned an unexpected response shape.",
+            is_retryable=True,
+            details={"provider": provider, "model": model},
+        )
 
     async def generate_json_draft(
         self,

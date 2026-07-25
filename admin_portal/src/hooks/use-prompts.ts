@@ -4,6 +4,7 @@ import type { CreatePromptRequest } from '@/types/api';
 import type {
   AdminUserOwnedPrompt,
   MusicDescription,
+  MusicMood,
   MusicStructure,
   PromptUsageResponse,
 } from '@/types/models';
@@ -110,6 +111,57 @@ export function useDeleteStructure() {
   });
 }
 
+// --- Moods ---
+
+export function useMoods() {
+  return useQuery({
+    queryKey: ['moods'],
+    queryFn: () =>
+      httpClient.get<MusicMood[]>('/api/v1/prompts/moods'),
+  });
+}
+
+export function useCreateMood() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreatePromptRequest) =>
+      httpClient.post<MusicMood>('/api/v1/prompts/moods', data),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['moods'] }),
+  });
+}
+
+export function useAdminUserMoods() {
+  return useQuery({
+    queryKey: ['moods', 'user-prompts'],
+    queryFn: () =>
+      httpClient.get<AdminUserOwnedPrompt[]>('/api/v1/prompts/moods/user-prompts'),
+  });
+}
+
+export function useUpdateMood() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; updates: Partial<CreatePromptRequest> }) =>
+      httpClient.put<MusicMood>(
+        `/api/v1/prompts/moods/${data.id}`,
+        data.updates,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['moods'] }),
+  });
+}
+
+export function useDeleteMood() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      httpClient.delete(`/api/v1/prompts/moods/${id}`),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['moods'] }),
+  });
+}
+
 export function useDescriptionUsage(id: string | null) {
   return useQuery({
     queryKey: ['description-usage', id],
@@ -125,5 +177,14 @@ export function useStructureUsage(id: string | null) {
     enabled: Boolean(id),
     queryFn: () =>
       httpClient.get<PromptUsageResponse>(`/api/v1/prompts/structures/${id}/usage`),
+  });
+}
+
+export function useMoodUsage(id: string | null) {
+  return useQuery({
+    queryKey: ['mood-usage', id],
+    enabled: Boolean(id),
+    queryFn: () =>
+      httpClient.get<PromptUsageResponse>(`/api/v1/prompts/moods/${id}/usage`),
   });
 }

@@ -174,7 +174,13 @@ async def _call_deepseek(prompt: str, system: str = "") -> str:
         resp = await client.post(
             f"{base_url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "deepseek-chat", "messages": messages, "temperature": 0.8, "max_tokens": 1500},
+            json={
+                "model": "deepseek-v4-flash",
+                "messages": messages,
+                "temperature": 0.8,
+                "max_tokens": 1500,
+                "thinking": {"type": "disabled"},
+            },
         )
         resp.raise_for_status()
         data = resp.json()

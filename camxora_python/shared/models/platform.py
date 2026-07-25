@@ -297,6 +297,8 @@ class MusicHistorySong(BaseModel):
     description_name: str | None = None
     structure_id: str | None = None
     structure_name: str | None = None
+    mood_id: str | None = None
+    mood_name: str | None = None
     output_dir_ok: str | None = None
     output_dir_alt: str | None = None
     status: str = ""
@@ -397,8 +399,11 @@ class LyricsPolishRequest(BaseModel):
     song_id: str | None = None
     title: str | None = None
     album: str | None = None
-    description: str | None = None
+    mood: str | None = None
+    mood_id: str | None = None
+    description: str | None = None  # deprecated; ignored by API rewrite prompts
     structure: str | None = None
+    structure_id: str | None = None
 
 
 class LyricsPolishResponse(BaseModel):
@@ -457,8 +462,10 @@ class BatchCreateRequest(BaseModel):
     alt_profile_id: str
     description_id: str | None = None
     structure_id: str | None = None
+    mood_id: str | None = None
     structure_mode: str = "template"
     shuffle_structure: bool = False
+    shuffle_mood: bool = False
     auto_gen_image: bool = False
     auto_gsuno: bool = False
     song_count: int = 4
@@ -505,6 +512,25 @@ class SongRetryResponse(BaseModel):
     status: str = ""
     title: str | None = None
     album: str | None = None
+
+
+class AlbumRewriteResponse(BaseModel):
+    batch_id: str
+    role: str
+    album: str
+
+
+class TitleRewriteResponse(BaseModel):
+    batch_id: str
+    song_id: str
+    title: str
+
+
+class BatchDeleteResponse(BaseModel):
+    batch_id: str
+    deleted: bool = True
+    songs_deleted: int = 0
+    draft_quota_released: int = 0
 
 
 class ClaimedContentPoolItem(BaseModel):

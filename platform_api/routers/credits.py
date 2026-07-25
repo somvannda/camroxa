@@ -484,11 +484,17 @@ def _pricing_units_from_request(
         pricing_credits,
         field="credits_per_operation",
     )
-    cost_units = (
-        validate_display_credits(cost_credits, field="external_cost_cents")
-        if cost_credits is not None
-        else None
-    )
+    # Local platform ops (video / video_manual / video_merge) have COGS $0.
+    # Allow exact 0 cost credits; sell price still uses the normal minimum.
+    if cost_credits is None:
+        cost_units = None
+    elif float(cost_credits) == 0.0:
+        cost_units = 0
+    else:
+        cost_units = validate_display_credits(
+            cost_credits,
+            field="external_cost_cents",
+        )
     return pricing_units, cost_units
 
 

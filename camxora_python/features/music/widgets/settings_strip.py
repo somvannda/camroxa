@@ -6,7 +6,6 @@ from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDateEdit,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -19,6 +18,7 @@ from PySide6.QtWidgets import (
 from shared.lib.formatting import today_ymd
 from shared.lib.music_settings import DEFAULT_LANGUAGE_OPTIONS
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
+from shared.widgets.shell_date_edit import make_shell_date_edit
 
 
 class MusicSettingsStrip(QFrame):
@@ -31,12 +31,9 @@ class MusicSettingsStrip(QFrame):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        self._from_date = QDateEdit()
-        self._from_date.setCalendarPopup(True)
-        self._from_date.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
-        self._to_date = QDateEdit()
-        self._to_date.setCalendarPopup(True)
-        self._to_date.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
+        today = QDate.fromString(today_ymd(), "yyyy-MM-dd")
+        self._from_date = make_shell_date_edit(initial=today)
+        self._to_date = make_shell_date_edit(initial=today)
         self._language = QComboBox()
         self._language_options: list[tuple[str, str]] = list(DEFAULT_LANGUAGE_OPTIONS)
         self._language_label = QLabel("Language")

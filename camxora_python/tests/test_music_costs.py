@@ -37,7 +37,7 @@ def test_default_batch_total_12_credits() -> None:
     assert breakdown.total_cost == 12
 
 
-def test_auto_image_adds_image_costs() -> None:
+def test_auto_image_is_per_batch_not_per_song() -> None:
     costs = _costs()
     breakdown = get_music_plan_cost_breakdown(
         costs.get("lyric"),
@@ -52,8 +52,38 @@ def test_auto_image_adds_image_costs() -> None:
         image_source_mode="ai",
     )
     assert breakdown is not None
+    # 1 batch × (2 ok + 2 alt) = 4 album image jobs × 5 credits
+    assert breakdown.image_jobs_per_batch == 4
+    assert breakdown.image_total_jobs == 4
+    assert breakdown.image_total_cost == 20
+    assert breakdown.total_cost == 32
+
+
+def test_four_pairs_image_jobs_scale_by_batch_not_song() -> None:
+    costs = _costs()
+    primaries = [_profile(f"ok{i}", f"P{i}") for i in range(4)]
+    secondaries = [_profile(f"alt{i}", f"S{i}") for i in range(4)]
+    breakdown = get_music_plan_cost_breakdown(
+        costs.get("lyric"),
+        costs.get("music"),
+        costs.get("background_image"),
+        primaries,
+        secondaries,
+        song_count=10,
+        auto_gen_image=True,
+        auto_gsuno=True,
+        planned_day_count=1,
+        image_source_mode="ai",
+    )
+    assert breakdown is not None
+    assert breakdown.planned_song_count == 40
+    assert breakdown.planned_batch_count == 4
+    # 4 batches × 4 jobs = 16 (NOT 16×40)
+    assert breakdown.image_total_jobs == 16
     assert breakdown.image_total_cost == 80
-    assert breakdown.total_cost == 92
+    assert breakdown.suno_total_cost == 280
+    assert breakdown.draft_total_cost == 120
+    assert breakdown.total_cost == 480
 
 
 def test_auto_gsuno_adds_suno_costs() -> None:

@@ -43,6 +43,7 @@ def _payload() -> SettingsWorkspacePayload:
         settings=UserSettingsResponse.model_validate({"ffmpegPath": "C:/ffmpeg/bin/ffmpeg.exe"}),
         description_options=[PromptNameOption(id="d1", name="EDM / Workout Gym")],
         structure_options=[PromptNameOption(id="s1", name="Festival Big Drop")],
+        mood_options=[PromptNameOption(id="m1", name="Hopeful Dawn")],
         youtube_connections=[],
     )
 
@@ -111,6 +112,7 @@ def test_settings_view_resets_when_account_cache_mismatch(qapp: QApplication, mo
         settings_raw={"ffmpegPath": "C:/ffmpeg/bin/ffmpeg.exe"},
         description_options=[PromptNameOption(id="d1", name="EDM / Workout Gym")],
         structure_options=[PromptNameOption(id="s1", name="Festival Big Drop")],
+        mood_options=[PromptNameOption(id="m1", name="Hopeful Dawn")],
         youtube_connections=[],
     )
     view = SettingsView(PlatformApi(), cache=cache)
@@ -142,6 +144,7 @@ def test_settings_skips_refresh_when_cache_fresh(qapp: QApplication, monkeypatch
         settings_raw={"ffmpegPath": "C:/ffmpeg/bin/ffmpeg.exe"},
         description_options=[PromptNameOption(id="d1", name="EDM / Workout Gym")],
         structure_options=[PromptNameOption(id="s1", name="Festival Big Drop")],
+        mood_options=[PromptNameOption(id="m1", name="Hopeful Dawn")],
         youtube_connections=[],
     )
     view = SettingsView(PlatformApi(), cache=cache)

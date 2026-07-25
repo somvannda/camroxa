@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS suno_tasks (
     model VARCHAR(20) NOT NULL,
     title VARCHAR(255) NOT NULL,
     lyrics TEXT,
-    style VARCHAR(255),
+    style VARCHAR(1000),
     instrumental BOOLEAN NOT NULL DEFAULT false,
     external_task_id VARCHAR(100),
     status VARCHAR(20) NOT NULL DEFAULT 'pending',

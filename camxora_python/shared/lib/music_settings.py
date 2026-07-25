@@ -22,9 +22,11 @@ class MusicSettingsState:
     secondary_language: str = ""
     default_description_id: str = ""
     default_structure_id: str = ""
+    default_mood_id: str = ""
     creativity: int = 55
     unique_opening: bool = False
     shuffle_structure: bool = False
+    shuffle_mood: bool = False
     use_content_pools: bool = False
     strict_level: int = 3
     history_window: int = 100
@@ -141,9 +143,11 @@ def build_music_settings_state(
         secondary_language=str((settings or {}).get("secondaryLanguage") or "").strip().lower(),
         default_description_id=read_string_setting(settings, "defaultDescriptionId"),
         default_structure_id=read_string_setting(settings, "defaultStructureId"),
+        default_mood_id=read_string_setting(settings, "defaultMoodId"),
         creativity=_clamp(read_number_setting(settings, "creativity", defaults.creativity), 0, 100),
         unique_opening=read_boolean_setting(settings, "uniqueOpening", defaults.unique_opening),
         shuffle_structure=read_boolean_setting(settings, "shuffleStructure", defaults.shuffle_structure),
+        shuffle_mood=read_boolean_setting(settings, "shuffleMood", defaults.shuffle_mood),
         use_content_pools=read_boolean_setting(settings, "useContentPools", defaults.use_content_pools),
         strict_level=_clamp(read_number_setting(settings, "strictLevel", defaults.strict_level), 1, 5),
         history_window=_clamp(
@@ -175,10 +179,12 @@ def build_music_prompt_defaults_patch(
     *,
     default_description_id: str,
     default_structure_id: str,
+    default_mood_id: str = "",
 ) -> dict[str, object]:
     return {
         "defaultDescriptionId": default_description_id.strip(),
         "defaultStructureId": default_structure_id.strip(),
+        "defaultMoodId": default_mood_id.strip(),
     }
 
 
@@ -189,6 +195,7 @@ def build_music_settings_patch(settings: MusicSettingsState) -> dict[str, object
         "creativity": settings.creativity,
         "uniqueOpening": settings.unique_opening,
         "shuffleStructure": settings.shuffle_structure,
+        "shuffleMood": settings.shuffle_mood,
         "useContentPools": settings.use_content_pools,
         "strictLevel": settings.strict_level,
         "uniquenessHistoryWindow": settings.history_window,

@@ -5,12 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import partial
 
-from PySide6.QtCore import QDate, Qt, Signal, QTimer
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtCore import QDate, QItemSelectionModel, Qt, Signal, QTimer
+from PySide6.QtGui import QAction, QBrush, QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDateEdit,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -24,20 +23,22 @@ from PySide6.QtWidgets import (
 )
 
 from shared.lib.formatting import format_datetime_label, format_run_date_label, today_ymd
+from shared.lib.music_composer import normalize_history_date_range
 from shared.lib.music_history_labels import is_song_title_generating
 from shared.lib.music_status import format_song_pipeline_status, song_pipeline_status_tooltip
 from shared.models.platform import MusicHistoryBatch, MusicHistorySong
 from shared.themes.deep_blue import SHELL_DATE_EDIT_ID, SUBTITLE_LABEL_ID
+from shared.widgets.shell_date_edit import make_shell_date_edit
 from shared.widgets.data_table import create_data_table
 
 EMPTY_MESSAGE = "No history rows match the current filters."
 
 _STATUS_FILTER_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("all", "All statuses"),
     ("success", "Success"),
     ("failed", "Failed"),
     ("pending", "Pending"),
 )
+_STATUS_FILTER_ALL_LABEL = "All statuses"
 
 
 def batch_retry_targets(batch: MusicHistoryBatch) -> tuple[list[str], list[str]]:
@@ -54,22 +55,46 @@ def batch_retry_targets(batch: MusicHistoryBatch) -> tuple[list[str], list[str]]
             suno_ids.append(song.song_id)
     return draft_ids, suno_ids
 
+
+_USER_DELETABLE_SONG_STATUSES = frozenset(
+    {"pending", "draft_failed", "draft_ready", "suno_failed"}
+)
+
+
+def batch_is_user_deletable(batch: MusicHistoryBatch) -> bool:
+    """True when every song is failed/pending-draft and none have Suno success/pending."""
+    songs = list(batch.songs or [])
+    if not songs:
+        # Empty shell batches should still be removable from History.
+        status = str(batch.status or "").strip().lower()
+        return status in {"failed", "pending", "partial", ""}
+    return all(
+        str(song.status or "").strip().lower() in _USER_DELETABLE_SONG_STATUSES
+        for song in songs
+    )
+
 # Default widths aligned with MusicWorkspacePage.tsx; stretch columns grow with the card.
 _HISTORY_FIXED_COLUMN_WIDTHS = {
     0: 60,
-    4: 170,
-    5: 170,
-    6: 170,
-    7: 170,
-    8: 110,
+    4: 150,
+    5: 150,
+    6: 140,
+    7: 160,
+    8: 160,
+    9: 110,
 }
 _HISTORY_STRETCH_COLUMNS = (1, 2, 3)  # album 1, album 2, Title — Run date uses stretchLastSection
 _HISTORY_COL_ALBUM_1 = 1
 _HISTORY_COL_ALBUM_2 = 2
 _HISTORY_COL_TITLE = 3
-_HISTORY_COL_PRIMARY = 6
-_HISTORY_COL_SECONDARY = 7
-_HISTORY_COLUMN_COUNT = 10
+_HISTORY_COL_DESCRIPTION = 4
+_HISTORY_COL_STRUCTURE = 5
+_HISTORY_COL_MOOD = 6
+_HISTORY_COL_PRIMARY = 7
+_HISTORY_COL_SECONDARY = 8
+_HISTORY_COL_SUNO = 9
+_HISTORY_COL_RUN_DATE = 10
+_HISTORY_COLUMN_COUNT = 11
 _HISTORY_SONG_ROW_HEIGHT = 36
 _HISTORY_BATCH_SEPARATOR_ROW_HEIGHT = 26
 _BATCH_SEPARATOR_BG = QColor(96, 165, 250, 36)
@@ -112,9 +137,13 @@ class HistoryCard(QFrame):
     open_folder_requested = Signal(str, str)
     retry_draft_requested = Signal(object)
     retry_suno_requested = Signal(object)
+    rewrite_album_requested = Signal(object, str)  # HistoryRow/batch entry, role ok|alt
+    rewrite_title_requested = Signal(object)
     enqueue_images_requested = Signal(object)
     continue_video_requested = Signal(object)
     retry_batch_requested = Signal(str, list, list)
+    rewrite_batch_requested = Signal(object)
+    delete_batch_requested = Signal(str)
     refresh_requested = Signal()
     recover_failed_requested = Signal()
 
@@ -133,18 +162,21 @@ class HistoryCard(QFrame):
         filters = QHBoxLayout()
         today = QDate.fromString(today_ymd(), "yyyy-MM-dd")
         self._date_filter_active = True
-        self._from_date = QDateEdit()
-        self._from_date.setObjectName(SHELL_DATE_EDIT_ID)
-        self._from_date.setCalendarPopup(True)
-        self._from_date.setDate(today)
-        self._to_date = QDateEdit()
-        self._to_date.setObjectName(SHELL_DATE_EDIT_ID)
-        self._to_date.setCalendarPopup(True)
-        self._to_date.setDate(today)
+        self._from_date = make_shell_date_edit(object_name=SHELL_DATE_EDIT_ID, initial=today)
+        self._to_date = make_shell_date_edit(object_name=SHELL_DATE_EDIT_ID, initial=today)
         self._last_batch = QCheckBox("Last batch")
-        self._status_filter = QComboBox()
+        self._status_filter = QPushButton(_STATUS_FILTER_ALL_LABEL)
+        self._status_filter.setMinimumWidth(140)
+        status_menu = QMenu(self._status_filter)
+        self._status_actions: dict[str, QAction] = {}
         for value, label in _STATUS_FILTER_OPTIONS:
-            self._status_filter.addItem(label, value)
+            action = QAction(label, status_menu)
+            action.setCheckable(True)
+            action.setData(value)
+            action.toggled.connect(self._on_status_filter_toggled)
+            status_menu.addAction(action)
+            self._status_actions[value] = action
+        self._status_filter.setMenu(status_menu)
         self._batch_filter = QComboBox()
         self._batch_filter.setMinimumWidth(220)
         self._batch_filter.addItem("All batches", "")
@@ -191,6 +223,7 @@ class HistoryCard(QFrame):
                 "Title",
                 "Description",
                 "Structure",
+                "Mood",
                 "Primary Channel",
                 "Secondary Channel",
                 "Suno",
@@ -228,25 +261,69 @@ class HistoryCard(QFrame):
         self._from_date.dateChanged.connect(self._on_date_filter_changed)
         self._to_date.dateChanged.connect(self._on_date_filter_changed)
         self._last_batch.stateChanged.connect(lambda *_: self.filters_changed.emit())
-        self._status_filter.currentIndexChanged.connect(lambda *_: self.filters_changed.emit())
         self._batch_filter.currentIndexChanged.connect(lambda *_: self.filters_changed.emit())
         self._update_filter_hint()
+
+    def _selected_statuses(self) -> list[str]:
+        return [
+            value
+            for value, action in self._status_actions.items()
+            if action.isChecked()
+        ]
+
+    def _sync_status_filter_label(self) -> None:
+        selected = self._selected_statuses()
+        if not selected:
+            self._status_filter.setText(_STATUS_FILTER_ALL_LABEL)
+            return
+        labels = [label for value, label in _STATUS_FILTER_OPTIONS if value in selected]
+        self._status_filter.setText(", ".join(labels))
+
+    def _on_status_filter_toggled(self, *_args: object) -> None:
+        self._sync_status_filter_label()
+        self.filters_changed.emit()
+
+    def _clear_status_filter(self) -> None:
+        for action in self._status_actions.values():
+            action.blockSignals(True)
+            action.setChecked(False)
+            action.blockSignals(False)
+        self._sync_status_filter_label()
 
     def _on_date_filter_changed(self) -> None:
         self._date_filter_active = True
         self._from_date.setEnabled(True)
         self._to_date.setEnabled(True)
+        self._normalize_date_edits()
         self._update_filter_hint()
         self.filters_changed.emit()
+
+    def _normalize_date_edits(self) -> None:
+        """Keep From ≤ To in the widgets (swap when the range is inverted)."""
+        raw_from = self._from_date.date().toString("yyyy-MM-dd")
+        raw_to = self._to_date.date().toString("yyyy-MM-dd")
+        norm_from, norm_to = normalize_history_date_range(raw_from, raw_to)
+        if not norm_from or not norm_to:
+            return
+        if norm_from == raw_from and norm_to == raw_to:
+            return
+        from_qd = QDate.fromString(norm_from, "yyyy-MM-dd")
+        to_qd = QDate.fromString(norm_to, "yyyy-MM-dd")
+        if not from_qd.isValid() or not to_qd.isValid():
+            return
+        self._from_date.blockSignals(True)
+        self._to_date.blockSignals(True)
+        self._from_date.setDate(from_qd)
+        self._to_date.setDate(to_qd)
+        self._from_date.blockSignals(False)
+        self._to_date.blockSignals(False)
 
     def _clear_filters(self) -> None:
         self._date_filter_active = False
         self._last_batch.setChecked(False)
-        self._status_filter.blockSignals(True)
+        self._clear_status_filter()
         self._batch_filter.blockSignals(True)
-        self._status_filter.setCurrentIndex(0)
         self._batch_filter.setCurrentIndex(0)
-        self._status_filter.blockSignals(False)
         self._batch_filter.blockSignals(False)
         self._update_filter_hint()
         self.filters_changed.emit()
@@ -254,7 +331,8 @@ class HistoryCard(QFrame):
     def _update_filter_hint(self) -> None:
         if self._date_filter_active:
             self._filter_hint.setText(
-                "Date filter uses planned run date and the day the batch was created."
+                "Shows batches whose planned run date falls in From–To "
+                "(or created that day). Last batch ignores the date range."
             )
         else:
             self._filter_hint.setText(
@@ -262,7 +340,7 @@ class HistoryCard(QFrame):
             )
 
     def filter_values(self) -> dict[str, object]:
-        status = str(self._status_filter.currentData() or "all")
+        status = self._selected_statuses()
         batch_id = str(self._batch_filter.currentData() or "")
         if not self._date_filter_active:
             return {
@@ -272,9 +350,14 @@ class HistoryCard(QFrame):
                 "status": status,
                 "batch_id": batch_id,
             }
+        self._normalize_date_edits()
+        from_date, to_date = normalize_history_date_range(
+            self._from_date.date().toString("yyyy-MM-dd"),
+            self._to_date.date().toString("yyyy-MM-dd"),
+        )
         return {
-            "from_date": self._from_date.date().toString("yyyy-MM-dd"),
-            "to_date": self._to_date.date().toString("yyyy-MM-dd"),
+            "from_date": from_date,
+            "to_date": to_date,
             "last_batch_only": self._last_batch.isChecked(),
             "status": status,
             "batch_id": batch_id,
@@ -306,6 +389,13 @@ class HistoryCard(QFrame):
         self._updated.setText(f"Updated {format_datetime_label(updated_at)}")
 
     def set_rows(self, rows: list[HistoryRow], selected_song_id: str | None) -> None:
+        # History refreshes often (batch poll). Rebuilding the table + selectRow()
+        # was yanking scroll back to the selected row / top — preserve position.
+        vbar = self._table.verticalScrollBar()
+        hbar = self._table.horizontalScrollBar()
+        saved_v = vbar.value()
+        saved_h = hbar.value()
+
         self._table_rows = rows
         self._selected_song_id = selected_song_id
         self._table.clearSpans()
@@ -316,6 +406,8 @@ class HistoryCard(QFrame):
             item = QTableWidgetItem(EMPTY_MESSAGE)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self._table.setItem(0, 0, item)
+            vbar.setValue(0)
+            hbar.setValue(0)
             return
 
         self._table.setRowCount(len(rows))
@@ -347,17 +439,27 @@ class HistoryCard(QFrame):
                 album_2,
                 entry.song.description_name or "—",
                 entry.song.structure_name or "—",
+                entry.song.mood_name or "—",
                 suno_label,
                 format_run_date_label(entry.batch.from_date or entry.batch.to_date),
             ]
-            column_indexes = (0, _HISTORY_COL_ALBUM_1, _HISTORY_COL_ALBUM_2, 4, 5, 8, 9)
+            column_indexes = (
+                0,
+                _HISTORY_COL_ALBUM_1,
+                _HISTORY_COL_ALBUM_2,
+                _HISTORY_COL_DESCRIPTION,
+                _HISTORY_COL_STRUCTURE,
+                _HISTORY_COL_MOOD,
+                _HISTORY_COL_SUNO,
+                _HISTORY_COL_RUN_DATE,
+            )
             for col_index, value in zip(column_indexes, values, strict=True):
                 item = QTableWidgetItem(value)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 item.setTextAlignment(
                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                 )
-                tooltip = suno_tooltip if col_index == 8 and suno_tooltip else value
+                tooltip = suno_tooltip if col_index == _HISTORY_COL_SUNO and suno_tooltip else value
                 if tooltip and tooltip != "—":
                     item.setToolTip(tooltip)
                 self._table.setItem(row_index, col_index, item)
@@ -380,7 +482,9 @@ class HistoryCard(QFrame):
             )
             self._table.setRowHeight(row_index, _HISTORY_SONG_ROW_HEIGHT)
 
-        self._apply_row_selection()
+        self._apply_row_selection(scroll_into_view=False)
+        vbar.setValue(min(saved_v, vbar.maximum()))
+        hbar.setValue(min(saved_h, hbar.maximum()))
 
     def _set_title_cell(
         self,
@@ -409,13 +513,25 @@ class HistoryCard(QFrame):
             title_item.setToolTip(display_title)
         self._table.setItem(row_index, _HISTORY_COL_TITLE, title_item)
 
-    def _apply_row_selection(self) -> None:
+    def _apply_row_selection(self, *, scroll_into_view: bool = False) -> None:
         if not self._selected_song_id:
             self._table.clearSelection()
             return
         for row_index, entry in enumerate(self._table_rows):
             if entry.song is not None and entry.song.song_id == self._selected_song_id:
-                self._table.selectRow(row_index)
+                if scroll_into_view:
+                    self._table.selectRow(row_index)
+                else:
+                    model = self._table.model()
+                    selection = self._table.selectionModel()
+                    if model is None or selection is None:
+                        return
+                    index = model.index(row_index, 0)
+                    selection.select(
+                        index,
+                        QItemSelectionModel.SelectionFlag.ClearAndSelect
+                        | QItemSelectionModel.SelectionFlag.Rows,
+                    )
                 return
         self._table.clearSelection()
 
@@ -500,6 +616,9 @@ class HistoryCard(QFrame):
     ) -> None:
         self.retry_batch_requested.emit(batch_id, draft_ids, suno_ids)
 
+    def _emit_rewrite_batch(self, targets: list, _checked: bool = False) -> None:
+        self.rewrite_batch_requested.emit(targets)
+
     def _show_context_menu(self, position) -> None:
         index = self._table.indexAt(position)
         menu = QMenu(self)
@@ -533,10 +652,59 @@ class HistoryCard(QFrame):
                 )
             )
 
+        from features.music.lib.pipeline_recovery import collect_batch_rewrite_targets
+
+        rewrite_targets = collect_batch_rewrite_targets(entry.batch)
+        if rewrite_targets:
+            suffix = "s" if len(rewrite_targets) != 1 else ""
+            rewrite_action = menu.addAction(
+                f"Rewrite lyrics ({len(rewrite_targets)} song{suffix})"
+            )
+            rewrite_action.setToolTip(
+                "Rewrite lyrics then queue Suno for failed songs with usable lyrics. "
+                "Corrupt/empty lyrics are skipped."
+            )
+            rewrite_action.triggered.connect(
+                partial(self._emit_rewrite_batch, rewrite_targets)
+            )
+
+        if batch_is_user_deletable(entry.batch):
+            delete_action = menu.addAction("Delete failed batch")
+            delete_action.triggered.connect(
+                partial(self.delete_batch_requested.emit, entry.batch.batch_id)
+            )
+
+        # Metadata rewrite — available even when Suno already succeeded.
+        album_1_action = menu.addAction("Rewrite album 1")
+        album_1_action.setToolTip(
+            "Regenerate Primary channel album name (bills one album draft slot)."
+        )
+        album_1_action.triggered.connect(
+            partial(self.rewrite_album_requested.emit, entry, "ok")
+        )
+        if str(getattr(entry.batch, "alt_profile_id", "") or "").strip() or str(
+            getattr(entry.batch, "alt_album", "") or ""
+        ).strip():
+            album_2_action = menu.addAction("Rewrite album 2")
+            album_2_action.setToolTip(
+                "Regenerate Secondary channel album name (bills one album draft slot)."
+            )
+            album_2_action.triggered.connect(
+                partial(self.rewrite_album_requested.emit, entry, "alt")
+            )
+
         if entry.is_batch_separator or entry.song is None:
             if menu.actions():
                 menu.exec(self._table.viewport().mapToGlobal(position))
             return
+
+        title_action = menu.addAction("Rewrite title")
+        title_action.setToolTip(
+            "Regenerate this song's title without changing lyrics (bills one title draft slot)."
+        )
+        title_action.triggered.connect(
+            lambda: self.rewrite_title_requested.emit(entry)
+        )
 
         song_status = str(entry.song.status or "pending").strip().lower()
         suno_status = str(entry.song.suno_status or "").strip().lower()
@@ -555,6 +723,16 @@ class HistoryCard(QFrame):
             if song_status != "draft_ready":
                 action = menu.addAction("Retry Suno")
                 action.triggered.connect(lambda: self.retry_suno_requested.emit(entry))
+
+        # Single-song rewrite when this row is a rewrite-eligible failure.
+        single_rewrite = [
+            target
+            for target in rewrite_targets
+            if target.song_id == entry.song.song_id
+        ]
+        if single_rewrite and len(rewrite_targets) > 1:
+            action = menu.addAction("Rewrite this song")
+            action.triggered.connect(partial(self._emit_rewrite_batch, single_rewrite))
 
         image_total = int(entry.song.image_jobs_total or 0)
         image_done = int(entry.song.image_jobs_completed or 0)

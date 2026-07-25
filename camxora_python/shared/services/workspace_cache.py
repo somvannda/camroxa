@@ -54,6 +54,8 @@ class WorkspaceCache:
 
     structure_options: list[PromptNameOption] = field(default_factory=list)
 
+    mood_options: list[PromptNameOption] = field(default_factory=list)
+
     language_options: list[tuple[str, str]] = field(default_factory=list)
 
     warmed_at: float = 0.0
@@ -67,6 +69,8 @@ class WorkspaceCache:
     my_description_items: list[Any] = field(default_factory=list)
 
     my_structure_items: list[Any] = field(default_factory=list)
+
+    my_mood_items: list[Any] = field(default_factory=list)
 
     settings_workspace_fetched_at: float = 0.0
 
@@ -100,6 +104,7 @@ class WorkspaceCache:
             self.settings_raw = {}
             self.description_options = []
             self.structure_options = []
+            self.mood_options = []
             self.language_options = []
             self.warmed_at = 0.0
             self.dashboard_overview = None
@@ -107,6 +112,7 @@ class WorkspaceCache:
             self.youtube_connections = []
             self.my_description_items = []
             self.my_structure_items = []
+            self.my_mood_items = []
             self.settings_workspace_fetched_at = 0.0
             self.content_pool_payloads = {}
             self.content_pool_fetched_at = {}
@@ -142,6 +148,8 @@ class WorkspaceCache:
 
         structure_options: list[PromptNameOption] | None = None,
 
+        mood_options: list[PromptNameOption] | None = None,
+
         language_options: list[tuple[str, str]] | None = None,
 
     ) -> None:
@@ -167,6 +175,10 @@ class WorkspaceCache:
             if structure_options is not None:
 
                 self.structure_options = list(structure_options)
+
+            if mood_options is not None:
+
+                self.mood_options = list(mood_options)
 
             if language_options is not None:
 
@@ -196,6 +208,8 @@ class WorkspaceCache:
 
         list[PromptNameOption],
 
+        list[PromptNameOption],
+
     ]:
 
         with self._lock:
@@ -211,6 +225,8 @@ class WorkspaceCache:
                 list(self.description_options),
 
                 list(self.structure_options),
+
+                list(self.mood_options),
 
             )
 
@@ -262,11 +278,15 @@ class WorkspaceCache:
 
         structure_options: list[PromptNameOption] | None = None,
 
+        mood_options: list[PromptNameOption] | None = None,
+
         youtube_connections: list[Any] | None = None,
 
         my_description_items: list[Any] | None = None,
 
         my_structure_items: list[Any] | None = None,
+
+        my_mood_items: list[Any] | None = None,
 
     ) -> None:
 
@@ -292,6 +312,10 @@ class WorkspaceCache:
 
                 self.structure_options = list(structure_options)
 
+            if mood_options is not None:
+
+                self.mood_options = list(mood_options)
+
             if youtube_connections is not None:
 
                 self.youtube_connections = list(youtube_connections)
@@ -303,6 +327,10 @@ class WorkspaceCache:
             if my_structure_items is not None:
 
                 self.my_structure_items = list(my_structure_items)
+
+            if my_mood_items is not None:
+
+                self.my_mood_items = list(my_mood_items)
 
             self.settings_workspace_fetched_at = time.time()
 
@@ -318,13 +346,14 @@ class WorkspaceCache:
 
 
 
-    def snapshot_my_prompt_items(self) -> tuple[list[Any], list[Any], float]:
+    def snapshot_my_prompt_items(self) -> tuple[list[Any], list[Any], list[Any], float]:
 
         with self._lock:
 
             return (
                 list(self.my_description_items),
                 list(self.my_structure_items),
+                list(self.my_mood_items),
                 self.settings_workspace_fetched_at,
             )
 

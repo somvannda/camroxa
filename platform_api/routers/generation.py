@@ -79,8 +79,15 @@ class LyricsPolishRequest(BaseModel):
     song_id: UUID | None = None
     title: str | None = Field(default=None, max_length=255)
     album: str | None = Field(default=None, max_length=255)
-    description: str | None = Field(default=None, max_length=4000)
+    mood: str | None = Field(default=None, max_length=4000)
+    mood_id: UUID | None = None
+    description: str | None = Field(
+        default=None,
+        max_length=4000,
+        description="Deprecated: ignored for rewrite prompts (Suno style only).",
+    )
     structure: str | None = Field(default=None, max_length=2000)
+    structure_id: UUID | None = None
 
 
 class LyricsPolishResponse(BaseModel):
@@ -123,7 +130,7 @@ class SunoGenerationRequest(BaseModel):
     model: str = Field(pattern=r"^(V5|V5_5)$")
     title: str = Field(min_length=1, max_length=255)
     lyrics: str = Field(min_length=1)
-    style: str = Field(min_length=1, max_length=255)
+    style: str = Field(min_length=1, max_length=1000)
     instrumental: bool = False
     channel_profile_id: UUID | None = None
 
@@ -316,6 +323,13 @@ async def generate_draft(
         )
         structure_text = structure.content
 
+    mood_text = ""
+    if request.mood_id is not None:
+        mood = await prompt_service.get_mood_for_access(
+            UUID(request.mood_id), UUID(ctx.user_id)
+        )
+        mood_text = str(getattr(mood, "content", "") or "").strip()
+
     if not description_text.strip():
         raise ValidationError(
             "Song description is required before generating a draft.",
@@ -370,6 +384,7 @@ async def generate_draft(
         creativity_level=request.creativity_level,
         description=description_text,
         structure=structure_text,
+        mood=mood_text,
         structure_mode=structure_mode,
         vocal_profile=vocal_profile_to_dict(lyric_profile),
         avoid_titles=request.avoid_titles,
@@ -389,7 +404,7 @@ async def generate_draft(
         draft_billing_slots,
     )
 
-    draft_charged, draft_list_units = await deduct_split_draft_billing(
+    draft_charged, draft_list_units, draft_billed_slots = await deduct_split_draft_billing(
         enforcement_service,
         user_id=UUID(ctx.user_id),
         channel_profile_id=request.channel_profile_id,
@@ -425,7 +440,7 @@ async def generate_draft(
                 reason="draft_generation_failed",
                 list_credit_units=int(draft_list_units or 0) or None,
                 prior_ledger_recorded=True,
-                count=len(draft_slots),
+                count=int(draft_billed_slots or len(draft_slots)),
             )
         raise
 
@@ -451,6 +466,7 @@ async def polish_lyrics(
     routing_service: AIRoutingServiceDep,
     profile_service: ProfileServiceDep,
     batch_service: BatchServiceDep,
+    prompt_service: PromptServiceDep,
     background_tasks: BackgroundTasks,
 ) -> LyricsPolishResponse:
     """Rewrite existing lyrics via LLM (1 rewrite = 1 draft/lyric quota)."""
@@ -485,8 +501,33 @@ async def polish_lyrics(
 
     try:
         suno_failure_hint: str | None = None
+        title = str(request.title or "").strip() or None
+        mood = str(request.mood or "").strip() or None
+        structure = str(request.structure or "").strip() or None
+
         if request.batch_id is not None and request.song_id is not None:
             suno_failure_hint = await batch_service.latest_suno_failure_hint(request.song_id)
+            rewrite_ctx = await batch_service.lyric_rewrite_context_for_user_song(
+                batch_id=request.batch_id,
+                song_id=request.song_id,
+                user_id=ctx.user_id,
+            )
+            if rewrite_ctx is not None:
+                title = title or (rewrite_ctx["title"] or None)
+                mood = mood or (rewrite_ctx["mood"] or None)
+                # Prefer catalog structure content over client name/label.
+                structure = rewrite_ctx["structure"] or structure
+
+        if not mood and request.mood_id is not None:
+            mood_row = await prompt_service.get_mood_for_access(
+                request.mood_id, UUID(ctx.user_id)
+            )
+            mood = str(getattr(mood_row, "content", "") or "").strip() or None
+        if not structure and request.structure_id is not None:
+            structure_row = await prompt_service.get_structure_for_access(
+                request.structure_id, UUID(ctx.user_id)
+            )
+            structure = str(getattr(structure_row, "content", "") or "").strip() or None
 
         polished = await generation_service.polish_lyrics_text(
             ctx.user_id,
@@ -495,9 +536,9 @@ async def polish_lyrics(
             bill_provider,
             bill_model,
             provider_chain=polish_chain,
-            description=request.description,
-            structure=request.structure,
-            title=request.title,
+            structure=structure,
+            title=title,
+            mood=mood,
             suno_failure_hint=suno_failure_hint,
         )
     except Exception:

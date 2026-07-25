@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, QTimer
 
+from shared.lib.qt_signals import disconnect_quietly
 from shared.services.app_thread_registry import track_app_thread
 from shared.services.platform_api import PlatformApi
 from shared.workers.data_workers import ProgressLocalSyncWorker
@@ -41,9 +42,13 @@ class ProgressLocalSyncCoordinator(QObject):
         self._active = False
         self._timer.stop()
         worker = self._worker
-        if worker is not None and worker.isRunning():
-            # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
-            worker.wait(1_500)
+        if worker is not None:
+            # Only finished is connected on this worker.
+            disconnect_quietly(worker.finished, self._on_worker_finished)
+            if worker.isRunning():
+                # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
+                worker.wait(1_500)
+            self._worker = None
 
     def sync_now(self) -> None:
         if not self._active:
@@ -52,6 +57,10 @@ class ProgressLocalSyncCoordinator(QObject):
 
     def _poll(self, *, force: bool = False) -> None:
         if not self._active:
+            return
+        from shared.services.video_pipeline_activity import is_app_quitting
+
+        if is_app_quitting():
             return
         if self._worker is not None and self._worker.isRunning():
             return

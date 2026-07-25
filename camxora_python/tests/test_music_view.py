@@ -29,6 +29,7 @@ def _payload() -> MusicWorkspacePayload:
         settings=UserSettingsResponse.model_validate({"imageSourceMode": "ai", "defaultSongCount": 4}),
         description_options=[PromptNameOption(id="desc-1", name="Cinematic Pop")],
         structure_options=[PromptNameOption(id="struct-1", name="Verse Chorus Bridge")],
+        mood_options=[PromptNameOption(id="mood-1", name="Hopeful Dawn")],
         history=MusicHistoryListResponse(summary="No history yet."),
         operation_costs=OperationCostsResponse(
             items=[
@@ -91,6 +92,7 @@ def test_server_prompt_defaults_override_stale_local_prefs(qapp: QApplication, t
                 "defaultSongCount": 4,
                 "defaultDescriptionId": "desc-1",
                 "defaultStructureId": "struct-1",
+                "defaultMoodId": "mood-1",
             }
         ),
     )
@@ -101,6 +103,7 @@ def test_server_prompt_defaults_override_stale_local_prefs(qapp: QApplication, t
 
     assert view._automation_card.selected_description_id() == "desc-1"
     assert view._automation_card.selected_structure_id() == "struct-1"
+    assert view._automation_card.selected_mood_id() == "mood-1"
 
 
 def test_prompt_selection_override_survives_page_revisit(qapp: QApplication) -> None:
@@ -116,12 +119,17 @@ def test_prompt_selection_override_survives_page_revisit(qapp: QApplication) -> 
             PromptNameOption(id="struct-1", name="Verse Chorus Bridge"),
             PromptNameOption(id="struct-2", name="Workout Gym"),
         ],
+        mood_options=[
+            PromptNameOption(id="mood-1", name="Hopeful Dawn"),
+            PromptNameOption(id="mood-2", name="Bittersweet Night"),
+        ],
         settings=UserSettingsResponse.model_validate(
             {
                 "imageSourceMode": "ai",
                 "defaultSongCount": 4,
                 "defaultDescriptionId": "desc-1",
                 "defaultStructureId": "struct-1",
+                "defaultMoodId": "mood-1",
             }
         ),
     )
@@ -134,9 +142,11 @@ def test_prompt_selection_override_survives_page_revisit(qapp: QApplication) -> 
     view._prompt_selection_touched = True
     view._selected_description_id = "desc-2"
     view._selected_structure_id = "struct-2"
-    view._automation_card.set_selected_options("desc-2", "struct-2")
+    view._selected_mood_id = "mood-2"
+    view._automation_card.set_selected_options("desc-2", "struct-2", "mood-2")
     assert view._automation_card.selected_description_id() == "desc-2"
     assert view._automation_card.selected_structure_id() == "struct-2"
+    assert view._automation_card.selected_mood_id() == "mood-2"
 
     view.deactivate_page()
     view.activate_page()
@@ -144,3 +154,4 @@ def test_prompt_selection_override_survives_page_revisit(qapp: QApplication) -> 
 
     assert view._automation_card.selected_description_id() == "desc-2"
     assert view._automation_card.selected_structure_id() == "struct-2"
+    assert view._automation_card.selected_mood_id() == "mood-2"

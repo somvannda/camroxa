@@ -1293,6 +1293,116 @@ async def test_create_image_jobs_for_batch_is_once_per_channel_not_per_song(
 
 
 @pytest.mark.asyncio
+async def test_create_image_jobs_for_batch_race_second_insert_is_noop(
+    tmp_path,
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """Concurrent Suno callbacks both see empty slots; DB unique keeps one set."""
+    bg_sample = tmp_path / "bg-sample.png"
+    bg_sample.write_bytes(b"bg")
+    th_sample = tmp_path / "thumb-style.png"
+    th_sample.write_bytes(b"th")
+
+    profile_repo.get_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            image_config={
+                "mode": "bg_thumb",
+                "background_prompt": "Profile BG {title}",
+                "thumbnail_prompt": "Profile TH {album}",
+                "provider": "fal",
+                "resolution": "1920x1080",
+                "style_strength": 0.7,
+            }
+        )
+    )
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={
+            "imageBackgroundPrompt": "Boss background direction",
+            "imageThumbnailPrompt": "Boss thumbnail direction",
+            "imageBgSamples": [str(bg_sample)],
+            "imageThumbSamples": [str(th_sample)],
+            "imageBgRandom": False,
+            "imageThumbRandom": False,
+        }
+    )
+    existing: list = []
+    # Race: both callers miss the in-flight insert.
+    batch_repo.get_image_jobs_by_batch = AsyncMock(return_value=[])
+
+    async def _persist(jobs: list) -> list:
+        added: list = []
+        keys = {
+            (item.profile_id, item.kind, item.channel_role)
+            for item in existing
+        }
+        for job in jobs:
+            key = (job.profile_id, job.kind, job.channel_role)
+            if key in keys:
+                continue
+            existing.append(job)
+            keys.add(key)
+            added.append(job)
+        return added
+
+    batch_repo.create_image_jobs = AsyncMock(side_effect=_persist)
+
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+
+    batch_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    song_a = Song(
+        id=uuid4(),
+        batch_id=batch_id,
+        batch_index=0,
+        user_id=user_id,
+        title="Track One",
+        album="Shared Album",
+        lyrics="lyrics",
+    )
+    song_b = Song(
+        id=uuid4(),
+        batch_id=batch_id,
+        batch_index=1,
+        user_id=user_id,
+        title="Track Two",
+        album="Shared Album",
+        lyrics="lyrics",
+    )
+    batch = Batch(
+        id=batch_id,
+        user_id=user_id,
+        ok_profile_id=UUID("00000000-0000-0000-0000-000000000002"),
+        alt_profile_id=UUID("00000000-0000-0000-0000-000000000003"),
+        auto_gen_image=True,
+    )
+    batch_repo.get_songs_by_batch = AsyncMock(return_value=[song_a, song_b])
+
+    first = await service.create_image_jobs_for_song(song_a, batch)
+    second = await service.create_image_jobs_for_song(song_b, batch)
+
+    assert len(first) == 4
+    assert second == []
+    assert len(existing) == 4
+    assert batch_repo.create_image_jobs.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_sync_manual_assets_for_batch_updates_existing_jobs(
     tmp_path,
     batch_repo: AsyncMock,

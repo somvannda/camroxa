@@ -30,15 +30,21 @@ import {
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 
 import {
+  useAdminUserMoods,
   useCreateDescription,
+  useCreateMood,
   useCreateStructure,
   useDeleteDescription,
+  useDeleteMood,
   useDeleteStructure,
   useDescriptionUsage,
   useDescriptions,
+  useMoodUsage,
+  useMoods,
   useStructureUsage,
   useStructures,
   useUpdateDescription,
+  useUpdateMood,
   useUpdateStructure,
   useUserOwnedDescriptions,
   useUserOwnedStructures,
@@ -48,6 +54,7 @@ import { DescriptionFormDialog, type DescriptionFormValues } from './description
 import type {
   AdminUserOwnedPrompt,
   MusicDescription,
+  MusicMood,
   MusicStructure,
   PromptUsageResponse,
 } from '@/types/models';
@@ -59,7 +66,7 @@ const promptSchema = z.object({
 });
 
 type PromptFormValues = z.infer<typeof promptSchema>;
-type TabKey = 'descriptions' | 'structures' | 'setup';
+type TabKey = 'descriptions' | 'structures' | 'moods' | 'setup';
 type PromptScopeTabKey = 'camxora' | 'user';
 type UsageViewKey = 'users' | 'profiles' | 'timeline';
 
@@ -338,6 +345,12 @@ export default function PromptsPage() {
           Music Structures
         </Button>
         <Button
+          variant={activeTab === 'moods' ? 'default' : 'outline'}
+          onClick={() => setActiveTab('moods')}
+        >
+          Music Moods
+        </Button>
+        <Button
           variant={activeTab === 'setup' ? 'default' : 'outline'}
           onClick={() => setActiveTab('setup')}
         >
@@ -347,6 +360,7 @@ export default function PromptsPage() {
 
       {activeTab === 'descriptions' && <DescriptionsTab />}
       {activeTab === 'structures' && <StructuresTab />}
+      {activeTab === 'moods' && <MoodsTab />}
       {activeTab === 'setup' && <ChannelSetupTab />}
     </div>
   );
@@ -808,6 +822,233 @@ function StructuresTab() {
           if (!open) setDeleteTarget(null);
         }}
         title="Delete Structure"
+        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+        onConfirm={handleDeleteConfirm}
+        variant="destructive"
+        confirmText="Delete"
+        isLoading={deleteMutation.isPending}
+      />
+    </div>
+  );
+}
+
+function MoodsTab() {
+  const { data: moods, isLoading, isError, refetch } = useMoods();
+  const {
+    data: userMoods,
+    isLoading: isUserLoading,
+    isError: isUserError,
+    refetch: refetchUserMoods,
+  } = useAdminUserMoods();
+  const createMutation = useCreateMood();
+  const updateMutation = useUpdateMood();
+  const deleteMutation = useDeleteMood();
+
+  const [scopeTab, setScopeTab] = useState<PromptScopeTabKey>('camxora');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<MusicMood | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MusicMood | null>(null);
+  const [usageTarget, setUsageTarget] = useState<{ id: string; name: string } | null>(null);
+  const usageQuery = useMoodUsage(usageTarget?.id ?? null);
+
+  function handleCreate() {
+    setEditingItem(null);
+    setFormOpen(true);
+  }
+
+  function handleEdit(item: MusicMood) {
+    setEditingItem(item);
+    setFormOpen(true);
+  }
+
+  function handleFormSubmit(values: PromptFormValues) {
+    const payload = {
+      name: values.name,
+      content: values.content,
+      match_key: values.match_key || undefined,
+    };
+
+    if (editingItem) {
+      updateMutation.mutate(
+        { id: editingItem.id, updates: payload },
+        { onSuccess: () => setFormOpen(false) },
+      );
+      return;
+    }
+
+    createMutation.mutate(payload, {
+      onSuccess: () => setFormOpen(false),
+    });
+  }
+
+  function handleDeleteConfirm() {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => setDeleteTarget(null),
+    });
+  }
+
+  if (isLoading) return <TableSkeleton />;
+  if (isError) {
+    return (
+      <div className="text-center py-8 space-y-4">
+        <p className="text-destructive">Failed to load moods.</p>
+        <Button variant="outline" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Tabs value={scopeTab} onValueChange={(value) => setScopeTab(value as PromptScopeTabKey)}>
+        <TabsList className="border border-slate-800 bg-slate-900/60">
+          <TabsTrigger value="camxora">Camxora Prompts</TabsTrigger>
+          <TabsTrigger value="user">User Prompts</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="camxora" className="space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={handleCreate}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Mood
+            </Button>
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Content</TableHead>
+                <TableHead>Match Key</TableHead>
+                <TableHead className="w-[120px]">Visibility</TableHead>
+                <TableHead className="w-[90px]">Uses</TableHead>
+                <TableHead className="w-[180px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {moods && moods.length > 0 ? (
+                moods.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {truncateContent(item.content)}
+                    </TableCell>
+                    <TableCell>
+                      {item.match_key ? (
+                        <Badge className={getMatchKeyColor(item.match_key)} variant="outline">
+                          {item.match_key}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getVisibilityBadge(item.is_active)} variant="outline">
+                        {item.is_active ? 'Visible' : 'Hidden'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{item.usage_count ?? 0}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={item.is_active ? 'Currently visible in onboarding. Click to hide.' : 'Currently hidden from onboarding. Click to show.'}
+                          onClick={() =>
+                            updateMutation.mutate({
+                              id: item.id,
+                              updates: { is_active: !item.is_active },
+                            })
+                          }
+                        >
+                          {item.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="View usage by user"
+                          onClick={() => setUsageTarget({ id: item.id, name: item.name })}
+                        >
+                          <BarChart3 className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(item)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(item)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    No moods yet. Create one to get started.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TabsContent>
+
+        <TabsContent value="user" className="space-y-4">
+          {isUserLoading ? (
+            <TableSkeleton />
+          ) : isUserError ? (
+            <div className="text-center py-8 space-y-4">
+              <p className="text-destructive">Failed to load user moods.</p>
+              <Button variant="outline" onClick={() => refetchUserMoods()}>
+                Retry
+              </Button>
+            </div>
+          ) : (
+            <UserPromptTable
+              items={userMoods ?? []}
+              kindLabel="Mood"
+              onViewUsage={(item) => setUsageTarget({ id: item.id, name: item.name })}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
+
+      <PromptUsageDialog
+        open={!!usageTarget}
+        onOpenChange={(open) => {
+          if (!open) setUsageTarget(null);
+        }}
+        title={usageTarget ? `Usage: ${usageTarget.name}` : 'Usage'}
+        usage={usageQuery.data}
+        isLoading={usageQuery.isLoading}
+      />
+
+      <PromptFormDialog
+        key={editingItem ? `mood-${editingItem.id}` : 'mood-create'}
+        open={formOpen}
+        onOpenChange={(open) => {
+          setFormOpen(open);
+          if (!open) {
+            setEditingItem(null);
+          }
+        }}
+        title={editingItem ? 'Edit Mood' : 'Create Mood'}
+        defaultValues={
+          editingItem
+            ? { name: editingItem.name, content: editingItem.content, match_key: editingItem.match_key ?? '' }
+            : undefined
+        }
+        onSubmit={handleFormSubmit}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+      />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Delete Mood"
         description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
         onConfirm={handleDeleteConfirm}
         variant="destructive"

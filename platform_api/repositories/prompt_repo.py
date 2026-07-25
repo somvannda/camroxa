@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Protocol
 from uuid import UUID
 
-from platform_api.models.domain import MusicDescription, MusicStructure
+from platform_api.models.domain import MusicDescription, MusicStructure, MusicMood
 from platform_api.services.music_genre_utils import parse_genre_list
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ _DESC_SELECT_COLS = (
     "id, name, content, genres, match_key, vocal_profile, is_active, user_id, created_at, updated_at"
 )
 _STRUCT_SELECT_COLS = "id, name, content, match_key, is_active, user_id, created_at, updated_at"
+_MOOD_SELECT_COLS = "id, name, content, match_key, is_active, user_id, created_at, updated_at"
 
 
 def _serialize_jsonb_value(value: Any) -> str | None:
@@ -76,6 +77,20 @@ def _row_to_description(row: Any) -> MusicDescription:
 def _row_to_structure(row: Any) -> MusicStructure:
     """Convert an asyncpg Record to a MusicStructure domain object."""
     return MusicStructure(
+        id=row["id"],
+        name=row["name"],
+        content=row["content"],
+        match_key=row["match_key"],
+        is_active=bool(row["is_active"]),
+        user_id=row.get("user_id"),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _row_to_mood(row: Any) -> MusicMood:
+    """Convert an asyncpg Record to a MusicMood domain object."""
+    return MusicMood(
         id=row["id"],
         name=row["name"],
         content=row["content"],
@@ -677,3 +692,227 @@ class PromptRepository:
             )
             pairs.append((desc, struct))
         return pairs
+
+    # -----------------------------------------------------------------------
+    # Music Moods
+    # -----------------------------------------------------------------------
+
+    async def create_mood(self, mood: MusicMood) -> MusicMood:
+        """Insert a new music mood."""
+        row = await self._pool.fetchrow(
+            f"""
+            INSERT INTO music_moods (id, name, content, match_key, is_active, user_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+            RETURNING {_MOOD_SELECT_COLS}
+            """,
+            mood.id,
+            mood.name,
+            mood.content,
+            mood.match_key,
+            mood.is_active,
+            mood.user_id,
+        )
+        return _row_to_mood(row)
+
+    async def get_mood_by_id(self, mood_id: UUID) -> MusicMood | None:
+        row = await self._pool.fetchrow(
+            f"SELECT {_MOOD_SELECT_COLS} FROM music_moods WHERE id = $1",
+            mood_id,
+        )
+        if row is None:
+            return None
+        return _row_to_mood(row)
+
+    async def get_mood_by_name(
+        self, name: str, *, user_id: UUID | None = None
+    ) -> MusicMood | None:
+        if user_id is None:
+            row = await self._pool.fetchrow(
+                f"""
+                SELECT {_MOOD_SELECT_COLS}
+                FROM music_moods
+                WHERE name = $1 AND user_id IS NULL
+                """,
+                name,
+            )
+        else:
+            row = await self._pool.fetchrow(
+                f"""
+                SELECT {_MOOD_SELECT_COLS}
+                FROM music_moods
+                WHERE name = $1 AND user_id = $2 AND is_active = TRUE
+                """,
+                name,
+                user_id,
+            )
+        if row is None:
+            return None
+        return _row_to_mood(row)
+
+    async def list_moods(self) -> list[MusicMood]:
+        rows = await self._pool.fetch(
+            f"""
+            SELECT {_MOOD_SELECT_COLS}
+            FROM music_moods
+            WHERE user_id IS NULL
+            ORDER BY name ASC
+            """
+        )
+        return [_row_to_mood(row) for row in rows]
+
+    async def list_moods_for_user(self, user_id: UUID) -> list[MusicMood]:
+        rows = await self._pool.fetch(
+            f"""
+            SELECT {_MOOD_SELECT_COLS}
+            FROM music_moods
+            WHERE user_id = $1 AND is_active = TRUE
+            ORDER BY name ASC
+            """,
+            user_id,
+        )
+        return [_row_to_mood(row) for row in rows]
+
+    async def list_moods_workspace(self, user_id: UUID) -> list[MusicMood]:
+        rows = await self._pool.fetch(
+            f"""
+            SELECT {_MOOD_SELECT_COLS}
+            FROM music_moods
+            WHERE (user_id IS NULL AND is_active = TRUE) OR (user_id = $1 AND is_active = TRUE)
+            ORDER BY name ASC
+            """,
+            user_id,
+        )
+        return [_row_to_mood(row) for row in rows]
+
+    async def update_mood(self, mood_id: UUID, **fields: Any) -> MusicMood | None:
+        if not fields:
+            return await self.get_mood_by_id(mood_id)
+
+        set_parts: list[str] = []
+        values: list[Any] = []
+        param_idx = 1
+        for col, val in fields.items():
+            set_parts.append(f"{col} = ${param_idx}")
+            values.append(val)
+            param_idx += 1
+        set_parts.append(f"updated_at = ${param_idx}")
+        values.append(datetime.now(timezone.utc))
+        param_idx += 1
+        values.append(mood_id)
+        query = f"""
+            UPDATE music_moods
+            SET {', '.join(set_parts)}
+            WHERE id = ${param_idx}
+            RETURNING {_MOOD_SELECT_COLS}
+        """
+        row = await self._pool.fetchrow(query, *values)
+        if row is None:
+            return None
+        return _row_to_mood(row)
+
+    async def archive_mood(self, mood_id: UUID) -> bool:
+        result = await self._pool.execute(
+            """
+            UPDATE music_moods
+            SET is_active = FALSE, updated_at = NOW()
+            WHERE id = $1 AND is_active = TRUE
+            """,
+            mood_id,
+        )
+        return result == "UPDATE 1"
+
+    async def delete_mood(self, mood_id: UUID) -> bool:
+        await self._pool.execute(
+            "UPDATE songs SET mood_id = NULL WHERE mood_id = $1",
+            mood_id,
+        )
+        result = await self._pool.execute(
+            "DELETE FROM music_moods WHERE id = $1",
+            mood_id,
+        )
+        return result == "DELETE 1"
+
+    async def count_mood_usage(self, mood_id: UUID) -> int:
+        count = await self._pool.fetchval(
+            "SELECT COUNT(*)::int FROM songs WHERE mood_id = $1",
+            mood_id,
+        )
+        return int(count or 0)
+
+    async def list_mood_usage_by_user(self, mood_id: UUID) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT
+                s.user_id,
+                u.email,
+                u.display_name,
+                COUNT(*)::int AS usage_count,
+                MAX(s.created_at) AS last_used_at
+            FROM songs s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.mood_id = $1
+            GROUP BY s.user_id, u.email, u.display_name
+            ORDER BY usage_count DESC, u.email ASC
+            """,
+            mood_id,
+        )
+        return [dict(row) for row in rows]
+
+    async def list_mood_usage_by_profile(self, mood_id: UUID) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            WITH profile_uses AS (
+                SELECT s.created_at, b.ok_profile_id AS profile_id
+                FROM songs s
+                JOIN batches b ON b.id = s.batch_id
+                WHERE s.mood_id = $1 AND b.ok_profile_id IS NOT NULL
+
+                UNION ALL
+
+                SELECT s.created_at, b.alt_profile_id AS profile_id
+                FROM songs s
+                JOIN batches b ON b.id = s.batch_id
+                WHERE s.mood_id = $1 AND b.alt_profile_id IS NOT NULL
+            )
+            SELECT
+                p.profile_id,
+                cp.name AS profile_name,
+                COUNT(*)::int AS usage_count,
+                MAX(p.created_at) AS last_used_at
+            FROM profile_uses p
+            JOIN channel_profiles cp ON cp.id = p.profile_id
+            GROUP BY p.profile_id, cp.name
+            ORDER BY usage_count DESC, cp.name ASC
+            """,
+            mood_id,
+        )
+        return [dict(row) for row in rows]
+
+    async def list_mood_usage_by_day(self, mood_id: UUID) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT
+                (s.created_at AT TIME ZONE 'UTC')::date AS usage_date,
+                COUNT(*)::int AS usage_count
+            FROM songs s
+            WHERE s.mood_id = $1
+            GROUP BY usage_date
+            ORDER BY usage_date DESC
+            """,
+            mood_id,
+        )
+        return [dict(row) for row in rows]
+
+    async def map_mood_usage_counts(self, mood_ids: list[UUID]) -> dict[UUID, int]:
+        if not mood_ids:
+            return {}
+        rows = await self._pool.fetch(
+            """
+            SELECT mood_id, COUNT(*)::int AS usage_count
+            FROM songs
+            WHERE mood_id = ANY($1::uuid[])
+            GROUP BY mood_id
+            """,
+            mood_ids,
+        )
+        return {row["mood_id"]: int(row["usage_count"] or 0) for row in rows}

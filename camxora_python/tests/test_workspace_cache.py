@@ -54,7 +54,7 @@ def test_workspace_cache_core_flag() -> None:
 
 
 
-    me, profiles, settings_raw, descriptions, structures = cache.snapshot_core()
+    me, profiles, settings_raw, descriptions, structures, moods = cache.snapshot_core()
 
     assert len(profiles) == 1
 
@@ -63,6 +63,8 @@ def test_workspace_cache_core_flag() -> None:
     assert descriptions == []
 
     assert structures == []
+
+    assert moods == []
 
 
 
@@ -116,11 +118,15 @@ def test_dashboard_cache_freshness() -> None:
 
             structure_options=[PromptNameOption(id="s1", name="Struct")],
 
+            mood_options=[PromptNameOption(id="m1", name="Mood")],
+
             youtube_connections=[],
 
             my_description_items=[{"id": "d-user", "name": "Mine", "content": "Body"}],
 
             my_structure_items=[{"id": "s-user", "name": "Mine", "content": "[Verse]"}],
+
+            my_mood_items=[{"id": "m-user", "name": "Mine", "content": "Warm"}],
 
         )
 
@@ -132,11 +138,13 @@ def test_dashboard_cache_freshness() -> None:
 
         assert fetched_at > 0
 
-        descriptions, structures, prompt_fetched_at = cache.snapshot_my_prompt_items()
+        descriptions, structures, moods, prompt_fetched_at = cache.snapshot_my_prompt_items()
 
         assert len(descriptions) == 1
 
         assert len(structures) == 1
+
+        assert len(moods) == 1
 
         assert prompt_fetched_at > 0
 

@@ -164,8 +164,10 @@ def mock_prompt_service() -> AsyncMock:
     service = AsyncMock()
     description = type("Description", (), {"content": "Full hidden admin description"})()
     structure = type("Structure", (), {"content": "[Verse]\n[Chorus]\n[Bridge]"})()
+    mood = type("Mood", (), {"content": "Warm nostalgia with soft ache"})()
     service.get_description_for_access = AsyncMock(return_value=description)
     service.get_structure_for_access = AsyncMock(return_value=structure)
+    service.get_mood_for_access = AsyncMock(return_value=mood)
     return service
 
 
@@ -181,6 +183,8 @@ def mock_batch_service() -> AsyncMock:
     service = AsyncMock()
     service.validate_song_suno_retry = AsyncMock(return_value=None)
     service.retry_song_suno = AsyncMock(return_value=None)
+    service.latest_suno_failure_hint = AsyncMock(return_value=None)
+    service.lyric_rewrite_context_for_user_song = AsyncMock(return_value=None)
     return service
 
 

@@ -37,7 +37,7 @@ def test_draft_billing_slots_respect_forced_fields() -> None:
 async def test_deduct_split_draft_billing_charges_each_slot() -> None:
     enforcement = AsyncMock()
     enforcement.deduct_for_operation = AsyncMock(side_effect=[10, 20, 30])
-    charged, listed = await deduct_split_draft_billing(
+    charged, listed, slots = await deduct_split_draft_billing(
         enforcement,
         user_id=uuid4(),
         channel_profile_id=None,
@@ -45,6 +45,7 @@ async def test_deduct_split_draft_billing_charges_each_slot() -> None:
     )
     assert charged == 60
     assert listed == 60
+    assert slots == 3
     assert enforcement.deduct_for_operation.await_count == 3
     ops = [c.args[2] for c in enforcement.deduct_for_operation.await_args_list]
     assert ops == ["lyric", "title", "album"]

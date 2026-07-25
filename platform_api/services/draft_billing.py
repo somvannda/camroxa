@@ -95,12 +95,13 @@ async def deduct_split_draft_billing(
     include_title: bool = True,
     include_album: bool = True,
     pricing: PricingLookup | None = None,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Deduct plan meter / wallet for each LLM draft slot (matches batch billing).
 
     Returns:
-        (charged_credit_units, list_credit_units) — charged is wallet spend
-        (0 on plan allowance); list is sum of pricing list units for COGS.
+        (charged_credit_units, list_credit_units, billed_slots) — charged is wallet
+        spend (0 on plan allowance); list is sum of pricing list units for COGS;
+        billed_slots is how many draft meter increments were applied.
     """
     slots = draft_billing_slots(
         draft_routing,
@@ -131,7 +132,7 @@ async def deduct_split_draft_billing(
                     list_total += int(list_price or 0)
                 except Exception:
                     pass
-        return charged_total, list_total
+        return charged_total, list_total, billed_slots
     except Exception:
         if billed_slots > 0:
             try:

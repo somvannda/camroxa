@@ -128,6 +128,7 @@ TAB_LABELS = (
     "Preferences",
     "Descriptions",
     "Structures",
+    "Moods",
     "Pools",
     "Suno",
 )
@@ -166,7 +167,7 @@ class SettingsView(QWidget):
         self._session = session
         self._worker: SettingsWorkspaceWorker | None = None
         self._my_prompt_worker: MyPromptMutationWorker | None = None
-        self._my_prompt_mutation_descriptions: bool | None = None
+        self._my_prompt_mutation_kind: str | None = None
         self._save_profile_worker: SaveProfileWorker | None = None
         self._delete_profile_worker: DeleteProfileWorker | None = None
         self._patch_worker: PatchSettingsWorker | None = None
@@ -186,6 +187,7 @@ class SettingsView(QWidget):
         self._youtube_connections: list[YouTubeConnectionResponse] = []
         self._description_options: list[PromptNameOption] = []
         self._structure_options: list[PromptNameOption] = []
+        self._mood_options: list[PromptNameOption] = []
         self._sample_packs: list[object] = []
         self._bg_sample_files: list[str] = []
         self._th_sample_files: list[str] = []
@@ -194,8 +196,10 @@ class SettingsView(QWidget):
         self._selected_profile_key: str | None = None
         self._selected_description_id: str = ""
         self._selected_structure_id: str = ""
+        self._selected_mood_id: str = ""
         self._baseline_description_id: str = ""
         self._baseline_structure_id: str = ""
+        self._baseline_mood_id: str = ""
         self._profile_draft = ProfileDraft()
         self._baseline_profile_draft = ProfileDraft()
         self._publication_draft = PublicationDraft()
@@ -278,8 +282,9 @@ class SettingsView(QWidget):
         self._stack.addWidget(self._build_youtube_tab())
         self._stack.addWidget(self._build_publication_tab())
         self._stack.addWidget(self._build_preferences_tab())
-        self._stack.addWidget(self._build_prompt_library_tab(True))
-        self._stack.addWidget(self._build_prompt_library_tab(False))
+        self._stack.addWidget(self._build_prompt_library_tab("description"))
+        self._stack.addWidget(self._build_prompt_library_tab("structure"))
+        self._stack.addWidget(self._build_prompt_library_tab("mood"))
         self._stack.addWidget(self._build_pools_tab())
         self._stack.addWidget(self._build_suno_tab())
         content_layout.addWidget(self._stack, stretch=1)
@@ -399,6 +404,7 @@ class SettingsView(QWidget):
                 self._playlist_auth_failed_profiles.discard(str(connection.profile_id))
         self._description_options = [item for item in payload.description_options if isinstance(item, PromptNameOption)]
         self._structure_options = [item for item in payload.structure_options if isinstance(item, PromptNameOption)]
+        self._mood_options = [item for item in payload.mood_options if isinstance(item, PromptNameOption)]
         settings = payload.settings
         if hasattr(settings, "model_dump"):
             self._settings_raw = settings.model_dump(by_alias=True)
@@ -450,6 +456,7 @@ class SettingsView(QWidget):
                 settings_raw=settings_raw,
                 description_options=[item for item in payload.description_options if isinstance(item, PromptNameOption)],
                 structure_options=[item for item in payload.structure_options if isinstance(item, PromptNameOption)],
+                mood_options=[item for item in payload.mood_options if isinstance(item, PromptNameOption)],
                 youtube_connections=[
                     item for item in payload.youtube_connections if isinstance(item, YouTubeConnectionResponse)
                 ],
@@ -481,7 +488,7 @@ class SettingsView(QWidget):
     def _apply_core_cache(self) -> bool:
         if self._cache is None or not self._cache.has_core():
             return False
-        me, profiles, settings_raw, description_options, structure_options = self._cache.snapshot_core()
+        me, profiles, settings_raw, description_options, structure_options, mood_options = self._cache.snapshot_core()
         if not profiles or not settings_raw:
             return False
         self._loading = False
@@ -496,6 +503,7 @@ class SettingsView(QWidget):
         self._settings_raw = settings_raw
         self._description_options = [item for item in description_options if isinstance(item, PromptNameOption)]
         self._structure_options = [item for item in structure_options if isinstance(item, PromptNameOption)]
+        self._mood_options = [item for item in mood_options if isinstance(item, PromptNameOption)]
         self._profile_allowance = getattr(me, "profile_allowance", None) if me is not None else None
         self._profile_usage = getattr(me, "channel_profile_count", len(self._profiles)) if me is not None else len(self._profiles)
         if isinstance(me, UserMeResponse):
@@ -519,13 +527,18 @@ class SettingsView(QWidget):
     def _apply_my_prompts_cache(self) -> bool:
         if self._cache is None:
             return False
-        description_items, structure_items, fetched_at = self._cache.snapshot_my_prompt_items()
+        description_items, structure_items, mood_items, fetched_at = self._cache.snapshot_my_prompt_items()
         if fetched_at <= 0:
             return False
-        self._apply_my_prompt_items(description_items, structure_items)
+        self._apply_my_prompt_items(description_items, structure_items, mood_items)
         return True
 
-    def _apply_my_prompt_items(self, description_items: list[object], structure_items: list[object]) -> None:
+    def _apply_my_prompt_items(
+        self,
+        description_items: list[object],
+        structure_items: list[object],
+        mood_items: list[object] | None = None,
+    ) -> None:
         normalized_descriptions = [
             self._normalize_my_prompt_item(item)
             for item in description_items
@@ -536,6 +549,11 @@ class SettingsView(QWidget):
             for item in structure_items
             if isinstance(item, dict)
         ]
+        normalized_moods = [
+            self._normalize_my_prompt_item(item)
+            for item in (mood_items or [])
+            if isinstance(item, dict)
+        ]
         if hasattr(self, "_my_description_panel"):
             self._my_description_panel.set_items(normalized_descriptions)
             if hasattr(self, "_descriptions_my_stat"):
@@ -544,6 +562,10 @@ class SettingsView(QWidget):
             self._my_structure_panel.set_items(normalized_structures)
             if hasattr(self, "_structures_my_stat"):
                 self._update_mini_stat_value(self._structures_my_stat, str(len(normalized_structures)))
+        if hasattr(self, "_my_mood_panel"):
+            self._my_mood_panel.set_items(normalized_moods)
+            if hasattr(self, "_moods_my_stat"):
+                self._update_mini_stat_value(self._moods_my_stat, str(len(normalized_moods)))
 
     def _on_failed(self, message: str) -> None:
         self._loading = False
@@ -652,8 +674,10 @@ class SettingsView(QWidget):
     def _load_music_prompt_defaults_from_settings(self) -> None:
         self._baseline_description_id = read_string_setting(self._settings_raw, "defaultDescriptionId")
         self._baseline_structure_id = read_string_setting(self._settings_raw, "defaultStructureId")
+        self._baseline_mood_id = read_string_setting(self._settings_raw, "defaultMoodId")
         self._selected_description_id = self._baseline_description_id
         self._selected_structure_id = self._baseline_structure_id
+        self._selected_mood_id = self._baseline_mood_id
 
     def _sync_music_prompt_defaults_to_local_store(self) -> None:
         from dataclasses import replace
@@ -667,6 +691,7 @@ class SettingsView(QWidget):
                 current,
                 selected_description_id=self._selected_description_id,
                 selected_structure_id=self._selected_structure_id,
+                selected_mood_id=self._selected_mood_id,
             )
         )
 
@@ -680,10 +705,12 @@ class SettingsView(QWidget):
         current = build_music_prompt_defaults_patch(
             default_description_id=self._selected_description_id,
             default_structure_id=self._selected_structure_id,
+            default_mood_id=self._selected_mood_id,
         )
         baseline = build_music_prompt_defaults_patch(
             default_description_id=self._baseline_description_id,
             default_structure_id=self._baseline_structure_id,
+            default_mood_id=self._baseline_mood_id,
         )
         return {key: value for key, value in current.items() if baseline.get(key) != value}
 
@@ -760,8 +787,9 @@ class SettingsView(QWidget):
         self._bind_youtube_tab()
         self._bind_publication_tab()
         self._bind_preferences_tab()
-        self._bind_text_library_tab(True)
-        self._bind_text_library_tab(False)
+        self._bind_text_library_tab("description")
+        self._bind_text_library_tab("structure")
+        self._bind_text_library_tab("mood")
         self._bind_suno_tab()
         self._refresh_footer()
 
@@ -1421,7 +1449,7 @@ class SettingsView(QWidget):
         suffix = " (mine)" if option.is_owned else ""
         return f"{option.name}{suffix}"
 
-    def _build_prompt_library_tab(self, descriptions: bool) -> QWidget:
+    def _build_prompt_library_tab(self, kind: str) -> QWidget:
         host = QWidget()
         root = QVBoxLayout(host)
         root.setContentsMargins(0, 0, 0, 12)
@@ -1436,12 +1464,11 @@ class SettingsView(QWidget):
         stats_row.addWidget(selected_stat)
         stats_row.addStretch()
 
+        kind_label = {"description": "description", "structure": "structure", "mood": "mood"}[kind]
         overview_panel = SettingsPanel(
             "Library overview",
             subtitle=(
-                "Shared description catalog, your custom prompts, and the current Music workspace default."
-                if descriptions
-                else "Shared structure catalog, your custom prompts, and the current Music workspace default."
+                f"Shared {kind_label} catalog, your custom prompts, and the current Music workspace default."
             ),
         )
         overview_panel.add_layout(stats_row)
@@ -1450,9 +1477,7 @@ class SettingsView(QWidget):
         catalog_left = SettingsPanel(
             "Camxora catalog",
             subtitle=(
-                "Shared description names from Admin Portal. Click one to set it as the active Music default."
-                if descriptions
-                else "Shared structure names from Admin Portal. Click one to set it as the active Music default."
+                f"Shared {kind_label} names from Admin Portal. Click one to set it as the active Music default."
             ),
             fill_available_height=True,
         )
@@ -1461,7 +1486,7 @@ class SettingsView(QWidget):
         catalog_list = QListWidget()
         catalog_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         catalog_list.currentRowChanged.connect(
-            lambda row, desc=descriptions: self._on_text_library_selected(desc, row)
+            lambda row, prompt_kind=kind: self._on_text_library_selected(prompt_kind, row)
         )
         catalog_left.add_widget(catalog_list, stretch=1)
 
@@ -1473,10 +1498,10 @@ class SettingsView(QWidget):
         catalog_right.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         selector = QComboBox()
         selector.currentIndexChanged.connect(
-            lambda _index, desc=descriptions: self._on_text_library_combo_changed(desc)
+            lambda _index, prompt_kind=kind: self._on_text_library_combo_changed(prompt_kind)
         )
         catalog_right.add_widget(form_row("Workspace default", selector))
-        if descriptions:
+        if kind == "description":
             self._description_structure_combo = QComboBox()
             self._description_structure_combo.currentIndexChanged.connect(
                 lambda index: self._set_selected_structure(index)
@@ -1496,20 +1521,21 @@ class SettingsView(QWidget):
         )
         catalog_right.add_stretch()
 
+        placeholders = {
+            "description": "Describe genre, mood, energy, and instrumentation...",
+            "structure": "[Verse]\n[Chorus]\n[Verse]\n[Chorus]\n[Bridge]\n[Chorus]",
+            "mood": "Describe the emotional tone, narrative feeling, and lyric atmosphere...",
+        }
         my_panel = UserOwnedPromptPanel(
             list_title="User catalog",
             editor_title="Prompt editor",
-            content_placeholder=(
-                "Describe genre, mood, energy, and instrumentation..."
-                if descriptions
-                else "[Verse]\n[Chorus]\n[Verse]\n[Chorus]\n[Bridge]\n[Chorus]"
-            ),
+            content_placeholder=placeholders[kind],
             parent=host,
         )
-        my_panel.saved.connect(lambda desc=descriptions: self._save_my_prompt(desc))
-        my_panel.deleted.connect(lambda desc=descriptions: self._delete_my_prompt(desc))
+        my_panel.saved.connect(lambda prompt_kind=kind: self._save_my_prompt(prompt_kind))
+        my_panel.deleted.connect(lambda prompt_kind=kind: self._delete_my_prompt(prompt_kind))
         my_panel.default_requested.connect(
-            lambda item_id, desc=descriptions: self._apply_active_music_prompt(desc, item_id)
+            lambda item_id, prompt_kind=kind: self._apply_active_music_prompt(prompt_kind, item_id)
         )
 
         grid_host = QWidget()
@@ -1535,7 +1561,7 @@ class SettingsView(QWidget):
         main_layout.addWidget(grid_host, stretch=1)
         root.addWidget(main_section, stretch=1)
 
-        if descriptions:
+        if kind == "description":
             self._descriptions_stat = catalog_stat
             self._descriptions_my_stat = my_stat
             self._descriptions_selected_stat = selected_stat
@@ -1544,7 +1570,7 @@ class SettingsView(QWidget):
             self._description_selected_name = selected_name
             self._description_selection_note = selection_note
             self._my_description_panel = my_panel
-        else:
+        elif kind == "structure":
             self._structures_stat = catalog_stat
             self._structures_my_stat = my_stat
             self._structures_selected_stat = selected_stat
@@ -1553,6 +1579,15 @@ class SettingsView(QWidget):
             self._structure_selected_name = selected_name
             self._structure_selection_note = selection_note
             self._my_structure_panel = my_panel
+        else:
+            self._moods_stat = catalog_stat
+            self._moods_my_stat = my_stat
+            self._moods_selected_stat = selected_stat
+            self._moods_list = catalog_list
+            self._mood_selector = selector
+            self._mood_selected_name = selected_name
+            self._mood_selection_note = selection_note
+            self._my_mood_panel = my_panel
 
         return make_scrollable_tab_page(host)
 
@@ -1564,14 +1599,22 @@ class SettingsView(QWidget):
             "content": str(item.get("content") or ""),
         }
 
-    def _my_prompt_panel(self, descriptions: bool) -> UserOwnedPromptPanel:
-        return self._my_description_panel if descriptions else self._my_structure_panel
+    def _my_prompt_panel(self, kind: str) -> UserOwnedPromptPanel:
+        if kind == "description":
+            return self._my_description_panel
+        if kind == "mood":
+            return self._my_mood_panel
+        return self._my_structure_panel
 
-    def _my_prompt_stat(self, descriptions: bool) -> QFrame:
-        return self._descriptions_my_stat if descriptions else self._structures_my_stat
+    def _my_prompt_stat(self, kind: str) -> QFrame:
+        if kind == "description":
+            return self._descriptions_my_stat
+        if kind == "mood":
+            return self._moods_my_stat
+        return self._structures_my_stat
 
-    def _set_my_prompt_actions_enabled(self, descriptions: bool, enabled: bool) -> None:
-        panel = self._my_prompt_panel(descriptions)
+    def _set_my_prompt_actions_enabled(self, kind: str, enabled: bool) -> None:
+        panel = self._my_prompt_panel(kind)
         panel.set_actions_enabled(enabled)
 
     def _reload_my_prompt_panels(self, *, force_network: bool = False) -> None:
@@ -1588,20 +1631,27 @@ class SettingsView(QWidget):
                 for item in self._api.list_my_structures()
                 if isinstance(item, dict)
             ]
+            mood_items = [
+                self._normalize_my_prompt_item(item)
+                for item in self._api.list_my_moods()
+                if isinstance(item, dict)
+            ]
         except Exception as exc:
             log_error("settings.my_prompts.load_failed", category="settings", exc=exc)
             description_items = []
             structure_items = []
-        self._apply_my_prompt_items(description_items, structure_items)
+            mood_items = []
+        self._apply_my_prompt_items(description_items, structure_items, mood_items)
         if self._cache is not None:
             self._cache.apply_settings_workspace(
                 my_description_items=description_items,
                 my_structure_items=structure_items,
+                my_mood_items=mood_items,
             )
 
     def _start_my_prompt_mutation(
         self,
-        descriptions: bool,
+        kind: str,
         *,
         creating: bool = False,
         prompt_id: str = "",
@@ -1613,7 +1663,7 @@ class SettingsView(QWidget):
             return
         worker = MyPromptMutationWorker(
             self._api,
-            descriptions=descriptions,
+            kind=kind,
             creating=creating,
             prompt_id=prompt_id,
             name=name,
@@ -1625,15 +1675,15 @@ class SettingsView(QWidget):
         worker.failed.connect(self._on_my_prompt_mutation_failed)
         worker.finished.connect(lambda: setattr(self, "_my_prompt_worker", None))
         self._my_prompt_worker = worker
-        self._my_prompt_mutation_descriptions = descriptions
-        self._set_my_prompt_actions_enabled(descriptions, False)
+        self._my_prompt_mutation_kind = kind
+        self._set_my_prompt_actions_enabled(kind, False)
         worker.start()
 
     def _on_my_prompt_mutation_succeeded(self, payload: object) -> None:
         if not isinstance(payload, MyPromptMutationResult):
             return
-        panel = self._my_prompt_panel(payload.descriptions)
-        stat = self._my_prompt_stat(payload.descriptions)
+        panel = self._my_prompt_panel(payload.kind)
+        stat = self._my_prompt_stat(payload.kind)
         if payload.deleted:
             self._clear_deleted_prompt_selection(payload)
             self._reload_my_prompt_panels()
@@ -1645,24 +1695,24 @@ class SettingsView(QWidget):
             else:
                 self._reload_my_prompt_panels()
             self._show_save_success("Custom prompt saved.")
-        self._set_my_prompt_actions_enabled(payload.descriptions, True)
-        self._my_prompt_mutation_descriptions = None
+        self._set_my_prompt_actions_enabled(payload.kind, True)
+        self._my_prompt_mutation_kind = None
         self.refresh_data(force=True)
 
     def _on_my_prompt_mutation_failed(self, message: str) -> None:
-        if self._my_prompt_mutation_descriptions is not None:
-            self._set_my_prompt_actions_enabled(self._my_prompt_mutation_descriptions, True)
-            self._my_prompt_mutation_descriptions = None
+        if self._my_prompt_mutation_kind is not None:
+            self._set_my_prompt_actions_enabled(self._my_prompt_mutation_kind, True)
+            self._my_prompt_mutation_kind = None
         self._show_error(message or "Unable to update custom prompt.")
 
-    def _save_my_prompt(self, descriptions: bool) -> None:
-        panel = self._my_prompt_panel(descriptions)
+    def _save_my_prompt(self, kind: str) -> None:
+        panel = self._my_prompt_panel(kind)
         prompt_id, name, content, creating = panel.draft()
         if not name or not content:
             self._show_error("Name and content are required for your custom prompt.")
             return
         self._start_my_prompt_mutation(
-            descriptions,
+            kind,
             creating=creating,
             prompt_id=prompt_id,
             name=name,
@@ -1673,17 +1723,19 @@ class SettingsView(QWidget):
         deleted_id = str(payload.prompt_id or "")
         if not deleted_id:
             return
-        if payload.descriptions and self._selected_description_id == deleted_id:
+        if payload.kind == "description" and self._selected_description_id == deleted_id:
             self._selected_description_id = ""
-        elif not payload.descriptions and self._selected_structure_id == deleted_id:
+        elif payload.kind == "structure" and self._selected_structure_id == deleted_id:
             self._selected_structure_id = ""
+        elif payload.kind == "mood" and self._selected_mood_id == deleted_id:
+            self._selected_mood_id = ""
 
-    def _delete_my_prompt(self, descriptions: bool) -> None:
-        panel = self._my_prompt_panel(descriptions)
+    def _delete_my_prompt(self, kind: str) -> None:
+        panel = self._my_prompt_panel(kind)
         prompt_id, name, _content, creating = panel.draft()
         if creating or not prompt_id:
             return
-        label = "description" if descriptions else "structure"
+        label = {"description": "description", "structure": "structure", "mood": "mood"}[kind]
         confirmed = QMessageBox.question(
             self,
             f"Delete My {label.title()}",
@@ -1691,7 +1743,7 @@ class SettingsView(QWidget):
         )
         if confirmed != QMessageBox.StandardButton.Yes:
             return
-        self._start_my_prompt_mutation(descriptions, prompt_id=prompt_id, delete=True)
+        self._start_my_prompt_mutation(kind, prompt_id=prompt_id, delete=True)
 
     def _build_pools_tab(self) -> QWidget:
         stats_row = QHBoxLayout()
@@ -2375,25 +2427,86 @@ class SettingsView(QWidget):
         base = str(name or "").replace(" · active", "").strip()
         return f"{base} · active" if active else base
 
-    def _apply_active_music_prompt(self, descriptions: bool, option_id: str) -> None:
+    def _prompt_options_for_kind(self, kind: str) -> list[PromptNameOption]:
+        if kind == "description":
+            return self._description_options
+        if kind == "mood":
+            return self._mood_options
+        return self._structure_options
+
+    def _selected_prompt_id_for_kind(self, kind: str) -> str:
+        if kind == "description":
+            return self._selected_description_id
+        if kind == "mood":
+            return self._selected_mood_id
+        return self._selected_structure_id
+
+    def _set_selected_prompt_id_for_kind(self, kind: str, option_id: str) -> None:
+        if kind == "description":
+            self._selected_description_id = option_id
+        elif kind == "mood":
+            self._selected_mood_id = option_id
+        else:
+            self._selected_structure_id = option_id
+
+    def _prompt_selector_for_kind(self, kind: str) -> QComboBox:
+        if kind == "description":
+            return self._description_selector
+        if kind == "mood":
+            return self._mood_selector
+        return self._structure_selector
+
+    def _prompt_list_for_kind(self, kind: str) -> QListWidget:
+        if kind == "description":
+            return self._descriptions_list
+        if kind == "mood":
+            return self._moods_list
+        return self._structures_list
+
+    def _prompt_selected_stat_for_kind(self, kind: str) -> QFrame:
+        if kind == "description":
+            return self._descriptions_selected_stat
+        if kind == "mood":
+            return self._moods_selected_stat
+        return self._structures_selected_stat
+
+    def _prompt_selected_name_for_kind(self, kind: str) -> QLineEdit:
+        if kind == "description":
+            return self._description_selected_name
+        if kind == "mood":
+            return self._mood_selected_name
+        return self._structure_selected_name
+
+    def _prompt_selection_note_for_kind(self, kind: str):
+        if kind == "description":
+            return self._description_selection_note
+        if kind == "mood":
+            return self._mood_selection_note
+        return self._structure_selection_note
+
+    def _prompt_catalog_stat_for_kind(self, kind: str) -> QFrame:
+        if kind == "description":
+            return self._descriptions_stat
+        if kind == "mood":
+            return self._moods_stat
+        return self._structures_stat
+
+    def _apply_active_music_prompt(self, kind: str, option_id: str) -> None:
         normalized = str(option_id or "").strip()
-        options = self._description_options if descriptions else self._structure_options
+        options = self._prompt_options_for_kind(kind)
         if normalized and not any(option.id == normalized for option in options):
             return
 
-        if descriptions:
-            self._selected_description_id = normalized
-        else:
-            self._selected_structure_id = normalized
+        self._set_selected_prompt_id_for_kind(kind, normalized)
 
-        selector = self._description_selector if descriptions else self._structure_selector
+        selector = self._prompt_selector_for_kind(kind)
         select_index = selector.findData(normalized)
         if select_index >= 0:
             selector.blockSignals(True)
             selector.setCurrentIndex(select_index)
             selector.blockSignals(False)
 
-        list_widget = self._descriptions_list if descriptions else self._structures_list
+        list_widget = self._prompt_list_for_kind(kind)
         matched_row = -1
         for row in range(list_widget.count()):
             item = list_widget.item(row)
@@ -2404,29 +2517,27 @@ class SettingsView(QWidget):
         list_widget.setCurrentRow(matched_row)
         list_widget.blockSignals(False)
 
-        my_panel = self._my_description_panel if descriptions else self._my_structure_panel
-        my_panel.set_active_id(normalized)
-        self._refresh_music_prompt_default_ui(descriptions)
-        self._refresh_prompt_active_markers(descriptions)
+        self._my_prompt_panel(kind).set_active_id(normalized)
+        self._refresh_music_prompt_default_ui(kind)
+        self._refresh_prompt_active_markers(kind)
         self._refresh_footer()
 
-    def _refresh_music_prompt_default_ui(self, descriptions: bool) -> None:
-        options = self._description_options if descriptions else self._structure_options
-        active_id = self._selected_description_id if descriptions else self._selected_structure_id
-        selector = self._description_selector if descriptions else self._structure_selector
-        selected_stat = self._descriptions_selected_stat if descriptions else self._structures_selected_stat
-        selected_name = self._description_selected_name if descriptions else self._structure_selected_name
+    def _refresh_music_prompt_default_ui(self, kind: str) -> None:
+        options = self._prompt_options_for_kind(kind)
+        active_id = self._selected_prompt_id_for_kind(kind)
+        selected_stat = self._prompt_selected_stat_for_kind(kind)
+        selected_name = self._prompt_selected_name_for_kind(kind)
         selected = next((option for option in options if option.id == active_id), None)
         label = self._prompt_option_label(selected) if selected is not None else "—"
         selected_name.setText(label)
         self._update_mini_stat_value(selected_stat, label)
-        self._update_prompt_selection_note(descriptions, active_id or None)
+        self._update_prompt_selection_note(kind, active_id or None)
 
-    def _refresh_prompt_active_markers(self, descriptions: bool) -> None:
-        active_id = self._selected_description_id if descriptions else self._selected_structure_id
-        options = self._description_options if descriptions else self._structure_options
+    def _refresh_prompt_active_markers(self, kind: str) -> None:
+        active_id = self._selected_prompt_id_for_kind(kind)
+        options = self._prompt_options_for_kind(kind)
         catalog_options = [option for option in options if not option.is_owned]
-        list_widget = self._descriptions_list if descriptions else self._structures_list
+        list_widget = self._prompt_list_for_kind(kind)
         for row in range(list_widget.count()):
             item = list_widget.item(row)
             if item is None:
@@ -2435,23 +2546,27 @@ class SettingsView(QWidget):
             option = next((entry for entry in catalog_options if entry.id == option_id), None)
             base_name = option.name if option is not None else str(item.text()).replace(" · active", "").strip()
             item.setText(self._prompt_catalog_label(base_name, active=option_id == active_id))
-        my_panel = self._my_description_panel if descriptions else self._my_structure_panel
-        my_panel.set_active_id(active_id)
+        self._my_prompt_panel(kind).set_active_id(active_id)
 
-    def _prompt_selection_note_text(self, descriptions: bool, option_id: str | None) -> str:
-        options = self._description_options if descriptions else self._structure_options
+    def _prompt_selection_note_text(self, kind: str, option_id: str | None) -> str:
+        options = self._prompt_options_for_kind(kind)
         selected = next((option for option in options if option.id == option_id), None)
+        kind_label = {"description": "music description", "structure": "music structure", "mood": "music mood"}[kind]
         if not selected:
-            kind = "music description" if descriptions else "music structure"
-            return f"Select one {kind} from Camxora catalog or User catalog. Only one can be active."
+            return f"Select one {kind_label} from Camxora catalog or User catalog. Only one can be active."
         if selected.is_owned:
             return (
                 f'Active default: your custom prompt "{selected.name}". '
                 "Click Save All Changes to persist for the Music page."
             )
-        if descriptions:
+        if kind == "description":
             return (
                 f'Active default: Camxora prompt "{selected.name}". '
+                "Click Save All Changes to persist for the Music page."
+            )
+        if kind == "mood":
+            return (
+                f'Active default: Camxora mood "{selected.name}". '
                 "Click Save All Changes to persist for the Music page."
             )
         return (
@@ -2459,35 +2574,32 @@ class SettingsView(QWidget):
             "Click Save All Changes to persist for the Music page."
         )
 
-    def _update_prompt_selection_note(self, descriptions: bool, option_id: str | None) -> None:
-        note = self._description_selection_note if descriptions else self._structure_selection_note
+    def _update_prompt_selection_note(self, kind: str, option_id: str | None) -> None:
+        note = self._prompt_selection_note_for_kind(kind)
         if note is not None:
-            note.setText(self._prompt_selection_note_text(descriptions, option_id))
+            note.setText(self._prompt_selection_note_text(kind, option_id))
 
-    def _on_text_library_selected(self, descriptions: bool, row: int) -> None:
-        list_widget = self._descriptions_list if descriptions else self._structures_list
+    def _on_text_library_selected(self, kind: str, row: int) -> None:
+        list_widget = self._prompt_list_for_kind(kind)
         if row < 0:
             return
         item = list_widget.item(row)
         if item is None:
             return
         option_id = str(item.data(Qt.ItemDataRole.UserRole) or "")
-        self._apply_active_music_prompt(descriptions, option_id)
+        self._apply_active_music_prompt(kind, option_id)
 
-    def _on_text_library_combo_changed(self, descriptions: bool) -> None:
-        if descriptions:
-            option_id = str(self._description_selector.currentData() or "")
-            self._apply_active_music_prompt(True, option_id)
-        else:
-            option_id = str(self._structure_selector.currentData() or "")
-            self._apply_active_music_prompt(False, option_id)
+    def _on_text_library_combo_changed(self, kind: str) -> None:
+        selector = self._prompt_selector_for_kind(kind)
+        option_id = str(selector.currentData() or "")
+        self._apply_active_music_prompt(kind, option_id)
 
     def _set_selected_structure(self, index: int) -> None:
         if index < 0:
             return
         option_id = self._description_structure_combo.itemData(index)
         if option_id:
-            self._apply_active_music_prompt(False, str(option_id))
+            self._apply_active_music_prompt("structure", str(option_id))
 
     def _update_mini_stat_value(self, frame: QFrame, value: str) -> None:
         layout = frame.layout()
@@ -2841,77 +2953,68 @@ class SettingsView(QWidget):
             self._pref_th_random.setChecked(draft.image_thumb_random)
             self._refresh_sample_library_lists()
 
-    def _bind_text_library_tab(self, descriptions: bool) -> None:
-        options = self._description_options if descriptions else self._structure_options
+    def _bind_text_library_tab(self, kind: str) -> None:
+        options = self._prompt_options_for_kind(kind)
         catalog_options = [option for option in options if not option.is_owned]
         my_count = sum(1 for option in options if option.is_owned)
 
-        def _populate(kind_descriptions: bool) -> None:
-            list_widget = self._descriptions_list if kind_descriptions else self._structures_list
-            selector = self._description_selector if kind_descriptions else self._structure_selector
-            catalog_stat = self._descriptions_stat if kind_descriptions else self._structures_stat
-            my_stat = self._descriptions_my_stat if kind_descriptions else self._structures_my_stat
-            selected_stat = self._descriptions_selected_stat if kind_descriptions else self._structures_selected_stat
-            selected_id = self._selected_description_id if kind_descriptions else self._selected_structure_id
+        list_widget = self._prompt_list_for_kind(kind)
+        selector = self._prompt_selector_for_kind(kind)
+        catalog_stat = self._prompt_catalog_stat_for_kind(kind)
+        my_stat = self._my_prompt_stat(kind)
+        selected_stat = self._prompt_selected_stat_for_kind(kind)
+        selected_id = self._selected_prompt_id_for_kind(kind)
 
-            self._update_mini_stat_value(catalog_stat, str(len(catalog_options)))
-            self._update_mini_stat_value(my_stat, str(my_count))
+        self._update_mini_stat_value(catalog_stat, str(len(catalog_options)))
+        self._update_mini_stat_value(my_stat, str(my_count))
 
-            list_widget.blockSignals(True)
-            list_widget.clear()
-            selector.blockSignals(True)
-            selector.clear()
-            for option in catalog_options:
-                item = QListWidgetItem(option.name)
-                item.setData(Qt.ItemDataRole.UserRole, option.id)
-                list_widget.addItem(item)
-            for option in options:
-                selector.addItem(self._prompt_option_label(option), option.id)
+        list_widget.blockSignals(True)
+        list_widget.clear()
+        selector.blockSignals(True)
+        selector.clear()
+        for option in catalog_options:
+            item = QListWidgetItem(option.name)
+            item.setData(Qt.ItemDataRole.UserRole, option.id)
+            list_widget.addItem(item)
+        for option in options:
+            selector.addItem(self._prompt_option_label(option), option.id)
 
-            if kind_descriptions:
-                self._description_structure_combo.blockSignals(True)
-                self._description_structure_combo.clear()
-                for option in self._structure_options:
-                    self._description_structure_combo.addItem(
-                        self._prompt_option_label(option),
-                        option.id,
-                    )
-                structure_index = self._description_structure_combo.findData(self._selected_structure_id)
-                if structure_index >= 0:
-                    self._description_structure_combo.setCurrentIndex(structure_index)
-                self._description_structure_combo.blockSignals(False)
+        if kind == "description":
+            self._description_structure_combo.blockSignals(True)
+            self._description_structure_combo.clear()
+            for option in self._structure_options:
+                self._description_structure_combo.addItem(
+                    self._prompt_option_label(option),
+                    option.id,
+                )
+            structure_index = self._description_structure_combo.findData(self._selected_structure_id)
+            if structure_index >= 0:
+                self._description_structure_combo.setCurrentIndex(structure_index)
+            self._description_structure_combo.blockSignals(False)
 
-            selected_id = self._resolve_saved_prompt_id(options, selected_id)
-            if kind_descriptions:
-                self._selected_description_id = selected_id
-            else:
-                self._selected_structure_id = selected_id
+        selected_id = self._resolve_saved_prompt_id(options, selected_id)
+        self._set_selected_prompt_id_for_kind(kind, selected_id)
 
-            select_index = selector.findData(selected_id)
-            if select_index >= 0:
-                selector.setCurrentIndex(select_index)
+        select_index = selector.findData(selected_id)
+        if select_index >= 0:
+            selector.setCurrentIndex(select_index)
 
-            matched_row = -1
-            for row in range(list_widget.count()):
-                item = list_widget.item(row)
-                if item and item.data(Qt.ItemDataRole.UserRole) == selected_id:
-                    matched_row = row
-                    break
-            list_widget.setCurrentRow(matched_row)
+        matched_row = -1
+        for row in range(list_widget.count()):
+            item = list_widget.item(row)
+            if item and item.data(Qt.ItemDataRole.UserRole) == selected_id:
+                matched_row = row
+                break
+        list_widget.setCurrentRow(matched_row)
 
-            selected_label = selector.currentText() if select_index >= 0 else "—"
-            if kind_descriptions:
-                self._description_selected_name.setText(selected_label)
-            else:
-                self._structure_selected_name.setText(selected_label)
-            self._update_mini_stat_value(selected_stat, selected_label)
-            self._update_prompt_selection_note(kind_descriptions, selected_id or None)
+        selected_label = selector.currentText() if select_index >= 0 else "—"
+        self._prompt_selected_name_for_kind(kind).setText(selected_label)
+        self._update_mini_stat_value(selected_stat, selected_label)
+        self._update_prompt_selection_note(kind, selected_id or None)
 
-            list_widget.blockSignals(False)
-            selector.blockSignals(False)
-            self._refresh_prompt_active_markers(kind_descriptions)
-
-        _populate(descriptions)
+        list_widget.blockSignals(False)
+        selector.blockSignals(False)
+        self._refresh_prompt_active_markers(kind)
 
     def _bind_suno_tab(self) -> None:
         draft = self._suno_draft
@@ -3219,8 +3322,9 @@ class SettingsView(QWidget):
         self._sync_music_prompt_defaults_to_local_store()
         if self._cache is not None:
             self._cache.apply_settings_workspace(settings_raw=self._settings_raw)
-        self._bind_text_library_tab(True)
-        self._bind_text_library_tab(False)
+        self._bind_text_library_tab("description")
+        self._bind_text_library_tab("structure")
+        self._bind_text_library_tab("mood")
         self._show_save_success("Saved Music defaults.")
         log_info("Saved Music defaults.", category="settings")
         self._refresh_footer()

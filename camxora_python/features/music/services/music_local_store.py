@@ -18,6 +18,7 @@ class MusicWorkspacePrefs:
     secondary_profile_ids: list[str] | None = None
     selected_description_id: str = ""
     selected_structure_id: str = ""
+    selected_mood_id: str = ""
 
 
 def _read_json(path: Path) -> Any | None:
@@ -58,6 +59,7 @@ class MusicLocalStore:
             secondary_profile_ids=_string_list(raw.get("secondaryProfileIds")),
             selected_description_id=str(raw.get("selectedDescriptionId") or "").strip(),
             selected_structure_id=str(raw.get("selectedStructureId") or "").strip(),
+            selected_mood_id=str(raw.get("selectedMoodId") or "").strip(),
         )
 
     def write_workspace_prefs(self, prefs: MusicWorkspacePrefs) -> None:
@@ -69,6 +71,7 @@ class MusicLocalStore:
             "secondaryProfileIds": list(prefs.secondary_profile_ids or []),
             "selectedDescriptionId": prefs.selected_description_id,
             "selectedStructureId": prefs.selected_structure_id,
+            "selectedMoodId": prefs.selected_mood_id,
         }
         _write_json(self._path, payload)
         from shared.services.workspace_prefs_push import schedule_workspace_prefs_push

@@ -17,6 +17,7 @@ def test_music_local_store_round_trip(tmp_path: Path) -> None:
         secondary_profile_ids=["profile-b"],
         selected_description_id="desc-1",
         selected_structure_id="struct-1",
+        selected_mood_id="mood-1",
     )
     store.write_workspace_prefs(prefs)
     loaded = store.read_workspace_prefs()
@@ -27,3 +28,4 @@ def test_music_local_store_round_trip(tmp_path: Path) -> None:
     assert loaded.secondary_profile_ids == ["profile-b"]
     assert loaded.selected_description_id == "desc-1"
     assert loaded.selected_structure_id == "struct-1"
+    assert loaded.selected_mood_id == "mood-1"

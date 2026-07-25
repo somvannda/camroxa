@@ -495,6 +495,26 @@ function PricingSection() {
           title: 'Pricing row not found',
           description: 'Try refreshing the page. The row key may have changed after model-aware pricing.',
         });
+      } else if (error instanceof AxiosError && error.response?.status === 422) {
+        const payload = error.response.data as {
+          error?: { message?: string };
+          detail?: unknown;
+        };
+        const message =
+          payload?.error?.message ||
+          (typeof payload?.detail === 'string' ? payload.detail : null) ||
+          'Validation failed — local provider cost may be $0 (allowed after fix).';
+        toast({
+          variant: 'destructive',
+          title: 'Cannot update pricing',
+          description: message,
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Failed to save pricing',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        });
       }
     }
   }

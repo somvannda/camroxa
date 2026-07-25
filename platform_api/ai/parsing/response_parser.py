@@ -173,15 +173,35 @@ def extract_chat_content(response: dict[str, Any]) -> str:
     if not choices:
         return ""
 
-    message = choices[0].get("message", {})
+    first = choices[0] if isinstance(choices[0], dict) else {}
+    message = first.get("message", {})
     if not isinstance(message, dict):
-        return ""
+        # Some providers put text directly on the choice.
+        direct = first.get("text") or first.get("content")
+        return str(direct or "").strip()
 
-    content = str(message.get("content") or "").strip()
+    raw_content = message.get("content")
+    if isinstance(raw_content, list):
+        parts: list[str] = []
+        for part in raw_content:
+            if isinstance(part, str) and part.strip():
+                parts.append(part.strip())
+            elif isinstance(part, dict):
+                text = part.get("text") or part.get("content") or ""
+                if str(text).strip():
+                    parts.append(str(text).strip())
+        content = "\n".join(parts).strip()
+    else:
+        content = str(raw_content or "").strip()
     if content:
         return content
 
-    for key in ("text", "output", "response"):
+    # DeepSeek V4 thinking mode may put the answer in reasoning_content.
+    reasoning = str(message.get("reasoning_content") or "").strip()
+    if reasoning:
+        return reasoning
+
+    for key in ("text", "output", "response", "refusal"):
         alt = message.get(key)
         if isinstance(alt, str) and alt.strip():
             return alt.strip()

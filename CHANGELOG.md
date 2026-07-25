@@ -9,60 +9,47 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **Daemon export cancel:** Cancel Active Export now kills the warm visualizer daemon + ffmpeg process tree (previously only terminated one-shot subprocess jobs, so hung NVENC pipes left “already running” forever)
-- **Continue Progress + API recovery:** Progress right-click **Continue Progress** advances the row’s next stage; auto-video clears stale busy/cooldowns and resumes when the API recovers after 502/outage
-- **Export context menu:** **Start Export / Force Regenerate MP4 / Rebuild MP4 / Start Merging** appear on right-click of any Progress cell (not only the Export/Merge columns)
-- **Export workers setting:** Preferences **Export Workers** (>1) now runs parallel one-shot visualizer subprocesses; the warm daemon stays single-job and is only used when workers=1 (billing/quota unchanged — charged once per batch by track count)
-- **Export hang / cancel:** daemon/subprocess exports honor a cancel flag between frames and while blocked on the encode queue; Cancel waits ~2s for soft stop then kills the process tree; auto-video stays paused 45s after a user cancel so the same batch does not instantly restart
-- **Stop Exporting:** Progress right-click **Stop Exporting** hard-stops the job and pauses auto-video + pipeline helper until you manually Start Export / Rebuild / Continue Progress / Start Merging on a row
-- **Start Merging:** no longer fails with “still loading settings”; queued merge wins over auto-export. Continue Progress prefers merge when local MP4s already exist (Auto Merge still requires Music → Auto Merge). Merge no longer requires the Video catalog template — only exported MP4s in the run folder
-- **Rebuild / Force Regenerate MP4:** no longer force `auto_merge=False`; after export they honor Music → **Auto Merge** the same as auto-video (export → merge)
-
 ### Added
-
-- **Progress right-click Cancel:** Operational rows context menu includes **Cancel Active Export/Merge** to stop the single local pipeline job (or clear stuck busy state) so another **Start Export** can run
-- **Music History filters:** Status (All/Success/Failed/Pending) + Batch dropdown; calendar filter matches planned run date **or** created day; Show all clears status/batch too; fetches up to history window (API max 100)
-- **Pipeline Recover failed:** History button scans loaded failures — retry drafts, rewrite→Suno on content-policy rejects, retry other Suno fails
-- **Pipeline helper agent (background):** shell coordinator auto-scans history and recovers failed drafts/Suno (cooldown + per-session caps)
-- **REQ-2.3 slice 2 bars:** GPU spectrum covers mirror/symmetrical/drift/floating/ignition/neon (plus prior thin/grid); beads + waveforms remain CPU
-- **REQ-3.5 NativeEncodeBridge NVENC:** Windows DLL encodes H.264 via runtime `nvEncodeAPI64.dll` (D3D11 + CPU NV12 upload, Annex-B); export path uses it when `CAMXORA_NATIVE_ENCODE=1` then remuxes audio with ffmpeg `-c:v copy`; pipe fallback on failure; `CAMXORA_NATIVE_ENCODE_STUB=1` keeps stub path
-- **Export GPU tier helper:** `visualizer/export_gpu_tier.py` classifies NVIDIA GPUs as `low|mid|high` (`CAMXORA_GPU_TIER` override or nvidia-smi); low tier tightens Draft/Fast/Balanced particle caps and prefers yuv420p on `quality` speed (Master uncapped)
-- **Shell app thread registry:** track/join background sync + push QThreads on quit (`shared/services/app_thread_registry.py`)
-- **Encode throughput (Phase 2b):** fast/very_fast pipe uses planar `yuv420p` (OpenCV I420 + reusable dst) instead of interleaved NV12; CPU readback pool via `Buffer.read_into`; `CAMXORA_EXPORT_PIPE` override (`rgba|nv12|yuv420p`)
-- **Encode throughput (Phase 2a):** OpenCV NV12 pack (~10× vs float NumPy), pack-on-writer overlap, deeper encode queue (default 6; `CAMXORA_ENCODE_QUEUE`), NVENC `-tune ll` / `-zerolatency` for fast/very_fast; `CAMXORA_ENCODE_METRICS` reports pack avg
-- **REQ-2.3 GPU spectrum (slice 1):** optional export bar path via FFT 1D texture + instanced draw; `CAMXORA_GPU_SPECTRUM=1` enables, default off with CPU fallback
-- **REQ-2.5 ExportCoordinator:** unified manual export API (`start_export`, `cancel_export`, `on_progress`) routing in-process GL → daemon → subprocess with `ExportGate` enforcement
-- **REQ-2.4 pipelined encode writer:** bounded queue + writer thread between GPU readback and ffmpeg stdin; `CAMXORA_PIPELINED_ENCODE=0` restores sync writes; `CAMXORA_ENCODE_METRICS=1` reports p95 block times
-- Manual export billing (`video_manual`) with refunds on technical fail; user stop keeps completed + in-progress, refunds never-started only
-- Dashboard remaining card: **X of Y left**, account daily track-export/merge caps; weekly usage soft curves; zero series dimmed in legend
 
 ### Changed
 
-- **Native NVENC (pipelined NV12):** API v2 `camxora_eb_submit_nv12` + OpenCV pack on `camxora-native-encode` writer thread; `CAMXORA_NATIVE_ENCODE=1` again selects native export (was gated off for sync RGBA slowness)
-- **Dashboard weekly chart:** drop Qt Charts (`QSplineSeries` + animations) for a cached QPainter chart — fixes sticky/laggy dashboard scrolling and shell-wide jank
+### Fixed
 
-- **Encode throughput (Phase 2e):** Manual Export billing is async (UI no longer stalls 1–2s); app close mid-export joins export QThreads in `closeEvent`; unset Speed defaults to Fast; Balanced skips spectrum glow (Master unchanged); GPU bar path covers thin-lines / signal-needles / grid-steps / pixel-bars
-- **Encode throughput (Phase 2d):** export-only speed-mode tradeoffs for heavy templates — skip/reduce spectrum glow passes and cap particle count/spawn on Draft/Fast/Balanced (Master untouched); Bass Drive-class templates should close the gap vs Beattok without regressing light templates
-- **Encode throughput (Phase 2c):** Balanced/draft speed modes use planar `yuv420p` pack-on-writer (same as fast); ffmpeg `-thread_queue_size 64` + one-frame stdin bufsize; drop duplicate per-frame FFT fetch after 60 Hz smooth advance
-- Fast exports tag ffmpeg `-color_range tv` for OpenCV BT.601 limited-range YUV (`yuv420p` default; `nv12` override still available); explicit `quality` speed keeps RGBA/`pc`
-- KPI labels: Studio Exports, Manual Exports, YouTube Uploads
+## [0.4.0] - 2026-07-25
+
+### Added
+
+- **Music Mood:** Automation Mood dropdown + Shuffle (persists `defaultMoodId` / `shuffleMood`); batch create sends `mood_id` / `shuffle_mood`; History Mood column; Settings → Moods library (Camxora + user-owned prompts)
+- **History Rewrite album 1 / album 2 / title:** right-click regenerates Primary/Secondary album or a song title even after Suno success (bills one album/title draft slot; does not change lyrics or song status). On `suno_failed` / `draft_ready`, **Rewrite title** auto-queues Suno with the new title
+- **History batch Rewrite lyrics:** right-click **Rewrite lyrics (N songs)** runs polish→Suno for failed songs with usable lyrics (skips corrupt); optional **Rewrite this song**
+- **History status multi-select:** Status filter is a checkable menu (Success / Failed / Pending); pick any combination (OR). Empty selection = All statuses
+- **Delete failed batch:** History right-click **Delete failed batch** removes eligible batches (no Suno success/pending audio) after confirm so you can recreate with the correct description
+- **Progress right-click Cancel:** Operational rows context menu includes **Cancel Active Export/Merge** to stop the single local pipeline job (or clear stuck busy state) so another **Start Export** can run
+- **Music History filters:** Status + Batch dropdown; calendar filter; Show all; fetches up to history window (API max 100)
+- **Pipeline Recover failed:** History button scans loaded failures — retry drafts, rewrite→Suno on content-policy rejects, retry other Suno fails
+- **Pipeline helper agent (background):** shell coordinator auto-scans history and recovers failed drafts/Suno (cooldown + per-session caps)
+- **REQ-2.3 / 2.4 / 2.5 / 3.5 export stack:** GPU spectrum bars, pipelined encode writer, ExportCoordinator, NativeEncodeBridge NVENC, GPU tier helper, shell app thread registry, encode throughput Phase 2a–2e
+- Manual export billing (`video_manual`) with refunds on technical fail; Dashboard remaining card + weekly usage chart
+
+### Changed
+
+- **Native NVENC (pipelined NV12):** API v2 `camxora_eb_submit_nv12` + OpenCV pack on writer thread; `CAMXORA_NATIVE_ENCODE=1` selects native export
+- **Dashboard weekly chart:** QPainter chart (replaces Qt Charts) for smoother scrolling
+- Encode throughput Phase 2c–2e speed-mode tradeoffs; KPI labels: Studio Exports, Manual Exports, YouTube Uploads
+- **Rebuild / Force Regenerate MP4:** honor Music → **Auto Merge** after export (same as auto-video)
 
 ### Fixed
 
-- **Settings path Open:** `path_row` ignores `QPushButton.clicked(bool)` so Open no longer passes `False` into `_open_path_field` (`'bool' object has no attribute 'text'`)
-- **Video template save:** unlinked templates now upsert to the server (first channel profile); link in Settings for pipeline use
-- **Music Suno/draft retry:** no longer crashes on `MusicHistoryListResponse.rows` after retry succeeds
-- **VideoManualExportWorker quit:** block window close until export cancel/join finishes (no batch chain during teardown); last-resort terminate if still stuck
-- **PushNotificationWorker quit:** close active WebSocket on `request_stop` (was blocked up to 65s in `recv`) so mid-export close no longer logs `QThread: Destroyed while thread 'PushNotificationWorker' is still running`
-- **Quit mid-export panel refresh:** `any_video_pipeline_threads_running` no longer raises when a `deleteLater`'d `VideoManualExportWorker` wrapper remains in the tracker; untrack before `deleteLater`
-- **Empty-name QThread on mid-export quit:** shell sync/push/orchestration workers were unnamed + widget-parented; close now stops coordinators and joins `app_thread_registry` before tearing down the window (export workers were already named)
-- **App quit mid-export QThread teardown:** `RootWindow.closeEvent` + named export workers so close no longer logs `QThread: Destroyed while thread '' is still running`
-- **Stop Export QThread teardown:** join with timeout + `deleteLater` (detach lingering workers) so cancel no longer logs `QThread: Destroyed while thread is still running`
-- **GPU spectrum export:** color texture size/dtype mismatch (`f1` vs RGBA32F) in `register_layer()`; benchmark A no longer crashes with `CAMXORA_GPU_SPECTRUM=1`
-- Visualizer daemon argv normalization preserves empty `--logo` values (fixes immediate export exit code 1)
-- GPU export async readback uses correct moderngl `ctx.buffer(reserve=…)` allocation
+- **Music plan Image total overcount:** album image estimate is per batch/channel (BG+TH), not N jobs × every song
+- **Music plan summary UI:** compact framed estimate under Generate
+- **Quit disconnect warnings / quit-safe auto-video:** coordinators disconnect cleanly; no empty-name QThread destroy on close
+- **History date filter:** inverted From>To auto-swaps; client-side filter; strict planned-run or created day (no `updated_at` reopen); Last batch ignores date range
+- **Calendar arrow changing month:** shell date pickers open calendar popup only (no month step)
+- **Lyric rewrite quality gate + mood align:** trim corrupt tails; mood+title+structure context; pipeline helper smart recovery
+- **History scroll jump:** poll refresh no longer jumps selection
+- **Daemon export cancel / hang / Stop Exporting / Start Merging queue:** cancel kills daemon+ffmpeg tree; cooperative cancel; Stop pauses auto until manual start; Start Merging queues over settings/auto-export; Continue Progress prefers merge when MP4s exist
+- **Settings path Open:** `path_row` ignores `clicked(bool)` so Open no longer passes False
+- **Video template save / Music Suno retry / export quit teardown / GPU spectrum / visualizer daemon argv** (see prior unreleased notes)
 
 ## [0.3.0] - 2026-07-19
 

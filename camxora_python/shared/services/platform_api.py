@@ -15,10 +15,13 @@ from shared.models.auth import (
     UserMeResponse,
 )
 from shared.models.platform import (
+    AlbumRewriteResponse,
     BatchCreateRequest,
     BatchCreateResponse,
+    BatchDeleteResponse,
     BatchStatusResponse,
     SongRetryResponse,
+    TitleRewriteResponse,
     ClaimContentPoolResponse,
     ContentPoolListResponse,
     ContentPoolStatsResponse,
@@ -278,12 +281,28 @@ class PlatformApi:
             if isinstance(item, dict)
         ]
 
+    def list_prompt_mood_names(self) -> list[PromptNameOption]:
+        data = self._client.request("/prompts/moods/workspace", auth=True)
+        if not isinstance(data, list):
+            return []
+        return [
+            PromptNameOption.model_validate(
+                {"id": item["id"], "name": item["name"], "isOwned": item.get("is_owned", False)}
+            )
+            for item in data
+            if isinstance(item, dict)
+        ]
+
     def list_my_descriptions(self) -> list[dict[str, object]]:
         data = self._client.request("/prompts/me/descriptions", auth=True)
         return data if isinstance(data, list) else []
 
     def list_my_structures(self) -> list[dict[str, object]]:
         data = self._client.request("/prompts/me/structures", auth=True)
+        return data if isinstance(data, list) else []
+
+    def list_my_moods(self) -> list[dict[str, object]]:
+        data = self._client.request("/prompts/me/moods", auth=True)
         return data if isinstance(data, list) else []
 
     def create_my_description(self, *, name: str, content: str) -> dict[str, object]:
@@ -332,6 +351,31 @@ class PlatformApi:
     def delete_my_structure(self, prompt_id: str) -> None:
         self._client.request(
             f"/prompts/me/structures/{prompt_id}",
+            method="DELETE",
+            auth=True,
+        )
+
+    def create_my_mood(self, *, name: str, content: str) -> dict[str, object]:
+        data = self._client.request(
+            "/prompts/me/moods",
+            method="POST",
+            auth=True,
+            body={"name": name, "content": content},
+        )
+        return data if isinstance(data, dict) else {}
+
+    def update_my_mood(self, prompt_id: str, *, name: str, content: str) -> dict[str, object]:
+        data = self._client.request(
+            f"/prompts/me/moods/{prompt_id}",
+            method="PUT",
+            auth=True,
+            body={"name": name, "content": content},
+        )
+        return data if isinstance(data, dict) else {}
+
+    def delete_my_mood(self, prompt_id: str) -> None:
+        self._client.request(
+            f"/prompts/me/moods/{prompt_id}",
             method="DELETE",
             auth=True,
         )
@@ -446,6 +490,14 @@ class PlatformApi:
         data = self._client.request(f"/batches/{batch_id}", auth=True)
         return BatchStatusResponse.model_validate(data)
 
+    def delete_batch(self, batch_id: str) -> BatchDeleteResponse:
+        data = self._client.request(
+            f"/batches/{batch_id}",
+            method="DELETE",
+            auth=True,
+        )
+        return BatchDeleteResponse.model_validate(data)
+
     def retry_song_draft(self, batch_id: str, song_id: str) -> SongRetryResponse:
         data = self._client.request(
             f"/batches/{batch_id}/songs/{song_id}/retry-draft",
@@ -453,6 +505,23 @@ class PlatformApi:
             auth=True,
         )
         return SongRetryResponse.model_validate(data)
+
+    def rewrite_batch_album(self, batch_id: str, *, role: str = "ok") -> AlbumRewriteResponse:
+        data = self._client.request(
+            f"/batches/{batch_id}/rewrite-album",
+            method="POST",
+            auth=True,
+            body={"role": role},
+        )
+        return AlbumRewriteResponse.model_validate(data)
+
+    def rewrite_song_title(self, batch_id: str, song_id: str) -> TitleRewriteResponse:
+        data = self._client.request(
+            f"/batches/{batch_id}/songs/{song_id}/rewrite-title",
+            method="POST",
+            auth=True,
+        )
+        return TitleRewriteResponse.model_validate(data)
 
     def retry_song_suno(
         self,

@@ -279,9 +279,19 @@ _CORRUPT_LYRIC_LINE_RE = re.compile(
     r'(\{\s*$|^\s*\}\s*$|"lyrics"\s*:|please present|acting failure|token back|'
     r"accord override|unintelligense|\b8token\b|normal edit yes|short reply mode|"
     r"boat block|do not repeat dropped|end mark|remaining through|audio void|"
-    r"only low noise|ok cut|aus fade|silence shorter|au revoir)",
+    r"only low noise|ok cut|aus fade|silence shorter|au revoir|"
+    r"springapplication|jsonobject|githubusercontent|sanitize value forbidden|"
+    r"graphql|jwt\b|deserialize|cjson|formattingenabled)",
     re.IGNORECASE,
 )
+_SCRIPT_CHAR_RE = re.compile(
+    r"[\u0400-\u04ff\u0600-\u06ff\u0900-\u097f\u0e00-\u0e7f"
+    r"\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]"
+)
+_REWRITE_MAX_INPUT_CHARS = 2200
+_REWRITE_MAX_OUTPUT_CHARS = 4500
+_REWRITE_MAX_LINE_CHARS = 160
+_REWRITE_MAX_LINE_WORDS = 28
 
 
 def _parse_bracket_header(line: str) -> str | None:
@@ -305,13 +315,85 @@ def normalize_section_label(header_line: str) -> str:
     return _normalize_text(inner.strip())
 
 
+def _is_section_header_line(line: str) -> bool:
+    return bool(_SECTION_HEADER_RE.match(str(line or "").strip()))
+
+
 def _is_corrupt_lyric_line(line: str) -> bool:
     stripped = str(line or "").strip()
     if not stripped:
         return True
     if stripped.startswith("{") or stripped.startswith('"lyrics"'):
         return True
-    return _CORRUPT_LYRIC_LINE_RE.search(stripped) is not None
+    if _CORRUPT_LYRIC_LINE_RE.search(stripped):
+        return True
+    if _SCRIPT_CHAR_RE.search(stripped) and len(_SCRIPT_CHAR_RE.findall(stripped)) >= 3:
+        return True
+    words = re.findall(r"[A-Za-z0-9']+", stripped)
+    if len(stripped) > _REWRITE_MAX_LINE_CHARS or len(words) > _REWRITE_MAX_LINE_WORDS:
+        # Run-on word-salad lines (common rewrite failure mode).
+        return True
+    return False
+
+
+def prepare_lyrics_for_rewrite(lyrics: str) -> str:
+    """Keep only coherent leading lyric body before corruption / word-salad tails."""
+    text = strip_trailing_lyric_meta_tail(str(lyrics or "").strip())
+    if not text:
+        return ""
+
+    kept: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if kept and kept[-1].strip():
+                kept.append("")
+            continue
+        if _is_section_header_line(stripped):
+            kept.append(stripped)
+            continue
+        if _is_corrupt_lyric_line(stripped):
+            break
+        kept.append(stripped)
+
+    while kept and not kept[-1].strip():
+        kept.pop()
+    while kept and _is_section_header_line(kept[-1]):
+        kept.pop()
+
+    cleaned = "\n".join(kept).strip()
+    if len(cleaned) > _REWRITE_MAX_INPUT_CHARS:
+        cut = cleaned[:_REWRITE_MAX_INPUT_CHARS]
+        last_header = cut.rfind("\n[")
+        if last_header > 400:
+            cut = cut[:last_header].rstrip()
+        cleaned = cut.strip()
+    return cleaned
+
+
+def describe_lyric_rewrite_quality_failure(lyrics: str) -> str | None:
+    """Reject rewrite outputs that are empty, oversized, or corrupted."""
+    text = str(lyrics or "").strip()
+    if not text:
+        return "Lyrics rewrite returned empty text."
+    if len(text) > _REWRITE_MAX_OUTPUT_CHARS:
+        return "Lyrics rewrite is too long to submit to Suno."
+    if re.search(r'"lyrics"\s*:', text, re.IGNORECASE):
+        return "Lyrics contain embedded JSON artifacts."
+    content_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip() and not _is_section_header_line(line)
+    ]
+    if not content_lines:
+        return "Lyrics rewrite has no singable lines."
+    bad = sum(1 for line in content_lines if _is_corrupt_lyric_line(line))
+    if bad / max(len(content_lines), 1) >= 0.2:
+        return "Lyrics rewrite contains word-salad or corrupted lines."
+    script_hits = len(_SCRIPT_CHAR_RE.findall(text))
+    if script_hits >= 20:
+        return "Lyrics rewrite contains unexpected mixed-script noise."
+    return None
 
 
 def unwrap_embedded_lyrics_payload(text: str) -> str:
@@ -1077,18 +1159,108 @@ def build_ai_structure_lyrics_system_prompt(
     return base + f"- {build_monolingual_language_instruction(language)}\n"
 
 
+def build_mood_writing_context(
+    mood: str,
+    *,
+    title: str | None = None,
+) -> str:
+    """Build album/title/lyric writing context from mood (never production description)."""
+    parts: list[str] = []
+    mood_text = str(mood or "").strip()
+    if mood_text:
+        parts.append(f"Mood:\n{mood_text}")
+    title_text = str(title or "").strip()
+    if title_text:
+        parts.append(f'Song title: "{title_text}"')
+    if not parts:
+        return (
+            "Write with a clear emotional mood. Prefer specific human feelings. "
+            "Avoid neon, chrome, cyberpunk, and night-drive clichés."
+        )
+    parts.append(
+        "Follow the mood closely. Avoid neon, chrome, cyberpunk, and night-drive clichés."
+    )
+    return "\n\n".join(parts)
+
+
+def build_lyric_rewrite_system_prompt(
+    *,
+    strength: int,
+    suno_failure_hint: str | None = None,
+) -> str:
+    """System prompt for lyric rewrite — same rules as draft lyric (mood-led, not description)."""
+    strength_clamped = max(0, min(100, int(strength)))
+    rewrite_intensity = (
+        "Use clearly different wording, imagery, and phrasing from the original."
+        if strength_clamped >= 70
+        else "Change wording substantially while keeping the same story beats."
+    )
+    system_prompt = (
+        "Rewrite song lyrics for music generation. Keep the same overall story arc, "
+        "but produce fresh lyrics that read like a new draft—not a light edit. "
+        f"{rewrite_intensity} "
+        "Follow the mood and title closely when provided. "
+        "Do not treat production style, genre tags, or mix notes as lyric subject matter. "
+        "Write SHORT singable lines (usually under 12 words). Aim for about 16–40 lyric lines total. "
+        "Never output word salad, keyword lists, code, URLs, JSON, multilingual gibberish, "
+        "or meta commentary. "
+        "Remove artist names, producer tags, brand names, and other references that could "
+        "trigger music-platform content filters. "
+        "Never use the word 'lowlight' or other tokens that resemble producer tags. "
+        "Keep section labels like [Verse], [Chorus], [Bridge] and preserve line breaks. "
+        "Return ONLY the rewritten lyrics text."
+    )
+    failure_hint = str(suno_failure_hint or "").strip()
+    if failure_hint:
+        system_prompt += (
+            " Suno previously rejected similar lyrics. Avoid repeating the blocked wording. "
+            f"Provider rejection detail: {failure_hint}"
+        )
+    return system_prompt
+
+
+def build_lyric_rewrite_user_prompt(
+    *,
+    lyrics: str,
+    mood: str = "",
+    title: str | None = None,
+    structure: str = "",
+    description: str = "",  # deprecated; ignored — description is Suno-only
+) -> str:
+    """User prompt for lyric rewrite: mood + title + structure (no description)."""
+    del description
+    parts = [build_mood_writing_context(mood, title=title)]
+    layout = str(structure or "").strip()
+    if layout:
+        parts.append(
+            "Song structure (preserve these section headers when present in the original):\n"
+            f"{layout}"
+        )
+    parts.append("Original lyrics to rewrite:")
+    parts.append(str(lyrics or "").strip())
+    return "\n\n".join(parts)
+
+
+def lyric_rewrite_temperature(strength: int) -> float:
+    """Cap rewrite temperature like draft lyric (avoid gibberish from high creativity)."""
+    strength_clamped = max(0, min(100, int(strength)))
+    return min(0.9, max(0.35, 0.45 + (strength_clamped / 100.0) * 0.4))
+
+
 def build_ai_structure_lyrics_user_prompt(
     *,
-    description: str,
+    mood: str = "",
+    title: str | None = None,
+    description: str = "",  # deprecated; ignored — description is Suno-only
     avoid_openings: list[str] | None = None,
     forced_opening: str | None = None,
 ) -> str:
-    """User prompt for AI Structure mode — description only, no template structure."""
-    from platform_api.ai.purposes.vocal_profile import sanitize_production_description
-
+    """User prompt for AI Structure mode — title + mood + opening; no description."""
+    del description  # production description belongs on Suno style only
     parts = [
-        f"Description:\n{sanitize_production_description(description)}",
+        build_mood_writing_context(mood, title=title),
         "Choose a sensible section layout for this song and write full lyrics.",
+        "Invent your own section headers (for example [Verse], [Chorus], [Bridge]).",
     ]
     if avoid_openings:
         avoid_str = ", ".join(avoid_openings[:200])
@@ -1401,7 +1573,7 @@ def build_lyrics_opening_block(forced_opening: str | None) -> str:
 
 def build_suno_lyrics_prompt(
     *,
-    description: str,
+    description: str = "",
     structure: str,
     language: str,
     secondary_language: str | None = None,
@@ -1410,14 +1582,20 @@ def build_suno_lyrics_prompt(
     forced_opening: str | None = None,
     retry_hint: str = "",
     structure_mode: str = STRUCTURE_MODE_TEMPLATE,
+    mood: str = "",
+    title: str | None = None,
 ) -> str:
-    """Compress draft context into Suno API's 200-character lyrics prompt."""
+    """Compress lyric-draft context into Suno Lyrics API's 200-character prompt.
+
+    Uses title/mood/opening/structure — not production description (that is Suno style).
+    """
     from platform_api.ai.purposes.vocal_profile import (
-        build_suno_style_prompt,
         language_label,
         parse_vocal_profile,
         resolve_batch_languages,
     )
+
+    del description  # production description is for Suno music style only
 
     def _compact(text: str, limit: int) -> str:
         return re.sub(r"\s+", " ", str(text or "").strip())[:limit]
@@ -1428,34 +1606,28 @@ def build_suno_lyrics_prompt(
         secondary_language=secondary_language,
         profile=profile,
     )
-    headers = structure_headers or extract_structure_header_lines(structure)
-    style_context = build_suno_style_prompt(
-        production_description=description,
-        profile=profile,
-        primary=primary,
-        secondary=secondary,
-        structure_headers=headers,
-    )
-    desc = _compact(style_context, 90)
+    _ = secondary
     lang = _compact(language_label(primary), 16)
 
     section_labels: list[str] = []
     if structure_mode != STRUCTURE_MODE_AI_FREE:
-        for line in str(structure or "").splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            section_labels.append(_compact(stripped.split(":")[0], 18))
+        headers = structure_headers or extract_structure_header_lines(structure)
+        for header in headers:
+            section_labels.append(_compact(lyric_header_line(header).strip("[]"), 18))
             if len(section_labels) >= 4:
                 break
     sections = ", ".join(section_labels)
 
     parts: list[str] = []
+    title_bit = _compact(title, 28) if title else ""
+    if title_bit:
+        parts.append(title_bit)
+    mood_bit = _compact(mood, 40) if mood else ""
+    if mood_bit:
+        parts.append(mood_bit)
     opening = _compact(forced_opening, 35) if forced_opening else ""
     if opening:
         parts.append(opening)
-    if desc:
-        parts.append(desc)
     if structure_mode == STRUCTURE_MODE_AI_FREE:
         parts.append("use your own section headers")
     elif sections:
@@ -1666,58 +1838,44 @@ class GenerationService:
         model_id: str,
         *,
         provider_chain: list[tuple[str, str]] | None = None,
-        description: str | None = None,
+        description: str | None = None,  # deprecated; ignored — Suno style only
         structure: str | None = None,
         title: str | None = None,
+        mood: str | None = None,
         suno_failure_hint: str | None = None,
     ) -> str:
-        """Rewrite lyrics for Suno resubmit while preserving theme and section layout."""
+        """Rewrite lyrics aligned with draft lyric flow (mood + title + structure)."""
         del user_id  # reserved for future audit logging
-        text = str(lyrics or "").strip()
+        del description  # production description belongs on Suno style only
+        text = prepare_lyrics_for_rewrite(str(lyrics or ""))
         if not text:
             raise ValidationError(
-                "Lyrics are required to rewrite.",
-                details={"field": "lyrics"},
+                "These lyrics are too corrupted to rewrite. Regenerate a fresh draft instead.",
+                details={"field": "lyrics", "reason": "corrupt_or_empty_after_trim"},
+            )
+        content_lines = [
+            line
+            for line in text.splitlines()
+            if line.strip() and not _is_section_header_line(line)
+        ]
+        if len(content_lines) < 2:
+            raise ValidationError(
+                "Not enough clean lyric lines left to rewrite. Regenerate a fresh draft instead.",
+                details={"field": "lyrics", "reason": "insufficient_clean_lines"},
             )
 
         strength_clamped = max(0, min(100, int(strength)))
-        temperature = 0.55 + (strength_clamped / 100.0) * 0.4
-        rewrite_intensity = (
-            "Use clearly different wording, imagery, and phrasing from the original."
-            if strength_clamped >= 70
-            else "Change wording substantially while keeping the same story beats."
+        temperature = lyric_rewrite_temperature(strength_clamped)
+        system_prompt = build_lyric_rewrite_system_prompt(
+            strength=strength_clamped,
+            suno_failure_hint=suno_failure_hint,
         )
-        system_prompt = (
-            "Rewrite song lyrics for music generation. Keep the same overall theme, mood, "
-            "and story arc, but produce fresh lyrics that read like a new draft—not a light edit. "
-            f"{rewrite_intensity} "
-            "Remove artist names, producer tags, brand names, and other references that could "
-            "trigger music-platform content filters. "
-            "Never use the word 'lowlight' or other tokens that resemble producer tags. "
-            "Keep section labels like [Verse], [Chorus], [Bridge] and preserve line breaks. "
-            "Return ONLY the rewritten lyrics text."
+        user_prompt = build_lyric_rewrite_user_prompt(
+            lyrics=text,
+            mood=str(mood or ""),
+            title=title,
+            structure=str(structure or ""),
         )
-        failure_hint = str(suno_failure_hint or "").strip()
-        if failure_hint:
-            system_prompt += (
-                " Suno previously rejected similar lyrics. Avoid repeating the blocked wording. "
-                f"Provider rejection detail: {failure_hint}"
-            )
-        context_lines: list[str] = []
-        theme = str(description or "").strip()
-        layout = str(structure or "").strip()
-        song_title = str(title or "").strip()
-        if theme:
-            context_lines.append(f"Song theme / description: {theme}")
-        if layout:
-            context_lines.append(f"Song structure: {layout}")
-        if song_title:
-            context_lines.append(f"Working title: {song_title}")
-        if context_lines:
-            context_lines.append("")
-        context_lines.append("Original lyrics to rewrite:")
-        context_lines.append(text)
-        user_prompt = "\n".join(context_lines)
 
         polished = await self.generate_text(
             system_prompt=system_prompt,
@@ -1725,14 +1883,14 @@ class GenerationService:
             provider=provider,
             model=model_id,
             temperature=temperature,
-            max_tokens=4096,
+            max_tokens=2048,
             prefer_json=False,
             provider_chain=provider_chain,
         )
-        cleaned = str(polished or "").strip()
+        cleaned = prepare_lyrics_for_rewrite(str(polished or ""))
         if not cleaned:
             raise ExternalServiceError(
-                "Lyrics rewrite returned empty text.",
+                "Lyrics rewrite returned empty or corrupted text.",
                 is_retryable=True,
                 details={"provider": provider},
             )
@@ -1742,7 +1900,7 @@ class GenerationService:
             sanitize_lyrics_for_suno,
         )
 
-        blocked = extract_blocked_terms_from_suno_error(failure_hint)
+        blocked = extract_blocked_terms_from_suno_error(suno_failure_hint)
         runtime_config = await get_suno_blocklist_service().get_runtime_config()
         cleaned = sanitize_lyrics_for_suno(
             cleaned,
@@ -1768,6 +1926,15 @@ class GenerationService:
                 cleaned,
                 blocked_terms=blocked,
                 runtime_config=runtime_config,
+            )
+            cleaned = prepare_lyrics_for_rewrite(cleaned)
+
+        quality_failure = describe_lyric_rewrite_quality_failure(cleaned)
+        if quality_failure:
+            raise ExternalServiceError(
+                quality_failure,
+                is_retryable=True,
+                details={"provider": provider, "reason": "rewrite_quality_gate"},
             )
         return cleaned
 
@@ -1889,22 +2056,21 @@ class GenerationService:
         )
 
         ai_free = structure_mode == STRUCTURE_MODE_AI_FREE
-        temperature = request.creativity_level / 100.0 * 1.5
-        user_context = self._build_draft_user_prompt(request, structure_headers)
+        # Cap temperature — legacy desktop used ~creativity/85; 1.5x caused gibberish.
+        temperature = min(1.0, max(0.25, request.creativity_level / 100.0 * 1.15))
+        mood_text = str(getattr(request, "mood", "") or "").strip()
+        metadata_context = build_mood_writing_context(mood_text)
         if ai_free:
-            lyrics_user_context = build_ai_structure_lyrics_user_prompt(
-                description=request.description,
-                avoid_openings=request.avoid_openings,
-                forced_opening=request.forced_opening,
-            )
+            # Title is injected after album/title generation.
+            lyrics_user_context = ""
             min_lyric_lines = AI_STRUCTURE_MIN_CONTENT_LINES
         else:
-            lyrics_user_context = self._build_freeform_lyrics_user_prompt(request)
+            lyrics_user_context = ""
             min_lyric_lines = minimum_lyric_content_lines(len(structure_headers))
         opening_block = build_freeform_lyrics_opening_block(request.forced_opening)
 
         title_system, title_user = build_title_slot_prompts(
-            user_context=user_context,
+            user_context=metadata_context,
             title_seed=request.title_seed,
             avoid_titles=request.avoid_titles,
             language=request.language,
@@ -1912,7 +2078,7 @@ class GenerationService:
             vocal_profile=request.vocal_profile,
         )
         album_system, album_user = build_album_slot_prompts(
-            user_context=user_context,
+            user_context=metadata_context,
             album_seed=request.album_seed,
             avoid_albums=request.avoid_albums,
             language=request.language,
@@ -2008,73 +2174,18 @@ class GenerationService:
             refunded = True
 
         try:
-            title: str | None = request.forced_title
-            title_attempt_used = 1
-            if not title:
-                for title_attempt in range(1, MAX_TITLE_ATTEMPTS + 1):
-                    attempt_temperature = draft_attempt_temperature(temperature, title_attempt)
-                    try:
-                        title_raw = await self._get_text_gateway().generate_text(
-                            provider=routing.title.provider,
-                            model=routing.title.sub_model or "",
-                            system_prompt=title_system,
-                            user_prompt=title_user,
-                            temperature=attempt_temperature,
-                            max_tokens=256,
-                            prefer_json=True,
-                            provider_chain=title_chain,
-                        )
-                        title_calls += 1
-                        title = sanitize_metadata_name(
-                            parse_string_field(title_raw, "title"),
-                            field="title",
-                        )
-                    except ExternalServiceError as exc:
-                        last_failure_reason = f"Title LLM error on attempt {title_attempt}: {exc}"
-                        logger.warning(last_failure_reason, exc_info=True)
-                        title = None
-                        if title_attempt >= MAX_TITLE_ATTEMPTS:
-                            await refund_failed_draft(attempts_used=title_attempt)
-                            raise
-                    if not title:
-                        last_failure_reason = f"Incomplete title on attempt {title_attempt}"
-                        continue
-                    if not is_valid_metadata_name(title, field="title"):
-                        last_failure_reason = (
-                            f"Title '{title}' failed validation on attempt {title_attempt}"
-                        )
-                        title = None
-                        continue
-                    if _check_avoid_list(title, request.avoid_titles):
-                        title_album_attempts += 1
-                        last_failure_reason = f"Title '{title}' found in avoid list"
-                        title = None
-                        if title_album_attempts >= MAX_TITLE_ALBUM_ATTEMPTS:
-                            break
-                        continue
-                    title_attempt_used = title_attempt
-                    break
-            if not title:
-                await refund_failed_draft(attempts_used=title_calls or MAX_TITLE_ATTEMPTS)
-                raise ExternalServiceError(
-                    f"Song draft generation failed while generating title. "
-                    f"Last failure: {last_failure_reason}",
-                    is_retryable=False,
-                    details={"last_failure_reason": last_failure_reason},
-                )
-
-            from platform_api.services.draft_progress_log import log_title_generated
-
-            if request.batch_id:
-                log_title_generated(
-                    batch_id=request.batch_id,
-                    song_number=request.song_number,
-                    title=title,
-                    attempt=title_attempt_used,
-                )
-
+            # 1) Album (pool seed + mood) → 2) Title (pool seed + mood) → 3) Lyrics
             album: str | None = request.forced_album
             album_attempt_used = 1
+            if album:
+                album = sanitize_metadata_name(album, field="album")
+                if not is_valid_metadata_name(album, field="album"):
+                    await refund_failed_draft(attempts_used=1, reason="invalid_forced_album")
+                    raise ExternalServiceError(
+                        f"Forced album '{request.forced_album}' failed validation.",
+                        is_retryable=False,
+                        details={"field": "album"},
+                    )
             if not album:
                 for album_attempt in range(1, MAX_ALBUM_ATTEMPTS + 1):
                     attempt_temperature = draft_attempt_temperature(temperature, album_attempt)
@@ -2148,6 +2259,92 @@ class GenerationService:
                         attempt=album_attempt_used,
                     )
 
+            title: str | None = request.forced_title
+            title_attempt_used = 1
+            if title:
+                title = sanitize_metadata_name(title, field="title")
+                if not is_valid_metadata_name(title, field="title"):
+                    await refund_failed_draft(attempts_used=1, reason="invalid_forced_title")
+                    raise ExternalServiceError(
+                        f"Forced title '{request.forced_title}' failed validation.",
+                        is_retryable=False,
+                        details={"field": "title"},
+                    )
+            if not title:
+                for title_attempt in range(1, MAX_TITLE_ATTEMPTS + 1):
+                    attempt_temperature = draft_attempt_temperature(temperature, title_attempt)
+                    try:
+                        title_raw = await self._get_text_gateway().generate_text(
+                            provider=routing.title.provider,
+                            model=routing.title.sub_model or "",
+                            system_prompt=title_system,
+                            user_prompt=title_user,
+                            temperature=attempt_temperature,
+                            max_tokens=256,
+                            prefer_json=True,
+                            provider_chain=title_chain,
+                        )
+                        title_calls += 1
+                        title = sanitize_metadata_name(
+                            parse_string_field(title_raw, "title"),
+                            field="title",
+                        )
+                    except ExternalServiceError as exc:
+                        last_failure_reason = f"Title LLM error on attempt {title_attempt}: {exc}"
+                        logger.warning(last_failure_reason, exc_info=True)
+                        title = None
+                        if title_attempt >= MAX_TITLE_ATTEMPTS:
+                            await refund_failed_draft(attempts_used=title_attempt)
+                            raise
+                    if not title:
+                        last_failure_reason = f"Incomplete title on attempt {title_attempt}"
+                        continue
+                    if not is_valid_metadata_name(title, field="title"):
+                        last_failure_reason = (
+                            f"Title '{title}' failed validation on attempt {title_attempt}"
+                        )
+                        title = None
+                        continue
+                    if _check_avoid_list(title, request.avoid_titles):
+                        title_album_attempts += 1
+                        last_failure_reason = f"Title '{title}' found in avoid list"
+                        title = None
+                        if title_album_attempts >= MAX_TITLE_ALBUM_ATTEMPTS:
+                            break
+                        continue
+                    title_attempt_used = title_attempt
+                    break
+            if not title:
+                await refund_failed_draft(attempts_used=title_calls or MAX_TITLE_ATTEMPTS)
+                raise ExternalServiceError(
+                    f"Song draft generation failed while generating title. "
+                    f"Last failure: {last_failure_reason}",
+                    is_retryable=False,
+                    details={"last_failure_reason": last_failure_reason},
+                )
+
+            from platform_api.services.draft_progress_log import log_title_generated
+
+            if request.batch_id:
+                log_title_generated(
+                    batch_id=request.batch_id,
+                    song_number=request.song_number,
+                    title=title,
+                    attempt=title_attempt_used,
+                )
+
+            if ai_free:
+                lyrics_user_context = build_ai_structure_lyrics_user_prompt(
+                    mood=mood_text,
+                    title=title,
+                    avoid_openings=request.avoid_openings,
+                    forced_opening=request.forced_opening,
+                )
+            else:
+                lyrics_user_context = self._build_freeform_lyrics_user_prompt(
+                    request, title=title
+                )
+
             lyrics = ""
             lyric_attempt = 0
             use_suno_lyrics = is_suno_lyric_routing(
@@ -2158,14 +2355,16 @@ class GenerationService:
             for lyric_attempt in range(1, MAX_LYRIC_ATTEMPTS + 1):
                 attempt_temperature = draft_attempt_temperature(temperature, lyric_attempt)
                 lyrics_user_prompt = lyrics_user_context
-                if opening_block:
+                if opening_block and not ai_free:
+                    # AI Structure prompt already includes forced_opening.
+                    lyrics_user_prompt += "\n\n" + opening_block
+                elif opening_block and ai_free and "Required opening" not in lyrics_user_prompt:
                     lyrics_user_prompt += "\n\n" + opening_block
                 lyrics_user_prompt += lyric_retry_feedback
                 draft_lyrics = ""
                 try:
                     if use_suno_lyrics:
                         suno_prompt = build_suno_lyrics_prompt(
-                            description=request.description,
                             structure=request.structure,
                             language=request.language,
                             secondary_language=request.secondary_language,
@@ -2174,6 +2373,8 @@ class GenerationService:
                             forced_opening=request.forced_opening,
                             retry_hint=suno_retry_hint,
                             structure_mode=structure_mode,
+                            mood=mood_text,
+                            title=title,
                         )
                         draft_lyrics = await self._call_suno_lyrics(prompt=suno_prompt)
                         lyric_calls += 1
@@ -2435,18 +2636,28 @@ class GenerationService:
         user_uuid = UUID(user_id)
         ref_id = str(uuid4())
         from platform_api.dependencies import get_suno_blocklist_service
-        from platform_api.ai.purposes.metadata_text import sanitize_metadata_name
+        from platform_api.ai.purposes.metadata_text import (
+            is_valid_metadata_name,
+            sanitize_metadata_name,
+        )
         from platform_api.services.suno_lyrics_sanitize import sanitize_text_for_suno
 
         runtime_config = await get_suno_blocklist_service().get_runtime_config()
         safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
-        if not safe_title:
+        if not safe_title or not is_valid_metadata_name(
+            safe_title, field="title", max_length=255
+        ):
             raise ValidationError(
                 "Suno requires a valid song title.",
-                details={"field": "title"},
+                details={"field": "title", "title": str(request.title or "")[:160]},
             )
 
         safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
+        if not is_valid_metadata_name(safe_title, field="title", max_length=255):
+            raise ValidationError(
+                "Suno requires a valid song title after blocklist sanitize.",
+                details={"field": "title"},
+            )
         safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
         safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
 
@@ -2943,15 +3154,20 @@ class GenerationService:
         return "\n\n".join(parts)
 
     @staticmethod
-    def _build_freeform_lyrics_user_prompt(request: DraftRequest) -> str:
-        """Build the lyric-slot user prompt for free-form generation."""
-        from platform_api.ai.purposes.vocal_profile import sanitize_production_description
-
-        parts = [f"Description:\n{sanitize_production_description(request.description)}"]
-        parts.append(
-            "Song structure guide (mood and energy arc only — do not output section labels):\n"
-            f"{request.structure.strip()}"
-        )
+    def _build_freeform_lyrics_user_prompt(
+        request: DraftRequest,
+        *,
+        title: str | None = None,
+    ) -> str:
+        """Lyric-slot user prompt: mood + structure + polished title (no description)."""
+        parts = [
+            build_mood_writing_context(str(getattr(request, "mood", "") or ""), title=title),
+        ]
+        if str(request.structure or "").strip():
+            parts.append(
+                "Song structure (write lyrics that fit this form; use exact headers later):\n"
+                f"{request.structure.strip()}"
+            )
         if request.avoid_openings:
             avoid_str = ", ".join(request.avoid_openings[:200])
             parts.append(f"Avoid these opening lines: {avoid_str}")
@@ -3159,7 +3375,7 @@ class GenerationService:
         *,
         system_prompt: str,
         user_prompt: str,
-        model: str = "deepseek-chat",
+        model: str = "deepseek-v4-flash",
         temperature: float = 0.8,
         max_tokens: int = 600,
         response_format: dict[str, str] | None = None,

@@ -88,7 +88,7 @@ DEFAULT_PROVIDER: MappingProxyType[ServiceType, str] = MappingProxyType(
 
 DEFAULT_SUB_MODEL: MappingProxyType[str, str] = MappingProxyType(
     {
-        "deepseek": "deepseek-chat",
+        "deepseek": "deepseek-v4-flash",
         "fal": "flux-pro",
         "openai": "gpt-4o-mini",
         "slai": "xiaomi/mimo-v2.5-pro",

@@ -20,8 +20,25 @@ def test_slai_text_models_include_mimo() -> None:
     assert "slai/gpt-image-2" in image_models
     assert "xiaomi/mimo-v2.5-pro" not in image_models
     assert "gpt-5.6-sol" not in image_models
-    assert SUB_MODEL_COST_TIERS["xiaomi/mimo-v2.5-pro"] == "~$0.00009/1K"
-    assert SUB_MODEL_COST_TIERS["slai/gpt-image-2"] == "~$0.01/img"
+    assert SUB_MODEL_COST_TIERS["xiaomi/mimo-v2.5-pro"] == "~$0.0001414/1K"
+    assert SUB_MODEL_COST_TIERS["gpt-5.6-luna"] == "~$0.0000307/1K"
+    assert SUB_MODEL_COST_TIERS["gpt-5.6-terra"] == "~$0.0000582/1K"
+    assert SUB_MODEL_COST_TIERS["gpt-5.6-sol"] == "~$0.0001033/1K"
+    assert SUB_MODEL_COST_TIERS["slai/gpt-image-2"] == "~$0.0067/img"
+
+
+def test_deepseek_v4_models_registered_with_legacy_aliases() -> None:
+    from platform_api.ai.registry import resolve_text_model_id, text_model_extra_payload
+
+    deepseek_models = PROVIDER_SUB_MODELS["deepseek"][ServiceType.TEXT_GENERATION]
+    assert "deepseek-v4-flash" in deepseek_models
+    assert "deepseek-v4-pro" in deepseek_models
+    assert "deepseek-chat" not in deepseek_models
+    assert resolve_text_model_id("deepseek", "deepseek-chat") == "deepseek-v4-flash"
+    assert resolve_text_model_id("deepseek", "deepseek-reasoner") == "deepseek-v4-pro"
+    assert text_model_extra_payload("deepseek", "deepseek-v4-flash") == {
+        "thinking": {"type": "disabled"}
+    }
 
 
 def test_suno_supports_music_and_lyric_text() -> None:

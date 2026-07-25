@@ -1,17 +1,20 @@
-﻿Camxora 0.3.0 (Sandbox)
+﻿Camxora 0.4.0 (Sandbox)
 
 What's new
 ----------
-• Phase 1 export speed: audio analysis cache, warm visualizer daemon, Draft/Standard/Master tiers
-• Fast exports use NV12 pipe + async GPU readback (less CPU/GPU stall)
-• Export status shows codec (NVENC / CPU x264) and live init steps
+• Music Mood: Automation Mood + Shuffle, History Mood column, Settings Moods library
+• History: rewrite album/title/lyrics, multi-select status, delete failed batch, Recover failed + background helper
+• Progress: Cancel / Stop Exporting / Continue Progress / Start Merging queue fixes
+• Export: parallel workers, cooperative cancel, NVENC/encode throughput improvements
 
 Fixes
 -----
-• Export progress no longer jumps backward at encoder start
-• Re-exporting the same song skips long librosa analysis when cache is warm
+• History date filter (strict range, no wipe on inverted dates)
+• Calendar pickers no longer step the month when opening
+• Music plan image credit overcount; quit-safe auto-video threads
+• Lyric rewrite quality gate + mood-aligned recovery
 
 Notes
 -----
-• Pipeline auto-export uses Draft tier (1280×720, very fast) by default
-• Install over 0.2.x; footer should show v0.3.0 after install
+• Requires sandbox API with moods migrations 069–071
+• Install over 0.3.x; footer should show v0.4.0 after install

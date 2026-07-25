@@ -674,6 +674,19 @@ QFrame#music_section {
     border: none;
 }
 
+QFrame#music_plan_summary {
+    background-color: #0f1923;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+}
+
+QLabel#music_plan_summary_text {
+    color: #9fb3c8;
+    font-size: 9pt;
+    background: transparent;
+    border: none;
+}
+
 QDateEdit#shell_date_edit {
     background-color: #0f1923;
     border: 1px solid #2a4a6c;
@@ -1894,6 +1907,8 @@ STOP_BUTTON_ID = "stop_button"
 TITLE_LABEL_ID = "title"
 SUBTITLE_LABEL_ID = "subtitle"
 MUSIC_SECTION_ID = "music_section"
+MUSIC_PLAN_SUMMARY_ID = "music_plan_summary"
+MUSIC_PLAN_SUMMARY_TEXT_ID = "music_plan_summary_text"
 SUCCESS_STATUS_PILL_ID = "status_pill_success"
 WARNING_STATUS_PILL_ID = "status_pill_warning"
 # Canonical badge/pill IDs — see shared.themes.badge_pills

@@ -88,6 +88,36 @@ BATCH_STATUS_COMPLETED = "completed"
 BATCH_STATUS_PARTIAL = "partial"
 BATCH_STATUS_FAILED = "failed"
 
+# User may delete a batch only when no Suno audio succeeded or is still pending.
+USER_DELETABLE_SONG_STATUSES = frozenset(
+    {
+        SONG_STATUS_PENDING,
+        SONG_STATUS_DRAFT_FAILED,
+        SONG_STATUS_DRAFT_READY,
+        SONG_STATUS_SUNO_FAILED,
+    }
+)
+
+# Pre-fix draft fails billed lyric+title+album (3) but refunded count=1.
+# Delete releases the leftover 2 draft-meter slots per draft_failed song.
+LEGACY_DRAFT_FAIL_LEAK_SLOTS = 2
+
+
+def batch_songs_are_user_deletable(songs: list[Song]) -> tuple[bool, str | None]:
+    """Return (ok, reason) for whether every song allows user delete."""
+    for song in songs:
+        status = str(song.status or "").strip().lower()
+        if status not in USER_DELETABLE_SONG_STATUSES:
+            return (
+                False,
+                (
+                    "Batch cannot be deleted while any song has Suno in progress "
+                    "or completed audio. Only pending/draft-failed/draft-ready/"
+                    "suno-failed batches can be deleted."
+                ),
+            )
+    return True, None
+
 
 @dataclass(frozen=True)
 class SunoSanitizedPayload:
@@ -540,8 +570,10 @@ class BatchService:
         song_count: int,
         description_id: str | None = None,
         structure_id: str | None = None,
+        mood_id: str | None = None,
         structure_mode: str = "template",
         shuffle_structure: bool = False,
+        shuffle_mood: bool = False,
         auto_gen_image: bool = False,
         auto_gsuno: bool = False,
         language: str = "en",
@@ -733,6 +765,14 @@ class BatchService:
             or _read_bool_setting(settings, "shuffleStructure"),
             structure_mode=normalized_mode,
         )
+        mood_ids = await self._resolve_song_mood_ids(
+            user_id=UUID(user_id),
+            batch_id=batch.id,
+            song_count=song_count,
+            mood_id=mood_id,
+            shuffle_mood=shuffle_mood
+            or _read_bool_setting(settings, "shuffleMood"),
+        )
         songs = [
             Song(
                 id=uuid4(),
@@ -741,6 +781,7 @@ class BatchService:
                 user_id=UUID(user_id),
                 description_id=UUID(description_id) if description_id else None,
                 structure_id=structure_ids[i],
+                mood_id=mood_ids[i],
                 status=SONG_STATUS_PENDING,
             )
             for i in range(song_count)
@@ -941,6 +982,7 @@ class BatchService:
         claimed_items: list[ClaimedPoolItem] = []
         draft_charged = 0
         draft_list_units = 0
+        draft_billed_slots = 0
         draft_billing_applied = False
         try:
             prepared_request = await self._resolve_song_prompt_content(song, draft_request)
@@ -1000,8 +1042,13 @@ class BatchService:
                 song_id=str(song.id),
             )
 
+            draft_billed_slots = 0
             if self._enforcement_service is not None:
-                draft_charged, draft_list_units = await self._deduct_split_draft_billing(
+                (
+                    draft_charged,
+                    draft_list_units,
+                    draft_billed_slots,
+                ) = await self._deduct_split_draft_billing(
                     user_id=user_id,
                     channel_profile_id=channel_profile_id,
                     draft_routing=draft_routing,
@@ -1074,6 +1121,7 @@ class BatchService:
                         ref_id=str(song.id),
                         list_credit_units=draft_list_units or None,
                         prior_ledger_recorded=True,
+                        count=max(1, int(draft_billed_slots or 1)),
                     )
                 except Exception:
                     logger.exception(
@@ -1106,6 +1154,20 @@ class BatchService:
         from platform_api.ai.purposes.draft_routing import build_draft_routing
 
         return build_draft_routing(routing, title_routing, album_routing)
+
+    async def _text_slot_provider_chain(
+        self,
+        operation: str,
+        *,
+        provider: str,
+        model: str | None,
+    ) -> list[tuple[str, str]]:
+        """Resolve title/album text fallback chain (same as draft generation)."""
+        if self._ai_routing_service is not None:
+            chain = await self._ai_routing_service.resolve_text_chain(operation)
+            if chain:
+                return [(item.provider, item.sub_model or "") for item in chain]
+        return [(provider, str(model or ""))]
 
     @staticmethod
     def _channel_album_label(batch: Batch, channel_role: ChannelRole) -> str:
@@ -1337,6 +1399,448 @@ class BatchService:
 
         if song.status != SONG_STATUS_PENDING:
             await self._batch_repo.update_song_status(song_id, SONG_STATUS_PENDING)
+
+    async def rewrite_batch_album(
+        self,
+        *,
+        batch_id: UUID,
+        user_id: str,
+        role: str = "ok",
+    ) -> dict[str, str]:
+        """Regenerate Primary (ok) or Secondary (alt) album without changing lyrics/status."""
+        from platform_api.ai.parsing.response_parser import parse_string_field
+        from platform_api.ai.purposes.metadata_text import (
+            is_valid_metadata_name,
+            sanitize_metadata_name,
+        )
+        from platform_api.services.generation_service import (
+            MAX_ALBUM_ATTEMPTS,
+            build_album_slot_prompts,
+            build_mood_writing_context,
+        )
+
+        role_key = str(role or "ok").strip().lower()
+        if role_key not in {"ok", "alt"}:
+            raise ValidationError(
+                "Album rewrite role must be 'ok' (album 1) or 'alt' (album 2).",
+                details={"role": role},
+            )
+
+        batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
+        if batch is None:
+            raise NotFoundError(
+                f"Batch '{batch_id}' not found.",
+                details={"batch_id": str(batch_id)},
+            )
+        if role_key == "alt" and not batch.alt_profile_id:
+            raise ValidationError(
+                "This batch has no Secondary channel for album 2.",
+                details={"batch_id": str(batch_id)},
+            )
+        if self._ai_routing_service is None:
+            raise NoAvailableKeysError("deepseek", {})
+
+        songs = await self._batch_repo.get_songs_for_user_batch(batch_id, UUID(user_id))
+        if not songs:
+            raise ValidationError(
+                "Batch has no songs to anchor album rewrite.",
+                details={"batch_id": str(batch_id)},
+            )
+        anchor = min(songs, key=lambda item: int(item.batch_index or 0))
+        rewrite_ctx = await self.resolve_lyric_rewrite_context(song=anchor, batch=batch)
+        mood_text = str(rewrite_ctx.get("mood") or "").strip()
+        user_context = build_mood_writing_context(mood_text) or (
+            str(anchor.title or "").strip() or "Instrumental electronic music."
+        )
+
+        ok_album = str(batch.ok_album or anchor.album or "").strip()
+        alt_album = str(batch.alt_album or "").strip()
+        avoid = [
+            name
+            for name in (ok_album, alt_album)
+            if name and is_valid_metadata_name(name, field="album")
+        ]
+
+        draft_routing = await self._resolve_draft_routing()
+        provider = str(getattr(draft_routing.album, "provider", "") or "").strip() or "deepseek"
+        sub_model = str(getattr(draft_routing.album, "sub_model", "") or "").strip() or None
+        album_chain = await self._text_slot_provider_chain(
+            "album",
+            provider=provider,
+            model=sub_model,
+        )
+
+        charged = None
+        if self._enforcement_service is not None:
+            charged = await self._enforcement_service.check_and_deduct(
+                UUID(user_id),
+                batch.ok_profile_id,
+                "album",
+                provider,
+                sub_model=sub_model,
+            )
+
+        album_system, album_user = build_album_slot_prompts(
+            user_context=user_context,
+            avoid_albums=avoid,
+        )
+        if role_key == "alt" and ok_album:
+            album_user = (
+                f"{album_user}\n\n"
+                f'The Primary album is "{ok_album}". '
+                "Create a distinct Secondary album name with a different wording."
+            )
+
+        new_album: str | None = None
+        last_failure = "Album rewrite produced no usable name."
+        try:
+            for attempt in range(1, MAX_ALBUM_ATTEMPTS + 1):
+                try:
+                    album_raw = await self._generation_service.generate_text(
+                        system_prompt=album_system,
+                        user_prompt=album_user,
+                        provider=draft_routing.album.provider,
+                        model=draft_routing.album.sub_model or "",
+                        temperature=0.85,
+                        max_tokens=256,
+                        prefer_json=True,
+                        provider_chain=album_chain,
+                    )
+                except Exception as exc:
+                    last_failure = f"Album LLM error on attempt {attempt}: {exc}"
+                    logger.warning(last_failure)
+                    continue
+                candidate = sanitize_metadata_name(
+                    parse_string_field(album_raw, "album"),
+                    field="album",
+                )
+                if not candidate or not is_valid_metadata_name(candidate, field="album"):
+                    last_failure = f"Album '{candidate}' failed validation on attempt {attempt}"
+                    continue
+                if any(candidate.lower() == item.lower() for item in avoid if item):
+                    last_failure = f"Album '{candidate}' collided with existing names"
+                    continue
+                if role_key == "alt" and ok_album and candidate.lower() == ok_album.lower():
+                    last_failure = "Secondary album matched Primary album"
+                    continue
+                new_album = candidate
+                break
+        except Exception:
+            if charged is not None and self._enforcement_service is not None:
+                try:
+                    await self._enforcement_service.refund_failed_operation(
+                        UUID(user_id),
+                        batch.ok_profile_id,
+                        "album",
+                        provider,
+                        charged_credit_units=int(
+                            getattr(charged, "charged_credit_units", 0) or 0
+                        ),
+                        sub_model=sub_model,
+                        reason="album_rewrite_failed",
+                        ref_id=str(batch_id),
+                    )
+                except Exception:
+                    logger.exception("Failed to refund album rewrite for batch %s", batch_id)
+            raise
+
+        if not new_album:
+            if charged is not None and self._enforcement_service is not None:
+                try:
+                    await self._enforcement_service.refund_failed_operation(
+                        UUID(user_id),
+                        batch.ok_profile_id,
+                        "album",
+                        provider,
+                        charged_credit_units=int(
+                            getattr(charged, "charged_credit_units", 0) or 0
+                        ),
+                        sub_model=sub_model,
+                        reason="album_rewrite_invalid",
+                        ref_id=str(batch_id),
+                    )
+                except Exception:
+                    logger.exception("Failed to refund album rewrite for batch %s", batch_id)
+            raise ValidationError(
+                f"Album rewrite failed. {last_failure}",
+                details={"batch_id": str(batch_id), "role": role_key},
+            )
+
+        if role_key == "ok":
+            await self._batch_repo.update_batch_channel_albums(
+                batch_id,
+                ok_album=new_album,
+                alt_album=alt_album or None,
+            )
+            await self._batch_repo.update_batch_songs_album(batch_id, new_album)
+        else:
+            await self._batch_repo.update_batch_channel_albums(
+                batch_id,
+                ok_album=ok_album or None,
+                alt_album=new_album,
+            )
+
+        logger.info(
+            "Rewrote batch %s album role=%s -> %s",
+            batch_id,
+            role_key,
+            new_album,
+        )
+        return {
+            "batch_id": str(batch_id),
+            "role": role_key,
+            "album": new_album,
+        }
+
+    async def rewrite_song_title(
+        self,
+        *,
+        batch_id: UUID,
+        song_id: UUID,
+        user_id: str,
+    ) -> dict[str, str]:
+        """Regenerate one song title without changing lyrics, album, or status."""
+        from platform_api.ai.parsing.response_parser import parse_string_field
+        from platform_api.ai.purposes.metadata_text import (
+            is_valid_metadata_name,
+            sanitize_metadata_name,
+        )
+        from platform_api.services.generation_service import (
+            MAX_TITLE_ATTEMPTS,
+            build_mood_writing_context,
+            build_title_slot_prompts,
+        )
+
+        batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
+        if batch is None:
+            raise NotFoundError(
+                f"Batch '{batch_id}' not found.",
+                details={"batch_id": str(batch_id)},
+            )
+        songs = await self._batch_repo.get_songs_for_user_batch(batch_id, UUID(user_id))
+        song = next((item for item in songs if item.id == song_id), None)
+        if song is None:
+            raise NotFoundError(
+                f"Song '{song_id}' not found in batch '{batch_id}'.",
+                details={"batch_id": str(batch_id), "song_id": str(song_id)},
+            )
+        if self._ai_routing_service is None:
+            raise NoAvailableKeysError("deepseek", {})
+
+        rewrite_ctx = await self.resolve_lyric_rewrite_context(song=song, batch=batch)
+        mood_text = str(rewrite_ctx.get("mood") or "").strip()
+        user_context = build_mood_writing_context(mood_text) or (
+            str(song.album or batch.ok_album or "").strip() or "Instrumental electronic music."
+        )
+        avoid_titles = [
+            str(item.title or "").strip()
+            for item in songs
+            if item.id != song.id and str(item.title or "").strip()
+        ]
+        current_title = str(song.title or "").strip()
+        # Only avoid clean titles — don't feed corrupt titles into the prompt.
+        avoid_titles = [
+            name
+            for name in avoid_titles
+            if is_valid_metadata_name(name, field="title")
+        ]
+        title_seed = (
+            current_title
+            if current_title and is_valid_metadata_name(current_title, field="title")
+            else None
+        )
+        if title_seed:
+            avoid_titles.append(title_seed)
+
+        draft_routing = await self._resolve_draft_routing()
+        provider = str(getattr(draft_routing.title, "provider", "") or "").strip() or "deepseek"
+        sub_model = str(getattr(draft_routing.title, "sub_model", "") or "").strip() or None
+        title_chain = await self._text_slot_provider_chain(
+            "title",
+            provider=provider,
+            model=sub_model,
+        )
+
+        charged = None
+        if self._enforcement_service is not None:
+            charged = await self._enforcement_service.check_and_deduct(
+                UUID(user_id),
+                batch.ok_profile_id,
+                "title",
+                provider,
+                sub_model=sub_model,
+            )
+
+        title_system, title_user = build_title_slot_prompts(
+            user_context=user_context,
+            title_seed=title_seed,
+            avoid_titles=avoid_titles,
+        )
+        new_title: str | None = None
+        last_failure = "Title rewrite produced no usable name."
+        try:
+            for attempt in range(1, MAX_TITLE_ATTEMPTS + 1):
+                try:
+                    title_raw = await self._generation_service.generate_text(
+                        system_prompt=title_system,
+                        user_prompt=title_user,
+                        provider=draft_routing.title.provider,
+                        model=draft_routing.title.sub_model or "",
+                        temperature=0.85,
+                        max_tokens=256,
+                        prefer_json=True,
+                        provider_chain=title_chain,
+                    )
+                except Exception as exc:
+                    last_failure = f"Title LLM error on attempt {attempt}: {exc}"
+                    logger.warning(last_failure)
+                    continue
+                candidate = sanitize_metadata_name(
+                    parse_string_field(title_raw, "title"),
+                    field="title",
+                )
+                if not candidate or not is_valid_metadata_name(candidate, field="title"):
+                    last_failure = f"Title '{candidate}' failed validation on attempt {attempt}"
+                    continue
+                if any(candidate.lower() == item.lower() for item in avoid_titles if item):
+                    last_failure = f"Title '{candidate}' collided with existing titles"
+                    continue
+                new_title = candidate
+                break
+        except Exception:
+            if charged is not None and self._enforcement_service is not None:
+                try:
+                    await self._enforcement_service.refund_failed_operation(
+                        UUID(user_id),
+                        batch.ok_profile_id,
+                        "title",
+                        provider,
+                        charged_credit_units=int(
+                            getattr(charged, "charged_credit_units", 0) or 0
+                        ),
+                        sub_model=sub_model,
+                        reason="title_rewrite_failed",
+                        ref_id=str(song_id),
+                    )
+                except Exception:
+                    logger.exception("Failed to refund title rewrite for song %s", song_id)
+            raise
+
+        if not new_title:
+            if charged is not None and self._enforcement_service is not None:
+                try:
+                    await self._enforcement_service.refund_failed_operation(
+                        UUID(user_id),
+                        batch.ok_profile_id,
+                        "title",
+                        provider,
+                        charged_credit_units=int(
+                            getattr(charged, "charged_credit_units", 0) or 0
+                        ),
+                        sub_model=sub_model,
+                        reason="title_rewrite_invalid",
+                        ref_id=str(song_id),
+                    )
+                except Exception:
+                    logger.exception("Failed to refund title rewrite for song %s", song_id)
+            raise ValidationError(
+                f"Title rewrite failed. {last_failure}",
+                details={"song_id": str(song_id)},
+            )
+
+        await self._batch_repo.update_song_title_keep_status(song_id, new_title)
+        logger.info("Rewrote song %s title -> %s", song_id, new_title)
+        return {
+            "batch_id": str(batch_id),
+            "song_id": str(song_id),
+            "title": new_title,
+        }
+
+    async def delete_failed_batch(
+        self,
+        *,
+        batch_id: UUID,
+        user_id: str,
+    ) -> dict[str, Any]:
+        """Hard-delete a user-owned batch that has no successful/pending Suno audio.
+
+        Restores leftover draft-meter slots for ``draft_failed`` songs (legacy
+        under-refund repair). Does not re-credit the wallet and does not gift
+        song quota.
+        """
+        owner_id = UUID(user_id)
+        batch = await self._batch_repo.get_batch_for_user(batch_id, owner_id)
+        if batch is None:
+            raise NotFoundError(
+                f"Batch '{batch_id}' not found.",
+                details={"batch_id": str(batch_id)},
+            )
+
+        songs = await self._batch_repo.get_songs_for_user_batch(batch_id, owner_id)
+        ok, reason = batch_songs_are_user_deletable(songs)
+        if not ok:
+            raise ValidationError(
+                reason or "Batch cannot be deleted.",
+                details={
+                    "batch_id": str(batch_id),
+                    "statuses": [str(song.status or "") for song in songs],
+                },
+            )
+
+        draft_failed_count = sum(
+            1
+            for song in songs
+            if str(song.status or "").strip().lower() == SONG_STATUS_DRAFT_FAILED
+        )
+        draft_quota_released = 0
+        if (
+            draft_failed_count > 0
+            and self._enforcement_service is not None
+            and LEGACY_DRAFT_FAIL_LEAK_SLOTS > 0
+        ):
+            release = getattr(self._enforcement_service, "release_operation_quota", None)
+            if release is not None:
+                slots = draft_failed_count * LEGACY_DRAFT_FAIL_LEAK_SLOTS
+                try:
+                    await release(
+                        user_id=owner_id,
+                        channel_profile_id=batch.ok_profile_id,
+                        operation_type="lyric",
+                        count=slots,
+                    )
+                    draft_quota_released = slots
+                except Exception:
+                    logger.exception(
+                        "Failed to release draft quota while deleting batch %s",
+                        batch_id,
+                    )
+
+        delete_fn = getattr(self._batch_repo, "delete_batch_cascade", None)
+        if delete_fn is None:
+            raise ValidationError(
+                "Batch delete is not available.",
+                details={"batch_id": str(batch_id)},
+            )
+        deleted = await delete_fn(batch_id, owner_id)
+        if not deleted:
+            raise NotFoundError(
+                f"Batch '{batch_id}' not found.",
+                details={"batch_id": str(batch_id)},
+            )
+
+        logger.info(
+            "User %s deleted batch %s (songs=%d, draft_quota_released=%d)",
+            user_id,
+            batch_id,
+            len(songs),
+            draft_quota_released,
+        )
+        return {
+            "batch_id": str(batch_id),
+            "deleted": True,
+            "songs_deleted": len(songs),
+            "draft_quota_released": draft_quota_released,
+        }
 
     async def _assert_song_allows_suno_retry(self, song: Song) -> None:
         """Ensure a song may submit or resubmit Suno."""
@@ -1669,8 +2173,10 @@ class BatchService:
         kind: ImageKind | str,
         channel_role: ChannelRole | str,
     ) -> tuple[UUID | None, str, str]:
-        kind_value = kind.value if isinstance(kind, ImageKind) else str(kind)
-        role_value = channel_role.value if isinstance(channel_role, ChannelRole) else str(channel_role)
+        kind_value = (kind.value if isinstance(kind, ImageKind) else str(kind)).strip().lower()
+        role_value = (
+            channel_role.value if isinstance(channel_role, ChannelRole) else str(channel_role)
+        ).strip().upper()
         return (profile_id, kind_value, role_value)
 
     def _pick_prompt_song(self, songs: list[Song], preferred: Song | None = None) -> Song | None:
@@ -1754,16 +2260,17 @@ class BatchService:
 
         await self._sync_batch_channel_asset_manifests(batch=batch, settings=settings)
 
+        created: list[ImageJob] = []
         if jobs:
-            await self._batch_repo.create_image_jobs(jobs)
+            created = await self._batch_repo.create_image_jobs(jobs)
             logger.info(
                 "Created %d album image job(s) for batch %s (prompt song %s).",
-                len(jobs),
+                len(created),
                 batch.id,
                 song.id,
             )
 
-        return jobs
+        return created
 
     async def create_image_jobs_for_song(
         self,
@@ -2690,6 +3197,34 @@ class BatchService:
         assigned = PromptService.assign_structures_shuffle(pool, song_count, batch_id)
         return [item.id for item in assigned]
 
+    async def _resolve_song_mood_ids(
+        self,
+        *,
+        user_id: UUID,
+        batch_id: UUID,
+        song_count: int,
+        mood_id: str | None,
+        shuffle_mood: bool,
+    ) -> list[UUID | None]:
+        """Assign per-song mood ids (fixed or shuffled from workspace catalog)."""
+        fixed = UUID(mood_id) if mood_id else None
+        if song_count < 1:
+            return []
+        if not shuffle_mood:
+            return [fixed for _ in range(song_count)]
+        if self._prompt_service is None:
+            return [fixed for _ in range(song_count)]
+
+        moods = await self._prompt_service.list_moods_workspace(user_id)
+        pool = [item for item in moods if getattr(item, "id", None) is not None]
+        if not pool:
+            return [fixed for _ in range(song_count)]
+
+        from platform_api.services.prompt_service import PromptService
+
+        assigned = PromptService.assign_moods_shuffle(pool, song_count, batch_id)
+        return [item.id for item in assigned]
+
     async def _resolve_song_prompt_content(self, song: Song, draft_request: Any) -> Any:
         """Hydrate hidden prompt content from stored song ids when possible.
 
@@ -2710,6 +3245,7 @@ class BatchService:
 
         description_text = draft_request.description.strip()
         structure_text = draft_request.structure.strip()
+        mood_text = str(getattr(draft_request, "mood", "") or "").strip()
         ai_free = draft_request.structure_mode == STRUCTURE_MODE_AI_FREE
         description_profile = parse_vocal_profile(draft_request.vocal_profile)
 
@@ -2730,6 +3266,11 @@ class BatchService:
             )
             structure_text = str(getattr(structure, "content", "") or "").strip()
 
+        mood_id = getattr(song, "mood_id", None)
+        if mood_id is not None:
+            mood = await self._prompt_service.get_mood_for_access(mood_id, song.user_id)
+            mood_text = str(getattr(mood, "content", "") or "").strip()
+
         lyric_profile = lyric_vocal_profile_for_batch(
             description_profile=description_profile,
             primary=draft_request.language,
@@ -2740,8 +3281,75 @@ class BatchService:
             draft_request,
             description=description_text or draft_request.description,
             structure="" if ai_free else (structure_text or draft_request.structure),
+            mood=mood_text or str(getattr(draft_request, "mood", "") or ""),
             vocal_profile=vocal_profile_to_dict(lyric_profile),
         )
+
+    async def resolve_lyric_rewrite_context(
+        self,
+        *,
+        song: Song,
+        batch: Batch | None = None,
+    ) -> dict[str, str]:
+        """Resolve mood + structure + title for lyric rewrite (same sources as draft lyric)."""
+        from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE
+
+        title = str(song.title or "").strip()
+        mood_text = ""
+        structure_text = ""
+        structure_mode = str(
+            getattr(batch, "structure_mode", "template") if batch is not None else "template"
+        ) or "template"
+        ai_free = structure_mode == STRUCTURE_MODE_AI_FREE
+
+        if self._prompt_service is not None:
+            mood_id = getattr(song, "mood_id", None)
+            if mood_id is not None:
+                try:
+                    mood = await self._prompt_service.get_mood_for_access(mood_id, song.user_id)
+                    mood_text = str(getattr(mood, "content", "") or "").strip()
+                except Exception:
+                    logger.exception(
+                        "Failed to resolve mood %s for lyric rewrite song %s",
+                        mood_id,
+                        song.id,
+                    )
+            if song.structure_id is not None and not ai_free:
+                try:
+                    structure = await self._prompt_service.get_structure_for_access(
+                        song.structure_id, song.user_id
+                    )
+                    structure_text = str(getattr(structure, "content", "") or "").strip()
+                except Exception:
+                    logger.exception(
+                        "Failed to resolve structure %s for lyric rewrite song %s",
+                        song.structure_id,
+                        song.id,
+                    )
+
+        return {
+            "title": title,
+            "mood": mood_text,
+            "structure": structure_text,
+        }
+
+    async def lyric_rewrite_context_for_user_song(
+        self,
+        *,
+        batch_id: UUID,
+        song_id: UUID,
+        user_id: str,
+    ) -> dict[str, str] | None:
+        """Load owned song rewrite context (mood/structure/title) or None if missing."""
+        owner = UUID(user_id)
+        batch = await self._batch_repo.get_batch_for_user(batch_id, owner)
+        if batch is None:
+            return None
+        songs = await self._batch_repo.get_songs_for_user_batch(batch_id, owner)
+        song = next((item for item in songs if item.id == song_id), None)
+        if song is None:
+            return None
+        return await self.resolve_lyric_rewrite_context(song=song, batch=batch)
 
     def _build_draft_requests(self, batch: Batch) -> list[DraftRequest]:
         """Create one draft request per song using persisted batch settings."""
@@ -2754,6 +3362,7 @@ class BatchService:
                 creativity_level=batch.creativity_level,
                 description="",
                 structure="",
+                mood="",
                 structure_mode=structure_mode,
             )
             for _ in range(batch.song_count)
@@ -2797,15 +3406,16 @@ class BatchService:
         channel_profile_id: UUID | None,
         draft_routing: Any,
         draft_request: DraftRequest,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, int]:
         """Apply subscription quota or wallet billing for each LLM draft slot.
 
         Returns:
-            (charged_credit_units, list_credit_units) — charged is wallet spend
-            (0 on plan allowance); list is sum of pricing list units for COGS.
+            (charged_credit_units, list_credit_units, billed_slots) — charged is wallet
+            spend (0 on plan allowance); list is sum of pricing list units for COGS;
+            billed_slots is how many draft meter increments were applied.
         """
         if self._enforcement_service is None:
-            return 0, 0
+            return 0, 0, 0
 
         from platform_api.services.draft_billing import deduct_split_draft_billing
 
@@ -3063,6 +3673,7 @@ class BatchService:
                 )
                 return False
 
+        rewrite_ctx = await self.resolve_lyric_rewrite_context(song=song, batch=batch)
         try:
             polished = await self._generation_service.polish_lyrics_text(
                 user_id,
@@ -3071,7 +3682,9 @@ class BatchService:
                 bill_provider,
                 bill_model,
                 provider_chain=polish_chain,
-                title=song.title,
+                title=rewrite_ctx["title"] or song.title,
+                mood=rewrite_ctx["mood"],
+                structure=rewrite_ctx["structure"],
                 suno_failure_hint=failure_hint,
             )
         except Exception as exc:

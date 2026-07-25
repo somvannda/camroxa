@@ -1,7 +1,7 @@
 """Music prompt management service.
 
-Provides create/update/delete for song descriptions and structures,
-matchKey pairing logic, and cycle/shuffle structure assignment for
+Provides create/update/delete for song descriptions, structures, and moods,
+matchKey pairing logic, and cycle/shuffle structure/mood assignment for
 batch generation.
 
 Requirements: 9.1, 9.2, 9.3, 9.6, 9.7
@@ -15,7 +15,7 @@ from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from platform_api.exceptions import DuplicateError, ForbiddenError, NotFoundError, ValidationError
-from platform_api.models.domain import MusicDescription, MusicStructure
+from platform_api.models.domain import MusicDescription, MusicMood, MusicStructure
 from platform_api.services.music_genre_catalog_service import MusicGenreCatalogService
 from platform_api.services.music_genre_utils import normalize_description_genres
 
@@ -75,6 +75,25 @@ class PromptRepositoryPort(Protocol):
     async def list_structure_usage_by_day(self, struct_id: UUID) -> list[dict[str, Any]]: ...
     async def map_structure_usage_counts(self) -> dict[UUID, int]: ...
 
+    async def create_mood(self, mood: MusicMood) -> MusicMood: ...
+    async def get_mood_by_id(self, mood_id: UUID) -> MusicMood | None: ...
+    async def get_mood_by_name(
+        self, name: str, *, user_id: UUID | None = None
+    ) -> MusicMood | None: ...
+    async def list_moods(self) -> list[MusicMood]: ...
+    async def list_moods_for_user(self, user_id: UUID) -> list[MusicMood]: ...
+    async def list_moods_workspace(self, user_id: UUID) -> list[MusicMood]: ...
+    async def update_mood(
+        self, mood_id: UUID, **fields: Any
+    ) -> MusicMood | None: ...
+    async def delete_mood(self, mood_id: UUID) -> bool: ...
+    async def archive_mood(self, mood_id: UUID) -> bool: ...
+    async def count_mood_usage(self, mood_id: UUID) -> int: ...
+    async def list_mood_usage_by_user(self, mood_id: UUID) -> list[dict[str, Any]]: ...
+    async def list_mood_usage_by_profile(self, mood_id: UUID) -> list[dict[str, Any]]: ...
+    async def list_mood_usage_by_day(self, mood_id: UUID) -> list[dict[str, Any]]: ...
+    async def map_mood_usage_counts(self, mood_ids: list[UUID]) -> dict[UUID, int]: ...
+
     async def get_descriptions_with_match_key(self) -> list[MusicDescription]: ...
     async def get_structures_with_match_key(self) -> list[MusicStructure]: ...
     async def get_matched_pairs(
@@ -90,10 +109,10 @@ class PromptRepositoryPort(Protocol):
 class PromptService:
     """Application service for music prompt management.
 
-    Handles CRUD for song descriptions and structures, enforces validation
-    rules (name 1-100 chars unique, content 1-5000 chars), provides matchKey
-    pairing logic, and implements cyclic/shuffle structure assignment for
-    batch generation.
+    Handles CRUD for song descriptions, structures, and moods, enforces
+    validation rules (name 1-100 chars unique, content 1-5000 chars),
+    provides matchKey pairing logic, and implements cyclic/shuffle
+    structure/mood assignment for batch generation.
 
     Args:
         prompt_repo: Repository for prompt persistence operations.
@@ -225,6 +244,26 @@ class PromptService:
                 details={"structure_id": str(struct_id)},
             )
         return struct
+
+    async def _require_global_mood(self, mood_id: UUID) -> MusicMood:
+        mood = await self.get_mood(mood_id)
+        if mood.user_id is not None:
+            raise ForbiddenError(
+                "User-owned moods cannot be modified from the admin prompts catalog.",
+                details={"mood_id": str(mood_id)},
+            )
+        return mood
+
+    async def _require_user_mood(
+        self, mood_id: UUID, user_id: UUID
+    ) -> MusicMood:
+        mood = await self.get_mood(mood_id)
+        if mood.user_id != user_id:
+            raise ForbiddenError(
+                "You do not have permission to access this mood.",
+                details={"mood_id": str(mood_id)},
+            )
+        return mood
 
     # -----------------------------------------------------------------------
     # Music Description CRUD
@@ -447,6 +486,23 @@ class PromptService:
         raise ForbiddenError(
             "You do not have permission to use this structure.",
             details={"structure_id": str(struct_id)},
+        )
+
+    async def get_mood_for_access(
+        self, mood_id: UUID, user_id: UUID
+    ) -> MusicMood:
+        """Return a mood if the user may use it during generation."""
+        mood = await self.get_mood(mood_id)
+        if not mood.is_active:
+            raise NotFoundError(
+                f"Mood {mood_id} not found.",
+                details={"mood_id": str(mood_id)},
+            )
+        if mood.user_id is None or mood.user_id == user_id:
+            return mood
+        raise ForbiddenError(
+            "You do not have permission to use this mood.",
+            details={"mood_id": str(mood_id)},
         )
 
     async def list_descriptions(self) -> list[MusicDescription]:
@@ -807,6 +863,258 @@ class PromptService:
         return await self._prompt_repo.map_structure_usage_counts()
 
     # -----------------------------------------------------------------------
+    # Music Mood CRUD
+    # -----------------------------------------------------------------------
+
+    async def create_mood(
+        self,
+        name: str,
+        content: str,
+        match_key: str | None = None,
+        is_active: bool = True,
+    ) -> MusicMood:
+        """Create a new song mood.
+
+        Validates name (1-100 chars, unique), content (1-5000 chars),
+        and optional match_key.
+
+        Args:
+            name: Unique mood name.
+            content: Emotional/narrative mood brief text.
+            match_key: Optional key for pairing.
+
+        Returns:
+            The created MusicMood.
+
+        Raises:
+            ValidationError: If name or content validation fails.
+            DuplicateError: If a mood with the same name exists.
+        """
+        name = self._validate_name(name, "mood")
+        content = self._validate_content(content, "mood")
+
+        # Check uniqueness
+        existing = await self._prompt_repo.get_mood_by_name(name, user_id=None)
+        if existing is not None:
+            raise DuplicateError(
+                f"A mood named '{name}' already exists.",
+                details={"name": name},
+            )
+
+        mood = MusicMood(
+            id=uuid4(),
+            name=name,
+            content=content,
+            match_key=match_key.strip() if match_key else None,
+            is_active=bool(is_active),
+        )
+
+        created = await self._prompt_repo.create_mood(mood)
+        logger.info("Created mood '%s' (id=%s).", name, created.id)
+        return created
+
+    async def update_mood(
+        self, mood_id: UUID, **fields: Any
+    ) -> MusicMood:
+        """Update an existing song mood.
+
+        Validates any changed fields. If name is changed, checks uniqueness.
+        Clearing match_key dissociates from pairings.
+
+        Args:
+            mood_id: The UUID of the mood to update.
+            **fields: Fields to update (name, content, match_key).
+
+        Returns:
+            The updated MusicMood.
+
+        Raises:
+            NotFoundError: If the mood does not exist.
+            ValidationError: If name or content validation fails.
+            DuplicateError: If the new name conflicts with another.
+        """
+        await self._require_global_mood(mood_id)
+
+        # Validate name if provided
+        if "name" in fields:
+            fields["name"] = self._validate_name(fields["name"], "mood")
+            existing = await self._prompt_repo.get_mood_by_name(
+                fields["name"], user_id=None
+            )
+            if existing is not None and existing.id != mood_id:
+                raise DuplicateError(
+                    f"A mood named '{fields['name']}' already exists.",
+                    details={"name": fields["name"]},
+                )
+
+        # Validate content if provided
+        if "content" in fields:
+            fields["content"] = self._validate_content(fields["content"], "mood")
+
+        # Normalize match_key
+        if "match_key" in fields:
+            mk = fields["match_key"]
+            fields["match_key"] = mk.strip() if mk else None
+        if "is_active" in fields:
+            fields["is_active"] = bool(fields["is_active"])
+
+        updated = await self._prompt_repo.update_mood(mood_id, **fields)
+        if updated is None:
+            raise NotFoundError(
+                f"Mood {mood_id} not found.",
+                details={"mood_id": str(mood_id)},
+            )
+
+        logger.info("Updated mood %s.", mood_id)
+        return updated
+
+    async def delete_mood(self, mood_id: UUID) -> None:
+        """Delete a song mood.
+
+        Removes the mood and dissociates it from any songs.
+
+        Args:
+            mood_id: The UUID of the mood to delete.
+
+        Raises:
+            NotFoundError: If the mood does not exist.
+        """
+        await self._require_global_mood(mood_id)
+        deleted = await self._prompt_repo.delete_mood(mood_id)
+        if not deleted:
+            raise NotFoundError(
+                f"Mood {mood_id} not found.",
+                details={"mood_id": str(mood_id)},
+            )
+        logger.info("Deleted mood %s.", mood_id)
+
+    async def get_mood(self, mood_id: UUID) -> MusicMood:
+        """Get a mood by ID.
+
+        Args:
+            mood_id: The UUID of the mood.
+
+        Returns:
+            The MusicMood.
+
+        Raises:
+            NotFoundError: If the mood does not exist.
+        """
+        mood = await self._prompt_repo.get_mood_by_id(mood_id)
+        if mood is None:
+            raise NotFoundError(
+                f"Mood {mood_id} not found.",
+                details={"mood_id": str(mood_id)},
+            )
+        return mood
+
+    async def list_moods(self) -> list[MusicMood]:
+        """List global moods ordered by name ascending."""
+        return await self._prompt_repo.list_moods()
+
+    async def list_moods_workspace(self, user_id: UUID) -> list[MusicMood]:
+        """List global plus user-owned moods for workspace selectors."""
+        return await self._prompt_repo.list_moods_workspace(user_id)
+
+    async def list_user_moods(self, user_id: UUID) -> list[MusicMood]:
+        """List moods owned by the given user."""
+        return await self._prompt_repo.list_moods_for_user(user_id)
+
+    async def create_user_mood(
+        self,
+        user_id: UUID,
+        name: str,
+        content: str,
+    ) -> MusicMood:
+        """Create a user-owned mood."""
+        name = self._validate_name(name, "mood")
+        content = self._validate_content(content, "mood")
+
+        existing = await self._prompt_repo.get_mood_by_name(name, user_id=user_id)
+        if existing is not None:
+            raise DuplicateError(
+                f"You already have a mood named '{name}'.",
+                details={"name": name},
+            )
+
+        mood = MusicMood(
+            id=uuid4(),
+            name=name,
+            content=content,
+            match_key=None,
+            user_id=user_id,
+        )
+        created = await self._prompt_repo.create_mood(mood)
+        logger.info("Created user mood '%s' for user %s.", name, user_id)
+        return created
+
+    async def update_user_mood(
+        self, mood_id: UUID, user_id: UUID, **fields: Any
+    ) -> MusicMood:
+        """Update a user-owned mood."""
+        existing = await self._require_user_mood(mood_id, user_id)
+        if not existing.is_active:
+            raise NotFoundError(
+                f"Mood {mood_id} not found.",
+                details={"mood_id": str(mood_id)},
+            )
+
+        if "name" in fields:
+            fields["name"] = self._validate_name(fields["name"], "mood")
+            conflict = await self._prompt_repo.get_mood_by_name(
+                fields["name"], user_id=user_id
+            )
+            if conflict is not None and conflict.id != mood_id:
+                raise DuplicateError(
+                    f"You already have a mood named '{fields['name']}'.",
+                    details={"name": fields["name"]},
+                )
+
+        if "content" in fields:
+            fields["content"] = self._validate_content(fields["content"], "mood")
+
+        fields.pop("match_key", None)
+        fields.pop("user_id", None)
+
+        updated = await self._prompt_repo.update_mood(mood_id, **fields)
+        if updated is None:
+            raise NotFoundError(
+                f"Mood {mood_id} not found.",
+                details={"mood_id": str(mood_id)},
+            )
+        logger.info("Updated user mood %s for user %s.", mood_id, user_id)
+        return updated
+
+    async def delete_user_mood(self, mood_id: UUID, user_id: UUID) -> None:
+        """Archive a user-owned mood (soft delete)."""
+        await self._require_user_mood(mood_id, user_id)
+        archived = await self._prompt_repo.archive_mood(mood_id)
+        if not archived:
+            raise NotFoundError(
+                f"Mood {mood_id} not found.",
+                details={"mood_id": str(mood_id)},
+            )
+        logger.info("Archived user mood %s for user %s.", mood_id, user_id)
+
+    async def get_mood_usage(self, mood_id: UUID) -> dict[str, Any]:
+        """Return usage analytics for a mood."""
+        mood = await self.get_mood(mood_id)
+        return {
+            "prompt_id": str(mood.id),
+            "prompt_name": mood.name,
+            "owner_label": self._owner_label(mood.user_id),
+            "usage_count": await self._prompt_repo.count_mood_usage(mood.id),
+            "users": await self._prompt_repo.list_mood_usage_by_user(mood.id),
+            "profiles": await self._prompt_repo.list_mood_usage_by_profile(mood.id),
+            "by_day": await self._prompt_repo.list_mood_usage_by_day(mood.id),
+        }
+
+    async def list_mood_usage_summaries(self) -> dict[UUID, int]:
+        """Return usage counts keyed by mood ID."""
+        moods = await self._prompt_repo.list_moods()
+        return await self._prompt_repo.map_mood_usage_counts([m.id for m in moods])
+
+    # -----------------------------------------------------------------------
     # matchKey Pairing Logic (Requirement 9.6)
     # -----------------------------------------------------------------------
 
@@ -938,6 +1246,49 @@ class PromptService:
         while len(assignments) < song_count:
             # Create a new shuffled cycle
             cycle = list(structures)
+            rng.shuffle(cycle)
+            assignments.extend(cycle)
+
+        return assignments[:song_count]
+
+    @staticmethod
+    def assign_moods_shuffle(
+        moods: list[MusicMood],
+        song_count: int,
+        batch_id: UUID,
+    ) -> list[MusicMood]:
+        """Assign moods in shuffled order using a seeded random per Batch.
+
+        Randomizes the assignment order using a seeded random generator
+        per Batch (deterministic for reproducibility). Every mood
+        appears before any mood repeats within each full cycle.
+
+        Args:
+            moods: The list of available moods.
+            song_count: The number of songs in the batch.
+            batch_id: The batch UUID used as the random seed.
+
+        Returns:
+            List of moods assigned to each song index.
+
+        Raises:
+            ValidationError: If moods list is empty.
+        """
+        if not moods:
+            raise ValidationError(
+                "Cannot assign moods: no moods available.",
+                details={"moods_count": 0},
+            )
+
+        # Use batch_id as seed for deterministic shuffling
+        rng = random.Random(str(batch_id))
+        n = len(moods)
+        assignments: list[MusicMood] = []
+
+        # Build full cycles of shuffled moods
+        while len(assignments) < song_count:
+            # Create a new shuffled cycle
+            cycle = list(moods)
             rng.shuffle(cycle)
             assignments.extend(cycle)
 

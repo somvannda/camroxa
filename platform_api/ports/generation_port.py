@@ -41,6 +41,7 @@ class DraftRequest:
     creativity_level: int  # 0-100
     description: str
     structure: str
+    mood: str = ""
     secondary_language: str | None = None
     vocal_profile: dict[str, Any] | None = None
     avoid_titles: list[str] = field(default_factory=list)

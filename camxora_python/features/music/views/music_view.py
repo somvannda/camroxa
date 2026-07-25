@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
@@ -40,6 +41,7 @@ from shared.lib.music_costs import (
     format_button_credit_label,
     format_draft_slot_button_label,
     format_operation_cost_label,
+    format_plan_credits,
     get_batch_generate_total_cost,
     get_music_plan_cost_breakdown,
     map_operation_costs,
@@ -69,6 +71,7 @@ from shared.workers.data_workers import (
     BatchRetryFailuresWorker,
     BatchStatusWorker,
     CreateBatchesWorker,
+    DeleteFailedBatchWorker,
     DraftGenerationWorker,
     MusicHistoryRefreshWorker,
     MusicLanguagesWorker,
@@ -80,6 +83,8 @@ from shared.workers.data_workers import (
     PolishLyricsWorker,
     RetrySongDraftWorker,
     RetrySongSunoWorker,
+    RewriteBatchAlbumWorker,
+    RewriteSongTitleWorker,
 )
 
 LOADING_MESSAGE = "Loading music workspace..."
@@ -107,9 +112,16 @@ class MusicView(QWidget):
         self._language_worker: MusicLanguagesWorker | None = None
         self._pending_history_refresh = False
         self._retry_worker: (
-            RetrySongDraftWorker | RetrySongSunoWorker | BatchRetryFailuresWorker | None
+            RetrySongDraftWorker
+            | RetrySongSunoWorker
+            | RewriteBatchAlbumWorker
+            | RewriteSongTitleWorker
+            | BatchRetryFailuresWorker
+            | DeleteFailedBatchWorker
+            | None
         ) = None
         self._pending_history_retry_kind = ""
+        self._pending_title_rewrite_row: HistoryRow | None = None
         self._profiles: list[ProfileResponse] = []
         self._youtube_connections: list[YouTubeConnectionResponse] = []
         self._history = MusicHistoryListResponse()
@@ -120,6 +132,7 @@ class MusicView(QWidget):
         self._draft_pool_seeds: DraftPoolSeedState | None = None
         self._selected_description_id = ""
         self._selected_structure_id = ""
+        self._selected_mood_id = ""
         self._prompt_selection_touched = False
         self._selected_history_song_id: str | None = None
         self._latest_batch_id: str | None = None
@@ -213,7 +226,9 @@ class MusicView(QWidget):
         self._automation_card.automation_changed.connect(self._on_automation_changed)
         self._automation_card.description_changed.connect(self._on_description_changed)
         self._automation_card.structure_changed.connect(self._on_structure_changed)
+        self._automation_card.mood_changed.connect(self._on_mood_changed)
         self._automation_card.shuffle_changed.connect(self._on_shuffle_changed)
+        self._automation_card.mood_shuffle_changed.connect(self._on_mood_shuffle_changed)
         main_row = QHBoxLayout()
         main_row.setSpacing(12)
         main_row.addWidget(self._song_card, stretch=15)
@@ -228,9 +243,13 @@ class MusicView(QWidget):
         self._history_card.open_folder_requested.connect(self._open_history_folder)
         self._history_card.retry_draft_requested.connect(self._retry_history_draft)
         self._history_card.retry_suno_requested.connect(self._retry_history_suno)
+        self._history_card.rewrite_album_requested.connect(self._rewrite_history_album)
+        self._history_card.rewrite_title_requested.connect(self._rewrite_history_title)
         self._history_card.enqueue_images_requested.connect(self._enqueue_history_images)
         self._history_card.continue_video_requested.connect(self._continue_history_video)
         self._history_card.retry_batch_requested.connect(self._retry_history_batch)
+        self._history_card.rewrite_batch_requested.connect(self._rewrite_history_batch)
+        self._history_card.delete_batch_requested.connect(self._delete_failed_batch)
         self._history_card.refresh_requested.connect(self._refresh_history_status)
         self._history_card.recover_failed_requested.connect(self._recover_failed_pipeline)
         content_layout.addWidget(self._history_card)
@@ -272,6 +291,7 @@ class MusicView(QWidget):
             secondary_profile_ids=list(self._composer.secondary_profile_ids),
             selected_description_id=self._selected_description_id,
             selected_structure_id=self._selected_structure_id,
+            selected_mood_id=self._selected_mood_id,
         )
 
     def _schedule_local_workspace_save(self) -> None:
@@ -294,6 +314,7 @@ class MusicView(QWidget):
         self._composer = blank_composer_state("")
         self._selected_description_id = ""
         self._selected_structure_id = ""
+        self._selected_mood_id = ""
         self._prompt_selection_touched = False
         self._error_banner.hide()
         self._loading_card.show()
@@ -313,7 +334,7 @@ class MusicView(QWidget):
     def _bootstrap_prompt_defaults_from_cache(self) -> None:
         if not self._ever_loaded or self._cache is None or not self._cache.has_core():
             return
-        _me, _profiles, settings_raw, description_options, structure_options = self._cache.snapshot_core()
+        _me, _profiles, settings_raw, description_options, structure_options, mood_options = self._cache.snapshot_core()
         if settings_raw:
             self._settings_raw = dict(settings_raw)
             self._sync_music_settings_defaults()
@@ -321,8 +342,9 @@ class MusicView(QWidget):
             return
         descriptions = [(item.id, item.name) for item in description_options]
         structures = [(item.id, item.name) for item in structure_options]
+        moods = [(item.id, item.name) for item in mood_options]
         self._description_options_by_id = {item.id: item for item in description_options}
-        self._apply_saved_prompt_defaults(descriptions, structures)
+        self._apply_saved_prompt_defaults(descriptions, structures, moods)
 
     def _bootstrap_language_options_from_cache(self) -> None:
         if self._cache is None:
@@ -465,17 +487,17 @@ class MusicView(QWidget):
         worker.start()
 
     def refresh_history(self) -> None:
-        """Reload history only so batch progress appears song-by-song."""
+        """Reload history only so batch progress appears song-by-song.
+
+        Date filtering is applied client-side in ``_render_history``. Sending
+        From/To to the API wiped the loaded list when the range was inverted or
+        mismatched (empty response), which also broke Last batch / Show all.
+        """
         if self._history_worker is not None and self._history_worker.isRunning():
             self._pending_history_refresh = True
             return
         limit = self._history_fetch_limit()
-        values = self._history_card.filter_values()
         worker = MusicHistoryRefreshWorker(self._api, limit=limit, parent=self)
-        worker.set_date_filters(
-            from_date=str(values.get("from_date") or ""),
-            to_date=str(values.get("to_date") or ""),
-        )
         worker.succeeded.connect(self._on_history_refreshed)
         worker.failed.connect(self._on_history_refresh_failed)
         worker.finished.connect(self._finish_history_worker)
@@ -483,16 +505,8 @@ class MusicView(QWidget):
         worker.start()
 
     def _on_history_filters_changed(self) -> None:
-        """Re-render locally; refetch from API when date window changes."""
-        values = self._history_card.filter_values()
-        from_date = str(values.get("from_date") or "")
-        to_date = str(values.get("to_date") or "")
-        key = f"{from_date}|{to_date}|{self._history_fetch_limit()}"
-        previous = getattr(self, "_history_filter_fetch_key", None)
+        """Re-render locally when History filters change (no API refetch)."""
         self._render_history()
-        if key != previous:
-            self._history_filter_fetch_key = key
-            self.refresh_history()
 
     def _history_fetch_limit(self) -> int:
         """Cap history fetch by settings window and API max (100)."""
@@ -512,12 +526,6 @@ class MusicView(QWidget):
         if not isinstance(payload, MusicHistoryListResponse):
             return
         self._history = payload
-        values = self._history_card.filter_values()
-        self._history_filter_fetch_key = (
-            f"{values.get('from_date') or ''}|"
-            f"{values.get('to_date') or ''}|"
-            f"{self._history_fetch_limit()}"
-        )
         self._render_history()
 
     def _on_history_refresh_failed(self, message: str) -> None:
@@ -528,14 +536,18 @@ class MusicView(QWidget):
     def _reconcile_prompt_selection(
         descriptions: list[tuple[str, str]],
         structures: list[tuple[str, str]],
+        moods: list[tuple[str, str]],
         *,
         selected_description_id: str,
         selected_structure_id: str,
-    ) -> tuple[str, str]:
+        selected_mood_id: str,
+    ) -> tuple[str, str, str]:
         description_ids = {option_id for option_id, _name in descriptions}
         structure_ids = {option_id for option_id, _name in structures}
+        mood_ids = {option_id for option_id, _name in moods}
         next_description_id = selected_description_id
         next_structure_id = selected_structure_id
+        next_mood_id = selected_mood_id
         if not next_description_id and descriptions:
             next_description_id = descriptions[0][0]
         elif next_description_id not in description_ids:
@@ -544,37 +556,53 @@ class MusicView(QWidget):
             next_structure_id = structures[0][0]
         elif next_structure_id not in structure_ids:
             next_structure_id = structures[0][0] if structures else ""
-        return next_description_id, next_structure_id
+        if not next_mood_id and moods:
+            next_mood_id = moods[0][0]
+        elif next_mood_id and next_mood_id not in mood_ids:
+            next_mood_id = moods[0][0] if moods else ""
+        return next_description_id, next_structure_id, next_mood_id
 
-    def _saved_prompt_defaults(self) -> tuple[str, str]:
+    def _saved_prompt_defaults(self) -> tuple[str, str, str]:
         return (
             read_string_setting(self._settings_raw, "defaultDescriptionId"),
             read_string_setting(self._settings_raw, "defaultStructureId"),
+            read_string_setting(self._settings_raw, "defaultMoodId"),
         )
 
     def _sync_music_settings_defaults(self) -> None:
-        default_description_id, default_structure_id = self._saved_prompt_defaults()
+        default_description_id, default_structure_id, default_mood_id = self._saved_prompt_defaults()
         if not self._settings_initialized:
             return
         self._music_settings = replace(
             self._music_settings,
             default_description_id=default_description_id,
             default_structure_id=default_structure_id,
+            default_mood_id=default_mood_id,
         )
 
     def _apply_saved_prompt_defaults(
         self,
         descriptions: list[tuple[str, str]],
         structures: list[tuple[str, str]],
+        moods: list[tuple[str, str]],
     ) -> None:
-        self._apply_prompt_selection(descriptions, structures)
-        self._automation_card.set_selected_options(self._selected_description_id, self._selected_structure_id)
+        self._apply_prompt_selection(descriptions, structures, moods)
+        self._automation_card.set_selected_options(
+            self._selected_description_id,
+            self._selected_structure_id,
+            self._selected_mood_id,
+        )
         self._composer.description = self._automation_card.selected_description_name()
         self._composer.structure = self._automation_card.selected_structure_name()
         self._apply_description_language_mode(self._selected_description_id)
 
-    def _apply_prompt_selection(self, descriptions: list[tuple[str, str]], structures: list[tuple[str, str]]) -> None:
-        preferred_description_id, preferred_structure_id = self._saved_prompt_defaults()
+    def _apply_prompt_selection(
+        self,
+        descriptions: list[tuple[str, str]],
+        structures: list[tuple[str, str]],
+        moods: list[tuple[str, str]],
+    ) -> None:
+        preferred_description_id, preferred_structure_id, preferred_mood_id = self._saved_prompt_defaults()
         if not self._prompt_selection_touched:
             if preferred_description_id:
                 self._selected_description_id = preferred_description_id
@@ -584,25 +612,36 @@ class MusicView(QWidget):
                 self._selected_structure_id = preferred_structure_id
             elif not self._selected_structure_id and structures:
                 self._selected_structure_id = structures[0][0]
+            if preferred_mood_id:
+                self._selected_mood_id = preferred_mood_id
+            elif not self._selected_mood_id and moods:
+                self._selected_mood_id = moods[0][0]
         else:
             if not self._selected_description_id and descriptions:
                 self._selected_description_id = descriptions[0][0]
             if not self._selected_structure_id and structures:
                 self._selected_structure_id = structures[0][0]
-        self._selected_description_id, self._selected_structure_id = self._reconcile_prompt_selection(
-            descriptions,
-            structures,
-            selected_description_id=self._selected_description_id,
-            selected_structure_id=self._selected_structure_id,
+            if not self._selected_mood_id and moods:
+                self._selected_mood_id = moods[0][0]
+        self._selected_description_id, self._selected_structure_id, self._selected_mood_id = (
+            self._reconcile_prompt_selection(
+                descriptions,
+                structures,
+                moods,
+                selected_description_id=self._selected_description_id,
+                selected_structure_id=self._selected_structure_id,
+                selected_mood_id=self._selected_mood_id,
+            )
         )
 
     def _finish_workspace_load(
         self,
         descriptions: list[tuple[str, str]],
         structures: list[tuple[str, str]],
+        moods: list[tuple[str, str]],
     ) -> None:
-        self._automation_card.set_options(descriptions, structures)
-        self._apply_saved_prompt_defaults(descriptions, structures)
+        self._automation_card.set_options(descriptions, structures, moods)
+        self._apply_saved_prompt_defaults(descriptions, structures, moods)
         self._apply_settings_to_ui()
         self._sync_profiles()
         self._refresh_presentation()
@@ -649,6 +688,7 @@ class MusicView(QWidget):
                 settings_raw=self._settings_raw,
                 description_options=list(payload.description_options),
                 structure_options=list(payload.structure_options),
+                mood_options=list(payload.mood_options),
                 language_options=self._language_options,
             )
         if not self._settings_initialized:
@@ -666,7 +706,8 @@ class MusicView(QWidget):
             item.id: item for item in payload.description_options
         }
         structures = [(item.id, item.name) for item in payload.structure_options]
-        self._finish_workspace_load(descriptions, structures)
+        moods = [(item.id, item.name) for item in payload.mood_options]
+        self._finish_workspace_load(descriptions, structures, moods)
         self._loaded_user_id = cached_user_id(self._cache)
         self._loading_card.hide()
         self._content.show()
@@ -674,7 +715,7 @@ class MusicView(QWidget):
     def _apply_core_cache(self) -> bool:
         if self._cache is None or not self._cache.has_core():
             return False
-        _me, profiles, settings_raw, description_options, structure_options = self._cache.snapshot_core()
+        _me, profiles, settings_raw, description_options, structure_options, mood_options = self._cache.snapshot_core()
         if not profiles or not settings_raw:
             return False
         self._loading = False
@@ -698,7 +739,8 @@ class MusicView(QWidget):
         descriptions = [(item.id, item.name) for item in description_options]
         self._description_options_by_id = {item.id: item for item in description_options}
         structures = [(item.id, item.name) for item in structure_options]
-        self._finish_workspace_load(descriptions, structures)
+        moods = [(item.id, item.name) for item in mood_options]
+        self._finish_workspace_load(descriptions, structures, moods)
         self._loaded_user_id = cached_user_id(self._cache)
         self._loading_card.hide()
         self._content.show()
@@ -720,6 +762,7 @@ class MusicView(QWidget):
         )
         self._apply_description_language_mode(self._selected_description_id)
         self._automation_card.set_shuffle_structure(self._music_settings.shuffle_structure)
+        self._automation_card.set_shuffle_mood(self._music_settings.shuffle_mood)
         self._automation_card.apply_automation_flags(
             auto_gen_image=self._music_settings.auto_gen_image,
             auto_gsuno=self._music_settings.auto_gsuno,
@@ -871,8 +914,17 @@ class MusicView(QWidget):
         self._composer.structure = self._automation_card.selected_structure_name()
         self._schedule_local_workspace_save()
 
+    def _on_mood_changed(self, option_id: str) -> None:
+        self._prompt_selection_touched = True
+        self._selected_mood_id = option_id
+        self._schedule_local_workspace_save()
+
     def _on_shuffle_changed(self) -> None:
         self._music_settings.shuffle_structure = self._automation_card.shuffle_structure()
+        self._schedule_settings_save()
+
+    def _on_mood_shuffle_changed(self) -> None:
+        self._music_settings.shuffle_mood = self._automation_card.shuffle_mood()
         self._schedule_settings_save()
 
     def _schedule_settings_save(self) -> None:
@@ -1024,54 +1076,48 @@ class MusicView(QWidget):
         if base_ready:
             self._schedule_preflight_check()
 
-        costs = "  ".join(
+        costs = " · ".join(
             [
                 format_operation_cost_label(self._operation_costs.get("lyric"), "Draft"),
-                "Rewrite lyrics: 1 draft",
-                "Revisions: 0 credits",
                 format_operation_cost_label(self._operation_costs.get("music"), "Suno"),
                 format_operation_cost_label(self._operation_costs.get("background_image"), "Image"),
             ]
         )
         self._automation_card.set_cost_lines(costs)
         if breakdown is None:
-            plan = "Select a valid date range and matching channel pairs to see plan totals."
-            helper = "Generate creates one batch per planned day and channel pair."
+            plan = "Select dates and matching channel pairs to estimate this run."
+            helper = ""
         else:
             plan = (
-                f"Plan: {breakdown.planned_day_count} day{'s' if breakdown.planned_day_count != 1 else ''} x "
-                f"{breakdown.pair_count} pair{'s' if breakdown.pair_count != 1 else ''} x "
-                f"{breakdown.songs_per_batch} song{'s' if breakdown.songs_per_batch != 1 else ''} = "
-                f"{breakdown.planned_song_count} song job{'s' if breakdown.planned_song_count != 1 else ''}\n"
-                f"Draft total: {breakdown.draft_total_cost if breakdown.draft_total_cost is not None else 'unavailable'} credits  "
-                f"Suno total: {breakdown.suno_total_cost if breakdown.suno_total_cost is not None else 'unavailable'} credits  "
-                f"Image total: {breakdown.image_total_cost if breakdown.image_total_cost is not None else 'unavailable'} credits"
-                + (
-                    f" ({breakdown.image_jobs_per_song} image job{'s' if breakdown.image_jobs_per_song != 1 else ''} per song)"
-                    if breakdown.image_jobs_per_song
-                    else ""
-                )
-                + f"\nBatch total: {total_cost if total_cost is not None else 'unavailable'} credits"
+                f"{breakdown.planned_batch_count} batches · {breakdown.planned_song_count} songs\n"
+                f"Draft {format_plan_credits(breakdown.draft_total_cost)}"
+                f"  ·  Suno {format_plan_credits(breakdown.suno_total_cost)}"
+                f"  ·  Image {format_plan_credits(breakdown.image_total_cost)}"
+                f"{f' ({breakdown.image_total_jobs} jobs)' if breakdown.image_total_jobs else ''}\n"
+                f"Total {format_plan_credits(total_cost)} credits"
+                f"{'' if not (self._music_settings.auto_video_after_suno or self._music_settings.auto_merge_after_video) else '  ·  Video/Merge later'}"
             )
-            planned_batches = breakdown.planned_batch_count
-            helper = (
-                f"{planned_batches} planned batch run{'s' if planned_batches != 1 else ''} from "
-                f"{breakdown.planned_day_count} day{'s' if breakdown.planned_day_count != 1 else ''} x "
-                f"{breakdown.pair_count} pair{'s' if breakdown.pair_count != 1 else ''}"
-            )
-            if self._music_settings.auto_gen_image and image_source_mode != "manual":
-                helper += " · Includes image credits"
+            helper = ""
         self._automation_card.set_plan_lines(plan)
         self._automation_card.set_helper_text(helper)
         self._render_history()
 
     def _render_history(self) -> None:
         values = self._history_card.filter_values()
+        raw_status = values.get("status") or ()
+        if isinstance(raw_status, str):
+            status = () if raw_status in {"", "all"} else (raw_status,)
+        else:
+            status = tuple(
+                token
+                for item in raw_status
+                if (token := str(item or "").strip().lower()) and token != "all"
+            )
         filters = HistoryFiltersState(
             from_date=str(values.get("from_date") or ""),
             to_date=str(values.get("to_date") or ""),
             last_batch_only=bool(values.get("last_batch_only")),
-            status=str(values.get("status") or "all"),
+            status=status,
             batch_id=str(values.get("batch_id") or ""),
         )
         self._history_card.set_batch_filter_options(list(self._history.batches or []))
@@ -1091,7 +1137,7 @@ class MusicView(QWidget):
                     status_filter=filters.status,
                 )
             ]
-            if filters.status not in {"", "all"} and not song_rows:
+            if filters.status and not song_rows:
                 continue
             matched_batches += 1
             rows.append(HistoryRow(batch=batch, is_batch_separator=True))
@@ -1137,6 +1183,105 @@ class MusicView(QWidget):
         log_info(f"Retrying draft for song #{row.song.batch_index + 1}…", category="music")
         self._flash_status(f"Retrying draft for song #{row.song.batch_index + 1}…")
         worker.start()
+
+    def _rewrite_history_album(self, row: HistoryRow, role: str) -> None:
+        batch_id = str(getattr(row.batch, "batch_id", "") or "").strip()
+        if not batch_id:
+            self._flash_status("Select a batch before rewriting the album.", tone="warning")
+            return
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status("A retry is already in progress.", tone="warning")
+            return
+        role_key = "alt" if str(role or "").strip().lower() == "alt" else "ok"
+        label = "album 2" if role_key == "alt" else "album 1"
+        worker = RewriteBatchAlbumWorker(self._api, batch_id, role=role_key, parent=self)
+        worker.succeeded.connect(self._on_history_album_rewrite_succeeded)
+        worker.failed.connect(self._show_workspace_error)
+        worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
+        self._retry_worker = worker
+        log_info(f"Rewriting {label} for batch {batch_id[:8]}…", category="music")
+        self._flash_status(f"Rewriting {label}…")
+        worker.start()
+
+    def _rewrite_history_title(self, row: HistoryRow) -> None:
+        if row.song is None:
+            self._flash_status("Select a song before rewriting the title.", tone="warning")
+            return
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status("A retry is already in progress.", tone="warning")
+            return
+        self._pending_title_rewrite_row = row
+        worker = RewriteSongTitleWorker(
+            self._api,
+            row.batch.batch_id,
+            row.song.song_id,
+            self,
+        )
+        worker.succeeded.connect(self._on_history_title_rewrite_succeeded)
+        worker.failed.connect(self._on_history_title_rewrite_failed)
+        worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
+        self._retry_worker = worker
+        log_info(f"Rewriting title for song #{row.song.batch_index + 1}…", category="music")
+        self._flash_status(f"Rewriting title for song #{row.song.batch_index + 1}…")
+        worker.start()
+
+    def _on_history_title_rewrite_failed(self, message: str) -> None:
+        self._pending_title_rewrite_row = None
+        self._show_workspace_error(message)
+
+    def _on_history_album_rewrite_succeeded(self, payload: object) -> None:
+        from shared.models.platform import AlbumRewriteResponse
+
+        if isinstance(payload, AlbumRewriteResponse):
+            label = "Album 2" if payload.role == "alt" else "Album 1"
+            album = str(payload.album or "").strip() or "—"
+            self._flash_status(f"{label} rewritten: {album}", tone="success")
+        else:
+            self._flash_status("Album rewritten.", tone="success")
+        self._error_banner.hide()
+        self.refresh_history()
+        self.refresh_data()
+
+    def _on_history_title_rewrite_succeeded(self, payload: object) -> None:
+        from shared.models.platform import TitleRewriteResponse
+
+        pending_row = getattr(self, "_pending_title_rewrite_row", None)
+        self._pending_title_rewrite_row = None
+        new_title = ""
+        if isinstance(payload, TitleRewriteResponse):
+            new_title = str(payload.title or "").strip()
+            title = new_title or "—"
+            self._flash_status(f"Title rewritten: {title}", tone="success")
+            if self._selected_history_song_id == payload.song_id:
+                self._composer.title = title
+                self._song_card.set_fields(
+                    title=self._composer.title,
+                    album=self._composer.album,
+                    lyrics=self._composer.lyrics,
+                    polish_strength=self._music_settings.polish_strength,
+                )
+        else:
+            self._flash_status("Title rewritten.", tone="success")
+        self._error_banner.hide()
+        self.refresh_history()
+        self.refresh_data()
+
+        # After fixing a bad title, queue Suno when the song is still eligible.
+        if (
+            pending_row is not None
+            and pending_row.song is not None
+            and new_title
+            and self._song_eligible_for_suno_retry(pending_row.song)
+        ):
+            track = int(getattr(pending_row.song, "batch_index", 0) or 0) + 1
+            self._flash_status(
+                f"Title rewritten — submitting Suno for song #{track}…",
+                tone="success",
+            )
+            QTimer.singleShot(
+                0,
+                lambda: self._retry_history_suno(pending_row, title=new_title),
+            )
 
     def _find_history_row(self, song_id: str | None) -> HistoryRow | None:
         if not song_id:
@@ -1257,6 +1402,32 @@ class MusicView(QWidget):
         self._flash_status(f"Retrying batch ({total} song(s))…")
         worker.start()
 
+    def _rewrite_history_batch(self, targets: object) -> None:
+        from shared.services.pipeline_recovery_coordinator import mark_pipeline_song_busy
+
+        if not isinstance(targets, list) or not targets:
+            return
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status("A recovery/retry is already running.", tone="warning")
+            return
+        if self._polish_worker is not None and self._polish_worker.isRunning():
+            self._flash_status("A lyric rewrite is already running.", tone="warning")
+            return
+        for target in targets:
+            song_id = str(getattr(target, "song_id", "") or "").strip()
+            if song_id:
+                mark_pipeline_song_busy(song_id, seconds=300)
+        worker = PipelineRecoveryWorker(self._api, targets, parent=self)
+        worker.progressed.connect(lambda msg: self._flash_status(msg, tone="neutral"))
+        worker.succeeded.connect(self._on_pipeline_recovery_succeeded)
+        worker.failed.connect(self._show_workspace_error)
+        worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
+        self._retry_worker = worker
+        count = len(targets)
+        log_info(f"Batch rewrite→Suno started for {count} song(s)…", category="music")
+        self._flash_status(f"Rewriting lyrics for {count} song(s)…")
+        worker.start()
+
     def _on_history_batch_retry_succeeded(self, batch_id: str, queued: int) -> None:
         if queued > 0:
             self._latest_batch_id = batch_id
@@ -1267,6 +1438,58 @@ class MusicView(QWidget):
                 f"Queued retry for {queued} song(s).",
                 tone="success",
             )
+        self._error_banner.hide()
+        self.refresh_data()
+
+    def _delete_failed_batch(self, batch_id: str) -> None:
+        if not batch_id:
+            return
+        if self._retry_worker is not None and self._retry_worker.isRunning():
+            self._flash_status("A recovery/retry is already running.", tone="warning")
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Delete failed batch",
+            (
+                "Delete this batch from History?\n\n"
+                "Only batches with no successful or in-progress Suno audio can be "
+                "deleted. Draft meter leftovers may be restored; wallet credits and "
+                "song quota are not re-gifted.\n\n"
+                "This cannot be undone."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        worker = DeleteFailedBatchWorker(self._api, batch_id, parent=self)
+        worker.succeeded.connect(self._on_failed_batch_deleted)
+        worker.failed.connect(self._show_workspace_error)
+        worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
+        self._retry_worker = worker
+        self._flash_status("Deleting failed batch…")
+        worker.start()
+
+    def _on_failed_batch_deleted(self, payload: object) -> None:
+        from shared.models.platform import BatchDeleteResponse
+
+        songs_deleted = 0
+        draft_released = 0
+        deleted_id = ""
+        if isinstance(payload, BatchDeleteResponse):
+            songs_deleted = int(payload.songs_deleted or 0)
+            draft_released = int(payload.draft_quota_released or 0)
+            deleted_id = str(payload.batch_id or "")
+        if self._latest_batch_id and deleted_id and self._latest_batch_id == deleted_id:
+            self._latest_batch_id = None
+            self._latest_batch_summary = None
+            self._last_batch_status_key = None
+            self._batch_timer.stop()
+        parts = [f"Deleted batch ({songs_deleted} song(s))."]
+        if draft_released > 0:
+            parts.append(f"Restored {draft_released} draft unit(s).")
+        self._flash_status(" ".join(parts), tone="success")
         self._error_banner.hide()
         self.refresh_data()
 
@@ -1296,6 +1519,7 @@ class MusicView(QWidget):
         rewrite = int(data.get("rewrite") or 0)
         draft = int(data.get("draft") or 0)
         suno = int(data.get("suno") or 0)
+        skipped = int(data.get("skipped") or 0)
         parts = [f"{recovered} recovered"]
         if draft:
             parts.append(f"{draft} draft")
@@ -1303,7 +1527,10 @@ class MusicView(QWidget):
             parts.append(f"{rewrite} rewrite→Suno")
         if suno:
             parts.append(f"{suno} Suno retry")
-        self._flash_status(" · ".join(parts), tone="success")
+        if skipped:
+            parts.append(f"{skipped} skipped")
+        tone = "success" if recovered else "warning"
+        self._flash_status(" · ".join(parts), tone=tone)
         self._error_banner.hide()
         self.refresh_history()
         self.refresh_data()
@@ -1345,7 +1572,13 @@ class MusicView(QWidget):
             self._selected_description_id = row.song.description_id
         if row.song.structure_id:
             self._selected_structure_id = row.song.structure_id
-        self._automation_card.set_selected_options(self._selected_description_id, self._selected_structure_id)
+        if row.song.mood_id:
+            self._selected_mood_id = row.song.mood_id
+        self._automation_card.set_selected_options(
+            self._selected_description_id,
+            self._selected_structure_id,
+            self._selected_mood_id,
+        )
         self._composer.title = row.song.title or self._composer.title
         self._composer.album = row.song.album or self._composer.album
         self._composer.lyrics = row.song.lyrics or self._composer.lyrics
@@ -1530,8 +1763,10 @@ class MusicView(QWidget):
             "lyrics": lyrics,
             "strength": self._song_card.polish_strength(),
             "channel_profile_id": primary[0].id,
-            "description": self._composer.description.strip() or None,
-            "structure": self._composer.structure.strip() or None,
+            "mood_id": self._automation_card.selected_mood_id() or self._selected_mood_id or None,
+            "structure_id": self._automation_card.selected_structure_id()
+            or self._selected_structure_id
+            or None,
         }
         row = self._resolve_polish_suno_row()
         if row is not None and row.song is not None:
@@ -1539,11 +1774,14 @@ class MusicView(QWidget):
             payload["song_id"] = row.song.song_id
             payload["title"] = (self._composer.title or row.song.title or "").strip() or None
             payload["album"] = (self._composer.album or row.song.album or "").strip() or None
-            if not payload["description"] and row.song.description_name:
-                payload["description"] = row.song.description_name.strip()
-            if not payload["structure"] and row.song.structure_name:
-                payload["structure"] = row.song.structure_name.strip()
+            if row.song.mood_id:
+                payload["mood_id"] = row.song.mood_id
+            if row.song.structure_id:
+                payload["structure_id"] = row.song.structure_id
             self._selected_history_song_id = row.song.song_id
+            from shared.services.pipeline_recovery_coordinator import mark_pipeline_song_busy
+
+            mark_pipeline_song_busy(row.song.song_id, seconds=180)
             log_info(
                 f"Rewriting lyrics with Suno auto-retry for song #{row.song.batch_index + 1}…",
                 category="music",
@@ -1556,7 +1794,17 @@ class MusicView(QWidget):
         worker = PolishLyricsWorker(self._api, payload, parent=self)
         worker.succeeded.connect(self._on_polish_complete)
         worker.failed.connect(self._show_workspace_error)
-        worker.finished.connect(lambda: setattr(self, "_polish_worker", None))
+        polish_song_id = str(payload.get("song_id") or "")
+
+        def _finish_polish_worker() -> None:
+            self._polish_worker = None
+            if polish_song_id:
+                from shared.services.pipeline_recovery_coordinator import mark_pipeline_song_busy
+
+                # Keep helper off this song while Suno callback settles.
+                mark_pipeline_song_busy(polish_song_id, seconds=120)
+
+        worker.finished.connect(_finish_polish_worker)
         self._polish_worker = worker
         log_info("Rewriting lyrics…", category="music")
         self._flash_status("Rewriting lyrics…")
@@ -1710,8 +1958,10 @@ class MusicView(QWidget):
                         alt_profile_id=alt_profile.id,
                         description_id=self._selected_description_id or None,
                         structure_id=self._automation_card.selected_structure_id() or None,
+                        mood_id=self._automation_card.selected_mood_id() or None,
                         structure_mode=self._automation_card.selected_structure_mode(),
                         shuffle_structure=self._automation_card.shuffle_structure(),
+                        shuffle_mood=self._automation_card.shuffle_mood(),
                         auto_gen_image=self._music_settings.auto_gen_image,
                         auto_gsuno=self._music_settings.auto_gsuno,
                         song_count=self._music_settings.song_count,

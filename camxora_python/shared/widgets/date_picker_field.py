@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QDate, Signal
-from PySide6.QtWidgets import QDateEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from shared.widgets.shell_date_edit import ShellDateEdit
 
 
 class DatePickerField(QWidget):
@@ -15,9 +17,7 @@ class DatePickerField(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._edit = QDateEdit()
-        self._edit.setCalendarPopup(True)
-        self._edit.setDisplayFormat("MM/dd/yyyy")
+        self._edit = ShellDateEdit()
         self._edit.setFixedSize(132, 32)
         self._edit.setObjectName("workflow_date_edit")
         self._edit.setAccessibleName(label)

@@ -418,6 +418,7 @@ class MusicWorkspacePayload:
     settings: object
     description_options: list
     structure_options: list
+    mood_options: list
     history: object
     operation_costs: object
     language_options: list
@@ -440,11 +441,12 @@ class MusicWorkspaceWorker(QThread):
         previous_timeout = self._api._client._default_timeout
         self._api._client._default_timeout = self.WORKSPACE_TIMEOUT
         try:
-            with ThreadPoolExecutor(max_workers=6) as pool:
+            with ThreadPoolExecutor(max_workers=8) as pool:
                 future_profiles = pool.submit(self._api.list_profiles)
                 future_settings = pool.submit(self._api.get_settings)
                 future_descriptions = pool.submit(self._api.list_prompt_description_names)
                 future_structures = pool.submit(self._api.list_prompt_structure_names)
+                future_moods = pool.submit(self._api.list_prompt_mood_names)
                 future_history = pool.submit(self._api.list_music_history, limit=25)
                 future_costs = pool.submit(self._fetch_operation_costs)
                 future_languages = pool.submit(self._fetch_language_options)
@@ -454,6 +456,7 @@ class MusicWorkspaceWorker(QThread):
                 settings = future_settings.result()
                 description_options = future_descriptions.result()
                 structure_options = future_structures.result()
+                mood_options = future_moods.result()
                 history = future_history.result()
                 operation_costs = future_costs.result()
                 language_options = future_languages.result()
@@ -465,6 +468,7 @@ class MusicWorkspaceWorker(QThread):
                     settings=settings,
                     description_options=description_options,
                     structure_options=structure_options,
+                    mood_options=mood_options,
                     history=history,
                     operation_costs=operation_costs,
                     language_options=language_options,
@@ -552,6 +556,7 @@ class MusicHistoryRefreshWorker(QThread):
 
     def __init__(self, api: PlatformApi, *, limit: int = 25, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("MusicHistoryRefreshWorker")
         self._api = api
         self._limit = max(1, min(100, int(limit)))
         self._from_date = ""
@@ -698,8 +703,10 @@ class PolishLyricsWorker(QThread):
                     song_id=self._payload.get("song_id"),
                     title=self._payload.get("title"),
                     album=self._payload.get("album"),
-                    description=self._payload.get("description"),
+                    mood=self._payload.get("mood"),
+                    mood_id=self._payload.get("mood_id"),
                     structure=self._payload.get("structure"),
+                    structure_id=self._payload.get("structure_id"),
                 )
             )
             self.succeeded.emit(result)
@@ -796,6 +803,61 @@ class RetrySongDraftWorker(QThread):
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Failed to retry draft generation.")
+
+
+class RewriteBatchAlbumWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        batch_id: str,
+        *,
+        role: str = "ok",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._batch_id = batch_id
+        self._role = role
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(
+                self._api.rewrite_batch_album(self._batch_id, role=self._role)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to rewrite album.")
+
+
+class RewriteSongTitleWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        batch_id: str,
+        song_id: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._batch_id = batch_id
+        self._song_id = song_id
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(
+                self._api.rewrite_song_title(self._batch_id, self._song_id)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to rewrite title.")
 
 
 class RetrySongSunoWorker(QThread):
@@ -910,6 +972,24 @@ class BatchRetrySunoWorker(QThread):
         self.succeeded.emit(queued)
 
 
+class DeleteFailedBatchWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, batch_id: str, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._batch_id = batch_id
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._api.delete_batch(self._batch_id))
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to delete batch.")
+
+
 class BatchRetryFailuresWorker(QThread):
     """Queue draft and Suno retries for all failed songs in one batch."""
 
@@ -967,6 +1047,7 @@ class PipelineRecoveryWorker(QThread):
 
     def __init__(self, api: PlatformApi, targets: list, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("PipelineRecoveryWorker")
         self._api = api
         self._targets = list(targets)
 
@@ -980,14 +1061,20 @@ class PipelineRecoveryWorker(QThread):
         draft_ok = 0
         suno_ok = 0
         rewrite_ok = 0
+        skipped = 0
         last_error = ""
         total = len(self._targets)
         for index, target in enumerate(self._targets, start=1):
             kind = str(getattr(target, "kind", "") or "")
             batch_id = str(getattr(target, "batch_id", "") or "")
             song_id = str(getattr(target, "song_id", "") or "")
-            self.progressed.emit(f"Recovering {index}/{total} ({kind})…")
+            reason = str(getattr(target, "reason", "") or "")
+            label = f"{kind}:{reason}" if reason else kind
+            self.progressed.emit(f"Recovering {index}/{total} ({label})…")
             try:
+                if kind == "skip":
+                    skipped += 1
+                    continue
                 if kind == "draft":
                     self._api.retry_song_draft(batch_id, song_id)
                     draft_ok += 1
@@ -1007,8 +1094,8 @@ class PipelineRecoveryWorker(QThread):
                             song_id=song_id,
                             title=getattr(target, "title", None),
                             album=getattr(target, "album", None),
-                            description=getattr(target, "description", None),
-                            structure=getattr(target, "structure", None),
+                            mood_id=getattr(target, "mood_id", None),
+                            structure_id=getattr(target, "structure_id", None),
                         )
                     )
                     rewrite_ok += 1
@@ -1024,7 +1111,7 @@ class PipelineRecoveryWorker(QThread):
                 last_error = str(exc) or "Recovery step failed."
 
         recovered = draft_ok + suno_ok + rewrite_ok
-        if recovered <= 0:
+        if recovered <= 0 and skipped <= 0:
             self.failed.emit(last_error or "Failed to recover pipeline songs.")
             return
         self.succeeded.emit(
@@ -1033,6 +1120,7 @@ class PipelineRecoveryWorker(QThread):
                 "draft": draft_ok,
                 "suno": suno_ok,
                 "rewrite": rewrite_ok,
+                "skipped": skipped,
                 "total": total,
                 "last_error": last_error,
             }
@@ -1048,6 +1136,7 @@ class PipelineRecoveryScanResult:
     draft: int = 0
     suno: int = 0
     rewrite: int = 0
+    skipped: int = 0
     attempted_targets: tuple = ()
 
 
@@ -1103,11 +1192,15 @@ class PipelineRecoveryScanWorker(QThread):
         draft_ok = 0
         suno_ok = 0
         rewrite_ok = 0
+        skipped = 0
         for target in targets:
             kind = str(getattr(target, "kind", "") or "")
             batch_id = str(getattr(target, "batch_id", "") or "")
             song_id = str(getattr(target, "song_id", "") or "")
             try:
+                if kind == "skip":
+                    skipped += 1
+                    continue
                 if kind == "draft":
                     self._api.retry_song_draft(batch_id, song_id)
                     draft_ok += 1
@@ -1129,8 +1222,8 @@ class PipelineRecoveryScanWorker(QThread):
                             song_id=song_id,
                             title=getattr(target, "title", None),
                             album=getattr(target, "album", None),
-                            description=getattr(target, "description", None),
-                            structure=getattr(target, "structure", None),
+                            mood_id=getattr(target, "mood_id", None),
+                            structure_id=getattr(target, "structure_id", None),
                         )
                     )
                     rewrite_ok += 1
@@ -1151,6 +1244,7 @@ class PipelineRecoveryScanWorker(QThread):
                 draft=draft_ok,
                 suno=suno_ok,
                 rewrite=rewrite_ok,
+                skipped=skipped,
                 attempted_targets=tuple(targets),
             )
         )
@@ -1480,10 +1574,14 @@ class ProgressLocalSyncWorker(QThread):
 
 @dataclass(frozen=True, slots=True)
 class MyPromptMutationResult:
-    descriptions: bool
+    kind: str
     deleted: bool
     item: dict[str, object] | None = None
     prompt_id: str = ""
+
+    @property
+    def descriptions(self) -> bool:
+        return self.kind == "description"
 
 
 class MyPromptMutationWorker(QThread):
@@ -1494,7 +1592,7 @@ class MyPromptMutationWorker(QThread):
         self,
         api: PlatformApi,
         *,
-        descriptions: bool,
+        kind: str,
         creating: bool = False,
         prompt_id: str = "",
         name: str = "",
@@ -1504,7 +1602,7 @@ class MyPromptMutationWorker(QThread):
     ) -> None:
         super().__init__(parent)
         self._api = api
-        self._descriptions = descriptions
+        self._kind = kind
         self._creating = creating
         self._prompt_id = prompt_id
         self._name = name
@@ -1514,23 +1612,34 @@ class MyPromptMutationWorker(QThread):
     def run(self) -> None:
         try:
             if self._delete:
-                if self._descriptions:
+                if self._kind == "description":
                     self._api.delete_my_description(self._prompt_id)
+                elif self._kind == "mood":
+                    self._api.delete_my_mood(self._prompt_id)
                 else:
                     self._api.delete_my_structure(self._prompt_id)
                 self.succeeded.emit(
                     MyPromptMutationResult(
-                        descriptions=self._descriptions,
+                        kind=self._kind,
                         deleted=True,
                         prompt_id=self._prompt_id,
                     )
                 )
                 return
-            if self._descriptions:
+            if self._kind == "description":
                 if self._creating:
                     saved = self._api.create_my_description(name=self._name, content=self._content)
                 else:
                     saved = self._api.update_my_description(
+                        self._prompt_id,
+                        name=self._name,
+                        content=self._content,
+                    )
+            elif self._kind == "mood":
+                if self._creating:
+                    saved = self._api.create_my_mood(name=self._name, content=self._content)
+                else:
+                    saved = self._api.update_my_mood(
                         self._prompt_id,
                         name=self._name,
                         content=self._content,
@@ -1546,7 +1655,7 @@ class MyPromptMutationWorker(QThread):
             item = saved if isinstance(saved, dict) else None
             self.succeeded.emit(
                 MyPromptMutationResult(
-                    descriptions=self._descriptions,
+                    kind=self._kind,
                     deleted=False,
                     item=item,
                 )
@@ -1564,6 +1673,7 @@ class SettingsWorkspacePayload:
     settings: object
     description_options: list
     structure_options: list
+    mood_options: list
     youtube_connections: list
 
 
@@ -1579,12 +1689,13 @@ class SettingsWorkspaceWorker(QThread):
         from concurrent.futures import ThreadPoolExecutor
 
         try:
-            with ThreadPoolExecutor(max_workers=6) as pool:
+            with ThreadPoolExecutor(max_workers=7) as pool:
                 future_me = pool.submit(self._api.get_me)
                 future_profiles = pool.submit(self._api.list_profiles)
                 future_settings = pool.submit(self._api.get_settings)
                 future_descriptions = pool.submit(self._api.list_prompt_description_names)
                 future_structures = pool.submit(self._api.list_prompt_structure_names)
+                future_moods = pool.submit(self._api.list_prompt_mood_names)
                 future_youtube = pool.submit(self._api.list_youtube_connections)
                 self.succeeded.emit(
                     SettingsWorkspacePayload(
@@ -1593,6 +1704,7 @@ class SettingsWorkspaceWorker(QThread):
                         settings=future_settings.result(),
                         description_options=future_descriptions.result(),
                         structure_options=future_structures.result(),
+                        mood_options=future_moods.result(),
                         youtube_connections=future_youtube.result(),
                     )
                 )

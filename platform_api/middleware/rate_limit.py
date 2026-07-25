@@ -268,6 +268,8 @@ def resolve_endpoint_type(path: str) -> str:
         normalized.startswith("generation/draft")
         or normalized == "batches"
         or normalized.endswith("retry-draft")
+        or normalized.endswith("rewrite-title")
+        or normalized.endswith("rewrite-album")
         or normalized.startswith("channel-setup/generate-")
     ):
         return "llm"

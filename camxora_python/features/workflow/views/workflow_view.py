@@ -5,7 +5,6 @@ from __future__ import annotations
 from PySide6.QtCore import QDate, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
-    QDateEdit,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -36,6 +35,7 @@ from shared.services.platform_api import PlatformApi
 from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
+from shared.widgets.shell_date_edit import make_shell_date_edit
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import WorkflowLoadResult, WorkflowLoadWorker, WorkflowRuntimeWorker
 
@@ -105,12 +105,12 @@ class WorkflowView(PollablePageMixin, QScrollArea):
 
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
-        self._from_date = QDateEdit()
-        self._from_date.setCalendarPopup(True)
-        self._from_date.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
-        self._to_date = QDateEdit()
-        self._to_date.setCalendarPopup(True)
-        self._to_date.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
+        self._from_date = make_shell_date_edit(
+            initial=QDate.fromString(today_ymd(), "yyyy-MM-dd")
+        )
+        self._to_date = make_shell_date_edit(
+            initial=QDate.fromString(today_ymd(), "yyyy-MM-dd")
+        )
         self._active_only = QCheckBox("Active only")
         self._refresh_btn = QPushButton("Refresh")
         self._refresh_btn.clicked.connect(lambda: self.refresh_data(manual=True))

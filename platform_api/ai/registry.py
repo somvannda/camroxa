@@ -35,14 +35,20 @@ OPENAI_TEXT_MODELS: dict[str, ModelSpec] = {
 }
 
 DEEPSEEK_TEXT_MODELS: dict[str, ModelSpec] = {
-    "deepseek-chat": ModelSpec(
-        api_id="deepseek-chat",
+    # DeepSeek retired deepseek-chat / deepseek-reasoner on 2026-07-24.
+    # Flash (non-thinking) replaces chat; Pro is the higher-tier sibling.
+    "deepseek-v4-flash": ModelSpec(
+        api_id="deepseek-v4-flash",
+        aliases=("deepseek-chat",),
         supports_json_mode=True,
+        extra_payload={"thinking": {"type": "disabled"}},
         cost_tier="~$0.0014/1K",
     ),
-    "deepseek-reasoner": ModelSpec(
-        api_id="deepseek-reasoner",
+    "deepseek-v4-pro": ModelSpec(
+        api_id="deepseek-v4-pro",
+        aliases=("deepseek-reasoner",),
         supports_json_mode=True,
+        extra_payload={"thinking": {"type": "disabled"}},
         cost_tier="~$0.0055/1K",
     ),
 }
@@ -56,7 +62,8 @@ SLAI_TEXT_MODELS: dict[str, ModelSpec] = {
             "stream": True,
             "thinking": {"type": "disabled"},
         },
-        cost_tier="~$0.00009/1K",
+        # Observed SLAI usage: ~$0.0001414 / 1K tokens
+        cost_tier="~$0.0001414/1K",
         request_timeout_seconds=180.0,
     ),
     "gpt-5.6-sol": ModelSpec(
@@ -66,7 +73,7 @@ SLAI_TEXT_MODELS: dict[str, ModelSpec] = {
             "stream": True,
             "thinking": {"type": "disabled"},
         },
-        cost_tier="~$0.001/1K",
+        cost_tier="~$0.0001033/1K",
         request_timeout_seconds=180.0,
     ),
     "gpt-5.6-terra": ModelSpec(
@@ -76,7 +83,7 @@ SLAI_TEXT_MODELS: dict[str, ModelSpec] = {
             "stream": True,
             "thinking": {"type": "disabled"},
         },
-        cost_tier="~$0.001/1K",
+        cost_tier="~$0.0000582/1K",
         request_timeout_seconds=180.0,
     ),
     "gpt-5.6-luna": ModelSpec(
@@ -86,7 +93,7 @@ SLAI_TEXT_MODELS: dict[str, ModelSpec] = {
             "stream": True,
             "thinking": {"type": "disabled"},
         },
-        cost_tier="~$0.001/1K",
+        cost_tier="~$0.0000307/1K",
         request_timeout_seconds=180.0,
     ),
 }
@@ -119,7 +126,8 @@ FAL_IMAGE_MODELS: dict[str, ModelSpec] = {
 }
 
 SLAI_IMAGE_MODELS: dict[str, ModelSpec] = {
-    "slai/gpt-image-2": ModelSpec(api_id="slai/gpt-image-2", cost_tier="~$0.01/img"),
+    # Provider charge: ~150 images / $1 ⇒ ~$0.0067 per image
+    "slai/gpt-image-2": ModelSpec(api_id="slai/gpt-image-2", cost_tier="~$0.0067/img"),
 }
 
 TEXT_MODEL_REGISTRY: MappingProxyType[str, MappingProxyType[str, ModelSpec]] = MappingProxyType(
