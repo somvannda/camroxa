@@ -283,10 +283,9 @@ export default async function Home() {
             </p>
           </div>
 
-          <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
-            <div>
-              <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
-              <div className="mt-6 rounded-[22px] border border-emerald-400/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.03))] p-5 ring-1 ring-emerald-400/15 md:p-6">
+          <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-stretch">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="rounded-[22px] border border-emerald-400/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.03))] p-5 ring-1 ring-emerald-400/15 md:p-6">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-400/25">
                     <ShieldCheck className="h-5 w-5" />
@@ -331,9 +330,17 @@ export default async function Home() {
                   </Link>
                 </p>
               </div>
+
+              <div className="mt-auto pt-8">
+                <CtaRow
+                  userPortalBaseUrl={userPortalBaseUrl}
+                  priceLabel={priceLabel}
+                  hideCaption
+                />
+              </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6 md:min-h-[420px]">
+            <div className="flex h-full flex-col rounded-[28px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6 md:p-6">
               <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">What you buy</div>
               <div className="mt-2 font-display text-2xl font-semibold text-white">
                 The factory — not a single AI tab
@@ -347,7 +354,7 @@ export default async function Home() {
                   "Free + premium marketplace templates (one-click setup)",
                   "Multi-provider AI routing for continuous production",
                   "Path to 10+ channels with less manual work",
-                  "100% plan refund if dual channels don’t monetize*",
+                  "100% plan refund if dual channels don’t monetize",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-3">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
@@ -355,16 +362,6 @@ export default async function Home() {
                   </li>
                 ))}
               </ul>
-              {priceLabel ? (
-                <p className="mt-5 border-t border-white/8 pt-4 text-sm text-slate-200/70">
-                  Plans from{" "}
-                  <span className="font-medium text-white">{priceLabel}/mo</span>
-                  {entry ? ` · ${entry.name}` : null}
-                </p>
-              ) : null}
-              <p className="mt-3 text-xs leading-5 text-slate-400">
-                *Conditions apply — see pricing, terms, and Help Center.
-              </p>
             </div>
           </div>
         </section>
