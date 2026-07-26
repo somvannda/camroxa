@@ -468,9 +468,9 @@ export default async function Home() {
           <div className="relative mt-16 hidden lg:block">
             <div
               aria-hidden
-              className="absolute left-[1.25rem] right-[1.25rem] top-5 h-px bg-gradient-to-r from-emerald-400/40 via-emerald-300/50 to-amber-400/40"
+              className="pointer-events-none absolute left-[1.25rem] right-[1.25rem] top-[1.375rem] z-0 h-px bg-gradient-to-r from-emerald-400/40 via-emerald-300/50 to-amber-400/40"
             />
-            <ol className="relative grid list-none grid-cols-6 gap-8 pb-6">
+            <ol className="relative z-10 grid list-none grid-cols-6 gap-8 pb-6">
               {workflowSteps.map((item) => {
                 const done = item.status === "done";
                 return (
@@ -478,8 +478,8 @@ export default async function Home() {
                     <div
                       className={`relative z-10 mb-6 flex h-10 w-10 items-center justify-center rounded-full text-[11px] font-medium tracking-[0.08em] ring-2 ${
                         done
-                          ? "bg-emerald-500/20 text-emerald-100 ring-emerald-400/50"
-                          : "bg-amber-500/10 text-amber-100 ring-amber-400/45"
+                          ? "bg-[#060a12] text-emerald-100 ring-emerald-400/60 shadow-[0_0_0_6px_#060a12]"
+                          : "bg-[#060a12] text-amber-100 ring-amber-400/55 shadow-[0_0_0_6px_#060a12]"
                       }`}
                     >
                       {item.step}
