@@ -203,6 +203,20 @@ export default async function Home() {
     },
   ];
 
+  const workflowSteps = [
+    { step: "01", title: "Idea", detail: "Channel brief & batch" },
+    { step: "02", title: "Lyrics", detail: "Draft & polish" },
+    { step: "03", title: "Music", detail: "Generate tracks" },
+    { step: "04", title: "Art", detail: "Backgrounds & thumbs" },
+    { step: "05", title: "Video", detail: "Template, spectrum, merge" },
+    {
+      step: "06",
+      title: "YouTube-ready",
+      detail: "Export finished videos today.",
+      soon: "Auto-upload soon",
+    },
+  ] as const;
+
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
@@ -426,51 +440,67 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Pipeline / workflow */}
+        {/* Pipeline / workflow — open step rail, no card frames */}
         <section id="pipeline" className="scroll-mt-28">
           <div className="max-w-3xl">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">The workflow</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
               Complicated steps. Simple start.
             </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200/70 md:text-base">
+              You&apos;re not exporting from one site and re-uploading to the next. Camxora keeps
+              the handoffs inside the studio after you start the run.
+            </p>
           </div>
-          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            {[
-              { step: "01", title: "Idea", detail: "Channel brief & batch" },
-              { step: "02", title: "Lyrics", detail: "Draft & polish" },
-              { step: "03", title: "Music", detail: "Generate tracks" },
-              { step: "04", title: "Art", detail: "Backgrounds & thumbs" },
-              { step: "05", title: "Video", detail: "Template + spectrum + merge" },
-              {
-                step: "06",
-                title: "YouTube-ready",
-                detail: "Export finished videos today. Auto-upload is coming soon.",
-                soon: true,
-              },
-            ].map((item) => (
-              <div
-                key={item.step}
-                className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4 ring-1 ring-white/6"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
+
+          {/* Desktop: single rail */}
+          <div className="relative mt-12 hidden lg:block">
+            <div
+              aria-hidden
+              className="absolute left-[1.125rem] right-[1.125rem] top-4 h-px bg-gradient-to-r from-white/5 via-white/20 to-white/5"
+            />
+            <ol className="relative grid list-none grid-cols-6 gap-8">
+              {workflowSteps.map((item) => (
+                <li key={item.step} className="relative min-w-0">
+                  <div className="relative z-10 mb-5 flex h-8 w-8 items-center justify-center rounded-full bg-[#060a12] text-[11px] font-medium tracking-[0.08em] text-fuchsia-100/90 ring-1 ring-white/15">
                     {item.step}
                   </div>
+                  <div className="font-display text-xl font-semibold tracking-[-0.03em] text-white">
+                    {item.title}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">{item.detail}</p>
                   {"soon" in item && item.soon ? (
-                    <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-amber-100">
-                      Soon
+                    <span className="mt-3 inline-flex text-[10px] uppercase tracking-[0.16em] text-amber-100/80">
+                      {item.soon}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* Mobile / tablet: vertical timeline */}
+          <ol className="relative mt-10 list-none space-y-0 border-l border-white/12 pl-6 lg:hidden">
+            {workflowSteps.map((item) => (
+              <li key={item.step} className="relative pb-8 last:pb-0">
+                <span
+                  aria-hidden
+                  className="absolute -left-[1.9rem] top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#060a12] text-[9px] font-medium text-fuchsia-100/90 ring-1 ring-white/15"
+                >
+                  {item.step.replace(/^0/, "")}
+                </span>
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="font-display text-xl font-semibold text-white">{item.title}</span>
+                  {"soon" in item && item.soon ? (
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-amber-100/80">
+                      {item.soon}
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-2 font-display text-xl font-semibold text-white">{item.title}</div>
-                <div className="mt-2 text-sm leading-6 text-slate-200/68">{item.detail}</div>
-              </div>
+                <p className="mt-1 text-sm leading-6 text-slate-400">{item.detail}</p>
+              </li>
             ))}
-          </div>
-          <p className="mt-6 max-w-3xl text-sm leading-7 text-slate-200/70">
-            You&apos;re not exporting from one site and re-uploading to the next. Camxora keeps the
-            handoffs inside the studio after you start the run.
-          </p>
+          </ol>
         </section>
 
         {/* Wins grid */}
