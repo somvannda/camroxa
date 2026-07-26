@@ -598,16 +598,19 @@ Or use Cloudflare Access / VPN.
 
 ## 18. Moving sandbox → production later
 
+**Full cutover plan (config migration, no user data):** [`PRODUCTION_CUTOVER.md`](./PRODUCTION_CUTOVER.md).
+
 1. Clone env files with `PLATFORM_ENVIRONMENT=production`  
-2. New hostnames: `api.camxora.com`, `app.camxora.com`, `www.camxora.com`  
+2. New hostnames: `api.camxora.com`, `app.camxora.com`, `admin.camxora.com`, `music.camxora.com`, `www.camxora.com`  
 3. Apply production nginx from repo: `python scripts/deploy/apply_nginx.py --env production`  
 4. Run `python scripts/deploy/verify_nginx_api_timeouts.py --env production` (same 300s rule as sandbox)  
-5. Configure AI routing in Admin — **do not** run `migrate_ai_routing_sandbox.py` on production  
-6. Run `validate_production_settings` checks (no debug, strong JWT, Suno HMAC)  
-7. Separate PostgreSQL database or VPS  
-8. Enable monitoring (Uptime Kuma, healthchecks.io)
+5. Migrate **system config** from sandbox (plans, pricing, catalogs) — **not** users/batches — see cutover doc §4–§7  
+6. Configure AI routing in Admin — **do not** run `migrate_ai_routing_sandbox.py` on production  
+7. Run `validate_production_settings` checks (no debug, strong JWT, Suno HMAC)  
+8. Separate PostgreSQL database on the new VPS; prefer a **new** encryption master key  
+9. Enable monitoring (Uptime Kuma, healthchecks.io)
 
-Full checklist: [`DEPLOYMENT_OPERATIONS.md`](./DEPLOYMENT_OPERATIONS.md) §6–§7.
+Also: [`DEPLOYMENT_OPERATIONS.md`](./DEPLOYMENT_OPERATIONS.md) §7–§8.
 
 ---
 

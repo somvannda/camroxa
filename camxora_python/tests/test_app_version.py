@@ -12,7 +12,7 @@ from shared.services.software_update_service import SoftwareUpdateOffer, Softwar
 def test_get_app_version_reads_pyproject_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_version, "is_frozen_runtime", lambda: False)
     version = app_version.get_app_version()
-    assert version == "0.4.1"
+    assert version == "1.0.0"
 
 
 def test_get_app_version_prefers_bundled_file_when_frozen(

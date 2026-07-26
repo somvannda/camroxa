@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from features.video.lib.export_failure_log import append_export_event_line, tail_export_error_detail
 from shared.lib.subprocess_utils import popen_hidden
 
 
@@ -64,9 +65,29 @@ class ExportJob:
         self.proc: subprocess.Popen[str] | None = None
         self._cancel_requested = False
         self.backend_used: str = ""
+        self.last_error_detail: str = ""
+        self._error_lines: list[str] = []
         from features.video.lib.export_cancel import new_cancel_path
 
         self._cancel_path = new_cancel_path()
+
+    def _note_event(self, event: dict) -> None:
+        append_export_event_line(self._error_lines, event)
+
+    def _publish_failure_detail(self, code: int) -> None:
+        if int(code) == 0:
+            return
+        detail = tail_export_error_detail(self._error_lines)
+        if detail:
+            self.last_error_detail = detail
+        if self.last_error_detail and self.on_event:
+            self.on_event(
+                {
+                    "status": "failed",
+                    "message": self.last_error_detail,
+                    "progress": 0.0,
+                }
+            )
 
     def cancel(self) -> None:
         self._cancel_requested = True
@@ -179,11 +200,16 @@ class ExportJob:
             try:
                 from features.video.services.visualizer_daemon import get_visualizer_daemon
 
+                def _daemon_on_event(event: dict) -> None:
+                    self._note_event(event)
+                    if self.on_event:
+                        self.on_event(event)
+
                 daemon_code = get_visualizer_daemon().run_command(
                     cmd,
                     cwd=str(project_dir),
                     env=env,
-                    on_event=self.on_event,
+                    on_event=_daemon_on_event,
                     on_exit=self.on_exit,
                 )
                 if self._cancel_requested:
@@ -191,8 +217,14 @@ class ExportJob:
                     return 1
                 if daemon_code is not None:
                     self.backend_used = "daemon"
-                    return int(daemon_code)
-            except Exception:
+                    code = int(daemon_code)
+                    self._publish_failure_detail(code)
+                    return code
+            except Exception as exc:
+                append_export_event_line(
+                    self._error_lines,
+                    {"status": "log", "message": f"visualizer daemon error: {exc}"},
+                )
                 if self._cancel_requested:
                     self.backend_used = "daemon"
                     return 1
@@ -210,7 +242,6 @@ class ExportJob:
         assert self.proc.stdout is not None
         last_progress_emit = 0.0
         last_progress_message = ""
-        last_error_lines: list[str] = []
         try:
             for line in self.proc.stdout:
                 if self._cancel_requested:
@@ -222,12 +253,9 @@ class ExportJob:
                         event = json.loads(payload)
                     except json.JSONDecodeError:
                         event = {"status": "log", "message": payload}
+                    self._note_event(event)
                     if self.on_event:
                         status = str(event.get("status") or "").strip().lower()
-                        if status == "failed":
-                            msg = str(event.get("message") or "").strip()
-                            if msg:
-                                last_error_lines.append(msg)
                         if status == "running":
                             now = time.monotonic()
                             message = str(event.get("message") or "")
@@ -237,18 +265,13 @@ class ExportJob:
                             last_progress_message = message
                         self.on_event(event)
                 elif stripped:
-                    # Keep a short traceback / log tail for failed exits.
-                    last_error_lines.append(stripped)
-                    if len(last_error_lines) > 40:
-                        del last_error_lines[:-40]
+                    log_event = {"status": "log", "message": stripped}
+                    self._note_event(log_event)
                     if self.on_event:
-                        self.on_event({"status": "log", "message": stripped})
+                        self.on_event(log_event)
         finally:
             code = int(self.proc.wait())
-            if code != 0 and last_error_lines and self.on_event:
-                # Surface the real renderer crash instead of a bare exit code.
-                tail = "\n".join(last_error_lines[-12:])
-                self.on_event({"status": "failed", "message": tail, "progress": 0.0})
+            self._publish_failure_detail(code)
             if self.on_exit:
                 self.on_exit(code)
             return code

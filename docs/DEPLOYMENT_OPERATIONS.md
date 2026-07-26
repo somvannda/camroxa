@@ -227,15 +227,18 @@ Nginx timed out before the API response reached the browser. The API may still h
 
 ## 8. Moving sandbox → production
 
-Use this in addition to [`SANDBOX_DEPLOYMENT_GUIDE.md` §18](./SANDBOX_DEPLOYMENT_GUIDE.md#18-moving-sandbox--production-later):
+**Primary runbook:** [`PRODUCTION_CUTOVER.md`](./PRODUCTION_CUTOVER.md) (new VPS, config-only migration, no user data).
 
-1. Provision prod VPS (see `PRODUCTION_INFRASTRUCTURE_PLAN.md`).
+Also use [`SANDBOX_DEPLOYMENT_GUIDE.md` §18](./SANDBOX_DEPLOYMENT_GUIDE.md#18-moving-sandbox--production-later) and:
+
+1. Provision prod VPS (see `PRODUCTION_INFRASTRUCTURE_PLAN.md` + cutover doc).
 2. Copy `scripts/deploy/nginx-camxora-production.conf` → apply with `apply_nginx.py --env production`.
 3. Set `PLATFORM_ENVIRONMENT=production` in `platform_api/.env`.
 4. Run `validate_production_settings` (strong JWT, no debug, Suno HMAC).
-5. Configure AI routing in Admin (do **not** use sandbox routing migration script).
-6. Run §7 checklist on production hostnames.
-7. Separate PostgreSQL database; separate encryption master key if keys were encrypted on another env.
+5. Migrate **system config from sandbox** (plans, pricing, admin catalogs, etc.) — **not** users/batches. Inventory script: `scripts/deploy/inventory_sandbox_config_for_prod.py`.
+6. Configure AI routing in Admin (do **not** use `migrate_ai_routing_sandbox.py` on production).
+7. Run §7 checklist on production hostnames.
+8. Prefer a **new** `PLATFORM_ENCRYPTION_MASTER_KEY` on prod and re-enter provider keys (or document shared-key risk).
 
 ---
 

@@ -123,9 +123,13 @@ class VideoManualExportWorker(QThread):
             )
             code = coordinator.last_exit_code
             if self._cancel_requested or code != 0:
+                from shared.services.app_logger import log_error
+
                 detail = last_fail_message.strip() or (
                     "Export cancelled." if self._cancel_requested else f"Export failed with exit code {code}."
                 )
+                if not self._cancel_requested:
+                    log_error(detail, category="export")
                 self.failed.emit(self._short_fail_message(detail))
                 return
             self.succeeded.emit(output_path)

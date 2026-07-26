@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import os
+from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 import librosa
 import numpy as np
+
+# Fixed analysis rate — native 44.1/48 kHz makes STFT/beat_track extremely heavy
+# on dual-socket Xeon boxes (OpenBLAS oversubscription → appears hung forever).
+ANALYSIS_SAMPLE_RATE = 22050
+_BLAS_THREAD_CAP = 4
+
+ProgressCallback = Callable[[str], None]
 
 
 @dataclass(frozen=True)
@@ -39,17 +50,65 @@ def probe_audio_duration_sec(path: str) -> float:
         return 0.0
 
 
+@contextmanager
+def _blas_thread_limit(n: int = _BLAS_THREAD_CAP) -> Iterator[None]:
+    """Cap OpenBLAS/MKL/OMP threads so dual-Xeon machines do not livelock STFT."""
+    keys = (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+    )
+    prior = {key: os.environ.get(key) for key in keys}
+    for key in keys:
+        os.environ[key] = str(max(1, int(n)))
+    try:
+        try:
+            from threadpoolctl import threadpool_limits
+
+            with threadpool_limits(limits=max(1, int(n))):
+                yield
+        except Exception:
+            yield
+    finally:
+        for key, value in prior.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 class AudioAnalyzer:
-    def __init__(self, mp3_path: str, fps: int, point_count: int, n_fft: int = 2048) -> None:
-        y, sr = librosa.load(mp3_path, sr=None, mono=True)
-        if y is None or sr is None:
-            raise RuntimeError("Could not load audio")
-        self._sr = int(sr)
-        self._fps = int(fps)
-        self._point_count = int(point_count)
-        self._n_fft = int(n_fft)
-        self._hop_length = max(1, int(round(self._sr / max(1, self._fps))))
-        self._analyze_waveform(y)
+    def __init__(
+        self,
+        mp3_path: str,
+        fps: int,
+        point_count: int,
+        n_fft: int = 2048,
+        *,
+        on_progress: ProgressCallback | None = None,
+        analysis_sr: int = ANALYSIS_SAMPLE_RATE,
+    ) -> None:
+        def _progress(message: str) -> None:
+            if on_progress is not None:
+                on_progress(message)
+
+        with _blas_thread_limit():
+            _progress("Loading audio…")
+            y, sr = librosa.load(
+                mp3_path,
+                sr=int(max(8000, int(analysis_sr))),
+                mono=True,
+            )
+            if y is None or sr is None:
+                raise RuntimeError("Could not load audio")
+            self._sr = int(sr)
+            self._fps = int(fps)
+            self._point_count = int(point_count)
+            self._n_fft = int(n_fft)
+            self._hop_length = max(1, int(round(self._sr / max(1, self._fps))))
+            self._analyze_waveform(y, on_progress=_progress)
 
     @classmethod
     def from_cached_arrays(
@@ -91,7 +150,12 @@ class AudioAnalyzer:
         inst._x_out = np.linspace(0.0, 1.0, num=inst._point_count, dtype=np.float32)
         return inst
 
-    def _analyze_waveform(self, y: np.ndarray) -> None:
+    def _analyze_waveform(self, y: np.ndarray, *, on_progress: ProgressCallback | None = None) -> None:
+        def _progress(message: str) -> None:
+            if on_progress is not None:
+                on_progress(message)
+
+        _progress("Computing spectrum…")
         stft = librosa.stft(y, n_fft=self._n_fft, hop_length=self._hop_length, window="hann", center=True)
         mag = np.abs(stft).astype(np.float32)
         mag_max = float(np.max(mag)) if mag.size else 1.0
@@ -112,20 +176,27 @@ class AudioAnalyzer:
         self._x_in = np.linspace(0.0, 1.0, num=self._freq_bins, dtype=np.float32)
         self._x_out = np.linspace(0.0, 1.0, num=self._point_count, dtype=np.float32)
 
+        _progress("Detecting onset…")
         onset_env = librosa.onset.onset_strength(y=y, sr=self._sr, hop_length=self._hop_length)
         onset_env = onset_env.astype(np.float32)
         if onset_env.size:
             onset_env = onset_env / max(1e-9, float(np.max(onset_env)))
         self._onset_env = onset_env
 
+        _progress("Detecting beats…")
         try:
+            # Reuse onset envelope — avoids a second full spectrogram pass.
             _tempo, beat_frames = librosa.beat.beat_track(
-                y=y, sr=self._sr, hop_length=self._hop_length, units="frames"
+                onset_envelope=onset_env,
+                sr=self._sr,
+                hop_length=self._hop_length,
+                units="frames",
             )
-            beat_set = set(int(x) for x in beat_frames.tolist())
+            beat_set = {int(x) for x in np.asarray(beat_frames).reshape(-1).tolist()}
         except Exception:
             beat_set = set()
         self._beat_set = beat_set
+        _progress("Audio analysis complete")
 
     @property
     def point_count(self) -> int:

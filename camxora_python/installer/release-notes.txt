@@ -1,16 +1,15 @@
-﻿Camxora 0.4.1 (Sandbox)
+﻿Camxora 1.0.0 — First official release
 
-What's new
-----------
-• Force update: download → install progress in the same dialog → auto-restart
-• Update progress bar uses Camxora purple gradient (no dark track)
-
-Fixes
------
-• Silent installer no longer dies when Camxora exits (orphaned helper)
-• Setup.exe kept outside temp so install can finish, then app relaunches
+What's included
+---------------
+• Music automation: drafts, Suno, images, history, and Progress pipeline
+• GPU video export + merge for channel long/reel workflows
+• Account, plans, credits, and portal-connected desktop studio
+• Streaming catalog support for music.camxora.com
+• Admin-managed prompts, moods, languages, and AI routing
 
 Notes
 -----
-• Install over 0.3.x / 0.4.0; footer should show v0.4.1 after install
-• One-time: if stuck on an older force-update client, run this Setup manually once
+• This build talks to production API: https://api.camxora.com
+• Portal: https://app.camxora.com
+• Installer: CamxoraSetup-1.0.0.exe

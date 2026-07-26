@@ -11,6 +11,10 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
 from features.video.export_gate import export_gate
+from features.video.lib.export_failure_log import (
+    format_export_failure_message,
+    is_export_milestone_message,
+)
 from features.video.lib.render_scene_request import (
     build_pipeline_export_output_path,
     build_pipeline_long_output_path,
@@ -22,6 +26,7 @@ from features.video.services.export_coordinator import (
     run_subprocess_export,
 )
 from features.video.services.export_job import ExportJob, ExportSettings, find_ffmpeg_from_path_hint
+from shared.services.app_logger import log_error, log_info
 
 
 @dataclass(frozen=True)
@@ -69,10 +74,9 @@ class VideoPipelineExportWorker(QThread):
             return
 
         workers_raw = request.settings.get("videoExportWorkers", request.settings.get("perfExportWorkers", 1))
-        try:
-            worker_limit = max(1, min(10, int(workers_raw)))
-        except (TypeError, ValueError):
-            worker_limit = 1
+        from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+
+        worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
         worker_count = min(worker_limit, len(mp3_paths))
         export_gate.set_limit(worker_limit)
         # Parallel tracks cannot share the single-job warm daemon.
@@ -178,11 +182,23 @@ class VideoPipelineExportWorker(QThread):
                         with self._jobs_lock:
                             self._active_jobs[path] = export_job
 
-                    code, backend_used, job = run_subprocess_export(
-                        export_request,
-                        on_event=lambda event, path=mp3_path: emit_progress(
+                    last_logged_milestone = ""
+
+                    def _on_export_event(event: dict, path: str = mp3_path) -> None:
+                        nonlocal last_logged_milestone
+                        message = str(event.get("message") or event.get("status") or "Exporting…")
+                        status = str(event.get("status") or "running").strip().lower()
+                        if status in {"failed", "error"} or is_export_milestone_message(message):
+                            stamped = f"{Path(path).name}: {message}"
+                            if stamped != last_logged_milestone:
+                                last_logged_milestone = stamped
+                                if status in {"failed", "error"}:
+                                    log_error(stamped, category="export")
+                                else:
+                                    log_info(stamped, category="export")
+                        emit_progress(
                             status=str(event.get("status") or "running"),
-                            message=str(event.get("message") or event.get("status") or "Exporting…"),
+                            message=message,
                             current_path=path,
                             output_path=long_output_path,
                             track_progress=(
@@ -191,9 +207,15 @@ class VideoPipelineExportWorker(QThread):
                                 else None
                             ),
                             video_codec=str(event.get("videoCodec") or "").strip() or None,
-                            backend_used=str(event.get("backendUsed") or event.get("backend") or "").strip() or None,
+                            backend_used=str(event.get("backendUsed") or event.get("backend") or "").strip()
+                            or None,
                             fallback_from=str(event.get("fallbackFrom") or "").strip() or None,
-                        ),
+                        )
+
+                    log_info(f"Starting export · {Path(mp3_path).name}", category="export")
+                    code, backend_used, job = run_subprocess_export(
+                        export_request,
+                        on_event=_on_export_event,
                         on_job_started=_register_active_job,
                         allow_daemon=allow_daemon,
                     )
@@ -203,7 +225,15 @@ class VideoPipelineExportWorker(QThread):
                 if self._cancel_requested:
                     raise RuntimeError("Video export stopped.")
                 if code != 0:
-                    raise RuntimeError(f"Export failed with exit code {code} for {Path(mp3_path).name}.")
+                    detail = str(getattr(job, "last_error_detail", "") or "").strip()
+                    message = format_export_failure_message(
+                        exit_code=code,
+                        mp3_path=mp3_path,
+                        detail=detail,
+                        backend_used=backend_used,
+                    )
+                    log_error(message, category="export")
+                    raise RuntimeError(message)
             finally:
                 export_gate.release()
 

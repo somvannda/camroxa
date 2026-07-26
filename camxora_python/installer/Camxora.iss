@@ -13,7 +13,7 @@
 #ifdef CamxoraVersion
   #define MyAppVersion CamxoraVersion
 #else
-  #define MyAppVersion "0.4.1"
+  #define MyAppVersion "1.0.0"
 #endif
 #define MyAppPublisher "Camxora"
 #define MyAppExeName "Camxora.exe"
@@ -56,7 +56,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; Full PyInstaller onedir bundle
 Source: "{#CamxoraDistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Bundled FFmpeg (ffmpeg.exe + ffprobe.exe) — also copied by build script into dist
+; Bundled FFmpeg (ffmpeg.exe + ffprobe.exe) â€” also copied by build script into dist
 Source: "{#CamxoraVendorDir}\ffmpeg\*"; DestDir: "{app}\ffmpeg"; Flags: ignoreversion skipifsourcedoesntexist
 ; VC++ redistributable bootstrapper (installed silently in [Run])
 Source: "{#CamxoraVendorDir}\vcredist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
@@ -68,7 +68,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 ; Install VC++ runtime quietly when present (safe no-op if already installed)
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ Redistributable…"; Flags: waituntilterminated skipifdoesntexist
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ Redistributableâ€¦"; Flags: waituntilterminated skipifdoesntexist
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]

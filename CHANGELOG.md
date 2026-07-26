@@ -15,6 +15,36 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.0] - 2026-07-26
+
+First official production release of the Camxora desktop studio.
+
+### Added
+
+- Music workspace: batch automation (drafts, Suno, album images), History, and Progress export/merge pipeline
+- Video studio with GPU visualizer export for long and reel outputs
+- Preferences, diagnostics sync, and software-update support
+- Production API endpoint (`https://api.camxora.com/api/v1`) and portal (`https://app.camxora.com`)
+
+### Notes
+
+- Sandbox builds remain separate; this installer does not talk to sandbox
+- GPU export audio-analysis hardening for low-VRAM / dual-Xeon PCs is documented under `docs/FOLLOWUPS_DESKTOP_GPU_EXPORT.md` (validation held)
+
+## [0.4.3] - 2026-07-25
+
+### Fixed
+
+- **Export stuck on Analyzing audio (1050 Ti / dual Xeon):** cap OpenBLAS/MKL threads during librosa analysis, analyze at 22.05 kHz, reuse onset envelope for beat detection, and emit Loading/Spectrum/Onset/Beats progress so the UI moves
+- **Low-GPU parallel export:** GTX 1050 Ti-class (`low` tier) forces pipeline Export workers to 1 even if Preferences is higher
+
+## [0.4.2] - 2026-07-25
+
+### Added
+
+- **Export failure diagnostics:** pipeline/manual export failures persist renderer crash tails (traceback / OpenGL / ffmpeg) into the app log ring buffer so Settings → Send diagnostics captures the real exit-code-1 cause, not only the short summary
+- **Export milestone logging:** analyzing audio / cache / encoder stage messages are written to `[export]` logs to diagnose hangs on low-VRAM GPUs (e.g. GTX 1050 Ti)
+
 ## [0.4.1] - 2026-07-25
 
 ### Changed

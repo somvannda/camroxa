@@ -2110,7 +2110,22 @@ def run_gpu_render(
                     "progress": 0.08,
                 }
             )
-            analyzer = AudioAnalyzer(opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count)
+
+            def _analysis_progress(message: str) -> None:
+                _emit_event(
+                    {
+                        "status": "running",
+                        "message": str(message or "Analyzing audio…"),
+                        "progress": 0.08,
+                    }
+                )
+
+            analyzer = AudioAnalyzer(
+                opts.mp3_path,
+                fps=ANALYSIS_FPS,
+                point_count=point_count,
+                on_progress=_analysis_progress,
+            )
             set_audio_analysis_cache(analyzer, opts.mp3_path)
             _emit_event(
                 {

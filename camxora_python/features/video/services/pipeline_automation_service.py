@@ -225,10 +225,9 @@ class PipelineAutomationService(QObject):
             fps=tier.fps,
         )
         workers_raw = self._settings.get("videoExportWorkers", self._settings.get("perfExportWorkers", 1))
-        try:
-            worker_limit = max(1, min(10, int(workers_raw)))
-        except (TypeError, ValueError):
-            worker_limit = 1
+        from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+
+        worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
 
         auto_merge = (
             bool(auto_merge)
@@ -702,11 +701,19 @@ class PipelineAutomationService(QObject):
         emit_shell_status(message or "Auto-merge failed.")
 
     def _on_export_failed(self, message: str) -> None:
+        from shared.services.app_logger import log_error
+
         user_stop = self._is_user_initiated_stop(message)
         self._apply_video_refund_for_outcome(message or "", user_stop=user_stop)
         workspace = self._current_workspace()
         self._busy = False
+        status_text = message or "Auto-video export failed."
+        # Persist full crash tail (multiline) into diagnostics sync / local log file.
+        if not user_stop:
+            log_error(status_text, category="export")
         if workspace is not None:
+            # Progress row: keep first line short; detail is in diagnostics logs.
+            status_line = status_text.splitlines()[0].strip() or status_text
             self._publish_workspace(
                 workspace.model_copy(
                     update={
@@ -714,13 +721,13 @@ class PipelineAutomationService(QObject):
                             update={
                                 "running": False,
                                 "merge_running": False,
-                                "current_status": message or "Auto-video export failed.",
+                                "current_status": status_line,
                             }
                         )
                     }
                 )
             )
-        emit_shell_status(message or "Auto-video export failed.")
+        emit_shell_status(status_text.splitlines()[0].strip() or status_text)
 
     def _on_export_finished(self) -> None:
         self._export_worker = None

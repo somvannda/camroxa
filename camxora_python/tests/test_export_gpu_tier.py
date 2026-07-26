@@ -75,3 +75,15 @@ def test_high_tier_quality_pipe_stays_rgba(monkeypatch: pytest.MonkeyPatch) -> N
     clear_export_gpu_tier_cache()
     monkeypatch.delenv("CAMXORA_EXPORT_PIPE", raising=False)
     assert resolve_pipe_pix_fmt("quality") == "rgba"
+
+
+def test_resolve_pipeline_export_workers_forces_one_on_low(monkeypatch: pytest.MonkeyPatch) -> None:
+    from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+
+    monkeypatch.setenv("CAMXORA_GPU_TIER", "low")
+    clear_export_gpu_tier_cache()
+    assert resolve_pipeline_export_workers(4) == 1
+
+    monkeypatch.setenv("CAMXORA_GPU_TIER", "mid")
+    clear_export_gpu_tier_cache()
+    assert resolve_pipeline_export_workers(3) == 3

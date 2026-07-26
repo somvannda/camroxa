@@ -86,6 +86,20 @@ def classify_export_gpu_tier(*, name: str | None = None, memory_mib: float | Non
     return "mid"
 
 
+def resolve_pipeline_export_workers(requested: object, *, default: int = 1) -> int:
+    """Clamp Preferences workers; force 1 on low-VRAM / 1050 Ti-class GPUs."""
+    try:
+        limit = max(1, min(10, int(requested)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        limit = max(1, min(10, int(default)))
+    try:
+        if detect_export_gpu_tier() == "low":
+            return 1
+    except Exception:
+        pass
+    return limit
+
+
 def _probe_nvidia_smi() -> tuple[str | None, float | None]:
     try:
         completed = subprocess.run(

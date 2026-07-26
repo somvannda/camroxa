@@ -44,33 +44,32 @@ export default async function Home() {
               videos, and export YouTube-ready MP4s — all in one Windows app.
             </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <a
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
-                href={`${userPortalBaseUrl}/register`}
-              >
-                Create account
-                <ArrowRight className="h-4 w-4" />
-              </a>
-              <Link
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-                href="/download"
-              >
-                <Download className="h-4 w-4" />
-                Download for Windows
-              </Link>
-              <Link
-                className="inline-flex h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-                href="/compare"
-              >
-                Why Camxora
-              </Link>
-              <Link
-                className="inline-flex h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-                href="/pricing"
-              >
-                View pricing
-              </Link>
+            <div className="mt-8 flex flex-col gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <a
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
+                  href={`${userPortalBaseUrl}/register`}
+                >
+                  Create account
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+                <Link
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+                  href="/download"
+                >
+                  <Download className="h-4 w-4" />
+                  Download for Windows
+                </Link>
+              </div>
+              <p className="text-sm text-slate-300/70">
+                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/compare">
+                  Why Camxora
+                </Link>
+                <span className="mx-2 text-slate-500">·</span>
+                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
+                  View pricing
+                </Link>
+              </p>
             </div>
           </div>
 
