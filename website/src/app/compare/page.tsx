@@ -88,7 +88,7 @@ function CtaRow({
 function RiskLine() {
   return (
     <p className="mt-4 text-sm leading-7 text-slate-200/65">
-      Follow Camxora&apos;s full workflow. If your channel still doesn&apos;t reach YouTube
+      Follow Camxora&apos;s full workflow. If your dual channels still don&apos;t reach YouTube
       monetization, we refund your plan payment in full.{" "}
       <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
         See guarantee details
@@ -160,7 +160,7 @@ export default async function ComparePage() {
     },
     {
       q: "Can I cancel anytime?",
-      a: "We don’t market a casual cancel-anytime promise. We stand behind a monetization guarantee: follow Camxora’s full workflow and YouTube policies; if the channel still doesn’t reach monetization, request a full plan refund via support@camxora.com.",
+      a: "We don’t market a casual cancel-anytime promise. We stand behind a monetization guarantee: follow Camxora’s full workflow and YouTube policies; if your dual channels still don’t reach monetization, request a full plan refund via support@camxora.com.",
     },
     {
       q: "What’s included in marketplace templates?",
@@ -412,7 +412,7 @@ export default async function ComparePage() {
             Follow the playbook. Get monetized — or we refund 100%.
           </h2>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200/78 md:text-base md:leading-8">
-            If you use Camxora to build and publish your faceless music channel following our full
+            If you use Camxora to build and publish dual faceless music channels following our full
             workflow and YouTube policies, and you still don&apos;t reach YouTube monetization,
             we&apos;ll refund your plan payment in full. Contact{" "}
             <a

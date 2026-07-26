@@ -21,18 +21,18 @@ export default function FeaturesPage() {
   return (
     <ContentPageShell
       eyebrow="Features"
-      title="Everything you need to ship faceless music videos."
-      description="Camxora is a Windows desktop studio for lyrics, music, artwork, video templates, and export — with auto YouTube upload coming soon."
+      title="Everything you need to ship faceless music videos across dual channels."
+      description="Camxora is a Windows desktop studio for dual-channel lyrics, music, artwork, video templates, and export — with auto YouTube upload coming soon."
       aside={
         <div className="space-y-5">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Built for creators</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              Outcomes first. Tools second.
+              Dual channels first. Scale next.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
-            Run multiple channel profiles, finish more videos each week, and keep branding
+            Start with dual channel profiles, finish more videos each week, and keep branding
             consistent — without a camera or a stack of separate AI apps.
           </p>
         </div>

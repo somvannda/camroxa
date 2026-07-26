@@ -11,7 +11,7 @@ import { DEFAULT_TERM_DISCOUNTS, type PlanTermDiscounts } from "@/lib/plan-prici
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: "Choose a Camxora plan for faceless YouTube music channels — desktop studio, credits, and channel capacity.",
+  description: "Choose a Camxora plan for dual faceless YouTube music channels — desktop studio, credits, and room to scale.",
 };
 
 async function getPlatformApiBaseUrl(): Promise<string> {
@@ -57,7 +57,7 @@ export default async function PricingPage() {
   return (
     <ContentPageShell
       eyebrow="Pricing"
-      title="Plans for faceless music channels."
+      title="Plans that start with dual faceless channels."
       description={
         <>
           <p>
@@ -112,7 +112,7 @@ export default async function PricingPage() {
         </h2>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-200/78 md:text-base md:leading-8">
           We stand behind Camxora with a simple promise: if you use the studio to build and publish
-          your faceless music channel and you{" "}
+          dual faceless music channels and you{" "}
           <strong className="text-white">don&apos;t reach YouTube monetization</strong>, we&apos;ll{" "}
           <strong className="text-white">refund your plan payment in full</strong>. Contact{" "}
           <a className="text-emerald-100 underline-offset-2 hover:underline" href="mailto:support@camxora.com">

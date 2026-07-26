@@ -32,18 +32,18 @@ export default async function BlogPage() {
   return (
     <ContentPageShell
       eyebrow="Updates"
-      title="Guides and stories for building faceless YouTube music channels."
-      description="Product updates, workflow tips, and release notes as Camxora grows from export-ready videos to full publishing."
+      title="Guides and stories for building dual faceless YouTube music channels."
+      description="Product updates, workflow tips, and release notes as Camxora grows from dual-channel export to full publishing."
       aside={
         <div className="space-y-5">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-slate-400">From the team</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              Learn the faceless workflow.
+              Learn the dual-channel faceless workflow.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
-            Tips for lyrics-to-video production, channel operations, and what&apos;s shipping next.
+            Tips for lyrics-to-video production, dual-channel operations, and what&apos;s shipping next.
           </p>
         </div>
       }

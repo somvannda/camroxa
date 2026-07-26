@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Marketing copy: product starts with **dual** faceless YouTube channels (not a single channel) across home, compare, pricing, terms, support, about, features, services, blog, download, and SEO meta.
 - Home hero CTAs: primary Create account + Download; Compare / Pricing as secondary text links (keep `/compare` as conversion page, not homepage).
 - Terms § Credits System: video track-export / merge usage restore rules (technical fail vs user stop).
 - Support Help Center: plan refunds vs export cancel/usage restore; FAQ for stopping an export.

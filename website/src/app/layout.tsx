@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     template: "%s | Camxora",
   },
   description:
-    "Camxora is the faceless desktop studio for music channel production — lyrics, music, images, video, and export in one Windows app.",
+    "Camxora is the faceless desktop studio for dual YouTube music channels — lyrics, music, images, video, and export in one Windows app.",
   applicationName: "Camxora",
   icons: {
     icon: [
@@ -44,13 +44,13 @@ export const metadata: Metadata = {
     siteName: "Camxora",
     title: "Camxora",
     description:
-      "Faceless desktop studio for music channels — lyrics to YouTube-ready video.",
+      "Faceless desktop studio for dual YouTube music channels — lyrics to YouTube-ready video.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Camxora",
     description:
-      "Faceless desktop studio for music channels — lyrics to YouTube-ready video.",
+      "Faceless desktop studio for dual YouTube music channels — lyrics to YouTube-ready video.",
   },
 };
 

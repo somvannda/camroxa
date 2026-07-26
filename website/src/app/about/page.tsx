@@ -6,25 +6,25 @@ import { ContentPageShell } from "@/components/marketing/content-page-shell";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Meet Kong Somvannda, founder of Camxora — a faceless desktop studio built from real YouTube music channel results.",
+    "Meet Kong Somvannda, founder of Camxora — a faceless desktop studio built from real dual-channel YouTube music results.",
 };
 
 export default function AboutPage() {
   return (
     <ContentPageShell
       eyebrow="About"
-      title="Camxora exists to help people build YouTube channels without showing their face."
-      description="We believe creators should be able to turn ideas into music videos — and eventually publish them — without a camera, studio, or five disconnected AI tools."
+      title="Camxora exists to help people start dual YouTube channels without showing their face."
+      description="We believe creators should be able to turn ideas into music videos across dual channels — and eventually publish them — without a camera, studio, or five disconnected AI tools."
       aside={
         <div className="space-y-5">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-slate-400">Mission</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              Faceless creation, end to end.
+              Dual-channel faceless creation, end to end.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
-            Starting with YouTube music videos. Expanding toward a fuller social publishing platform
+            Start with dual YouTube music channels. Expand toward a fuller social publishing platform
             over time.
           </p>
         </div>
@@ -208,7 +208,7 @@ export default function AboutPage() {
             A YouTube business shouldn&apos;t require a face on camera.
           </div>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200/72 md:text-base">
-            Camxora packages the workflow Kong used to build and monetize faceless channels — so
+            Camxora packages the workflow Kong used to build and monetize dual faceless channels — so
             more creators can move from idea to YouTube-ready video without juggling five tools.
           </p>
         </div>

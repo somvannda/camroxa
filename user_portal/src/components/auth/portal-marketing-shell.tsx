@@ -231,7 +231,7 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
                 </div>
               </div>
               <p className="mt-4 leading-7 text-slate-200/60">
-                Build faceless YouTube music channels — lyrics to video in one Windows app.
+                Build dual faceless YouTube music channels — lyrics to video in one Windows app.
               </p>
               <div className="mt-6 text-xs uppercase tracking-[0.2em] text-slate-400">
                 Export ready today. Auto-upload coming soon.

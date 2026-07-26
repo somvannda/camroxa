@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Download",
-  description: "Download Camxora for Windows and start building faceless YouTube music videos.",
+  description: "Download Camxora for Windows and start dual faceless YouTube music channels.",
 };
 
 function formatDate(value: string): string {

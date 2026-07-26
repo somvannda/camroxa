@@ -48,11 +48,12 @@ export function ContentPageShell(props: ContentPageShellProps) {
                     Why Camxora
                   </div>
                   <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-                    Faceless desktop studio, end to end.
+                    Dual-channel faceless studio, end to end.
                   </div>
                 </div>
                 <p className="text-sm leading-6 text-slate-200/72">
-                  Lyrics to YouTube-ready video in one Windows studio — with honest upload roadmap.
+                  Lyrics to YouTube-ready video for dual channels in one Windows studio — with honest
+                  upload roadmap.
                 </p>
               </div>
             )}

@@ -34,10 +34,10 @@ export default async function Home() {
           <div className="max-w-4xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-100/80">
               <Sparkles className="h-3.5 w-3.5 text-fuchsia-200" />
-              Faceless YouTube music
+              Dual faceless YouTube channels
             </div>
             <h1 className="mt-6 font-display text-5xl font-semibold leading-[0.92] tracking-[-0.07em] text-white md:text-7xl">
-              Build a faceless YouTube music channel with AI.
+              Build dual faceless YouTube music channels with AI.
             </h1>
             <p className="mt-6 max-w-3xl text-base leading-8 text-slate-200/72 md:text-lg">
               No camera. No face. No studio. Write lyrics, create music, generate artwork, build
@@ -78,7 +78,7 @@ export default async function Home() {
               <div>
                 <div className="text-xs uppercase tracking-[0.2em] text-slate-400">What you get</div>
                 <div className="mt-2 font-display text-2xl font-semibold text-white">
-                  One workflow. Ready for YouTube.
+                  Dual channels. One workflow.
                 </div>
               </div>
             </div>
@@ -353,11 +353,13 @@ export default async function Home() {
             {[
               {
                 title: "YouTube creators",
-                detail: "Publish more music videos without showing your face or hiring an editor.",
+                detail:
+                  "Start with dual channels — publish more music videos without showing your face or hiring an editor.",
               },
               {
-                title: "Multi-channel creators",
-                detail: "Run multiple channel profiles from one account with consistent branding.",
+                title: "Multi-channel operators",
+                detail:
+                  "Grow from dual toward 10+ channel profiles on one account with consistent branding.",
               },
             ].map((item) => (
               <div
@@ -375,7 +377,7 @@ export default async function Home() {
           <div className="max-w-2xl">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Ready when you are</div>
             <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
-              Start a YouTube channel without a camera.
+              Start dual YouTube channels without a camera.
             </div>
             <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
               Create an account, download the Windows app, and export your next music video —

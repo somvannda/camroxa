@@ -26,7 +26,7 @@ const sections = [
     items: [
       { q: "Upgrade or change plan", a: "Manage plans in the user portal billing area. Sandbox environments may show low test prices." },
       { q: "Cancel renewal", a: "Cancel from the portal before the next billing date. Access typically continues until the period ends." },
-      { q: "Plan refunds", a: "Monetization guarantee: if you use Camxora to build and publish your faceless music channel and you do not reach YouTube monetization, we refund your plan payment in full. Contact support@camxora.com with your account, invoice, and channel details. You must follow Camxora’s workflow and YouTube policies. The refund covers the plan fee, not lost AdSense earnings. Other plan fees are generally non-refundable once a billing period starts, except where required by law (see Terms)." },
+      { q: "Plan refunds", a: "Monetization guarantee: if you use Camxora to build and publish dual faceless music channels and you do not reach YouTube monetization, we refund your plan payment in full. Contact support@camxora.com with your account, invoice, and channel details. You must follow Camxora’s workflow and YouTube policies. The refund covers the plan fee, not lost AdSense earnings. Other plan fees are generally non-refundable once a billing period starts, except where required by law (see Terms)." },
       { q: "Export cancel & usage refunds", a: "Track exports (studio and manual) share one allowance pool. If export fails for a technical reason and no usable file is produced, that unit is restored. If you stop an export yourself: finished tracks and the track that was encoding keep their charge; tracks that never started are restored. Stopping a merge after it started keeps the merge charge. Details: Terms § Credits System." },
       { q: "How credits work", a: "Plans include allowances for drafts, music packages, images, track exports (studio + manual), and merges. Overage may use wallet credits at published rates." },
     ],
@@ -62,7 +62,7 @@ const sections = [
 const faqs = [
   {
     q: "Can I monetize AI-generated videos?",
-    a: "Yes — that is our promise. Use Camxora to build and publish your faceless music channel. If you do not reach YouTube monetization, we refund your plan payment in full (see Pricing and Terms). You must follow YouTube policies and own/clear rights to publish.",
+    a: "Yes — that is our promise. Use Camxora to build and publish dual faceless music channels. If you do not reach YouTube monetization, we refund your plan payment in full (see Pricing and Terms). You must follow YouTube policies and own/clear rights to publish.",
   },
   {
     q: "Who owns generated content?",

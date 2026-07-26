@@ -102,7 +102,7 @@ export default function TermsPage() {
               "Paid plans renew according to the billing term you select (monthly, multi-month, or annual), unless cancelled.",
               "Payments may be processed by third-party providers (including CutLuy / Bakong KHQR where available).",
               "Taxes, bank fees, or payment-provider fees may apply.",
-              "Monetization guarantee: if you use Camxora to build and publish a faceless music channel following our workflow and YouTube policies, and you do not reach YouTube monetization, contact support@camxora.com for a full refund of that plan payment (account, invoice, and channel details required). The refund covers the plan fee only — not AdSense earnings or third-party costs.",
+              "Monetization guarantee: if you use Camxora to build and publish dual faceless music channels following our workflow and YouTube policies, and you do not reach YouTube monetization, contact support@camxora.com for a full refund of that plan payment (account, invoice, and channel details required). The refund covers the plan fee only — not AdSense earnings or third-party costs.",
               "Except for that monetization guarantee, or where required by law, fees are otherwise non-refundable once a billing period starts.",
               "You may cancel renewal from your account portal; access continues until the end of the paid period unless earlier terminated for cause.",
             ]}

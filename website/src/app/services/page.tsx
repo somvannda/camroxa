@@ -4,21 +4,21 @@ import { ContentPageShell } from "@/components/marketing/content-page-shell";
 export const metadata: Metadata = {
   title: "Who it's for",
   description:
-    "Camxora is for faceless YouTube creators who want lyrics-to-video in one Windows app.",
+    "Camxora is for faceless YouTube creators who start with dual channels — lyrics-to-video in one Windows app.",
 };
 
 export default function ServicesPage() {
   return (
     <ContentPageShell
       eyebrow="Who it's for"
-      title="Built for people who want YouTube income without showing their face."
-      description="Camxora turns ideas into music videos in one desktop workflow — so creators can publish more without juggling five tools."
+      title="Built for people who want dual YouTube channels without showing their face."
+      description="Camxora turns ideas into music videos in one desktop workflow — so creators can run dual channels (and scale) without juggling five tools."
       aside={
         <div className="space-y-5">
           <div>
             <div className="text-xs uppercase tracking-[0.22em] text-slate-400">The promise</div>
             <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.05em] text-white">
-              No camera. No face. More finished videos.
+              No camera. No face. Dual channels from day one.
             </div>
           </div>
           <p className="text-sm leading-6 text-slate-200/72">
@@ -33,12 +33,12 @@ export default function ServicesPage() {
           {
             title: "YouTube creators",
             detail:
-              "Start or grow a music channel without a camera, microphone, studio, or editing team.",
+              "Start with dual music channels — no camera, microphone, studio, or editing team required.",
           },
           {
-            title: "Multi-channel creators",
+            title: "Multi-channel operators",
             detail:
-              "Run multiple channel profiles from one account with shared credits and consistent branding.",
+              "Grow from dual toward 10+ channel profiles on one account with shared credits and consistent branding.",
           },
         ].map((item) => (
           <div

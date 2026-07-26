@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Credits panel labels distinguish month vs today for track exports and merges.
+- Marketing chrome/meta: dual faceless YouTube channels (not a single channel) as the default start.
 
 ## [2026-07-19]
 
