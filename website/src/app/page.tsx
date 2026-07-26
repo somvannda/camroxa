@@ -60,11 +60,14 @@ function CtaRow({
   userPortalBaseUrl,
   priceLabel,
   compact = false,
+  hideCaption = false,
 }: {
   userPortalBaseUrl: string;
   priceLabel: string | null;
   /** Two equal buttons in one row + centered price line — for narrow cards. */
   compact?: boolean;
+  /** Hide the Plans from / pricing caption under the buttons. */
+  hideCaption?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -102,19 +105,19 @@ function CtaRow({
           </Link>
         ) : null}
       </div>
-      <p
-        className={`text-sm leading-6 text-slate-300/70 ${compact ? "text-center" : ""}`}
-      >
-        {priceLabel ? (
-          <>
-            Plans from <span className="font-medium text-white">{priceLabel}/mo</span>
-            <span className="mx-2 text-slate-500">·</span>
-          </>
-        ) : null}
-        <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
-          {compact ? "View plans" : "See pricing & guarantee"}
-        </Link>
-      </p>
+      {!hideCaption ? (
+        <p className={`text-sm leading-6 text-slate-300/70 ${compact ? "text-center" : ""}`}>
+          {priceLabel ? (
+            <>
+              Plans from <span className="font-medium text-white">{priceLabel}/mo</span>
+              <span className="mx-2 text-slate-500">·</span>
+            </>
+          ) : null}
+          <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
+            {compact ? "View plans" : "See pricing & guarantee"}
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }
