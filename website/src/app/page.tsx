@@ -527,12 +527,12 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Marketplace highlight */}
+        {/* Marketplace + pricing honesty — open two-column, no empty full-width frames */}
         <section
           id="marketplace"
-          className="scroll-mt-28 rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-6 py-8 ring-1 ring-white/6 md:px-8"
+          className="scroll-mt-28 grid gap-12 border-y border-white/8 py-12 lg:grid-cols-2 lg:gap-16"
         >
-          <div className="max-w-3xl">
+          <div>
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
               Marketplace
             </div>
@@ -546,11 +546,7 @@ export default async function Home() {
               paid; we don&apos;t pretend everything is free.
             </p>
           </div>
-        </section>
-
-        {/* Honest price */}
-        <section className="rounded-[32px] border border-white/10 bg-black/20 px-6 py-8 md:px-8">
-          <div className="max-w-3xl">
+          <div>
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
               Pricing honesty
             </div>
@@ -591,29 +587,25 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Final CTA */}
-        <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(168,85,247,0.14),rgba(255,255,255,0.03))] px-6 py-10 ring-1 ring-white/6 md:px-10">
-          <div className="max-w-3xl">
+        {/* Final CTA — copy + actions side by side */}
+        <section className="grid gap-10 border-t border-white/8 pt-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-end">
+          <div>
             <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
               Cheap APIs still leave you doing the work.
             </h2>
-            <p className="mt-4 text-sm leading-7 text-slate-200/75 md:text-base">
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200/75 md:text-base">
               Camxora is the work system: dual channels, one-click templates, and a pipeline that
               replaces the six-tab grind — with a 100% plan refund if dual channels don&apos;t
               monetize under our playbook.
             </p>
-            <div className="mt-8">
-              <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
-              <p className="mt-4 text-sm leading-7 text-slate-200/65">
-                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
-                  See guarantee details
-                </Link>
-                <span className="mx-2 text-slate-500">·</span>
-                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/download">
-                  Download for Windows
-                </Link>
-              </p>
-            </div>
+          </div>
+          <div>
+            <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} stacked />
+            <p className="mt-4 text-sm leading-7 text-slate-200/65">
+              <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
+                See guarantee details
+              </Link>
+            </p>
           </div>
         </section>
       </main>

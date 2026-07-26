@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nav “Compare” → “Why Camxora” (`/#why-switch`).
 - Primary CTA: short **Create account** button; price moved under CTAs (`Plans from $X/mo`). Narrow cards use stacked CTAs + text “View plans.”
 - Workflow section: open step rail / timeline instead of six bordered cards; “Auto-upload soon” as inline label on YouTube-ready.
+- Marketplace / pricing honesty / final CTA: drop full-width empty frames; marketplace + pricing sit side-by-side; final CTA is copy + actions columns.
 - Marketing copy: product starts with **dual** faceless YouTube channels (not a single channel) across site pages and SEO meta.
 - Terms § Credits System: video track-export / merge usage restore rules (technical fail vs user stop).
 - Support Help Center: plan refunds vs export cancel/usage restore; FAQ for stopping an export.
