@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     template: "%s | Camxora",
   },
   description:
-    "Camxora is the faceless desktop studio for dual YouTube music channels — lyrics, music, images, video, and export in one Windows app.",
+    "Camxora replaces ChatGPT + Suno + CapCut hopping with one Windows studio for dual faceless YouTube music channels — lyrics to YouTube-ready video.",
   applicationName: "Camxora",
   icons: {
     icon: [
@@ -44,13 +44,13 @@ export const metadata: Metadata = {
     siteName: "Camxora",
     title: "Camxora",
     description:
-      "Faceless desktop studio for dual YouTube music channels — lyrics to YouTube-ready video.",
+      "Dual faceless YouTube channels in one studio — get monetized or 100% plan refund.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Camxora",
     description:
-      "Faceless desktop studio for dual YouTube music channels — lyrics to YouTube-ready video.",
+      "Dual faceless YouTube channels in one studio — get monetized or 100% plan refund.",
   },
 };
 

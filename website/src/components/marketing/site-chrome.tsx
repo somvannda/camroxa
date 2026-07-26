@@ -12,7 +12,7 @@ type MarketingFooterProps = {
 };
 
 const primaryNavLinks = [
-  { href: "/compare", label: "Compare" },
+  { href: "/#why-switch", label: "Why Camxora" },
   { href: "/features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
   { href: "/download", label: "Download" },
@@ -20,7 +20,7 @@ const primaryNavLinks = [
 ];
 
 const productLinks = [
-  { href: "/compare", label: "Compare" },
+  { href: "/#why-switch", label: "Why Camxora" },
   { href: "/features", label: "Features" },
   { href: "/services", label: "Who it's for" },
   { href: "/pricing", label: "Pricing" },

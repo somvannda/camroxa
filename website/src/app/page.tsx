@@ -1,13 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
+  Check,
   Download,
-  Image as ImageIcon,
+  Layers,
   Music,
-  Package,
+  ShieldCheck,
   Sparkles,
   Video,
   Workflow,
+  X,
 } from "lucide-react";
 
 import {
@@ -15,9 +18,154 @@ import {
   MarketingHeader,
   getUserPortalBaseUrl,
 } from "@/components/marketing/site-chrome";
+import { formatPlanPrice } from "@/lib/plan-pricing";
+import { resolvePlatformApiBaseUrl } from "@/lib/platform-api-base";
+
+export const metadata: Metadata = {
+  title: "Camxora — Dual faceless YouTube channels in one studio",
+  description:
+    "Camxora replaces ChatGPT + Suno + CapCut/Vizzy hopping with one Windows studio: dual channels, marketplace templates with one-click setup, and a monetization-path refund.",
+};
+
+type PublicPlan = {
+  id: string;
+  name: string;
+  effective_price_cents: number;
+  profile_allowance: number;
+};
+
+async function getPublicPlans(): Promise<PublicPlan[]> {
+  const base = resolvePlatformApiBaseUrl();
+  try {
+    const response = await fetch(`${base}/plans/public`, { next: { revalidate: 60 } });
+    if (!response.ok) return [];
+    return (await response.json()) as PublicPlan[];
+  } catch {
+    return [];
+  }
+}
+
+function lowestPaidPlan(plans: PublicPlan[]): PublicPlan | null {
+  const paid = plans
+    .filter((plan) => plan.effective_price_cents > 0)
+    .sort((a, b) => a.effective_price_cents - b.effective_price_cents);
+  return paid[0] ?? null;
+}
+
+function CtaRow({
+  userPortalBaseUrl,
+  priceLabel,
+}: {
+  userPortalBaseUrl: string;
+  priceLabel: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <a
+        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
+        href={`${userPortalBaseUrl}/register`}
+      >
+        {priceLabel ? `Create account — from ${priceLabel}/mo` : "Create account"}
+        <ArrowRight className="h-4 w-4" />
+      </a>
+      <Link
+        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+        href="/download"
+      >
+        <Download className="h-4 w-4" />
+        Download for Windows
+      </Link>
+      <Link
+        className="inline-flex h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+        href="/pricing"
+      >
+        View plans
+      </Link>
+    </div>
+  );
+}
 
 export default async function Home() {
   const userPortalBaseUrl = getUserPortalBaseUrl();
+  const plans = await getPublicPlans();
+  const entry = lowestPaidPlan(plans);
+  const priceLabel = entry ? formatPlanPrice(entry.effective_price_cents) : null;
+  const dualPlan =
+    plans.find((plan) => plan.profile_allowance >= 2 && plan.effective_price_cents > 0) ?? entry;
+
+  const oldStack = [
+    { tool: "ChatGPT (or similar)", job: "Write lyrics & titles" },
+    { tool: "Suno / music AI", job: "Generate tracks" },
+    { tool: "Image AI", job: "Backgrounds & thumbnails" },
+    { tool: "CapCut / Vizzy / editor", job: "Spectrum video + exports" },
+    { tool: "Manual merge & upload prep", job: "Combine clips, rename, schedule" },
+  ];
+
+  const camxoraWins = [
+    {
+      icon: Workflow,
+      title: "One pipeline, not six tabs",
+      detail:
+        "Lyrics → music → artwork → spectrum video → merge stays inside Camxora. Start the run; the studio does the handoffs.",
+    },
+    {
+      icon: Layers,
+      title: "Dual channels by default",
+      detail:
+        "Plans are built for parallel channels — more shots at monetization and viral hits than betting on a single upload calendar.",
+    },
+    {
+      icon: Video,
+      title: "Marketplace templates, one-click setup",
+      detail:
+        "Download a ready video template and install it into your workspace in one click. Free packs and premium packs — pick what fits your brand.",
+    },
+    {
+      icon: ShieldCheck,
+      title: "AI routing built for production",
+      detail:
+        "Multiple providers and models behind a routing table with rate limits — so generation keeps moving instead of dying on one vendor outage.",
+    },
+    {
+      icon: Music,
+      title: "Scale to 10+ channels",
+      detail:
+        "Add channel profiles and reuse templates/workflows. The hard part stays in the app — not in your browser bookmarks.",
+    },
+    {
+      icon: Sparkles,
+      title: "Monetization-path refund",
+      detail:
+        "Use Camxora as instructed. If you still don't reach YouTube monetization, we refund the plan fee in full (conditions apply).",
+    },
+  ];
+
+  const faqs = [
+    {
+      q: "Is Camxora cheaper than buying Suno + ChatGPT + CapCut separately?",
+      a: "Not always on raw API sticker price — and that’s intentional. You’re paying for the production system: orchestration, dual/multi-channel profiles, marketplace templates with one-click setup, routing/uptime, and desktop export — not a single model at cost.",
+    },
+    {
+      q: "Can I cancel anytime?",
+      a: "We don’t market a casual cancel-anytime promise. We stand behind a monetization guarantee: follow Camxora’s full workflow and YouTube policies; if your dual channels still don’t reach monetization, request a full plan refund via support@camxora.com.",
+    },
+    {
+      q: "What’s included in marketplace templates?",
+      a: "Ready video templates you can download and set up in one click inside Camxora. The marketplace includes free and premium packs — premium isn’t implied free.",
+    },
+    {
+      q: "How is this different from ChatGPT or Suno alone?",
+      a: "Those tools each do one step. Camxora connects lyrics, music, images, spectrum video, merge, and multi-channel ops in one Windows studio so you’re not copy-pasting between apps all day.",
+    },
+    {
+      q: "Do I need to be a video editor?",
+      a: "No. Install a marketplace template with one click, run the pipeline, and export. You’re steering channels — not rebuilding spectrum timelines from scratch.",
+    },
+    {
+      q: "How many channels can I run?",
+      a: "Start with dual-channel capacity on core plans, then grow with profile add-ons toward 10+ channels per account as you scale.",
+    },
+  ];
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -30,149 +178,177 @@ export default async function Home() {
       <MarketingHeader userPortalBaseUrl={userPortalBaseUrl} />
 
       <main className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col gap-20 px-6 py-14 md:px-10 md:py-20">
-        <section className="grid gap-12 border-b border-white/8 pb-16 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-end">
-          <div className="max-w-4xl">
+        {/* Hero + 100% money-back guarantee */}
+        <section className="grid gap-10 border-b border-white/8 pb-16 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-end">
+          <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-100/80">
               <Sparkles className="h-3.5 w-3.5 text-fuchsia-200" />
-              Dual faceless YouTube channels
+              Stop the ChatGPT + Suno + CapCut grind
             </div>
             <h1 className="mt-6 font-display text-5xl font-semibold leading-[0.92] tracking-[-0.07em] text-white md:text-7xl">
-              Build dual faceless YouTube music channels with AI.
+              Faceless YouTube music. One studio. Dual channels. One click.
             </h1>
-            <p className="mt-6 max-w-3xl text-base leading-8 text-slate-200/72 md:text-lg">
-              No camera. No face. No studio. Write lyrics, create music, generate artwork, build
-              videos, and export YouTube-ready MP4s — all in one Windows app.
+            <p className="mt-6 max-w-2xl text-base leading-8 text-slate-200/72 md:text-lg">
+              Camxora replaces the manual stack — lyrics, music, artwork, spectrum video, merge —
+              with a Windows desktop pipeline. Marketplace templates install in one click. Scale
+              from dual channels toward 10+.
             </p>
-
-            <div className="mt-8 flex flex-col gap-3">
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <a
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
-                  href={`${userPortalBaseUrl}/register`}
-                >
-                  Create account
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-                <Link
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-                  href="/download"
-                >
-                  <Download className="h-4 w-4" />
-                  Download for Windows
-                </Link>
+            <div className="mt-8">
+              <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
+            </div>
+            <div className="mt-6 rounded-[22px] border border-emerald-400/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.03))] p-5 ring-1 ring-emerald-400/15">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-400/25">
+                  <ShieldCheck className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100/70">
+                    Monetization guarantee
+                  </div>
+                  <div className="mt-1 font-display text-xl font-semibold tracking-[-0.03em] text-white md:text-2xl">
+                    Get monetized — or we refund 100%.
+                  </div>
+                  <p className="mt-2 text-sm leading-7 text-slate-200/78">
+                    Follow Camxora&apos;s full workflow and YouTube policies for dual faceless music
+                    channels. If you still don&apos;t reach YouTube monetization, we refund your
+                    plan payment in full. Contact{" "}
+                    <a
+                      className="text-emerald-100 underline-offset-2 hover:underline"
+                      href="mailto:support@camxora.com"
+                    >
+                      support@camxora.com
+                    </a>
+                    . We refund the plan fee — not lost AdSense earnings.{" "}
+                    <Link
+                      className="text-emerald-100 underline-offset-2 hover:underline"
+                      href="/pricing"
+                    >
+                      Details
+                    </Link>
+                    ,{" "}
+                    <Link
+                      className="text-emerald-100 underline-offset-2 hover:underline"
+                      href="/terms"
+                    >
+                      Terms
+                    </Link>
+                    , and{" "}
+                    <Link
+                      className="text-emerald-100 underline-offset-2 hover:underline"
+                      href="/support"
+                    >
+                      Help Center
+                    </Link>
+                    .
+                  </p>
+                </div>
               </div>
-              <p className="text-sm text-slate-300/70">
-                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/compare">
-                  Why Camxora
-                </Link>
-                <span className="mx-2 text-slate-500">·</span>
-                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
-                  View pricing
-                </Link>
-              </p>
             </div>
           </div>
 
           <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6">
-            <div className="border-b border-white/8 pb-4">
-              <div>
-                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">What you get</div>
-                <div className="mt-2 font-display text-2xl font-semibold text-white">
-                  Dual channels. One workflow.
-                </div>
-              </div>
+            <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">What you buy</div>
+            <div className="mt-2 font-display text-2xl font-semibold text-white">
+              The factory — not a single AI tab
             </div>
-
-            <div className="mt-5 space-y-3">
+            <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-200/75">
               {[
-                { label: "Music", value: "Lyrics, drafts & songs" },
-                { label: "Visuals", value: "Images, templates & export" },
-                { label: "Progress", value: "Track every batch stage" },
+                "End-to-end faceless music pipeline",
+                dualPlan
+                  ? `Dual-channel capacity (${dualPlan.profile_allowance}+ profiles on paid plans)`
+                  : "Dual-channel capacity on paid plans",
+                "Free + premium marketplace templates (one-click setup)",
+                "Multi-provider AI routing for continuous production",
+                "Path to 10+ channels with less manual work",
+                "100% plan refund if dual channels don’t monetize*",
               ].map((item) => (
-                <div
-                  key={item.label}
-                  className="flex items-start justify-between gap-4 border-b border-white/6 pb-3 last:border-b-0 last:pb-0"
-                >
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
-                    {item.label}
-                  </div>
-                  <div className="text-right text-sm font-medium text-slate-100">{item.value}</div>
-                </div>
+                <li key={item} className="flex items-start gap-3">
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                  <span>{item}</span>
+                </li>
               ))}
-            </div>
-            <p className="mt-5 text-xs leading-6 text-slate-400">
-              Auto YouTube upload is coming soon. Export finished videos today.
+            </ul>
+            {priceLabel ? (
+              <p className="mt-5 border-t border-white/8 pt-4 text-sm text-slate-200/70">
+                Plans from{" "}
+                <span className="font-medium text-white">{priceLabel}/mo</span>
+                {entry ? ` · ${entry.name}` : null}
+              </p>
+            ) : null}
+            <p className="mt-3 text-xs leading-5 text-slate-400">
+              *Conditions apply — see pricing, terms, and Help Center.
             </p>
           </div>
         </section>
 
-        <section className="grid gap-8">
+        {/* Old way vs Camxora */}
+        <section id="why-switch" className="scroll-mt-28">
           <div className="max-w-3xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
-              How it works
-            </div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Why switch</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
-              From idea to YouTube-ready video in one pipeline.
+              Five tools and a long night — or one pipeline.
             </h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200/70 md:text-base">
-              Stop jumping between lyric tools, music generators, image apps, and editors. Camxora
-              keeps the full music-to-video path in one desktop studio.
+            <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
+              Manual faceless production burns hours every day across separate AI bills and editors.
+              Camxora is built so you start the run once and let the studio carry the handoffs.
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {[
-              {
-                step: "01",
-                title: "Lyrics",
-                detail: "Draft and polish song lyrics from your ideas.",
-              },
-              {
-                step: "02",
-                title: "Music",
-                detail: "Turn lyrics into complete songs in batches.",
-              },
-              {
-                step: "03",
-                title: "Images",
-                detail: "Create artwork and thumbnails that match each track.",
-              },
-              {
-                step: "04",
-                title: "Video",
-                detail: "Build branded templates, export, and merge MP4s.",
-              },
-              {
-                step: "05",
-                title: "YouTube-ready",
-                detail: "Download finished videos. Auto-upload is coming soon.",
-                soon: true,
-              },
-            ].map((item) => (
-              <div
-                key={item.step}
-                className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
-                    Step {item.step}
-                  </div>
-                  {"soon" in item && item.soon ? (
-                    <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-amber-100">
-                      Soon
-                    </span>
-                  ) : null}
-                </div>
-                <div className="mt-3 font-display text-2xl font-semibold text-white">
-                  {item.title}
-                </div>
-                <div className="mt-3 text-sm leading-7 text-slate-200/70">{item.detail}</div>
+          <div className="mt-8 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-[28px] border border-white/10 bg-black/25 p-6">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">The old way</div>
+              <div className="mt-3 font-display text-2xl font-semibold text-white">
+                Separate tools · separate costs · slow
               </div>
-            ))}
+              <ul className="mt-6 space-y-4">
+                {oldStack.map((row) => (
+                  <li key={row.tool} className="flex items-start gap-3 text-sm leading-6 text-slate-200/72">
+                    <X className="mt-0.5 h-4 w-4 shrink-0 text-rose-300/80" />
+                    <span>
+                      <span className="font-medium text-white">{row.tool}</span>
+                      <span className="text-slate-400"> — {row.job}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-6 text-sm leading-7 text-slate-200/65">
+                Plus: one channel at a time, blank-canvas editing, and no shared production system.
+              </p>
+            </div>
+
+            <div className="rounded-[28px] border border-fuchsia-400/25 bg-[linear-gradient(180deg,rgba(168,85,247,0.16),rgba(0,0,0,0.22))] p-6 ring-1 ring-fuchsia-400/15">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-fuchsia-100/70">
+                Camxora
+              </div>
+              <div className="mt-3 font-display text-2xl font-semibold text-white">
+                One click · sit back · ship channels
+              </div>
+              <ul className="mt-6 space-y-4">
+                {[
+                  "Lyrics, music, images, video, merge in one desktop app",
+                  "Dual channels for more monetization chances",
+                  "Marketplace templates: one-click download & setup",
+                  "Routing across AI providers so work keeps moving",
+                  "Grow toward 10+ channels without rebuilding the stack",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-3 text-sm leading-6 text-slate-100/85">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8">
+                <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-6 py-8 ring-1 ring-white/6 md:px-8">
+        {/* Why creators switch — time math from original home */}
+        <section
+          id="why-creators-switch"
+          className="scroll-mt-28 rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-6 py-8 ring-1 ring-white/6 md:px-8"
+        >
           <div className="max-w-3xl">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
               Why creators switch
@@ -182,8 +358,9 @@ export default async function Home() {
             </h2>
             <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
               Managing faceless channels by hand takes{" "}
-              <strong className="text-white">at least 2 hours of high-effort work per channel,
-              every day</strong>
+              <strong className="text-white">
+                at least 2 hours of high-effort work per channel, every day
+              </strong>
               . Run a few channels and you can burn{" "}
               <strong className="text-white">10 hours a day</strong> just keeping content flowing.
               Camxora cuts that down to about{" "}
@@ -213,200 +390,163 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(22,34,74,0.34),rgba(255,255,255,0.03))] px-6 py-8 ring-1 ring-white/6 md:px-8">
+        {/* Pipeline / workflow */}
+        <section id="pipeline" className="scroll-mt-28">
           <div className="max-w-3xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Roadmap</div>
-            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
-              Shipping the full faceless channel system.
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">The workflow</div>
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
+              Complicated steps. Simple start.
             </h2>
           </div>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {[
+              { step: "01", title: "Idea", detail: "Channel brief & batch" },
+              { step: "02", title: "Lyrics", detail: "Draft & polish" },
+              { step: "03", title: "Music", detail: "Generate tracks" },
+              { step: "04", title: "Art", detail: "Backgrounds & thumbs" },
+              { step: "05", title: "Video", detail: "Template + spectrum + merge" },
               {
-                label: "Today",
-                title: "Export YouTube-ready videos",
-                detail: "Lyrics, music, images, templates, export, and merge — in the Windows app.",
-              },
-              {
-                label: "Next",
-                title: "Auto YouTube upload",
-                detail: "Connect channels and publish finished videos without leaving Camxora.",
-              },
-              {
-                label: "Later",
-                title: "Broader social publishing",
-                detail: "Expand beyond YouTube as the faceless social platform grows.",
+                step: "06",
+                title: "YouTube-ready",
+                detail: "Export finished videos today. Auto-upload is coming soon.",
+                soon: true,
               },
             ].map((item) => (
               <div
-                key={item.label}
-                className="rounded-[24px] border border-white/10 bg-black/20 px-5 py-6"
+                key={item.step}
+                className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4 ring-1 ring-white/6"
               >
-                <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
-                  {item.label}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
+                    {item.step}
+                  </div>
+                  {"soon" in item && item.soon ? (
+                    <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-amber-100">
+                      Soon
+                    </span>
+                  ) : null}
                 </div>
-                <div className="mt-3 font-display text-xl font-semibold text-white">{item.title}</div>
-                <p className="mt-3 text-sm leading-7 text-slate-200/70">{item.detail}</p>
+                <div className="mt-2 font-display text-xl font-semibold text-white">{item.title}</div>
+                <div className="mt-2 text-sm leading-6 text-slate-200/68">{item.detail}</div>
               </div>
             ))}
           </div>
+          <p className="mt-6 max-w-3xl text-sm leading-7 text-slate-200/70">
+            You&apos;re not exporting from one site and re-uploading to the next. Camxora keeps the
+            handoffs inside the studio after you start the run.
+          </p>
         </section>
 
-        <section className="grid gap-8 border-y border-white/8 py-12">
-          <div className="max-w-2xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Get started</div>
+        {/* Wins grid */}
+        <section id="capabilities" className="scroll-mt-28">
+          <div className="max-w-3xl">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Capabilities</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
-              Account, plan, then open the app.
-            </h2>
-            <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
-              Sign up, choose a plan, install Camxora, and start your first song-to-video run.
-            </p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-3">
-            {[
-              {
-                label: "Create account",
-                detail: "Register and sign in to unlock your workspace.",
-              },
-              {
-                label: "Choose a plan",
-                detail: "Pick the channel capacity that matches your schedule.",
-              },
-              {
-                label: "Open Camxora",
-                detail: "Install the Windows app and create your first batch.",
-              },
-            ].map((item, index) => (
-              <div key={item.label} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
-                  Step {index + 1}
-                </div>
-                <div className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-white">
-                  {item.label}
-                </div>
-                <div className="mt-3 text-sm leading-7 text-slate-200/68">{item.detail}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="grid gap-8">
-          <div className="max-w-2xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Inside the app</div>
-            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
-              Outcomes, not another AI demo.
+              Built for channel operators — not demo chats.
             </h2>
           </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            {[
-              {
-                icon: Music,
-                title: "Turn ideas into songs",
-                detail: "Draft lyrics, polish them, and generate music in controlled batches.",
-              },
-              {
-                icon: ImageIcon,
-                title: "Create matching artwork",
-                detail: "Generate backgrounds and thumbnails that fit every track and channel.",
-              },
-              {
-                icon: Video,
-                title: "Build music videos",
-                detail: "Design templates with spectrum, logo, and text — then export branded MP4s.",
-              },
-              {
-                icon: Package,
-                title: "One-click marketplace templates",
-                detail:
-                  "Download ready video templates and set them up in one click. Free and premium packs.",
-              },
-              {
-                icon: Workflow,
-                title: "Track every stage",
-                detail: "Follow progress from music through merge, retry stalls, and stay on schedule.",
-              },
-            ].map(({ icon: Icon, title, detail }) => (
+          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {camxoraWins.map(({ icon: Icon, title, detail }) => (
               <div
                 key={title}
                 className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-6 ring-1 ring-white/6"
               >
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(180deg,rgba(168,85,247,0.2),rgba(217,70,239,0.14))] text-white ring-1 ring-white/10">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(180deg,rgba(168,85,247,0.18),rgba(139,92,246,0.14),rgba(244,114,182,0.1))] text-white ring-1 ring-white/10">
                   <Icon className="h-4 w-4" />
                 </div>
-                <div className="mt-5 font-display text-2xl font-semibold text-white">{title}</div>
-                <p className="mt-3 text-sm leading-7 text-slate-200/70">{detail}</p>
+                <h3 className="mt-5 font-display text-2xl font-semibold text-white">{title}</h3>
+                <p className="mt-3 text-sm leading-7 text-slate-200/72">{detail}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="grid gap-8">
-          <div className="max-w-2xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Who it&apos;s for</div>
+        {/* Marketplace highlight */}
+        <section
+          id="marketplace"
+          className="scroll-mt-28 rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] px-6 py-8 ring-1 ring-white/6 md:px-8"
+        >
+          <div className="max-w-3xl">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
+              Marketplace
+            </div>
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
+              Ready video templates — download & set up in one click.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
+              Skip blank-canvas editing. Install a template into your Camxora workspace in one
+              click, then run music through it. Browse{" "}
+              <strong className="text-white">free and premium</strong> packs — premium packs are
+              paid; we don&apos;t pretend everything is free.
+            </p>
+          </div>
+        </section>
+
+        {/* Honest price */}
+        <section className="rounded-[32px] border border-white/10 bg-black/20 px-6 py-8 md:px-8">
+          <div className="max-w-3xl">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">
+              Pricing honesty
+            </div>
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
+              We&apos;re not the cheapest raw AI bill — we&apos;re the system.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
+              Buying model access piece by piece can look cheaper on paper. It still leaves you
+              doing the glue work: tabs, exports, templates, and channel ops. Camxora charges for
+              the factory that ships faceless music videos across dual (and later many) channels.
+            </p>
+          </div>
+        </section>
+
+        {/* FAQ */}
+        <section id="faq" className="scroll-mt-28">
+          <div className="max-w-3xl">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">FAQ</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
-              Built for faceless creators.
+              Questions? Answered honestly.
             </h2>
           </div>
-          <div className="grid gap-6 md:grid-cols-2">
-            {[
-              {
-                title: "YouTube creators",
-                detail:
-                  "Start with dual channels — publish more music videos without showing your face or hiring an editor.",
-              },
-              {
-                title: "Multi-channel operators",
-                detail:
-                  "Grow from dual toward 10+ channel profiles on one account with consistent branding.",
-              },
-            ].map((item) => (
-              <div
-                key={item.title}
-                className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6 ring-1 ring-white/6"
+          <div className="mt-8 space-y-4">
+            {faqs.map((item) => (
+              <details
+                key={item.q}
+                className="group rounded-[24px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6 open:bg-white/[0.04]"
               >
-                <div className="font-display text-2xl font-semibold text-white">{item.title}</div>
-                <p className="mt-3 text-sm leading-7 text-slate-200/70">{item.detail}</p>
-              </div>
+                <summary className="cursor-pointer list-none font-display text-lg font-semibold text-white marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span className="flex items-start justify-between gap-4">
+                    {item.q}
+                    <span className="mt-1 text-slate-400 transition group-open:rotate-45">+</span>
+                  </span>
+                </summary>
+                <p className="mt-4 text-sm leading-7 text-slate-200/72">{item.a}</p>
+              </details>
             ))}
           </div>
         </section>
 
-        <section className="grid gap-10 border-t border-white/8 pt-8 lg:grid-cols-[minmax(0,1fr)_420px]">
-          <div className="max-w-2xl">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Ready when you are</div>
-            <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-4xl">
-              Start dual YouTube channels without a camera.
-            </div>
-            <p className="mt-4 text-sm leading-7 text-slate-200/70 md:text-base">
-              Create an account, download the Windows app, and export your next music video —
-              auto-upload arrives in a later release.
+        {/* Final CTA */}
+        <section className="rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(168,85,247,0.14),rgba(255,255,255,0.03))] px-6 py-10 ring-1 ring-white/6 md:px-10">
+          <div className="max-w-3xl">
+            <h2 className="font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
+              Cheap APIs still leave you doing the work.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-slate-200/75 md:text-base">
+              Camxora is the work system: dual channels, one-click templates, and a pipeline that
+              replaces the six-tab grind — with a 100% plan refund if dual channels don&apos;t
+              monetize under our playbook.
             </p>
-          </div>
-
-          <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-6 ring-1 ring-white/6 md:p-7">
-            <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Start now</div>
-            <div className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white">
-              Open Camxora.
-            </div>
-            <p className="mt-4 text-sm leading-7 text-slate-200/72">
-              Your channels, credits, and production tools are waiting in the desktop app.
-            </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <a
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_18px_44px_rgba(118,77,255,0.3)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
-                href={`${userPortalBaseUrl}/register`}
-              >
-                Create account
-                <ArrowRight className="h-4 w-4" />
-              </a>
-              <Link
-                className="inline-flex h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-                href="/features"
-              >
-                Explore features
-              </Link>
+            <div className="mt-8">
+              <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
+              <p className="mt-4 text-sm leading-7 text-slate-200/65">
+                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
+                  See guarantee details
+                </Link>
+                <span className="mx-2 text-slate-500">·</span>
+                <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/download">
+                  Download for Windows
+                </Link>
+              </p>
             </div>
           </div>
         </section>
