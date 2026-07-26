@@ -1,11 +1,24 @@
 # Production cutover — decisions (2026-07-26 update)
 
 **Document ID:** CAMXORA-PROD-CUTOVER-001  
-**Status:** planning + B2 media copy in progress  
+**Status:** ready for production deploy (git pushed; prod VPS secrets pending)  
 **Date:** 2026-07-26 (revised)  
 **Audience:** engineering / DevOps  
 
 **Related:** [`PRODUCTION_INFRASTRUCTURE_PLAN.md`](./PRODUCTION_INFRASTRUCTURE_PLAN.md), [`DEPLOYMENT_OPERATIONS.md`](./DEPLOYMENT_OPERATIONS.md), [`FOLLOWUPS_DESKTOP_GPU_EXPORT.md`](./FOLLOWUPS_DESKTOP_GPU_EXPORT.md)
+
+---
+
+## 0. Pre-flight (git)
+
+| Item | Status |
+|------|--------|
+| Branch | `cursor/channel-pricing-and-plan-tiers` |
+| Marketing homepage + portal chrome | Pushed + sandbox deployed |
+| Desktop stamps | `1.0.0` targeting `api.camxora.com` (installer build still pending) |
+| B2 media copy sandbox → `productions-camxora-song` | Done (~850 objects) |
+
+**Blocker before first prod deploy:** fill `PRODUCTION_VPS_HOST` / `PRODUCTION_VPS_USER` / auth in `.deploy/secrets.env`, then say **production secrets ready**.
 
 ---
 
@@ -141,11 +154,12 @@ Footer must **not** show “Sandbox API”.
 
 | Task | Status |
 |------|--------|
-| B2 bucket copy script + run | In progress |
+| B2 bucket copy script + run | **Done** (~850 objects → `productions-camxora-song`) |
 | Sandbox→prod config migrator (scoped) | Not started |
 | Local plans export/import | Not started |
 | Streaming import w/ placeholder owner | Not started |
-| Desktop 1.0.0 production build | In progress |
+| Desktop 1.0.0 production build | Stamped; installer build pending after API live |
+| Production VPS secrets in `.deploy/secrets.env` | **Pending** |
 | Rotate B2 application key | **Required after chat exposure** |
 
 ---
