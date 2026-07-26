@@ -495,16 +495,16 @@ export default async function Home() {
               aria-hidden
               className="pointer-events-none absolute left-[1.25rem] right-[1.25rem] top-[1.375rem] z-0 h-px bg-gradient-to-r from-emerald-400/40 via-emerald-300/50 to-amber-400/40"
             />
-            <ol className="relative z-10 grid list-none grid-cols-6 gap-8 pb-6">
+            <ol className="relative z-10 grid list-none grid-cols-6 items-stretch gap-8 pb-6">
               {workflowSteps.map((item) => {
                 const done = item.status === "done";
                 return (
-                  <li key={item.step} className="relative min-w-0 pt-1">
+                  <li key={item.step} className="relative flex min-w-0 flex-col pt-1">
                     <div
-                      className={`relative z-10 mb-6 flex h-10 w-10 items-center justify-center rounded-full text-[11px] font-medium tracking-[0.08em] ring-2 ${
+                      className={`relative z-10 mb-6 flex h-10 w-10 items-center justify-center rounded-full bg-[#060a12] text-[11px] font-medium tracking-[0.08em] ring-2 ${
                         done
-                          ? "bg-[#060a12] text-emerald-100 ring-emerald-400/60 shadow-[0_0_0_6px_#060a12]"
-                          : "bg-[#060a12] text-amber-100 ring-amber-400/55 shadow-[0_0_0_6px_#060a12]"
+                          ? "text-emerald-100 ring-emerald-400/70 shadow-[0_0_0_8px_#060a12]"
+                          : "text-amber-100 ring-amber-400/65 shadow-[0_0_0_8px_#060a12]"
                       }`}
                     >
                       {item.step}
@@ -517,18 +517,18 @@ export default async function Home() {
                       {item.title}
                     </div>
                     <p
-                      className={`mt-2 text-sm leading-6 ${
+                      className={`mt-2 flex-1 text-sm leading-6 ${
                         done ? "text-emerald-100/55" : "text-amber-100/55"
                       }`}
                     >
                       {item.detail}
                     </p>
                     {"soon" in item && item.soon ? (
-                      <span className="mt-4 inline-flex rounded-full border border-amber-400/35 bg-amber-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                      <span className="mt-4 inline-flex w-fit rounded-full border border-amber-400/35 bg-amber-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
                         {item.soon}
                       </span>
                     ) : (
-                      <span className="mt-4 inline-flex text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
+                      <span className="mt-4 inline-flex w-fit rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-100">
                         Available now
                       </span>
                     )}
@@ -546,27 +546,27 @@ export default async function Home() {
                 <li key={item.step} className="relative pb-10 last:pb-0">
                   <span
                     aria-hidden
-                    className={`absolute -left-[2.05rem] top-1 flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-medium ring-2 ${
+                    className={`absolute -left-[2.05rem] top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-[#060a12] text-[9px] font-medium ring-2 ${
                       done
-                        ? "bg-emerald-500/20 text-emerald-100 ring-emerald-400/50"
-                        : "bg-amber-500/10 text-amber-100 ring-amber-400/45"
+                        ? "text-emerald-100 ring-emerald-400/70"
+                        : "text-amber-100 ring-amber-400/65"
                     }`}
                   >
                     {item.step.replace(/^0/, "")}
                   </span>
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <span className="font-display text-xl font-semibold text-white">{item.title}</span>
                     {"soon" in item && item.soon ? (
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-amber-100/80">
+                      <span className="inline-flex rounded-full border border-amber-400/35 bg-amber-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
                         {item.soon}
                       </span>
                     ) : (
-                      <span className="text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
+                      <span className="inline-flex rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-100">
                         Available now
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-sm leading-6 text-slate-400">{item.detail}</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-400">{item.detail}</p>
                 </li>
               );
             })}
