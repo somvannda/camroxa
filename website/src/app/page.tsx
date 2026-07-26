@@ -55,67 +55,61 @@ function lowestPaidPlan(plans: PublicPlan[]): PublicPlan | null {
 function CtaRow({
   userPortalBaseUrl,
   priceLabel,
-  stacked = false,
+  compact = false,
 }: {
   userPortalBaseUrl: string;
   priceLabel: string | null;
-  /** Full-width primary + text link for plans — better in narrow cards. */
-  stacked?: boolean;
+  /** Two equal buttons in one row + centered price line — for narrow cards. */
+  compact?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3">
       <div
         className={
-          stacked
-            ? "flex flex-col gap-3"
+          compact
+            ? "flex flex-row items-stretch gap-3"
             : "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
         }
       >
         <a
-          className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400 ${
-            stacked ? "w-full" : "shrink-0"
+          className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-4 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400 ${
+            compact ? "min-w-0 flex-1" : "shrink-0 px-5"
           }`}
           href={`${userPortalBaseUrl}/register`}
         >
           Create account
-          <ArrowRight className="h-4 w-4" />
+          <ArrowRight className="h-4 w-4 shrink-0" />
         </a>
-        <div className={stacked ? "flex flex-col gap-3 sm:flex-row" : "contents"}>
+        <Link
+          className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-white transition hover:bg-white/[0.06] ${
+            compact ? "min-w-0 flex-1" : "shrink-0 px-5"
+          }`}
+          href="/download"
+        >
+          <Download className="h-4 w-4 shrink-0" />
+          {compact ? "Download" : "Download for Windows"}
+        </Link>
+        {!compact ? (
           <Link
-            className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06] ${
-              stacked ? "flex-1" : "shrink-0"
-            }`}
-            href="/download"
+            className="inline-flex h-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+            href="/pricing"
           >
-            <Download className="h-4 w-4" />
-            Download for Windows
+            View plans
           </Link>
-          {!stacked ? (
-            <Link
-              className="inline-flex h-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-              href="/pricing"
-            >
-              View plans
-            </Link>
-          ) : null}
-        </div>
+        ) : null}
       </div>
-      <p className="text-sm leading-6 text-slate-300/70">
+      <p
+        className={`text-sm leading-6 text-slate-300/70 ${compact ? "text-center" : ""}`}
+      >
         {priceLabel ? (
           <>
             Plans from <span className="font-medium text-white">{priceLabel}/mo</span>
             <span className="mx-2 text-slate-500">·</span>
           </>
         ) : null}
-        {stacked ? (
-          <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
-            View plans
-          </Link>
-        ) : (
-          <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
-            See pricing & guarantee
-          </Link>
-        )}
+        <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
+          {compact ? "View plans" : "See pricing & guarantee"}
+        </Link>
       </p>
     </div>
   );
@@ -388,7 +382,7 @@ export default async function Home() {
                 ))}
               </ul>
               <div className="mt-8">
-                <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} stacked />
+                <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} compact />
               </div>
             </div>
           </div>
@@ -600,7 +594,7 @@ export default async function Home() {
             </p>
           </div>
           <div>
-            <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} stacked />
+            <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} compact />
             <p className="mt-4 text-sm leading-7 text-slate-200/65">
               <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
                 See guarantee details
