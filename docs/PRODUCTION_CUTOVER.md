@@ -1,7 +1,7 @@
 # Production cutover — decisions (2026-07-26 update)
 
 **Document ID:** CAMXORA-PROD-CUTOVER-001  
-**Status:** ready for production deploy (git pushed; prod VPS secrets pending)  
+**Status:** production VPS bootstrap done (HTTP); DNS + TLS pending  
 **Date:** 2026-07-26 (revised)  
 **Audience:** engineering / DevOps  
 
@@ -9,7 +9,7 @@
 
 ---
 
-## 0. Pre-flight (git)
+## 0. Pre-flight (git + VPS)
 
 | Item | Status |
 |------|--------|
@@ -17,8 +17,30 @@
 | Marketing homepage + portal chrome | Pushed + sandbox deployed |
 | Desktop stamps | `1.0.0` targeting `api.camxora.com` (installer build still pending) |
 | B2 media copy sandbox → `productions-camxora-song` | Done (~850 objects) |
+| Production VPS bootstrap (`deploy_production.py`) | **Done** on `82.197.71.248` — API/website/portal/admin/music systemd active |
+| TLS (Let's Encrypt) | **Blocked** — production DNS A records not pointed at prod VPS yet |
+| AI provider keys / CutLuy webhook / streaming B2 admin | Not configured on prod yet |
 
-**Blocker before first prod deploy:** fill `PRODUCTION_VPS_HOST` / `PRODUCTION_VPS_USER` / auth in `.deploy/secrets.env`, then say **production secrets ready**.
+### DNS required (Cloudflare / registrar)
+
+Point these **A** records to **`82.197.71.248`**, then re-run certbot:
+
+```
+A    camxora.com           → 82.197.71.248
+A    www.camxora.com       → 82.197.71.248
+A    api.camxora.com       → 82.197.71.248
+A    app.camxora.com       → 82.197.71.248
+A    admin.camxora.com     → 82.197.71.248
+A    music.camxora.com     → 82.197.71.248
+```
+
+After DNS propagates:
+
+```bash
+python scripts/deploy/apply_nginx.py --env production
+# or SSH and:
+certbot --nginx -d api.camxora.com -d camxora.com -d www.camxora.com -d app.camxora.com -d admin.camxora.com --non-interactive --agree-tos -m CERTBOT_EMAIL --redirect
+```
 
 ---
 
