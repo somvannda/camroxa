@@ -2,15 +2,19 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
+  BadgePercent,
+  BookOpenCheck,
   Check,
   Download,
   Layers,
+  Mail,
   Music,
   ShieldCheck,
   Sparkles,
   Video,
   Workflow,
   X,
+  Youtube,
 } from "lucide-react";
 
 import {
@@ -137,36 +141,47 @@ export default async function Home() {
       title: "One pipeline, not six tabs",
       detail:
         "Lyrics → music → artwork → spectrum video → merge stays inside Camxora. Start the run; the studio does the handoffs.",
+      accent: "from-emerald-500/25 via-teal-500/10 to-transparent border-emerald-400/25 ring-emerald-400/10 text-emerald-200",
+      iconBg: "bg-emerald-400/15 ring-emerald-400/25 text-emerald-200",
     },
     {
       icon: Layers,
       title: "Dual channels by default",
       detail:
         "Plans are built for parallel channels — more shots at monetization and viral hits than betting on a single upload calendar.",
+      accent: "from-violet-500/25 via-purple-500/10 to-transparent border-violet-400/25 ring-violet-400/10 text-violet-200",
+      iconBg: "bg-violet-400/15 ring-violet-400/25 text-violet-200",
     },
     {
       icon: Video,
       title: "Marketplace templates, one-click setup",
       detail:
         "Download a ready video template and install it into your workspace in one click. Free packs and premium packs — pick what fits your brand.",
+      accent: "from-sky-500/25 via-cyan-500/10 to-transparent border-sky-400/25 ring-sky-400/10 text-sky-200",
+      iconBg: "bg-sky-400/15 ring-sky-400/25 text-sky-200",
     },
     {
       icon: ShieldCheck,
       title: "AI routing built for production",
       detail:
         "Multiple providers and models behind a routing table with rate limits — so generation keeps moving instead of dying on one vendor outage.",
+      accent: "from-amber-500/25 via-orange-500/10 to-transparent border-amber-400/25 ring-amber-400/10 text-amber-200",
+      iconBg: "bg-amber-400/15 ring-amber-400/25 text-amber-200",
     },
     {
       icon: Music,
       title: "Scale to 10+ channels",
       detail:
         "Add channel profiles and reuse templates/workflows. The hard part stays in the app — not in your browser bookmarks.",
+      accent: "from-fuchsia-500/25 via-pink-500/10 to-transparent border-fuchsia-400/25 ring-fuchsia-400/10 text-fuchsia-200",
+      iconBg: "bg-fuchsia-400/15 ring-fuchsia-400/25 text-fuchsia-200",
     },
     {
       icon: Sparkles,
       title: "Monetization-path refund",
-      detail:
-        "Use Camxora as instructed. If you still don't reach YouTube monetization, we refund the plan fee in full (conditions apply).",
+      detail: "Follow the playbook. No monetization → full plan refund (conditions apply).",
+      accent: "from-rose-500/25 via-red-500/10 to-transparent border-rose-400/25 ring-rose-400/10 text-rose-200",
+      iconBg: "bg-rose-400/15 ring-rose-400/25 text-rose-200",
     },
   ];
 
@@ -198,18 +213,19 @@ export default async function Home() {
   ];
 
   const workflowSteps = [
-    { step: "01", title: "Idea", detail: "Channel brief & batch" },
-    { step: "02", title: "Lyrics", detail: "Draft & polish" },
-    { step: "03", title: "Music", detail: "Generate tracks" },
-    { step: "04", title: "Art", detail: "Backgrounds & thumbs" },
-    { step: "05", title: "Video", detail: "Template, spectrum, merge" },
+    { step: "01", title: "Idea", detail: "Channel brief & batch", status: "done" as const },
+    { step: "02", title: "Lyrics", detail: "Draft & polish", status: "done" as const },
+    { step: "03", title: "Music", detail: "Generate tracks", status: "done" as const },
+    { step: "04", title: "Art", detail: "Backgrounds & thumbs", status: "done" as const },
+    { step: "05", title: "Video", detail: "Template, spectrum, merge", status: "done" as const },
     {
       step: "06",
       title: "YouTube-ready",
       detail: "Export finished videos today.",
       soon: "Auto-upload soon",
+      status: "soon" as const,
     },
-  ] as const;
+  ];
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -223,105 +239,105 @@ export default async function Home() {
 
       <main className="relative mx-auto flex w-full max-w-7xl flex-1 flex-col gap-20 px-6 py-14 md:px-10 md:py-20">
         {/* Hero + 100% money-back guarantee */}
-        <section className="grid gap-10 border-b border-white/8 pb-16 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-end">
-          <div className="max-w-3xl">
+        <section className="border-b border-white/8 pb-16">
+          <div className="w-full">
             <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs uppercase tracking-[0.18em] text-slate-100/80">
               <Sparkles className="h-3.5 w-3.5 text-fuchsia-200" />
               Stop the ChatGPT + Suno + CapCut grind
             </div>
-            <h1 className="mt-6 font-display text-5xl font-semibold leading-[0.92] tracking-[-0.07em] text-white md:text-7xl">
+            <h1 className="mt-6 max-w-none font-display text-5xl font-semibold leading-[0.92] tracking-[-0.07em] text-white md:text-7xl">
               Faceless YouTube music. One studio. Dual channels. One click.
             </h1>
-            <p className="mt-6 max-w-2xl text-base leading-8 text-slate-200/72 md:text-lg">
+            <p className="mt-6 max-w-none text-base leading-8 text-slate-200/72 md:text-lg md:leading-8">
               Camxora replaces the manual stack — lyrics, music, artwork, spectrum video, merge —
               with a Windows desktop pipeline. Marketplace templates install in one click. Scale
               from dual channels toward 10+.
             </p>
-            <div className="mt-8">
-              <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
-            </div>
-            <div className="mt-6 rounded-[22px] border border-emerald-400/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.03))] p-5 ring-1 ring-emerald-400/15">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-400/25">
-                  <ShieldCheck className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100/70">
-                    Monetization guarantee
-                  </div>
-                  <div className="mt-1 font-display text-xl font-semibold tracking-[-0.03em] text-white md:text-2xl">
-                    Get monetized — or we refund 100%.
-                  </div>
-                  <p className="mt-2 text-sm leading-7 text-slate-200/78">
-                    Follow Camxora&apos;s full workflow and YouTube policies for dual faceless music
-                    channels. If you still don&apos;t reach YouTube monetization, we refund your
-                    plan payment in full. Contact{" "}
-                    <a
-                      className="text-emerald-100 underline-offset-2 hover:underline"
-                      href="mailto:support@camxora.com"
-                    >
-                      support@camxora.com
-                    </a>
-                    . We refund the plan fee — not lost AdSense earnings.{" "}
-                    <Link
-                      className="text-emerald-100 underline-offset-2 hover:underline"
-                      href="/pricing"
-                    >
-                      Details
-                    </Link>
-                    ,{" "}
-                    <Link
-                      className="text-emerald-100 underline-offset-2 hover:underline"
-                      href="/terms"
-                    >
-                      Terms
-                    </Link>
-                    , and{" "}
-                    <Link
-                      className="text-emerald-100 underline-offset-2 hover:underline"
-                      href="/support"
-                    >
-                      Help Center
-                    </Link>
-                    .
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">What you buy</div>
-            <div className="mt-2 font-display text-2xl font-semibold text-white">
-              The factory — not a single AI tab
+          <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:items-start">
+            <div>
+              <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
+              <div className="mt-6 rounded-[22px] border border-emerald-400/25 bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.03))] p-5 ring-1 ring-emerald-400/15 md:p-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-400/25">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-100/70">
+                      Monetization guarantee
+                    </div>
+                    <div className="mt-0.5 font-display text-xl font-semibold tracking-[-0.03em] text-white md:text-2xl">
+                      Get monetized — or we refund 100%.
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {[
+                    { icon: BookOpenCheck, label: "Follow the Camxora playbook" },
+                    { icon: Youtube, label: "Publish dual YouTube channels" },
+                    { icon: BadgePercent, label: "No monetization → full plan refund" },
+                    { icon: Mail, label: "Email support@camxora.com" },
+                  ].map(({ icon: Icon, label }) => (
+                    <div
+                      key={label}
+                      className="flex items-center gap-2.5 rounded-xl bg-black/20 px-3 py-2.5 text-sm text-slate-100/85 ring-1 ring-emerald-400/10"
+                    >
+                      <Icon className="h-4 w-4 shrink-0 text-emerald-300" />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs leading-5 text-slate-400">
+                  Refunds the plan fee — not AdSense.{" "}
+                  <Link className="text-emerald-100/90 underline-offset-2 hover:underline" href="/pricing">
+                    Details
+                  </Link>
+                  <span className="mx-1.5 text-slate-600">·</span>
+                  <Link className="text-emerald-100/90 underline-offset-2 hover:underline" href="/terms">
+                    Terms
+                  </Link>
+                  <span className="mx-1.5 text-slate-600">·</span>
+                  <Link className="text-emerald-100/90 underline-offset-2 hover:underline" href="/support">
+                    Help
+                  </Link>
+                </p>
+              </div>
             </div>
-            <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-200/75">
-              {[
-                "End-to-end faceless music pipeline",
-                dualPlan
-                  ? `Dual-channel capacity (${dualPlan.profile_allowance}+ profiles on paid plans)`
-                  : "Dual-channel capacity on paid plans",
-                "Free + premium marketplace templates (one-click setup)",
-                "Multi-provider AI routing for continuous production",
-                "Path to 10+ channels with less manual work",
-                "100% plan refund if dual channels don’t monetize*",
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-3">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-            {priceLabel ? (
-              <p className="mt-5 border-t border-white/8 pt-4 text-sm text-slate-200/70">
-                Plans from{" "}
-                <span className="font-medium text-white">{priceLabel}/mo</span>
-                {entry ? ` · ${entry.name}` : null}
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 ring-1 ring-white/6 md:min-h-[420px]">
+              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">What you buy</div>
+              <div className="mt-2 font-display text-2xl font-semibold text-white">
+                The factory — not a single AI tab
+              </div>
+              <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-200/75">
+                {[
+                  "End-to-end faceless music pipeline",
+                  dualPlan
+                    ? `Dual-channel capacity (${dualPlan.profile_allowance}+ profiles on paid plans)`
+                    : "Dual-channel capacity on paid plans",
+                  "Free + premium marketplace templates (one-click setup)",
+                  "Multi-provider AI routing for continuous production",
+                  "Path to 10+ channels with less manual work",
+                  "100% plan refund if dual channels don’t monetize*",
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              {priceLabel ? (
+                <p className="mt-5 border-t border-white/8 pt-4 text-sm text-slate-200/70">
+                  Plans from{" "}
+                  <span className="font-medium text-white">{priceLabel}/mo</span>
+                  {entry ? ` · ${entry.name}` : null}
+                </p>
+              ) : null}
+              <p className="mt-3 text-xs leading-5 text-slate-400">
+                *Conditions apply — see pricing, terms, and Help Center.
               </p>
-            ) : null}
-            <p className="mt-3 text-xs leading-5 text-slate-400">
-              *Conditions apply — see pricing, terms, and Help Center.
-            </p>
+            </div>
           </div>
         </section>
 
@@ -434,88 +450,125 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Pipeline / workflow — open step rail, no card frames */}
-        <section id="pipeline" className="scroll-mt-28">
-          <div className="max-w-3xl">
+        {/* Pipeline / workflow — taller open rail; green = shipped, amber = upcoming */}
+        <section id="pipeline" className="scroll-mt-28 py-4">
+          <div className="w-full">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">The workflow</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
               Complicated steps. Simple start.
             </h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200/70 md:text-base">
+            <p className="mt-4 max-w-none text-sm leading-7 text-slate-200/70 md:text-base md:leading-8">
               You&apos;re not exporting from one site and re-uploading to the next. Camxora keeps
-              the handoffs inside the studio after you start the run.
+              the handoffs inside the studio after you start the run. Green steps ship today; amber
+              is on the roadmap.
             </p>
           </div>
 
           {/* Desktop: single rail */}
-          <div className="relative mt-12 hidden lg:block">
+          <div className="relative mt-16 hidden lg:block">
             <div
               aria-hidden
-              className="absolute left-[1.125rem] right-[1.125rem] top-4 h-px bg-gradient-to-r from-white/5 via-white/20 to-white/5"
+              className="absolute left-[1.25rem] right-[1.25rem] top-5 h-px bg-gradient-to-r from-emerald-400/40 via-emerald-300/50 to-amber-400/40"
             />
-            <ol className="relative grid list-none grid-cols-6 gap-8">
-              {workflowSteps.map((item) => (
-                <li key={item.step} className="relative min-w-0">
-                  <div className="relative z-10 mb-5 flex h-8 w-8 items-center justify-center rounded-full bg-[#060a12] text-[11px] font-medium tracking-[0.08em] text-fuchsia-100/90 ring-1 ring-white/15">
-                    {item.step}
-                  </div>
-                  <div className="font-display text-xl font-semibold tracking-[-0.03em] text-white">
-                    {item.title}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">{item.detail}</p>
-                  {"soon" in item && item.soon ? (
-                    <span className="mt-3 inline-flex text-[10px] uppercase tracking-[0.16em] text-amber-100/80">
-                      {item.soon}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
+            <ol className="relative grid list-none grid-cols-6 gap-8 pb-6">
+              {workflowSteps.map((item) => {
+                const done = item.status === "done";
+                return (
+                  <li key={item.step} className="relative min-w-0 pt-1">
+                    <div
+                      className={`relative z-10 mb-6 flex h-10 w-10 items-center justify-center rounded-full text-[11px] font-medium tracking-[0.08em] ring-2 ${
+                        done
+                          ? "bg-emerald-500/20 text-emerald-100 ring-emerald-400/50"
+                          : "bg-amber-500/10 text-amber-100 ring-amber-400/45"
+                      }`}
+                    >
+                      {item.step}
+                    </div>
+                    <div
+                      className={`font-display text-xl font-semibold tracking-[-0.03em] ${
+                        done ? "text-white" : "text-amber-50"
+                      }`}
+                    >
+                      {item.title}
+                    </div>
+                    <p
+                      className={`mt-2 text-sm leading-6 ${
+                        done ? "text-emerald-100/55" : "text-amber-100/55"
+                      }`}
+                    >
+                      {item.detail}
+                    </p>
+                    {"soon" in item && item.soon ? (
+                      <span className="mt-4 inline-flex rounded-full border border-amber-400/35 bg-amber-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                        {item.soon}
+                      </span>
+                    ) : (
+                      <span className="mt-4 inline-flex text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
+                        Available now
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           </div>
 
           {/* Mobile / tablet: vertical timeline */}
-          <ol className="relative mt-10 list-none space-y-0 border-l border-white/12 pl-6 lg:hidden">
-            {workflowSteps.map((item) => (
-              <li key={item.step} className="relative pb-8 last:pb-0">
-                <span
-                  aria-hidden
-                  className="absolute -left-[1.9rem] top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#060a12] text-[9px] font-medium text-fuchsia-100/90 ring-1 ring-white/15"
-                >
-                  {item.step.replace(/^0/, "")}
-                </span>
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="font-display text-xl font-semibold text-white">{item.title}</span>
-                  {"soon" in item && item.soon ? (
-                    <span className="text-[10px] uppercase tracking-[0.16em] text-amber-100/80">
-                      {item.soon}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-1 text-sm leading-6 text-slate-400">{item.detail}</p>
-              </li>
-            ))}
+          <ol className="relative mt-12 list-none space-y-0 border-l border-white/12 pl-7 lg:hidden">
+            {workflowSteps.map((item) => {
+              const done = item.status === "done";
+              return (
+                <li key={item.step} className="relative pb-10 last:pb-0">
+                  <span
+                    aria-hidden
+                    className={`absolute -left-[2.05rem] top-1 flex h-6 w-6 items-center justify-center rounded-full text-[9px] font-medium ring-2 ${
+                      done
+                        ? "bg-emerald-500/20 text-emerald-100 ring-emerald-400/50"
+                        : "bg-amber-500/10 text-amber-100 ring-amber-400/45"
+                    }`}
+                  >
+                    {item.step.replace(/^0/, "")}
+                  </span>
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="font-display text-xl font-semibold text-white">{item.title}</span>
+                    {"soon" in item && item.soon ? (
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-amber-100/80">
+                        {item.soon}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
+                        Available now
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-slate-400">{item.detail}</p>
+                </li>
+              );
+            })}
           </ol>
         </section>
 
         {/* Wins grid */}
         <section id="capabilities" className="scroll-mt-28">
-          <div className="max-w-3xl">
+          <div className="w-full">
             <div className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Capabilities</div>
             <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
               Built for channel operators — not demo chats.
             </h2>
           </div>
-          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {camxoraWins.map(({ icon: Icon, title, detail }) => (
+          <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {camxoraWins.map(({ icon: Icon, title, detail, accent, iconBg }) => (
               <div
                 key={title}
-                className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-6 ring-1 ring-white/6"
+                className={`min-h-[240px] rounded-[28px] border bg-gradient-to-br p-6 ring-1 ${accent}`}
               >
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[linear-gradient(180deg,rgba(168,85,247,0.18),rgba(139,92,246,0.14),rgba(244,114,182,0.1))] text-white ring-1 ring-white/10">
+                <div
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl ring-1 ${iconBg}`}
+                >
                   <Icon className="h-4 w-4" />
                 </div>
                 <h3 className="mt-5 font-display text-2xl font-semibold text-white">{title}</h3>
-                <p className="mt-3 text-sm leading-7 text-slate-200/72">{detail}</p>
+                <p className="mt-3 text-sm leading-7 text-slate-200/75">{detail}</p>
               </div>
             ))}
           </div>
