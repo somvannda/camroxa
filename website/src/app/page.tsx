@@ -213,15 +213,40 @@ export default async function Home() {
   ];
 
   const workflowSteps = [
-    { step: "01", title: "Idea", detail: "Channel brief & batch", status: "done" as const },
-    { step: "02", title: "Lyrics", detail: "Draft & polish", status: "done" as const },
-    { step: "03", title: "Music", detail: "Generate tracks", status: "done" as const },
-    { step: "04", title: "Art", detail: "Backgrounds & thumbs", status: "done" as const },
-    { step: "05", title: "Video", detail: "Template, spectrum, merge", status: "done" as const },
+    {
+      step: "01",
+      title: "Idea",
+      detail: "Set the channel brief and plan the day’s batch before generation starts.",
+      status: "done" as const,
+    },
+    {
+      step: "02",
+      title: "Lyrics",
+      detail: "Draft song lyrics from your ideas, then polish them for the track.",
+      status: "done" as const,
+    },
+    {
+      step: "03",
+      title: "Music",
+      detail: "Turn polished lyrics into complete songs, generated in controlled batches.",
+      status: "done" as const,
+    },
+    {
+      step: "04",
+      title: "Art",
+      detail: "Create matching backgrounds and thumbnails for every track and channel.",
+      status: "done" as const,
+    },
+    {
+      step: "05",
+      title: "Video",
+      detail: "Apply templates, spectrum visuals, and merge into branded MP4 exports.",
+      status: "done" as const,
+    },
     {
       step: "06",
       title: "YouTube-ready",
-      detail: "Export finished videos today.",
+      detail: "Export finished videos today. Auto-upload to YouTube is coming next.",
       soon: "Auto-upload soon",
       status: "soon" as const,
     },
