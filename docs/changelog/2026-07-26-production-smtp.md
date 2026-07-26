@@ -1,47 +1,44 @@
-# Production outbound SMTP (Namecheap Private Email)
+# Production outbound SMTP (free/cheap relay)
 
 **Date:** 2026-07-26  
-**Status:** script ready — waiting for SMTP password in secrets
+**Status:** script ready — waiting for free SMTP credentials
 
 ## Summary
 
-Production mail uses an SMTP relay (Namecheap Private Email / `mail.privateemail.com`), not a self-hosted mail server on the VPS. Camxora already sends verification and notification email via `platform_api` SMTP settings.
+Production mail uses a **free/cheap SMTP relay** (Resend or Brevo recommended), not Namecheap Private Email and not a self-hosted MTA on the VPS. Camxora already sends verification/notification mail via `PLATFORM_SMTP_*`.
 
 ## Product impact
 
-- Registration / email verification and transactional mail work on production once SMTP is configured.
-- Without SMTP, those flows fail silently or cannot deliver codes.
+- Registration verification and transactional email work once SMTP is configured.
+- Avoids mailbox subscription cost.
 
 ## Technical impact
 
-- Writes `PLATFORM_SMTP_*` + from-address into `/opt/camxora/repo/platform_api/.env` on the production VPS and restarts `camxora-api`.
-- Script: `scripts/deploy/configure_smtp_production.py`
+- `scripts/deploy/configure_smtp_production.py` writes SMTP settings into prod `platform_api/.env` and restarts `camxora-api`.
+
+## Recommended providers (free tier)
+
+| Provider | SMTP host | Auth | Notes |
+|----------|-----------|------|--------|
+| **Resend** | `smtp.resend.com` | user `resend`, password = API key | Simple; verify domain DNS |
+| **Brevo** | `smtp-relay.brevo.com` | SMTP login + key | Generous free daily limit |
+| Amazon SES | region endpoint | IAM SMTP user | Very cheap at scale; more setup |
+
+Do **not** run Postfix/Exim on the Camxora VPS for outbound — poor deliverability without warm IP/rDNS.
+
+## Migration / deploy
+
+1. Create free Resend or Brevo account; add/verify `camxora.com` (SPF/DKIM DNS).
+2. Fill `.deploy/secrets.env` `PLATFORM_SMTP_*` (never commit).
+3. `python scripts/deploy/configure_smtp_production.py`
 
 ## Files touched
 
 - `scripts/deploy/configure_smtp_production.py`
-- `.deploy/secrets.env` (local only — SMTP block template; never commit)
+- `.deploy/secrets.env.example`
 - `docs/changelog/2026-07-26-production-smtp.md`
-
-## Migration / deploy
-
-1. In Namecheap Private Email, ensure mailbox `noreply@camxora.com` exists (or your chosen from-address).
-2. Fill in `.deploy/secrets.env`:
-   - `PLATFORM_SMTP_HOST=mail.privateemail.com`
-   - `PLATFORM_SMTP_PORT=587`
-   - `PLATFORM_SMTP_USER=noreply@camxora.com`
-   - `PLATFORM_SMTP_PASSWORD=...`
-   - `PLATFORM_SMTP_USE_TLS=true`
-   - `PLATFORM_EMAIL_FROM_NAME=Camxora`
-   - `PLATFORM_EMAIL_FROM_ADDRESS=noreply@camxora.com`
-3. Run: `python scripts/deploy/configure_smtp_production.py`
-4. Optional SPF/DKIM in DNS for `camxora.com` (Namecheap Private Email docs).
-
-## Tests
-
-- After configure: register/resend verification on `app.camxora.com` (or HTTP Host header until DNS/TLS is live).
 
 ## Follow-ups
 
-- Production DNS + TLS still pending.
-- Do not run a full MTA (Postfix) on the Camxora VPS for outbound mail.
+- Production DNS + TLS still pending for public HTTPS.
+- After SMTP is live, smoke-test register verification email.
