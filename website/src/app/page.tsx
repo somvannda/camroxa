@@ -55,32 +55,68 @@ function lowestPaidPlan(plans: PublicPlan[]): PublicPlan | null {
 function CtaRow({
   userPortalBaseUrl,
   priceLabel,
+  stacked = false,
 }: {
   userPortalBaseUrl: string;
   priceLabel: string | null;
+  /** Full-width primary + text link for plans — better in narrow cards. */
+  stacked?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <a
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
-        href={`${userPortalBaseUrl}/register`}
+    <div className="flex flex-col gap-3">
+      <div
+        className={
+          stacked
+            ? "flex flex-col gap-3"
+            : "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+        }
       >
-        {priceLabel ? `Create account — from ${priceLabel}/mo` : "Create account"}
-        <ArrowRight className="h-4 w-4" />
-      </a>
-      <Link
-        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-        href="/download"
-      >
-        <Download className="h-4 w-4" />
-        Download for Windows
-      </Link>
-      <Link
-        className="inline-flex h-12 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
-        href="/pricing"
-      >
-        View plans
-      </Link>
+        <a
+          className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_22px_54px_rgba(118,77,255,0.34)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400 ${
+            stacked ? "w-full" : "shrink-0"
+          }`}
+          href={`${userPortalBaseUrl}/register`}
+        >
+          Create account
+          <ArrowRight className="h-4 w-4" />
+        </a>
+        <div className={stacked ? "flex flex-col gap-3 sm:flex-row" : "contents"}>
+          <Link
+            className={`inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06] ${
+              stacked ? "flex-1" : "shrink-0"
+            }`}
+            href="/download"
+          >
+            <Download className="h-4 w-4" />
+            Download for Windows
+          </Link>
+          {!stacked ? (
+            <Link
+              className="inline-flex h-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition hover:bg-white/[0.06]"
+              href="/pricing"
+            >
+              View plans
+            </Link>
+          ) : null}
+        </div>
+      </div>
+      <p className="text-sm leading-6 text-slate-300/70">
+        {priceLabel ? (
+          <>
+            Plans from <span className="font-medium text-white">{priceLabel}/mo</span>
+            <span className="mx-2 text-slate-500">·</span>
+          </>
+        ) : null}
+        {stacked ? (
+          <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
+            View plans
+          </Link>
+        ) : (
+          <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
+            See pricing & guarantee
+          </Link>
+        )}
+      </p>
     </div>
   );
 }
@@ -338,7 +374,7 @@ export default async function Home() {
                 ))}
               </ul>
               <div className="mt-8">
-                <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} />
+                <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} stacked />
               </div>
             </div>
           </div>
