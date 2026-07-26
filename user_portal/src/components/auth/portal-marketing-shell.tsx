@@ -26,12 +26,14 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
   const websiteBaseUrl = getWebsiteBaseUrl();
 
   const primaryNavLinks = [
+    { href: `${websiteBaseUrl}/#why-switch`, label: "Why Camxora" },
     { href: `${websiteBaseUrl}/features`, label: "Features" },
     { href: `${websiteBaseUrl}/pricing`, label: "Pricing" },
     { href: `${websiteBaseUrl}/download`, label: "Download" },
     { href: `${websiteBaseUrl}/about`, label: "About" },
   ];
   const productLinks = [
+    { href: `${websiteBaseUrl}/#why-switch`, label: "Why Camxora" },
     { href: `${websiteBaseUrl}/features`, label: "Features" },
     { href: `${websiteBaseUrl}/services`, label: "Who it's for" },
     { href: `${websiteBaseUrl}/pricing`, label: "Pricing" },
