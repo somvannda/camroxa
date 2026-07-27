@@ -610,11 +610,27 @@ async def get_quota_status(
             drafts_quota = int(plan.monthly_draft_limit)
             drafts_remaining = drafts_quota
     plan = await plan_repo.get_user_active_plan(user_id)
-    daily_videos_limit = int(getattr(plan, "daily_video_limit", 10) or 10) if plan else None
-    daily_merges_limit = int(getattr(plan, "daily_merge_limit", 1) or 1) if plan else None
+    from platform_api.services.quota_display_service import resolve_subscription_context
+    from platform_api.services.subscription_entitlement_service import (
+        effective_daily_limit_for_operation,
+    )
+
+    ctx_sub = await resolve_subscription_context(plan_repo, user_id)
+    addon_slots = int(getattr(ctx_sub, "profile_addon_slots", 0) or 0) if ctx_sub else 0
+    effective_plan = ctx_sub.plan if ctx_sub is not None else plan
+    daily_videos_limit = (
+        effective_daily_limit_for_operation(effective_plan, addon_slots, "video")
+        if effective_plan
+        else None
+    )
+    daily_merges_limit = (
+        effective_daily_limit_for_operation(effective_plan, addon_slots, "video_merge")
+        if effective_plan
+        else None
+    )
     daily_videos_remaining = None
     daily_merges_remaining = None
-    if plan is not None:
+    if effective_plan is not None:
         from platform_api.services.billing_calendar import billing_today
 
         today = billing_today()

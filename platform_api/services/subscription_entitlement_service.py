@@ -2,11 +2,14 @@
 
 
 
-Active add-on slots (profile_addon_slots) scale monthly quotas.
+Active add-on slots (profile_addon_slots) scale monthly (period) quotas
+and account-wide daily video/merge caps.
 
 Pending add-on slots (profile_addon_pending) allow profile creation only —
-
 quotas activate after onboarding completes and pending moves to active.
+
+Per-channel daily limits (song/image/draft) stay unchanged; total daily
+capacity rises because more channels exist.
 
 """
 
@@ -283,7 +286,7 @@ def effective_monthly_limit_for_operation(
 
         return entitlements.monthly_draft_limit
 
-    if normalized in ("video", "video_generation", "video_export", "videos"):
+    if normalized in ("video", "video_generation", "video_export", "video_manual", "videos"):
 
         return entitlements.monthly_video_limit
 
@@ -296,5 +299,40 @@ def effective_monthly_limit_for_operation(
         return None
 
     return entitlements.monthly_song_limit
+
+
+def effective_daily_limit_for_operation(
+    plan: Plan,
+    addon_slots: int,
+    operation_type: str,
+) -> int:
+    """Daily limit for an operation, scaling account-wide video/merge with add-ons.
+
+    Per-channel song/image/draft dailies are returned as-is (capacity grows via
+    more channels). Account-wide video/merge multiply by quota_channels / plan_channels.
+    """
+    normalized = operation_type.strip().lower()
+    plan_channels = max(1, int(plan.profile_allowance or 1))
+    active = max(0, int(addon_slots or 0))
+
+    if normalized in (
+        "image_generation",
+        "background_image",
+        "thumbnail_image",
+        "channel_setup",
+        "images",
+    ):
+        return int(plan.daily_image_limit_per_channel or 0)
+    if normalized in ("draft", "lyric", "title", "album", "lyrics", "drafts"):
+        return int(getattr(plan, "daily_draft_limit_per_channel", 300) or 300)
+    if normalized in ("video", "video_generation", "video_export", "video_manual", "videos"):
+        base = int(getattr(plan, "daily_video_limit", 10) or 10)
+        scaled = scaled_monthly_limit(base, plan_channels=plan_channels, addon_slots=active)
+        return int(scaled or 0)
+    if normalized in ("video_merge", "merge", "auto_merge", "merges"):
+        base = int(getattr(plan, "daily_merge_limit", 1) or 1)
+        scaled = scaled_monthly_limit(base, plan_channels=plan_channels, addon_slots=active)
+        return int(scaled or 0)
+    return int(plan.daily_song_limit_per_channel or 0)
 
 
