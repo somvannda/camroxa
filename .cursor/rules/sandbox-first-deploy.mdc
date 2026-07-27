@@ -1,0 +1,49 @@
+---
+description: Local + sandbox first; never touch production unless explicitly asked
+alwaysApply: true
+---
+
+# Local and sandbox first — production only on request
+
+Default environment for all server-side work is **local**, then **sandbox**. **Production is off-limits** unless the user explicitly asks to deploy or change production.
+
+## Secrets (separate files — do not mix)
+
+| Env | File | Loader |
+|-----|------|--------|
+| Sandbox | `.deploy/secrets.sandbox.env` | `load_sandbox_secrets()` / `resolve_sandbox_ssh()` |
+| Production | `.deploy/secrets.production.env` | `load_production_secrets()` / `resolve_production_ssh()` |
+
+Never put both hosts in one file as the active `VPS_HOST`. Migrate legacy `.deploy/secrets.env` with:
+
+`python scripts/deploy/split_secrets_env.py`
+
+Canonical hosts: sandbox `46.250.235.83`, production `82.197.71.248`. Resolvers refuse cross-env SSH.
+
+## Required order
+
+1. Implement and verify locally when practical.
+2. Changelog as usual (`docs/changelog/` + surface `CHANGELOG.md`).
+3. Deploy affected **sandbox** surfaces before finishing (do not wait for a separate ask).
+4. Smoke-check sandbox URLs when practical.
+5. Summarize for the user. Do **not** proceed to production.
+
+## Production gate (strict)
+
+Only run production deploy/sync/migrate/nginx/restart/hotfix scripts when the user clearly asks, e.g. “deploy to production”, “prod deploy”.
+
+Never treat “deploy”, “ship it”, or “update sandbox” as production permission. If unsure, ask.
+
+When the working tree has unrelated local changes, use **file-scoped** production hotfixes (allowlisted paths only) — never a full `platform_api` / admin tree sync from a mixed workspace. Prefer shipping from merged `main` when possible.
+
+## Common sandbox scripts
+
+| Surface | Script |
+|---------|--------|
+| platform_api | `python scripts/deploy/sync_platform_api_sandbox.py` |
+| music_web | `python scripts/deploy/rebuild_music_web_sandbox.py` |
+| admin_portal | `python scripts/deploy/sync_admin_portal_sandbox.py` / `rebuild_admin_sandbox.py` |
+| Migrations | `python scripts/deploy/run_alembic_upgrade_sandbox.py` |
+| nginx | `python scripts/deploy/apply_nginx.py --env sandbox` |
+
+Desktop `camxora_python` builds are local artifacts; still deploy sandbox API if the client needs new endpoints.

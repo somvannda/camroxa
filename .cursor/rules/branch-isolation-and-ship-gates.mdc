@@ -1,0 +1,38 @@
+---
+description: Branch-per-task isolation; commit/push/merge/deploy only on explicit ask
+alwaysApply: true
+---
+
+# Multi-agent shipping — branch isolation + gates
+
+Prevent unfinished work (e.g. DistroKid) from riding along with unrelated fixes.
+
+## One task → one branch
+
+- Start (or switch to) a **dedicated branch** for the current task before editing.
+- Prefer **git worktree** / separate checkout when another agent is already using this tree.
+- Do **not** mix unrelated features in the same branch or commit (password reset ≠ DistroKid ≠ CDN).
+- If the working tree is already dirty with other work: **path-scope** commits, or ask the user to isolate first.
+
+## Commit / push / merge (safety ladder)
+
+| Action | Default | Only when |
+|--------|---------|-----------|
+| Edit files | Allowed for the task | — |
+| `git commit` | **Off** | User explicitly asks to commit |
+| `git push` | **Off** | User explicitly asks to push |
+| Merge to `main` | **Off** | User asks (PR merge / explicit merge) |
+| Production deploy | **Off** | User clearly asks for production (see sandbox-first-deploy) |
+
+When committing: stage **only** task paths; verify staged diff (`git diff --cached`) has no foreign keywords (e.g. `distrokid` on a password PR).
+
+## Deploy (what ships)
+
+- Sandbox: deploy **only the surfaces this task changed** (API and/or admin), after changelog.
+- Prefer **file-scoped hotfixes** for production when the local tree has unrelated dirty files — never full `platform_api` tarball sync from a mixed workspace.
+- Production artifacts should come from **merged `main`** (or an explicit allowlisted file list), not “whatever is on disk.”
+- Unfinished features stay on their branch until the user asks to merge/ship them.
+
+## Tell the user
+
+At task end: branch name, what was changed, what was **not** included, and whether anything was committed/pushed/deployed.

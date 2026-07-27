@@ -1,0 +1,98 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  changed-python-syntax:
+    name: Changed Python syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile changed .py files
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          mapfile -t FILES < <(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD -- '*.py' || true)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No Python files changed."
+            exit 0
+          fi
+          echo "Checking ${#FILES[@]} file(s):"
+          printf '  %s\n' "${FILES[@]}"
+          python -m py_compile "${FILES[@]}"
+          echo "OK"
+
+  no-secrets-in-diff:
+    name: Block secret-looking paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse secrets / credential dumps in PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.pull_request.base.sha }}"
+          mapfile -t FILES < <(git diff --name-only --diff-filter=ACMR "$BASE"...HEAD || true)
+          FAIL=0
+          for f in "${FILES[@]}"; do
+            case "$f" in
+              .deploy/secrets.env|.deploy/secrets.sandbox.env|.deploy/secrets.production.env|*.pem|*/credentials.json)
+                echo "REFUSE: $f must not be committed"
+                FAIL=1
+                ;;
+            esac
+            # allow *.env.example only
+            if [[ "$f" == *.env && "$f" != *.env.example ]]; then
+              if [[ "$f" == .deploy/secrets*.env ]]; then
+                echo "REFUSE: $f"
+                FAIL=1
+              fi
+            fi
+          done
+          exit "$FAIL"
+
+  admin-portal-build:
+    name: Admin portal build (if changed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect admin_portal changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- admin_portal/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: admin_portal/package-lock.json
+
+      - name: npm ci && build
+        if: steps.changes.outputs.run == 'true'
+        working-directory: admin_portal
+        run: |
+          npm ci
+          CI=1 npm run build
