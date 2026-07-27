@@ -26,12 +26,16 @@ class PlayUrlResponse(BaseModel):
     url: str
     expires_at: str
     title: str | None = None
+    album_id: str | None = None
     album_name: str | None = None
+    user_id: str | None = None
     artist_name: str | None = None
     variant: str | None = None
     cover_url: str | None = None
     duration_seconds: float | None = None
+    play_count: int = 0
     genre: str | None = None
+    lyrics: str | None = None
 
 
 @router.get("/home")
@@ -45,8 +49,7 @@ async def list_streaming_albums(
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> dict:
-    items = await service.list_albums(limit=limit, offset=offset)
-    return {"items": items}
+    return await service.list_albums(limit=limit, offset=offset)
 
 
 @router.get("/albums/{album_id}")
@@ -77,8 +80,7 @@ async def list_streaming_artists(
     limit: int = Query(default=48, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict:
-    items = await service.list_artists(limit=limit, offset=offset)
-    return {"items": items}
+    return await service.list_artists(limit=limit, offset=offset)
 
 
 @router.get("/artists/{user_id}")
@@ -94,9 +96,9 @@ async def search_streaming_catalog(
     service: CatalogServiceDep,
     q: str = Query(..., min_length=1, max_length=120),
     limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
 ) -> dict:
-    items = await service.search(q, limit=limit)
-    return {"items": items}
+    return await service.search(q, limit=limit, offset=offset)
 
 
 @router.get("/tracks/{track_id}/play-url", response_model=PlayUrlResponse)

@@ -11,9 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Streaming catalog: Plays column on tracks and albums (sum of track plays)
+- Streaming catalog: server-side pagination (50/page) with API search + status filters
+
 ### Changed
 
 ### Fixed
+
+- Software Updates: parse `CamxoraSetup-*.exe` (Inno) filenames so Publish no longer 400s; pass explicit version on publish.
 
 ## [2026-07-25]
 

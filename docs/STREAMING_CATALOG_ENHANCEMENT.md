@@ -93,7 +93,7 @@ Make the public music portal feel like a real streaming product:
 
 ### Phase C — Product features (later)
 
-- User accounts, favorites, listening history
+- User accounts, favorites, listening history → see [`MUSIC_STREAMING_PORTAL_ENHANCEMENT.md`](./MUSIC_STREAMING_PORTAL_ENHANCEMENT.md) (shared Camxora auth; Phase 2+)
 - Playlists (user + editorial)
 - Explicit/content rating, ISRC, copyright line
 - Analytics (plays, top tracks)

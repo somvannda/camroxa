@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 
+import { Pagination } from '@/components/data-table/pagination';
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,15 +42,50 @@ import { toast } from '@/hooks/use-toast';
 
 type StatusFilter = 'all' | 'published' | 'unpublished';
 
+const PAGE_SIZE = 50;
+
 function confirmAction(message: string): boolean {
   return window.confirm(message);
 }
 
 export default function StreamingCatalogPage() {
-  const { data: tracksData, isLoading: tracksLoading, isError: tracksError, refetch: refetchTracks } =
-    useStreamingCatalog();
-  const { data: albumsData, isLoading: albumsLoading, isError: albumsError, refetch: refetchAlbums } =
-    useStreamingAlbums();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [tracksPage, setTracksPage] = useState(1);
+  const [albumsPage, setAlbumsPage] = useState(1);
+  const [editingGenreTrackId, setEditingGenreTrackId] = useState<string | null>(null);
+  const [genreDraft, setGenreDraft] = useState('');
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(handle);
+  }, [query]);
+
+  useEffect(() => {
+    setTracksPage(1);
+    setAlbumsPage(1);
+  }, [debouncedQuery, statusFilter]);
+
+  const listParams = {
+    pageSize: PAGE_SIZE,
+    q: debouncedQuery || undefined,
+    publishStatus: statusFilter,
+  };
+
+  const {
+    data: tracksData,
+    isLoading: tracksLoading,
+    isError: tracksError,
+    refetch: refetchTracks,
+  } = useStreamingCatalog({ ...listParams, page: tracksPage });
+  const {
+    data: albumsData,
+    isLoading: albumsLoading,
+    isError: albumsError,
+    refetch: refetchAlbums,
+  } = useStreamingAlbums({ ...listParams, page: albumsPage });
+
   const unpublishTrack = useUnpublishTrack();
   const republishTrack = useRepublishTrack();
   const deleteTrack = useDeleteTrack();
@@ -59,37 +95,11 @@ export default function StreamingCatalogPage() {
   const syncTrack = useSyncTrackMetadata();
   const syncAll = useSyncAllMetadata();
   const updateGenre = useUpdateTrackGenre();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [query, setQuery] = useState('');
-  const [editingGenreTrackId, setEditingGenreTrackId] = useState<string | null>(null);
-  const [genreDraft, setGenreDraft] = useState('');
 
-  const tracks = useMemo(() => {
-    const items = tracksData ?? [];
-    const q = query.trim().toLowerCase();
-    return items.filter((track) => {
-      if (statusFilter !== 'all' && track.publish_status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        track.title.toLowerCase().includes(q) ||
-        track.album_name.toLowerCase().includes(q) ||
-        (track.artist_name ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [tracksData, query, statusFilter]);
-
-  const albums = useMemo(() => {
-    const items = albumsData ?? [];
-    const q = query.trim().toLowerCase();
-    return items.filter((album) => {
-      if (statusFilter !== 'all' && album.publish_status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        album.album_name.toLowerCase().includes(q) ||
-        (album.artist_name ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [albumsData, query, statusFilter]);
+  const tracks = tracksData?.items ?? [];
+  const albums = albumsData?.items ?? [];
+  const tracksTotal = tracksData?.total ?? 0;
+  const albumsTotal = albumsData?.total ?? 0;
 
   const refreshAll = () => {
     void refetchTracks();
@@ -152,7 +162,7 @@ export default function StreamingCatalogPage() {
         <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center">
           <Input
             className="md:max-w-sm"
-            placeholder="Filter by title, album, or artist…"
+            placeholder="Search title, album, or artist…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -202,6 +212,7 @@ export default function StreamingCatalogPage() {
                     <TableHead>Artist</TableHead>
                     <TableHead>Genre</TableHead>
                     <TableHead>Duration</TableHead>
+                    <TableHead className="text-right">Plays</TableHead>
                     <TableHead>Lyrics</TableHead>
                     <TableHead>Variant</TableHead>
                     <TableHead>Status</TableHead>
@@ -211,7 +222,7 @@ export default function StreamingCatalogPage() {
                 <TableBody>
                   {tracks.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="py-8 text-center text-slate-400">
+                      <TableCell colSpan={11} className="py-8 text-center text-slate-400">
                         No tracks match this filter.
                       </TableCell>
                     </TableRow>
@@ -271,6 +282,9 @@ export default function StreamingCatalogPage() {
                           )}
                         </TableCell>
                         <TableCell className="tabular-nums">{formatDuration(track.duration_seconds)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-slate-300">
+                          {(track.play_count ?? 0).toLocaleString()}
+                        </TableCell>
                         <TableCell>{track.has_lyrics ? 'Yes' : 'No'}</TableCell>
                         <TableCell className="uppercase">{track.variant}</TableCell>
                         <TableCell>
@@ -354,6 +368,12 @@ export default function StreamingCatalogPage() {
                   )}
                 </TableBody>
               </Table>
+              <Pagination
+                page={tracksPage}
+                pageSize={PAGE_SIZE}
+                totalCount={tracksTotal}
+                onPageChange={setTracksPage}
+              />
             </Card>
           ) : null}
         </TabsContent>
@@ -381,6 +401,7 @@ export default function StreamingCatalogPage() {
                     <TableHead>Artist</TableHead>
                     <TableHead>Genre</TableHead>
                     <TableHead>Tracks</TableHead>
+                    <TableHead className="text-right">Plays</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -388,7 +409,7 @@ export default function StreamingCatalogPage() {
                 <TableBody>
                   {albums.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-8 text-center text-slate-400">
+                      <TableCell colSpan={8} className="py-8 text-center text-slate-400">
                         No albums match this filter.
                       </TableCell>
                     </TableRow>
@@ -426,6 +447,9 @@ export default function StreamingCatalogPage() {
                         </TableCell>
                         <TableCell>
                           {album.published_track_count} published / {album.track_count} total
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-slate-300">
+                          {(album.play_count ?? 0).toLocaleString()}
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -502,6 +526,12 @@ export default function StreamingCatalogPage() {
                   )}
                 </TableBody>
               </Table>
+              <Pagination
+                page={albumsPage}
+                pageSize={PAGE_SIZE}
+                totalCount={albumsTotal}
+                onPageChange={setAlbumsPage}
+              />
             </Card>
           ) : null}
         </TabsContent>

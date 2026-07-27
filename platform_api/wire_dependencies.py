@@ -508,9 +508,10 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[cs_get_ai_routing] = real_cs_ai_routing_service
 
-    # --- streaming_public.py / streaming_admin.py ---
+    # --- streaming_public.py / streaming_admin.py / streaming_library.py ---
     from platform_api.routers.streaming_public import _get_catalog_service as streaming_public_catalog
     from platform_api.routers.streaming_admin import _get_catalog_service as streaming_admin_catalog
+    from platform_api.routers.streaming_library import _get_catalog_service as streaming_library_catalog
     from platform_api.services.streaming_catalog_service import StreamingCatalogService
 
     async def real_streaming_catalog_service() -> StreamingCatalogService:
@@ -520,3 +521,4 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[streaming_public_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_admin_catalog] = real_streaming_catalog_service
+    app.dependency_overrides[streaming_library_catalog] = real_streaming_catalog_service

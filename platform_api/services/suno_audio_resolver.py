@@ -52,6 +52,8 @@ class SunoTaskDownloadUrls:
     duration_alt: float | None = None
     tags_ok: str = ""
     tags_alt: str = ""
+    audio_id_ok: str = ""
+    audio_id_alt: str = ""
     refreshed: bool = False
 
 
@@ -78,6 +80,8 @@ def urls_from_generate_poll(result: SunoGeneratePollResult) -> SunoTaskDownloadU
         duration_alt=result.duration_alt,
         tags_ok=str(result.tags_ok or "").strip(),
         tags_alt=str(result.tags_alt or "").strip(),
+        audio_id_ok=str(result.audio_id_ok or "").strip(),
+        audio_id_alt=str(result.audio_id_alt or "").strip(),
         refreshed=True,
     )
 
@@ -162,6 +166,88 @@ async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
     return parse_suno_generate_poll(response)
 
 
+async def _suno_client_with_pool_key(pool: Any):
+    """Return (SunoClient, api_key) using the active DB key pool entry."""
+    import os
+    from types import SimpleNamespace
+
+    from platform_api.clients.suno_client import SunoClient
+    from platform_api.services.key_encryption import KeyEncryption
+
+    row = await pool.fetchrow(
+        """
+        SELECT encrypted_key_value
+        FROM api_key_entries
+        WHERE provider = 'suno' AND status = 'active'
+        ORDER BY priority DESC, created_at ASC
+        LIMIT 1
+        """
+    )
+    if not row:
+        raise RuntimeError("No active Suno API key configured.")
+
+    master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
+    if not master_key:
+        raise RuntimeError("Encryption master key is not configured.")
+
+    encryption = KeyEncryption(master_key=master_key)
+    api_key = encryption.decrypt(bytes(row["encrypted_key_value"]))
+    settings = SimpleNamespace(
+        suno_api_base_url=os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://apibox.erweima.ai").strip(),
+        suno_callback_base_url=os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip(),
+        suno_timeout_seconds=int(os.environ.get("PLATFORM_SUNO_TIMEOUT_SECONDS", "30") or 30),
+    )
+    return SunoClient(settings), api_key
+
+
+async def fetch_timestamped_lrc_with_pool(
+    pool: Any,
+    *,
+    external_task_id: str,
+    audio_id: str,
+) -> str:
+    """Fetch Suno aligned words and convert to LRC. Empty string on failure."""
+    from platform_api.services.suno_lrc import aligned_words_to_lrc, parse_aligned_words_payload
+
+    task_id = str(external_task_id or "").strip()
+    clip_id = str(audio_id or "").strip()
+    if not task_id or not clip_id:
+        return ""
+    try:
+        client, api_key = await _suno_client_with_pool_key(pool)
+        payload = await client.get_timestamped_lyrics(
+            task_id=task_id,
+            audio_id=clip_id,
+            api_key=api_key,
+        )
+        code = int(payload.get("code", 0) or 0)
+        if code != 200:
+            logger.warning(
+                "Suno timestamped lyrics failed task=%s audio=%s code=%s msg=%s",
+                task_id,
+                clip_id[:12],
+                code,
+                str(payload.get("msg") or "")[:160],
+            )
+            return ""
+        lrc = aligned_words_to_lrc(parse_aligned_words_payload(payload))
+        if not lrc:
+            logger.info(
+                "Suno timestamped lyrics empty/unusable for task=%s audio=%s",
+                task_id,
+                clip_id[:12],
+            )
+        return lrc
+    except Exception as exc:
+        logger.warning(
+            "Suno timestamped lyrics error task=%s audio=%s: %s",
+            task_id,
+            clip_id[:12],
+            str(exc)[:200],
+        )
+        return ""
+
+
 async def download_suno_mp3_bytes(url: str, *, fallback_urls: list[str] | None = None) -> bytes:
     """Download MP3 bytes, trying fallback URLs when the primary link is empty."""
     candidates = build_download_url_candidates(url, *(fallback_urls or []))
@@ -202,6 +288,8 @@ async def _download_once(url: str) -> bytes:
 
 def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownloadUrls:
     """Parse sunoapi.org callback payloads with nested clip arrays."""
+    from platform_api.clients.suno_client import _extract_clip_audio_id
+
     data_block = raw_payload.get("data")
     clips: list[dict[str, Any]] = []
     if isinstance(data_block, dict):
@@ -211,14 +299,22 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
     if not clips:
         return SunoTaskDownloadUrls()
 
-    download_urls = [_extract_clip_download_url(clip) for clip in clips]
-    download_urls = [url for url in download_urls if url]
+    download_urls: list[str] = []
+    audio_ids: list[str] = []
+    for clip in clips:
+        url = _extract_clip_download_url(clip)
+        if not url:
+            continue
+        download_urls.append(url)
+        audio_ids.append(_extract_clip_audio_id(clip))
     if not download_urls:
         return SunoTaskDownloadUrls()
 
     return SunoTaskDownloadUrls(
         audio_url_ok=download_urls[0],
         audio_url_alt=download_urls[1] if len(download_urls) > 1 else "",
+        audio_id_ok=audio_ids[0] if audio_ids else "",
+        audio_id_alt=audio_ids[1] if len(audio_ids) > 1 else "",
         refreshed=True,
     )
 
@@ -264,6 +360,7 @@ __all__ = [
     "download_suno_mp3_bytes",
     "extract_callback_download_urls",
     "extract_callback_task_id",
+    "fetch_timestamped_lrc_with_pool",
     "is_http_download_url",
     "normalize_http_download_url",
     "refresh_suno_task_download_urls",

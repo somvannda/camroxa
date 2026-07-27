@@ -46,6 +46,8 @@ class SunoGeneratePollResult:
     duration_alt: float | None = None
     tags_ok: str = ""
     tags_alt: str = ""
+    audio_id_ok: str = ""
+    audio_id_alt: str = ""
     error: str = ""
 
 
@@ -231,12 +233,22 @@ def _extract_clip_tags(clip: dict[str, Any]) -> str:
     return str(clip.get("style", "") or "").strip()
 
 
-def _clip_metadata(clip: dict[str, Any]) -> tuple[str, str, float | None, str]:
+def _extract_clip_audio_id(clip: dict[str, Any]) -> str:
+    """Return Suno clip id used as audioId for timestamped lyrics."""
+    for key in ("id", "audioId", "audio_id", "clip_id", "clipId"):
+        value = str(clip.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _clip_metadata(clip: dict[str, Any]) -> tuple[str, str, float | None, str, str]:
     return (
         _extract_clip_audio_url(clip),
         _extract_clip_image_url(clip),
         _extract_clip_duration(clip),
         _extract_clip_tags(clip),
+        _extract_clip_audio_id(clip),
     )
 
 
@@ -289,13 +301,15 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
     image_urls: list[str] = []
     durations: list[float | None] = []
     tags: list[str] = []
+    audio_ids: list[str] = []
     for clip in clips:
-        audio_url, image_url, duration, clip_tags = _clip_metadata(clip)
+        audio_url, image_url, duration, clip_tags, audio_id = _clip_metadata(clip)
         if audio_url:
             audio_urls.append(audio_url)
             image_urls.append(image_url)
             durations.append(duration)
             tags.append(clip_tags)
+            audio_ids.append(audio_id)
 
     if audio_urls:
         return SunoGeneratePollResult(
@@ -308,6 +322,8 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
             duration_alt=durations[1] if len(durations) > 1 else None,
             tags_ok=tags[0] if tags else "",
             tags_alt=tags[1] if len(tags) > 1 else "",
+            audio_id_ok=audio_ids[0] if audio_ids else "",
+            audio_id_alt=audio_ids[1] if len(audio_ids) > 1 else "",
         )
 
     if is_suno_failure_status(status):
@@ -498,6 +514,47 @@ class SunoClient:
             return response.json()
         except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
             raise _classify_error(exc, context=f"check_status({task_id})") from exc
+        finally:
+            await client.aclose()
+
+    async def get_timestamped_lyrics(
+        self,
+        *,
+        task_id: str,
+        audio_id: str,
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Fetch word-aligned lyrics for a generated clip (karaoke timestamps).
+
+        POST /api/v1/generate/get-timestamped-lyrics
+        """
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        normalized_task = str(task_id or "").strip()
+        normalized_audio = str(audio_id or "").strip()
+        if not normalized_task or not normalized_audio:
+            raise ExternalServiceError(
+                "Suno timestamped lyrics require taskId and audioId.",
+                is_retryable=False,
+                details={"provider": "suno", "reason": "missing_ids"},
+            )
+        client = self._build_client(api_key)
+        try:
+            response = await client.post(
+                "/api/v1/generate/get-timestamped-lyrics",
+                json={"taskId": normalized_task, "audioId": normalized_audio},
+            )
+            response.raise_for_status()
+            return response.json()
+        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_error(
+                exc,
+                context=f"get_timestamped_lyrics({normalized_task})",
+            ) from exc
         finally:
             await client.aclose()
 

@@ -453,11 +453,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from platform_api.routers import marketplace
     app.include_router(marketplace.router, prefix=settings.api_v1_prefix)
 
-    from platform_api.routers import public_desktop, streaming_public, streaming_admin
+    from platform_api.routers import public_desktop, streaming_public, streaming_admin, streaming_library
 
     app.include_router(public_desktop.router, prefix=settings.api_v1_prefix)
     app.include_router(streaming_public.router, prefix=settings.api_v1_prefix)
     app.include_router(streaming_admin.router, prefix=settings.api_v1_prefix)
+    app.include_router(streaming_library.router, prefix=settings.api_v1_prefix)
 
     return app
 

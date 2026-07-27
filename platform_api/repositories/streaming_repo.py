@@ -157,20 +157,27 @@ class StreamingRepository:
         suno_image_url: str | None = None,
         tags: list[str] | None = None,
         genres: list[str] | None = None,
+        suno_audio_id: str | None = None,
     ) -> UUID:
+        from platform_api.services.suno_lrc import looks_like_lrc
+
         existing = None
         if suno_task_id is not None:
             existing = await self._pool.fetchrow(
                 """
-                SELECT id FROM stream_tracks
+                SELECT id, lyrics FROM stream_tracks
                 WHERE suno_task_id = $1 AND variant = $2
                 """,
                 suno_task_id,
                 variant,
             )
+        if existing and looks_like_lrc(existing.get("lyrics")) and not looks_like_lrc(lyrics):
+            lyrics = str(existing.get("lyrics") or "").strip() or lyrics
+
         now = datetime.now(timezone.utc)
         tags_json = tags or None
         genres_json = genres or None
+        audio_id = str(suno_audio_id or "").strip() or None
         if existing:
             track_id = UUID(str(existing["id"]))
             try:
@@ -189,8 +196,9 @@ class StreamingRepository:
                         suno_image_url = COALESCE($11, suno_image_url),
                         tags = COALESCE($12, tags),
                         genres = COALESCE($13::jsonb, genres),
+                        suno_audio_id = COALESCE($14, suno_audio_id),
                         publish_status = 'published',
-                        published_at = $14,
+                        published_at = $15,
                         updated_at = NOW()
                     WHERE id = $1
                     """,
@@ -207,6 +215,7 @@ class StreamingRepository:
                     suno_image_url,
                     tags_json,
                     json.dumps(genres_json) if genres_json is not None else None,
+                    audio_id,
                     now,
                 )
             except Exception:
@@ -243,9 +252,9 @@ class StreamingRepository:
                     id, user_id, album_id, song_id, suno_task_id, title, lyrics,
                     variant, storage_key, size_bytes, mime_type, duration_seconds,
                     genre, track_number, cover_storage_key, suno_image_url, tags, genres,
-                    publish_status, published_at
+                    suno_audio_id, publish_status, published_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'published', $19)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'published', $20)
                 """,
                 track_id,
                 user_id,
@@ -265,6 +274,7 @@ class StreamingRepository:
                 suno_image_url,
                 tags_json,
                 json.dumps(genres_json) if genres_json is not None else json.dumps([]),
+                audio_id,
                 now,
             )
         except Exception:
@@ -402,12 +412,26 @@ class StreamingRepository:
         result = await self._pool.execute("DELETE FROM stream_albums WHERE id = $1", album_id)
         return result.endswith("1")
 
+    async def increment_play_count(self, track_id: UUID) -> int:
+        value = await self._pool.fetchval(
+            """
+            UPDATE stream_tracks
+            SET play_count = play_count + 1,
+                updated_at = NOW()
+            WHERE id = $1 AND publish_status = 'published'
+            RETURNING play_count
+            """,
+            track_id,
+        )
+        return int(value or 0)
+
     async def list_published_albums(self, *, limit: int = 24, offset: int = 0) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             """
             SELECT a.*,
                    u.display_name AS artist_name,
-                   COUNT(t.id)::int AS track_count
+                   COUNT(t.id)::int AS track_count,
+                   COALESCE(SUM(t.play_count), 0)::bigint AS play_count
             FROM stream_albums a
             JOIN users u ON u.id = a.user_id
             LEFT JOIN stream_tracks t
@@ -423,10 +447,36 @@ class StreamingRepository:
         )
         return [dict(row) for row in rows]
 
+    async def count_published_albums(self) -> int:
+        value = await self._pool.fetchval(
+            """
+            SELECT COUNT(*)::int FROM (
+              SELECT a.id
+              FROM stream_albums a
+              JOIN stream_tracks t
+                ON t.album_id = a.id AND t.publish_status = 'published'
+              WHERE a.publish_status = 'published'
+              GROUP BY a.id
+            ) published_albums
+            """
+        )
+        return int(value or 0)
+
     async def get_published_album(self, album_id: UUID) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             """
-            SELECT a.*, u.display_name AS artist_name
+            SELECT a.*,
+                   u.display_name AS artist_name,
+                   COALESCE((
+                     SELECT SUM(t.play_count)::bigint
+                     FROM stream_tracks t
+                     WHERE t.album_id = a.id AND t.publish_status = 'published'
+                   ), 0) AS play_count,
+                   COALESCE((
+                     SELECT COUNT(t.id)::int
+                     FROM stream_tracks t
+                     WHERE t.album_id = a.id AND t.publish_status = 'published'
+                   ), 0) AS track_count
             FROM stream_albums a
             JOIN users u ON u.id = a.user_id
             WHERE a.id = $1 AND a.publish_status = 'published'
@@ -505,10 +555,27 @@ class StreamingRepository:
         )
         return [dict(row) for row in rows]
 
+    async def count_artists(self) -> int:
+        value = await self._pool.fetchval(
+            """
+            SELECT COUNT(*)::int FROM (
+              SELECT u.id
+              FROM users u
+              JOIN stream_albums a ON a.user_id = u.id AND a.publish_status = 'published'
+              JOIN stream_tracks t ON t.album_id = a.id AND t.publish_status = 'published'
+              GROUP BY u.id
+            ) published_artists
+            """
+        )
+        return int(value or 0)
+
     async def list_artist_albums(self, user_id: UUID) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             """
-            SELECT a.*, u.display_name AS artist_name, COUNT(t.id)::int AS track_count
+            SELECT a.*,
+                   u.display_name AS artist_name,
+                   COUNT(t.id)::int AS track_count,
+                   COALESCE(SUM(t.play_count), 0)::bigint AS play_count
             FROM stream_albums a
             JOIN users u ON u.id = a.user_id
             LEFT JOIN stream_tracks t
@@ -522,23 +589,144 @@ class StreamingRepository:
         )
         return [dict(row) for row in rows]
 
-    async def list_admin_albums(self, *, limit: int = 100) -> list[dict[str, Any]]:
+    async def list_admin_catalog(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        q: str | None = None,
+        publish_status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses = ["TRUE"]
+        args: list[Any] = []
+        if publish_status in {"published", "unpublished"}:
+            args.append(publish_status)
+            clauses.append(f"t.publish_status = ${len(args)}")
+        query = (q or "").strip()
+        if query:
+            args.append(f"%{query}%")
+            idx = len(args)
+            clauses.append(
+                f"(t.title ILIKE ${idx} OR a.album_name ILIKE ${idx} OR u.display_name ILIKE ${idx})"
+            )
+        args.extend([limit, offset])
+        limit_idx = len(args) - 1
+        offset_idx = len(args)
+        where_sql = " AND ".join(clauses)
         rows = await self._pool.fetch(
-            """
+            f"""
+            SELECT t.*, a.album_name, a.genre AS album_genre, a.cover_storage_key AS album_cover_storage_key,
+                   u.display_name AS artist_name
+            FROM stream_tracks t
+            JOIN stream_albums a ON a.id = t.album_id
+            JOIN users u ON u.id = t.user_id
+            WHERE {where_sql}
+            ORDER BY t.created_at DESC
+            LIMIT ${limit_idx} OFFSET ${offset_idx}
+            """,
+            *args,
+        )
+        return [dict(row) for row in rows]
+
+    async def count_admin_catalog(
+        self,
+        *,
+        q: str | None = None,
+        publish_status: str | None = None,
+    ) -> int:
+        clauses = ["TRUE"]
+        args: list[Any] = []
+        if publish_status in {"published", "unpublished"}:
+            args.append(publish_status)
+            clauses.append(f"t.publish_status = ${len(args)}")
+        query = (q or "").strip()
+        if query:
+            args.append(f"%{query}%")
+            idx = len(args)
+            clauses.append(
+                f"(t.title ILIKE ${idx} OR a.album_name ILIKE ${idx} OR u.display_name ILIKE ${idx})"
+            )
+        where_sql = " AND ".join(clauses)
+        value = await self._pool.fetchval(
+            f"""
+            SELECT COUNT(*)::int
+            FROM stream_tracks t
+            JOIN stream_albums a ON a.id = t.album_id
+            JOIN users u ON u.id = t.user_id
+            WHERE {where_sql}
+            """,
+            *args,
+        )
+        return int(value or 0)
+
+    async def list_admin_albums(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        q: str | None = None,
+        publish_status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses = ["TRUE"]
+        args: list[Any] = []
+        if publish_status in {"published", "unpublished"}:
+            args.append(publish_status)
+            clauses.append(f"a.publish_status = ${len(args)}")
+        query = (q or "").strip()
+        if query:
+            args.append(f"%{query}%")
+            idx = len(args)
+            clauses.append(f"(a.album_name ILIKE ${idx} OR u.display_name ILIKE ${idx})")
+        args.extend([limit, offset])
+        limit_idx = len(args) - 1
+        offset_idx = len(args)
+        where_sql = " AND ".join(clauses)
+        rows = await self._pool.fetch(
+            f"""
             SELECT a.*,
                    u.display_name AS artist_name,
                    COUNT(t.id)::int AS track_count,
-                   COUNT(t.id) FILTER (WHERE t.publish_status = 'published')::int AS published_track_count
+                   COUNT(t.id) FILTER (WHERE t.publish_status = 'published')::int AS published_track_count,
+                   COALESCE(SUM(t.play_count), 0)::bigint AS play_count
             FROM stream_albums a
             JOIN users u ON u.id = a.user_id
             LEFT JOIN stream_tracks t ON t.album_id = a.id
+            WHERE {where_sql}
             GROUP BY a.id, u.display_name
             ORDER BY a.created_at DESC
-            LIMIT $1
+            LIMIT ${limit_idx} OFFSET ${offset_idx}
             """,
-            limit,
+            *args,
         )
         return [dict(row) for row in rows]
+
+    async def count_admin_albums(
+        self,
+        *,
+        q: str | None = None,
+        publish_status: str | None = None,
+    ) -> int:
+        clauses = ["TRUE"]
+        args: list[Any] = []
+        if publish_status in {"published", "unpublished"}:
+            args.append(publish_status)
+            clauses.append(f"a.publish_status = ${len(args)}")
+        query = (q or "").strip()
+        if query:
+            args.append(f"%{query}%")
+            idx = len(args)
+            clauses.append(f"(a.album_name ILIKE ${idx} OR u.display_name ILIKE ${idx})")
+        where_sql = " AND ".join(clauses)
+        value = await self._pool.fetchval(
+            f"""
+            SELECT COUNT(*)::int
+            FROM stream_albums a
+            JOIN users u ON u.id = a.user_id
+            WHERE {where_sql}
+            """,
+            *args,
+        )
+        return int(value or 0)
 
     async def list_genres(self) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
@@ -584,7 +772,8 @@ class StreamingRepository:
             """
             SELECT a.*,
                    u.display_name AS artist_name,
-                   COUNT(t.id)::int AS track_count
+                   COUNT(t.id)::int AS track_count,
+                   COALESCE(SUM(t.play_count), 0)::bigint AS play_count
             FROM stream_albums a
             JOIN users u ON u.id = a.user_id
             LEFT JOIN stream_tracks t
@@ -647,7 +836,9 @@ class StreamingRepository:
         )
         return [dict(row) for row in rows]
 
-    async def search_published(self, query: str, *, limit: int = 24) -> list[dict[str, Any]]:
+    async def search_published(
+        self, query: str, *, limit: int = 24, offset: int = 0
+    ) -> list[dict[str, Any]]:
         pattern = f"%{query.strip()}%"
         rows = await self._pool.fetch(
             """
@@ -664,27 +855,33 @@ class StreamingRepository:
                 OR u.display_name ILIKE $1
               )
             ORDER BY t.published_at DESC NULLS LAST
-            LIMIT $2
+            LIMIT $2 OFFSET $3
             """,
             pattern,
             limit,
+            offset,
         )
         return [dict(row) for row in rows]
 
-    async def list_admin_catalog(self, *, limit: int = 100) -> list[dict[str, Any]]:
-        rows = await self._pool.fetch(
+    async def count_search_published(self, query: str) -> int:
+        pattern = f"%{query.strip()}%"
+        value = await self._pool.fetchval(
             """
-            SELECT t.*, a.album_name, a.genre AS album_genre, a.cover_storage_key AS album_cover_storage_key,
-                   u.display_name AS artist_name
+            SELECT COUNT(*)::int
             FROM stream_tracks t
             JOIN stream_albums a ON a.id = t.album_id
             JOIN users u ON u.id = t.user_id
-            ORDER BY t.created_at DESC
-            LIMIT $1
+            WHERE t.publish_status = 'published'
+              AND a.publish_status = 'published'
+              AND (
+                t.title ILIKE $1
+                OR a.album_name ILIKE $1
+                OR u.display_name ILIKE $1
+              )
             """,
-            limit,
+            pattern,
         )
-        return [dict(row) for row in rows]
+        return int(value or 0)
 
     async def get_track_for_metadata_sync(self, track_id: UUID) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
@@ -692,6 +889,8 @@ class StreamingRepository:
             SELECT t.*,
                    a.album_slug,
                    st.external_task_id,
+                   st.audio_id_ok AS suno_task_audio_id_ok,
+                   st.audio_id_alt AS suno_task_audio_id_alt,
                    st.style AS suno_style,
                    s.lyrics AS song_lyrics,
                    md.genres AS description_genres
@@ -729,10 +928,12 @@ class StreamingRepository:
         tags: list[str] | None = None,
         cover_storage_key: str | None = None,
         genres: list[str] | None = None,
+        suno_audio_id: str | None = None,
         overwrite: bool = False,
     ) -> None:
         tags_payload = json.dumps(tags) if tags else None
         genres_payload = json.dumps(genres if genres is not None else [])
+        audio_id = str(suno_audio_id or "").strip() or None
         if overwrite:
             await self._pool.execute(
                 """
@@ -744,6 +945,7 @@ class StreamingRepository:
                     tags = COALESCE($6::jsonb, tags),
                     cover_storage_key = COALESCE($7, cover_storage_key),
                     genres = COALESCE($8::jsonb, '[]'::jsonb),
+                    suno_audio_id = COALESCE($9, suno_audio_id),
                     updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -755,6 +957,7 @@ class StreamingRepository:
                 tags_payload,
                 cover_storage_key,
                 genres_payload,
+                audio_id,
             )
             return
 
@@ -768,6 +971,7 @@ class StreamingRepository:
                 tags = COALESCE($6::jsonb, tags),
                 cover_storage_key = COALESCE($7, cover_storage_key),
                 genres = COALESCE($8::jsonb, genres),
+                suno_audio_id = COALESCE($9, suno_audio_id),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -779,6 +983,7 @@ class StreamingRepository:
             tags_payload,
             cover_storage_key,
             genres_payload if genres else None,
+            audio_id,
         )
 
     async def update_track_genre(self, track_id: UUID, genre: str) -> bool:
@@ -803,6 +1008,8 @@ class StreamingRepository:
                    st.external_task_id,
                    st.audio_url_ok,
                    st.audio_url_alt,
+                   st.audio_id_ok,
+                   st.audio_id_alt,
                    st.style AS suno_style,
                    s.title AS song_title,
                    s.album AS song_album,
@@ -840,3 +1047,98 @@ class StreamingRepository:
             return None
         value = str(row.get("logo_path") or "").strip()
         return value or None
+
+    async def list_liked_track_ids(self, user_id: UUID) -> list[UUID]:
+        rows = await self._pool.fetch(
+            """
+            SELECT track_id
+            FROM stream_track_likes
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            """,
+            user_id,
+        )
+        return [row["track_id"] for row in rows]
+
+    async def list_liked_tracks(
+        self,
+        user_id: UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT t.*, a.album_name, a.cover_storage_key AS album_cover_storage_key,
+                   a.genre AS album_genre, u.display_name AS artist_name,
+                   l.created_at AS liked_at
+            FROM stream_track_likes l
+            JOIN stream_tracks t ON t.id = l.track_id
+            JOIN stream_albums a ON a.id = t.album_id
+            JOIN users u ON u.id = t.user_id
+            WHERE l.user_id = $1
+              AND t.publish_status = 'published'
+              AND a.publish_status = 'published'
+            ORDER BY l.created_at DESC
+            LIMIT $2 OFFSET $3
+            """,
+            user_id,
+            limit,
+            offset,
+        )
+        return [dict(row) for row in rows]
+
+    async def count_liked_tracks(self, user_id: UUID) -> int:
+        value = await self._pool.fetchval(
+            """
+            SELECT COUNT(*)::int
+            FROM stream_track_likes l
+            JOIN stream_tracks t ON t.id = l.track_id
+            JOIN stream_albums a ON a.id = t.album_id
+            WHERE l.user_id = $1
+              AND t.publish_status = 'published'
+              AND a.publish_status = 'published'
+            """,
+            user_id,
+        )
+        return int(value or 0)
+
+    async def is_track_liked(self, user_id: UUID, track_id: UUID) -> bool:
+        value = await self._pool.fetchval(
+            """
+            SELECT 1 FROM stream_track_likes
+            WHERE user_id = $1 AND track_id = $2
+            """,
+            user_id,
+            track_id,
+        )
+        return value is not None
+
+    async def like_track(self, user_id: UUID, track_id: UUID) -> bool:
+        """Return True if a new like was inserted."""
+        result = await self._pool.execute(
+            """
+            INSERT INTO stream_track_likes (user_id, track_id)
+            SELECT $1, t.id
+            FROM stream_tracks t
+            JOIN stream_albums a ON a.id = t.album_id
+            WHERE t.id = $2
+              AND t.publish_status = 'published'
+              AND a.publish_status = 'published'
+            ON CONFLICT (user_id, track_id) DO NOTHING
+            """,
+            user_id,
+            track_id,
+        )
+        return str(result).split()[-1] == "1"
+
+    async def unlike_track(self, user_id: UUID, track_id: UUID) -> bool:
+        result = await self._pool.execute(
+            """
+            DELETE FROM stream_track_likes
+            WHERE user_id = $1 AND track_id = $2
+            """,
+            user_id,
+            track_id,
+        )
+        return str(result).split()[-1] == "1"

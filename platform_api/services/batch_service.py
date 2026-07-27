@@ -2584,6 +2584,8 @@ class BatchService:
                     status=TaskStatus.SUCCESS,
                     audio_url_ok=url_ok,
                     audio_url_alt=url_alt,
+                    audio_id_ok=str(poll_result.audio_id_ok or "").strip() or None,
+                    audio_id_alt=str(poll_result.audio_id_alt or "").strip() or None,
                 )
                 if song_id and batch_id:
                     await self.handle_suno_task_update(

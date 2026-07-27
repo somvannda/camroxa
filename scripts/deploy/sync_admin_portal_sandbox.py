@@ -11,19 +11,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deploy import ensure_deploy_key, load_secrets, ssh_connect, tar_filter  # noqa: E402
+from deploy import (  # noqa: E402
+    ensure_deploy_key,
+    load_sandbox_secrets,
+    resolve_sandbox_ssh,
+    ssh_connect,
+    tar_filter,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def main() -> int:
-    secrets = load_secrets()
-    client = ssh_connect(
-        secrets["VPS_HOST"],
-        secrets["VPS_USER"],
-        ensure_deploy_key(),
-        secrets.get("VPS_PASSWORD") or None,
-    )
+    secrets = load_sandbox_secrets()
+    host, user, password = resolve_sandbox_ssh(secrets)
+    print(f"Target sandbox host: {host}")
+    client = ssh_connect(host, user, ensure_deploy_key(), password)
     tmp = Path(tempfile.mkdtemp(prefix="camxora-admin-"))
     archive = tmp / "admin.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:

@@ -25,6 +25,7 @@ export type StreamingCatalogTrack = {
   genre?: string | null;
   genres?: string[];
   duration_seconds?: number | null;
+  play_count?: number;
   cover_url?: string | null;
   has_lyrics?: boolean;
   suno_image_url?: string | null;
@@ -37,6 +38,7 @@ export type StreamingCatalogAlbum = {
   artist_name?: string | null;
   track_count: number;
   published_track_count: number;
+  play_count?: number;
   publish_status: string;
   genre?: string | null;
   genres?: string[];
@@ -83,29 +85,73 @@ export function useUpdateStreamingConfig() {
   });
 }
 
-export function useStreamingCatalog() {
+export type StreamingCatalogListParams = {
+  page: number;
+  pageSize?: number;
+  q?: string;
+  publishStatus?: 'all' | 'published' | 'unpublished';
+};
+
+export type StreamingCatalogPage = {
+  items: StreamingCatalogTrack[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type StreamingAlbumsPage = {
+  items: StreamingCatalogAlbum[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+function catalogQueryParams(params: StreamingCatalogListParams) {
+  const limit = params.pageSize ?? 50;
+  const offset = Math.max(0, (params.page - 1) * limit);
+  const q = params.q?.trim() || undefined;
+  const publish_status =
+    params.publishStatus && params.publishStatus !== 'all'
+      ? params.publishStatus
+      : undefined;
+  return {
+    limit,
+    offset,
+    ...(q ? { q } : {}),
+    ...(publish_status ? { publish_status } : {}),
+  };
+}
+
+export function useStreamingCatalog(params: StreamingCatalogListParams) {
+  const queryParams = catalogQueryParams(params);
   return useQuery({
-    queryKey: ['streaming-catalog'],
-    queryFn: async () => {
-      const data = await httpClient.get<{ items: StreamingCatalogTrack[] }>(
-        '/api/v1/admin/streaming/catalog',
-        { limit: 500 },
-      );
-      return data.items ?? [];
-    },
+    queryKey: [
+      'streaming-catalog',
+      queryParams.limit,
+      queryParams.offset,
+      queryParams.q ?? '',
+      queryParams.publish_status ?? '',
+    ],
+    queryFn: () =>
+      httpClient.get<StreamingCatalogPage>('/api/v1/admin/streaming/catalog', queryParams),
   });
 }
 
-export function useStreamingAlbums() {
+export function useStreamingAlbums(params: StreamingCatalogListParams) {
+  const queryParams = catalogQueryParams(params);
   return useQuery({
-    queryKey: ['streaming-albums'],
-    queryFn: async () => {
-      const data = await httpClient.get<{ items: StreamingCatalogAlbum[] }>(
+    queryKey: [
+      'streaming-albums',
+      queryParams.limit,
+      queryParams.offset,
+      queryParams.q ?? '',
+      queryParams.publish_status ?? '',
+    ],
+    queryFn: () =>
+      httpClient.get<StreamingAlbumsPage>(
         '/api/v1/admin/streaming/catalog/albums',
-        { limit: 500 },
-      );
-      return data.items ?? [];
-    },
+        queryParams,
+      ),
   });
 }
 

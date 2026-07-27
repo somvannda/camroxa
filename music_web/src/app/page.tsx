@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { AlbumCard } from '@/components/catalog-cards';
 import TrackRow from '@/components/track-row';
 import { getGenres, getStreamingHome } from '@/lib/streaming-api';
 
@@ -21,20 +22,22 @@ export default async function HomePage() {
   } catch {
     genres = [];
   }
+
   return (
     <div className="space-y-10">
       <section>
-        <h1 className="text-3xl font-semibold">Good evening</h1>
-        <p className="mt-2 text-[hsl(var(--muted-foreground))]">
-          Discover AI-generated music published by Camxora creators.
+        <h1 className="font-display text-3xl font-semibold text-white md:text-4xl">Good evening</h1>
+        <p className="mt-2 max-w-2xl text-slate-300/75">
+          Discover AI-generated music published by Camxora creators. Browse freely — sign in to
+          listen, save, and build playlists.
         </p>
       </section>
 
       {genres.length ? (
         <section>
           <div className="mb-4 flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">Browse by genre</h2>
-            <Link href="/genres" className="text-sm text-[hsl(var(--primary))] hover:underline">
+            <h2 className="font-display text-xl font-semibold text-white">Browse by genre</h2>
+            <Link href="/genres" className="text-sm text-fuchsia-200/80 hover:text-white">
               View all
             </Link>
           </div>
@@ -43,7 +46,7 @@ export default async function HomePage() {
               <Link
                 key={genre.slug}
                 href={`/genres/${genre.slug}`}
-                className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-2 text-sm transition hover:bg-white/5"
+                className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-slate-200 transition hover:bg-white/[0.07]"
               >
                 {genre.genre}
               </Link>
@@ -53,42 +56,30 @@ export default async function HomePage() {
       ) : null}
 
       <section>
-        <h2 className="mb-4 text-xl font-semibold">Recently added</h2>
-        <div className="space-y-1">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="font-display text-xl font-semibold text-white">Recently added</h2>
+        </div>
+        <div className="space-y-1 rounded-2xl border border-white/8 bg-white/[0.02] p-2">
           {home.recent_tracks.length ? (
             home.recent_tracks.map((track) => <TrackRow key={track.id} track={track} />)
           ) : (
-            <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              No published tracks yet. Complete a batch and configure Backblaze in Music Portal.
+            <p className="px-3 py-6 text-sm text-slate-500">
+              No published tracks yet. Complete a batch and configure streaming storage.
             </p>
           )}
         </div>
       </section>
 
       <section>
-        <h2 className="mb-4 text-xl font-semibold">Albums</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h2 className="font-display text-xl font-semibold text-white">Albums</h2>
+          <Link href="/albums" className="text-sm text-fuchsia-200/80 hover:text-white">
+            Show all
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {home.albums.map((album) => (
-            <a
-              key={album.id}
-              href={`/albums/${album.id}`}
-              className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 transition hover:bg-white/5"
-            >
-              {album.cover_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={album.cover_url}
-                  alt=""
-                  className="mb-4 aspect-square w-full rounded-xl object-cover"
-                />
-              ) : (
-                <div className="mb-4 aspect-square w-full rounded-xl bg-[hsl(var(--secondary))]" />
-              )}
-              <p className="font-medium">{album.album_name}</p>
-              <p className="text-sm text-[hsl(var(--muted-foreground))]">
-                {album.artist_name ?? 'Camxora Artist'} · {album.track_count ?? 0} tracks
-              </p>
-            </a>
+            <AlbumCard key={album.id} album={album} />
           ))}
         </div>
       </section>

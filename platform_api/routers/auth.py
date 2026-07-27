@@ -22,6 +22,7 @@ from platform_api.exceptions import (
     NotFoundError,
     ValidationError,
 )
+from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.models.domain import User
 from platform_api.models.enums import UserRole, UserStatus
 from platform_api.models.schemas import LoginRequest, TokenResponse
@@ -547,15 +548,15 @@ async def refresh(
 )
 async def logout(
     auth_service: AuthServiceDep,
-    current_user_id: CurrentUserIdDep,
+    ctx: Annotated[AuthContext, Depends(get_current_user)],
     response: Response,
     request: Request,
 ) -> dict[str, str]:
     """Revoke all refresh tokens for the authenticated user.
 
-    Requires a valid Bearer token in the Authorization header.
+    Accepts Bearer token or user auth cookies (same as other authenticated routes).
     """
-    await auth_service.revoke_tokens(current_user_id)
+    await auth_service.revoke_tokens(ctx.user_id)
     _clear_auth_cookies(response, request)
     return {"message": "Successfully logged out."}
 

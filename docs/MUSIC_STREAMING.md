@@ -21,7 +21,10 @@ Camxora music streaming uses:
 - Public: `/api/v1/public/streaming/*`
 - Admin: `/api/v1/admin/streaming/*`
 
-## Storage layout
+## Portal UX roadmap
+
+See [`MUSIC_STREAMING_PORTAL_ENHANCEMENT.md`](./MUSIC_STREAMING_PORTAL_ENHANCEMENT.md) for branding, shared auth, pagination, player, lyrics, and library phases.
+
 
 ```
 camxora-media/{user_id}/{album_slug}/{song_slug}-{ok|alt}.mp3

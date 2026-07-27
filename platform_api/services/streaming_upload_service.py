@@ -17,11 +17,14 @@ from platform_api.services.music_genre_utils import parse_suno_clip_tags, resolv
 from platform_api.services.suno_audio_resolver import (
     SunoTaskDownloadUrls,
     download_suno_mp3_bytes,
+    fetch_timestamped_lrc_with_pool,
     normalize_http_download_url,
     poll_suno_generate_with_pool,
     refresh_suno_task_download_urls,
     variant_url_candidates,
 )
+from platform_api.services.suno_lrc import looks_like_lrc
+
 
 import httpx
 
@@ -104,12 +107,16 @@ class StreamingUploadService:
             UPDATE suno_tasks
             SET audio_url_ok = CASE WHEN $2 <> '' THEN $2 ELSE audio_url_ok END,
                 audio_url_alt = CASE WHEN $3 <> '' THEN $3 ELSE audio_url_alt END,
+                audio_id_ok = CASE WHEN $4 <> '' THEN $4 ELSE audio_id_ok END,
+                audio_id_alt = CASE WHEN $5 <> '' THEN $5 ELSE audio_id_alt END,
                 updated_at = NOW()
             WHERE id = $1
             """,
             suno_task_id,
             refreshed.audio_url_ok,
             refreshed.audio_url_alt,
+            refreshed.audio_id_ok,
+            refreshed.audio_id_alt,
         )
 
     async def _upload_mp3_variant(
@@ -133,7 +140,7 @@ class StreamingUploadService:
             channel_role = "ok"
 
         title = str(context.get("song_title") or "Untitled").strip() or "Untitled"
-        lyrics = str(context.get("song_lyrics") or "").strip() or None
+        plain_lyrics = str(context.get("song_lyrics") or "").strip() or None
         album_slug = slugify(album_name, fallback="album")
         song_slug = slugify(title, fallback="track")
         storage_key = f"{user_id}/{album_slug}/{song_slug}-{variant}.mp3"
@@ -181,15 +188,34 @@ class StreamingUploadService:
             duration_seconds = None
             suno_image_url = ""
             tags_text = ""
+            suno_audio_id = ""
             if refreshed is not None:
                 if variant == "alt":
                     duration_seconds = refreshed.duration_alt
                     suno_image_url = refreshed.image_url_alt
                     tags_text = refreshed.tags_alt
+                    suno_audio_id = refreshed.audio_id_alt
                 else:
                     duration_seconds = refreshed.duration_ok
                     suno_image_url = refreshed.image_url_ok
                     tags_text = refreshed.tags_ok
+                    suno_audio_id = refreshed.audio_id_ok
+            if not suno_audio_id:
+                if variant == "alt":
+                    suno_audio_id = str(context.get("audio_id_alt") or "").strip()
+                else:
+                    suno_audio_id = str(context.get("audio_id_ok") or "").strip()
+
+            lyrics = plain_lyrics
+            external_task_id = str(context.get("external_task_id") or "").strip()
+            if suno_audio_id and external_task_id:
+                lrc = await fetch_timestamped_lrc_with_pool(
+                    self._pool,
+                    external_task_id=external_task_id,
+                    audio_id=suno_audio_id,
+                )
+                if looks_like_lrc(lrc):
+                    lyrics = lrc
 
             primary_genre, catalog_genres = resolve_stream_genres(
                 description_genres=context.get("description_genres"),
@@ -232,6 +258,7 @@ class StreamingUploadService:
                 suno_image_url=suno_image_url or None,
                 tags=tags,
                 genres=catalog_genres or None,
+                suno_audio_id=suno_audio_id or None,
             )
             await self._repo.mark_upload_job(job_id, status="success", storage_key=storage_key)
         except Exception as exc:

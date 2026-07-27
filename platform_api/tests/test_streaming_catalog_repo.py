@@ -18,6 +18,15 @@ def test_published_album_queries_require_at_least_one_published_track() -> None:
 
     assert "HAVING COUNT(t.id) > 0" in list_albums
     assert "HAVING COUNT(t.id) > 0" in artist_albums
+    assert "async def count_published_albums" in source
+
+
+def test_search_supports_offset_and_count() -> None:
+    source = STREAMING_REPO.read_text(encoding="utf-8")
+    search_sql = _extract_function_sql(source, "search_published")
+    assert "LIMIT $2 OFFSET $3" in search_sql
+    assert "async def count_search_published" in source
+    assert "async def count_artists" in source
 
 
 def test_genre_queries_present() -> None:

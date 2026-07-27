@@ -11,7 +11,11 @@ from platform_api.services.storage_service import StorageService
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
 from platform_api.services.streaming_upload_service import StreamingUploadService
 from platform_api.services.music_genre_utils import resolve_stream_genres
-from platform_api.services.suno_audio_resolver import SunoTaskDownloadUrls
+from platform_api.services.suno_audio_resolver import (
+    SunoTaskDownloadUrls,
+    fetch_timestamped_lrc_with_pool,
+)
+from platform_api.services.suno_lrc import looks_like_lrc
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +73,36 @@ class StreamingMetadataSyncService:
             duration_seconds = refreshed.duration_alt
             suno_image_url = refreshed.image_url_alt
             tags_text = refreshed.tags_alt
+            refreshed_audio_id = refreshed.audio_id_alt
+            task_audio_id = str(row.get("suno_task_audio_id_alt") or "").strip()
         else:
             duration_seconds = refreshed.duration_ok
             suno_image_url = refreshed.image_url_ok
             tags_text = refreshed.tags_ok
+            refreshed_audio_id = refreshed.audio_id_ok
+            task_audio_id = str(row.get("suno_task_audio_id_ok") or "").strip()
 
-        lyrics = _coerce_metadata_text(row.get("song_lyrics") or row.get("lyrics"))
+        suno_audio_id = (
+            str(row.get("suno_audio_id") or "").strip()
+            or refreshed_audio_id
+            or task_audio_id
+            or None
+        )
+
+        existing_lyrics = _coerce_metadata_text(row.get("lyrics"))
+        plain_lyrics = _coerce_metadata_text(row.get("song_lyrics") or row.get("lyrics"))
+        lyrics = existing_lyrics if looks_like_lrc(existing_lyrics) else None
+        if lyrics is None and external_task_id and suno_audio_id:
+            lrc = await fetch_timestamped_lrc_with_pool(
+                self._pool,
+                external_task_id=external_task_id,
+                audio_id=suno_audio_id,
+            )
+            if looks_like_lrc(lrc):
+                lyrics = lrc
+        if lyrics is None:
+            lyrics = plain_lyrics
+
         primary_genre, catalog_genres = resolve_stream_genres(
             description_genres=row.get("description_genres"),
             suno_tags_text=tags_text,
@@ -111,6 +139,7 @@ class StreamingMetadataSyncService:
             tags=tags,
             cover_storage_key=cover_storage_key,
             genres=catalog_genres,
+            suno_audio_id=suno_audio_id,
             overwrite=True,
         )
         await self._repo.update_album_genre(
@@ -127,6 +156,7 @@ class StreamingMetadataSyncService:
             "genres": catalog_genres,
             "duration_seconds": duration_seconds,
             "has_lyrics": bool(lyrics),
+            "has_lrc": looks_like_lrc(lyrics),
             "refreshed_from_suno": refreshed.refreshed,
         }
 

@@ -82,6 +82,8 @@ class SunoTaskRepository(Protocol):
         status: TaskStatus,
         audio_url_ok: str | None = None,
         audio_url_alt: str | None = None,
+        audio_id_ok: str | None = None,
+        audio_id_alt: str | None = None,
         error_message: str | None = None,
     ) -> None:
         """Update a Suno task's status and audio URLs."""
@@ -525,7 +527,14 @@ async def suno_callback(
     if not audio_url_ok and not audio_url_alt:
         audio_url_ok, audio_url_alt = _extract_audio_urls(payload)
 
-    from platform_api.services.suno_audio_resolver import normalize_http_download_url
+    from platform_api.services.suno_audio_resolver import (
+        extract_callback_download_urls,
+        normalize_http_download_url,
+    )
+
+    parsed_urls = extract_callback_download_urls(raw_payload)
+    audio_id_ok = str(parsed_urls.audio_id_ok or "").strip() or None
+    audio_id_alt = str(parsed_urls.audio_id_alt or "").strip() or None
 
     audio_url_ok = normalize_http_download_url(audio_url_ok) or None
     audio_url_alt = normalize_http_download_url(audio_url_alt) or None
@@ -543,6 +552,8 @@ async def suno_callback(
                 refreshed = urls_from_generate_poll(poll_result)
                 audio_url_ok = normalize_http_download_url(refreshed.audio_url_ok) or None
                 audio_url_alt = normalize_http_download_url(refreshed.audio_url_alt) or None
+                audio_id_ok = audio_id_ok or (str(refreshed.audio_id_ok or "").strip() or None)
+                audio_id_alt = audio_id_alt or (str(refreshed.audio_id_alt or "").strip() or None)
         except Exception as exc:
             logger.warning(
                 "Suno callback record-info refresh failed for task_id=%s: %s",
@@ -585,6 +596,8 @@ async def suno_callback(
         status=persist_status,
         audio_url_ok=audio_url_ok,
         audio_url_alt=audio_url_alt,
+        audio_id_ok=audio_id_ok,
+        audio_id_alt=audio_id_alt,
         error_message=task_error_message,
     )
 

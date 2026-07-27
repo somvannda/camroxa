@@ -11,9 +11,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Streaming play counts: `stream_tracks.play_count` (migration `072`); increment on public `play-url`; album lists expose sum as `play_count`
+- Public streaming list pagination: `GET /public/streaming/albums|artists|search` return `{ items, total, limit, offset }`; search accepts `offset`
+- Admin streaming catalog pagination: `GET /admin/streaming/catalog` and `.../catalog/albums` return `{ items, total, limit, offset }` with `offset`, `q`, `publish_status`
+- Public `play-url` includes `album_id`, `user_id`, `lyrics` for music portal Now Playing rail
+- Streaming library likes: migration `073_stream_track_likes`; `GET/PUT/DELETE /streaming/library/likes`
+- Suno timestamped lyrics → LRC on stream upload/metadata sync (`074_suno_audio_ids`; `get-timestamped-lyrics`)
+
 ### Changed
 
+- `/auth/logout` accepts cookie auth (not Bearer-only) for music portal same-origin sessions
+
+### Changed
+
+- Production HTTPS live (`api`/`camxora.com`/`www`/`app`/`admin`/`music`); Resend SMTP configured on prod API env. See `docs/changelog/2026-07-26-production-tls.md` and `docs/changelog/2026-07-26-production-smtp.md`.
+- Production admin seeded; local plans (13) imported. See `docs/changelog/2026-07-26-production-admin-and-plans.md`.
+- Sandbox scrubbed system/catalog config imported to prod. See `docs/changelog/2026-07-26-sandbox-config-to-production.md`.
+- Streaming catalog + prod B2 bucket wired. See `docs/changelog/2026-07-26-production-streaming-catalog.md`.
+- Sandbox AI API keys re-encrypted onto prod. See `docs/changelog/2026-07-26-production-api-keys.md`.
+- CutLuy live secret + webhook secret on prod. See `docs/changelog/2026-07-26-production-cutluy.md`.
+
 ### Fixed
+
+- Desktop installer publish: accept `CamxoraSetup-*.exe` / `Camxora-Setup-*.exe` in version filename parse; optional `version` on publish body. See `docs/changelog/2026-07-26-software-update-setup-filename.md`.
 
 ## [2026-07-25]
 

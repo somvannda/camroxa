@@ -1,10 +1,16 @@
-export default function AlbumsPage() {
-  return (
-    <div>
-      <h1 className="text-2xl font-semibold">Albums</h1>
-      <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-        Browse albums from the home page for now.
-      </p>
-    </div>
-  );
+import AlbumsBrowser from '@/components/albums-browser';
+import { listAlbums } from '@/lib/streaming-api';
+
+export default async function AlbumsPage() {
+  let items: Awaited<ReturnType<typeof listAlbums>>['items'] = [];
+  let total = 0;
+  try {
+    const page = await listAlbums(24, 0);
+    items = page.items;
+    total = page.total;
+  } catch {
+    items = [];
+    total = 0;
+  }
+  return <AlbumsBrowser initialItems={items} total={total} />;
 }

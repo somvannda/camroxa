@@ -79,12 +79,14 @@ def test_parse_suno_generate_poll_extracts_clip_metadata() -> None:
                 "response": {
                     "data": [
                         {
+                            "id": "audio-ok-111",
                             "source_audio_url": "https://cdn.example.com/ok.mp3",
                             "image_url": "https://cdn.example.com/ok.jpg",
                             "duration": 142.5,
                             "tags": "edm, workout",
                         },
                         {
+                            "id": "audio-alt-222",
                             "source_audio_url": "https://cdn.example.com/alt.mp3",
                             "image_url": "https://cdn.example.com/alt.jpg",
                             "duration": 138.0,
@@ -98,6 +100,8 @@ def test_parse_suno_generate_poll_extracts_clip_metadata() -> None:
     assert parsed.state == "success"
     assert parsed.audio_url_ok == "https://cdn.example.com/ok.mp3"
     assert parsed.image_url_ok == "https://cdn.example.com/ok.jpg"
+    assert parsed.audio_id_ok == "audio-ok-111"
+    assert parsed.audio_id_alt == "audio-alt-222"
     assert parsed.duration_ok == 142.5
     assert parsed.tags_ok == "edm, workout"
     assert parsed.image_url_alt == "https://cdn.example.com/alt.jpg"
@@ -114,14 +118,16 @@ def test_extract_callback_download_urls_from_sunoapi_payload() -> None:
                 "callbackType": "complete",
                 "task_id": "abc123",
                 "data": [
-                    {"source_audio_url": "https://cdn.example.com/ok.mp3"},
-                    {"source_audio_url": "https://cdn.example.com/alt.mp3"},
+                    {"id": "clip-ok", "source_audio_url": "https://cdn.example.com/ok.mp3"},
+                    {"id": "clip-alt", "source_audio_url": "https://cdn.example.com/alt.mp3"},
                 ],
             },
         }
     )
     assert parsed.audio_url_ok == "https://cdn.example.com/ok.mp3"
     assert parsed.audio_url_alt == "https://cdn.example.com/alt.mp3"
+    assert parsed.audio_id_ok == "clip-ok"
+    assert parsed.audio_id_alt == "clip-alt"
 
 
 def test_callback_indicates_success_for_complete_callback_type() -> None:

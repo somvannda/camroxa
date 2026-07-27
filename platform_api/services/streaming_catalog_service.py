@@ -46,10 +46,12 @@ class StreamingCatalogService:
         track["cover_url"] = await self._cover_url(self._track_cover_key(track))
         if track.get("genre") is None and track.get("album_genre"):
             track["genre"] = track.get("album_genre")
+        track["play_count"] = int(track.get("play_count") or 0)
         self._decorate_genre_fields(track)
 
     async def _decorate_album(self, album: dict[str, Any]) -> None:
         album["cover_url"] = await self._cover_url(album.get("cover_storage_key"))
+        album["play_count"] = int(album.get("play_count") or 0)
         self._decorate_genre_fields(album)
 
     async def get_home(self) -> dict[str, Any]:
@@ -61,11 +63,12 @@ class StreamingCatalogService:
             await self._decorate_album(album)
         return {"recent_tracks": recent_tracks, "albums": albums}
 
-    async def list_albums(self, *, limit: int = 24, offset: int = 0) -> list[dict[str, Any]]:
+    async def list_albums(self, *, limit: int = 24, offset: int = 0) -> dict[str, Any]:
         albums = await self._repo.list_published_albums(limit=limit, offset=offset)
+        total = await self._repo.count_published_albums()
         for album in albums:
             await self._decorate_album(album)
-        return albums
+        return {"items": albums, "total": total, "limit": limit, "offset": offset}
 
     async def get_album(self, album_id: UUID) -> dict[str, Any] | None:
         album = await self._repo.get_published_album(album_id)
@@ -125,8 +128,10 @@ class StreamingCatalogService:
             "tracks": tracks,
         }
 
-    async def list_artists(self, *, limit: int = 48, offset: int = 0) -> list[dict[str, Any]]:
-        return await self._repo.list_artists(limit=limit, offset=offset)
+    async def list_artists(self, *, limit: int = 48, offset: int = 0) -> dict[str, Any]:
+        artists = await self._repo.list_artists(limit=limit, offset=offset)
+        total = await self._repo.count_artists()
+        return {"items": artists, "total": total, "limit": limit, "offset": offset}
 
     async def get_artist(self, user_id: UUID) -> dict[str, Any] | None:
         albums = await self._repo.list_artist_albums(user_id)
@@ -134,17 +139,19 @@ class StreamingCatalogService:
             return None
         for album in albums:
             album["cover_url"] = await self._cover_url(album.get("cover_storage_key"))
+            album["play_count"] = int(album.get("play_count") or 0)
         return {
             "user_id": str(user_id),
             "artist_name": albums[0].get("artist_name"),
             "albums": albums,
         }
 
-    async def search(self, query: str, *, limit: int = 24) -> list[dict[str, Any]]:
-        tracks = await self._repo.search_published(query, limit=limit)
+    async def search(self, query: str, *, limit: int = 24, offset: int = 0) -> dict[str, Any]:
+        tracks = await self._repo.search_published(query, limit=limit, offset=offset)
+        total = await self._repo.count_search_published(query)
         for track in tracks:
             await self._decorate_track(track)
-        return tracks
+        return {"items": tracks, "total": total, "limit": limit, "offset": offset}
 
     async def get_play_url(self, track_id: UUID) -> dict[str, Any] | None:
         track = await self._repo.get_published_track(track_id)
@@ -156,17 +163,22 @@ class StreamingCatalogService:
         storage = StorageService.from_config(config)
         url = await storage.get_signed_get_url(str(track["storage_key"]))
         expires_at = datetime.now(timezone.utc).timestamp() + config.stream_url_ttl_seconds
+        play_count = await self._repo.increment_play_count(track_id)
         return {
             "track_id": str(track_id),
             "url": url,
             "expires_at": datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
             "title": track.get("title"),
+            "album_id": str(track["album_id"]) if track.get("album_id") else None,
             "album_name": track.get("album_name"),
+            "user_id": str(track["user_id"]) if track.get("user_id") else None,
             "artist_name": track.get("artist_name"),
             "variant": track.get("variant"),
             "cover_url": await self._cover_url(self._track_cover_key(track)),
             "duration_seconds": track.get("duration_seconds"),
+            "play_count": play_count,
             "genre": track.get("genre") or track.get("album_genre"),
+            "lyrics": track.get("lyrics"),
             "genres": parse_genre_list(track.get("genres"))
             or (
                 [str(track.get("genre") or track.get("album_genre")).strip()]
@@ -200,3 +212,36 @@ class StreamingCatalogService:
 
     async def delete_album(self, album_id: UUID) -> bool:
         return await self._repo.delete_album(album_id)
+
+    async def list_liked_track_ids(self, user_id: UUID) -> list[str]:
+        ids = await self._repo.list_liked_track_ids(user_id)
+        return [str(item) for item in ids]
+
+    async def list_liked_tracks(
+        self,
+        user_id: UUID,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        rows = await self._repo.list_liked_tracks(user_id, limit=limit, offset=offset)
+        total = await self._repo.count_liked_tracks(user_id)
+        for track in rows:
+            await self._decorate_track(track)
+            track["id"] = str(track["id"])
+            if track.get("album_id"):
+                track["album_id"] = str(track["album_id"])
+            if track.get("user_id"):
+                track["user_id"] = str(track["user_id"])
+        return {"items": rows, "total": total, "limit": limit, "offset": offset}
+
+    async def like_track(self, user_id: UUID, track_id: UUID) -> dict[str, Any]:
+        track = await self._repo.get_published_track(track_id)
+        if not track:
+            return {"ok": False, "liked": False, "reason": "not_found"}
+        inserted = await self._repo.like_track(user_id, track_id)
+        return {"ok": True, "liked": True, "created": inserted}
+
+    async def unlike_track(self, user_id: UUID, track_id: UUID) -> dict[str, Any]:
+        removed = await self._repo.unlike_track(user_id, track_id)
+        return {"ok": True, "liked": False, "removed": removed}

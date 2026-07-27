@@ -1,22 +1,29 @@
 function resolveApiBase(): string {
-  const publicBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
-  if (publicBase) return publicBase;
-
-  // Server components can reach the API directly on the same host.
-  if (typeof window === 'undefined') {
-    return (
-      process.env.STREAMING_API_BASE_URL?.replace(/\/$/, '') || 'http://127.0.0.1:8100'
-    );
+  // Browser: always same-origin so nginx /api proxy sets/sends music.* cookies.
+  if (typeof window !== 'undefined') {
+    return '';
   }
-
-  // Browser uses same-origin /api when nginx proxies to platform_api.
-  return '';
+  return (
+    process.env.STREAMING_API_BASE_URL?.replace(/\/$/, '') ||
+    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ||
+    process.env.PLATFORM_API_BASE_URL?.replace(/\/$/, '') ||
+    'http://127.0.0.1:8000'
+  );
 }
 
 const API_BASE = resolveApiBase();
 
+export function getStreamingApiBase(): string {
+  if (typeof window !== 'undefined') return '';
+  return API_BASE;
+}
+
 async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { next: { revalidate: 30 } });
+  const base = typeof window !== 'undefined' ? '' : API_BASE;
+  const response = await fetch(`${base}${path}`, {
+    credentials: typeof window !== 'undefined' ? 'include' : 'omit',
+    ...(typeof window === 'undefined' ? { next: { revalidate: 30 } } : {}),
+  });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
@@ -26,6 +33,8 @@ async function fetchJson<T>(path: string): Promise<T> {
 export type StreamTrack = {
   id: string;
   title: string;
+  album_id?: string;
+  user_id?: string;
   album_name?: string;
   artist_name?: string;
   variant?: string;
@@ -33,6 +42,7 @@ export type StreamTrack = {
   genre?: string | null;
   genres?: string[];
   duration_seconds?: number | null;
+  play_count?: number;
   lyrics?: string | null;
 };
 
@@ -40,13 +50,29 @@ export type StreamAlbum = {
   id: string;
   album_name: string;
   artist_name?: string;
+  user_id?: string;
   cover_url?: string | null;
   track_count?: number;
+  play_count?: number;
   genre?: string | null;
   genres?: string[];
 };
 
-function formatDuration(seconds?: number | null): string {
+export type StreamArtist = {
+  user_id: string;
+  artist_name?: string | null;
+  album_count?: number;
+  track_count?: number;
+};
+
+export type Paginated<T> = {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export function formatDuration(seconds?: number | null): string {
   if (!seconds || seconds <= 0) return '';
   const total = Math.round(seconds);
   const minutes = Math.floor(total / 60);
@@ -54,7 +80,10 @@ function formatDuration(seconds?: number | null): string {
   return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 
-export { formatDuration };
+export function formatPlayCount(count?: number | null): string {
+  const n = Math.max(0, Math.floor(Number(count) || 0));
+  return n.toLocaleString();
+}
 
 export function formatGenreLabels(track: {
   genres?: string[] | null;
@@ -82,9 +111,34 @@ export async function getStreamingHome() {
   );
 }
 
+export async function listAlbums(limit = 24, offset = 0) {
+  return fetchJson<Paginated<StreamAlbum>>(
+    `/api/v1/public/streaming/albums?limit=${limit}&offset=${offset}`,
+  );
+}
+
+export async function listArtists(limit = 48, offset = 0) {
+  return fetchJson<Paginated<StreamArtist>>(
+    `/api/v1/public/streaming/artists?limit=${limit}&offset=${offset}`,
+  );
+}
+
+export async function searchCatalog(query: string, limit = 24, offset = 0) {
+  const q = encodeURIComponent(query);
+  return fetchJson<Paginated<StreamTrack>>(
+    `/api/v1/public/streaming/search?q=${q}&limit=${limit}&offset=${offset}`,
+  );
+}
+
 export async function getAlbum(albumId: string) {
   return fetchJson<StreamAlbum & { tracks: StreamTrack[] }>(
     `/api/v1/public/streaming/albums/${albumId}`,
+  );
+}
+
+export async function getArtist(userId: string) {
+  return fetchJson<{ user_id: string; artist_name?: string; albums: StreamAlbum[] }>(
+    `/api/v1/public/streaming/artists/${userId}`,
   );
 }
 
@@ -92,11 +146,15 @@ export async function getPlayUrl(trackId: string) {
   return fetchJson<{
     url: string;
     title?: string;
+    album_id?: string | null;
     album_name?: string;
+    user_id?: string | null;
     artist_name?: string;
     cover_url?: string | null;
     duration_seconds?: number | null;
+    play_count?: number;
     genre?: string | null;
+    lyrics?: string | null;
   }>(`/api/v1/public/streaming/tracks/${trackId}/play-url`);
 }
 

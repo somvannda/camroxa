@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from platform_api.exceptions import NotFoundError, ValidationError
@@ -67,6 +67,7 @@ class CatalogTrackResponse(BaseModel):
     genre: str | None = None
     genres: list[str] = Field(default_factory=list)
     duration_seconds: float | None = None
+    play_count: int = 0
     cover_url: str | None = None
     has_lyrics: bool = False
     suno_image_url: str | None = None
@@ -75,6 +76,9 @@ class CatalogTrackResponse(BaseModel):
 
 class CatalogListResponse(BaseModel):
     items: list[CatalogTrackResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class CatalogAlbumResponse(BaseModel):
@@ -83,6 +87,7 @@ class CatalogAlbumResponse(BaseModel):
     artist_name: str | None = None
     track_count: int
     published_track_count: int
+    play_count: int = 0
     publish_status: str
     genre: str | None = None
     genres: list[str] = Field(default_factory=list)
@@ -93,6 +98,9 @@ class CatalogAlbumResponse(BaseModel):
 
 class CatalogAlbumListResponse(BaseModel):
     items: list[CatalogAlbumResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 class UploadJobResponse(BaseModel):
@@ -176,6 +184,7 @@ def _build_catalog_track_response(row: dict, *, cover_url: str | None) -> Catalo
         genre=genres[0] if genres else None,
         genres=genres,
         duration_seconds=row.get("duration_seconds"),
+        play_count=int(row.get("play_count") or 0),
         cover_url=cover_url,
         has_lyrics=bool(lyrics),
         suno_image_url=row.get("suno_image_url"),
@@ -223,30 +232,56 @@ async def update_streaming_config(
 
 
 @router.get("/catalog", response_model=CatalogListResponse)
-async def list_streaming_catalog(ctx: AdminDep, limit: int = 100) -> CatalogListResponse:
+async def list_streaming_catalog(
+    ctx: AdminDep,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=200),
+    publish_status: str | None = Query(None, pattern="^(published|unpublished)$"),
+) -> CatalogListResponse:
     del ctx
     from platform_api.dependencies import get_db_pool
 
     pool = get_db_pool()
-    rows = await StreamingRepository(pool).list_admin_catalog(limit=max(1, min(limit, 500)))
+    repo = StreamingRepository(pool)
+    rows = await repo.list_admin_catalog(
+        limit=limit,
+        offset=offset,
+        q=q,
+        publish_status=publish_status,
+    )
+    total = await repo.count_admin_catalog(q=q, publish_status=publish_status)
     items: list[CatalogTrackResponse] = []
     for row in rows:
         cover_url = await _admin_cover_url(pool, _track_cover_key(row))
         items.append(_build_catalog_track_response(row, cover_url=cover_url))
-    return CatalogListResponse(items=items)
+    return CatalogListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/catalog/albums", response_model=CatalogAlbumListResponse)
-async def list_streaming_albums(ctx: AdminDep, limit: int = 100) -> CatalogAlbumListResponse:
+async def list_streaming_albums(
+    ctx: AdminDep,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=200),
+    publish_status: str | None = Query(None, pattern="^(published|unpublished)$"),
+) -> CatalogAlbumListResponse:
     del ctx
     from platform_api.dependencies import get_db_pool
 
     pool = get_db_pool()
-    rows = await StreamingRepository(pool).list_admin_albums(limit=max(1, min(limit, 500)))
+    repo = StreamingRepository(pool)
+    rows = await repo.list_admin_albums(
+        limit=limit,
+        offset=offset,
+        q=q,
+        publish_status=publish_status,
+    )
+    total = await repo.count_admin_albums(q=q, publish_status=publish_status)
     items: list[CatalogAlbumResponse] = []
     for row in rows:
         cover_storage_key = row.get("cover_storage_key")
-        genres = _album_genres(row)
+        genres = _album_genres(row) or []
         items.append(
             CatalogAlbumResponse(
                 id=str(row["id"]),
@@ -254,6 +289,7 @@ async def list_streaming_albums(ctx: AdminDep, limit: int = 100) -> CatalogAlbum
                 artist_name=row.get("artist_name"),
                 track_count=int(row.get("track_count") or 0),
                 published_track_count=int(row.get("published_track_count") or 0),
+                play_count=int(row.get("play_count") or 0),
                 publish_status=str(row["publish_status"]),
                 genre=genres[0] if genres else None,
                 genres=genres,
@@ -262,7 +298,7 @@ async def list_streaming_albums(ctx: AdminDep, limit: int = 100) -> CatalogAlbum
                 created_at=row["created_at"].isoformat() if row.get("created_at") else None,
             )
         )
-    return CatalogAlbumListResponse(items=items)
+    return CatalogAlbumListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.get("/upload-jobs", response_model=UploadJobListResponse)
