@@ -1,5 +1,11 @@
 # CAMXORA — Project Rules
 
+## Shipping / multi-agent (mandatory)
+- One task → one git branch (prefer worktrees when parallel agents share this repo).
+- Commit / push / merge / production deploy only when the user explicitly asks.
+- Do not ship unrelated dirty work: path-scope commits and file-scoped production hotfixes when the tree is mixed.
+- Full rules: `.cursor/rules/branch-isolation-and-ship-gates.mdc` and `.cursor/rules/sandbox-first-deploy.mdc`.
+
 ## App Identity
 - App name: **CAMXORA** (never "AI", "NEXORA AI", or other names)
 - Desktop music/video studio app with PyQt6 native widget UI
