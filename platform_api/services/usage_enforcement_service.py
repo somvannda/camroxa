@@ -48,6 +48,7 @@ from platform_api.services.billing_period_service import (
     period_start_for_subscription,
 )
 from platform_api.services.subscription_entitlement_service import (
+    effective_daily_limit_for_operation,
     effective_monthly_limit_for_operation,
     effective_profile_allowance,
 )
@@ -706,6 +707,7 @@ class UsageEnforcementService:
             operation_type=operation_type,
             plan=plan,
             today=today,
+            addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
         )
         effective_daily = daily_limit + banked_units
         account_daily = uses_account_daily_quota(quota_op)
@@ -1586,11 +1588,12 @@ class UsageEnforcementService:
         operation_type: str,
         plan: Plan,
         today: date,
+        addon_slots: int = 0,
     ) -> tuple[int, int, int]:
         """Return (daily_limit, banked_units, daily_count) after accrual."""
         storage_op = self._pool_operation_type(operation_type)
         quota_op = quota_operation_type(operation_type)
-        daily_limit = self._get_daily_limit(plan, quota_op)
+        daily_limit = self._get_daily_limit(plan, quota_op, addon_slots=addon_slots)
         account_daily = uses_account_daily_quota(quota_op)
         bank_profile_id = None if account_daily else channel_profile_id
 
@@ -1664,6 +1667,9 @@ class UsageEnforcementService:
             operation_type=operation_type,
             plan=plan,
             today=today,
+            addon_slots=int(getattr(subscription_context, "profile_addon_slots", 0) or 0)
+            if subscription_context
+            else 0,
         )
         effective_daily = daily_limit + banked_units
         return daily_count + max(1, additional_count) > effective_daily
@@ -1691,6 +1697,7 @@ class UsageEnforcementService:
             operation_type=operation_type,
             plan=plan,
             today=today,
+            addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
         )
         effective_daily = daily_limit + banked_units
         requested = max(1, additional_count)
@@ -1838,35 +1845,13 @@ class UsageEnforcementService:
     # -----------------------------------------------------------------------
 
     @staticmethod
-    def _get_daily_limit(plan: Plan, operation_type: str) -> int:
+    def _get_daily_limit(plan: Plan, operation_type: str, addon_slots: int = 0) -> int:
         """Map operation_type to the plan's daily limit field.
 
-        Mapping:
-        - "music_generation" → plan.daily_song_limit_per_channel
-        - "image_generation" / "channel_setup" → plan.daily_image_limit_per_channel
-        - others → plan.daily_song_limit_per_channel (default)
-
-        Args:
-            plan: The user's active Plan.
-            operation_type: The type of operation being performed.
-
-        Returns:
-            The daily limit for this operation type.
+        Account-wide video/merge limits scale with active profile add-on slots.
+        Per-channel song/image/draft limits are unchanged (capacity grows via channels).
         """
-        if operation_type in (
-            "image_generation",
-            "background_image",
-            "thumbnail_image",
-            "channel_setup",
-        ):
-            return plan.daily_image_limit_per_channel
-        if operation_type in ("draft", "lyric", "title", "album", "lyrics"):
-            return int(getattr(plan, "daily_draft_limit_per_channel", 300) or 300)
-        if operation_type in ("video", "video_generation", "video_export", "video_manual"):
-            return int(getattr(plan, "daily_video_limit", 10) or 10)
-        if operation_type in ("video_merge", "merge", "auto_merge"):
-            return int(getattr(plan, "daily_merge_limit", 1) or 1)
-        return plan.daily_song_limit_per_channel
+        return effective_daily_limit_for_operation(plan, addon_slots, operation_type)
 
     @staticmethod
     def _get_monthly_limit(plan: Plan, operation_type: str) -> int | None:

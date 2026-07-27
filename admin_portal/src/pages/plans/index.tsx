@@ -37,6 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePlans, useCreatePlan, useUpdatePlan, useDeletePlan, useOffers, useCreateOffer, usePlanTermDiscounts } from '@/hooks/use-plans';
 import { billingTermQuotes, formatChannelPlanName, formatUsd, linearPlanMonthlyCents } from '@/lib/plan-tier-pricing';
 import { ChannelPricingSection } from '@/pages/plans/channel-pricing-section';
+import { PlanLimitsFields } from '@/pages/plans/plan-limits-fields';
 import { PlanPricingPreview, SmartPlanPriceCalculator } from '@/pages/plans/plan-pricing-preview';
 import { SubscriptionPlansSection } from '@/pages/plans/subscription-plans-section';
 import { toast } from '@/hooks/use-toast';
@@ -436,320 +437,91 @@ export default function PlansPage() {
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(handleUpdatePlan)} className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={editForm.control}
-                name="price_cents"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Price (cents)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="profile_allowance"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Channels</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="monthly_song_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Suno packages / period</FormLabel>
-                    <p className="text-xs text-slate-400">
-                      1 package = Primary + Secondary channel (2 tracks).
-                    </p>
-                    <div className="flex items-center gap-3">
+                <FormField
+                  control={editForm.control}
+                  name="price_cents"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Price (cents)</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
-                          disabled={editSongUnlimited}
-                          value={editSongUnlimited ? '' : (field.value ?? 0)}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                          placeholder={editSongUnlimited ? 'Unlimited' : ''}
-                        />
-                      </FormControl>
-                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={editSongUnlimited}
-                          onChange={(e) => {
-                            setEditSongUnlimited(e.target.checked);
-                            if (e.target.checked) {
-                              field.onChange(null);
-                            } else {
-                              field.onChange(0);
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-600"
-                        />
-                        Unlimited
-                      </label>
-                    </div>
-                    {!editSongUnlimited && field.value != null && (
-                      <p className="text-xs text-slate-500">≈ {Number(field.value) * 2} tracks / period</p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="monthly_image_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Image Limit (per billing period)</FormLabel>
-                    <p className="text-xs text-slate-400">Account BG+TH pool.</p>
-                    <div className="flex items-center gap-3">
-                      <FormControl>
-                        <Input
-                          type="number"
-                          disabled={editImageUnlimited}
-                          value={editImageUnlimited ? '' : (field.value ?? 0)}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                          placeholder={editImageUnlimited ? 'Unlimited' : ''}
-                        />
-                      </FormControl>
-                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={editImageUnlimited}
-                          onChange={(e) => {
-                            setEditImageUnlimited(e.target.checked);
-                            if (e.target.checked) {
-                              field.onChange(null);
-                            } else {
-                              field.onChange(0);
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-600"
-                        />
-                        Unlimited
-                      </label>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="monthly_draft_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Draft Limit (per billing period)</FormLabel>
-                    <p className="text-xs text-slate-400">Lyric, title, or album calls (shared pool).</p>
-                    <div className="flex items-center gap-3">
-                      <FormControl>
-                        <Input
-                          type="number"
-                          disabled={editDraftUnlimited}
-                          value={editDraftUnlimited ? '' : (field.value ?? 0)}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                          placeholder={editDraftUnlimited ? 'Unlimited' : ''}
-                        />
-                      </FormControl>
-                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={editDraftUnlimited}
-                          onChange={(e) => {
-                            setEditDraftUnlimited(e.target.checked);
-                            if (e.target.checked) {
-                              field.onChange(null);
-                            } else {
-                              field.onChange(0);
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-600"
-                        />
-                        Unlimited
-                      </label>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="daily_song_limit_per_channel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily Song Limit Per Channel (1–1000)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="daily_image_limit_per_channel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily images per channel (1–1000)</FormLabel>
-                    <p className="text-xs text-slate-400">2 = 1 background + 1 thumbnail per channel. A 2-channel plan allows 4 images/day account-wide.</p>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="daily_draft_limit_per_channel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily Draft Limit Per Channel (1–10000)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-                            <FormField
-                control={editForm.control}
-                name="monthly_video_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Videos / period (account)</FormLabel>
-                    <p className="text-xs text-slate-400">Local track exports (3 credits overage).</p>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        value={field.value ?? 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="monthly_merge_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Merges / period (account)</FormLabel>
-                    <p className="text-xs text-slate-400">Auto-merge concat (10 credits overage).</p>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        value={field.value ?? 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="daily_video_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily video limit (account-wide)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={editForm.control}
-                name="daily_merge_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily merge limit (account-wide)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-<FormField
-                control={editForm.control}
-                name="billing_cycle_days"
-                render={({ field }) => (
-                  <FormItem className="md:col-span-2">
-                    <FormLabel>Billing cycle (days)</FormLabel>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <FormControl>
-                        <Input
-                          type="number"
-                          className="max-w-[140px]"
                           {...field}
                           onChange={(e) => field.onChange(Number(e.target.value))}
                         />
                       </FormControl>
-                      {(['monthly', 'semi', 'annual'] as const).map((term) => (
-                        <Button
-                          key={term}
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const monthly = monthlyEquivalentFromPlan(
-                              editForm.getValues('price_cents'),
-                              editForm.getValues('billing_cycle_days'),
-                            );
-                            const applied = applyBillingTerm(monthly, term);
-                            editForm.setValue('price_cents', applied.price_cents);
-                            editForm.setValue('billing_cycle_days', applied.billing_cycle_days);
-                          }}
-                        >
-                          {term === 'monthly' ? 'Monthly' : term === 'semi' ? '6 mo' : 'Annual'}
-                        </Button>
-                      ))}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="profile_allowance"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Channels</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="billing_cycle_days"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>Billing cycle (days)</FormLabel>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            className="max-w-[140px]"
+                            {...field}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                          />
+                        </FormControl>
+                        {(['monthly', 'semi', 'annual'] as const).map((term) => (
+                          <Button
+                            key={term}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const monthly = monthlyEquivalentFromPlan(
+                                editForm.getValues('price_cents'),
+                                editForm.getValues('billing_cycle_days'),
+                              );
+                              const applied = applyBillingTerm(monthly, term);
+                              editForm.setValue('price_cents', applied.price_cents);
+                              editForm.setValue('billing_cycle_days', applied.billing_cycle_days);
+                            }}
+                          >
+                            {term === 'monthly' ? 'Monthly' : term === 'semi' ? '6 mo' : 'Annual'}
+                          </Button>
+                        ))}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <PlanLimitsFields
+                  control={editForm.control}
+                  unlimited={{
+                    song: editSongUnlimited,
+                    setSong: setEditSongUnlimited,
+                    image: editImageUnlimited,
+                    setImage: setEditImageUnlimited,
+                    draft: editDraftUnlimited,
+                    setDraft: setEditDraftUnlimited,
+                  }}
+                />
               </div>
               <PlanPricingPreview
                 priceCents={editForm.watch('price_cents')}
@@ -830,76 +602,6 @@ export default function PlansPage() {
                 )}
               />
               <FormField
-                control={createPlanForm.control}
-                name="monthly_video_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Videos / period (account)</FormLabel>
-                    <p className="text-xs text-slate-400">Local track exports (3 credits overage).</p>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        value={field.value ?? 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="monthly_merge_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Merges / period (account)</FormLabel>
-                    <p className="text-xs text-slate-400">Auto-merge concat (10 credits overage).</p>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        value={field.value ?? 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="daily_video_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily video limit (account-wide)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="daily_merge_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily merge limit (account-wide)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-<FormField
                 control={createPlanForm.control}
                 name="billing_cycle_days"
                 render={({ field }) => (
@@ -990,164 +692,17 @@ export default function PlansPage() {
                   </FormItem>
                 )}
               />
-              <FormField
+
+              <PlanLimitsFields
                 control={createPlanForm.control}
-                name="monthly_song_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Suno packages / period</FormLabel>
-                    <p className="text-xs text-slate-400">
-                      1 package = Primary + Secondary channel (2 tracks). Standard Monthly: 300
-                      packages → 600 tracks.
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <FormControl>
-                        <Input
-                          type="number"
-                          disabled={createSongUnlimited}
-                          value={createSongUnlimited ? '' : (field.value ?? 0)}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                          placeholder={createSongUnlimited ? 'Unlimited' : ''}
-                        />
-                      </FormControl>
-                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={createSongUnlimited}
-                          onChange={(e) => {
-                            setCreateSongUnlimited(e.target.checked);
-                            if (e.target.checked) {
-                              field.onChange(null);
-                            } else {
-                              field.onChange(0);
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-600"
-                        />
-                        Unlimited
-                      </label>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="monthly_image_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Image Limit (per billing period)</FormLabel>
-                    <div className="flex items-center gap-3">
-                      <FormControl>
-                        <Input
-                          type="number"
-                          disabled={createImageUnlimited}
-                          value={createImageUnlimited ? '' : (field.value ?? 0)}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                          placeholder={createImageUnlimited ? 'Unlimited' : ''}
-                        />
-                      </FormControl>
-                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={createImageUnlimited}
-                          onChange={(e) => {
-                            setCreateImageUnlimited(e.target.checked);
-                            if (e.target.checked) {
-                              field.onChange(null);
-                            } else {
-                              field.onChange(0);
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-600"
-                        />
-                        Unlimited
-                      </label>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="monthly_draft_limit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Draft Limit (per billing period)</FormLabel>
-                    <p className="text-xs text-slate-400">
-                      1 draft = one lyric, title, or album call. Standard Monthly: 1260
-                      (~630/channel).
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <FormControl>
-                        <Input
-                          type="number"
-                          disabled={createDraftUnlimited}
-                          value={createDraftUnlimited ? '' : (field.value ?? 0)}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                          placeholder={createDraftUnlimited ? 'Unlimited' : ''}
-                        />
-                      </FormControl>
-                      <label className="flex items-center gap-1.5 text-sm text-slate-300 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={createDraftUnlimited}
-                          onChange={(e) => {
-                            setCreateDraftUnlimited(e.target.checked);
-                            if (e.target.checked) {
-                              field.onChange(null);
-                            } else {
-                              field.onChange(0);
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-slate-600"
-                        />
-                        Unlimited
-                      </label>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="daily_song_limit_per_channel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily Song Limit Per Channel (1–1000)</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="daily_image_limit_per_channel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily images per channel (1–1000)</FormLabel>
-                    <p className="text-xs text-slate-400">2 = 1 background + 1 thumbnail per channel. A 2-channel plan allows 4 images/day account-wide.</p>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={createPlanForm.control}
-                name="daily_draft_limit_per_channel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Daily Draft Limit Per Channel (1–10000)</FormLabel>
-                    <FormControl>
-                      <Input type="number" {...field} onChange={(e) => field.onChange(Number(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                unlimited={{
+                  song: createSongUnlimited,
+                  setSong: setCreateSongUnlimited,
+                  image: createImageUnlimited,
+                  setImage: setCreateImageUnlimited,
+                  draft: createDraftUnlimited,
+                  setDraft: setCreateDraftUnlimited,
+                }}
               />
               </div>
               <SmartPlanPriceCalculator
