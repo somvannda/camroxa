@@ -20,6 +20,7 @@ _LICENSE_SELECT = """
     id, license_key, plan_id, user_id, status,
     activated_at, expires_at, revoked_at,
     profile_addon_slots, profile_addon_pending,
+    distrokid_enabled, distrokid_expires_at,
     pending_plan_id, pending_plan_effective_at,
     created_at
 """
@@ -67,6 +68,8 @@ def _row_to_license(row: Any) -> License:
         revoked_at=row.get("revoked_at"),
         profile_addon_slots=int(row.get("profile_addon_slots") or 0),
         profile_addon_pending=int(row.get("profile_addon_pending") or 0),
+        distrokid_enabled=bool(row.get("distrokid_enabled") or False),
+        distrokid_expires_at=row.get("distrokid_expires_at"),
         pending_plan_id=row.get("pending_plan_id"),
         pending_plan_effective_at=row.get("pending_plan_effective_at"),
         created_at=row["created_at"],
@@ -139,7 +142,8 @@ class LicenseRepository:
             VALUES ($1, $2, 'unassigned', NOW())
             RETURNING id, license_key, plan_id, user_id, status,
                       activated_at, expires_at, revoked_at,
-                      profile_addon_slots, profile_addon_pending, created_at
+                      profile_addon_slots, profile_addon_pending,
+                      distrokid_enabled, distrokid_expires_at, created_at
             """,
             license_key,
             plan_id,
@@ -219,7 +223,8 @@ class LicenseRepository:
             WHERE id = $1
             RETURNING id, license_key, plan_id, user_id, status,
                       activated_at, expires_at, revoked_at,
-                      profile_addon_slots, profile_addon_pending, created_at
+                      profile_addon_slots, profile_addon_pending,
+                      distrokid_enabled, distrokid_expires_at, created_at
             """,
             license_id,
             user_id,
@@ -248,7 +253,8 @@ class LicenseRepository:
             WHERE id = $1
             RETURNING id, license_key, plan_id, user_id, status,
                       activated_at, expires_at, revoked_at,
-                      profile_addon_slots, profile_addon_pending, created_at
+                      profile_addon_slots, profile_addon_pending,
+                      distrokid_enabled, distrokid_expires_at, created_at
             """,
             license_id,
             plan_id,
@@ -543,6 +549,28 @@ class LicenseRepository:
             return None
         new_pending = int(license_obj.profile_addon_pending or 0) + int(add_channels)
         return await self.set_profile_addon_pending(license_id, new_pending)
+
+    async def enable_distrokid(
+        self,
+        license_id: UUID,
+        *,
+        expires_at: datetime,
+    ) -> License | None:
+        """Activate DistroKid add-on on a license through expires_at."""
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE licenses
+            SET distrokid_enabled = TRUE,
+                distrokid_expires_at = $2
+            WHERE id = $1
+            RETURNING {_LICENSE_SELECT}
+            """,
+            license_id,
+            expires_at,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
 
     async def add_profile_addon_slots(self, license_id: UUID, add_channels: int) -> License | None:
         """Increment active profile add-on slots by the given channel count."""

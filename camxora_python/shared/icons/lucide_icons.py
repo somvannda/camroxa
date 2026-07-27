@@ -62,6 +62,12 @@ _LUCIDE_PATHS: dict[str, tuple[str, ...]] = {
         '<path d="M2 7h20"/>',
         '<path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"/>',
     ),
+    "disc-3": (
+        '<circle cx="12" cy="12" r="10"/>',
+        '<path d="M6 12c0-1.7.7-3.2 1.8-4.2"/>',
+        '<circle cx="12" cy="12" r="2"/>',
+        '<path d="M18 12c0 1.7-.7 3.2-1.8 4.2"/>',
+    ),
     "bell": (
         '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>',
         '<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
@@ -90,6 +96,7 @@ SIDEBAR_ICON_BY_ROUTE: dict[ShellRouteKey, str] = {
     "image": "image",
     "video": "video",
     "marketplace": "store",
+    "distrokid": "disc-3",
     "merger": "video",
     "settings": "settings",
     "log": "scroll-text",

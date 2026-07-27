@@ -522,3 +522,12 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[streaming_public_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_admin_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_library_catalog] = real_streaming_catalog_service
+
+    # --- distrokid.py ---
+    from platform_api.routers.distrokid import _get_distrokid_service as distrokid_get_service
+    from platform_api.dependencies import get_distrokid_service
+
+    async def real_distrokid_service():
+        return get_distrokid_service()
+
+    app.dependency_overrides[distrokid_get_service] = real_distrokid_service

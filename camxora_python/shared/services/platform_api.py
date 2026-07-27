@@ -774,3 +774,93 @@ class PlatformApi:
             body=payload,
         )
         return data if isinstance(data, dict) else {}
+
+    # --- DistroKid ---
+
+    def distrokid_batch_context(self, batch_id: str) -> dict[str, Any]:
+        data = self._client.request(f"/distrokid/batch-context/{batch_id}", auth=True)
+        return data if isinstance(data, dict) else {}
+
+    def distrokid_wav_sources(self, batch_id: str) -> list[dict[str, Any]]:
+        data = self._client.request(
+            "/distrokid/wav/sources",
+            auth=True,
+            params={"batch_id": batch_id},
+        )
+        items = data.get("items") if isinstance(data, dict) else None
+        return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+    def distrokid_wav_convert(
+        self,
+        *,
+        suno_task_id: str,
+        audio_id: str | None = None,
+        role: str = "primary",
+        song_id: str | None = None,
+        batch_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "suno_task_id": suno_task_id,
+            "role": role,
+        }
+        if audio_id:
+            body["audio_id"] = audio_id
+        if song_id:
+            body["song_id"] = song_id
+        if batch_id:
+            body["batch_id"] = batch_id
+        data = self._client.request(
+            "/distrokid/wav/convert",
+            method="POST",
+            auth=True,
+            body=body,
+            timeout=90.0,
+        )
+        return data if isinstance(data, dict) else {}
+
+    def distrokid_wav_job(self, job_id: str) -> dict[str, Any]:
+        data = self._client.request(f"/distrokid/wav/jobs/{job_id}", auth=True, timeout=60.0)
+        return data if isinstance(data, dict) else {}
+
+    def distrokid_wav_usage(self) -> dict[str, Any]:
+        data = self._client.request("/distrokid/wav/usage", auth=True)
+        return data if isinstance(data, dict) else {}
+
+    def distrokid_history_check(self, *, album_name: str, tracks: list[dict[str, Any]]) -> dict[str, Any]:
+        data = self._client.request(
+            "/distrokid/history/check",
+            method="POST",
+            auth=True,
+            body={"album_name": album_name, "tracks": tracks},
+        )
+        return data if isinstance(data, dict) else {}
+
+    def distrokid_history_record(
+        self,
+        *,
+        album_name: str,
+        tracks: list[dict[str, Any]],
+        directory_path: str | None = None,
+        batch_id: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"album_name": album_name, "tracks": tracks}
+        if directory_path:
+            body["directory_path"] = directory_path
+        if batch_id:
+            body["batch_id"] = batch_id
+        data = self._client.request(
+            "/distrokid/history",
+            method="POST",
+            auth=True,
+            body=body,
+        )
+        return data if isinstance(data, dict) else {}
+
+    def distrokid_history_list(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        data = self._client.request(
+            "/distrokid/history",
+            auth=True,
+            params={"limit": limit},
+        )
+        items = data.get("items") if isinstance(data, dict) else None
+        return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []

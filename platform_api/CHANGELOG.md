@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Admin POST /api/v1/users/{user_id}/set-password — set password + revoke sessions (same complexity rules as self-service). See docs/changelog/2026-07-27-admin-set-user-password.md
+- Admin `POST /api/v1/users/{user_id}/set-password` — set password + revoke sessions (same complexity rules as self-service). See `docs/changelog/2026-07-27-admin-set-user-password.md`
 - Streaming play counts: `stream_tracks.play_count` (migration `072`); increment on public `play-url`; album lists expose sum as `play_count`
 - Public streaming list pagination: `GET /public/streaming/albums|artists|search` return `{ items, total, limit, offset }`; search accepts `offset`
 - Admin streaming catalog pagination: `GET /admin/streaming/catalog` and `.../catalog/albums` return `{ items, total, limit, offset }` with `offset`, `q`, `publish_status`
@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Active profile add-ons scale account-wide daily video/merge limits (same multiplier as period quotas). See `docs/changelog/2026-07-27-addon-scale-daily-video-merge.md`
+- Streaming B2 uploads set `Cache-Control: public, max-age=31536000, immutable` for CDN edge caching (see `docs/changelog/2026-07-27-streaming-cdn-cache-polish.md`)
 - `/auth/logout` accepts cookie auth (not Bearer-only) for music portal same-origin sessions
 
 ### Changed
@@ -35,6 +37,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Desktop installer publish: accept `CamxoraSetup-*.exe` / `Camxora-Setup-*.exe` in version filename parse; optional `version` on publish body. See `docs/changelog/2026-07-26-software-update-setup-filename.md`.
+
+### Added
+
+- DistroKid $5/mo add-on entitlement (`distrokid_enabled` / expires), CutLuy checkout, `suno/wav` pricing seed (600 WAV/mo product intent). See `docs/changelog/2026-07-27-distrokid-addon-scaffold.md`.
+- DistroKid Phase 4 API: Suno WAV convert/poll client, add-on-gated `/distrokid/wav` jobs with 600/month metering and `suno/wav` charging, plus fingerprinted DistroKid upload history and duplicate checks (`076_distrokid_wav`).
+- DistroKid `GET /distrokid/wav/sources?batch_id=` for desktop WAV download pairing. See `docs/changelog/2026-07-27-distrokid-automation-phases.md`.
+- DistroKid batch snapshot columns + `GET /distrokid/batch-context/{batch_id}` (`077_batch_auto_distrokid`).
+- DistroKid batch-context includes `ok_profile_id` / `alt_profile_id` for per-channel artist resolution.
 
 ## [2026-07-25]
 

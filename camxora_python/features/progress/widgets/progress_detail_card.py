@@ -19,6 +19,7 @@ from shared.lib.manual_asset_paths import ManualAssetInspection, manual_inspecti
 from shared.lib.formatting import format_channel_role_label
 from shared.lib.progress_presentation import (
     format_album_label,
+    format_distrokid_detail,
     format_pipeline_step_text,
     format_run_date_label,
     format_youtube_compact,
@@ -63,7 +64,7 @@ class ProgressDetailCard(QFrame):
         body_layout.setSpacing(12)
 
         self._placeholder = QLabel(
-            "Select a row to inspect export, merge, errors, and YouTube status."
+            "Select a row to inspect export, merge, DistroKid, errors, and YouTube status."
         )
         self._placeholder.setObjectName(SUBTITLE_LABEL_ID)
         self._placeholder.setWordWrap(True)
@@ -101,10 +102,13 @@ class ProgressDetailCard(QFrame):
         self._converter_label.setWordWrap(True)
         self._merge_label = QLabel("")
         self._merge_label.setWordWrap(True)
+        self._distrokid_label = QLabel("")
+        self._distrokid_label.setWordWrap(True)
         self._youtube_label = QLabel("")
         self._youtube_label.setWordWrap(True)
         grid.addWidget(self._section("Export", self._converter_label))
         grid.addWidget(self._section("Merge", self._merge_label))
+        grid.addWidget(self._section("DistroKid", self._distrokid_label))
         grid.addWidget(self._section("YouTube", self._youtube_label))
         content_layout.addLayout(grid)
 
@@ -220,6 +224,7 @@ class ProgressDetailCard(QFrame):
             format_pipeline_step_text(entry.effective_converter or row.converter)
         )
         self._merge_label.setText(format_pipeline_step_text(entry.effective_merge or row.merge))
+        self._distrokid_label.setText(format_distrokid_detail(entry.distrokid_summary))
         youtube_text = format_youtube_compact(row)
         if meta.youtube_url:
             youtube_text = f"{youtube_text}\n{meta.youtube_url}"
