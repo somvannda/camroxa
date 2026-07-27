@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Loader2, KeyRound, Trash2 } from 'lucide-react';
 import { AxiosError } from 'axios';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,7 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useUsers } from '@/hooks/use-users';
+import { useSetUserPassword, useUsers } from '@/hooks/use-users';
 import { toast } from '@/hooks/use-toast';
 import { formatVerificationDurationShort } from '@/lib/format-datetime';
 import httpClient from '@/lib/http-client';
@@ -58,17 +58,38 @@ const createUserSchema = z.object({
 
 type CreateUserFormValues = z.infer<typeof createUserSchema>;
 
+const setPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, 'At least 8 characters')
+      .max(128)
+      .regex(/[A-Z]/, 'Need an uppercase letter')
+      .regex(/[a-z]/, 'Need a lowercase letter')
+      .regex(/\d/, 'Need a digit'),
+    confirm_password: z.string().min(1, 'Confirm the password'),
+  })
+  .refine((values) => values.password === values.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
+
+type SetPasswordFormValues = z.infer<typeof setPasswordSchema>;
+
 export default function UsersPage() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [userForPassword, setUserForPassword] = useState<User | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const setUserPassword = useSetUserPassword();
 
   const params: UserListParams = {
     page,
@@ -87,6 +108,12 @@ export default function UsersPage() {
   const handleDeleteClick = (user: User) => {
     setUserToDelete(user);
     setDeleteDialogOpen(true);
+  };
+
+  const handlePasswordClick = (user: User) => {
+    setUserForPassword(user);
+    passwordForm.reset({ password: '', confirm_password: '' });
+    setPasswordDialogOpen(true);
   };
 
   async function handleCopyCode(event: React.MouseEvent, code: string) {
@@ -252,16 +279,28 @@ export default function UsersPage() {
       id: 'actions',
       header: '',
       accessorFn: (row) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDeleteClick(row);
-          }}
-          className="rounded p-1.5 text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
-          title="Permanently delete user"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePasswordClick(row);
+            }}
+            className="rounded p-1.5 text-slate-400 hover:bg-fuchsia-500/10 hover:text-fuchsia-300 transition-colors"
+            title="Change password"
+          >
+            <KeyRound className="h-4 w-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteClick(row);
+            }}
+            className="rounded p-1.5 text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+            title="Permanently delete user"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       ),
     },
   ];
@@ -270,6 +309,37 @@ export default function UsersPage() {
     resolver: zodResolver(createUserSchema),
     defaultValues: { email: '', password: '', display_name: '' },
   });
+
+  const passwordForm = useForm<SetPasswordFormValues>({
+    resolver: zodResolver(setPasswordSchema),
+    defaultValues: { password: '', confirm_password: '' },
+  });
+
+  const handleSetPassword = (values: SetPasswordFormValues) => {
+    if (!userForPassword) return;
+    setUserPassword.mutate(
+      { id: userForPassword.id, password: values.password },
+      {
+        onSuccess: () => {
+          toast({
+            title: 'Password updated',
+            description: `${userForPassword.email} can sign in with the new password. Existing sessions were revoked.`,
+          });
+          setPasswordDialogOpen(false);
+          setUserForPassword(null);
+          passwordForm.reset();
+        },
+        onError: (err) => {
+          const axiosError = err as AxiosError<{ error?: { message?: string } }>;
+          toast({
+            title: 'Failed to set password',
+            description: axiosError.response?.data?.error?.message ?? 'Request failed',
+            variant: 'destructive',
+          });
+        },
+      },
+    );
+  };
 
   const handleCreateUser = async (values: CreateUserFormValues) => {
     setIsCreating(true);
@@ -450,6 +520,72 @@ export default function UsersPage() {
               Delete Permanently
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={passwordDialogOpen}
+        onOpenChange={(open) => {
+          setPasswordDialogOpen(open);
+          if (!open) {
+            setUserForPassword(null);
+            passwordForm.reset();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change password</DialogTitle>
+            <DialogDescription>
+              Set a new password for{' '}
+              <span className="font-semibold text-slate-200">{userForPassword?.email}</span>.
+              Their existing sessions will be signed out.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...passwordForm}>
+            <form onSubmit={passwordForm.handleSubmit(handleSetPassword)} className="space-y-4">
+              <FormField
+                control={passwordForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" placeholder="Min 8 chars, upper, lower, digit" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={passwordForm.control}
+                name="confirm_password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPasswordDialogOpen(false)}
+                  disabled={setUserPassword.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={setUserPassword.isPending}>
+                  {setUserPassword.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save password
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>

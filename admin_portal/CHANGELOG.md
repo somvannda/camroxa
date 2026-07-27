@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Users: change password from list (key icon) and user detail Actions — admin reset with session revoke
 - Streaming catalog: Plays column on tracks and albums (sum of track plays)
 - Streaming catalog: server-side pagination (50/page) with API search + status filters
 

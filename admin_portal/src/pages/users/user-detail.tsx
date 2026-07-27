@@ -3,13 +3,14 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Loader2, CreditCard, Crown, Users, Music } from 'lucide-react';
+import { ArrowLeft, Loader2, CreditCard, Crown, Users, Music, KeyRound } from 'lucide-react';
 
 import {
   useUpdateUser,
   useSuspendUser,
   useReactivateUser,
   useDeleteUser,
+  useSetUserPassword,
   useUserDetails,
   useChannelProfileLogoBlob,
   useChannelProfileCoverBlob,
@@ -71,6 +72,23 @@ const userEditSchema = z.object({
 });
 
 type UserEditFormValues = z.infer<typeof userEditSchema>;
+
+const setPasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .regex(/[A-Z]/, 'Must include an uppercase letter')
+      .regex(/[a-z]/, 'Must include a lowercase letter')
+      .regex(/[0-9]/, 'Must include a digit'),
+    confirm_password: z.string().min(1, 'Confirm the password'),
+  })
+  .refine((data) => data.password === data.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
+
+type SetPasswordFormValues = z.infer<typeof setPasswordSchema>;
 
 // --- Status badge styling ---
 const STATUS_BADGE_CLASSES: Record<User['status'], string> = {
@@ -171,11 +189,13 @@ export default function UserDetailPage() {
   const suspendUser = useSuspendUser();
   const reactivateUser = useReactivateUser();
   const deleteUser = useDeleteUser();
+  const setUserPassword = useSetUserPassword();
 
   // Dialog states
   const [suspendDialogOpen, setSuspendDialogOpen] = useState(false);
   const [reactivateDialogOpen, setReactivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
 
   // Edit form
@@ -184,6 +204,11 @@ export default function UserDetailPage() {
     values: user
       ? { display_name: user.display_name, role: user.role }
       : { display_name: '', role: 'user' },
+  });
+
+  const passwordForm = useForm<SetPasswordFormValues>({
+    resolver: zodResolver(setPasswordSchema),
+    defaultValues: { password: '', confirm_password: '' },
   });
 
   // --- Handlers ---
@@ -200,6 +225,30 @@ export default function UserDetailPage() {
           toast({
             variant: 'destructive',
             title: 'Update failed',
+            description: err instanceof Error ? err.message : 'An error occurred',
+          });
+        },
+      },
+    );
+  };
+
+  const handleSetPassword = (values: SetPasswordFormValues) => {
+    if (!id) return;
+    setUserPassword.mutate(
+      { id, password: values.password },
+      {
+        onSuccess: () => {
+          toast({
+            title: 'Password updated',
+            description: 'The user can sign in with the new password. Existing sessions were revoked.',
+          });
+          setPasswordDialogOpen(false);
+          passwordForm.reset();
+        },
+        onError: (err) => {
+          toast({
+            variant: 'destructive',
+            title: 'Password change failed',
             description: err instanceof Error ? err.message : 'An error occurred',
           });
         },
@@ -730,7 +779,19 @@ export default function UserDetailPage() {
             Manage user account status
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex gap-3">
+        <CardContent className="flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            className="border-slate-600 text-slate-200"
+            onClick={() => {
+              passwordForm.reset();
+              setPasswordDialogOpen(true);
+            }}
+          >
+            <KeyRound className="mr-2 h-4 w-4" />
+            Change Password
+          </Button>
+
           {user.status === 'active' && (
             <Button
               variant="outline"
@@ -822,6 +883,69 @@ export default function UserDetailPage() {
         confirmText="Delete"
         isLoading={deleteUser.isPending}
       />
+
+      <Dialog
+        open={passwordDialogOpen}
+        onOpenChange={(open) => {
+          setPasswordDialogOpen(open);
+          if (!open) passwordForm.reset();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change password</DialogTitle>
+            <DialogDescription>
+              Set a new password for{' '}
+              <span className="font-semibold text-slate-200">{user.email}</span>.
+              Their existing sessions will be signed out.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...passwordForm}>
+            <form onSubmit={passwordForm.handleSubmit(handleSetPassword)} className="space-y-4">
+              <FormField
+                control={passwordForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" placeholder="Min 8 chars, upper, lower, digit" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={passwordForm.control}
+                name="confirm_password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm password</FormLabel>
+                    <FormControl>
+                      <Input type="password" autoComplete="new-password" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPasswordDialogOpen(false)}
+                  disabled={setUserPassword.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={setUserPassword.isPending}>
+                  {setUserPassword.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save password
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

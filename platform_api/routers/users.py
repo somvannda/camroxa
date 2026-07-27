@@ -170,13 +170,19 @@ class SuspendRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500)
 
 
+class AdminSetPasswordRequest(BaseModel):
+    """Admin sets a new password for a target user."""
+
+    password: str = Field(..., min_length=8, max_length=128)
+
+
 # ---------------------------------------------------------------------------
 # Placeholder Dependency Stubs
 # ---------------------------------------------------------------------------
 
 
 async def _get_user_service() -> UserService:
-    """Placeholder dependency for UserService — override in tests or dependencies.py."""
+    """Placeholder dependency for UserService â€” override in tests or dependencies.py."""
     raise NotImplementedError(
         "UserService dependency not configured. Wire via app.dependency_overrides."
     )
@@ -341,24 +347,10 @@ async def update_me(
         fields["display_name"] = request.display_name
 
     if request.password is not None:
-        # Validate password complexity
-        password = request.password
-        errors: list[str] = []
-        if not _PASSWORD_UPPER_RE.search(password):
-            errors.append("Password must contain at least one uppercase letter.")
-        if not _PASSWORD_LOWER_RE.search(password):
-            errors.append("Password must contain at least one lowercase letter.")
-        if not _PASSWORD_DIGIT_RE.search(password):
-            errors.append("Password must contain at least one digit.")
-        if errors:
-            raise ValidationError(
-                message="Password does not meet security requirements.",
-                details={"password": errors},
-            )
-        # Hash the password before passing to the service
+        _validate_password_complexity(request.password)
         from platform_api.services.auth_service import AuthService
 
-        fields["password_hash"] = AuthService.hash_password(password)
+        fields["password_hash"] = AuthService.hash_password(request.password)
 
     if not fields:
         raise ValidationError(
@@ -550,7 +542,7 @@ async def list_users(
     response_model=UserFullDetailResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Get full user details (Admin)",
@@ -750,14 +742,14 @@ async def get_user_full_details(
             )
         )
 
-    # Usage stats — songs generated
+    # Usage stats â€” songs generated
     songs_row = await pool.fetchrow(
         "SELECT COUNT(*)::int as cnt FROM suno_tasks WHERE user_id = $1",
         user_id,
     )
     total_songs_generated = songs_row["cnt"] if songs_row else 0
 
-    # Usage stats — images generated
+    # Usage stats â€” images generated
     images_row = await pool.fetchrow(
         "SELECT COUNT(*)::int as cnt FROM image_jobs WHERE user_id = $1",
         user_id,
@@ -857,7 +849,7 @@ async def get_user_full_details(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Get a user by ID (Admin)",
@@ -880,7 +872,7 @@ async def get_user_by_id(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Update a user (Admin)",
@@ -906,12 +898,67 @@ async def admin_update_user(
     return _user_to_response(user)
 
 
+def _validate_password_complexity(password: str) -> None:
+    from platform_api.exceptions import ValidationError
+
+    errors: list[str] = []
+    if not _PASSWORD_UPPER_RE.search(password):
+        errors.append("Password must contain at least one uppercase letter.")
+    if not _PASSWORD_LOWER_RE.search(password):
+        errors.append("Password must contain at least one lowercase letter.")
+    if not _PASSWORD_DIGIT_RE.search(password):
+        errors.append("Password must contain at least one digit.")
+    if errors:
+        raise ValidationError(
+            message="Password does not meet security requirements.",
+            details={"password": errors},
+        )
+
+
+@router.post(
+    "/{user_id}/set-password",
+    response_model=UserProfileResponse,
+    status_code=200,
+    responses={
+        403: {"description": "Forbidden — non-admin access"},
+        404: {"description": "User not found"},
+        422: {"description": "Password validation failed"},
+    },
+    summary="Set a user's password (Admin)",
+)
+async def admin_set_user_password(
+    user_id: UUID,
+    request: AdminSetPasswordRequest,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> UserProfileResponse:
+    """Set a new password for any user and revoke their existing sessions."""
+    from platform_api.dependencies import get_auth_service, get_user_repo
+    from platform_api.exceptions import NotFoundError
+    from platform_api.services.auth_service import AuthService
+
+    _validate_password_complexity(request.password)
+
+    existing = await user_service.get_user(str(user_id))
+    if existing is None:
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+
+    password_hash = AuthService.hash_password(request.password)
+    user_repo = get_user_repo()
+    user = await user_repo.update(user_id, password_hash=password_hash)
+    if user is None:
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+
+    await get_auth_service().revoke_tokens(str(user_id))
+    return _user_to_response(user)
+
+
 @router.post(
     "/{user_id}/suspend",
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Suspend a user (Admin)",
@@ -936,7 +983,7 @@ async def suspend_user(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Reactivate a suspended user (Admin)",
@@ -958,7 +1005,7 @@ async def reactivate_user(
     "/{user_id}",
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Soft-delete a user (Admin)",
@@ -981,7 +1028,7 @@ async def delete_user(
     "/{user_id}/permanent",
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Permanently delete a user (Admin)",

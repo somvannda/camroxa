@@ -244,3 +244,52 @@ class TestGetUserFullDetails:
         assert profile["playlist"] == "playlist-123"
         assert profile["title_template"] == "Title {n}"
         assert profile["description_template"] == "Description template"
+
+class TestAdminSetPassword:
+    async def test_sets_password_and_revokes_tokens(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
+        mock_user_service.get_user = AsyncMock(return_value=_make_user())
+
+        fake_repo = AsyncMock()
+        fake_repo.update = AsyncMock(return_value=_make_user())
+        fake_auth = AsyncMock()
+        fake_auth.revoke_tokens = AsyncMock()
+
+        monkeypatch.setattr("platform_api.dependencies.get_user_repo", lambda: fake_repo)
+        monkeypatch.setattr("platform_api.dependencies.get_auth_service", lambda: fake_auth)
+        monkeypatch.setattr(
+            "platform_api.services.auth_service.AuthService.hash_password",
+            staticmethod(lambda pwd: f"hashed_{pwd}"),
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                f"/api/v1/users/{USER_ID}/set-password",
+                json={"password": "NewPass123"},
+            )
+
+        assert response.status_code == 200
+        fake_repo.update.assert_awaited_once()
+        kwargs = fake_repo.update.await_args.kwargs
+        assert kwargs["password_hash"] == "hashed_NewPass123"
+        fake_auth.revoke_tokens.assert_awaited_once_with(str(USER_ID))
+
+    async def test_rejects_weak_password(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+    ) -> None:
+        app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                f"/api/v1/users/{USER_ID}/set-password",
+                json={"password": "weakpass"},
+            )
+        assert response.status_code == 422

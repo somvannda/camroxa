@@ -37,6 +37,18 @@ export function useUpdateUser() {
   });
 }
 
+export function useSetUserPassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; password: string }) =>
+      httpClient.post(`/api/v1/users/${data.id}/set-password`, { password: data.password }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', variables.id, 'details'] });
+    },
+  });
+}
+
 export function useSuspendUser() {
   const queryClient = useQueryClient();
   return useMutation({
