@@ -11,7 +11,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- DistroKid sidebar page + Music DistroKid checkbox (gated by $5/mo add-on entitlement).
+- DistroKid automation (phases 1–5): Playwright upload library, soft post-merge coordinator, Suno WAV download path, Connect/settings/history UI, Workflow DistroKid node. See `docs/changelog/2026-07-27-distrokid-automation-phases.md`.
+- DistroKid gap hardening: queued multi-role jobs, Short gate, submit-only history, job-store Workflow status, Connect worker thread, clearer billing tooltip.
+- DistroKid batch snapshot (`auto_distrokid` / `auto_reel_after_video`) + channel-profile artist mapping via `/distrokid/batch-context/{batch_id}`.
+- Progress DistroKid soft column + detail overlay from local job store (`wav_downloading` / `uploading` / skips); does not fail the whole run.
+- DistroKid artist delivery modes: per-channel mapping (reuse one DistroKid artist across channels), plus one-artist / Primary-Secondary shortcuts.
+
 ### Changed
+
+- Music automation labels: dropped “Auto” prefix; Reel → Short.
+- Short/Reel outputs never auto-merge (individual files only).
 
 ### Fixed
 
@@ -19,17 +29,33 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 First official production release of the Camxora desktop studio.
 
-### Added
+### Feature log
 
-- Music workspace: batch automation (drafts, Suno, album images), History, and Progress export/merge pipeline
-- Video studio with GPU visualizer export for long and reel outputs
-- Preferences, diagnostics sync, and software-update support
-- Production API endpoint (`https://api.camxora.com/api/v1`) and portal (`https://app.camxora.com`)
+#### Music studio
+- Batch automation for drafts, Suno audio, and album images
+- Music Mood picker + shuffle; History filters and rewrite tools (album / title / lyrics)
+- Delete failed batches; Progress export/merge with cancel and recover
+- Background helper agent to recover failed drafts/Suno
+
+#### Video studio
+- GPU visualizer export for long-form and reel outputs
+- Spectrum / particle styles, session presets, and encode pipeline
+- Manual export billing with refunds on technical failure
+- Low-VRAM / dual-Xeon export hardening (see `docs/FOLLOWUPS_DESKTOP_GPU_EXPORT.md`)
+
+#### Account & platform
+- Production API (`https://api.camxora.com/api/v1`) and portal (`https://app.camxora.com`)
+- Plans, credits, quotas, and channel allowances
+- Preferences, diagnostics sync, and in-app software updates
+
+#### Streaming
+- Catalog support aligned with `music.camxora.com`
 
 ### Notes
 
 - Sandbox builds remain separate; this installer does not talk to sandbox
-- GPU export audio-analysis hardening for low-VRAM / dual-Xeon PCs is documented under `docs/FOLLOWUPS_DESKTOP_GPU_EXPORT.md` (validation held)
+- Installer: `CamxoraSetup-1.0.0.exe`
+- User-facing release notes: `camxora_python/installer/release-notes.txt`
 
 ## [0.4.3] - 2026-07-25
 

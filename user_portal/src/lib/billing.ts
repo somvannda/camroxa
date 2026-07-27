@@ -183,6 +183,29 @@ export async function createCreditPackPayment(packId: string): Promise<BillingPa
   });
 }
 
+export type DistroKidStatus = {
+  distrokid_enabled: boolean;
+  distrokid_active: boolean;
+  distrokid_expires_at: string | null;
+  distrokid_monthly_wav_limit: number;
+  distrokid_price_cents: number;
+};
+
+export async function getDistroKidStatus(): Promise<DistroKidStatus> {
+  return platformJson<DistroKidStatus>({
+    path: "/billing/distrokid/status",
+    method: "GET",
+  });
+}
+
+export async function createDistroKidPayment(): Promise<BillingPayment> {
+  return platformJson<BillingPayment>({
+    path: "/billing/distrokid/payments",
+    method: "POST",
+    body: {},
+  });
+}
+
 export async function schedulePlanDowngrade(planId: string): Promise<{
   status: string;
   effective_at: string;

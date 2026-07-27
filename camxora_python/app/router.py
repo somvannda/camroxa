@@ -120,6 +120,21 @@ class AppRouter:
             from features.video.views.video_view import VideoView
 
             return self._mark_shell_page(VideoView(self._api, cache=self._cache))
+        if route.key == "distrokid":
+            from features.distrokid.views.distrokid_view import DistroKidView
+
+            view = DistroKidView(api=self._api)
+            me = None
+            profiles = []
+            if self._cache is not None and self._cache.has_core():
+                me, profiles, *_rest = self._cache.snapshot_core()
+            view.set_profiles(profiles or [])
+            if me is not None:
+                view.set_entitlement(
+                    active=bool(getattr(me, "distrokid_active", False)),
+                    expires_at=str(getattr(me, "distrokid_expires_at", "") or "") or None,
+                )
+            return self._mark_shell_page(view)
         if route.key == "marketplace":
             from features.marketplace.views.marketplace_view import MarketplaceView
             from features.marketplace.views.marketplace_page_controller import MarketplacePageController

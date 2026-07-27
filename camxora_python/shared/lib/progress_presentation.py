@@ -294,6 +294,34 @@ def format_youtube_compact(row: ProgressRow) -> str:
     return text
 
 
+def format_distrokid_compact(summary: dict | None) -> str:
+    """Compact DistroKid Progress cell from local job-store summary."""
+    if not isinstance(summary, dict):
+        return "—"
+    compact = str(summary.get("compact") or "").strip()
+    return compact or "—"
+
+
+def format_distrokid_detail(summary: dict | None) -> str:
+    """Detail panel text for soft DistroKid stage."""
+    if not isinstance(summary, dict) or not summary.get("job_status"):
+        return "DistroKid not started for this run."
+    lines = [
+        str(summary.get("compact") or summary.get("job_status") or "—"),
+        "Soft stage — does not fail the video run.",
+    ]
+    detail = str(summary.get("detail") or "").strip()
+    message = str(summary.get("message") or "").strip()
+    album = str(summary.get("album_name") or "").strip()
+    if album:
+        lines.append(f"Album: {album}")
+    if detail and detail not in lines:
+        lines.append(detail)
+    if message and message not in lines and message != detail:
+        lines.append(message)
+    return "\n".join(lines)
+
+
 def stage_status_rank(stage: str, status: str) -> str:
     stage_key = str(stage or "").strip().lower()
     status_key = str(status or "").strip().lower()

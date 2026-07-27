@@ -9,7 +9,7 @@ from datetime import datetime
 from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, run_includes_reel
 from shared.models.platform import ProgressRow
 
-STEP_ORDER = ("music", "image", "converter", "merger", "youtube")
+STEP_ORDER = ("music", "image", "converter", "merger", "distrokid", "youtube")
 ACTIVE_VERB_STATUSES = frozenset(
     {
         "running",
@@ -321,6 +321,7 @@ def build_workflow_steps(
                 ("image", "Background + Thumbnail"),
                 ("converter", "Convert (MP4)"),
                 ("merger", "Merger"),
+                ("distrokid", "DistroKid"),
                 ("youtube", "YouTube Upload"),
             )
         ]
@@ -358,6 +359,24 @@ def build_workflow_steps(
     downstream_complete = row.meta.youtube_success > 0 or row.stage == "Done"
     converter_percent = 100 if downstream_complete else (runtime.converter_percent if runtime else 0)
     merge_percent = 100 if downstream_complete else (runtime.merge_percent if runtime else 0)
+
+    distrokid_summary = {"status": "inactive", "percent": 0, "detail": "DistroKid not started"}
+    try:
+        from features.distrokid.lib.distrokid_job_store import DistroKidJobStore
+
+        run_dir = str((row.meta.run_dir if row.meta else "") or "")
+        distrokid_summary = DistroKidJobStore().summary_for_workflow(
+            batch_id=str(row.meta.batch_id or ""),
+            run_dir=run_dir,
+            role=str(row.meta.role or ""),
+        )
+    except Exception:
+        if merge_percent >= 100:
+            distrokid_summary = {
+                "status": "partial",
+                "percent": 40,
+                "detail": "DistroKid soft stage (status unavailable)",
+            }
 
     def status_detail(step_name: str) -> str:
         if normalize_pipeline_stage(effective_stage) != normalize_key(step_name):
@@ -438,6 +457,17 @@ def build_workflow_steps(
             ),
             "--",
             (merge_text, status_detail("Merger")),
+        ),
+        WorkflowStep(
+            "distrokid",
+            "DistroKid",
+            int(distrokid_summary.get("percent") or 0),
+            str(distrokid_summary.get("status") or "inactive"),
+            "--",
+            (
+                str(distrokid_summary.get("detail") or "Soft DistroKid stage"),
+                "Does not fail the video run.",
+            ),
         ),
         WorkflowStep(
             "youtube",
@@ -529,6 +559,8 @@ def step_empty_hint(step: WorkflowStep) -> str | None:
         return "Waiting for music and image assets to be ready."
     if step.key == "image":
         return "Waiting for music downloads to finish."
+    if step.key == "distrokid":
+        return "Soft DistroKid stage — starts after long merge when the Music DistroKid checkbox is on."
     if step.key == "music":
         return "Waiting for music generation to start."
     return None

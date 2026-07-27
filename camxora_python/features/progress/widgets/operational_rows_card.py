@@ -27,6 +27,7 @@ from shared.lib.progress_presentation import (
     compute_stage_progress_percent,
     format_album_label,
     format_channel_label,
+    format_distrokid_compact,
     format_export_compact,
     format_images_compact,
     format_merge_compact,
@@ -49,6 +50,7 @@ TABLE_HEADERS = [
     "Images",
     "Export",
     "Merge",
+    "DistroKid",
     "YouTube",
     "Updated",
 ]
@@ -57,7 +59,7 @@ LOADING_MESSAGE = "Loading progress rows..."
 EMPTY_MESSAGE = "No runs found for the selected operational filters."
 SUBTITLE = (
     "Scan view for active runs. Progress shows the current stage percent. "
-    "Select a row for full export, merge, error, and YouTube details on the right."
+    "Select a row for full export, merge, DistroKid, error, and YouTube details on the right."
 )
 
 _COL_RUN = 0
@@ -69,8 +71,9 @@ _COL_MUSIC = 5
 _COL_IMAGES = 6
 _COL_EXPORT = 7
 _COL_MERGE = 8
-_COL_YOUTUBE = 9
-_COL_UPDATED = 10
+_COL_DISTROKID = 9
+_COL_YOUTUBE = 10
+_COL_UPDATED = 11
 
 _CENTER_ALIGNED_COLUMNS = {
     _COL_STAGE,
@@ -79,6 +82,7 @@ _CENTER_ALIGNED_COLUMNS = {
     _COL_IMAGES,
     _COL_EXPORT,
     _COL_MERGE,
+    _COL_DISTROKID,
     _COL_YOUTUBE,
     _COL_UPDATED,
 }
@@ -94,6 +98,7 @@ class EffectiveProgressRow:
     effective_notes: str
     effective_converter_percent: int | None = None
     effective_merge_percent: int | None = None
+    distrokid_summary: dict | None = None
 
 
 class OperationalRowsCard(QFrame):
@@ -165,6 +170,7 @@ class OperationalRowsCard(QFrame):
             _COL_PROGRESS,
             _COL_MUSIC,
             _COL_MERGE,
+            _COL_DISTROKID,
             _COL_YOUTUBE,
         }
         stretch_columns = (_COL_CHANNEL, _COL_ALBUM, _COL_IMAGES, _COL_EXPORT)
@@ -234,12 +240,19 @@ class OperationalRowsCard(QFrame):
                 format_images_compact(row.meta),
                 format_export_compact(export_full),
                 format_merge_compact(merge_full),
+                format_distrokid_compact(entry.distrokid_summary),
                 format_youtube_compact(row),
                 self._format_updated_cell(row),
             ]
             tooltips = list(values)
             tooltips[_COL_EXPORT] = export_full
             tooltips[_COL_MERGE] = merge_full
+            if entry.distrokid_summary:
+                tip = str(entry.distrokid_summary.get("detail") or values[_COL_DISTROKID])
+                message = str(entry.distrokid_summary.get("message") or "").strip()
+                if message and message not in tip:
+                    tip = f"{tip} · {message}"
+                tooltips[_COL_DISTROKID] = tip
             if row.album:
                 tooltips[_COL_ALBUM] = str(row.album).strip()
             show_start_export = self._can_show_start_export(entry)

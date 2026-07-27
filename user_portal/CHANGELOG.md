@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- DistroKid $5/mo add-on checkout panel on Billing (WAV + DistroKid delivery entitlement). See `docs/changelog/2026-07-27-distrokid-addon-scaffold.md`.
+- DistroKid billing copy updated: desktop DistroKid upload is available (no longer “coming next”). See `docs/changelog/2026-07-27-distrokid-automation-phases.md`.
+- Login `?return_to=` / `?next=` redirects back to allowlisted Music Streaming hosts after sign-in
 - Dashboard Overview **Your limits** panel: monthly and daily remaining as `X / Y` for Suno, images, drafts, track exports, and merges; per-channel daily preview.
 - 7-day trend chart series for studio exports, manual exports, and YouTube uploads.
 
