@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Album image race: thumbnail no longer keeps a discarded background `source_job_id` after `ON CONFLICT DO NOTHING` (orphan → “source background job was not found”). See `docs/changelog/2026-07-27-thumbnail-orphan-source-job.md`.
 - Desktop installer publish: accept `CamxoraSetup-*.exe` / `Camxora-Setup-*.exe` in version filename parse; optional `version` on publish body. See `docs/changelog/2026-07-26-software-update-setup-filename.md`.
 
 ## [2026-07-25]
