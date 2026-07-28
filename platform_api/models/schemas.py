@@ -548,6 +548,7 @@ class ProgressRowMeta(BaseModel):
     thumbnail_9x16_path: str | None = None
     long_ready: bool = False
     reel_ready: bool = False
+    pipeline_complete: bool = False
     expected: int = 0
     saved: int = 0
     download_ready: int = 0

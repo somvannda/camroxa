@@ -142,6 +142,7 @@ class ProgressRowMeta(BaseModel):
     youtube_failed: int = 0
     long_ready: bool = False
     reel_ready: bool = False
+    pipeline_complete: bool = False
     music_started_at: datetime | None = None
     music_updated_at: datetime | None = None
     image_started_at: datetime | None = None
@@ -578,6 +579,7 @@ class ProgressLocalSyncItem(BaseModel):
     background_9x16_path: str | None = None
     thumbnail_16x9_path: str | None = None
     thumbnail_9x16_path: str | None = None
+    pipeline_complete: bool | None = None
 
 
 class ProgressLocalSyncResponse(BaseModel):

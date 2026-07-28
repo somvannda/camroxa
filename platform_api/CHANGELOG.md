@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Completed Progress pipelines no longer reopen when the local run folder is moved/archived; sticky `pipeline_complete` + overlay archive mode. See `docs/changelog/2026-07-28-freeze-completed-pipeline-when-folder-moved.md`.
 - Secondary (Album 2) uniqueness: pool seed + AI polish with retries; never clear `alt_album` to Primary on failure; Progress/run-dir no longer copy Primary onto empty Secondary. See `docs/changelog/2026-07-28-progress-filters-and-album2-uniqueness.md`.
 - Progress list: `limit` is row count after OK/ALT expansion; over-fetch batches; freeze Update timestamp when stage is Done/Error.
 
@@ -23,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Public `play-url` includes `album_id`, `user_id`, `lyrics` for music portal Now Playing rail
 - Streaming library likes: migration `073_stream_track_likes`; `GET/PUT/DELETE /streaming/library/likes`
 - Suno timestamped lyrics → LRC on stream upload/metadata sync (`074_suno_audio_ids`; `get-timestamped-lyrics`)
+- Migration `075_batch_channel_pipeline_complete` — sticky desktop pipeline completion on channel assets
 
 ### Changed
 

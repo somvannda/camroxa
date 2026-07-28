@@ -117,7 +117,7 @@ def _coerce_uuid_list(value: Any) -> list[str]:
 
 def _is_terminal_progress_stage(stage: str) -> bool:
     normalized = str(stage or "").strip().lower()
-    return normalized in {"youtube", "done", "error"}
+    return normalized in {"youtube", "done", "completed", "error"}
 
 
 def _normalize_image_state(group: dict[str, Any]) -> str:
@@ -211,6 +211,7 @@ def _build_row(
     stage = "Music"
     status = "Waiting"
     notes = "Waiting for music generation."
+    pipeline_complete = bool(asset_group.get("pipeline_complete"))
 
     if str(batch.get("status", "")).lower() == "failed" or song_failed > 0 or bg_status == "FAILED" or th_status == "FAILED":
         stage = "Error"
@@ -220,6 +221,12 @@ def _build_row(
         stage = "Done"
         status = "Done"
         notes = "Completed"
+    elif pipeline_complete:
+        stage = "Completed"
+        status = "Completed"
+        notes = (
+            "Desktop pipeline completed. Local run-folder files may have been moved or archived."
+        )
     elif youtube_pending > 0 or youtube_status in {"PENDING", "RUNNING", "PROCESSING"}:
         stage = "YouTube"
         if youtube_status == "PENDING":
@@ -267,7 +274,10 @@ def _build_row(
             thumbnail_9x16_path,
         ]
     )
-    if image_complete and not _is_terminal_progress_stage(stage):
+    if stage == "Completed":
+        converter_text = "Completed"
+        merge_text = "Completed"
+    elif image_complete and not _is_terminal_progress_stage(stage):
         inspection = inspect_video_run_directory(row_run_dir) if row_run_dir else None
         video_presentation = build_video_run_presentation(
             inspection=inspection,
@@ -329,11 +339,14 @@ def _build_row(
     # do not keep moving the Update column after the pipeline finished.
     if stage == "Done" and youtube.get("updated_at") is not None:
         updated_at = youtube.get("updated_at")
-    elif stage in {"Done", "Error"}:
-        updated_at = max(
-            activity_candidates,
-            default=batch.get("updated_at") or _utc_now(),
-        )
+    elif stage in {"Done", "Completed", "Error"}:
+        if stage == "Completed" and asset_group.get("pipeline_completed_at") is not None:
+            updated_at = asset_group.get("pipeline_completed_at")
+        else:
+            updated_at = max(
+                activity_candidates,
+                default=batch.get("updated_at") or _utc_now(),
+            )
     else:
         updated_at = max(
             [value for value in [*activity_candidates, batch.get("updated_at")] if value is not None],
@@ -366,6 +379,7 @@ def _build_row(
             thumbnail_9x16_path=str(thumbnail_9x16_path) if thumbnail_9x16_path else None,
             long_ready=long_ready,
             reel_ready=reel_ready,
+            pipeline_complete=pipeline_complete,
             expected=expected,
             saved=saved,
             download_ready=download_ready,
@@ -635,7 +649,9 @@ async def list_progress_rows(
                 background_16x9_path,
                 background_9x16_path,
                 thumbnail_16x9_path,
-                thumbnail_9x16_path
+                thumbnail_9x16_path,
+                pipeline_complete,
+                pipeline_completed_at
             FROM batch_channel_assets
             WHERE user_id = $1
               AND batch_id = ANY($2::uuid[])
@@ -655,6 +671,8 @@ async def list_progress_rows(
                 "background_9x16_path": row["background_9x16_path"],
                 "thumbnail_16x9_path": row["thumbnail_16x9_path"],
                 "thumbnail_9x16_path": row["thumbnail_9x16_path"],
+                "pipeline_complete": bool(row.get("pipeline_complete", False)),
+                "pipeline_completed_at": row.get("pipeline_completed_at"),
             }
             for row in asset_rows
         }
@@ -685,6 +703,8 @@ async def list_progress_rows(
             }
             merged["long_ready"] = compute_long_ready(merged)
             merged["reel_ready"] = compute_reel_ready(merged)
+            merged["pipeline_complete"] = bool(persisted.get("pipeline_complete", False))
+            merged["pipeline_completed_at"] = persisted.get("pipeline_completed_at")
             channel_assets[key] = merged
 
     youtube_groups: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -833,7 +853,11 @@ async def list_progress_rows(
             )
 
     if active_only:
-        rows = [row for row in rows if row.stage != "Done"]
+        rows = [
+            row
+            for row in rows
+            if str(row.stage or "").strip().lower() not in {"done", "completed"}
+        ]
 
     rows.sort(key=lambda row: (row.run_date, row.batch), reverse=True)
     # `limit` is a row count after OK/ALT expansion (and active_only), not batch count.
@@ -856,6 +880,7 @@ class ProgressLocalSyncItemRequest(BaseModel):
     background_9x16_path: str | None = None
     thumbnail_16x9_path: str | None = None
     thumbnail_9x16_path: str | None = None
+    pipeline_complete: bool | None = None
 
 
 class ProgressLocalSyncRequest(BaseModel):

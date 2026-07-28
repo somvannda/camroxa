@@ -2889,6 +2889,7 @@ class BatchService:
                     return explicit
                 return getattr(scanned, key, None)
 
+            mark_complete = bool(item.get("pipeline_complete"))
             asset = BatchChannelAssets(
                 batch_id=batch.id,
                 user_id=batch.user_id,
@@ -2900,6 +2901,8 @@ class BatchService:
                 background_9x16_path=pick_path("background_9x16_path"),
                 thumbnail_16x9_path=pick_path("thumbnail_16x9_path"),
                 thumbnail_9x16_path=pick_path("thumbnail_9x16_path"),
+                pipeline_complete=mark_complete,
+                pipeline_completed_at=datetime.now(timezone.utc) if mark_complete else None,
             )
             await self._batch_repo.upsert_batch_channel_assets(asset)
             updated += 1
