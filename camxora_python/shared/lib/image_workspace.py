@@ -74,7 +74,9 @@ def _build_batch_album_labels(batches: list[MusicHistoryBatch]) -> dict[tuple[st
                     break
         fallback = fallback or "Untitled album"
         ok_album = str(batch.ok_album or "").strip() or fallback
-        alt_album = str(batch.alt_album or "").strip() or fallback
+        alt_album = str(batch.alt_album or "").strip()
+        if not alt_album or alt_album.lower() == ok_album.lower():
+            alt_album = f"{ok_album} II" if ok_album else f"{fallback} II"
         labels[(batch.batch_id, "ok")] = ok_album
         labels[(batch.batch_id, "alt")] = alt_album
     return labels

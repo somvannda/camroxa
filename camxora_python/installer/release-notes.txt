@@ -1,25 +1,15 @@
-﻿Camxora 1.0.1 — Export freeze hotfix
+﻿Camxora 1.0.2 — Progress filters + Update freeze
 Date: 2026-07-28
 
 What's new
 ----------
-• Package soundfile / audioread / soxr so frozen exports decode + resample MP3
-• Prefer soundfile decode + soxr resample (avoids hung librosa.resample)
-• Analyze audio BEFORE OpenGL context (fixes hang on Computing spectrum)
-• Export analysis at 30 fps (was 60) — half the STFT work
-• Frozen BLAS capped to 1 thread so multi-worker STFT does not livelock
-• ASCII-safe export progress events (Windows cp1252 console)
-• Detailed Loading-audio diagnostics → %LOCALAPPDATA%\Camxora\logs\audio-load-diag.log
-• Preferences multi-worker honored again (low-VRAM GPUs still capped at 1)
-• Frozen beat detection uses onset peaks (avoids installer crash in librosa.beat)
-• Frozen spectrum/onset use scipy STFT + spectral flux (safe with multi-worker + GPU)
-• Frozen beats use scipy/NumPy peaks only (librosa.peak_pick hung while another track encoded)
-• Cross-process analysis mutex so only one frozen AudioAnalyzer runs at a time
-• Hide nvidia-smi/taskkill consoles (multi-worker no longer flashes N black windows)
-• Standard tier honors Video FPS + speed; export logs WxH @ fps · speed
+• Progress Limit: 10 / 25 / 50 / 100 (default 10); list matches selected count
+• Active only hides Done after desktop overlays (not only raw API stage)
+• Update column freezes when pipeline is Done/Error (YouTube completion time)
+• Includes 1.0.1 frozen export / multi-worker / console fixes
 
 Notes
 -----
 • Production API only (same as 1.0.0)
 • API: https://api.camxora.com/api/v1
-• Installer file: CamxoraSetup-1.0.1.exe
+• Installer file: CamxoraSetup-1.0.2.exe

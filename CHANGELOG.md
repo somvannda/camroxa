@@ -15,6 +15,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.2] - 2026-07-28
+
+### Fixed
+
+- **Progress Limit filter:** options are 10 / 25 / 50 / 100 (default 10); row list is sliced to the selected count after OK/ALT expansion
+- **Progress Active only:** filters on effective stage after desktop overlays (hides Done), not only the raw API flag
+- **Progress Update column:** freezes at YouTube completion (or last activity) once stage is Done/Error so sync heartbeats stop rewriting the time
+
 ## [1.0.1] - 2026-07-28
 
 ### Fixed
