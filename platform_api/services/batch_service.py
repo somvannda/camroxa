@@ -1170,10 +1170,83 @@ class BatchService:
         return [(provider, str(model or ""))]
 
     @staticmethod
+    def _album_names_equal(left: str, right: str) -> bool:
+        return str(left or "").strip().lower() == str(right or "").strip().lower()
+
+    @staticmethod
+    def _fallback_distinct_album(ok_album: str) -> str:
+        """Deterministic Secondary name when pool/LLM cannot produce a distinct album."""
+        base = str(ok_album or "").strip() or "Album"
+        for suffix in (" II", " Alt", " Remix", " Dual"):
+            candidate = f"{base}{suffix}"
+            if not BatchService._album_names_equal(candidate, base):
+                return candidate
+        return f"{base} {uuid4().hex[:4]}"
+
+    @staticmethod
     def _channel_album_label(batch: Batch, channel_role: ChannelRole) -> str:
         if channel_role == ChannelRole.ALT:
-            return str(batch.alt_album or batch.ok_album or "").strip()
+            return str(batch.alt_album or "").strip()
         return str(batch.ok_album or "").strip()
+
+    async def _generate_distinct_alt_album(
+        self,
+        *,
+        ok_album: str,
+        album_seed: str | None,
+        draft_request: DraftRequest,
+        draft_routing: Any,
+    ) -> str:
+        """Polish pool seed (or generate) a Secondary album that differs from Primary."""
+        from platform_api.ai.parsing.response_parser import parse_string_field
+        from platform_api.ai.purposes.metadata_text import (
+            is_valid_metadata_name,
+            sanitize_metadata_name,
+        )
+        from platform_api.services.generation_service import (
+            MAX_ALBUM_ATTEMPTS,
+            build_album_slot_prompts,
+        )
+
+        user_context = str(draft_request.description or "").strip() or "Instrumental electronic music."
+        avoid = [ok_album, *(draft_request.avoid_albums or [])]
+        seed = str(album_seed or "").strip() or None
+        if seed and self._album_names_equal(seed, ok_album):
+            seed = None
+        album_system, album_user = build_album_slot_prompts(
+            user_context=user_context,
+            album_seed=seed,
+            avoid_albums=avoid,
+            language=draft_request.language,
+            secondary_language=draft_request.secondary_language,
+        )
+        album_user = (
+            f"{album_user}\n\n"
+            f'The Primary album is "{ok_album}". '
+            "Create a distinct Secondary album name with different wording."
+        )
+        last_failure = "Failed to generate a distinct secondary album name."
+        for attempt in range(1, MAX_ALBUM_ATTEMPTS + 1):
+            album_raw = await self._generation_service.generate_text(
+                system_prompt=album_system,
+                user_prompt=album_user,
+                provider=draft_routing.album.provider,
+                model=draft_routing.album.sub_model or "",
+                temperature=min(1.0, 0.8 + (attempt - 1) * 0.05),
+                max_tokens=256,
+                prefer_json=True,
+            )
+            album = sanitize_metadata_name(parse_string_field(album_raw, "album"), field="album")
+            if not album or not is_valid_metadata_name(album, field="album"):
+                last_failure = f"Invalid secondary album on attempt {attempt}"
+                continue
+            if self._album_names_equal(album, ok_album):
+                last_failure = f"Secondary album matched Primary on attempt {attempt}"
+                continue
+            return album.strip()
+        if seed and not self._album_names_equal(seed, ok_album):
+            return seed
+        raise RuntimeError(last_failure)
 
     async def _resolve_alt_channel_album(
         self,
@@ -1186,48 +1259,42 @@ class BatchService:
         draft_routing: Any,
     ) -> str:
         existing = str(batch.alt_album or "").strip()
-        if existing and existing.lower() != ok_album.strip().lower():
+        if existing and not self._album_names_equal(existing, ok_album):
             return existing
         if not batch.alt_profile_id:
-            return ok_album
+            return ""
 
+        album_seed: str | None = None
         if use_content_pools:
             reservation_owner = f"{user_id}:{batch.id}:alt-album"
-            alt_item = await claim_pool_item(
-                kind="albums",
-                reservation_owner=reservation_owner,
-                avoid_texts=[ok_album],
+            try:
+                alt_item = await claim_pool_item(
+                    kind="albums",
+                    reservation_owner=reservation_owner,
+                    avoid_texts=[ok_album],
+                )
+                await finalize_pool_item(item=alt_item)
+                candidate = str(alt_item.text or "").strip()
+                if candidate and not self._album_names_equal(candidate, ok_album):
+                    album_seed = candidate
+            except Exception as exc:
+                logger.warning(
+                    "Secondary album pool claim failed for batch %s: %s",
+                    batch.id,
+                    exc,
+                )
+
+        try:
+            return await self._generate_distinct_alt_album(
+                ok_album=ok_album,
+                album_seed=album_seed,
+                draft_request=draft_request,
+                draft_routing=draft_routing,
             )
-            await finalize_pool_item(item=alt_item)
-            alt_album = str(alt_item.text or "").strip()
-            if alt_album and alt_album.lower() != ok_album.strip().lower():
-                return alt_album
-            raise RuntimeError("No distinct secondary album is available in the content pool.")
-
-        from platform_api.ai.parsing.response_parser import parse_string_field
-        from platform_api.ai.purposes.metadata_text import sanitize_metadata_name
-        from platform_api.services.generation_service import build_album_slot_prompts
-
-        user_context = str(draft_request.description or "").strip() or "Instrumental electronic music."
-        album_system, album_user = build_album_slot_prompts(
-            user_context=user_context,
-            avoid_albums=[ok_album, *(draft_request.avoid_albums or [])],
-            language=draft_request.language,
-            secondary_language=draft_request.secondary_language,
-        )
-        album_raw = await self._generation_service.generate_text(
-            system_prompt=album_system,
-            user_prompt=album_user,
-            provider=draft_routing.album.provider,
-            model=draft_routing.album.sub_model or "",
-            temperature=0.8,
-            max_tokens=256,
-            prefer_json=True,
-        )
-        album = sanitize_metadata_name(parse_string_field(album_raw, "album"), field="album")
-        if not album or album.strip().lower() == ok_album.strip().lower():
-            raise RuntimeError("Failed to generate a distinct secondary album name.")
-        return album.strip()
+        except Exception:
+            if album_seed and not self._album_names_equal(album_seed, ok_album):
+                return album_seed
+            return self._fallback_distinct_album(ok_album)
 
     async def _persist_batch_channel_albums(
         self,
@@ -1251,7 +1318,9 @@ class BatchService:
             return batch
 
         alt_album = str(getattr(batch, "alt_album", None) or "").strip()
-        if getattr(batch, "alt_profile_id", None) and (not alt_album or alt_album.lower() == ok_album.lower()):
+        if getattr(batch, "alt_profile_id", None) and (
+            not alt_album or self._album_names_equal(alt_album, ok_album)
+        ):
             draft_request = draft_requests[getattr(successful_songs[0], "batch_index", 0)]
             try:
                 alt_album = await self._resolve_alt_channel_album(
@@ -1268,7 +1337,10 @@ class BatchService:
                     batch_id,
                     exc,
                 )
-                alt_album = ""
+                alt_album = self._fallback_distinct_album(ok_album)
+
+        if alt_album and self._album_names_equal(alt_album, ok_album):
+            alt_album = self._fallback_distinct_album(ok_album)
 
         await self._batch_repo.update_batch_channel_albums(
             batch_id,
@@ -4131,7 +4203,9 @@ class BatchService:
         ok_album_text = str(ok_album or batch.ok_album or "").strip()
         if not ok_album_text:
             return batch
-        alt_album_text = str(alt_album or batch.alt_album or ok_album_text).strip() or ok_album_text
+        alt_album_text = str(alt_album or batch.alt_album or "").strip()
+        if not alt_album_text or self._album_names_equal(alt_album_text, ok_album_text):
+            alt_album_text = self._fallback_distinct_album(ok_album_text)
         if self._settings_service is None:
             return batch
         settings = await self._settings_service.get_merged_settings(
@@ -4201,7 +4275,12 @@ class BatchService:
             ok_run_label=build_run_folder_label(run_date=from_date, album=ok_album),
             alt_run_label=build_run_folder_label(
                 run_date=from_date,
-                album=alt_album or ok_album,
+                album=(
+                    alt_album
+                    if alt_album
+                    and not self._album_names_equal(str(alt_album), str(ok_album or ""))
+                    else self._fallback_distinct_album(str(ok_album or "Album"))
+                ),
             ),
             existing_ok_entries=list_run_folder_entries(base_dir, ok_folder),
             existing_alt_entries=list_run_folder_entries(base_dir, alt_folder),

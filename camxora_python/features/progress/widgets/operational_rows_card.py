@@ -235,7 +235,7 @@ class OperationalRowsCard(QFrame):
                 format_export_compact(export_full),
                 format_merge_compact(merge_full),
                 format_youtube_compact(row),
-                self._format_updated_cell(row),
+                self._format_updated_cell(entry),
             ]
             tooltips = list(values)
             tooltips[_COL_EXPORT] = export_full
@@ -294,19 +294,42 @@ class OperationalRowsCard(QFrame):
         entry = self._row_at(row_index)
         self.row_selected.emit(entry)
 
-    def _format_updated_cell(self, row: ProgressRow) -> str:
-        updated_at = self._resolve_row_updated_at(row.meta)
+    def _format_updated_cell(self, entry: EffectiveProgressRow | ProgressRow) -> str:
+        if isinstance(entry, EffectiveProgressRow):
+            row = entry.row
+            stage = str(entry.effective_stage or row.stage or "").strip().lower()
+        else:
+            row = entry
+            stage = str(row.stage or "").strip().lower()
+        updated_at = self._resolve_row_updated_at(row.meta, stage=stage)
         return format_progress_updated_time(updated_at, fallback=row.updated)
 
     @staticmethod
-    def _resolve_row_updated_at(meta: ProgressRowMeta) -> datetime | None:
-        if meta.updated_at is not None:
+    def _resolve_row_updated_at(
+        meta: ProgressRowMeta,
+        *,
+        stage: str = "",
+    ) -> datetime | None:
+        # Freeze completion time once the pipeline is terminal so heartbeats
+        # (batch sync / local overlay) do not keep rewriting the Update column.
+        stage_key = str(stage or "").strip().lower()
+        if stage_key == "done" and meta.youtube_updated_at is not None:
+            return meta.youtube_updated_at
+        if stage_key in {"done", "error"}:
+            candidates = [
+                meta.youtube_updated_at,
+                meta.image_updated_at,
+                meta.music_updated_at,
+                meta.updated_at,
+            ]
+        elif meta.updated_at is not None:
             return meta.updated_at
-        candidates = [
-            meta.music_updated_at,
-            meta.image_updated_at,
-            meta.youtube_updated_at,
-        ]
+        else:
+            candidates = [
+                meta.music_updated_at,
+                meta.image_updated_at,
+                meta.youtube_updated_at,
+            ]
         timestamps = [value for value in candidates if value is not None]
         return max(timestamps) if timestamps else None
 

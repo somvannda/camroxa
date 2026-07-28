@@ -138,7 +138,8 @@ def _normalize_image_state(group: dict[str, Any]) -> str:
 def _batch_album_for_role(batch: dict[str, Any], role: str) -> str | None:
     role_key = str(role or "").strip().upper()
     if role_key == "ALT":
-        album = batch.get("alt_album") or batch.get("album")
+        # Never fall back to Primary album — empty Secondary must stay empty/distinct.
+        album = batch.get("alt_album")
     else:
         album = batch.get("ok_album") or batch.get("album")
     text = str(album or "").strip()
@@ -314,20 +315,30 @@ def _build_row(
         [value for value in [bg_group.get("latest_updated_at"), th_group.get("latest_updated_at")] if value is not None],
         default=None,
     )
-    updated_at = max(
-        [
-            value
-            for value in [
-                batch.get("updated_at"),
-                song_stats.get("music_updated_at"),
-                suno_stats.get("music_updated_at"),
-                latest_image_updated,
-                youtube.get("updated_at"),
-            ]
-            if value is not None
-        ],
-        default=batch.get("updated_at") or _utc_now(),
-    )
+    activity_candidates = [
+        value
+        for value in [
+            song_stats.get("music_updated_at"),
+            suno_stats.get("music_updated_at"),
+            latest_image_updated,
+            youtube.get("updated_at"),
+        ]
+        if value is not None
+    ]
+    # Exclude batch.updated_at for terminal stages so desktop sync heartbeats
+    # do not keep moving the Update column after the pipeline finished.
+    if stage == "Done" and youtube.get("updated_at") is not None:
+        updated_at = youtube.get("updated_at")
+    elif stage in {"Done", "Error"}:
+        updated_at = max(
+            activity_candidates,
+            default=batch.get("updated_at") or _utc_now(),
+        )
+    else:
+        updated_at = max(
+            [value for value in [*activity_candidates, batch.get("updated_at")] if value is not None],
+            default=batch.get("updated_at") or _utc_now(),
+        )
 
     return ProgressRow(
         batch=batch_id[-24:] if len(batch_id) > 24 else batch_id,
@@ -398,6 +409,9 @@ async def list_progress_rows(
     if from_date and to_date and from_date > to_date:
         from_date, to_date = to_date, from_date
 
+    # Over-fetch batches so OK+ALT expansion can still fill the requested row limit.
+    batch_fetch_limit = min(100, max(limit * 2, limit))
+
     async def _fetch_batches(*, planned_dates: bool) -> list[Any]:
         end_expr = _batch_run_end_expr(use_planned_dates=planned_dates)
         start_expr = _batch_run_start_expr(use_planned_dates=planned_dates)
@@ -409,7 +423,7 @@ async def list_progress_rows(
         if to_date:
             local_params.append(to_date)
             local_where.append(f"{start_expr} <= ${len(local_params)}")
-        local_params.append(limit)
+        local_params.append(batch_fetch_limit)
         planned_select = (
             "b.planned_from_date,\n                b.planned_to_date,"
             if planned_dates
@@ -782,8 +796,7 @@ async def list_progress_rows(
         batch_payload["album"] = fallback_album
         if not batch_payload.get("ok_album"):
             batch_payload["ok_album"] = fallback_album
-        if not batch_payload.get("alt_album"):
-            batch_payload["alt_album"] = fallback_album
+        # Do not copy Primary/song album onto alt_album — that caused Album 2 duplicates in UI.
         song_stats = song_stats_map.get(batch_key, {})
         suno_stats = suno_stats_map.get(batch_key, {})
 
@@ -823,6 +836,8 @@ async def list_progress_rows(
         rows = [row for row in rows if row.stage != "Done"]
 
     rows.sort(key=lambda row: (row.run_date, row.batch), reverse=True)
+    # `limit` is a row count after OK/ALT expansion (and active_only), not batch count.
+    rows = rows[:limit]
     now = _utc_now()
     summary = f"{len(rows)} rows loaded · refreshed at {_iso_time(now)}"
     return ProgressListResponse(rows=rows, summary=summary, updated_at=now)

@@ -139,8 +139,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
         )
         self._active_only = QCheckBox("Active only")
         self._limit = QComboBox()
-        self._limit.addItems(["10", "25", "50"])
-        self._limit.setCurrentText("25")
+        self._limit.addItems(["10", "25", "50", "100"])
+        self._limit.setCurrentText("10")
         self._stage_filter = QComboBox()
         for label, _value in STAGE_OPTIONS:
             self._stage_filter.addItem(label)
@@ -429,9 +429,24 @@ class ProgressView(PollablePageMixin, QScrollArea):
     def _filtered_effective_rows(self) -> list[EffectiveProgressRow]:
         stage = self._current_stage_filter()
         entries = self._effective_rows()
-        if stage == "all":
-            return entries
-        return [entry for entry in entries if self._matches_stage_filter(entry.effective_stage, stage)]
+        if self._active_only.isChecked():
+            # Match Stage filter behavior: hide terminal Done after desktop overlays.
+            entries = [
+                entry
+                for entry in entries
+                if str(entry.effective_stage or "").strip().lower() != "done"
+            ]
+        if stage != "all":
+            entries = [
+                entry
+                for entry in entries
+                if self._matches_stage_filter(entry.effective_stage, stage)
+            ]
+        try:
+            limit = max(1, int(self._limit.currentText()))
+        except ValueError:
+            limit = 10
+        return entries[:limit]
 
     @staticmethod
     def _matches_stage_filter(effective_stage: str, stage_filter: str) -> bool:

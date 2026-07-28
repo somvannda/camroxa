@@ -971,6 +971,9 @@ async def test_orchestrate_drafts_persists_distinct_channel_albums(
     generation_service.submit_draft = AsyncMock(
         return_value=SongDraft(title="Pool Title", album="Primary Album", lyrics="Lyrics")
     )
+    generation_service.generate_text = AsyncMock(
+        return_value='{"album": "Polished Secondary Album"}'
+    )
 
     async def _claim_pool_item(**kwargs):
         kind = kwargs["kind"]
@@ -1019,7 +1022,7 @@ async def test_orchestrate_drafts_persists_distinct_channel_albums(
     batch_repo.update_batch_channel_albums.assert_awaited_once_with(
         batch_id,
         ok_album="Primary Album",
-        alt_album="Secondary Album",
+        alt_album="Polished Secondary Album",
     )
 
 
