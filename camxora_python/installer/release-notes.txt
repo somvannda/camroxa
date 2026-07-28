@@ -1,15 +1,14 @@
-﻿Camxora 1.0.0 — First official release
+﻿Camxora 1.0.1 — Export freeze hotfix
+Date: 2026-07-28
 
-What's included
----------------
-• Music automation: drafts, Suno, images, history, and Progress pipeline
-• GPU video export + merge for channel long/reel workflows
-• Account, plans, credits, and portal-connected desktop studio
-• Streaming catalog support for music.camxora.com
-• Admin-managed prompts, moods, languages, and AI routing
+What's new
+----------
+• Installer / frozen builds force a single video-export worker
+• Prevents parallel Camxora.exe --visualizer jobs from hanging on "Loading audio…"
+• Low-VRAM GPUs still capped at one worker (unchanged)
 
 Notes
 -----
-• This build talks to production API: https://api.camxora.com
-• Portal: https://app.camxora.com
-• Installer: CamxoraSetup-1.0.0.exe
+• Production API only (same as 1.0.0)
+• API: https://api.camxora.com/api/v1
+• Installer file: CamxoraSetup-1.0.1.exe
