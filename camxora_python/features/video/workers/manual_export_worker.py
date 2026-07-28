@@ -73,10 +73,9 @@ class VideoManualExportWorker(QThread):
         output_path = build_manual_export_output_path(audio_path=audio_path, output_dir=output_dir)
         ffmpeg_path = find_ffmpeg_from_path_hint(str(settings.get("ffmpegPath") or "ffmpeg"))
         workers_raw = settings.get("videoExportWorkers", settings.get("perfExportWorkers", 1))
-        try:
-            worker_limit = max(1, min(10, int(workers_raw)))
-        except (TypeError, ValueError):
-            worker_limit = 1
+        from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+
+        worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
         export_gate.set_limit(worker_limit)
 
         last_fail_message = ""

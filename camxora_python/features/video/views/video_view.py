@@ -1760,7 +1760,7 @@ class VideoView(QWidget):
             },
             background_path=self._workspace.background_path,
             selected_mp3_path=selected_mp3,
-            fps=tier.fps if tier.tier != "master" else self._resolve_export_fps(),
+            fps=tier.fps,
         )
 
     def _start_manual_export(self) -> None:

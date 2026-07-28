@@ -180,7 +180,28 @@ class ExportJob:
             f"{project_dir}{os.pathsep}{existing_pythonpath}" if existing_pythonpath else str(project_dir)
         )
         env[CANCEL_ENV] = self._cancel_path
+        # Propagate GPU tier so each worker skips a visible nvidia-smi console probe.
+        if not str(env.get("CAMXORA_GPU_TIER") or "").strip():
+            try:
+                from visualizer.export_gpu_tier import detect_export_gpu_tier
+
+                env["CAMXORA_GPU_TIER"] = str(detect_export_gpu_tier())
+            except Exception:
+                pass
         clear_export_cancel(self._cancel_path)
+        settings_msg = (
+            f"Export settings · {int(self.settings.width)}x{int(self.settings.height)} "
+            f"@ {int(self.settings.fps)}fps · speed={self.settings.speed_mode or 'balanced'}"
+        )
+        append_export_event_line(
+            self._error_lines,
+            {"status": "running", "message": settings_msg, "progress": 0.0},
+        )
+        if self.on_event:
+            try:
+                self.on_event({"status": "running", "message": settings_msg, "progress": 0.0})
+            except Exception:
+                pass
         try:
             return self._run_blocking_with_env(cmd, project_dir=project_dir, env=env, allow_daemon=allow_daemon)
         finally:

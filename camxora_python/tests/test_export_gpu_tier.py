@@ -89,7 +89,7 @@ def test_resolve_pipeline_export_workers_forces_one_on_low(monkeypatch: pytest.M
     assert resolve_pipeline_export_workers(3) == 3
 
 
-def test_resolve_pipeline_export_workers_forces_one_when_frozen(
+def test_resolve_pipeline_export_workers_honors_prefs_when_frozen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from visualizer.export_gpu_tier import resolve_pipeline_export_workers
@@ -100,4 +100,4 @@ def test_resolve_pipeline_export_workers_forces_one_when_frozen(
         "shared.lib.runtime_paths.is_frozen_runtime",
         lambda: True,
     )
-    assert resolve_pipeline_export_workers(4) == 1
+    assert resolve_pipeline_export_workers(4) == 4

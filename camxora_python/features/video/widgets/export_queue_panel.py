@@ -183,8 +183,9 @@ class ExportQueuePanel(QWidget):
         self._tier_combo.addItem("Master (custom)", "master")
         self._tier_combo.setToolTip(
             "Draft is fastest for pipeline-style batch exports.\n"
-            "Standard is the default for manual exports.\n"
-            "Master uses your resolution, FPS, and speed settings."
+            "Standard uses Preferences resolution plus your FPS and speed.\n"
+            "Draft is fixed 720p / 24 FPS / Very Fast.\n"
+            "Master uses Preferences resolution plus your FPS and speed."
         )
         self._tier_combo.currentIndexChanged.connect(self._on_tier_changed)
 

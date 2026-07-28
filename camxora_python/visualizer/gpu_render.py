@@ -118,7 +118,9 @@ class GpuOptions:
 
 
 def _send(payload: dict) -> None:
-    print("MG_EVENT " + json.dumps(payload, ensure_ascii=False), flush=True)
+    # ensure_ascii=True: frozen Windows consoles are often cp1252 and crash on
+    # Unicode progress text (e.g. "48000→22050"), which aborted soundfile decode.
+    print("MG_EVENT " + json.dumps(payload, ensure_ascii=True), flush=True)
 
 
 def _load_template(opts: GpuOptions) -> dict:
@@ -1951,9 +1953,9 @@ def run_gpu_render(
     fps = int(max(1, min(60, int(opts.fps))))
     if fps <= 0:
         fps = 30
-    # Keep encode FPS (24/30/…) for speed, but analyze audio at preview rate so
-    # spectrum/particles react identically to paintGL (frame_idx = time * 60).
-    ANALYSIS_FPS = 60
+    # Export analysis rate: 30 keeps spectrum reactive enough and avoids multi-minute
+    # librosa.stft stalls on long tracks in frozen builds (fps=60 hop is far denser).
+    ANALYSIS_FPS = 30
     export_speed_mode = normalize_export_speed_mode(getattr(opts, "speed_mode", "balanced"))
     glow_pass_limit = export_glow_pass_limit(export_speed_mode)
 
@@ -1971,6 +1973,78 @@ def run_gpu_render(
     base_h = float(template.get("renderBaseHeight", 450.0))
     base_h = float(max(1.0, min(4000.0, base_h)))
     sf = float(h) / base_h
+
+    # Analyze audio BEFORE creating an OpenGL context. Frozen installs were hanging
+    # forever on librosa.stft when OpenBLAS ran after pygame/moderngl init.
+    spectrum_container = template
+    point_count = 1024
+    bg_scale = 1.0
+    bg_offset = (0.0, 0.0)
+
+    from shared.services.audio_analysis_cache import get_audio_analysis_cache, set_audio_analysis_cache
+    from .audio import AudioAnalyzer
+
+    _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
+    if existing_analyzer is not None:
+        analyzer = existing_analyzer
+        _emit_event(
+            {
+                "status": "running",
+                "message": "Reusing preview audio analysis",
+                "progress": 0.09,
+                "cacheHit": True,
+            }
+        )
+    else:
+        cached_analyzer = get_audio_analysis_cache(
+            opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count
+        )
+        if cached_analyzer is not None:
+            analyzer = cached_analyzer
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis loaded from cache",
+                    "progress": 0.09,
+                    "cacheHit": True,
+                }
+            )
+        else:
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Analyzing audio (first track can take a minute)...",
+                    "progress": 0.08,
+                }
+            )
+
+            def _analysis_progress(message: str) -> None:
+                _emit_event(
+                    {
+                        "status": "running",
+                        "message": str(message or "Analyzing audio..."),
+                        "progress": 0.08,
+                    }
+                )
+
+            analyzer = AudioAnalyzer(
+                opts.mp3_path,
+                fps=ANALYSIS_FPS,
+                point_count=point_count,
+                on_progress=_analysis_progress,
+            )
+            set_audio_analysis_cache(analyzer, opts.mp3_path)
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis complete, preparing encoder...",
+                    "progress": 0.09,
+                    "cacheHit": False,
+                }
+            )
+
+    duration_sec = float(analyzer.info.duration_sec)
+    total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
 
     _emit_event({"status": "running", "message": "Initializing GPU renderer...", "progress": 0.0})
     if ctx_factory is not None:
@@ -2064,80 +2138,6 @@ def run_gpu_render(
         prog_particle_quads,
         [(particle_quad_vbo, "2f 2f 4f", "in_pos", "in_uv", "in_col")],
     )
-
-    _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
-
-    # In the new format, the root template IS the spectrum container
-    spectrum_container = template
-    point_count = 1024 # Fixed to 1024 for high-res FFT
-    
-    # We no longer have spec_style or spec_tex for background scale/offset in the spectrum layer.
-    # Background scale/offset is now handled via backgroundSettings (if added) or just defaults to 1.0/0.0
-    bg_scale = 1.0
-    bg_offset = (0.0, 0.0)
-
-    from shared.services.audio_analysis_cache import get_audio_analysis_cache, set_audio_analysis_cache
-
-    if existing_analyzer is not None:
-        analyzer = existing_analyzer
-        _emit_event(
-            {
-                "status": "running",
-                "message": "Reusing preview audio analysis",
-                "progress": 0.09,
-                "cacheHit": True,
-            }
-        )
-    else:
-        cached_analyzer = get_audio_analysis_cache(
-            opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count
-        )
-        if cached_analyzer is not None:
-            analyzer = cached_analyzer
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Audio analysis loaded from cache",
-                    "progress": 0.09,
-                    "cacheHit": True,
-                }
-            )
-        else:
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Analyzing audio (first track can take a minute)…",
-                    "progress": 0.08,
-                }
-            )
-
-            def _analysis_progress(message: str) -> None:
-                _emit_event(
-                    {
-                        "status": "running",
-                        "message": str(message or "Analyzing audio…"),
-                        "progress": 0.08,
-                    }
-                )
-
-            analyzer = AudioAnalyzer(
-                opts.mp3_path,
-                fps=ANALYSIS_FPS,
-                point_count=point_count,
-                on_progress=_analysis_progress,
-            )
-            set_audio_analysis_cache(analyzer, opts.mp3_path)
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Audio analysis complete, preparing encoder...",
-                    "progress": 0.09,
-                    "cacheHit": False,
-                }
-            )
-    duration_sec = float(analyzer.info.duration_sec)
-    # Encode at export fps, but sample audio analysis at preview fps (60).
-    total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
 
     particles_cfg_raw = template.get("particlesSettings", {}) if isinstance(template.get("particlesSettings"), dict) else {}
     if not particles_cfg_raw and isinstance(template.get("particles"), dict):

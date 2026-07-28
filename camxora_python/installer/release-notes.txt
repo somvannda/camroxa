@@ -3,9 +3,20 @@ Date: 2026-07-28
 
 What's new
 ----------
-• Installer / frozen builds force a single video-export worker
-• Prevents parallel Camxora.exe --visualizer jobs from hanging on "Loading audio…"
-• Low-VRAM GPUs still capped at one worker (unchanged)
+• Package soundfile / audioread / soxr so frozen exports decode + resample MP3
+• Prefer soundfile decode + soxr resample (avoids hung librosa.resample)
+• Analyze audio BEFORE OpenGL context (fixes hang on Computing spectrum)
+• Export analysis at 30 fps (was 60) — half the STFT work
+• Frozen BLAS capped to 1 thread so multi-worker STFT does not livelock
+• ASCII-safe export progress events (Windows cp1252 console)
+• Detailed Loading-audio diagnostics → %LOCALAPPDATA%\Camxora\logs\audio-load-diag.log
+• Preferences multi-worker honored again (low-VRAM GPUs still capped at 1)
+• Frozen beat detection uses onset peaks (avoids installer crash in librosa.beat)
+• Frozen spectrum/onset use scipy STFT + spectral flux (safe with multi-worker + GPU)
+• Frozen beats use scipy/NumPy peaks only (librosa.peak_pick hung while another track encoded)
+• Cross-process analysis mutex so only one frozen AudioAnalyzer runs at a time
+• Hide nvidia-smi/taskkill consoles (multi-worker no longer flashes N black windows)
+• Standard tier honors Video FPS + speed; export logs WxH @ fps · speed
 
 Notes
 -----

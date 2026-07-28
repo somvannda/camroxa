@@ -15,6 +15,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.1] - 2026-07-28
+
+### Fixed
+
+- **Frozen export hang (Loading audio / Computing spectrum):** package full soundfile+soxr stack; decode via soundfile+soxr; analyze audio before OpenGL; analysis fps 30; freeze BLAS to 1 thread in installer builds so Preferences multi-worker does not livelock STFT
+- **Frozen beat crash:** replace `librosa.beat.beat_track` with onset peak-picking in installer builds (avoid `0xC0000005`)
+- **Frozen beats hang under multi-worker:** avoid `librosa.util.peak_pick` while another worker encodes; scipy/NumPy peaks + analysis mutex
+- **Export console flashes:** hide `nvidia-smi` / `taskkill` via `run_hidden` (N workers no longer open N black consoles)
+- **Standard tier FPS:** honor Video page FPS + speed (not Master-only)
+- **Low-VRAM:** export workers still forced to 1
+
 ## [1.0.0] - 2026-07-26
 
 First official production release of the Camxora desktop studio.

@@ -10,8 +10,6 @@ import time
 import uuid
 from pathlib import Path
 
-import pygame
-
 from shared.lib.subprocess_utils import popen_hidden
 
 from .audio import AudioAnalyzer
@@ -23,7 +21,7 @@ from .renderer import RenderSize
 
 
 def _send(evt: dict) -> None:
-    print(f"MG_EVENT {json.dumps(evt, ensure_ascii=False)}", flush=True)
+    print(f"MG_EVENT {json.dumps(evt, ensure_ascii=True)}", flush=True)
 
 
 def _stem(p: str) -> str:
@@ -139,6 +137,10 @@ def _main_impl() -> int:
         from features.video.lib.export_cancel import export_cancel_requested
 
         return run_gpu_render(gopts, cancel_check=export_cancel_requested)
+
+    # CPU path only — keep pygame out of the GPU export import graph so
+    # OpenBLAS/librosa.stft is not poisoned before audio analysis.
+    import pygame
 
     _send({"status": "running", "message": "Analyzing audio...", "progress": 0.0})
     point_count = 1024 # Sync with gpu_render
