@@ -2317,6 +2317,17 @@ class VideoView(QWidget):
             )
         )
         notify_action(message, tone="success")
+        # Single-track runs skip merge — treat export finish as conclusive completion.
+        if int(merge_context.get("total") or completed or 0) <= 1:
+            from shared.lib.pipeline_completion import mark_desktop_pipeline_complete
+
+            mark_desktop_pipeline_complete(
+                self._api,
+                batch_id=str(merge_context.get("batch_id") or ""),
+                profile_id=str(merge_context.get("profile_id") or ""),
+                role=str(merge_context.get("role") or "OK"),
+                run_dir=str(merge_context.get("run_dir") or ""),
+            )
 
     def _start_pipeline_merge(self) -> None:
         context = dict(self._pipeline_merge_context or {})
@@ -2430,6 +2441,20 @@ class VideoView(QWidget):
             )
         )
         notify_action(message, tone="success")
+        merge_context = dict(self._pipeline_merge_context or {})
+        from shared.lib.pipeline_completion import mark_desktop_pipeline_complete
+
+        mark_desktop_pipeline_complete(
+            self._api,
+            batch_id=str(merge_context.get("batch_id") or ""),
+            profile_id=str(merge_context.get("profile_id") or ""),
+            role=str(merge_context.get("role") or "OK"),
+            run_dir=str(
+                merge_context.get("run_dir")
+                or (self._workspace.export.output_dir if self._workspace else "")
+                or ""
+            ),
+        )
 
     def _on_pipeline_merge_failed(self, message: str) -> None:
         user_stop = self._is_user_initiated_stop(

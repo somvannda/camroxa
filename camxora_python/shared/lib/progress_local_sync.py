@@ -35,9 +35,15 @@ def _needs_channel_asset_sync(row: ProgressRow, assets: dict[str, str | None]) -
     meta = row.meta
     long_ready = compute_long_ready(assets)
     reel_ready = compute_reel_ready(assets)
-    if long_ready != bool(meta.long_ready):
+    # Never push a readiness regression (empty/moved folder must not clear API).
+    if bool(meta.long_ready) and not long_ready:
+        return False
+    if bool(meta.reel_ready) and not reel_ready:
+        # Still allow sync if long newly ready or paths improved
+        pass
+    if long_ready and not bool(meta.long_ready):
         return True
-    if reel_ready != bool(meta.reel_ready):
+    if reel_ready and not bool(meta.reel_ready):
         return True
     for key in (
         "background_16x9_path",
@@ -68,6 +74,12 @@ def build_local_progress_sync_items(rows: list[ProgressRow]) -> list[LocalProgre
         if key in seen:
             continue
 
+        from pathlib import Path
+
+        if not Path(run_dir).is_dir():
+            # Folder moved/archived — never sync empty state over API readiness.
+            continue
+
         assets = resolve_local_channel_asset_paths(run_dir, channel_role=meta.role)
         long_ready = compute_long_ready(assets)
         reel_ready = compute_reel_ready(assets)
@@ -76,7 +88,8 @@ def build_local_progress_sync_items(rows: list[ProgressRow]) -> list[LocalProgre
         api_saved = max(0, int(meta.saved or 0))
         needs_assets = _needs_channel_asset_sync(row, assets)
         needs_music = local_mp3_count >= expected and local_mp3_count > api_saved
-        if not needs_assets and not needs_music and not (long_ready or reel_ready):
+        pipeline_complete = bool(getattr(meta, "pipeline_complete", False))
+        if not needs_assets and not needs_music and not (long_ready or reel_ready or pipeline_complete):
             continue
 
         seen.add(key)
@@ -94,6 +107,7 @@ def build_local_progress_sync_items(rows: list[ProgressRow]) -> list[LocalProgre
                 background_9x16_path=assets.get("background_9x16_path"),
                 thumbnail_16x9_path=assets.get("thumbnail_16x9_path"),
                 thumbnail_9x16_path=assets.get("thumbnail_9x16_path"),
+                pipeline_complete=True if pipeline_complete else None,
             )
         )
     return items

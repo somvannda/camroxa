@@ -362,6 +362,8 @@ class BatchChannelAssets:
     background_9x16_path: str | None = None
     thumbnail_16x9_path: str | None = None
     thumbnail_9x16_path: str | None = None
+    pipeline_complete: bool = False
+    pipeline_completed_at: datetime | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 

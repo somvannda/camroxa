@@ -1,15 +1,16 @@
-﻿Camxora 1.0.2 — Progress filters + Update freeze
+﻿Camxora 1.0.3 — Freeze completed Progress when folders move
 Date: 2026-07-28
 
 What's new
 ----------
-• Progress Limit: 10 / 25 / 50 / 100 (default 10); list matches selected count
-• Active only hides Done after desktop overlays (not only raw API stage)
-• Update column freezes when pipeline is Done/Error (YouTube completion time)
-• Includes 1.0.1 frozen export / multi-worker / console fixes
+• Moving/archiving a finished run folder no longer reopens Music/Export work
+• New conclusive stage: Completed (desktop pipeline finished); Done remains YouTube success
+• Sticky pipeline_complete flag synced to API after merge (or single-track export)
+• Includes 1.0.2 Progress Limit / Active only / Update freeze fixes
+• Includes 1.0.1 frozen export fixes
 
 Notes
 -----
-• Production API only (same as 1.0.0)
+• Production API only
 • API: https://api.camxora.com/api/v1
-• Installer file: CamxoraSetup-1.0.2.exe
+• Installer file: CamxoraSetup-1.0.3.exe

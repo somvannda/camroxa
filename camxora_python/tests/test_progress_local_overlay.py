@@ -7,7 +7,7 @@ from shared.models.platform import ProgressRow, ProgressRowMeta
 
 
 def _row(**meta_overrides: object) -> ProgressRow:
-    meta = ProgressRowMeta(
+    base = dict(
         batch_id="batch-1",
         profile_id="profile-1",
         role="OK",
@@ -23,8 +23,9 @@ def _row(**meta_overrides: object) -> ProgressRow:
         th_status="READY",
         long_ready=True,
         reel_ready=False,
-        **meta_overrides,
     )
+    base.update(meta_overrides)
+    meta = ProgressRowMeta(**base)
     return ProgressRow(
         batch="batch-1",
         run_date="2026-07-07",
@@ -42,17 +43,30 @@ def _row(**meta_overrides: object) -> ProgressRow:
     )
 
 
-def test_overlay_downgrades_ready_assets_when_files_missing(tmp_path) -> None:
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
+def test_overlay_preserves_completed_music_when_folder_moved(tmp_path) -> None:
+    """Moved/archived run folder must not rewind API download counters."""
+    run_dir = tmp_path / "missing-run"
+    # Intentionally do not create the directory.
 
     rows = apply_local_progress_overlays([_row(run_dir=str(run_dir))])
     row = rows[0]
 
-    assert row.meta.long_ready is False
-    assert row.meta.bg_status == "SYNC"
-    assert row.stage == "Music"
-    assert "mp3" in row.notes.lower() or "download" in row.notes.lower()
+    assert row.meta.saved == 1
+    assert row.meta.download_pending == 0
+    assert row.stage in {"Converter", "Export"}
+    assert row.meta.long_ready is True
+    # Must not reopen Music work after the folder was moved.
+    assert row.stage.lower() != "music"
+
+
+def test_overlay_preserves_pipeline_complete_flag(tmp_path) -> None:
+    run_dir = tmp_path / "gone"
+    source = _row(run_dir=str(run_dir), pipeline_complete=True).model_copy(
+        update={"stage": "Completed", "status": "Completed", "notes": "Desktop pipeline completed."},
+    )
+    row = apply_local_progress_overlays([source])[0]
+    assert row.stage == "Completed"
+    assert row.meta.saved == 1
 
 
 def test_overlay_keeps_ready_assets_when_files_exist(tmp_path) -> None:
@@ -70,31 +84,37 @@ def test_overlay_keeps_ready_assets_when_files_exist(tmp_path) -> None:
     assert row.stage == "Export"
 
 
-def test_overlay_downgrades_music_when_mp3s_missing(tmp_path) -> None:
+def test_overlay_downgrades_music_when_download_still_pending(tmp_path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     (run_dir / "background-16x9.png").write_bytes(b"bg")
     (run_dir / "thumbnail-16x9.png").write_bytes(b"th")
 
-    rows = apply_local_progress_overlays([_row(run_dir=str(run_dir))])
+    source = _row(
+        run_dir=str(run_dir),
+        saved=0,
+        download_ready=1,
+        download_pending=1,
+        long_ready=False,
+    ).model_copy(update={"stage": "Music", "status": "Downloading", "music": "0/1 ↓"})
+    rows = apply_local_progress_overlays([source])
     row = rows[0]
 
     assert row.meta.saved == 0
-    assert row.meta.download_pending == 1
     assert row.stage == "Music"
 
 
-def test_overlay_downgrades_converter_when_images_missing_but_music_local(tmp_path) -> None:
+def test_overlay_downgrades_converter_when_images_missing_but_folder_present(tmp_path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
 
-    rows = apply_local_progress_overlays([_row(run_dir=str(run_dir))])
+    source = _row(run_dir=str(run_dir), long_ready=False, bg_ready=0, th_ready=0)
+    rows = apply_local_progress_overlays([source])
     row = rows[0]
 
     assert row.stage == "Image"
     assert row.meta.long_ready is False
-    assert row.meta.bg_status == "SYNC"
 
 
 def test_overlay_promotes_image_stage_when_assets_exist(tmp_path) -> None:

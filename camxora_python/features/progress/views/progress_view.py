@@ -72,6 +72,7 @@ STAGE_OPTIONS = (
     ("Export", "export"),
     ("Merge", "merge"),
     ("YouTube", "youtube"),
+    ("Completed", "completed"),
     ("Done", "done"),
     ("Error", "error"),
 )
@@ -430,11 +431,11 @@ class ProgressView(PollablePageMixin, QScrollArea):
         stage = self._current_stage_filter()
         entries = self._effective_rows()
         if self._active_only.isChecked():
-            # Match Stage filter behavior: hide terminal Done after desktop overlays.
+            # Match Stage filter behavior: hide terminal Done/Completed after desktop overlays.
             entries = [
                 entry
                 for entry in entries
-                if str(entry.effective_stage or "").strip().lower() != "done"
+                if str(entry.effective_stage or "").strip().lower() not in {"done", "completed"}
             ]
         if stage != "all":
             entries = [

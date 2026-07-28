@@ -315,7 +315,7 @@ class OperationalRowsCard(QFrame):
         stage_key = str(stage or "").strip().lower()
         if stage_key == "done" and meta.youtube_updated_at is not None:
             return meta.youtube_updated_at
-        if stage_key in {"done", "error"}:
+        if stage_key in {"done", "completed", "error"}:
             candidates = [
                 meta.youtube_updated_at,
                 meta.image_updated_at,

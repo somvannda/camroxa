@@ -15,6 +15,13 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.3] - 2026-07-28
+
+### Fixed
+
+- **Moved run folders no longer reopen Progress:** keep music/image/export status when the folder is archived; sticky Completed after merge/export
+- Progress stage filter includes Completed; Active only hides Completed + Done
+
 ## [1.0.2] - 2026-07-28
 
 ### Fixed

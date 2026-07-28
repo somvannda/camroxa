@@ -1289,20 +1289,43 @@ class BatchRepository:
                 (id, batch_id, user_id, profile_id, role, run_dir, source_mode,
                  background_16x9_path, background_9x16_path,
                  thumbnail_16x9_path, thumbnail_9x16_path,
+                 pipeline_complete, pipeline_completed_at,
                  created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
             ON CONFLICT (batch_id, profile_id, role)
             DO UPDATE SET
-                run_dir = EXCLUDED.run_dir,
+                run_dir = COALESCE(NULLIF(EXCLUDED.run_dir, ''), batch_channel_assets.run_dir),
                 source_mode = EXCLUDED.source_mode,
-                background_16x9_path = EXCLUDED.background_16x9_path,
-                background_9x16_path = EXCLUDED.background_9x16_path,
-                thumbnail_16x9_path = EXCLUDED.thumbnail_16x9_path,
-                thumbnail_9x16_path = EXCLUDED.thumbnail_9x16_path,
+                background_16x9_path = COALESCE(
+                    NULLIF(EXCLUDED.background_16x9_path, ''),
+                    batch_channel_assets.background_16x9_path
+                ),
+                background_9x16_path = COALESCE(
+                    NULLIF(EXCLUDED.background_9x16_path, ''),
+                    batch_channel_assets.background_9x16_path
+                ),
+                thumbnail_16x9_path = COALESCE(
+                    NULLIF(EXCLUDED.thumbnail_16x9_path, ''),
+                    batch_channel_assets.thumbnail_16x9_path
+                ),
+                thumbnail_9x16_path = COALESCE(
+                    NULLIF(EXCLUDED.thumbnail_9x16_path, ''),
+                    batch_channel_assets.thumbnail_9x16_path
+                ),
+                pipeline_complete = batch_channel_assets.pipeline_complete OR EXCLUDED.pipeline_complete,
+                pipeline_completed_at = CASE
+                    WHEN batch_channel_assets.pipeline_complete THEN batch_channel_assets.pipeline_completed_at
+                    WHEN EXCLUDED.pipeline_complete THEN COALESCE(
+                        EXCLUDED.pipeline_completed_at, NOW()
+                    )
+                    ELSE batch_channel_assets.pipeline_completed_at
+                END,
                 updated_at = NOW()
             RETURNING id, batch_id, user_id, profile_id, role, run_dir, source_mode,
                       background_16x9_path, background_9x16_path,
-                      thumbnail_16x9_path, thumbnail_9x16_path, created_at, updated_at
+                      thumbnail_16x9_path, thumbnail_9x16_path,
+                      pipeline_complete, pipeline_completed_at,
+                      created_at, updated_at
             """,
             asset.id,
             asset.batch_id,
@@ -1315,6 +1338,8 @@ class BatchRepository:
             asset.background_9x16_path,
             asset.thumbnail_16x9_path,
             asset.thumbnail_9x16_path,
+            bool(asset.pipeline_complete),
+            asset.pipeline_completed_at,
         )
         return self._row_to_batch_channel_assets(row)
 
@@ -1330,6 +1355,7 @@ class BatchRepository:
             SELECT id, batch_id, user_id, profile_id, role, run_dir, source_mode,
                    background_16x9_path, background_9x16_path,
                    thumbnail_16x9_path, thumbnail_9x16_path,
+                   pipeline_complete, pipeline_completed_at,
                    created_at, updated_at
             FROM batch_channel_assets
             WHERE user_id = $1 AND batch_id = ANY($2::uuid[])
@@ -1893,6 +1919,8 @@ class BatchRepository:
             background_9x16_path=row["background_9x16_path"],
             thumbnail_16x9_path=row["thumbnail_16x9_path"],
             thumbnail_9x16_path=row["thumbnail_9x16_path"],
+            pipeline_complete=bool(row.get("pipeline_complete", False)),
+            pipeline_completed_at=row.get("pipeline_completed_at"),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

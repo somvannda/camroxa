@@ -35,7 +35,7 @@ class AutoVideoCandidate:
 
 def _is_terminal_stage(stage: str) -> bool:
     normalized = str(stage or "").strip().lower()
-    return normalized in {"youtube", "done", "error"}
+    return normalized in {"youtube", "done", "completed", "error"}
 
 
 def _has_expected_outputs(paths: tuple[str, ...] | list[str] | None, expected: int) -> bool:
