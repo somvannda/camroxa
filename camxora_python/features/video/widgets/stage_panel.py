@@ -305,6 +305,7 @@ class VideoStagePanel(SettingsPanel):
         background: bool,
         spectrum_position: bool,
         text_domain: str = "",
+        lightning_position: bool = False,
     ) -> None:
         domain = str(text_domain or "").strip().lower()
         self._active_text_domain = domain if domain in {"album", "title"} else ""
@@ -313,6 +314,7 @@ class VideoStagePanel(SettingsPanel):
                 background=background,
                 spectrum_position=spectrum_position,
                 text_domain=self._active_text_domain,
+                lightning_position=lightning_position,
             )
         if self._text_drag_overlay is not None:
             self._text_drag_overlay.set_edit_domain(self._active_text_domain)

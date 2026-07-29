@@ -226,6 +226,7 @@ class AspectRatioBox(QWidget):
 
 class VideoSpectrumPreview(QOpenGLWidget):
     position_changed = Signal(int, int)
+    lightning_position_changed = Signal(int, int)
     background_transform_changed = Signal(float, float, float)
     playback_state_changed = Signal(object)
     text_domain_position_changed = Signal(str, float, float)
@@ -287,6 +288,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._drag_last = None
         self._bg_edit_mode = False
         self._spectrum_position_edit_mode = False
+        self._lightning_position_edit_mode = False
+        self._selected_lightning_layer_index = 0
         self._text_domain_edit_mode = ""  # "album" | "title" | ""
         # GPU real-time drag: paint-time screen offset only (no template rebuild).
         self._text_drag_domain = ""
@@ -655,15 +658,23 @@ class VideoSpectrumPreview(QOpenGLWidget):
     def set_spectrum_position_edit_mode(self, enabled: bool) -> None:
         self._spectrum_position_edit_mode = bool(enabled)
 
+    def set_lightning_position_edit_mode(self, enabled: bool) -> None:
+        self._lightning_position_edit_mode = bool(enabled)
+
+    def set_selected_lightning_layer_index(self, index: int) -> None:
+        self._selected_lightning_layer_index = int(max(0, index))
+
     def set_edit_modes(
         self,
         *,
         background: bool = False,
         spectrum_position: bool = False,
         text_domain: str = "",
+        lightning_position: bool = False,
     ) -> None:
         self._bg_edit_mode = bool(background)
         self._spectrum_position_edit_mode = bool(spectrum_position)
+        self._lightning_position_edit_mode = bool(lightning_position)
         domain = str(text_domain or "").strip().lower()
         self._text_domain_edit_mode = domain if domain in {"album", "title"} else ""
         if not self._text_domain_edit_mode:
@@ -1062,7 +1073,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
     def mousePressEvent(self, ev):
         # Album/Title drag is handled by TextDragOverlay (CapCut-style UI layer).
         if ev.button() == Qt.MouseButton.LeftButton and (
-            self._bg_edit_mode or self._spectrum_position_edit_mode
+            self._bg_edit_mode
+            or self._spectrum_position_edit_mode
+            or getattr(self, "_lightning_position_edit_mode", False)
         ):
             self._dragging = True
             self._drag_last = (float(ev.position().x()), float(ev.position().y()))
@@ -1100,13 +1113,29 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self.background_transform_changed.emit(float(ox), float(oy), float(bg.get("userScale", 1.0) or 1.0))
             ev.accept()
             return
-        if not bool(getattr(self, "_spectrum_position_edit_mode", False)):
-            super().mouseMoveEvent(ev)
-            return
         base_h = float(self.template.get('renderBaseHeight', 450.0))
         base_h = float(max(1.0, min(4000.0, base_h)))
         sf = float(max(1.0, self.height())) / base_h
         if sf <= 1e-06:
+            return
+        if bool(getattr(self, "_lightning_position_edit_mode", False)):
+            layers = self.template.get("lightningLayers")
+            if not isinstance(layers, list) or not layers:
+                ev.accept()
+                return
+            idx = int(max(0, min(getattr(self, "_selected_lightning_layer_index", 0), len(layers) - 1)))
+            layer = layers[idx] if isinstance(layers[idx], dict) else {}
+            nx = int(round(float(layer.get("x", 0.0) or 0.0) + float(dx) / sf))
+            ny = int(round(float(layer.get("y", 0.0) or 0.0) + float(dy) / sf))
+            nx = int(max(-1000, min(1000, nx)))
+            ny = int(max(-1000, min(1000, ny)))
+            layers[idx] = {**layer, "x": float(nx), "y": float(ny)}
+            self.template["lightningLayers"] = layers
+            self.lightning_position_changed.emit(nx, ny)
+            ev.accept()
+            return
+        if not bool(getattr(self, "_spectrum_position_edit_mode", False)):
+            super().mouseMoveEvent(ev)
             return
         pos_cfg = self.template.get('position', {}) if isinstance(self.template.get('position'), dict) else {}
         nx = int(round(float(pos_cfg.get('x', 0.0)) + float(dx) / sf))

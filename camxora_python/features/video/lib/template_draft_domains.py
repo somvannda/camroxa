@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-DOMAIN_KEYS = ("spectrum", "background", "logo", "particles", "album", "title", "text")
+DOMAIN_KEYS = ("spectrum", "background", "logo", "particles", "lightning", "album", "title", "text")
 
 
 def _pick_spectrum_slice(draft: dict[str, Any]) -> dict[str, Any]:

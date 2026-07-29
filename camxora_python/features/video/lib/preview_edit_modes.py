@@ -8,8 +8,8 @@ def resolve_preview_edit_modes(
     active_side_tab: str = "",
     *,
     edit_focus: str = "domain",
-) -> tuple[bool, bool, str]:
-    """Return `(background_edit, spectrum_position_edit, text_domain_edit)`.
+) -> tuple[bool, bool, str, bool]:
+    """Return `(background_edit, spectrum_position_edit, text_domain_edit, lightning_position_edit)`.
 
     ``text_domain_edit`` is ``\"album\"``, ``\"title\"``, or ``\"\"``.
     ``edit_focus`` is ``\"domain\"`` (left rail) or ``\"side\"`` (right rail).
@@ -19,11 +19,13 @@ def resolve_preview_edit_modes(
     focus = str(edit_focus or "domain").strip().lower()
     side = str(active_side_tab or "").strip().lower()
     if focus == "side" and side in {"album", "title"}:
-        return False, False, side
+        return False, False, side, False
 
     tab = str(active_domain_tab or "").strip().lower()
     if tab == "background":
-        return True, False, ""
+        return True, False, "", False
     if tab == "spectrum":
-        return False, True, ""
-    return False, False, ""
+        return False, True, "", False
+    if tab == "lightning":
+        return False, False, "", True
+    return False, False, "", False

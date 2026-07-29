@@ -33,6 +33,7 @@ class VideoLeftRail(SettingsPanel):
         ("background", "Background"),
         ("logo", "Logo"),
         ("particles", "Particles"),
+        ("lightning", "Lightning"),
     )
 
     def __init__(

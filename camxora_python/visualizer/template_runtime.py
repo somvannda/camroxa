@@ -126,6 +126,33 @@ def default_renderer_template() -> dict:
             "vignette": {"enabled": False, "strength": 0.35, "feather": 0.65, "color": "#000000", "opacity": 0.65},
             "smoke": {"enabled": False, "strength": 0.35, "blur": 0.55, "noise": 0.55, "speed": 0.35, "color": "#000000", "opacity": 0.55},
         },
+        "lightningEnabled": True,
+        "lightningLayers": [
+            {
+                "id": "lightning-1",
+                "name": "Bolt 1",
+                "enabled": True,
+                "style": "fork",
+                "x": 0.0,
+                "y": 0.0,
+                "direction": "down",
+                "color": {
+                    "mode": "gradient",
+                    "solidColor": "#e0f2fe",
+                    "gradientColors": ["#ffffff", "#7dd3fc", "#38bdf8"],
+                },
+                "opacity": 0.85,
+                "intensity": 0.72,
+                "reactivity": 0.55,
+                "speed": 1.0,
+                "flashRate": 0.85,
+                "thickness": 2.8,
+                "glow": 0.5,
+                "branchiness": 0.55,
+                "blend": "add",
+                "length": 200.0,
+            }
+        ],
         "textOverlays": [],
     }
 
@@ -312,6 +339,14 @@ def normalize_renderer_template(input_template: Any) -> dict:
         "opacity": float(max(0.0, min(1.0, float(smoke_in.get("opacity", 0.55) or 0.55)))),
     }
     out["effects"] = effects
+
+    out["lightningEnabled"] = bool(out.get("lightningEnabled", True))
+    try:
+        from features.video.lib.lightning_style_registry import normalize_lightning_layers
+
+        out["lightningLayers"] = normalize_lightning_layers(out.get("lightningLayers"))
+    except Exception:
+        out["lightningLayers"] = list(base.get("lightningLayers") or [])
 
     overlays_in = input_template.get("textOverlays") if isinstance(input_template.get("textOverlays"), list) else []
     overlays: list[dict] = []
