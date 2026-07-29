@@ -201,10 +201,11 @@ def _build_row(
     youtube_status = str(youtube.get("latest_status", "") or "").upper()
     youtube_url = youtube.get("youtube_url")
 
+    # Export can start once the background is ready. Thumbnail is for YouTube upload
+    # and may still be rendering while the row is already in Converter/Export.
     image_complete = (
         (bg_total <= 0 or bg_ready >= bg_total)
-        and (th_total <= 0 or th_ready >= th_total)
-        and (bg_total > 0 or th_total > 0)
+        and (bg_total > 0 or long_ready or reel_ready)
         and (long_ready or reel_ready)
     )
 
@@ -260,7 +261,7 @@ def _build_row(
     elif not image_complete:
         stage = "Image"
         status = "Rendering" if (bg_total > 0 or th_total > 0) else "Queued"
-        notes = "Background and thumbnail generation are still in progress."
+        notes = "Background generation is still in progress (needed before video export)."
     else:
         stage = "Converter"
         status = "Queued"

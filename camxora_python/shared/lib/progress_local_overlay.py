@@ -147,8 +147,8 @@ def _apply_local_stage_truth(
             update={
                 "stage": "Image",
                 "status": STATUS_IN_PROGRESS,
-                "notes": "Background/thumbnail files are not present locally yet.",
-                "converter": "Not started · waiting for image assets",
+                "notes": "Background image is not present locally yet (needed before video export).",
+                "converter": "Not started · waiting for background image",
                 "merge": "—",
             }
         )
@@ -164,7 +164,7 @@ def _apply_local_stage_truth(
                 "status": STATUS_PENDING
                 if status in {"", "Rendering", STATUS_IN_PROGRESS, "Queued", "Waiting"}
                 else status,
-                "notes": notes or "Image assets are ready locally; waiting for video export.",
+                "notes": notes or "Background is ready locally; waiting for video export.",
                 "converter": "Pending · no exports yet",
             }
         )

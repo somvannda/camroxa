@@ -15,21 +15,6 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-## [1.0.3] - 2026-07-28
-
-### Fixed
-
-- **Moved run folders no longer reopen Progress:** keep music/image/export status when the folder is archived; sticky Completed after merge/export
-- Progress stage filter includes Completed; Active only hides Completed + Done
-
-## [1.0.2] - 2026-07-28
-
-### Fixed
-
-- **Progress Limit filter:** options are 10 / 25 / 50 / 100 (default 10); row list is sliced to the selected count after OK/ALT expansion
-- **Progress Active only:** filters on effective stage after desktop overlays (hides Done), not only the raw API flag
-- **Progress Update column:** freezes at YouTube completion (or last activity) once stage is Done/Error so sync heartbeats stop rewriting the time
-
 ## [1.0.1] - 2026-07-28
 
 ### Fixed
@@ -40,6 +25,15 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - **Export console flashes:** hide `nvidia-smi` / `taskkill` via `run_hidden` (N workers no longer open N black consoles)
 - **Standard tier FPS:** honor Video page FPS + speed (not Master-only)
 - **Low-VRAM:** export workers still forced to 1
+- **Progress Limit filter:** options are 10 / 25 / 50 / 100 (default 10); row list is sliced to the selected count after OK/ALT expansion
+- **Progress Active only:** filters on effective stage after desktop overlays (hides Done + Completed), not only the raw API flag
+- **Progress Update column:** freezes at YouTube completion (or last activity) once stage is Done/Error/Completed so sync heartbeats stop rewriting the time
+- **Moved run folders no longer reopen Progress:** keep music/image/export status when the folder is archived; sticky Completed after merge/export
+- Progress stage filter includes Completed; Active only hides Completed + Done
+
+### Changed
+
+- **Video export starts when background is ready:** thumbnail is no longer required for render/auto-export (YouTube upload only). See `docs/changelog/2026-07-28-export-without-waiting-for-thumbnail.md`.
 
 ## [1.0.0] - 2026-07-26
 

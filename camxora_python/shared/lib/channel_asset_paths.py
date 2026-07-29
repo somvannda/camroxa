@@ -64,10 +64,22 @@ def resolve_local_channel_asset_paths(
 
 
 def compute_long_ready(asset_paths: dict[str, str | None]) -> bool:
-    return bool(asset_paths.get("background_16x9_path") and asset_paths.get("thumbnail_16x9_path"))
+    """True when the long-video background exists (thumbnail is YouTube-only)."""
+    return bool(asset_paths.get("background_16x9_path"))
 
 
 def compute_reel_ready(asset_paths: dict[str, str | None]) -> bool:
+    """True when the reel background exists (thumbnail is YouTube-only)."""
+    return bool(asset_paths.get("background_9x16_path"))
+
+
+def compute_youtube_long_ready(asset_paths: dict[str, str | None]) -> bool:
+    """True when long upload assets are complete (background + thumbnail)."""
+    return bool(asset_paths.get("background_16x9_path") and asset_paths.get("thumbnail_16x9_path"))
+
+
+def compute_youtube_reel_ready(asset_paths: dict[str, str | None]) -> bool:
+    """True when reel upload assets are complete (background + thumbnail)."""
     return bool(asset_paths.get("background_9x16_path") and asset_paths.get("thumbnail_9x16_path"))
 
 

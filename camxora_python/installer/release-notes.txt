@@ -1,16 +1,19 @@
-﻿Camxora 1.0.3 — Freeze completed Progress when folders move
+﻿Camxora 1.0.1 — Progress + export stability
 Date: 2026-07-28
 
 What's new
 ----------
-• Moving/archiving a finished run folder no longer reopens Music/Export work
-• New conclusive stage: Completed (desktop pipeline finished); Done remains YouTube success
-• Sticky pipeline_complete flag synced to API after merge (or single-track export)
-• Includes 1.0.2 Progress Limit / Active only / Update freeze fixes
-• Includes 1.0.1 frozen export fixes
+• Frozen export hang / beat crash / multi-worker beats hang fixes
+• Export console flashes hidden (nvidia-smi / taskkill)
+• Progress Limit: 10 / 25 / 50 / 100 (default 10)
+• Progress Active only uses effective stage (hides Done + Completed)
+• Update column freezes when Done / Error / Completed
+• Moved/archived run folders no longer reopen Music/Export
+• New stage: Completed (desktop pipeline finished); Done = YouTube
+• Video export starts when background is ready (thumbnail is YouTube-only)
 
 Notes
 -----
 • Production API only
 • API: https://api.camxora.com/api/v1
-• Installer file: CamxoraSetup-1.0.3.exe
+• Installer file: CamxoraSetup-1.0.1.exe

@@ -1,7 +1,7 @@
 # Progress filters + Secondary album uniqueness
 
 **Date:** 2026-07-28  
-**Status:** implemented (desktop installer rebuild + API deploy pending)
+**Status:** implemented (desktop v1.0.2 installer built; API synced sandbox + production)
 
 ## Summary
 

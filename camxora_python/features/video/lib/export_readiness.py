@@ -56,18 +56,13 @@ def evaluate_video_export_readiness(
             assets = resolve_local_channel_asset_paths(run_dir, channel_role=meta.role)
             if normalized_branch == "long":
                 bg_path = assets.get("background_16x9_path")
-                th_path = assets.get("thumbnail_16x9_path")
                 bg_name = "background-16x9.png"
-                th_name = "thumbnail-16x9.png"
             else:
                 bg_path = assets.get("background_9x16_path")
-                th_path = assets.get("thumbnail_9x16_path")
                 bg_name = "background-9x16.png"
-                th_name = "thumbnail-9x16.png"
+            # Thumbnail is for YouTube upload only — not required for video export.
             if not bg_path:
                 issues.append(f"Missing {bg_name} in run folder.")
-            if not th_path:
-                issues.append(f"Missing {th_name} in run folder.")
 
             expected = max(1, int(meta.expected or 0))
             if not local_mp3_files_ready(row):
@@ -90,13 +85,8 @@ def evaluate_video_export_readiness(
         )
 
     if not inputs.ready and run_dir:
-        missing = []
         if not str(inputs.background_path or "").strip():
-            missing.append("background")
-        if not str(inputs.thumbnail_path or "").strip():
-            missing.append("thumbnail")
-        if missing:
-            issues.append(f"Local {normalized_branch} branch assets incomplete: {', '.join(missing)}.")
+            issues.append(f"Local {normalized_branch} branch assets incomplete: background.")
 
     store = VideoLocalStore()
     if run_dir and local_mp3_files_ready(row) and not store.list_mp3_files(run_dir):

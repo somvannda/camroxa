@@ -81,12 +81,10 @@ def resolve_local_video_pipeline_inputs(
     assets = resolve_local_channel_asset_paths(run_dir, channel_role=meta.role if meta is not None else None)
     background_path = assets["background_16x9_path"] if is_long else assets["background_9x16_path"]
     thumbnail_path = assets["thumbnail_16x9_path"] if is_long else assets["thumbnail_9x16_path"]
+    # Export needs background only; thumbnail is optional (YouTube upload).
     ready = compute_long_ready(assets) if is_long else compute_reel_ready(assets)
-    if ready:
-        for path in (background_path, thumbnail_path):
-            if not path or not Path(str(path)).is_file():
-                ready = False
-                break
+    if ready and (not background_path or not Path(str(background_path)).is_file()):
+        ready = False
 
     return ResolvedVideoPipelineInputs(
         branch=branch,

@@ -114,6 +114,35 @@ def test_select_next_auto_video_candidate_returns_long_branch(tmp_path) -> None:
     assert "background-16x9" in candidate.background_path
 
 
+def test_select_next_auto_video_candidate_with_background_only(tmp_path) -> None:
+    run_dir = tmp_path / "primary"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "background-16x9.png").write_bytes(b"bg")
+    (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
+    (run_dir / "2. Track_OK.mp3").write_bytes(b"mp3")
+    row = _row(run_dir=str(run_dir))
+    key = "batch-1:profile-1:OK"
+    candidate = select_next_auto_video_candidate(
+        rows=[row],
+        profiles=[_profile()],
+        settings={"autoVideoAfterSuno": True},
+        inspections={
+            key: VideoRunInspection(
+                directory=str(run_dir),
+                long_output_paths=(),
+                reel_output_paths=(),
+                merged_long_paths=(),
+                merged_reel_paths=(),
+            )
+        },
+        runtime_by_key={},
+        workspace=_workspace(),
+    )
+    assert candidate is not None
+    assert candidate.branch == "long"
+    assert "background-16x9" in candidate.background_path
+
+
 def test_select_next_auto_video_candidate_disabled_without_toggle(tmp_path) -> None:
     run_dir = tmp_path / "primary"
     _seed_run_folder(run_dir)

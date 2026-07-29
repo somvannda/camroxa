@@ -118,3 +118,39 @@ def test_evaluate_video_export_readiness_passes_when_run_folder_complete(tmp_pat
     readiness = evaluate_video_export_readiness(row, _profile(), workspace=_workspace())
     assert readiness.ready is True
     assert readiness.issues == ()
+
+
+def test_evaluate_video_export_readiness_passes_with_background_only(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "background-16x9.png").write_bytes(b"bg")
+    (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
+    row = ProgressRow(
+        batch="Batch 1",
+        run_date="2026-06-29",
+        channel="Primary",
+        status="Pending",
+        music="1/1",
+        image="BG ready · TH pending",
+        converter="Pending",
+        merge="Pending",
+        youtube="Pending",
+        stage="Export",
+        notes="",
+        updated="2026-06-29 12:00:00",
+        meta=ProgressRowMeta(
+            batch_id="batch-1",
+            profile_id="profile-1",
+            role="OK",
+            run_dir=str(run_dir),
+            expected=1,
+            saved=1,
+            long_ready=True,
+            reel_ready=False,
+        ),
+    )
+
+    readiness = evaluate_video_export_readiness(row, _profile(), workspace=_workspace())
+    assert readiness.ready is True
+    assert readiness.issues == ()
+    assert not any("thumbnail" in issue.lower() for issue in readiness.issues)

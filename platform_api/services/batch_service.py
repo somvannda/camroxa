@@ -1174,14 +1174,84 @@ class BatchService:
         return str(left or "").strip().lower() == str(right or "").strip().lower()
 
     @staticmethod
-    def _fallback_distinct_album(ok_album: str) -> str:
-        """Deterministic Secondary name when pool/LLM cannot produce a distinct album."""
-        base = str(ok_album or "").strip() or "Album"
-        for suffix in (" II", " Alt", " Remix", " Dual"):
-            candidate = f"{base}{suffix}"
-            if not BatchService._album_names_equal(candidate, base):
+    def _normalize_album_compare(value: str) -> str:
+        return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+    @classmethod
+    def _is_trivial_album_clone(cls, primary: str, candidate: str) -> bool:
+        """True when candidate is just Primary with a cheap suffix (II / Alt / Remix…)."""
+        primary_key = cls._normalize_album_compare(primary)
+        candidate_key = cls._normalize_album_compare(candidate)
+        if not primary_key or not candidate_key:
+            return False
+        if candidate_key == primary_key:
+            return True
+        trivial_suffixes = (
+            "ii",
+            "iii",
+            "2",
+            "3",
+            "alt",
+            "alternate",
+            "remix",
+            "dual",
+            "secondary",
+            "b-side",
+            "b side",
+            "version b",
+            "vol 2",
+            "vol. 2",
+            "part 2",
+            "part ii",
+        )
+        for suffix in trivial_suffixes:
+            if candidate_key == f"{primary_key} {suffix}":
+                return True
+            if candidate_key == f"{primary_key}-{suffix}":
+                return True
+            if candidate_key == f"{primary_key} ({suffix})":
+                return True
+        if candidate_key.startswith(primary_key + " "):
+            rest = candidate_key[len(primary_key) :].strip(" -–—()")
+            if rest in trivial_suffixes:
+                return True
+        return False
+
+    @classmethod
+    def _emergency_fresh_album(cls, ok_album: str) -> str:
+        """Last-resort Secondary name that is NOT derived from Primary."""
+        import random
+
+        words = (
+            "Aurora",
+            "Cascade",
+            "Cipher",
+            "Driftwood",
+            "Ember",
+            "Harbor",
+            "Ivory",
+            "Lumen",
+            "Mirage",
+            "Northwind",
+            "Orbit",
+            "Prism",
+            "Quill",
+            "Riverstone",
+            "Solstice",
+            "Tidepool",
+            "Umbral",
+            "Velvet",
+            "Willow",
+            "Zenith",
+        )
+        for _ in range(24):
+            left, right = random.sample(words, 2)
+            candidate = f"{left} {right}"
+            if not cls._album_names_equal(candidate, ok_album) and not cls._is_trivial_album_clone(
+                ok_album, candidate
+            ):
                 return candidate
-        return f"{base} {uuid4().hex[:4]}"
+        return f"Signal {uuid4().hex[:6]}"
 
     @staticmethod
     def _channel_album_label(batch: Batch, channel_role: ChannelRole) -> str:
@@ -1197,7 +1267,7 @@ class BatchService:
         draft_request: DraftRequest,
         draft_routing: Any,
     ) -> str:
-        """Polish pool seed (or generate) a Secondary album that differs from Primary."""
+        """Generate a fresh Secondary album — never Primary + II/Alt/Remix."""
         from platform_api.ai.parsing.response_parser import parse_string_field
         from platform_api.ai.purposes.metadata_text import (
             is_valid_metadata_name,
@@ -1211,40 +1281,57 @@ class BatchService:
         user_context = str(draft_request.description or "").strip() or "Instrumental electronic music."
         avoid = [ok_album, *(draft_request.avoid_albums or [])]
         seed = str(album_seed or "").strip() or None
-        if seed and self._album_names_equal(seed, ok_album):
+        if seed and (
+            self._album_names_equal(seed, ok_album) or self._is_trivial_album_clone(ok_album, seed)
+        ):
             seed = None
-        album_system, album_user = build_album_slot_prompts(
-            user_context=user_context,
-            album_seed=seed,
-            avoid_albums=avoid,
-            language=draft_request.language,
-            secondary_language=draft_request.secondary_language,
-        )
-        album_user = (
-            f"{album_user}\n\n"
-            f'The Primary album is "{ok_album}". '
-            "Create a distinct Secondary album name with different wording."
-        )
+
         last_failure = "Failed to generate a distinct secondary album name."
-        for attempt in range(1, MAX_ALBUM_ATTEMPTS + 1):
-            album_raw = await self._generation_service.generate_text(
-                system_prompt=album_system,
-                user_prompt=album_user,
-                provider=draft_routing.album.provider,
-                model=draft_routing.album.sub_model or "",
-                temperature=min(1.0, 0.8 + (attempt - 1) * 0.05),
-                max_tokens=256,
-                prefer_json=True,
+        # Pass 1: optional pool seed polish. Pass 2: force a brand-new name (no seed).
+        for pass_index, pass_seed in enumerate((seed, None), start=1):
+            if pass_index == 2 and seed is None:
+                break
+            album_system, album_user = build_album_slot_prompts(
+                user_context=user_context,
+                album_seed=pass_seed,
+                avoid_albums=avoid,
+                language=draft_request.language,
+                secondary_language=draft_request.secondary_language,
             )
-            album = sanitize_metadata_name(parse_string_field(album_raw, "album"), field="album")
-            if not album or not is_valid_metadata_name(album, field="album"):
-                last_failure = f"Invalid secondary album on attempt {attempt}"
-                continue
-            if self._album_names_equal(album, ok_album):
-                last_failure = f"Secondary album matched Primary on attempt {attempt}"
-                continue
-            return album.strip()
-        if seed and not self._album_names_equal(seed, ok_album):
+            album_user = (
+                f"{album_user}\n\n"
+                f'The Primary album is "{ok_album}".\n'
+                "Invent a completely NEW Secondary album title with different words.\n"
+                'Do NOT reuse the Primary name. Do NOT append II, Alt, Remix, Dual, 2, or similar suffixes.'
+            )
+            attempts = max(3, int(MAX_ALBUM_ATTEMPTS) + 1)
+            for attempt in range(1, attempts + 1):
+                album_raw = await self._generation_service.generate_text(
+                    system_prompt=album_system,
+                    user_prompt=album_user,
+                    provider=draft_routing.album.provider,
+                    model=draft_routing.album.sub_model or "",
+                    temperature=min(1.0, 0.85 + (attempt - 1) * 0.05),
+                    max_tokens=256,
+                    prefer_json=True,
+                )
+                album = sanitize_metadata_name(parse_string_field(album_raw, "album"), field="album")
+                if not album or not is_valid_metadata_name(album, field="album"):
+                    last_failure = f"Invalid secondary album on pass {pass_index} attempt {attempt}"
+                    continue
+                if self._album_names_equal(album, ok_album) or self._is_trivial_album_clone(
+                    ok_album, album
+                ):
+                    last_failure = (
+                        f"Secondary album '{album}' was a Primary clone on pass "
+                        f"{pass_index} attempt {attempt}"
+                    )
+                    continue
+                return album.strip()
+
+        if seed and not self._album_names_equal(seed, ok_album) and not self._is_trivial_album_clone(
+            ok_album, seed
+        ):
             return seed
         raise RuntimeError(last_failure)
 
@@ -1259,7 +1346,11 @@ class BatchService:
         draft_routing: Any,
     ) -> str:
         existing = str(batch.alt_album or "").strip()
-        if existing and not self._album_names_equal(existing, ok_album):
+        if (
+            existing
+            and not self._album_names_equal(existing, ok_album)
+            and not self._is_trivial_album_clone(ok_album, existing)
+        ):
             return existing
         if not batch.alt_profile_id:
             return ""
@@ -1275,7 +1366,11 @@ class BatchService:
                 )
                 await finalize_pool_item(item=alt_item)
                 candidate = str(alt_item.text or "").strip()
-                if candidate and not self._album_names_equal(candidate, ok_album):
+                if (
+                    candidate
+                    and not self._album_names_equal(candidate, ok_album)
+                    and not self._is_trivial_album_clone(ok_album, candidate)
+                ):
                     album_seed = candidate
             except Exception as exc:
                 logger.warning(
@@ -1291,10 +1386,20 @@ class BatchService:
                 draft_request=draft_request,
                 draft_routing=draft_routing,
             )
-        except Exception:
-            if album_seed and not self._album_names_equal(album_seed, ok_album):
+        except Exception as exc:
+            logger.warning(
+                "Secondary album LLM generation failed for batch %s: %s",
+                batch.id,
+                exc,
+            )
+            if (
+                album_seed
+                and not self._album_names_equal(album_seed, ok_album)
+                and not self._is_trivial_album_clone(ok_album, album_seed)
+            ):
                 return album_seed
-            return self._fallback_distinct_album(ok_album)
+            # Never invent Primary + "II". Use an unrelated emergency title.
+            return self._emergency_fresh_album(ok_album)
 
     async def _persist_batch_channel_albums(
         self,
@@ -1318,9 +1423,12 @@ class BatchService:
             return batch
 
         alt_album = str(getattr(batch, "alt_album", None) or "").strip()
-        if getattr(batch, "alt_profile_id", None) and (
-            not alt_album or self._album_names_equal(alt_album, ok_album)
-        ):
+        needs_alt = bool(getattr(batch, "alt_profile_id", None)) and (
+            not alt_album
+            or self._album_names_equal(alt_album, ok_album)
+            or self._is_trivial_album_clone(ok_album, alt_album)
+        )
+        if needs_alt:
             draft_request = draft_requests[getattr(successful_songs[0], "batch_index", 0)]
             try:
                 alt_album = await self._resolve_alt_channel_album(
@@ -1337,10 +1445,13 @@ class BatchService:
                     batch_id,
                     exc,
                 )
-                alt_album = self._fallback_distinct_album(ok_album)
+                alt_album = self._emergency_fresh_album(ok_album)
 
-        if alt_album and self._album_names_equal(alt_album, ok_album):
-            alt_album = self._fallback_distinct_album(ok_album)
+        if alt_album and (
+            self._album_names_equal(alt_album, ok_album)
+            or self._is_trivial_album_clone(ok_album, alt_album)
+        ):
+            alt_album = self._emergency_fresh_album(ok_album)
 
         await self._batch_repo.update_batch_channel_albums(
             batch_id,
@@ -1559,21 +1670,23 @@ class BatchService:
         if role_key == "alt" and ok_album:
             album_user = (
                 f"{album_user}\n\n"
-                f'The Primary album is "{ok_album}". '
-                "Create a distinct Secondary album name with a different wording."
+                f'The Primary album is "{ok_album}".\n'
+                "Invent a completely NEW Secondary album title with different words.\n"
+                "Do NOT reuse the Primary name. Do NOT append II, Alt, Remix, Dual, 2, or similar suffixes."
             )
 
         new_album: str | None = None
         last_failure = "Album rewrite produced no usable name."
         try:
-            for attempt in range(1, MAX_ALBUM_ATTEMPTS + 1):
+            attempts = max(3, int(MAX_ALBUM_ATTEMPTS) + (1 if role_key == "alt" else 0))
+            for attempt in range(1, attempts + 1):
                 try:
                     album_raw = await self._generation_service.generate_text(
                         system_prompt=album_system,
                         user_prompt=album_user,
                         provider=draft_routing.album.provider,
                         model=draft_routing.album.sub_model or "",
-                        temperature=0.85,
+                        temperature=min(1.0, 0.85 + (attempt - 1) * 0.05),
                         max_tokens=256,
                         prefer_json=True,
                         provider_chain=album_chain,
@@ -1592,8 +1705,13 @@ class BatchService:
                 if any(candidate.lower() == item.lower() for item in avoid if item):
                     last_failure = f"Album '{candidate}' collided with existing names"
                     continue
-                if role_key == "alt" and ok_album and candidate.lower() == ok_album.lower():
-                    last_failure = "Secondary album matched Primary album"
+                if role_key == "alt" and ok_album and (
+                    self._album_names_equal(candidate, ok_album)
+                    or self._is_trivial_album_clone(ok_album, candidate)
+                ):
+                    last_failure = (
+                        f"Secondary album '{candidate}' was a Primary clone on attempt {attempt}"
+                    )
                     continue
                 new_album = candidate
                 break
@@ -4207,8 +4325,12 @@ class BatchService:
         if not ok_album_text:
             return batch
         alt_album_text = str(alt_album or batch.alt_album or "").strip()
-        if not alt_album_text or self._album_names_equal(alt_album_text, ok_album_text):
-            alt_album_text = self._fallback_distinct_album(ok_album_text)
+        if (
+            not alt_album_text
+            or self._album_names_equal(alt_album_text, ok_album_text)
+            or self._is_trivial_album_clone(ok_album_text, alt_album_text)
+        ):
+            alt_album_text = self._emergency_fresh_album(ok_album_text)
         if self._settings_service is None:
             return batch
         settings = await self._settings_service.get_merged_settings(
@@ -4282,7 +4404,8 @@ class BatchService:
                     alt_album
                     if alt_album
                     and not self._album_names_equal(str(alt_album), str(ok_album or ""))
-                    else self._fallback_distinct_album(str(ok_album or "Album"))
+                    and not self._is_trivial_album_clone(str(ok_album or ""), str(alt_album))
+                    else self._emergency_fresh_album(str(ok_album or "Album"))
                 ),
             ),
             existing_ok_entries=list_run_folder_entries(base_dir, ok_folder),
