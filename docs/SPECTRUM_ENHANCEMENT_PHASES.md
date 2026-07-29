@@ -141,6 +141,7 @@ Unlock poster-style spectrum looks without rewriting the visualizer architecture
 | Date | Decision |
 |------|----------|
 | 2026-07-29 | Plan written; **no implementation** until user kicks off |
+| 2026-07-29 | Phase 1 kicked off and implemented on `fix/spectrum-layer-ui-and-colors` |
 | 2026-07-29 | Public desktop stays **1.0.1** consolidated; spectrum stays on parked branch |
 | 2026-07-29 | Domains stay split; rect-follow uses logo bounds DTO |
 

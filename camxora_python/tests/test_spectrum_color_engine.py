@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from features.video.lib.spectrum_color_engine import (
     apply_spectrum_layer_color_patch,
+    build_spectrum_bar_quad_rgba,
     extract_spectrum_layer_color_model,
     normalize_spectrum_gradient_colors,
 )
@@ -56,3 +57,54 @@ def test_build_spectrum_vertex_rgba_uses_all_gradient_stops() -> None:
     # Old first→last-only path would make mid ≈ purple (r≈0.5, b≈0.5, g≈0).
     assert float(rgba[2, 1]) > float(rgba[2, 0])
     assert float(rgba[2, 1]) > float(rgba[2, 2])
+
+
+def test_build_spectrum_bar_quad_rgba_uses_vertical_gradient_for_top_to_bottom() -> None:
+    rows = build_spectrum_bar_quad_rgba(
+        mode="gradient",
+        solid_color="#ffffff",
+        gradient_colors=["#ff0000", "#0000ff"],
+        count=2,
+        alpha=0.75,
+        gradient_direction="top-to-bottom",
+    )
+    assert rows.shape == (12, 4)
+    # First bar base verts red.
+    assert float(rows[0, 0]) > 0.9 and float(rows[0, 2]) < 0.1
+    assert float(rows[1, 0]) > 0.9 and float(rows[1, 2]) < 0.1
+    # First bar tip verts blue.
+    assert float(rows[2, 2]) > 0.9 and float(rows[2, 0]) < 0.1
+    assert float(rows[5, 2]) > 0.9 and float(rows[5, 0]) < 0.1
+    assert float(rows[0, 3]) == 0.75
+
+
+def test_radial_gradient_aliases_base_to_tip() -> None:
+    rows = build_spectrum_bar_quad_rgba(
+        mode="gradient",
+        solid_color="#ffffff",
+        gradient_colors=["#ff0000", "#0000ff"],
+        count=1,
+        alpha=1.0,
+        gradient_direction="radial",
+    )
+    assert float(rows[0, 0]) > 0.9
+    assert float(rows[2, 2]) > 0.9
+
+
+def test_dampen_spectrum_glow_rgba_reduces_rgb() -> None:
+    from features.video.lib.spectrum_color_engine import dampen_spectrum_glow_rgba
+    import numpy as np
+
+    src = np.array([[1.0, 0.5, 0.25, 0.8]], dtype=np.float32)
+    out = dampen_spectrum_glow_rgba(src, strength=0.4)
+    assert float(out[0, 0]) < float(src[0, 0])
+    assert float(out[0, 1]) < float(src[0, 1])
+    assert float(out[0, 3]) <= float(src[0, 3])
+
+
+def test_circle_form_from_layer_mapping() -> None:
+    from features.video.widgets.spectrum_layer_editor import SpectrumLayerEditor
+
+    assert SpectrumLayerEditor._circle_form_from_layer({"curved": False}) == "linear"
+    assert SpectrumLayerEditor._circle_form_from_layer({"curved": True, "mirrored": False}) == "semi"
+    assert SpectrumLayerEditor._circle_form_from_layer({"curved": True, "mirrored": True}) == "full"

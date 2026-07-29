@@ -6,8 +6,10 @@ import numpy as np
 
 from features.video.widgets.spectrum_layer_editor import GRAVITY_OPTIONS
 from visualizer._spectrum_fast import (
+    clamp_spectrum_bar_count,
     generate_points_curved,
     generate_points_linear,
+    resample_fft_bins,
     resolve_curved_spectrum_basis,
 )
 from visualizer.template_runtime import normalize_renderer_template
@@ -58,3 +60,39 @@ def test_normalize_accepts_normal_gravity() -> None:
         }
     )
     assert tpl["layers"][0]["gravity"] == "normal"
+
+
+def test_normalize_clamps_phase1_layer_fields() -> None:
+    tpl = normalize_renderer_template(
+        {
+            "style": "orbit-spikes",
+            "layers": [
+                {
+                    "barCount": 999,
+                    "solidBand": True,
+                    "peakCapsEnabled": True,
+                    "peakCapGap": 99,
+                    "peakCapThickness": 0.1,
+                    "peakCapDecay": 0.1,
+                }
+            ],
+        }
+    )
+    layer = tpl["layers"][0]
+    assert layer["barCount"] == 128
+    assert layer["solidBand"] is True
+    assert layer["peakCapsEnabled"] is True
+    assert layer["peakCapGap"] == 24.0
+    assert layer["peakCapThickness"] == 1.0
+    assert layer["peakCapDecay"] == 0.7
+
+
+def test_bar_count_clamp_and_fft_resample() -> None:
+    assert clamp_spectrum_bar_count(None) == 64
+    assert clamp_spectrum_bar_count(2) == 16
+    assert clamp_spectrum_bar_count(300) == 128
+    src = np.linspace(0.0, 1.0, 64, dtype=np.float32)
+    out = resample_fft_bins(src, 24)
+    assert out.shape == (24,)
+    assert float(out[0]) == 0.0
+    assert float(out[-1]) == 1.0

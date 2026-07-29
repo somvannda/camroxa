@@ -821,8 +821,13 @@ def _build_spectrum_vertex_colors(
     spec_col: tuple[float, float, float, float] | tuple[float, float, float],
     count: int,
     alpha: float,
+    *,
+    glow: bool = False,
 ) -> np.ndarray:
-    from features.video.lib.spectrum_color_engine import build_spectrum_vertex_rgba
+    from features.video.lib.spectrum_color_engine import (
+        build_spectrum_vertex_rgba,
+        dampen_spectrum_glow_rgba,
+    )
 
     mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
     solid = color_cfg.get("solidColor")
@@ -834,12 +839,43 @@ def _build_spectrum_vertex_colors(
             int(max(0, min(255, round(float(spec_col[2]) * 255.0)))),
         )
     gradient_colors = color_cfg.get("gradientColors") if isinstance(color_cfg.get("gradientColors"), list) else None
-    return build_spectrum_vertex_rgba(
+    colors = build_spectrum_vertex_rgba(
         mode=mode,
         solid_color=str(solid),
         gradient_colors=gradient_colors,
         count=count,
         alpha=alpha,
+    )
+    if glow:
+        return dampen_spectrum_glow_rgba(colors, strength=0.38)
+    return colors
+
+
+def _build_spectrum_bar_quad_colors(
+    color_cfg: dict,
+    spec_col: tuple[float, float, float, float] | tuple[float, float, float],
+    count: int,
+    alpha: float,
+) -> np.ndarray:
+    from features.video.lib.spectrum_color_engine import build_spectrum_bar_quad_rgba
+
+    mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
+    solid = color_cfg.get("solidColor")
+    if not isinstance(solid, str) or not solid.strip():
+        solid = "#{:02x}{:02x}{:02x}".format(
+            int(max(0, min(255, round(float(spec_col[0]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[1]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[2]) * 255.0)))),
+        )
+    gradient_colors = color_cfg.get("gradientColors") if isinstance(color_cfg.get("gradientColors"), list) else None
+    gradient_direction = str(color_cfg.get("gradientDirection", "left-to-right") or "left-to-right")
+    return build_spectrum_bar_quad_rgba(
+        mode=mode,
+        solid_color=str(solid),
+        gradient_colors=gradient_colors,
+        count=count,
+        alpha=alpha,
+        gradient_direction=gradient_direction,
     )
 
 def _hex_to_rgba(hex_color: str, alpha: int = 255) -> tuple[int, int, int, int]:
@@ -2434,6 +2470,7 @@ def run_gpu_render(
     audio_settings = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
     aud_smooth = float(max(0.0, min(0.99, float(audio_settings.get("smoothing", 0.8) or 0.8))))
     fft_smoothed = np.zeros(64, dtype=np.float32)
+    spectrum_peak_cache: dict[str, np.ndarray] = {}
     particles_warmed = False
 
     _emit_event(
@@ -2450,7 +2487,7 @@ def run_gpu_render(
         precompute_fft_mapping, fft_to_log_bins, smooth_and_mirror, smooth_fft_envelope,
         generate_points_curved, generate_points_linear,
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
-        resolve_curved_spectrum_basis,
+        resolve_curved_spectrum_basis, clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
     )
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
     # Pre-compute frame-invariant template lookups
@@ -2484,13 +2521,20 @@ def run_gpu_render(
         _gpu_preregister_layers = []
 
     if gpu_spectrum is not None and _tpl_spectrum_enabled and _gpu_preregister_layers:
-        BINS_PRE = 64
         bar_height_mult_pre = _audio_bar_height_mult(template)
         logo_base_radius_pre = float(logo_raw.get("size", 192.0)) * 0.5 * sf if isinstance(logo_raw, dict) else 96.0 * sf
         logo_visual_radius_pre = logo_base_radius_pre * logo_scale_base
         for layer_idx, sl_pre in enumerate(_gpu_preregister_layers):
             style_pre = _resolve_export_spectrum_style(_tpl_style_preset, sl_pre)
-            if is_waveform_spectrum_style(style_pre) or not is_gpu_bar_style_slice1(style_pre):
+            color_cfg_pre = sl_pre.get("color", {}) if isinstance(sl_pre.get("color"), dict) else {}
+            dir_pre = str(color_cfg_pre.get("gradientDirection", "left-to-right") or "left-to-right").lower().strip()
+            if (
+                is_waveform_spectrum_style(style_pre)
+                or not is_gpu_bar_style_slice1(style_pre)
+                or bool(sl_pre.get("solidBand", False))
+                or bool(sl_pre.get("peakCapsEnabled", False))
+                or dir_pre == "top-to-bottom"
+            ):
                 continue
             curved_pre = bool(sl_pre.get("curved", False))
             mirrored_pre = bool(sl_pre.get("mirrored", False))
@@ -2506,7 +2550,6 @@ def run_gpu_render(
                 bar_width=bar_width_pre,
                 radius_offset=radius_offset_pre,
             )
-            color_cfg_pre = sl_pre.get("color", {})
             c_pre = color_cfg_pre.get("solidColor", "#ffffff")
             if isinstance(c_pre, str) and c_pre.startswith("#"):
                 c_pre = c_pre.lstrip("#")
@@ -2523,7 +2566,7 @@ def run_gpu_render(
                 spec_col_pre = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op_pre))))
             glow_strength_pre = float(max(0.0, min(100.0, float(sl_pre.get("glow", 0.0))))) / 100.0
             glow_softness_pre = float(max(0.0, min(30.0, float(sl_pre.get("blur", 0.0)))))
-            n_pre = BINS_PRE
+            n_pre = clamp_spectrum_bar_count(sl_pre.get("barCount", 64))
             total_length_pre = 0.0
             if curved_pre:
                 total_angle_pre = np.pi * 2.0 if mirrored_pre else np.pi
@@ -2567,10 +2610,17 @@ def run_gpu_render(
                 }
             )
             pass_colors_pre: list[np.ndarray] = []
-            for pass_cfg_pre in pass_specs_pre:
+            for pass_i_pre, pass_cfg_pre in enumerate(pass_specs_pre):
                 pass_alpha_pre = float(max(0.0, min(1.0, float(pass_cfg_pre["alpha"]))))
+                is_glow_pre = pass_i_pre < (len(pass_specs_pre) - 1)
                 pass_colors_pre.append(
-                    _build_spectrum_vertex_colors(color_cfg_pre, spec_col_pre, n_pre, pass_alpha_pre)
+                    _build_spectrum_vertex_colors(
+                        color_cfg_pre,
+                        spec_col_pre,
+                        n_pre,
+                        pass_alpha_pre,
+                        glow=is_glow_pre,
+                    )
                 )
                 bw_pre = resolve_bar_pixel_width(
                     float(pass_cfg_pre["bar_width"]),
@@ -2793,6 +2843,7 @@ def run_gpu_render(
             curved = bool(sl.get("curved", False))
             mirrored = bool(sl.get("mirrored", False))
             bar_width = float(sl.get("barWidth", 4.0)) * sf
+            bar_count = clamp_spectrum_bar_count(sl.get("barCount", 64))
             bar_height_mult = _audio_bar_height_mult(template)
             # Match preview default thickness (30), not the old export fallback (150).
             thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
@@ -2830,12 +2881,23 @@ def run_gpu_render(
             blend_mode = str(sl.get("blend_mode", "normal")).lower().strip()
             glow_strength = float(max(0.0, min(100.0, float(sl.get("glow", 0.0))))) / 100.0
             glow_softness = float(max(0.0, min(30.0, float(sl.get("blur", 0.0)))))
+            peak_hold_blend = float(
+                max(0.0, min(1.0, float(audio_settings.get("peakHoldBlend", 0.0) or 0.0)))
+            )
+            peak_caps_enabled = bool(sl.get("peakCapsEnabled", False)) and peak_hold_blend > 0.0
+            peak_cap_gap = float(max(0.0, min(24.0, float(sl.get("peakCapGap", 4.0) or 0.0)))) * sf
+            peak_cap_thickness = float(max(1.0, min(16.0, float(sl.get("peakCapThickness", 3.0) or 1.0)))) * sf
+            peak_cap_decay = float(max(0.7, min(0.995, float(sl.get("peakCapDecay", 0.92) or 0.92))))
+            peak_cap_color = str(sl.get("peakCapColor", "#ffffff") or "#ffffff")
+            solid_band = bool(sl.get("solidBand", False))
 
             # 2) 5-Tap Moving Average Smoothing & Mirroring (vectorized)
             render_fft = smooth_and_mirror(fft_s, mirrored)
 
+            sampled_fft = resample_fft_bins(render_fft, bar_count)
+
             # 3) Generate Points (vectorized)
-            n = BINS
+            n = int(sampled_fft.shape[0])
             total_length = 0.0
             if curved:
                 total_angle = np.pi * 2.0 if mirrored else np.pi
@@ -2897,9 +2959,15 @@ def run_gpu_render(
                 pass_thickness = float(pass_cfg["thickness"])
                 fill_circle_pass = bool(pass_cfg["fill_circle"])
 
-                val_arr = (render_fft * pass_thickness).astype(np.float32)
+                val_arr = (sampled_fft * pass_thickness).astype(np.float32)
 
-                cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, pass_alpha)
+                cols = _build_spectrum_vertex_colors(
+                    color_cfg,
+                    spec_col,
+                    n,
+                    pass_alpha,
+                    glow=bool(pass_cfg["is_glow"]),
+                )
 
                 bw = resolve_bar_pixel_width(pass_bar_width, base_total_length / max(1, n))
 
@@ -2984,12 +3052,104 @@ def run_gpu_render(
                     else:
                         pos = bar_out
                         colsi = np.repeat(cols, 6, axis=0)
+                    if colsi.shape[0] == n * 6:
+                        colsi = _build_spectrum_bar_quad_colors(color_cfg, spec_col, n, pass_alpha)
 
                     verts = np.column_stack([pos, colsi]).astype(np.float32)
                     if verts.nbytes > line_vbo.size:
                         line_vbo.orphan(size=verts.nbytes)
                     line_vbo.write(verts.tobytes())
                     vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+            if solid_band:
+                band_pos = build_solid_band_strip_vertices(
+                    px_arr,
+                    py_arr,
+                    dx_arr,
+                    dy_arr,
+                    cx=float(cx),
+                    cy=float(cy),
+                    w=int(w),
+                    h=int(h),
+                    band_width_px=float(max(1.0, bar_width * 0.45)),
+                )
+                if band_pos.shape[0]:
+                    # Keep color rows aligned with strip rows when geometry adds
+                    # a closing point for mirrored curved waveform layers.
+                    band_bar_count = int(max(1, band_pos.shape[0] // 2))
+                    band_cols = np.repeat(
+                        _build_spectrum_vertex_colors(
+                            color_cfg,
+                            spec_col,
+                            band_bar_count,
+                            float(max(0.0, min(1.0, op * 0.6))),
+                        ),
+                        2,
+                        axis=0,
+                    )
+                    band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
+                    if band_verts.nbytes > line_vbo.size:
+                        line_vbo.orphan(size=band_verts.nbytes)
+                    line_vbo.write(band_verts.tobytes())
+                    vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
+            if peak_caps_enabled and n > 0:
+                # Mirrored curved waveform styles may append a closing point;
+                # peak caps must use the original bar-count geometry only.
+                cap_px = px_arr[:n]
+                cap_py = py_arr[:n]
+                cap_dx = dx_arr[:n]
+                cap_dy = dy_arr[:n]
+                peak_key = f"{layer_idx}:{'c' if curved else 'l'}:{'m' if mirrored else 's'}:{gravity}:{n}"
+                prev = spectrum_peak_cache.get(peak_key)
+                if prev is None or prev.shape[0] != n:
+                    prev = np.zeros((n,), dtype=np.float32)
+                peak_vals = np.maximum(sampled_fft, prev * peak_cap_decay).astype(np.float32)
+                spectrum_peak_cache[peak_key] = peak_vals
+                cap_vals = (peak_vals * thickness).astype(np.float32)
+                cap_base = cap_vals + peak_cap_gap
+                wx = -cap_dy * (bw * 0.5)
+                wy = cap_dx * (bw * 0.5)
+                p0x = cap_px + cap_dx * cap_base - wx
+                p0y = cap_py + cap_dy * cap_base - wy
+                p1x = cap_px + cap_dx * cap_base + wx
+                p1y = cap_py + cap_dy * cap_base + wy
+                p2x = cap_px + cap_dx * (cap_base + peak_cap_thickness) + wx
+                p2y = cap_py + cap_dy * (cap_base + peak_cap_thickness) + wy
+                p3x = cap_px + cap_dx * (cap_base + peak_cap_thickness) - wx
+                p3y = cap_py + cap_dy * (cap_base + peak_cap_thickness) - wy
+                inv_w = 2.0 / float(w)
+                inv_h = 2.0 / float(h)
+                cap_pos = np.empty((n * 6, 2), dtype=np.float32)
+                ndc_p0x = (cx + p0x) * inv_w - 1.0
+                ndc_p0y = (cy + p0y) * inv_h - 1.0
+                ndc_p1x = (cx + p1x) * inv_w - 1.0
+                ndc_p1y = (cy + p1y) * inv_h - 1.0
+                ndc_p2x = (cx + p2x) * inv_w - 1.0
+                ndc_p2y = (cy + p2y) * inv_h - 1.0
+                ndc_p3x = (cx + p3x) * inv_w - 1.0
+                ndc_p3y = (cy + p3y) * inv_h - 1.0
+                cap_pos[0::6, 0] = ndc_p0x
+                cap_pos[0::6, 1] = ndc_p0y
+                cap_pos[1::6, 0] = ndc_p1x
+                cap_pos[1::6, 1] = ndc_p1y
+                cap_pos[2::6, 0] = ndc_p2x
+                cap_pos[2::6, 1] = ndc_p2y
+                cap_pos[3::6, 0] = ndc_p0x
+                cap_pos[3::6, 1] = ndc_p0y
+                cap_pos[4::6, 0] = ndc_p2x
+                cap_pos[4::6, 1] = ndc_p2y
+                cap_pos[5::6, 0] = ndc_p3x
+                cap_pos[5::6, 1] = ndc_p3y
+                cap_cols = _build_spectrum_bar_quad_colors(
+                    {"mode": "solid", "solidColor": peak_cap_color},
+                    spec_col,
+                    n,
+                    float(max(0.0, min(1.0, op * peak_hold_blend))),
+                )
+                cap_verts = np.column_stack([cap_pos, cap_cols]).astype(np.float32)
+                if cap_verts.nbytes > line_vbo.size:
+                    line_vbo.orphan(size=cap_verts.nbytes)
+                line_vbo.write(cap_verts.tobytes())
+                vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
 
         ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
         spawn_rate = float(particles_cfg_raw.get("spawnRate", particles_cfg_raw.get("spawn_rate", particles_cfg.spawn_rate)))
@@ -4010,16 +4170,27 @@ def render_preview_png(
                         if style_preset in ("ignition-flare", "neon-pulse"):
                             pulse = 1.0 + logo_audio_env * 0.18 + particle_audio_env * 0.12
                             h_val *= pulse
-                            wx *= 1.2
-                            wy *= 1.2
-                        p0x = px_arr[i] - wx
-                        p0y = py_arr[i] - wy
-                        p1x = px_arr[i] + wx
-                        p1y = py_arr[i] + wy
-                        p2x = px_arr[i] + dx_arr[i] * h_val + wx
-                        p2y = py_arr[i] + dy_arr[i] * h_val + wy
-                        p3x = px_arr[i] + dx_arr[i] * h_val - wx
-                        p3y = py_arr[i] + dy_arr[i] * h_val - wy
+                            wx_base = wx * 1.35
+                            wy_base = wy * 1.35
+                            wx_tip = wx * 0.55
+                            wy_tip = wy * 0.55
+                            p0x = px_arr[i] - wx_base
+                            p0y = py_arr[i] - wy_base
+                            p1x = px_arr[i] + wx_base
+                            p1y = py_arr[i] + wy_base
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx_tip
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy_tip
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx_tip
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy_tip
+                        else:
+                            p0x = px_arr[i] - wx
+                            p0y = py_arr[i] - wy
+                            p1x = px_arr[i] + wx
+                            p1y = py_arr[i] + wy
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy
 
                     idx = i * 6
                     pos[idx+0] = [(cx + p0x) / float(w) * 2.0 - 1.0, (cy + p0y) / float(h) * 2.0 - 1.0]
@@ -5056,16 +5227,27 @@ def run_live_preview(opts: GpuOptions) -> int:
                         if style_preset in ("ignition-flare", "neon-pulse"):
                             pulse = 1.0 + logo_audio_env * 0.18 + particle_audio_env * 0.12
                             h_val *= pulse
-                            wx *= 1.2
-                            wy *= 1.2
-                        p0x = px_arr[i] - wx
-                        p0y = py_arr[i] - wy
-                        p1x = px_arr[i] + wx
-                        p1y = py_arr[i] + wy
-                        p2x = px_arr[i] + dx_arr[i] * h_val + wx
-                        p2y = py_arr[i] + dy_arr[i] * h_val + wy
-                        p3x = px_arr[i] + dx_arr[i] * h_val - wx
-                        p3y = py_arr[i] + dy_arr[i] * h_val - wy
+                            wx_base = wx * 1.35
+                            wy_base = wy * 1.35
+                            wx_tip = wx * 0.55
+                            wy_tip = wy * 0.55
+                            p0x = px_arr[i] - wx_base
+                            p0y = py_arr[i] - wy_base
+                            p1x = px_arr[i] + wx_base
+                            p1y = py_arr[i] + wy_base
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx_tip
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy_tip
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx_tip
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy_tip
+                        else:
+                            p0x = px_arr[i] - wx
+                            p0y = py_arr[i] - wy
+                            p1x = px_arr[i] + wx
+                            p1y = py_arr[i] + wy
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy
 
                     idx = i * 6
                     pos[idx+0] = [(cx + p0x) / float(w) * 2.0 - 1.0, (cy + p0y) / float(h) * 2.0 - 1.0]

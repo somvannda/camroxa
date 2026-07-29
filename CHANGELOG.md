@@ -17,6 +17,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 - Spectrum live preview now paints **all** gradient color stops (was first→last only), so multi-stop palettes look rich around circular rings. See `docs/changelog/2026-07-29-spectrum-multi-stop-gradient-preview.md`.
 - Spectrum Layers: Up/Down reorder, clearer per-layer vs global labels, Add offsets ring size; curved Bottom (rabbit ears) grows inward. See `docs/changelog/2026-07-29-spectrum-layer-reorder-and-rabbit-ears.md`.
+- Spectrum Phase 1: per-layer bar density (16-128), optional peak caps (gap/size/decay/color), solid base band render, and top-to-bottom bar gradient support. See `docs/changelog/2026-07-29-spectrum-phase1-peakcaps-density-solidband.md`.
+- Spectrum preview/export fix: `solidBand` now derives color-row count from generated strip geometry, preventing mirrored curved waveform crashes from mismatched array lengths.
+- Spectrum Layers: labeled Circle Form (180° / Full Circle 360°), Bar Growth, and Blend Mode; dampen glow wash; wire radial/circular/diagonal gradient directions. See `docs/changelog/2026-07-29-spectrum-circle-form-and-color-wash.md`.
+- Spectrum peak caps: slice geometry to bar count when mirrored waveform closes the ring (fixes `113` vs `112` paintGL broadcast crash).
+- Login UI: hide “No session found.” error pill when bootstrap detects missing saved session tokens.
 
 ## [1.0.0] - 2026-07-26
 

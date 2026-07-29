@@ -20,8 +20,10 @@ def default_renderer_template() -> dict:
                 "curved": False,
                 "mirrored": False,
                 "fillCircle": False,
+                "solidBand": False,
                 "thickness": 36,
                 "barWidth": 5,
+                "barCount": 64,
                 "radiusOffset": 0,
                 "gravity": "normal",
                 "color": {
@@ -35,6 +37,11 @@ def default_renderer_template() -> dict:
                 "rotation": 0,
                 "blend_mode": "normal",
                 "opacity": 1,
+                "peakCapsEnabled": False,
+                "peakCapColor": "#ffffff",
+                "peakCapGap": 4.0,
+                "peakCapThickness": 3.0,
+                "peakCapDecay": 0.92,
             }
         ],
         "globalColor": {
@@ -388,10 +395,16 @@ def normalize_renderer_template(input_template: Any) -> dict:
         bar_width = layer_in.get("barWidth")
         if not isinstance(bar_width, (int, float)):
             bar_width = fallback_layer.get("barWidth", 4)
+        bar_count = layer_in.get("barCount")
+        if not isinstance(bar_count, (int, float)):
+            bar_count = fallback_layer.get("barCount", 64)
 
         fill_circle = layer_in.get("fillCircle")
         if not isinstance(fill_circle, bool):
             fill_circle = bool(fallback_layer.get("fillCircle", False))
+        solid_band = layer_in.get("solidBand")
+        if not isinstance(solid_band, bool):
+            solid_band = bool(fallback_layer.get("solidBand", False))
 
         thickness = layer_in.get("thickness")
         if not isinstance(thickness, (int, float)) and isinstance(layer_in.get("strength"), (int, float)):
@@ -422,8 +435,10 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "curved": curved,
                 "mirrored": mirrored,
                 "fillCircle": fill_circle,
+                "solidBand": solid_band,
                 "thickness": thickness_clamped,
                 "barWidth": float(bar_width),
+                "barCount": int(max(16, min(128, round(float(bar_count))))),
                 "radiusOffset": float(max(0.0, min(400.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
                 "gravity": gravity,
                 "color": color,
@@ -432,6 +447,11 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "rotation": float(layer_in.get("rotation", fallback_layer.get("rotation", 0)) or 0),
                 "blend_mode": str(layer_in.get("blend_mode", fallback_layer.get("blend_mode", "normal")) or "normal").lower(),
                 "opacity": float(max(0.0, min(1.0, float(layer_in.get("opacity", fallback_layer.get("opacity", 1)) or 1)))),
+                "peakCapsEnabled": bool(layer_in.get("peakCapsEnabled", fallback_layer.get("peakCapsEnabled", False))),
+                "peakCapColor": str(layer_in.get("peakCapColor", fallback_layer.get("peakCapColor", "#ffffff")) or "#ffffff"),
+                "peakCapGap": float(max(0.0, min(24.0, float(layer_in.get("peakCapGap", fallback_layer.get("peakCapGap", 4.0)) or 0.0)))),
+                "peakCapThickness": float(max(1.0, min(16.0, float(layer_in.get("peakCapThickness", fallback_layer.get("peakCapThickness", 3.0)) or 1.0)))),
+                "peakCapDecay": float(max(0.7, min(0.995, float(layer_in.get("peakCapDecay", fallback_layer.get("peakCapDecay", 0.92)) or 0.92)))),
             }
         )
     out["layers"] = out_layers

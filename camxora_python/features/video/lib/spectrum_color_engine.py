@@ -126,6 +126,14 @@ def _hex_to_rgb01(value: str) -> np.ndarray:
     return np.array((1.0, 1.0, 1.0), dtype=np.float32)
 
 
+def _srgb_to_linear(rgb: np.ndarray) -> np.ndarray:
+    return np.power(np.clip(rgb, 0.0, 1.0), 2.2).astype(np.float32)
+
+
+def _linear_to_srgb(rgb: np.ndarray) -> np.ndarray:
+    return np.power(np.clip(rgb, 0.0, 1.0), 1.0 / 2.2).astype(np.float32)
+
+
 def build_spectrum_vertex_rgba(
     *,
     mode: str,
@@ -144,20 +152,98 @@ def build_spectrum_vertex_rgba(
         stops_raw = [str(c).strip() for c in (gradient_colors or []) if str(c or "").strip()]
         stops_raw = normalize_spectrum_gradient_colors(stops_raw, solid_color or GRADIENT_FALLBACK_COLOR)
         stops = np.stack([_hex_to_rgb01(c) for c in stops_raw], axis=0).astype(np.float32)
+        stops_lin = _srgb_to_linear(stops)
         if stops.shape[0] >= 2:
             t = np.linspace(0.0, 1.0, n, dtype=np.float32)
             segment_count = int(stops.shape[0] - 1)
             scaled = t * float(segment_count)
             seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
             local_t = (scaled - seg_idx.astype(np.float32)).reshape((n, 1))
-            c1 = stops[seg_idx]
-            c2 = stops[np.minimum(seg_idx + 1, stops.shape[0] - 1)]
-            rgb = c1 * (1.0 - local_t) + c2 * local_t
+            c1 = stops_lin[seg_idx]
+            c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
+            rgb_lin = c1 * (1.0 - local_t) + c2 * local_t
+            rgb = _linear_to_srgb(rgb_lin)
             alpha_col = np.full((n, 1), a, dtype=np.float32)
             return np.concatenate([rgb.astype(np.float32), alpha_col], axis=1)
 
     base = _hex_to_rgb01(solid_color)
     return np.tile(np.array([base[0], base[1], base[2], a], dtype=np.float32)[None, :], (n, 1))
+
+
+def build_spectrum_bar_quad_rgba(
+    *,
+    mode: str,
+    solid_color: str,
+    gradient_colors: list[str] | None,
+    count: int,
+    alpha: float,
+    gradient_direction: str,
+) -> np.ndarray:
+    """Build per-vertex RGBA rows for TRIANGLES bar quads.
+
+    Default behavior follows ring/index interpolation. For ``top-to-bottom`` /
+    ``radial``, bars use base->tip vertical gradient from first->last stop.
+    ``diagonal`` blends around-ring color with tip color on tip vertices.
+    ``circular`` follows around-ring stops (same as left-to-right).
+    """
+    n = int(max(1, count))
+    direction = str(gradient_direction or "left-to-right").lower().strip()
+    if direction == "radial":
+        direction = "top-to-bottom"
+    if direction == "circular":
+        direction = "left-to-right"
+    per_bar = build_spectrum_vertex_rgba(
+        mode=mode,
+        solid_color=solid_color,
+        gradient_colors=gradient_colors,
+        count=n,
+        alpha=alpha,
+    )
+    if str(mode or "solid").lower().strip() != "gradient":
+        return np.repeat(per_bar, 6, axis=0).astype(np.float32)
+    if direction == "left-to-right":
+        return np.repeat(per_bar, 6, axis=0).astype(np.float32)
+
+    stops_raw = [str(c).strip() for c in (gradient_colors or []) if str(c or "").strip()]
+    stops_raw = normalize_spectrum_gradient_colors(stops_raw, solid_color or GRADIENT_FALLBACK_COLOR)
+    base_rgb = _hex_to_rgb01(stops_raw[0])
+    tip_rgb = _hex_to_rgb01(stops_raw[-1])
+    a = float(max(0.0, min(1.0, alpha)))
+    base = np.array([base_rgb[0], base_rgb[1], base_rgb[2], a], dtype=np.float32)
+    tip = np.array([tip_rgb[0], tip_rgb[1], tip_rgb[2], a], dtype=np.float32)
+    rows = np.empty((n * 6, 4), dtype=np.float32)
+    # TRIANGLES order from _spectrum_fast._pack:
+    # 0 p0(base), 1 p1(base), 2 p2(tip), 3 p0(base), 4 p2(tip), 5 p3(tip)
+    if direction == "top-to-bottom":
+        rows[0::6] = base
+        rows[1::6] = base
+        rows[2::6] = tip
+        rows[3::6] = base
+        rows[4::6] = tip
+        rows[5::6] = tip
+        return rows
+
+    # diagonal: keep around-ring hue on base, blend toward tip color on tips
+    tip_mix = (per_bar * 0.45 + tip.reshape(1, 4) * 0.55).astype(np.float32)
+    rows[0::6] = per_bar
+    rows[1::6] = per_bar
+    rows[2::6] = tip_mix
+    rows[3::6] = per_bar
+    rows[4::6] = tip_mix
+    rows[5::6] = tip_mix
+    return rows
+
+
+def dampen_spectrum_glow_rgba(colors: np.ndarray, *, strength: float = 0.42) -> np.ndarray:
+    """Keep glow passes colorful instead of washing toward white haze."""
+    out = np.asarray(colors, dtype=np.float32).copy()
+    if out.ndim != 2 or out.shape[1] < 3:
+        return out
+    s = float(max(0.15, min(1.0, strength)))
+    out[:, 0:3] *= s
+    if out.shape[1] >= 4:
+        out[:, 3] = np.clip(out[:, 3] * min(1.0, s + 0.25), 0.0, 1.0)
+    return out
 
 
 def apply_spectrum_layer_color_patch(

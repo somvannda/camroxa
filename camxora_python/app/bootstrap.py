@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from PySide6.QtCore import QTimer
@@ -28,6 +29,27 @@ def _set_windows_app_id() -> None:
 def run() -> int:
     from shared.lib.app_install import get_or_seed_install_datetime
     from shared.lib.env_loader import load_desktop_env
+
+    # Local dev convenience:
+    #   python main.py sandbox
+    #   python main.py production
+    # Sets the same CAMXORA_* vars the bundled installers target, so
+    # env loading doesn't fall back to .env.production.
+    env_arg: str | None = None
+    if len(sys.argv) > 1:
+        candidate = str(sys.argv[1]).strip().lower()
+        if candidate in {"sandbox", "production"}:
+            env_arg = candidate
+            sys.argv = [sys.argv[0], *sys.argv[2:]]
+
+    if env_arg == "sandbox":
+        os.environ["CAMXORA_BUILD_ENV"] = "sandbox"
+        os.environ["CAMXORA_API_BASE_URL"] = "https://api.sandbox.camxora.com/api/v1"
+        os.environ["CAMXORA_PORTAL_BASE_URL"] = "https://app.sandbox.camxora.com"
+    elif env_arg == "production":
+        os.environ["CAMXORA_BUILD_ENV"] = "production"
+        os.environ["CAMXORA_API_BASE_URL"] = "https://api.camxora.com/api/v1"
+        os.environ["CAMXORA_PORTAL_BASE_URL"] = "https://app.camxora.com"
 
     load_desktop_env()
     get_or_seed_install_datetime()

@@ -27,8 +27,11 @@ from visualizer.gpu_render import (
     ParticleConfig,
 )
 from visualizer._spectrum_fast import (
+    build_solid_band_strip_vertices,
+    clamp_spectrum_bar_count,
     generate_points_curved,
     generate_points_linear,
+    resample_fft_bins,
     resolve_bar_pixel_width,
     resolve_curved_spectrum_basis,
     smooth_fft_envelope,
@@ -38,7 +41,11 @@ from features.video.lib.particle_color_engine import (
     extract_particle_color_model,
     palette_colors_to_rgb_tuple,
 )
-from features.video.lib.spectrum_color_engine import build_spectrum_vertex_rgba
+from features.video.lib.spectrum_color_engine import (
+    build_spectrum_bar_quad_rgba,
+    build_spectrum_vertex_rgba,
+    dampen_spectrum_glow_rgba,
+)
 from visualizer.audio import AudioAnalyzer
 from visualizer.automation import apply_automations
 from visualizer.contracts import PreviewConfig
@@ -254,6 +261,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._audio_load_lock = threading.Lock()
         self.fft_log = np.zeros(64, dtype=np.float32)
         self.fft_smoothed = np.zeros(64, dtype=np.float32)
+        self._spectrum_peak_cache: dict[str, np.ndarray] = {}
         self.shake_state = CameraShakeState()
         self.bg_shake_state = BgVibrateState()
         self.kick_bass_state = KickBassEnvelopeState()
@@ -597,6 +605,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         ):
             return
         self.template = normalize_renderer_template(tpl)
+        self._spectrum_peak_cache.clear()
         self.update()
 
     def configure(self, config: PreviewConfig) -> None:
@@ -606,6 +615,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         It sets the template, background, and logo from the DTO fields.
         """
         self.template = normalize_renderer_template(config.template)
+        self._spectrum_peak_cache.clear()
         if config.background_path:
             self.load_background(config.background_path)
         if config.logo_path:
@@ -1439,6 +1449,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             aud_bar_height = float(max(0.25, min(8.0, aud_bar_height)))
             aud_smooth = float(tpl_audio.get('smoothing', 0.8))
             aud_smooth = float(max(0.0, min(0.99, aud_smooth)))
+            peak_hold_blend = float(max(0.0, min(1.0, float(tpl_audio.get("peakHoldBlend", 0.0) or 0.0))))
             ls_early = self.template.get('logoSettings', {}) if isinstance(self.template.get('logoSettings'), dict) else {}
             logo_smooth = float(ls_early.get('smoothing', 0.75))
             env_out = integrate_kick_bass_envelopes(
@@ -1635,7 +1646,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             if not spectrum_enabled:
                 spectrum_layers = []
             attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
-            for sl in spectrum_layers:
+            for layer_idx, sl in enumerate(spectrum_layers):
                 curved = bool(sl.get('curved', False))
                 mirrored = bool(sl.get('mirrored', False))
                 gravity = str(sl.get('gravity', 'normal')).lower().strip()
@@ -1651,12 +1662,20 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 col_mode = str(color_cfg.get('mode', 'solid')).lower().strip()
                 solid_hex = str(color_cfg.get('solidColor', '#ffffff'))
                 grad_cols = color_cfg.get('gradientColors') if isinstance(color_cfg.get('gradientColors'), list) else ['#ff4fd8', '#22d3ee']
+                grad_dir = str(color_cfg.get("gradientDirection", "left-to-right") or "left-to-right")
                 if not grad_cols:
                     grad_cols = [solid_hex, '#22d3ee']
                 # Prefer vivid gradient stops; if mode is solid, still use solid_hex.
                 blend_mode = str(sl.get('blend_mode', 'normal')).lower().strip()
                 glow_strength = float(max(0.0, min(100.0, float(sl.get('glow', 0.0))))) / 100.0
                 glow_softness = float(max(0.0, min(30.0, float(sl.get('blur', 0.0)))))
+                bar_count = clamp_spectrum_bar_count(sl.get("barCount", 64))
+                solid_band = bool(sl.get("solidBand", False))
+                peak_caps_enabled = bool(sl.get("peakCapsEnabled", False)) and peak_hold_blend > 0.0
+                peak_cap_gap = float(max(0.0, min(24.0, float(sl.get("peakCapGap", 4.0) or 0.0)))) * sf
+                peak_cap_thickness = float(max(1.0, min(16.0, float(sl.get("peakCapThickness", 3.0) or 1.0)))) * sf
+                peak_cap_decay = float(max(0.7, min(0.995, float(sl.get("peakCapDecay", 0.92) or 0.92))))
+                peak_cap_color = str(sl.get("peakCapColor", "#ffffff") or "#ffffff")
                 render_fft = np.zeros(BINS, dtype=np.float32)
                 if mirrored:
                     half = BINS // 2
@@ -1681,7 +1700,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     bar_width=bar_width_px,
                     radius_offset=radius_offset_px,
                 )
-                n = BINS
+                sampled_fft = resample_fft_bins(render_fft, bar_count)
+                n = int(sampled_fft.shape[0])
                 px_arr = np.zeros(n, dtype=np.float32)
                 py_arr = np.zeros(n, dtype=np.float32)
                 dx_arr = np.zeros(n, dtype=np.float32)
@@ -1717,22 +1737,25 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
                     else:
                         self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
-                    val_arr = (render_fft * pass_spike_height_px).astype(np.float32)
+                    val_arr = (sampled_fft * pass_spike_height_px).astype(np.float32)
                     if curved and mirrored and waveform_style:
                         val_arr = np.concatenate([val_arr, val_arr[:1]])
                     nn = int(px_arr.shape[0])
                     half_t = float(max(1.0, pass_bar_width_px)) * 0.5
 
                     def mk_col_array(nn0: int):
-                        return build_spectrum_vertex_rgba(
+                        cols0 = build_spectrum_vertex_rgba(
                             mode=col_mode,
                             solid_color=solid_hex,
                             gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
                             count=nn0,
                             alpha=pass_alpha,
                         )
+                        if pass_cfg["is_glow"]:
+                            return dampen_spectrum_glow_rgba(cols0, strength=0.38)
+                        return cols0
                     ctx_col = mk_col_array(nn)
-                    slot_w = float(base_total_length / max(1, BINS))
+                    slot_w = float(base_total_length / max(1, n))
                     bw = resolve_bar_pixel_width(pass_bar_width_px, slot_w)
                     if waveform_style:
                         xs_o = np.zeros(nn, dtype=np.float32)
@@ -1793,7 +1816,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         bar_out = build_bar_vertices(
                             px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
                             bw, style_preset, sf, self.logo_audio_env, self.particle_audio_env,
-                            colors=ctx_col[:BINS],
+                            colors=ctx_col[:n],
                         )
                         if isinstance(bar_out, tuple):
                             pos, colsi = bar_out
@@ -1801,11 +1824,118 @@ class VideoSpectrumPreview(QOpenGLWidget):
                             pos = bar_out
                             colsi = np.repeat(ctx_col[:BINS], 6, axis=0)
                         if pos.shape[0]:
+                            if (
+                                col_mode == "gradient"
+                                and str(grad_dir).lower().strip() == "top-to-bottom"
+                                and colsi.shape[0] == n * 6
+                            ):
+                                colsi = build_spectrum_bar_quad_rgba(
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    count=n,
+                                    alpha=pass_alpha,
+                                    gradient_direction=grad_dir,
+                                )
                             verts = np.column_stack([pos, colsi]).astype(np.float32)
                             if verts.nbytes > self.line_vbo.size:
                                 self.line_vbo.orphan(size=verts.nbytes)
                             self.line_vbo.write(verts.tobytes())
                             self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+                if solid_band:
+                    band_pos = build_solid_band_strip_vertices(
+                        px_arr,
+                        py_arr,
+                        dx_arr,
+                        dy_arr,
+                        cx=float(cx),
+                        cy=float(cy),
+                        w=int(w),
+                        h=int(h),
+                        band_width_px=float(max(1.0, bar_width_px * 0.45)),
+                    )
+                    if band_pos.shape[0]:
+                        # Mirrored curved waveform styles append a closing point.
+                        # Build colors from the actual strip vertex count to keep
+                        # color rows aligned with geometry rows.
+                        band_bar_count = int(max(1, band_pos.shape[0] // 2))
+                        band_cols = np.repeat(
+                            build_spectrum_vertex_rgba(
+                                mode=col_mode,
+                                solid_color=solid_hex,
+                                gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                count=band_bar_count,
+                                alpha=float(max(0.0, min(1.0, layer_op * 0.6))),
+                            ),
+                            2,
+                            axis=0,
+                        )
+                        band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
+                        if band_verts.nbytes > self.line_vbo.size:
+                            self.line_vbo.orphan(size=band_verts.nbytes)
+                        self.line_vbo.write(band_verts.tobytes())
+                        self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
+                if peak_caps_enabled and n > 0:
+                    # Mirrored curved waveform styles may append a closing point
+                    # to px/dx arrays; peak caps must stay on the original bar count.
+                    cap_px = px_arr[:n]
+                    cap_py = py_arr[:n]
+                    cap_dx = dx_arr[:n]
+                    cap_dy = dy_arr[:n]
+                    peak_key = f"{layer_idx}:{'c' if curved else 'l'}:{'m' if mirrored else 's'}:{gravity}:{n}"
+                    prev = self._spectrum_peak_cache.get(peak_key)
+                    if prev is None or prev.shape[0] != n:
+                        prev = np.zeros((n,), dtype=np.float32)
+                    peak_vals = np.maximum(sampled_fft, prev * peak_cap_decay).astype(np.float32)
+                    self._spectrum_peak_cache[peak_key] = peak_vals
+                    cap_vals = (peak_vals * spike_height_px).astype(np.float32)
+                    cap_base = cap_vals + peak_cap_gap
+                    cap_pos = np.zeros((n * 6, 2), dtype=np.float32)
+                    wx = -cap_dy * (bw * 0.5)
+                    wy = cap_dx * (bw * 0.5)
+                    p0x = cap_px + cap_dx * cap_base - wx
+                    p0y = cap_py + cap_dy * cap_base - wy
+                    p1x = cap_px + cap_dx * cap_base + wx
+                    p1y = cap_py + cap_dy * cap_base + wy
+                    p2x = cap_px + cap_dx * (cap_base + peak_cap_thickness) + wx
+                    p2y = cap_py + cap_dy * (cap_base + peak_cap_thickness) + wy
+                    p3x = cap_px + cap_dx * (cap_base + peak_cap_thickness) - wx
+                    p3y = cap_py + cap_dy * (cap_base + peak_cap_thickness) - wy
+                    inv_w = 2.0 / float(w)
+                    inv_h = 2.0 / float(h)
+                    ndc_p0x = (cx + p0x) * inv_w - 1.0
+                    ndc_p0y = (cy + p0y) * inv_h - 1.0
+                    ndc_p1x = (cx + p1x) * inv_w - 1.0
+                    ndc_p1y = (cy + p1y) * inv_h - 1.0
+                    ndc_p2x = (cx + p2x) * inv_w - 1.0
+                    ndc_p2y = (cy + p2y) * inv_h - 1.0
+                    ndc_p3x = (cx + p3x) * inv_w - 1.0
+                    ndc_p3y = (cy + p3y) * inv_h - 1.0
+                    cap_pos[0::6, 0] = ndc_p0x
+                    cap_pos[0::6, 1] = ndc_p0y
+                    cap_pos[1::6, 0] = ndc_p1x
+                    cap_pos[1::6, 1] = ndc_p1y
+                    cap_pos[2::6, 0] = ndc_p2x
+                    cap_pos[2::6, 1] = ndc_p2y
+                    cap_pos[3::6, 0] = ndc_p0x
+                    cap_pos[3::6, 1] = ndc_p0y
+                    cap_pos[4::6, 0] = ndc_p2x
+                    cap_pos[4::6, 1] = ndc_p2y
+                    cap_pos[5::6, 0] = ndc_p3x
+                    cap_pos[5::6, 1] = ndc_p3y
+                    cap_cols = build_spectrum_bar_quad_rgba(
+                        mode="solid",
+                        solid_color=peak_cap_color,
+                        gradient_colors=None,
+                        count=n,
+                        alpha=float(max(0.0, min(1.0, layer_op * peak_hold_blend))),
+                        gradient_direction="left-to-right",
+                    )
+                    cap_verts = np.column_stack([cap_pos, cap_cols]).astype(np.float32)
+                    if cap_verts.nbytes > self.line_vbo.size:
+                        self.line_vbo.orphan(size=cap_verts.nbytes)
+                    self.line_vbo.write(cap_verts.tobytes())
+                    self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
             self._finish_particles_frame(
                 w=w,
                 h=h,

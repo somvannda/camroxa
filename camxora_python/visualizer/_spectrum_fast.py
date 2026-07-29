@@ -25,6 +25,9 @@ _freq_boost = (1.0 + ((_bin_indices / float(_BINS)) ** 2) * 2.0).astype(np.float
 # 5-tap convolution kernel
 _SMOOTH_KERNEL = np.array([0.1, 0.2, 0.4, 0.2, 0.1], dtype=np.float32)
 
+_MIN_BAR_COUNT = 16
+_MAX_BAR_COUNT = 128
+
 
 def precompute_fft_mapping(point_count: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Pre-compute FFT bin mapping arrays (call once at startup).
@@ -97,6 +100,26 @@ def smooth_and_mirror(fft_s: np.ndarray, mirrored: bool) -> np.ndarray:
         render_fft[half:] = left
         return render_fft
     return smoothed
+
+
+def clamp_spectrum_bar_count(value: float | int | None, default: int = _BINS) -> int:
+    try:
+        n = int(round(float(value if value is not None else default)))
+    except (TypeError, ValueError):
+        n = int(default)
+    return int(max(_MIN_BAR_COUNT, min(_MAX_BAR_COUNT, n)))
+
+
+def resample_fft_bins(render_fft: np.ndarray, count: int) -> np.ndarray:
+    n = clamp_spectrum_bar_count(count)
+    src = np.asarray(render_fft, dtype=np.float32).reshape(-1)
+    if src.shape[0] <= 0:
+        return np.zeros((n,), dtype=np.float32)
+    if src.shape[0] == n:
+        return src.astype(np.float32)
+    x_src = np.linspace(0.0, 1.0, src.shape[0], dtype=np.float32)
+    x_dst = np.linspace(0.0, 1.0, n, dtype=np.float32)
+    return np.interp(x_dst, x_src, src).astype(np.float32)
 
 
 def resolve_curved_spectrum_basis(gravity: str) -> tuple[float, float]:
@@ -174,6 +197,39 @@ def resolve_bar_pixel_width(pass_bar_width: float, slot_w: float) -> float:
     if slot_w > 1.0:
         bw = float(min(bw, slot_w * 0.95))
     return bw
+
+
+def build_solid_band_strip_vertices(
+    px: np.ndarray,
+    py: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
+    *,
+    cx: float,
+    cy: float,
+    w: int,
+    h: int,
+    band_width_px: float,
+) -> np.ndarray:
+    """Build a ring/line strip under bars for ``solidBand`` layers."""
+    nn = int(len(px))
+    if nn <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+    half = float(max(0.5, band_width_px * 0.5))
+    wx = -dy * half
+    wy = dx * half
+    inv_w = 2.0 / float(max(1, w))
+    inv_h = 2.0 / float(max(1, h))
+    xs_l = (cx + px - wx) * inv_w - 1.0
+    ys_l = (cy + py - wy) * inv_h - 1.0
+    xs_r = (cx + px + wx) * inv_w - 1.0
+    ys_r = (cy + py + wy) * inv_h - 1.0
+    pos = np.empty((nn * 2, 2), dtype=np.float32)
+    pos[0::2, 0] = xs_l
+    pos[0::2, 1] = ys_l
+    pos[1::2, 0] = xs_r
+    pos[1::2, 1] = ys_r
+    return pos
 
 
 def build_waveform_vertices(
@@ -382,16 +438,19 @@ def build_bar_vertices(
     elif style in ("ignition-flare", "neon-pulse"):
         pulse = 1.0 + logo_audio_env * 0.18 + particle_audio_env * 0.12
         h_val = h_val * pulse
-        wx_n = wx * 1.2
-        wy_n = wy * 1.2
-        p0x = px - wx_n
-        p0y = py - wy_n
-        p1x = px + wx_n
-        p1y = py + wy_n
-        p2x = px + dx * h_val + wx_n
-        p2y = py + dy * h_val + wy_n
-        p3x = px + dx * h_val - wx_n
-        p3y = py + dy * h_val - wy_n
+        # Tapered flare: wider base, sharper tip (less blocky than uniform width).
+        wx_base = wx * 1.35
+        wy_base = wy * 1.35
+        wx_tip = wx * 0.55
+        wy_tip = wy * 0.55
+        p0x = px - wx_base
+        p0y = py - wy_base
+        p1x = px + wx_base
+        p1y = py + wy_base
+        p2x = px + dx * h_val + wx_tip
+        p2y = py + dy * h_val + wy_tip
+        p3x = px + dx * h_val - wx_tip
+        p3y = py + dy * h_val - wy_tip
     else:
         # orbit-spikes / classic-vertical — match preview (no tip taper).
         p0x = px - wx
