@@ -15,6 +15,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Spectrum live preview now paints **all** gradient color stops (was first→last only), so multi-stop palettes look rich around circular rings. See `docs/changelog/2026-07-29-spectrum-multi-stop-gradient-preview.md`.
+- Spectrum Layers: Up/Down reorder, clearer per-layer vs global labels, Add offsets ring size; curved Bottom (rabbit ears) grows inward. See `docs/changelog/2026-07-29-spectrum-layer-reorder-and-rabbit-ears.md`.
+
 ## [1.0.0] - 2026-07-26
 
 First official production release of the Camxora desktop studio.

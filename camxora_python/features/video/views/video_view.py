@@ -368,6 +368,8 @@ class VideoView(QWidget):
         self._spectrum_inspector.layer_add_requested.connect(self._add_spectrum_layer)
         self._spectrum_inspector.layer_duplicate_requested.connect(self._duplicate_spectrum_layer)
         self._spectrum_inspector.layer_delete_requested.connect(self._delete_spectrum_layer)
+        self._spectrum_inspector.layer_move_up_requested.connect(self._move_spectrum_layer_up)
+        self._spectrum_inspector.layer_move_down_requested.connect(self._move_spectrum_layer_down)
         self._spectrum_inspector.layer_selected.connect(self._select_spectrum_layer)
 
         self._background_inspector = BackgroundInspector()
@@ -3130,7 +3132,35 @@ class VideoView(QWidget):
         layers = clone_layer_records(self._spectrum_layers)
         index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1)) if layers else 0
         basis = dict(layers[index]) if layers and isinstance(layers[index], dict) else {}
-        layers.append({**basis, "name": "New Ring"})
+        # Keep rings visually separable: bump radius and reset opacity if missing/zeroed.
+        try:
+            base_gap = float(basis.get("radiusOffset") or 0.0)
+        except (TypeError, ValueError):
+            base_gap = 0.0
+        max_gap = 0.0
+        for item in layers:
+            if not isinstance(item, dict):
+                continue
+            try:
+                max_gap = max(max_gap, float(item.get("radiusOffset") or 0.0))
+            except (TypeError, ValueError):
+                pass
+        next_gap = max(base_gap + 18.0, max_gap + 18.0)
+        opacity = basis.get("opacity")
+        try:
+            opacity_f = float(opacity) if opacity is not None else 1.0
+        except (TypeError, ValueError):
+            opacity_f = 1.0
+        if opacity_f <= 0.0:
+            opacity_f = 1.0
+        layers.append(
+            {
+                **basis,
+                "name": "New Ring",
+                "radiusOffset": next_gap,
+                "opacity": opacity_f,
+            }
+        )
         self._set_spectrum_layers(layers, selected_index=len(layers) - 1)
 
     def _duplicate_spectrum_layer(self) -> None:
@@ -3140,7 +3170,17 @@ class VideoView(QWidget):
         index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
         basis = dict(layers[index]) if isinstance(layers[index], dict) else {}
         name = str(basis.get("name") or "").strip()
-        layers.append({**basis, "name": f"{name} Copy" if name else "Layer Copy"})
+        try:
+            base_gap = float(basis.get("radiusOffset") or 0.0)
+        except (TypeError, ValueError):
+            base_gap = 0.0
+        layers.append(
+            {
+                **basis,
+                "name": f"{name} Copy" if name else "Layer Copy",
+                "radiusOffset": base_gap + 12.0,
+            }
+        )
         self._set_spectrum_layers(layers, selected_index=len(layers) - 1)
 
     def _delete_spectrum_layer(self) -> None:
@@ -3150,6 +3190,22 @@ class VideoView(QWidget):
         index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
         layers.pop(index)
         self._set_spectrum_layers(layers, selected_index=max(0, index - 1))
+
+    def _move_spectrum_layer_up(self) -> None:
+        layers = clone_layer_records(self._spectrum_layers)
+        index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
+        if index <= 0 or len(layers) < 2:
+            return
+        layers[index - 1], layers[index] = layers[index], layers[index - 1]
+        self._set_spectrum_layers(layers, selected_index=index - 1)
+
+    def _move_spectrum_layer_down(self) -> None:
+        layers = clone_layer_records(self._spectrum_layers)
+        index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
+        if index >= len(layers) - 1 or len(layers) < 2:
+            return
+        layers[index + 1], layers[index] = layers[index], layers[index + 1]
+        self._set_spectrum_layers(layers, selected_index=index + 1)
 
     def _patch_template_draft(self, patch: dict) -> None:
         if not self._template_draft:

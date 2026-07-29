@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 import glfw
 import moderngl
-from ._spectrum_fast import resolve_bar_pixel_width
+from ._spectrum_fast import resolve_bar_pixel_width, resolve_curved_spectrum_basis
 
 def _audio_bar_height_mult(template: dict) -> float:
     audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
@@ -822,27 +822,25 @@ def _build_spectrum_vertex_colors(
     count: int,
     alpha: float,
 ) -> np.ndarray:
-    mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
-    gradient_colors = color_cfg.get("gradientColors")
-    if mode == "gradient" and isinstance(gradient_colors, list):
-        stops = [np.array(_as_rgb(value), dtype=np.float32) / 255.0 for value in gradient_colors if isinstance(value, str)]
-        if len(stops) >= 2:
-            t = np.linspace(0.0, 1.0, int(max(1, count)), dtype=np.float32)
-            rgb = np.empty((t.shape[0], 3), dtype=np.float32)
-            segment_count = len(stops) - 1
-            for idx, step in enumerate(t):
-                scaled = float(step) * float(segment_count)
-                seg_idx = int(min(segment_count - 1, max(0, int(np.floor(scaled)))))
-                local_t = scaled - float(seg_idx)
-                c1 = stops[seg_idx]
-                c2 = stops[min(seg_idx + 1, len(stops) - 1)]
-                rgb[idx] = c1 * (1.0 - local_t) + c2 * local_t
-            a = np.full((t.shape[0], 1), float(alpha), dtype=np.float32)
-            return np.concatenate([rgb, a], axis=1)
+    from features.video.lib.spectrum_color_engine import build_spectrum_vertex_rgba
 
-    base_rgb = np.array(spec_col[:3], dtype=np.float32)
-    base = np.array([base_rgb[0], base_rgb[1], base_rgb[2], float(alpha)], dtype=np.float32)
-    return np.tile(base[None, :], (int(max(1, count)), 1))
+    mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
+    solid = color_cfg.get("solidColor")
+    if not isinstance(solid, str) or not solid.strip():
+        # Fall back to the already-resolved solid RGB float tuple.
+        solid = "#{:02x}{:02x}{:02x}".format(
+            int(max(0, min(255, round(float(spec_col[0]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[1]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[2]) * 255.0)))),
+        )
+    gradient_colors = color_cfg.get("gradientColors") if isinstance(color_cfg.get("gradientColors"), list) else None
+    return build_spectrum_vertex_rgba(
+        mode=mode,
+        solid_color=str(solid),
+        gradient_colors=gradient_colors,
+        count=count,
+        alpha=alpha,
+    )
 
 def _hex_to_rgba(hex_color: str, alpha: int = 255) -> tuple[int, int, int, int]:
     raw = str(hex_color or "#ffffff").strip()
@@ -2452,6 +2450,7 @@ def run_gpu_render(
         precompute_fft_mapping, fft_to_log_bins, smooth_and_mirror, smooth_fft_envelope,
         generate_points_curved, generate_points_linear,
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
+        resolve_curved_spectrum_basis,
     )
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
     # Pre-compute frame-invariant template lookups
@@ -2533,16 +2532,10 @@ def run_gpu_render(
                 total_length_pre = (
                     float(h * 0.8) if gravity_pre in ("left", "right") else float(w * 0.8)
                 )
-            start_angle_pre = np.pi / 2.0
-            if gravity_pre == "top":
-                start_angle_pre = -np.pi / 2.0
-            elif gravity_pre == "left":
-                start_angle_pre = np.pi
-            elif gravity_pre == "right":
-                start_angle_pre = 0.0
+            start_angle_pre, radial_sign_pre = resolve_curved_spectrum_basis(gravity_pre)
             if curved_pre:
                 px_pre, py_pre, dx_pre, dy_pre = generate_points_curved(
-                    n_pre, radius_pre, mirrored_pre, start_angle_pre
+                    n_pre, radius_pre, mirrored_pre, start_angle_pre, radial_sign_pre
                 )
             else:
                 px_pre, py_pre, dx_pre, dy_pre = generate_points_linear(
@@ -2850,13 +2843,12 @@ def run_gpu_render(
             else:
                 total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
                 
-            start_angle = np.pi / 2.0
-            if gravity == "top": start_angle = -np.pi / 2.0
-            elif gravity == "left": start_angle = np.pi
-            elif gravity == "right": start_angle = 0.0
+            start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
             
             if curved:
-                px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(n, radius, mirrored, start_angle)
+                px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(
+                    n, radius, mirrored, start_angle, radial_sign
+                )
             else:
                 px_arr, py_arr, dx_arr, dy_arr = generate_points_linear(n, total_length, gravity)
             base_total_length = total_length
@@ -3839,10 +3831,7 @@ def render_preview_png(
             else:
                 total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
                 
-            start_angle = np.pi / 2.0
-            if gravity == "top": start_angle = -np.pi / 2.0
-            elif gravity == "left": start_angle = np.pi
-            elif gravity == "right": start_angle = 0.0
+            start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
             
             start_x = -total_length / 2.0
             
@@ -3859,8 +3848,8 @@ def render_preview_png(
                     angle = start_angle - (total_angle / 2.0) + (t * total_angle)
                     px_arr[i] = np.cos(angle) * radius
                     py_arr[i] = np.sin(angle) * radius
-                    dx_arr[i] = np.cos(angle)
-                    dy_arr[i] = np.sin(angle)
+                    dx_arr[i] = np.cos(angle) * radial_sign
+                    dy_arr[i] = np.sin(angle) * radial_sign
                 else:
                     offset = start_x + (t * total_length)
                     if gravity in ("normal", "top"):
@@ -4914,10 +4903,7 @@ def run_live_preview(opts: GpuOptions) -> int:
             else:
                 total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
                 
-            start_angle = np.pi / 2.0
-            if gravity == "top": start_angle = -np.pi / 2.0
-            elif gravity == "left": start_angle = np.pi
-            elif gravity == "right": start_angle = 0.0
+            start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
             
             start_x = -total_length / 2.0
             
@@ -4934,8 +4920,8 @@ def run_live_preview(opts: GpuOptions) -> int:
                     angle = start_angle - (total_angle / 2.0) + (t * total_angle)
                     px_arr[i] = np.cos(angle) * radius
                     py_arr[i] = np.sin(angle) * radius
-                    dx_arr[i] = np.cos(angle)
-                    dy_arr[i] = np.sin(angle)
+                    dx_arr[i] = np.cos(angle) * radial_sign
+                    dy_arr[i] = np.sin(angle) * radial_sign
                 else:
                     offset = start_x + (t * total_length)
                     if gravity in ("normal", "top"):

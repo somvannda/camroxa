@@ -41,6 +41,8 @@ class SpectrumInspector(QWidget):
     layer_add_requested = Signal()
     layer_duplicate_requested = Signal()
     layer_delete_requested = Signal()
+    layer_move_up_requested = Signal()
+    layer_move_down_requested = Signal()
     layer_selected = Signal(int)
 
     _AUDIO_FIELDS: tuple[tuple[str, float, float, int], ...] = (
@@ -192,6 +194,8 @@ class SpectrumInspector(QWidget):
         self._layer_editor.layer_add_requested.connect(self.layer_add_requested.emit)
         self._layer_editor.layer_duplicate_requested.connect(self.layer_duplicate_requested.emit)
         self._layer_editor.layer_delete_requested.connect(self.layer_delete_requested.emit)
+        self._layer_editor.layer_move_up_requested.connect(self.layer_move_up_requested.emit)
+        self._layer_editor.layer_move_down_requested.connect(self.layer_move_down_requested.emit)
         self._layer_editor.layer_selected.connect(self.layer_selected.emit)
         root.addWidget(self._layer_editor)
         root.addStretch()

@@ -31,8 +31,8 @@ from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL
 from shared.widgets.settings_ui import form_row, note_box
 
 GRAVITY_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("normal", "Normal (Straight Rising)"),
-    ("bottom", "Bottom (Rabbit Ears on Top)"),
+    ("normal", "Normal (Outward / Rising)"),
+    ("bottom", "Bottom (Rabbit Ears / Inward)"),
     ("top", "Top"),
     ("left", "Left"),
     ("right", "Right"),
@@ -60,12 +60,17 @@ class SpectrumLayerEditor(InspectorSection):
     layer_add_requested = Signal()
     layer_duplicate_requested = Signal()
     layer_delete_requested = Signal()
+    layer_move_up_requested = Signal()
+    layer_move_down_requested = Signal()
     layer_selected = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             "Layers",
-            subtitle="Presets start with one layer. Add or duplicate layers only when you want a stacked look.",
+            subtitle=(
+                "Each ring has its own settings. Last in the list draws on top. "
+                "Use Up/Down to reorder. Layer Gap changes that ring's size."
+            ),
             parent=parent,
         )
         self._binding = False
@@ -81,7 +86,7 @@ class SpectrumLayerEditor(InspectorSection):
         self._attach_note: QWidget | None = None
 
         self._layer_combo = QComboBox()
-        self._layer_combo.setToolTip("Layer")
+        self._layer_combo.setToolTip("Selected layer (edits apply only to this ring)")
         self._layer_combo.currentIndexChanged.connect(self._on_layer_combo_changed)
         self.add_widget(self._layer_combo)
 
@@ -96,7 +101,15 @@ class SpectrumLayerEditor(InspectorSection):
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._delete_btn.clicked.connect(self.layer_delete_requested.emit)
-        for button in (add_btn, dup_btn, self._delete_btn):
+        self._up_btn = QPushButton("Up")
+        self._up_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._up_btn.setToolTip("Move selected layer earlier (draws under)")
+        self._up_btn.clicked.connect(self.layer_move_up_requested.emit)
+        self._down_btn = QPushButton("Down")
+        self._down_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._down_btn.setToolTip("Move selected layer later (draws on top)")
+        self._down_btn.clicked.connect(self.layer_move_down_requested.emit)
+        for button in (add_btn, dup_btn, self._delete_btn, self._up_btn, self._down_btn):
             actions.addWidget(button)
         action_host = QWidget()
         action_host.setLayout(actions)
@@ -153,7 +166,7 @@ class SpectrumLayerEditor(InspectorSection):
         self.add_widget(toggle_host)
 
         bar_height_widget, bar_height_setter = build_float_slider(
-            "Bar Height",
+            "Bar Height (all layers)",
             minimum=0.5,
             maximum=6,
             step=0.05,
@@ -166,12 +179,12 @@ class SpectrumLayerEditor(InspectorSection):
         self.add_widget(bar_height_widget)
 
         for field, label, minimum, maximum, step in (
-            ("barWidth", "Bar Width", 1, 120, 0.25),
-            ("thickness", "Spike Height", 1, 220, 0.25),
-            ("radiusOffset", "Layer Gap", 0, 400, 0.5),
-            ("opacity", "Opacity", 0, 1, 0.01),
-            ("glow", "Glow Strength", 0, 100, 1),
-            ("blur", "Glow Softness", 0, 30, 1),
+            ("barWidth", "Bar Width (this layer)", 1, 120, 0.25),
+            ("thickness", "Spike Height (this layer)", 1, 220, 0.25),
+            ("radiusOffset", "Layer Gap / Ring Size (this layer)", 0, 400, 0.5),
+            ("opacity", "Opacity (this layer)", 0, 1, 0.01),
+            ("glow", "Glow Strength (this layer)", 0, 100, 1),
+            ("blur", "Glow Softness (this layer)", 0, 30, 1),
         ):
             self.add_widget(self._add_layer_float(field, label, minimum, maximum, step))
 
@@ -400,6 +413,8 @@ class SpectrumLayerEditor(InspectorSection):
             self._layer_combo.blockSignals(False)
 
             self._delete_btn.setEnabled(len(layers) >= 2)
+            self._up_btn.setEnabled(len(layers) >= 2 and self._selected_index > 0)
+            self._down_btn.setEnabled(len(layers) >= 2 and self._selected_index < len(layers) - 1)
 
             if not layer:
                 return
@@ -423,9 +438,22 @@ class SpectrumLayerEditor(InspectorSection):
             if "audioBarHeight" in self._float_setters:
                 self._float_setters["audioBarHeight"](float(draft.get("audioBarHeight") or 1))
 
-            for field in ("barWidth", "thickness", "radiusOffset", "opacity", "glow", "blur"):
-                if field in self._float_setters:
-                    self._float_setters[field](float(layer.get(field) or 0))
+            layer_defaults = {
+                "barWidth": 5.0,
+                "thickness": 36.0,
+                "radiusOffset": 0.0,
+                "opacity": 1.0,
+                "glow": 0.0,
+                "blur": 0.0,
+            }
+            for field, default in layer_defaults.items():
+                if field not in self._float_setters:
+                    continue
+                raw = layer.get(field)
+                if isinstance(raw, (int, float)):
+                    self._float_setters[field](float(raw))
+                else:
+                    self._float_setters[field](float(default))
 
             self._color_model = extract_spectrum_layer_color_model(
                 layer,

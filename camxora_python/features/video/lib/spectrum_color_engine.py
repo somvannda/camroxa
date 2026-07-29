@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
 from features.video.lib.template_value_utils import normalize_color, to_record, to_string_value
 
 MAX_GRADIENT_COLOR_STOPS = 5
@@ -105,6 +107,57 @@ def extract_spectrum_layer_color_model(
 
 def build_spectrum_gradient_preset_value(colors: list[str]) -> str:
     return ",".join(colors)
+
+
+def _hex_to_rgb01(value: str) -> np.ndarray:
+    raw = str(value or "").strip()
+    if raw.startswith("#") and len(raw) >= 7:
+        try:
+            return np.array(
+                (
+                    int(raw[1:3], 16),
+                    int(raw[3:5], 16),
+                    int(raw[5:7], 16),
+                ),
+                dtype=np.float32,
+            ) / 255.0
+        except ValueError:
+            pass
+    return np.array((1.0, 1.0, 1.0), dtype=np.float32)
+
+
+def build_spectrum_vertex_rgba(
+    *,
+    mode: str,
+    solid_color: str,
+    gradient_colors: list[str] | None,
+    count: int,
+    alpha: float,
+) -> np.ndarray:
+    """Build per-bar RGBA colors for preview/export spectrum draws.
+
+    Multi-stop gradients interpolate through every stop (not first→last only).
+    """
+    n = int(max(1, count))
+    a = float(max(0.0, min(1.0, alpha)))
+    if str(mode or "solid").lower().strip() == "gradient":
+        stops_raw = [str(c).strip() for c in (gradient_colors or []) if str(c or "").strip()]
+        stops_raw = normalize_spectrum_gradient_colors(stops_raw, solid_color or GRADIENT_FALLBACK_COLOR)
+        stops = np.stack([_hex_to_rgb01(c) for c in stops_raw], axis=0).astype(np.float32)
+        if stops.shape[0] >= 2:
+            t = np.linspace(0.0, 1.0, n, dtype=np.float32)
+            segment_count = int(stops.shape[0] - 1)
+            scaled = t * float(segment_count)
+            seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
+            local_t = (scaled - seg_idx.astype(np.float32)).reshape((n, 1))
+            c1 = stops[seg_idx]
+            c2 = stops[np.minimum(seg_idx + 1, stops.shape[0] - 1)]
+            rgb = c1 * (1.0 - local_t) + c2 * local_t
+            alpha_col = np.full((n, 1), a, dtype=np.float32)
+            return np.concatenate([rgb.astype(np.float32), alpha_col], axis=1)
+
+    base = _hex_to_rgb01(solid_color)
+    return np.tile(np.array([base[0], base[1], base[2], a], dtype=np.float32)[None, :], (n, 1))
 
 
 def apply_spectrum_layer_color_patch(

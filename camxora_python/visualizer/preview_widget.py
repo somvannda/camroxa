@@ -26,12 +26,19 @@ from visualizer.gpu_render import (
     ParticleSystem,
     ParticleConfig,
 )
-from visualizer._spectrum_fast import resolve_bar_pixel_width, smooth_fft_envelope
+from visualizer._spectrum_fast import (
+    generate_points_curved,
+    generate_points_linear,
+    resolve_bar_pixel_width,
+    resolve_curved_spectrum_basis,
+    smooth_fft_envelope,
+)
 from features.video.lib.particle_color_engine import (
     build_particle_rgba_rows,
     extract_particle_color_model,
     palette_colors_to_rgb_tuple,
 )
+from features.video.lib.spectrum_color_engine import build_spectrum_vertex_rgba
 from visualizer.audio import AudioAnalyzer
 from visualizer.automation import apply_automations
 from visualizer.contracts import PreviewConfig
@@ -1680,38 +1687,13 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 dx_arr = np.zeros(n, dtype=np.float32)
                 dy_arr = np.zeros(n, dtype=np.float32)
                 if curved:
-                    total_angle = np.pi * 2.0 if mirrored else np.pi
-                    start_angle = np.pi / 2.0
-                    if gravity == 'top':
-                        start_angle = -np.pi / 2.0
-                    elif gravity == 'left':
-                        start_angle = np.pi
-                    elif gravity == 'right':
-                        start_angle = 0.0
-                    # normal / bottom keep default start_angle (pi/2)
-                    for i in range(n):
-                        t0 = float(i) / float(n - 1) if n > 1 else 0.0
-                        ang = start_angle - total_angle / 2.0 + t0 * total_angle
-                        px_arr[i] = np.cos(ang) * radius
-                        py_arr[i] = np.sin(ang) * radius
-                        dx_arr[i] = np.cos(ang)
-                        dy_arr[i] = np.sin(ang)
+                    start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
+                    px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(
+                        n, radius, mirrored, start_angle, radial_sign
+                    )
                 else:
                     total_length = float(h * 0.8) if gravity in ('left', 'right') else float(w * 0.8)
-                    start_x = -total_length / 2.0
-                    for i in range(n):
-                        t0 = float(i) / float(n - 1) if n > 1 else 0.0
-                        off = start_x + t0 * total_length
-                        if gravity in ('normal', 'top'):
-                            # Classic EQ: bars rise upward from the baseline.
-                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (off, 0.0, 0.0, 1.0)
-                        elif gravity == 'bottom':
-                            # Rabbit-ears: bars grow downward from the baseline.
-                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (off, 0.0, 0.0, -1.0)
-                        elif gravity == 'left':
-                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (0.0, off, 1.0, 0.0)
-                        else:
-                            px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = (0.0, off, -1.0, 0.0)
+                    px_arr, py_arr, dx_arr, dy_arr = generate_points_linear(n, total_length, gravity)
                 waveform_style = style_preset in ('aurora-ribbon', 'magma-ridge', 'plasma-bloom', 'soft-waveform', 'mountain', 'liquid', 'continuous-waveform')
                 if curved and mirrored and waveform_style:
                     px_arr = np.concatenate([px_arr, px_arr[:1]])
@@ -1742,15 +1724,13 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     half_t = float(max(1.0, pass_bar_width_px)) * 0.5
 
                     def mk_col_array(nn0: int):
-                        if col_mode == 'gradient' and len(grad_cols) >= 2:
-                            c1 = np.array(hex_to_rgb(grad_cols[0]), dtype=np.float32) / 255.0
-                            c2 = np.array(hex_to_rgb(grad_cols[-1]), dtype=np.float32) / 255.0
-                            t_arr = (np.arange(nn0, dtype=np.float32) / float(max(1, nn0 - 1))).reshape((nn0, 1))
-                            rgb = c1.reshape((1, 3)) * (1.0 - t_arr) + c2.reshape((1, 3)) * t_arr
-                            a = np.full((nn0, 1), pass_alpha, dtype=np.float32)
-                            return np.concatenate([rgb, a], axis=1)
-                        c = np.array(hex_to_rgb(solid_hex), dtype=np.float32) / 255.0
-                        return np.tile(np.array([c[0], c[1], c[2], pass_alpha], dtype=np.float32)[None, :], (nn0, 1))
+                        return build_spectrum_vertex_rgba(
+                            mode=col_mode,
+                            solid_color=solid_hex,
+                            gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                            count=nn0,
+                            alpha=pass_alpha,
+                        )
                     ctx_col = mk_col_array(nn)
                     slot_w = float(base_total_length / max(1, BINS))
                     bw = resolve_bar_pixel_width(pass_bar_width_px, slot_w)

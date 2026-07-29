@@ -99,9 +99,38 @@ def smooth_and_mirror(fft_s: np.ndarray, mirrored: bool) -> np.ndarray:
     return smoothed
 
 
-def generate_points_curved(n: int, radius: float, mirrored: bool, start_angle: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def resolve_curved_spectrum_basis(gravity: str) -> tuple[float, float]:
+    """Return ``(start_angle, radial_sign)`` for curved spectrum layers.
+
+    ``radial_sign`` is ``+1`` for outward growth (normal) and ``-1`` for inward
+    growth (bottom / rabbit ears). For Curve 180, bottom also places the arc on
+    the lower semicircle so growth toward center reads bottom→top.
+    """
+    g = str(gravity or "normal").lower().strip()
+    start_angle = float(np.pi / 2.0)
+    radial_sign = 1.0
+    if g == "top":
+        start_angle = float(-np.pi / 2.0)
+    elif g == "left":
+        start_angle = float(np.pi)
+    elif g == "right":
+        start_angle = 0.0
+    elif g == "bottom":
+        # Rabbit ears: grow inward. On the bottom of the ring that is bottom→top.
+        start_angle = float(-np.pi / 2.0)
+        radial_sign = -1.0
+    return start_angle, radial_sign
+
+
+def generate_points_curved(
+    n: int,
+    radius: float,
+    mirrored: bool,
+    start_angle: float,
+    radial_sign: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Generate curved spectrum point positions and directions (vectorized).
-    
+
     Returns:
         (px, py, dx, dy) arrays of shape (n,) float32
     """
@@ -110,7 +139,12 @@ def generate_points_curved(n: int, radius: float, mirrored: bool, start_angle: f
     ang = start_angle - total_angle / 2.0 + t0 * total_angle
     cos_a = np.cos(ang).astype(np.float32)
     sin_a = np.sin(ang).astype(np.float32)
-    return cos_a * radius, sin_a * radius, cos_a, sin_a
+    sign = float(radial_sign)
+    if sign >= 0.0:
+        sign = 1.0
+    else:
+        sign = -1.0
+    return cos_a * radius, sin_a * radius, cos_a * sign, sin_a * sign
 
 
 def generate_points_linear(n: int, total_length: float, gravity: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
