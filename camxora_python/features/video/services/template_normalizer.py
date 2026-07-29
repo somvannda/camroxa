@@ -37,6 +37,7 @@ class TemplateNormalizer:
         track_paths: list[str] | None = None,
         pipeline_album: str = "",
         active_track_path: str | None = None,
+        lightning_layers: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         template_name = str(base.get("templateName") or "").strip()
         patch = build_video_workspace_template_save_patch(
@@ -44,6 +45,7 @@ class TemplateNormalizer:
             draft=draft,
             template_name=template_name,
             layers=layers,
+            lightning_layers=lightning_layers,
         )
         merged = merge_records(base, patch)
         if merged.get("templateName") == "":

@@ -107,6 +107,7 @@ def build_atmosphere_template_patch(template: dict[str, Any], draft: VideoTempla
                 "feather": draft["vignetteFeather"],
                 "opacity": draft["vignetteOpacity"],
                 "color": draft["vignetteColor"],
+                "reactivity": draft.get("vignetteReactivity", 0.0),
             },
             "smoke": {
                 **current_smoke,
@@ -171,6 +172,7 @@ def build_particles_template_patch(template: dict[str, Any], draft: VideoTemplat
             "drift": draft["particlesDrift"],
             "swirl": draft["particlesSwirl"],
             "style": draft["particlesStyle"],
+            "glow": float(draft.get("particlesGlow", 0.0) or 0.0),
             "size": draft["particlesSize"],
             "opacity": draft["particlesOpacity"],
             "color": draft["particlesColor"],
@@ -193,6 +195,18 @@ def build_text_template_patch(draft: VideoTemplateDraft) -> dict[str, Any]:
     return {"textOverlays": []}
 
 
+def build_lightning_template_patch(
+    draft: VideoTemplateDraft,
+    lightning_layers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    from features.video.lib.lightning_style_registry import normalize_lightning_layers
+
+    return {
+        "lightningEnabled": bool(draft.get("lightningEnabled", False)),
+        "lightningLayers": normalize_lightning_layers(lightning_layers),
+    }
+
+
 def build_album_template_patch(draft: VideoTemplateDraft) -> dict[str, Any]:
     from features.video.lib.text_domain_registry import album_settings_from_draft
 
@@ -211,6 +225,7 @@ def build_video_workspace_template_save_patch(
     draft: VideoTemplateDraft,
     template_name: str,
     layers: list[dict[str, Any]],
+    lightning_layers: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     effect_packs = draft.get("effectPacks") if isinstance(draft.get("effectPacks"), dict) else {}
     pack_entry = lambda domain: effect_packs.get(domain) if isinstance(effect_packs.get(domain), dict) else None
@@ -229,6 +244,7 @@ def build_video_workspace_template_save_patch(
         **build_atmosphere_template_patch(template, draft),
         **build_logo_template_patch(template, draft),
         **build_particles_template_patch(template, draft),
+        **build_lightning_template_patch(draft, list(lightning_layers or [])),
         **build_album_template_patch(draft),
         **build_title_template_patch(draft),
         **build_text_template_patch(draft),

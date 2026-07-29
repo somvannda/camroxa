@@ -37,6 +37,7 @@ PARTICLE_STYLE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("ring", "Ring"),
     ("spark", "Spark"),
     ("bokeh", "Bokeh"),
+    ("music", "Music Notes"),
 )
 
 PARTICLE_TRAVEL_MODE_OPTIONS: tuple[tuple[str, str], ...] = (

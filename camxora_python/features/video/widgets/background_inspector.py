@@ -166,7 +166,16 @@ class BackgroundInspector(QWidget):
             ("vignetteOpacity", "Vignette Opacity"),
         ):
             corner_section.add_widget(self._add_float(field, label, 0, 1, 0.01))
+        corner_section.add_widget(
+            self._add_float("vignetteReactivity", "Vignette Audio React", 0, 5, 0.05)
+        )
         corner_section.add_widget(self._add_color("vignetteColor", "Vignette Color"))
+        corner_section.add_widget(
+            note_box(
+                "Vignette Audio React opens the dark corners on bass/kick and lightning strikes, "
+                "so a bright background can flash through when bolts hit."
+            )
+        )
 
         corner_section.add_widget(
             self._add_toggle("smokeEnabled", "Smoke", lambda checked: {"smokeEnabled": checked})

@@ -117,16 +117,17 @@ def default_renderer_template() -> dict:
             "reactColor": "#ffffff",
             "reactStrength": 0.65,
             "style": "dot",
+            "glow": 0.0,
             "trailEnabled": False,
             "trailLength": 8,
             "trailFade": 0.65,
             "trailWidth": 0.45,
         },
         "effects": {
-            "vignette": {"enabled": False, "strength": 0.35, "feather": 0.65, "color": "#000000", "opacity": 0.65},
+            "vignette": {"enabled": False, "strength": 0.35, "feather": 0.65, "color": "#000000", "opacity": 0.65, "reactivity": 0.0},
             "smoke": {"enabled": False, "strength": 0.35, "blur": 0.55, "noise": 0.55, "speed": 0.35, "color": "#000000", "opacity": 0.55},
         },
-        "lightningEnabled": True,
+        "lightningEnabled": False,
         "lightningLayers": [
             {
                 "id": "lightning-1",
@@ -136,6 +137,7 @@ def default_renderer_template() -> dict:
                 "x": 0.0,
                 "y": 0.0,
                 "direction": "down",
+                "rotation": 0.0,
                 "color": {
                     "mode": "gradient",
                     "solidColor": "#e0f2fe",
@@ -246,8 +248,12 @@ def normalize_renderer_template(input_template: Any) -> dict:
     if ps["variant"] not in ("classic", "bokeh", "soap", "dust"):
         ps["variant"] = "classic"
     ps["style"] = str(ps.get("style", "dot"))
-    if ps["style"] not in ("dot", "glow", "ring", "spark", "bokeh"):
+    if ps["style"] not in ("dot", "glow", "ring", "spark", "bokeh", "music"):
         ps["style"] = "dot"
+    try:
+        ps["glow"] = float(max(0.0, min(1.0, float(ps.get("glow", 0.0) or 0.0))))
+    except (TypeError, ValueError):
+        ps["glow"] = 0.0
     ps["trailEnabled"] = bool(ps.get("trailEnabled", False))
     try:
         trail_len = int(round(float(ps.get("trailLength", 8) or 8)))
@@ -326,6 +332,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
         "feather": float(max(0.0, min(1.0, float(vignette_in.get("feather", 0.65) or 0.65)))),
         "color": str(vignette_in.get("color", "#000000") or "#000000"),
         "opacity": float(max(0.0, min(1.0, float(vignette_in.get("opacity", 0.65) or 0.65)))),
+        "reactivity": float(max(0.0, min(5.0, float(vignette_in.get("reactivity", 0.0) or 0.0)))),
     }
     effects["smoke"] = {
         **(base.get("effects", {}).get("smoke", {}) if _is_obj(base.get("effects")) else {}),

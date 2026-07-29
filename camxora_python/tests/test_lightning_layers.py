@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import numpy as np
 
-from features.video.lib.lightning_geometry import build_lightning_polylines, lightning_flash_envelope
+from features.video.lib.lightning_geometry import (
+    build_lightning_polylines,
+    lightning_flash_envelope,
+    polyline_to_ndc_strip,
+)
 from features.video.lib.lightning_style_registry import (
+    LIGHTNING_PRESET_OPTIONS,
     LIGHTNING_STYLE_OPTIONS,
+    LIGHTNING_TRIGGER_OPTIONS,
+    build_lightning_preset_layer_patch,
     default_lightning_layer,
+    is_lightning_preset_key,
     normalize_lightning_layers,
     normalize_lightning_style,
+    normalize_lightning_trigger,
 )
 from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
 
@@ -29,9 +38,16 @@ def test_normalize_layers_defaults() -> None:
 
 def test_template_includes_lightning_layers() -> None:
     out = normalize_renderer_template(default_renderer_template())
-    assert out["lightningEnabled"] is True
+    assert out["lightningEnabled"] is False
     assert isinstance(out["lightningLayers"], list)
     assert len(out["lightningLayers"]) >= 1
+
+
+def test_polyline_strip_ndc() -> None:
+    pts = np.array([[100.0, 100.0], [140.0, 180.0], [120.0, 240.0]], dtype=np.float32)
+    strip = polyline_to_ndc_strip(pts, half_width=2.0, frame_w=800.0, frame_h=450.0)
+    assert strip is not None
+    assert strip.shape == (6, 2)
 
 
 def test_geometry_builds_for_each_style() -> None:
@@ -55,13 +71,308 @@ def test_geometry_builds_for_each_style() -> None:
             time_sec=1.25,
             flash=max(0.2, flash),
             seed=3.0,
+            speed=1.0,
         )
         assert isinstance(polys, list)
         assert len(polys) >= 1
         assert polys[0].shape[1] == 2
 
 
+def test_one_bolt_per_layer_storm_and_spider() -> None:
+    """Storm/spider must not spawn independent multi-bolt fans."""
+    storm = build_lightning_polylines(
+        style="storm",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=1.0,
+        time_sec=1.0,
+        flash=1.0,
+        seed=1.0,
+        speed=1.0,
+    )
+    spider = build_lightning_polylines(
+        style="spider",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=1.0,
+        time_sec=1.0,
+        flash=1.0,
+        seed=2.0,
+        speed=1.0,
+    )
+    # Main path + at most 2 side forks → at most 3 polylines.
+    assert 1 <= len(storm) <= 3
+    assert 1 <= len(spider) <= 3
+
+
+def test_speed_grows_bolt_length() -> None:
+    slow = build_lightning_polylines(
+        style="ribbon",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=0.0,
+        time_sec=0.0,
+        flash=1.0,
+        seed=1.0,
+        speed=0.5,
+    )[0]
+    fast = build_lightning_polylines(
+        style="ribbon",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=0.0,
+        time_sec=0.0,
+        flash=1.0,
+        seed=1.0,
+        speed=3.0,
+    )[0]
+    slow_span = float(np.linalg.norm(slow[-1] - slow[0]))
+    fast_span = float(np.linalg.norm(fast[-1] - fast[0]))
+    assert fast_span > slow_span * 1.2
+
+
 def test_default_layer_shape() -> None:
     layer = default_lightning_layer(index=2)
     assert layer["id"] == "lightning-2"
     assert layer["name"] == "Bolt 2"
+    assert layer["trigger"] == "always"
+    assert layer["seedLock"] is False
+    assert layer["rotation"] == 0.0
+    assert "glow" in layer and "branchiness" in layer
+
+
+def test_rotation_spins_bolt_direction() -> None:
+    base = build_lightning_polylines(
+        style="ribbon",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=0.0,
+        time_sec=0.0,
+        flash=1.0,
+        seed=1.0,
+        speed=1.0,
+        rotation=0.0,
+    )[0]
+    spun = build_lightning_polylines(
+        style="ribbon",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=0.0,
+        time_sec=0.0,
+        flash=1.0,
+        seed=1.0,
+        speed=1.0,
+        rotation=90.0,
+    )[0]
+    base_dir = base[-1] - base[0]
+    spun_dir = spun[-1] - spun[0]
+    # 90° clockwise from down (0, +y) → roughly left (-x)
+    assert abs(float(base_dir[0])) < abs(float(base_dir[1]))
+    assert abs(float(spun_dir[1])) < abs(float(spun_dir[0]))
+    assert float(spun_dir[0]) < 0.0
+
+
+def test_normalize_preserves_trigger_and_seed_lock() -> None:
+    layers = normalize_lightning_layers(
+        [
+            {
+                "style": "neon",
+                "trigger": "kick",
+                "triggerThreshold": 0.4,
+                "seed": 42,
+                "seedLock": True,
+                "glow": 0.9,
+                "branchiness": 0.2,
+            }
+        ]
+    )
+    assert layers[0]["trigger"] == "kick"
+    assert layers[0]["triggerThreshold"] == 0.4
+    assert layers[0]["seed"] == 42.0
+    assert layers[0]["seedLock"] is True
+    assert normalize_lightning_trigger("NOPE") == "always"
+    assert len(LIGHTNING_TRIGGER_OPTIONS) == 6
+
+
+def test_flash_envelope_trigger_modes() -> None:
+    # Find a time inside the strike duty window for seed=1.
+    timed_on = 0.0
+    for t in [i * 0.02 for i in range(80)]:
+        v = lightning_flash_envelope(
+            time_sec=t,
+            flash_rate=1.0,
+            speed=1.0,
+            reactivity=0.0,
+            audio_env=0.0,
+            seed=1.0,
+            trigger="timed",
+        )
+        if v > 0.2:
+            timed_on = v
+            break
+    assert timed_on > 0.2
+
+    # Between strikes, continuous audio must NOT keep lightning permanently on.
+    mid_strike_off = None
+    for t in [i * 0.02 for i in range(80)]:
+        v = lightning_flash_envelope(
+            time_sec=t,
+            flash_rate=1.0,
+            speed=1.0,
+            reactivity=1.0,
+            audio_env=1.0,
+            seed=1.0,
+            trigger="always",
+        )
+        if v <= 0.02:
+            mid_strike_off = v
+            break
+    assert mid_strike_off is not None
+
+    kick_hit = lightning_flash_envelope(
+        time_sec=0.0,
+        flash_rate=1.0,
+        speed=1.0,
+        reactivity=1.0,
+        audio_env=0.0,
+        seed=1.0,
+        trigger="kick",
+        kick=0.9,
+        threshold=0.22,
+    )
+    kick_miss = lightning_flash_envelope(
+        time_sec=0.0,
+        flash_rate=1.0,
+        speed=1.0,
+        reactivity=1.0,
+        audio_env=0.0,
+        seed=1.0,
+        trigger="kick",
+        kick=0.05,
+        threshold=0.22,
+    )
+    beat_hit = lightning_flash_envelope(
+        time_sec=0.0,
+        flash_rate=1.0,
+        speed=1.0,
+        reactivity=1.0,
+        audio_env=0.0,
+        seed=1.0,
+        trigger="beat",
+        beat=0.0,
+        onset=0.8,
+        threshold=0.22,
+    )
+    assert kick_hit > kick_miss
+    assert beat_hit > 0.4
+
+    bass_hit = lightning_flash_envelope(
+        time_sec=0.0,
+        flash_rate=1.0,
+        speed=1.0,
+        reactivity=1.0,
+        audio_env=0.0,
+        seed=1.0,
+        trigger="bass",
+        bass=0.9,
+        threshold=0.22,
+    )
+    bass_miss = lightning_flash_envelope(
+        time_sec=0.0,
+        flash_rate=1.0,
+        speed=1.0,
+        reactivity=1.0,
+        audio_env=0.0,
+        seed=1.0,
+        trigger="bass",
+        bass=0.05,
+        threshold=0.22,
+    )
+    assert bass_hit > bass_miss
+
+
+def test_presets_apply_patches() -> None:
+    assert len(LIGHTNING_PRESET_OPTIONS) >= 6
+    assert is_lightning_preset_key("neon_sky")
+    assert not is_lightning_preset_key("missing")
+    for key, _label in LIGHTNING_PRESET_OPTIONS:
+        patch = build_lightning_preset_layer_patch(key)
+        assert isinstance(patch, dict)
+        assert "style" in patch
+        assert "trigger" in patch
+        merged = normalize_lightning_layers([{**default_lightning_layer(index=1), **patch}])[0]
+        assert merged["style"] == patch["style"]
+
+
+def test_vignette_reactivity_opens_on_flash() -> None:
+    from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+
+    strength, opacity = apply_vignette_reactivity(
+        strength=0.6,
+        opacity=0.8,
+        reactivity=2.0,
+        flash_env=1.0,
+    )
+    assert strength < 0.6
+    assert opacity < 0.8
+
+    quiet = peak_lightning_flash(
+        {"lightningEnabled": False, "lightningLayers": []},
+        time_sec=1.0,
+        kick=1.0,
+    )
+    assert quiet == 0.0
+
+    hit = peak_lightning_flash(
+        {
+            "lightningEnabled": True,
+            "lightningLayers": [
+                {
+                    "enabled": True,
+                    "trigger": "kick",
+                    "triggerThreshold": 0.2,
+                    "intensity": 1.0,
+                    "reactivity": 1.0,
+                    "flashRate": 1.0,
+                    "speed": 1.0,
+                    "seed": 1.0,
+                }
+            ],
+        },
+        time_sec=0.0,
+        kick=0.95,
+        audio_env=0.0,
+    )
+    miss = peak_lightning_flash(
+        {
+            "lightningEnabled": True,
+            "lightningLayers": [
+                {
+                    "enabled": True,
+                    "trigger": "kick",
+                    "triggerThreshold": 0.2,
+                    "intensity": 1.0,
+                    "reactivity": 1.0,
+                    "flashRate": 1.0,
+                    "speed": 1.0,
+                    "seed": 1.0,
+                }
+            ],
+        },
+        time_sec=0.0,
+        kick=0.05,
+        audio_env=0.0,
+    )
+    assert hit > miss

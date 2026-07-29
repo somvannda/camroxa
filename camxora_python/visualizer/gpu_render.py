@@ -630,11 +630,14 @@ def _compile_particle_quads(ctx: moderngl.Context):
     in vec2 in_pos;
     in vec2 in_uv;
     in vec4 in_col;
+    in vec2 in_meta;
     out vec2 v_uv;
     out vec4 v_col;
+    out vec2 v_meta;
     void main() {
-        v_uv = in_uv * 2.0 - 1.0;
+        v_uv = in_uv;
         v_col = in_col;
+        v_meta = in_meta;
         gl_Position = vec4(in_pos, 0.0, 1.0);
     }
     """
@@ -642,44 +645,89 @@ def _compile_particle_quads(ctx: moderngl.Context):
     #version 330
     in vec2 v_uv;
     in vec4 v_col;
+    in vec2 v_meta;
     uniform int pt_style;
+    uniform float glow_amount;
+    uniform sampler2D icon_atlas;
+    uniform int atlas_cols;
     out vec4 frag;
     float sat(float x) { return clamp(x, 0.0, 1.0); }
     void main() {
-        vec2 p = v_uv;
+        vec2 p = v_uv * 2.0 - 1.0;
         float r2 = dot(p, p);
         float r = sqrt(max(r2, 0.0));
         float edge = 1.0 - smoothstep(0.92, 1.0, r);
-        if (r > 1.0) discard;
-        float a = edge;
-        if (pt_style == 1) {
-            float core = 1.0 - smoothstep(0.55, 1.0, r);
-            float halo = 1.0 - smoothstep(0.0, 1.0, r);
-            a = max(core, halo * 0.35) * edge;
-        } else if (pt_style == 2) {
-            float inner = smoothstep(0.55, 0.62, r);
-            float outer = 1.0 - smoothstep(0.82, 0.90, r);
-            a = sat(inner * outer) * edge;
-        } else if (pt_style == 3) {
-            float w = 0.10;
-            float ax = 1.0 - smoothstep(w, w + 0.04, abs(p.x));
-            float ay = 1.0 - smoothstep(w, w + 0.04, abs(p.y));
-            float d1 = abs(p.x - p.y) * 0.70710678;
-            float d2 = abs(p.x + p.y) * 0.70710678;
-            float ad1 = 1.0 - smoothstep(w, w + 0.04, d1);
-            float ad2 = 1.0 - smoothstep(w, w + 0.04, d2);
-            float spike = max(max(ax, ay), max(ad1, ad2));
-            float core = 1.0 - smoothstep(0.40, 1.0, r);
-            float halo = 1.0 - smoothstep(0.0, 1.0, r);
-            a = max(core, max(spike * 0.85, halo * 0.25)) * edge;
-        } else if (pt_style == 4) {
-            float soft = 1.0 - smoothstep(0.0, 1.0, r);
-            a = pow(soft, 1.8) * edge;
+        float a = 0.0;
+        vec3 rgb = v_col.rgb;
+
+        if (pt_style == 5) {
+            // Music icon atlas sample with per-particle rotation.
+            float cols = float(max(1, atlas_cols));
+            float icon = floor(mod(max(v_meta.x, 0.0), cols));
+            float ang = v_meta.y;
+            float ca = cos(ang);
+            float sa = sin(ang);
+            vec2 q = v_uv - 0.5;
+            vec2 rq = vec2(ca * q.x - sa * q.y, sa * q.x + ca * q.y);
+            vec2 local = rq + 0.5;
+            if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) discard;
+            vec2 atlas_uv = vec2((icon + local.x) / cols, local.y);
+            float icon_a = texture(icon_atlas, atlas_uv).a;
+            a = icon_a;
+            float core = smoothstep(0.15, 0.85, icon_a);
+            rgb = mix(v_col.rgb, vec3(1.0), glow_amount * 0.55 * core);
+        } else {
+            if (r > 1.0) discard;
+            a = edge;
+            if (pt_style == 1) {
+                float core = 1.0 - smoothstep(0.55, 1.0, r);
+                float halo = 1.0 - smoothstep(0.0, 1.0, r);
+                a = max(core, halo * 0.35) * edge;
+            } else if (pt_style == 2) {
+                float inner = smoothstep(0.55, 0.62, r);
+                float outer = 1.0 - smoothstep(0.82, 0.90, r);
+                a = sat(inner * outer) * edge;
+            } else if (pt_style == 3) {
+                float w = 0.10;
+                float ax = 1.0 - smoothstep(w, w + 0.04, abs(p.x));
+                float ay = 1.0 - smoothstep(w, w + 0.04, abs(p.y));
+                float d1 = abs(p.x - p.y) * 0.70710678;
+                float d2 = abs(p.x + p.y) * 0.70710678;
+                float ad1 = 1.0 - smoothstep(w, w + 0.04, d1);
+                float ad2 = 1.0 - smoothstep(w, w + 0.04, d2);
+                float spike = max(max(ax, ay), max(ad1, ad2));
+                float core = 1.0 - smoothstep(0.40, 1.0, r);
+                float halo = 1.0 - smoothstep(0.0, 1.0, r);
+                a = max(core, max(spike * 0.85, halo * 0.25)) * edge;
+            } else if (pt_style == 4) {
+                float soft = 1.0 - smoothstep(0.0, 1.0, r);
+                a = pow(soft, 1.8) * edge;
+            }
+            float core_w = 1.0 - smoothstep(0.0, 0.55, r);
+            rgb = mix(v_col.rgb, vec3(1.0), glow_amount * 0.5 * core_w);
         }
-        frag = vec4(v_col.rgb, v_col.a * a);
+
+        float g = clamp(glow_amount, 0.0, 1.0);
+        if (g > 0.001) {
+            float halo = 1.0 - smoothstep(0.0, 1.0, r);
+            if (pt_style == 5) {
+                halo = a * (1.0 - smoothstep(0.35, 1.0, a));
+            }
+            a = max(a, halo * (0.22 + g * 0.55));
+            a = sat(a * (1.0 + g * 0.35));
+        }
+        if (a <= 0.001) discard;
+        frag = vec4(rgb, v_col.a * a);
     }
     """
-    return ctx.program(vertex_shader=vs_particle_quads, fragment_shader=fs_particle_quads)
+    prog = ctx.program(vertex_shader=vs_particle_quads, fragment_shader=fs_particle_quads)
+    if "icon_atlas" in prog:
+        prog["icon_atlas"].value = 3
+    if "atlas_cols" in prog:
+        prog["atlas_cols"].value = 4
+    if "glow_amount" in prog:
+        prog["glow_amount"].value = 0.0
+    return prog
 
 
 def _resolve_particle_style_index(variant: str, style: str) -> int:
@@ -697,7 +745,13 @@ def _resolve_particle_style_index(variant: str, style: str) -> int:
         return 3
     if style == "bokeh":
         return 4
+    if style in ("music", "musicNotes", "notes"):
+        return 5
     return 0
+
+
+def _particle_style_size_scale(pt_style: int) -> float:
+    return {0: 1.0, 1: 2.0, 2: 1.5, 3: 1.5, 4: 2.0, 5: 2.4}.get(int(pt_style), 1.0)
 
 
 def _build_particle_styled_quad_verts(
@@ -709,6 +763,8 @@ def _build_particle_styled_quad_verts(
     w: int,
     h: int,
     base_px: float,
+    icons: np.ndarray | None = None,
+    angles: np.ndarray | None = None,
 ) -> np.ndarray:
     hx = (base_px * scales) * 2.0 / max(1.0, float(w))
     hy = (base_px * scales) * 2.0 / max(1.0, float(h))
@@ -736,7 +792,37 @@ def _build_particle_styled_quad_verts(
     )
     uv = np.tile(uv_template, (n, 1))
     cols = np.repeat(colors_rgba.astype(np.float32), 6, axis=0)
-    return np.column_stack([pos, uv, cols]).astype(np.float32)
+    if icons is None or int(getattr(icons, "shape", [0])[0]) != n:
+        icon_f = np.zeros((n,), dtype=np.float32)
+    else:
+        icon_f = icons.astype(np.float32).reshape(n)
+    if angles is None or int(getattr(angles, "shape", [0])[0]) != n:
+        ang_f = np.zeros((n,), dtype=np.float32)
+    else:
+        ang_f = angles.astype(np.float32).reshape(n)
+    meta = np.column_stack([icon_f, ang_f]).astype(np.float32)
+    meta = np.repeat(meta, 6, axis=0)
+    return np.column_stack([pos, uv, cols, meta]).astype(np.float32)
+
+
+def _ensure_music_icon_texture(ctx: moderngl.Context, holder: dict | None = None):
+    """Upload / reuse music-icon atlas on texture unit-ready Moderngl texture."""
+    store = holder if isinstance(holder, dict) else {}
+    tex = store.get("tex")
+    cols = int(store.get("cols") or 0)
+    if tex is not None and cols > 0:
+        return tex, cols
+    from features.video.lib.particle_music_icons import build_music_icon_atlas
+
+    atlas, cols = build_music_icon_atlas()
+    h, w = int(atlas.shape[0]), int(atlas.shape[1])
+    tex = ctx.texture((w, h), 4, atlas.tobytes())
+    tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+    tex.repeat_x = False
+    tex.repeat_y = False
+    store["tex"] = tex
+    store["cols"] = int(cols)
+    return tex, int(cols)
 
 
 def _particle_trail_cfg_from_settings(ps: dict) -> tuple[bool, int, float, float]:
@@ -759,6 +845,13 @@ def _particle_trail_cfg_from_settings(ps: dict) -> tuple[bool, int, float, float
     return enabled, length, fade, width
 
 
+def _clamp_particle_glow(value) -> float:
+    try:
+        return float(max(0.0, min(1.0, float(value if value is not None else 0.0))))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _render_particle_styled_quads(
     ctx: moderngl.Context,
     *,
@@ -771,6 +864,10 @@ def _render_particle_styled_quads(
     w: int,
     h: int,
     pt_size: float,
+    glow_amount: float = 0.0,
+    icons: np.ndarray | None = None,
+    angles: np.ndarray | None = None,
+    music_tex_holder: dict | None = None,
 ) -> None:
     if pts.shape[0] <= 0:
         return
@@ -782,6 +879,10 @@ def _render_particle_styled_quads(
     xs = pts[:, 0].astype(np.float32)
     ys = pts[:, 1].astype(np.float32)
     scales = np.maximum(0.2, pts[:, 2].astype(np.float32))
+    glow = _clamp_particle_glow(glow_amount)
+    size_boost = 1.0 + glow * 1.75
+    if int(pt_style) == 5:
+        size_boost *= 1.15
     verts = _build_particle_styled_quad_verts(
         xs=xs,
         ys=ys,
@@ -789,16 +890,31 @@ def _render_particle_styled_quads(
         colors_rgba=colors_rgba,
         w=w,
         h=h,
-        base_px=float(pt_size),
+        base_px=float(pt_size) * size_boost,
+        icons=icons,
+        angles=angles,
     )
     if verts.nbytes > particle_quad_vbo.size:
         particle_quad_vbo.orphan(size=verts.nbytes)
-    particle_quad_vbo.write(verts.tobytes())
+    particle_quad_vbo.write(np.ascontiguousarray(verts, dtype=np.float32))
     prog_particle_quads["pt_style"].value = int(pt_style)
+    if "glow_amount" in prog_particle_quads:
+        prog_particle_quads["glow_amount"].value = float(glow)
+    if int(pt_style) == 5:
+        tex, cols = _ensure_music_icon_texture(ctx, music_tex_holder)
+        tex.use(location=3)
+        if "icon_atlas" in prog_particle_quads:
+            prog_particle_quads["icon_atlas"].value = 3
+        if "atlas_cols" in prog_particle_quads:
+            prog_particle_quads["atlas_cols"].value = int(cols)
     ctx.enable(moderngl.BLEND)
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    # Neon bloom reads better with additive when glow is on.
+    if glow > 0.08:
+        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+    else:
+        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
     vao_particle_quads.render(mode=moderngl.TRIANGLES, vertices=int(pts.shape[0] * 6))
-
+    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
 
 def _as_rgb(v: any) -> tuple[int, int, int]:
     if isinstance(v, (list, tuple)) and len(v) == 3:
@@ -2137,11 +2253,12 @@ def run_gpu_render(
     vao_pts = ctx.vertex_array(prog_points, [(pt_vbo, "2f 1f", "in_pos", "in_size")])
     # Same styled-quad particle path as live preview (not GL_POINTS).
     prog_particle_quads = _compile_particle_quads(ctx)
-    particle_quad_vbo = ctx.buffer(reserve=4 * 8 * 6 * 2048)
+    particle_quad_vbo = ctx.buffer(reserve=4 * 10 * 6 * 2048)
     vao_particle_quads = ctx.vertex_array(
         prog_particle_quads,
-        [(particle_quad_vbo, "2f 2f 4f", "in_pos", "in_uv", "in_col")],
+        [(particle_quad_vbo, "2f 2f 4f 2f", "in_pos", "in_uv", "in_col", "in_meta")],
     )
+    music_icon_tex_holder: dict = {}
 
     _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
 
@@ -2826,10 +2943,36 @@ def run_gpu_render(
         fx = template.get("effects") if isinstance(template.get("effects"), dict) else {}
         vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
         sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
+        try:
+            from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+
+            lightning_flash = peak_lightning_flash(
+                template if isinstance(template, dict) else {},
+                time_sec=float(time_sec),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            apply_vignette_reactivity = None  # type: ignore[assignment]
+            lightning_flash = 0.0
+        flash_env = float(max(bg_audio_env, lightning_flash))
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
-        prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_opacity = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        vig_react = float(max(0.0, min(5.0, float(vig.get("reactivity", 0.0) or 0.0))))
+        if apply_vignette_reactivity is not None and vig_react > 0.0:
+            vig_strength, vig_opacity = apply_vignette_reactivity(
+                strength=vig_strength,
+                opacity=vig_opacity,
+                reactivity=vig_react,
+                flash_env=flash_env,
+            )
+        prog_scene["vignette_strength"].value = float(vig_strength)
         prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
-        prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        prog_scene["vignette_opacity"].value = float(vig_opacity)
         vcol = str(vig.get("color", "#000000") or "#000000")
         prog_scene["vignette_color"].value = (
             (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0)
@@ -2849,7 +2992,9 @@ def run_gpu_render(
             else (0.0, 0.0, 0.0)
         )
         prog_scene["time_sec"].value = float(time_sec)
-        prog_scene["bg_brightness"].value = float(max(0.0, min(3.0, bg_brightness * (1.0 + bg_audio_env * bg_react_bass))))
+        prog_scene["bg_brightness"].value = float(
+            max(0.0, min(3.0, bg_brightness * (1.0 + flash_env * bg_react_bass + lightning_flash * 0.55)))
+        )
         if "bg_contrast" in prog_scene:
             prog_scene["bg_contrast"].value = float(bg_contrast)
         if "bg_saturation" in prog_scene:
@@ -2891,6 +3036,29 @@ def run_gpu_render(
         )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
+
+        try:
+            from features.video.lib.lightning_render import render_lightning_layers_gl
+
+            render_lightning_layers_gl(
+                ctx,
+                line_vbo=line_vbo,
+                vao_lines=vao_lines,
+                template=template if isinstance(template, dict) else {},
+                w=w,
+                h=h,
+                sf=sf,
+                cx=cx,
+                cy=cy,
+                time_sec=float(time_sec),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            pass
         
         for layer_idx, sl in enumerate(spectrum_layers):
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
@@ -3359,9 +3527,18 @@ def run_gpu_render(
                 variant = str(particles_cfg_raw.get("variant", "classic") or "classic")
                 style = str(particles_cfg_raw.get("style", "dot") or "dot")
                 pt_style = _resolve_particle_style_index(variant, style)
-                style_scale = {0: 1.0, 1: 2.0, 2: 1.5, 3: 1.5, 4: 2.0}.get(int(pt_style), 1.0)
-                pt_size_px = float(max(1.0, pt_size * (2.0 if style == "bokeh" else 1.5) * sf))
+                style_scale = _particle_style_size_scale(int(pt_style))
+                glow_amount = _clamp_particle_glow(particles_cfg_raw.get("glow", 0.0))
+                pt_size_px = float(max(1.0, pt_size * (2.2 if style in ("bokeh", "music") else 1.5) * sf))
                 base_px = float(max(2.5, pt_size_px)) * style_scale
+                icons = None
+                angles = None
+                if pt_style == 5 and hasattr(particles, "_icon") and hasattr(particles, "_angle"):
+                    icons = particles._icon
+                    angles = particles._angle
+                    if icons.shape[0] != pts.shape[0]:
+                        icons = None
+                        angles = None
                 if _pt_trail_enabled and hasattr(particles, "build_trail_draw_arrays"):
                     trail_batch = particles.build_trail_draw_arrays(
                         w=w,
@@ -3377,10 +3554,12 @@ def run_gpu_render(
                             vao_particle_quads=vao_particle_quads,
                             pts=trail_pts,
                             colors_rgba=trail_cols,
-                            pt_style=int(pt_style),
+                            pt_style=1 if pt_style == 5 else int(pt_style),
                             w=w,
                             h=h,
-                            pt_size=base_px,
+                            pt_size=base_px * 0.55,
+                            glow_amount=glow_amount * 0.55,
+                            music_tex_holder=music_icon_tex_holder,
                         )
                 _render_particle_styled_quads(
                     ctx,
@@ -3393,6 +3572,10 @@ def run_gpu_render(
                     w=w,
                     h=h,
                     pt_size=base_px,
+                    glow_amount=glow_amount,
+                    icons=icons,
+                    angles=angles,
+                    music_tex_holder=music_icon_tex_holder,
                 )
 
         # Draw logo ON TOP of spectrum and particles
@@ -3974,10 +4157,40 @@ def render_preview_png(
         fx = template.get("effects") if isinstance(template.get("effects"), dict) else {}
         vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
         sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
+        _time_sec_bg = float(i) / float(max(1.0, float(fps)))
+        try:
+            from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+
+            lightning_flash = peak_lightning_flash(
+                template if isinstance(template, dict) else {},
+                time_sec=_time_sec_bg,
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            apply_vignette_reactivity = None  # type: ignore[assignment]
+            lightning_flash = 0.0
+        flash_env = float(max(bg_audio_env, lightning_flash))
+        prog_scene["bg_brightness"].value = float(
+            max(0.0, min(3.0, bg_brightness * (1.0 + flash_env * bg_react_bass + lightning_flash * 0.55)))
+        )
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
-        prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_opacity = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        vig_react = float(max(0.0, min(5.0, float(vig.get("reactivity", 0.0) or 0.0))))
+        if apply_vignette_reactivity is not None and vig_react > 0.0:
+            vig_strength, vig_opacity = apply_vignette_reactivity(
+                strength=vig_strength,
+                opacity=vig_opacity,
+                reactivity=vig_react,
+                flash_env=flash_env,
+            )
+        prog_scene["vignette_strength"].value = float(vig_strength)
         prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
-        prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        prog_scene["vignette_opacity"].value = float(vig_opacity)
         vcol = str(vig.get("color", "#000000") or "#000000")
         prog_scene["vignette_color"].value = (
             (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0)
@@ -3996,7 +4209,7 @@ def render_preview_png(
             if scol.startswith("#") and len(scol) == 7
             else (0.0, 0.0, 0.0)
         )
-        prog_scene["time_sec"].value = float(i) / float(max(1.0, float(fps)))
+        prog_scene["time_sec"].value = _time_sec_bg
         vao_quad_scene.render(mode=moderngl.TRIANGLE_STRIP)
 
         scale = float(state.get("spectrum.scale", 1.0))
@@ -4057,6 +4270,31 @@ def render_preview_png(
         )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
+
+        try:
+            from features.video.lib.lightning_render import render_lightning_layers_gl
+
+            _time_sec = float(i) / float(max(1.0, float(fps)))
+            _bass = float(feats.get("bass", 0.0) or 0.0)
+            render_lightning_layers_gl(
+                ctx,
+                line_vbo=line_vbo,
+                vao_lines=vao_lines,
+                template=template if isinstance(template, dict) else {},
+                w=w,
+                h=h,
+                sf=sf,
+                cx=cx,
+                cy=cy,
+                time_sec=_time_sec,
+                bass=_bass,
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(_bass, float(kick_pow), float(bg_audio_env))),
+            )
+        except Exception:
+            pass
         
         for sl in spectrum_layers:
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
@@ -5028,10 +5266,39 @@ def run_live_preview(opts: GpuOptions) -> int:
         fx = template.get("effects") if isinstance(template.get("effects"), dict) else {}
         vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
         sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
+        try:
+            from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+
+            lightning_flash = peak_lightning_flash(
+                template if isinstance(template, dict) else {},
+                time_sec=float(c_time),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            apply_vignette_reactivity = None  # type: ignore[assignment]
+            lightning_flash = 0.0
+        flash_env = float(max(bg_audio_env, lightning_flash))
+        prog_scene["bg_brightness"].value = float(
+            max(0.0, min(3.0, bg_brightness * (1.0 + flash_env * bg_react_bass + lightning_flash * 0.55)))
+        )
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
-        prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_opacity = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        vig_react = float(max(0.0, min(5.0, float(vig.get("reactivity", 0.0) or 0.0))))
+        if apply_vignette_reactivity is not None and vig_react > 0.0:
+            vig_strength, vig_opacity = apply_vignette_reactivity(
+                strength=vig_strength,
+                opacity=vig_opacity,
+                reactivity=vig_react,
+                flash_env=flash_env,
+            )
+        prog_scene["vignette_strength"].value = float(vig_strength)
         prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
-        prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        prog_scene["vignette_opacity"].value = float(vig_opacity)
         vcol = str(vig.get("color", "#000000") or "#000000")
         prog_scene["vignette_color"].value = (
             (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0)
@@ -5132,6 +5399,29 @@ def run_live_preview(opts: GpuOptions) -> int:
             max(0.0, ((float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base) * logo_visible_radius_ratio) + spectrum_logo_gap)
         )
         attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
+
+        try:
+            from features.video.lib.lightning_render import render_lightning_layers_gl
+
+            render_lightning_layers_gl(
+                ctx,
+                line_vbo=line_vbo,
+                vao_lines=vao_lines,
+                template=template if isinstance(template, dict) else {},
+                w=w,
+                h=h,
+                sf=sf,
+                cx=cx,
+                cy=cy,
+                time_sec=float(c_time),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            pass
         
         for sl in spectrum_layers:
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)

@@ -19,9 +19,11 @@ from features.video.lib.lightning_style_registry import (
     LIGHTNING_BLEND_OPTIONS,
     LIGHTNING_DIRECTION_OPTIONS,
     LIGHTNING_STYLE_OPTIONS,
+    LIGHTNING_TRIGGER_OPTIONS,
     normalize_lightning_blend,
     normalize_lightning_direction,
     normalize_lightning_style,
+    normalize_lightning_trigger,
 )
 from features.video.widgets.inspector_fields import InspectorSection, build_color_field, build_float_slider
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID
@@ -40,7 +42,7 @@ class LightningLayerEditor(InspectorSection):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             "Lightning Layers",
-            subtitle="Add as many bolts as you want. Each layer has its own style and free position.",
+            subtitle="Add as many bolts as you want — each layer is one lightning. Style and position are per bolt.",
             parent=parent,
         )
         self._binding = False
@@ -87,16 +89,28 @@ class LightningLayerEditor(InspectorSection):
         self.add_widget(self._build_combo("style", "Style", LIGHTNING_STYLE_OPTIONS))
         self.add_widget(self._build_combo("direction", "Direction", LIGHTNING_DIRECTION_OPTIONS))
         self.add_widget(self._build_combo("blend", "Blend", LIGHTNING_BLEND_OPTIONS))
+        self.add_widget(self._build_combo("trigger", "Trigger", LIGHTNING_TRIGGER_OPTIONS))
+
+        self._seed_lock = QCheckBox("Lock Seed (stable bolt shape)")
+        self._seed_lock.toggled.connect(lambda checked: self.layer_patch_requested.emit({"seedLock": checked}))
+        self.add_widget(self._seed_lock)
 
         self.add_widget(
             note_box(
-                "Drag on the preview while the Lightning tab is open to freely position the selected bolt."
+                "Each layer is one bolt. Use Add for more bolts. "
+                "Drag the preview to place the selected bolt. "
+                "Rotation spins the bolt a full 360° on top of Direction. "
+                "Motion / Grow Speed stretches bolt reach. "
+                "Flash Rate is how often a single strike fires (not how many bolts). "
+                "Branchiness adds small twigs on that one bolt. "
+                "Trigger chooses when it fires; Lock Seed keeps the same jagged shape."
             )
         )
 
         for field, label, minimum, maximum, step in (
             ("x", "Position X", -500, 500, 1),
             ("y", "Position Y", -500, 500, 1),
+            ("rotation", "Rotation", 0, 360, 1),
             ("length", "Bolt Length", 40, 600, 5),
             ("thickness", "Thickness", 0.5, 24, 0.25),
             ("glow", "Glow", 0, 1, 0.05),
@@ -104,10 +118,17 @@ class LightningLayerEditor(InspectorSection):
             ("opacity", "Opacity", 0, 1, 0.05),
             ("intensity", "Intensity", 0, 1, 0.05),
             ("reactivity", "Audio Reactivity", 0, 1, 0.05),
-            ("speed", "Motion Speed", 0.05, 4, 0.05),
+            ("speed", "Motion / Grow Speed", 0.05, 4, 0.05),
             ("flashRate", "Flash Rate", 0.05, 4, 0.05),
+            ("triggerThreshold", "Trigger Threshold", 0.05, 0.95, 0.01),
+            ("seed", "Seed", 0, 9999, 1),
         ):
-            self.add_widget(self._add_float(field, label, minimum, maximum, step))
+            if field == "rotation":
+                self.add_widget(
+                    self._add_float(field, label, minimum, maximum, step, format_value=lambda v: f"{round(v)}°")
+                )
+            else:
+                self.add_widget(self._add_float(field, label, minimum, maximum, step))
 
         color_widget, color_setter = build_color_field(
             "Bolt Color",
@@ -128,7 +149,15 @@ class LightningLayerEditor(InspectorSection):
         self._combo_fields[field] = combo
         return form_row(label, combo)
 
-    def _add_float(self, field: str, label: str, minimum: float, maximum: float, step: float) -> QWidget:
+    def _add_float(
+        self,
+        field: str,
+        label: str,
+        minimum: float,
+        maximum: float,
+        step: float,
+        format_value: Callable[[float], str] | None = None,
+    ) -> QWidget:
         widget, setter = build_float_slider(
             label,
             minimum=minimum,
@@ -136,6 +165,7 @@ class LightningLayerEditor(InspectorSection):
             step=step,
             value=minimum,
             on_change=lambda value, key=field: self.layer_patch_requested.emit({key: float(value)}),
+            format_value=format_value,
         )
         self._float_setters[field] = setter
         return widget
@@ -155,6 +185,8 @@ class LightningLayerEditor(InspectorSection):
             value = normalize_lightning_direction(value)
         elif field == "blend":
             value = normalize_lightning_blend(value)
+        elif field == "trigger":
+            value = normalize_lightning_trigger(value)
         self.layer_patch_requested.emit({field: value})
 
     def _on_layer_combo_changed(self, index: int) -> None:
@@ -194,6 +226,7 @@ class LightningLayerEditor(InspectorSection):
             self._name_input.setText(str(layer.get("name") or ""))
             self._name_input.blockSignals(False)
             self._enabled.setChecked(bool(layer.get("enabled", True)))
+            self._seed_lock.setChecked(bool(layer.get("seedLock", False)))
 
             for field, combo in self._combo_fields.items():
                 value = str(layer.get(field) or "")
@@ -203,6 +236,8 @@ class LightningLayerEditor(InspectorSection):
                     value = normalize_lightning_direction(value)
                 elif field == "blend":
                     value = normalize_lightning_blend(value)
+                elif field == "trigger":
+                    value = normalize_lightning_trigger(value)
                 index = combo.findData(value)
                 if index >= 0:
                     combo.setCurrentIndex(index)

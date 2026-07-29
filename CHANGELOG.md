@@ -11,10 +11,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Lightning domain: stack as many bolts as you want, each with its own style and free preview position (like Spectrum). Phase A/B/C: triggers, glow/branchiness, presets, seed lock, export draw parity. See `docs/changelog/2026-07-29-lightning-layers.md`.
+- Background vignette: Audio React opens dark corners on bass/kick and lightning strikes so a bright plate can flash with bolts. See `docs/changelog/2026-07-29-vignette-audio-lightning-react.md`.
+- Particles: Music Notes style (random neon note icons) + Neon Glow slider for dots and icons. See `docs/changelog/2026-07-29-particle-music-neon-glow.md`.
+
 ### Changed
 
 ### Fixed
 
+- Preview hitch every ~4s (round 3): hard-pause music-download polls while preview plays — pending sync can no longer re-arm the 4s timer over live playback. See `docs/changelog/2026-07-29-preview-hitch-round3.md`.
+- Preview hitch round 2: skip identical template pushes, avoid particle `.tobytes()` copies, back off download/pipeline polls while preview plays. See `docs/changelog/2026-07-29-preview-hitch-round2.md`.
+- Preview hitch: remove periodic `grabFramebuffer` from the 60fps paint loop (one-shot on pause only); reuse FFT buffers / avoid VBO `.tobytes()` copies. See `docs/changelog/2026-07-29-preview-hitch-deep-fix.md`.
 - Preview hitch: stop periodic `grabFramebuffer` while audio plays; cache logo visible-radius scan. See `docs/changelog/2026-07-29-preview-playback-hitch-fix.md`.
 - Spectrum Ring Side: Top/Left/Right/Bottom place the arc; each bar raises the way it faces (not uniform screen shove). See `docs/changelog/2026-07-29-spectrum-ring-side-face-raise.md`.
 - Spectrum Bar Growth: add Outside (radial spikes out) and Inside (spikes into the circle). See `docs/changelog/2026-07-29-spectrum-radial-bar-spikes.md`.

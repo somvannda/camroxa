@@ -399,6 +399,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
         pt_style: int,
         w: int,
         h: int,
+        glow_amount: float = 0.0,
+        icons: np.ndarray | None = None,
+        angles: np.ndarray | None = None,
     ) -> None:
         if pts.shape[0] <= 0 or self.ctx is None or not hasattr(self, "particle_quad_vbo"):
             return
@@ -407,7 +410,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self.ctx.viewport = (0, 0, vw, vh)
         self.ctx.disable(moderngl.DEPTH_TEST)
         self.ctx.disable(moderngl.CULL_FACE)
-        style_scale = {0: 1.0, 1: 2.0, 2: 1.5, 3: 1.5, 4: 2.0}.get(int(pt_style), 1.0)
+        from visualizer.gpu_render import _particle_style_size_scale
+
+        style_scale = _particle_style_size_scale(int(pt_style))
         base_px = float(max(2.5, pt_size)) * style_scale
         _render_particle_styled_quads(
             self.ctx,
@@ -420,6 +425,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
             w=w,
             h=h,
             pt_size=base_px,
+            glow_amount=float(glow_amount),
+            icons=icons,
+            angles=angles,
+            music_tex_holder=getattr(self, "_music_icon_tex_holder", None),
         )
 
     def _finish_particles_frame(
@@ -536,7 +545,20 @@ class VideoSpectrumPreview(QOpenGLWidget):
         variant = str(ps.get("variant", "classic") or "classic")
         style = str(ps.get("style", "dot") or "dot")
         pt_style = _resolve_particle_style_index(variant, style)
-        pt_size = float(max(1.0, ps_size * (2.0 if style == "bokeh" else 1.5) * sf))
+        glow_amount = float(ps.get("glow", 0.0) or 0.0)
+        try:
+            glow_amount = float(max(0.0, min(1.0, glow_amount)))
+        except (TypeError, ValueError):
+            glow_amount = 0.0
+        pt_size = float(max(1.0, ps_size * (2.2 if style in ("bokeh", "music") else 1.5) * sf))
+        icons = None
+        angles = None
+        if pt_style == 5 and hasattr(self.particles, "_icon") and hasattr(self.particles, "_angle"):
+            icons = self.particles._icon
+            angles = self.particles._angle
+            if icons.shape[0] != pts.shape[0]:
+                icons = None
+                angles = None
         trail_batch = None
         if trail_enabled and hasattr(self.particles, "build_trail_draw_arrays"):
             trail_batch = self.particles.build_trail_draw_arrays(
@@ -546,13 +568,15 @@ class VideoSpectrumPreview(QOpenGLWidget):
             )
         if trail_batch is not None:
             trail_pts, trail_cols = trail_batch
+            # Trails stay soft dots for readability even when heads are music icons.
             self._draw_particle_batch(
                 pts=trail_pts,
                 colors_rgba=trail_cols,
-                pt_size=pt_size,
-                pt_style=pt_style,
+                pt_size=pt_size * 0.55,
+                pt_style=1 if pt_style == 5 else pt_style,
                 w=w,
                 h=h,
+                glow_amount=glow_amount * 0.55,
             )
         self._draw_particle_batch(
             pts=pts,
@@ -561,7 +585,57 @@ class VideoSpectrumPreview(QOpenGLWidget):
             pt_style=pt_style,
             w=w,
             h=h,
+            glow_amount=glow_amount,
+            icons=icons,
+            angles=angles,
         )
+
+    def _finish_lightning_frame(
+        self,
+        *,
+        w: int,
+        h: int,
+        sf: float,
+        cx: float,
+        cy: float,
+        time_sec: float,
+        audio_env: float,
+        bass: float = 0.0,
+        kick: float = 0.0,
+        beat: float = 0.0,
+        onset: float = 0.0,
+    ) -> None:
+        if self.ctx is None or not hasattr(self, "vao_lines"):
+            return
+        try:
+            from features.video.lib.lightning_render import render_lightning_layers_gl
+        except Exception:
+            return
+        render_lightning_layers_gl(
+            self.ctx,
+            line_vbo=self.line_vbo,
+            vao_lines=self.vao_lines,
+            template=self.template if isinstance(self.template, dict) else {},
+            w=w,
+            h=h,
+            sf=sf,
+            cx=cx,
+            cy=cy,
+            time_sec=float(time_sec),
+            bass=float(bass),
+            kick=float(kick),
+            beat=float(beat),
+            onset=float(onset),
+            audio_env=float(audio_env),
+        )
+
+    def _write_vbo(self, vbo, arr: np.ndarray) -> None:
+        """Upload float32 verts without ``.tobytes()`` copies (cuts GC hitch)."""
+        data = np.ascontiguousarray(arr, dtype=np.float32)
+        nbytes = int(data.nbytes)
+        if nbytes > int(vbo.size):
+            vbo.orphan(size=nbytes)
+        vbo.write(data)
 
     def _log(self, msg):
         try:
@@ -635,7 +709,20 @@ class VideoSpectrumPreview(QOpenGLWidget):
             abs(self._text_drag_dx) > 1e-06 or abs(self._text_drag_dy) > 1e-06
         ):
             return
+        # Skip identical payloads — normalize_renderer_template is expensive and
+        # clearing the peak cache caused periodic hitch after every draft push.
+        if tpl is self.template:
+            return
+        try:
+            import json as _json
+
+            key = _json.dumps(tpl, sort_keys=True, default=str)
+        except Exception:
+            key = None
+        if key is not None and key == getattr(self, "_template_fingerprint", None):
+            return
         self.template = normalize_renderer_template(tpl)
+        self._template_fingerprint = key
         self._spectrum_peak_cache.clear()
         self.update()
 
@@ -773,29 +860,30 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 label.setGeometry(*rect)
 
     def _cache_clean_preview_frame(self) -> None:
-        """Store a known-good preview snapshot while the live compositor is healthy.
+        """Store a known-good preview snapshot for export freeze UX.
 
-        ``grabFramebuffer`` stalls the GPU pipeline — never do it every few frames
-        while audio is playing (that caused periodic preview freezes).
+        ``grabFramebuffer`` stalls the GPU pipeline. Never call this from the
+        60fps ``paintGL`` loop — that caused periodic freezes every ~2.5–5s.
+        Snapshot only on pause / explicit request.
         """
         if self._export_overlay_active or not getattr(self, "_gl_ready", False):
             return
-        # Freeze frame is for export UX; skip while playback is live.
         if bool(getattr(self, "audio_playing", False)):
-            return
-        now = time.perf_counter()
-        last = float(getattr(self, "_last_clean_preview_at", 0.0) or 0.0)
-        # At most ~once every 2.5s when idle/paused.
-        if (now - last) < 2.5 and getattr(self, "_last_clean_preview", None) is not None:
             return
         try:
             img = self.grabFramebuffer()
             if img.isNull():
                 return
             self._last_clean_preview = QPixmap.fromImage(img)
-            self._last_clean_preview_at = now
+            self._last_clean_preview_at = time.perf_counter()
         except Exception:
             pass
+
+    def _schedule_clean_preview_snapshot(self) -> None:
+        """One-shot grab after pause — not on a repeating paint cadence."""
+        if bool(getattr(self, "audio_playing", False)):
+            return
+        QTimer.singleShot(0, self._cache_clean_preview_frame)
 
     def _invalidate_logo_visible_radius_cache(self) -> None:
         self._logo_visible_radius_key = None
@@ -1020,10 +1108,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
         except Exception:
             pass
         self.audio_playing = False
-        # Allow one freeze-frame grab on the next idle paint for export UX.
-        self._last_clean_preview_at = 0.0
         self._mark_playback_paused()
         self._emit_playback_state()
+        self._schedule_clean_preview_snapshot()
 
     def stop_preview(self) -> None:
         import pygame
@@ -1035,6 +1122,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self.audio_playing = False
         self._mark_playback_stopped()
         self._emit_playback_state()
+        self._schedule_clean_preview_snapshot()
 
     def seek_preview(self, time_sec: float) -> None:
         import pygame
@@ -1440,11 +1528,12 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self.pt_vbo = self.ctx.buffer(reserve=4 * 3 * 2048)
             self.vao_pts = self.ctx.vertex_array(self.prog_points, [(self.pt_vbo, '2f 1f', 'in_pos', 'in_size')])
             self.prog_particle_quads = _compile_particle_quads(self.ctx)
-            self.particle_quad_vbo = self.ctx.buffer(reserve=4 * 8 * 6 * 2048)
+            self.particle_quad_vbo = self.ctx.buffer(reserve=4 * 10 * 6 * 2048)
             self.vao_particle_quads = self.ctx.vertex_array(
                 self.prog_particle_quads,
-                [(self.particle_quad_vbo, "2f 2f 4f", "in_pos", "in_uv", "in_col")],
+                [(self.particle_quad_vbo, "2f 2f 4f 2f", "in_pos", "in_uv", "in_col", "in_meta")],
             )
+            self._music_icon_tex_holder: dict = {}
             w, h = (1280, 720)
             self.tex_bg = self.ctx.texture((w, h), 4, b'"""\xff' * (w * h))
             self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
@@ -1509,6 +1598,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     self.audio_playing = False
                     self._audio_clock_started_at = None
                     self._emit_playback_state()
+                    self._schedule_clean_preview_snapshot()
             frame_idx = int(self.current_time * 60)
             if self.analyzer:
                 fft = self.analyzer.fft_for_frame(frame_idx)
@@ -1602,7 +1692,51 @@ class VideoSpectrumPreview(QOpenGLWidget):
             bg_scale = float(bg_scale) * float(user_scale)
             self.prog_scene['bg_scale'].value = (float(bg_scale), float(bg_scale))
             # Brightness still receives audio-react; contrast/sat/hue are static grade.
-            self.prog_scene['bg_brightness'].value = float(max(0.0, min(3.0, bg_brightness * (1.0 + self.bg_audio_env * bg_react))))
+            # Lightning flash peaks also drive brightness + vignette open so strikes light the room.
+            lightning_enabled = bool(
+                isinstance(self.template, dict) and self.template.get("lightningEnabled", False)
+            )
+            vig_react_peek = 0.0
+            try:
+                fx_peek = self.template.get("effects") if isinstance(self.template.get("effects"), dict) else {}
+                vig_peek = fx_peek.get("vignette") if isinstance(fx_peek.get("vignette"), dict) else {}
+                vig_react_peek = float(vig_peek.get("reactivity", 0.0) or 0.0)
+            except Exception:
+                vig_react_peek = 0.0
+            apply_vignette_reactivity = None
+            lightning_flash = 0.0
+            # Skip peak flash math unless lightning is on and something actually uses it.
+            if lightning_enabled and (float(bg_react) > 0.0 or vig_react_peek > 0.0):
+                try:
+                    from features.video.lib.lightning_render import (
+                        apply_vignette_reactivity as _apply_vig,
+                        peak_lightning_flash,
+                    )
+
+                    apply_vignette_reactivity = _apply_vig
+                    lightning_flash = peak_lightning_flash(
+                        self.template if isinstance(self.template, dict) else {},
+                        time_sec=float(self.current_time),
+                        bass=float(bass),
+                        kick=float(kick_pow),
+                        beat=float(feats.get("beat", 0.0) or 0.0),
+                        onset=float(feats.get("onset", 0.0) or 0.0),
+                        audio_env=float(max(bass, kick_pow, self.bg_audio_env)),
+                    )
+                except Exception:
+                    apply_vignette_reactivity = None
+                    lightning_flash = 0.0
+            elif vig_react_peek > 0.0:
+                try:
+                    from features.video.lib.lightning_render import apply_vignette_reactivity as _apply_vig
+
+                    apply_vignette_reactivity = _apply_vig
+                except Exception:
+                    apply_vignette_reactivity = None
+            flash_env = float(max(self.bg_audio_env, lightning_flash))
+            self.prog_scene['bg_brightness'].value = float(
+                max(0.0, min(3.0, bg_brightness * (1.0 + flash_env * bg_react + lightning_flash * 0.55)))
+            )
             if "bg_contrast" in self.prog_scene:
                 self.prog_scene["bg_contrast"].value = float(bg_contrast)
             if "bg_saturation" in self.prog_scene:
@@ -1614,9 +1748,19 @@ class VideoSpectrumPreview(QOpenGLWidget):
             sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
             if "vignette_enabled" in self.prog_scene:
                 self.prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
-                self.prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+                vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+                vig_opacity = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+                vig_react = float(max(0.0, min(5.0, float(vig.get("reactivity", 0.0) or 0.0))))
+                if apply_vignette_reactivity is not None and vig_react > 0.0:
+                    vig_strength, vig_opacity = apply_vignette_reactivity(
+                        strength=vig_strength,
+                        opacity=vig_opacity,
+                        reactivity=vig_react,
+                        flash_env=flash_env,
+                    )
+                self.prog_scene["vignette_strength"].value = float(vig_strength)
                 self.prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
-                self.prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+                self.prog_scene["vignette_opacity"].value = float(vig_opacity)
                 vcol = str(vig.get("color", "#000000") or "#000000")
                 try:
                     self.prog_scene["vignette_color"].value = (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0) if vcol.startswith("#") and len(vcol) == 7 else (0.0, 0.0, 0.0)
@@ -1709,6 +1853,20 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     onset=float(feats.get("onset", 0.0) or 0.0),
                     beat=float(feats.get("beat", 0.0) or 0.0),
                 )
+
+            self._finish_lightning_frame(
+                w=w,
+                h=h,
+                sf=sf,
+                cx=cx,
+                cy=cy,
+                time_sec=float(self.current_time),
+                audio_env=float(max(bass, kick_pow, getattr(self, "bg_audio_env", 0.0) or 0.0)),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+            )
 
             def hex_to_rgb(hx: str):
                 s2 = str(hx or '').strip()
@@ -1901,9 +2059,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                             if pass_cfg["is_glow"]:
                                 strip_cols = dampen_spectrum_glow_rgba(strip_cols, strength=0.38)
                             strip_verts = np.column_stack([strip_pos, strip_cols]).astype(np.float32)
-                            if strip_verts.nbytes > self.line_vbo.size:
-                                self.line_vbo.orphan(size=strip_verts.nbytes)
-                            self.line_vbo.write(strip_verts.tobytes())
+                            self._write_vbo(self.line_vbo, strip_verts)
                             self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(strip_pos.shape[0]))
                     elif waveform_style:
                         xs_o = np.zeros(nn, dtype=np.float32)
@@ -1943,9 +2099,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                             cols_center = cols_edge[:1].copy()
                             cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
                             verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
-                            if verts_fill.nbytes > self.line_vbo.size:
-                                self.line_vbo.orphan(size=verts_fill.nbytes)
-                            self.line_vbo.write(verts_fill.tobytes())
+                            self._write_vbo(self.line_vbo, verts_fill)
                             self.vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(nn + 1))
                         pos = np.empty((2 * nn, 2), dtype=np.float32)
                         pos[0::2, 0] = xs_o
@@ -1954,9 +2108,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         pos[1::2, 1] = ys_i
                         colsi = np.repeat(ctx_col, 2, axis=0)
                         verts = np.column_stack([pos, colsi]).astype(np.float32)
-                        if verts.nbytes > self.line_vbo.size:
-                            self.line_vbo.orphan(size=verts.nbytes)
-                        self.line_vbo.write(verts.tobytes())
+                        self._write_vbo(self.line_vbo, verts)
                         self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(2 * nn))
                     else:
                         # Match export: shared bar builder (same geometry as paintGL).
@@ -1986,9 +2138,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                     gradient_direction=grad_dir,
                                 )
                             verts = np.column_stack([pos, colsi]).astype(np.float32)
-                            if verts.nbytes > self.line_vbo.size:
-                                self.line_vbo.orphan(size=verts.nbytes)
-                            self.line_vbo.write(verts.tobytes())
+                            self._write_vbo(self.line_vbo, verts)
                             self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
                 px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
                 if solid_band:
@@ -2020,9 +2170,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                             axis=0,
                         )
                         band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
-                        if band_verts.nbytes > self.line_vbo.size:
-                            self.line_vbo.orphan(size=band_verts.nbytes)
-                        self.line_vbo.write(band_verts.tobytes())
+                        self._write_vbo(self.line_vbo, band_verts)
                         self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
                 if peak_caps_enabled and n > 0:
                     # Mirrored curved waveform styles may append a closing point
@@ -2081,9 +2229,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         gradient_direction="left-to-right",
                     )
                     cap_verts = np.column_stack([cap_pos, cap_cols]).astype(np.float32)
-                    if cap_verts.nbytes > self.line_vbo.size:
-                        self.line_vbo.orphan(size=cap_verts.nbytes)
-                    self.line_vbo.write(cap_verts.tobytes())
+                    self._write_vbo(self.line_vbo, cap_verts)
                     self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
             self._finish_particles_frame(
                 w=w,
@@ -2203,12 +2349,21 @@ class VideoSpectrumPreview(QOpenGLWidget):
             import traceback
             traceback.print_exc()
         finally:
-            if not self._export_overlay_active:
-                self._cache_clean_preview_frame()
+            # Never grabFramebuffer here — it stalls GPU every few seconds.
             elapsed_ms = max(0.0, (time.perf_counter() - paint_started) * 1000.0)
             if elapsed_ms > 0:
                 self._perf_frame_ms = elapsed_ms
                 self._perf_fps = 1000.0 / elapsed_ms
+            # Rate-limited hitch breadcrumb for diagnosing remaining stalls.
+            if elapsed_ms >= 40.0:
+                now_h = time.perf_counter()
+                last_h = float(getattr(self, "_last_hitch_log_at", 0.0) or 0.0)
+                if (now_h - last_h) >= 1.0:
+                    self._last_hitch_log_at = now_h
+                    self._log(
+                        f"[{time.strftime('%H:%M:%S')}] preview hitch frame={self._frame_counter} "
+                        f"{elapsed_ms:.1f}ms playing={bool(getattr(self, 'audio_playing', False))}"
+                    )
                 self._perf_last_paint_at = time.perf_counter()
 
     def resizeGL(self, w, h):

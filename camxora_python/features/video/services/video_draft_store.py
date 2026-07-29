@@ -98,6 +98,7 @@ def read_video_workspace_draft_snapshot(
         "templateName": template_name,
         "draft": draft,
         "layers": clone_layer_records(parsed.get("layers")),
+        "lightningLayers": clone_layer_records(parsed.get("lightningLayers")),
     }
 
 
@@ -107,6 +108,7 @@ def write_video_workspace_draft_snapshot(
     template_name: str,
     draft: dict[str, Any],
     layers: list[dict[str, Any]],
+    lightning_layers: list[dict[str, Any]] | None = None,
 ) -> None:
     _cleanup_legacy_disk_drafts()
     normalized_id = str(template_id or "").strip()
@@ -116,6 +118,7 @@ def write_video_workspace_draft_snapshot(
         "templateName": template_name,
         "draft": dict(draft),
         "layers": clone_layer_records(layers),
+        "lightningLayers": clone_layer_records(lightning_layers or []),
     }
 
 

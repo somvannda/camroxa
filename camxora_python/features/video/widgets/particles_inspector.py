@@ -37,6 +37,7 @@ class ParticlesInspector(QWidget):
         ("particlesLifetimeSec", "Lifetime", 0.05, 10, 0.1),
         ("particlesSize", "Particle Size", 1, 20, 0.5),
         ("particlesOpacity", "Opacity", 0, 1, 0.05),
+        ("particlesGlow", "Neon Glow", 0, 1, 0.05),
         ("particlesReactivity", "Audio Reactivity", 0, 1, 0.05),
         ("particlesReactStrength", "React Strength", 0, 1, 0.05),
     )
@@ -104,6 +105,12 @@ class ParticlesInspector(QWidget):
         )
 
         section.add_widget(self._build_combo("particlesStyle", "Style", PARTICLE_STYLE_OPTIONS))
+        section.add_widget(
+            note_box(
+                "Music Notes randomly picks neon note symbols. Raise Neon Glow to bloom dots and icons "
+                "(works with Dot, Soft Glow, Bokeh, and Music Notes)."
+            )
+        )
         section.add_widget(self._build_combo("particlesSpawnArea", "Spawn Area", PARTICLE_SPAWN_AREA_OPTIONS))
         section.add_widget(self._build_combo("particlesTravelMode", "Travel Mode", PARTICLE_TRAVEL_MODE_OPTIONS))
         section.add_widget(self._build_combo("particlesSpawnMode", "Spawn Mode", PARTICLE_SPAWN_MODE_OPTIONS))

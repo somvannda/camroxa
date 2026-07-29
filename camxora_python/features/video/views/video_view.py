@@ -147,6 +147,7 @@ from features.video.widgets.left_rail import VideoLeftRail
 from features.video.widgets.logo_inspector import LogoInspector
 from features.video.widgets.particles_inspector import ParticlesInspector
 from features.video.widgets.spectrum_inspector import SpectrumInspector
+from features.video.widgets.lightning_inspector import LightningInspector
 from features.video.widgets.right_rail import VideoRightRail
 from features.video.widgets.stage_panel import VideoStagePanel
 from features.video.widgets.text_domain_inspectors import AlbumInspector, TitleInspector
@@ -261,6 +262,8 @@ class VideoView(QWidget):
         self._active_title_preset_key: str | None = None
         self._spectrum_layers: list[dict] = []
         self._selected_spectrum_layer_index = 0
+        self._lightning_layers: list[dict] = []
+        self._selected_lightning_layer_index = 0
         self._selected_text_overlay_index = 0
         self._active_domain_tab = "spectrum"
         self._active_side_tab = "album"
@@ -394,18 +397,32 @@ class VideoView(QWidget):
         self._particles_inspector.preset_apply_requested.connect(self._apply_particle_preset)
         self._particles_inspector.preset_restore_requested.connect(self._restore_particle_preset)
 
+        self._lightning_inspector = LightningInspector()
+        self._lightning_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._lightning_inspector.preset_apply_requested.connect(self._apply_lightning_preset)
+        self._lightning_inspector.layer_patch_requested.connect(self._patch_selected_lightning_layer)
+        self._lightning_inspector.layer_add_requested.connect(self._add_lightning_layer)
+        self._lightning_inspector.layer_duplicate_requested.connect(self._duplicate_lightning_layer)
+        self._lightning_inspector.layer_delete_requested.connect(self._delete_lightning_layer)
+        self._lightning_inspector.layer_move_up_requested.connect(self._move_lightning_layer_up)
+        self._lightning_inspector.layer_move_down_requested.connect(self._move_lightning_layer_down)
+        self._lightning_inspector.layer_selected.connect(self._select_lightning_layer)
+
         self._domain_inspectors = {
             "spectrum": self._spectrum_inspector,
             "background": self._background_inspector,
             "logo": self._logo_inspector,
             "particles": self._particles_inspector,
+            "lightning": self._lightning_inspector,
         }
         for domain, inspector in self._domain_inspectors.items():
+            if domain not in EFFECT_PACK_DOMAIN_LABELS:
+                continue
             title, subtitle = EFFECT_PACK_DOMAIN_LABELS[domain]
             selector = EffectPackSelector(
                 title=title,
                 subtitle=subtitle,
-                show_apply_combo=domain not in {"spectrum", "particles", "background", "logo"},
+                show_apply_combo=domain not in {"spectrum", "particles", "background", "logo", "lightning"},
             )
             selector.apply_requested.connect(
                 lambda value, pack_domain=domain: self._apply_effect_pack(pack_domain, value)
@@ -444,6 +461,7 @@ class VideoView(QWidget):
         self._stage.playback_command_requested.connect(self._issue_preview_playback_command)
         self._stage.playback_seek_requested.connect(self._seek_preview_playback)
         self._stage.spectrum_position_changed.connect(self._on_preview_spectrum_position_changed)
+        self._stage.lightning_position_changed.connect(self._on_preview_lightning_position_changed)
         self._stage.background_transform_changed.connect(self._on_preview_background_transform_changed)
         self._stage.text_domain_position_changed.connect(self._on_preview_text_domain_position_changed)
         self._stage.text_domain_box_resize_changed.connect(self._on_preview_text_domain_box_resize_changed)
@@ -907,10 +925,17 @@ class VideoView(QWidget):
             self._template_name_draft = str(snapshot.get("templateName") or self._workspace.template_name)
             layers = snapshot.get("layers")
             self._spectrum_layers = clone_layer_records(layers) if layers else clone_layer_records(template.get("layers"))
+            lightning_layers = snapshot.get("lightningLayers")
+            self._lightning_layers = (
+                clone_layer_records(lightning_layers)
+                if lightning_layers
+                else clone_layer_records(template.get("lightningLayers"))
+            )
         else:
             self._template_draft = persisted_draft
             self._template_name_draft = self._workspace.template_name
             self._spectrum_layers = clone_layer_records(template.get("layers"))
+            self._lightning_layers = clone_layer_records(template.get("lightningLayers"))
 
         # Align non-toggle geometry (gravity) from known styles; Curve/Mirror stay user-owned.
         style_key = normalize_spectrum_preset_key_for_apply(
@@ -927,6 +952,11 @@ class VideoView(QWidget):
         style = str((self._template_draft or {}).get("style") or "").strip()
         self._active_spectrum_preset_key = style if is_session_spectrum_preset_key(style) else None
         layer_count = len(self._spectrum_layers)
+        lightning_count = len(self._lightning_layers)
+        self._selected_lightning_layer_index = 0 if lightning_count == 0 else min(
+            self._selected_lightning_layer_index,
+            lightning_count - 1,
+        )
         self._selected_spectrum_layer_index = 0 if layer_count == 0 else min(
             self._selected_spectrum_layer_index,
             layer_count - 1,
@@ -968,6 +998,11 @@ class VideoView(QWidget):
         self._background_inspector.bind_draft(self._template_draft)
         self._logo_inspector.bind_draft(self._template_draft)
         self._particles_inspector.bind_draft(self._template_draft)
+        self._lightning_inspector.bind_draft(
+            self._template_draft,
+            layers=self._lightning_layers,
+            selected_layer_index=self._selected_lightning_layer_index,
+        )
 
         track_paths = self._current_track_paths()
         album_settings = album_settings_from_draft(self._template_draft)
@@ -1086,6 +1121,7 @@ class VideoView(QWidget):
             template_name=self._template_name_draft,
             draft=self._template_draft,
             layers=self._spectrum_layers,
+            lightning_layers=self._lightning_layers,
         )
 
     def _schedule_stage_summary_update(self, *, delay_ms: int = 150) -> None:
@@ -1141,12 +1177,14 @@ class VideoView(QWidget):
         template = dict(self._workspace.template)
         saved_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path, background_path=self._workspace.background_path)
         layers = clone_layer_records(template.get("layers") or [])
+        lightning_layers = clone_layer_records(template.get("lightningLayers") or [])
         paths = [str(p) for p in (track_paths or self._current_track_paths()) if str(p or "").strip()]
         # Per-track active highlight is applied again in the export worker.
         return self._template_normalizer.to_renderer_dict(
             base=template,
             draft=saved_draft,
             layers=layers,
+            lightning_layers=lightning_layers,
             workspace={
                 "logoPath": self._workspace.logo_path,
                 "trackPaths": paths,
@@ -1739,6 +1777,7 @@ class VideoView(QWidget):
             base=dict(self._workspace.template),
             draft=self._template_draft,
             layers=self._spectrum_layers,
+            lightning_layers=self._lightning_layers,
             workspace={
                 "logoPath": self._workspace.logo_path,
                 "trackPaths": track_paths,
@@ -2555,6 +2594,7 @@ class VideoView(QWidget):
             base=dict(self._workspace.template),
             draft=self._template_draft,
             layers=self._spectrum_layers,
+            lightning_layers=self._lightning_layers,
             workspace={
                 "logoPath": self._workspace.logo_path,
                 "trackPaths": track_paths,
@@ -2567,7 +2607,7 @@ class VideoView(QWidget):
             active_track_path=active_track or None,
         )
         aspect = self._workspace.preview_aspect_ratio
-        background_edit, spectrum_position_edit, text_domain_edit = resolve_preview_edit_modes(
+        background_edit, spectrum_position_edit, text_domain_edit, lightning_position_edit = resolve_preview_edit_modes(
             self._active_domain_tab,
             self._active_side_tab,
             edit_focus=self._preview_edit_focus,
@@ -2576,7 +2616,9 @@ class VideoView(QWidget):
             background=background_edit,
             spectrum_position=spectrum_position_edit,
             text_domain=text_domain_edit,
+            lightning_position=lightning_position_edit,
         )
+        self._stage.set_selected_lightning_layer_index(self._selected_lightning_layer_index)
         self._sync_text_drag_overlay(text_domain_edit)
         self._stage.set_renderer_preview(
             template=renderer_template,
@@ -2771,6 +2813,19 @@ class VideoView(QWidget):
         )
         self._workspace = self._workspace.model_copy(update={"playback": playback})
         self._stage.sync_playback_transport(playback)
+        try:
+            from shared.services.music_download_coordinator import get_music_download_coordinator
+            from shared.services.video_pipeline_coordinator import get_video_pipeline_coordinator
+
+            playing = bool(playback.is_playing)
+            music = get_music_download_coordinator()
+            if music is not None:
+                music.set_preview_playing(playing)
+            pipeline = get_video_pipeline_coordinator()
+            if pipeline is not None:
+                pipeline.set_preview_playing(playing)
+        except Exception:
+            pass
         # Double-click auto-play: start once mixer decode is ready.
         if self._pending_preview_auto_play and playback.is_ready:
             self._flush_pending_preview_auto_play()
@@ -2781,6 +2836,13 @@ class VideoView(QWidget):
         pos_cfg = self._template_draft.get("position") if isinstance(self._template_draft.get("position"), dict) else {}
         anchor = str(pos_cfg.get("anchor") or self._template_draft.get("anchor") or "center")
         self._patch_template_draft({"anchor": anchor, "positionX": int(x), "positionY": int(y)})
+
+    def _on_preview_lightning_position_changed(self, x: int, y: int) -> None:
+        if not self._lightning_layers:
+            return
+        index = max(0, min(self._selected_lightning_layer_index, len(self._lightning_layers) - 1))
+        self._patch_selected_lightning_layer({"x": float(x), "y": float(y)})
+        self._selected_lightning_layer_index = index
 
     def _on_preview_text_domain_position_changed(self, domain: str, x: float, y: float) -> None:
         """Persist Album/Title offsets after GPU real-time drag ends."""
@@ -3102,6 +3164,102 @@ class VideoView(QWidget):
         self._remember_active_spectrum_preset_session()
         self._update_inspectors(defer_rebind=defer_rebind)
         self._schedule_dirty_state_update()
+
+    def _set_lightning_layers(
+        self,
+        layers: list[dict],
+        *,
+        selected_index: int,
+        defer_rebind: bool = False,
+    ) -> None:
+        from features.video.lib.lightning_style_registry import normalize_lightning_layers
+
+        self._lightning_layers = normalize_lightning_layers(clone_layer_records(layers))
+        self._selected_lightning_layer_index = selected_index
+        self._update_inspectors(defer_rebind=defer_rebind)
+        self._schedule_dirty_state_update()
+
+    def _select_lightning_layer(self, index: int) -> None:
+        self._selected_lightning_layer_index = max(0, index)
+        self._stage.set_selected_lightning_layer_index(self._selected_lightning_layer_index)
+        self._update_inspectors()
+
+    def _patch_selected_lightning_layer(self, patch: dict) -> None:
+        layers = clone_layer_records(self._lightning_layers)
+        if not layers:
+            from features.video.lib.lightning_style_registry import default_lightning_layer
+
+            layers = [default_lightning_layer(index=1)]
+        index = max(0, min(self._selected_lightning_layer_index, len(layers) - 1))
+        current = layers[index] if isinstance(layers[index], dict) else {}
+        next_layer = {**current, **(patch if isinstance(patch, dict) else {})}
+        if isinstance(patch, dict) and isinstance(patch.get("color"), dict):
+            color = current.get("color") if isinstance(current.get("color"), dict) else {}
+            next_layer["color"] = {**color, **patch["color"]}
+        layers[index] = next_layer
+        structural = {"style", "direction", "blend", "name", "enabled", "trigger", "seedLock"}
+        defer = not any(key in patch for key in structural)
+        self._set_lightning_layers(layers, selected_index=index, defer_rebind=defer)
+
+    def _apply_lightning_preset(self, preset_key: str) -> None:
+        from features.video.lib.lightning_style_registry import (
+            build_lightning_preset_layer_patch,
+            is_lightning_preset_key,
+        )
+
+        if not is_lightning_preset_key(preset_key):
+            return
+        patch = build_lightning_preset_layer_patch(preset_key)
+        if not patch:
+            return
+        # Ensure lightning is on when applying a look.
+        if self._template_draft is not None and not bool(self._template_draft.get("lightningEnabled", False)):
+            self._patch_template_draft({"lightningEnabled": True})
+        self._patch_selected_lightning_layer(dict(patch))
+
+    def _add_lightning_layer(self) -> None:
+        from features.video.lib.lightning_style_registry import default_lightning_layer
+
+        layers = clone_layer_records(self._lightning_layers)
+        next_index = len(layers) + 1
+        layers.append(default_lightning_layer(index=next_index))
+        self._set_lightning_layers(layers, selected_index=len(layers) - 1)
+
+    def _duplicate_lightning_layer(self) -> None:
+        layers = clone_layer_records(self._lightning_layers)
+        if not layers:
+            self._add_lightning_layer()
+            return
+        index = max(0, min(self._selected_lightning_layer_index, len(layers) - 1))
+        copy = dict(layers[index])
+        copy["id"] = f"lightning-{len(layers) + 1}"
+        copy["name"] = f"{copy.get('name', 'Bolt')} copy"
+        layers.append(copy)
+        self._set_lightning_layers(layers, selected_index=len(layers) - 1)
+
+    def _delete_lightning_layer(self) -> None:
+        layers = clone_layer_records(self._lightning_layers)
+        if len(layers) <= 1:
+            return
+        index = max(0, min(self._selected_lightning_layer_index, len(layers) - 1))
+        del layers[index]
+        self._set_lightning_layers(layers, selected_index=max(0, index - 1))
+
+    def _move_lightning_layer_up(self) -> None:
+        layers = clone_layer_records(self._lightning_layers)
+        index = max(0, min(self._selected_lightning_layer_index, len(layers) - 1))
+        if index <= 0:
+            return
+        layers[index - 1], layers[index] = layers[index], layers[index - 1]
+        self._set_lightning_layers(layers, selected_index=index - 1)
+
+    def _move_lightning_layer_down(self) -> None:
+        layers = clone_layer_records(self._lightning_layers)
+        index = max(0, min(self._selected_lightning_layer_index, len(layers) - 1))
+        if index >= len(layers) - 1:
+            return
+        layers[index + 1], layers[index] = layers[index], layers[index + 1]
+        self._set_lightning_layers(layers, selected_index=index + 1)
 
     def _select_spectrum_layer(self, index: int) -> None:
         self._selected_spectrum_layer_index = max(0, index)
@@ -3705,7 +3863,13 @@ class VideoView(QWidget):
         draft_dirty = draft_snapshot(self._template_draft) != self._persisted_draft_snapshot
         layers = clone_layer_records(self._workspace.template.get("layers") if self._workspace else [])
         layers_dirty = json.dumps(self._spectrum_layers, sort_keys=True) != json.dumps(layers, sort_keys=True)
-        return name_dirty or draft_dirty or layers_dirty
+        lightning_layers = clone_layer_records(
+            self._workspace.template.get("lightningLayers") if self._workspace else []
+        )
+        lightning_layers_dirty = json.dumps(self._lightning_layers, sort_keys=True) != json.dumps(
+            lightning_layers, sort_keys=True
+        )
+        return name_dirty or draft_dirty or layers_dirty or lightning_layers_dirty
 
     def _update_dirty_state(self) -> None:
         persisted = self._persisted_draft()
@@ -3714,6 +3878,8 @@ class VideoView(QWidget):
             persisted,
             spectrum_dirty=json.dumps(self._spectrum_layers, sort_keys=True)
             != json.dumps(clone_layer_records(self._workspace.template.get("layers") if self._workspace else []), sort_keys=True),
+            lightning_dirty=json.dumps(self._lightning_layers, sort_keys=True)
+            != json.dumps(clone_layer_records(self._workspace.template.get("lightningLayers") if self._workspace else []), sort_keys=True),
         )
         tab_dirty = bool(dirty_map.get(self._active_domain_tab, False))
         workspace_dirty = self._workspace_dirty()
@@ -3748,6 +3914,8 @@ class VideoView(QWidget):
             self._template_draft,
             persisted,
             spectrum_dirty=spectrum_dirty,
+            lightning_dirty=json.dumps(self._lightning_layers, sort_keys=True)
+            != json.dumps(clone_layer_records(self._workspace.template.get("lightningLayers") if self._workspace else []), sort_keys=True),
         )
         workspace_dirty = self._workspace_dirty()
         selected_row = self._selected_pipeline_row()
@@ -3947,15 +4115,18 @@ class VideoView(QWidget):
             # Keep the in-memory draft the user already edited; only create the catalog row.
             draft = dict(self._template_draft)
             layers = list(self._spectrum_layers)
+            lightning = list(self._lightning_layers)
             self._workspace = self._store.create_blank_template(name=name, settings=self._settings)
             self._template_draft = draft
             self._spectrum_layers = layers
+            self._lightning_layers = lightning
             self._template_name_draft = name
         patch = build_video_workspace_template_save_patch(
             template=dict(self._workspace.template),
             draft=self._template_draft,
             template_name=name,
             layers=self._spectrum_layers,
+            lightning_layers=self._lightning_layers,
         )
         self._saving = True
         self._update_dirty_state()
@@ -3990,6 +4161,7 @@ class VideoView(QWidget):
             draft=self._template_draft or {},
             template_name=self._template_name_draft.strip(),
             layers=self._spectrum_layers,
+            lightning_layers=self._lightning_layers,
         )
         profiles: list = []
         if self._cache is not None:

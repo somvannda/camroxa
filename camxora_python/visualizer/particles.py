@@ -52,6 +52,8 @@ class ParticleSystem:
         self._age = np.zeros((0,), dtype=np.float32)
         self._size = np.zeros((0,), dtype=np.float32)
         self._rgb = np.zeros((0, 3), dtype=np.float32)
+        self._icon = np.zeros((0,), dtype=np.float32)
+        self._angle = np.zeros((0,), dtype=np.float32)
         self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
         self._speed_last = float(max(1e-6, float(cfg.speed)))
         self._spawn_carry = 0.0
@@ -67,6 +69,8 @@ class ParticleSystem:
         self._age = self._age[:0]
         self._size = self._size[:0]
         self._rgb = self._rgb[:0]
+        self._icon = self._icon[:0]
+        self._angle = self._angle[:0]
         self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
         self._spawn_carry = 0.0
 
@@ -340,11 +344,18 @@ class ParticleSystem:
         else:
             rgb = np.tile(np.array(self._cfg.color, dtype=np.float32), (n, 1))
 
+        from features.video.lib.particle_music_icons import MUSIC_ICON_COUNT
+
+        icons = self._rng.integers(0, int(MUSIC_ICON_COUNT), size=(n,)).astype(np.float32)
+        angles = self._rng.uniform(-0.85, 0.85, size=(n,)).astype(np.float32)
+
         self._pos = np.concatenate([self._pos, pos], axis=0)
         self._vel = np.concatenate([self._vel, vel], axis=0)
         self._age = np.concatenate([self._age, np.zeros((n,), dtype=np.float32)], axis=0)
         self._size = np.concatenate([self._size, size_factor], axis=0)
         self._rgb = np.concatenate([self._rgb, rgb], axis=0)
+        self._icon = np.concatenate([self._icon, icons], axis=0)
+        self._angle = np.concatenate([self._angle, angles], axis=0)
         self._append_trail_rows(pos)
 
     def update(self, dt: float, audio: dict) -> None:
@@ -410,6 +421,14 @@ class ParticleSystem:
             self._age = self._age[alive]
             self._size = self._size[alive]
             self._rgb = self._rgb[alive]
+            if self._icon.shape[0] == alive.shape[0]:
+                self._icon = self._icon[alive]
+            else:
+                self._icon = self._icon[:0]
+            if self._angle.shape[0] == alive.shape[0]:
+                self._angle = self._angle[alive]
+            else:
+                self._angle = self._angle[:0]
             if self._trail_pos.shape[0] == alive.shape[0]:
                 self._trail_pos = self._trail_pos[alive]
             elif self._trail_len() <= 0:

@@ -66,6 +66,7 @@ class VideoStagePanel(SettingsPanel):
     playback_command_requested = Signal(str)
     playback_seek_requested = Signal(float)
     spectrum_position_changed = Signal(int, int)
+    lightning_position_changed = Signal(int, int)
     background_transform_changed = Signal(float, float, float)
     text_domain_position_changed = Signal(str, float, float)
     # domain, patch dict (boxWidth / fontSize / letterSpacing / x / y)
@@ -259,6 +260,7 @@ class VideoStagePanel(SettingsPanel):
         if self._preview is None:
             return
         self._preview.position_changed.connect(self.spectrum_position_changed.emit)
+        self._preview.lightning_position_changed.connect(self.lightning_position_changed.emit)
         self._preview.background_transform_changed.connect(self.background_transform_changed.emit)
         self._preview.text_domain_position_changed.connect(self.text_domain_position_changed.emit)
         self._preview.playback_state_changed.connect(self._on_preview_playback_state)
@@ -318,6 +320,10 @@ class VideoStagePanel(SettingsPanel):
             )
         if self._text_drag_overlay is not None:
             self._text_drag_overlay.set_edit_domain(self._active_text_domain)
+
+    def set_selected_lightning_layer_index(self, index: int) -> None:
+        if self._preview is not None and hasattr(self._preview, "set_selected_lightning_layer_index"):
+            self._preview.set_selected_lightning_layer_index(int(index))
 
     def bind_text_drag_overlay(
         self,
@@ -513,8 +519,9 @@ class VideoStagePanel(SettingsPanel):
         if template_key != self._last_template_key:
             self._last_template_key = template_key
             self._last_template = dict(template)
-        if self._preview is not None and not position_dragging:
-            self._preview.set_template(template)
+            # Only push when content actually changed (normalize+peak-cache clear is expensive).
+            if self._preview is not None and not position_dragging:
+                self._preview.set_template(template)
         background_path = _existing_file_path(background_path)
         logo_path = _existing_file_path(logo_path)
         mp3_path = _existing_file_path(mp3_path)
