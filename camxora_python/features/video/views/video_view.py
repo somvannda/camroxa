@@ -3115,7 +3115,7 @@ class VideoView(QWidget):
         current = layers[index] if isinstance(layers[index], dict) else {}
         layers[index] = {**current, **patch}
         # Geometry / form changes need an immediate inspector rebind (Circle Form, etc.).
-        structural = {"curved", "mirrored", "gravity", "blend_mode", "name", "fillCircle", "solidBand"}
+        structural = {"curved", "mirrored", "gravity", "blend_mode", "name", "fillCircle", "solidBand", "reflectionEnabled"}
         defer = not any(key in patch for key in structural)
         self._set_spectrum_layers(layers, selected_index=index, defer_rebind=defer)
 

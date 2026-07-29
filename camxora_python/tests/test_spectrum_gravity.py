@@ -1,4 +1,4 @@
-"""Tests for spectrum bar-growth directions: Top / Bottom / Left / Right."""
+"""Tests for spectrum bar-growth directions including radial spikes."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from visualizer._spectrum_fast import (
     clamp_spectrum_bar_count,
     generate_points_curved,
     generate_points_linear,
+    generate_spectrum_layer_geometry,
+    is_radial_spectrum_gravity,
     normalize_spectrum_gravity,
     resample_fft_bins,
     resolve_curved_spectrum_basis,
@@ -17,15 +19,23 @@ from visualizer._spectrum_fast import (
 from visualizer.template_runtime import normalize_renderer_template
 
 
-def test_gravity_options_are_four_directions_only() -> None:
+def test_gravity_options_include_radial_spikes() -> None:
     values = [value for value, _label in GRAVITY_OPTIONS]
-    assert values == ["top", "bottom", "left", "right"]
+    assert values == ["top", "bottom", "left", "right", "outward", "inward"]
+    labels = [label for _value, label in GRAVITY_OPTIONS]
+    assert labels[0] == "Top side"
+    assert "All around — face out" in labels
     assert "normal" not in values
 
 
-def test_normalize_maps_legacy_normal_to_top() -> None:
+def test_normalize_maps_legacy_and_aliases() -> None:
     assert normalize_spectrum_gravity("normal") == "top"
     assert normalize_spectrum_gravity("BOTTOM") == "bottom"
+    assert normalize_spectrum_gravity("outside") == "outward"
+    assert normalize_spectrum_gravity("inside") == "inward"
+    assert is_radial_spectrum_gravity("outward")
+    assert is_radial_spectrum_gravity("in")
+    assert not is_radial_spectrum_gravity("top")
 
 
 def test_linear_directions_raise_as_labeled() -> None:
@@ -42,19 +52,57 @@ def test_linear_directions_raise_as_labeled() -> None:
     assert np.allclose(dx, 1.0) and np.allclose(dy, 0.0)
 
 
-def test_curved_directions_raise_uniformly() -> None:
-    for gravity, expect_dx, expect_dy in (
-        ("top", 0.0, 1.0),
-        ("bottom", 0.0, -1.0),
-        ("left", -1.0, 0.0),
-        ("right", 1.0, 0.0),
-    ):
+def test_curved_side_bars_raise_facing_out() -> None:
+    """Top/Bottom/Left/Right place the arc; each bar raises radially out (its face)."""
+    for gravity in ("top", "bottom", "left", "right"):
         start, gdx, gdy = resolve_curved_spectrum_basis(gravity)
-        assert (gdx, gdy) == resolve_spectrum_growth_direction(gravity)
-        assert (gdx, gdy) == (expect_dx, expect_dy)
-        _px, _py, dx, dy = generate_points_curved(16, 100.0, True, start, gdx, gdy)
-        assert np.allclose(dx, expect_dx)
-        assert np.allclose(dy, expect_dy)
+        px, py, dx, dy = generate_points_curved(
+            32, 100.0, False, start, gdx, gdy, gravity=gravity
+        )
+        radii = np.sqrt(px * px + py * py)
+        assert np.allclose(radii, 100.0, atol=1e-3)
+        assert np.allclose(dx, px / 100.0, atol=1e-4)
+        assert np.allclose(dy, py / 100.0, atol=1e-4)
+
+
+def test_legacy_uniform_growth_without_gravity_arg() -> None:
+    """Callers that omit gravity still get uniform growth_dx/growth_dy."""
+    start, gdx, gdy = resolve_curved_spectrum_basis("top")
+    _px, _py, dx, dy = generate_points_curved(16, 100.0, True, start, 0.0, 1.0)
+    assert np.allclose(dx, 0.0)
+    assert np.allclose(dy, 1.0)
+
+
+def test_radial_outward_spikes_match_ring_normals() -> None:
+    start, gdx, gdy = resolve_curved_spectrum_basis("outward")
+    assert (gdx, gdy) == (0.0, 0.0)
+    px, py, dx, dy = generate_points_curved(32, 100.0, True, start, gdx, gdy, gravity="outward")
+    radii = np.sqrt(px * px + py * py)
+    assert np.allclose(radii, 100.0, atol=1e-3)
+    assert np.allclose(dx, px / 100.0, atol=1e-4)
+    assert np.allclose(dy, py / 100.0, atol=1e-4)
+
+
+def test_radial_inward_spikes_point_to_center() -> None:
+    start, gdx, gdy = resolve_curved_spectrum_basis("inward")
+    px, py, dx, dy = generate_points_curved(24, 80.0, True, start, gdx, gdy, gravity="inward")
+    assert np.allclose(dx, -px / 80.0, atol=1e-4)
+    assert np.allclose(dy, -py / 80.0, atol=1e-4)
+
+
+def test_geometry_helper_radial_outward() -> None:
+    px, py, dx, dy, _length = generate_spectrum_layer_geometry(
+        20,
+        curved=True,
+        mirrored=True,
+        gravity="outward",
+        path_mode="circle",
+        radius=50.0,
+        frame_w=1920,
+        frame_h=1080,
+    )
+    assert px.shape == (20,)
+    assert float(np.min(np.sqrt(dx * dx + dy * dy))) > 0.99
 
 
 def test_semi_circle_sits_on_chosen_side() -> None:
@@ -75,14 +123,21 @@ def test_align_style_geometry_does_not_overwrite_user_gravity() -> None:
     assert aligned[0]["gravity"] == "bottom"
 
 
-def test_normalize_accepts_top_gravity() -> None:
+def test_normalize_accepts_radial_gravity() -> None:
     tpl = normalize_renderer_template(
         {
             "style": "orbit-spikes",
-            "layers": [{"gravity": "top", "barWidth": 5, "thickness": 30}],
+            "layers": [{"gravity": "outward", "barWidth": 5, "thickness": 30}],
         }
     )
-    assert tpl["layers"][0]["gravity"] == "top"
+    assert tpl["layers"][0]["gravity"] == "outward"
+    tpl2 = normalize_renderer_template(
+        {
+            "style": "orbit-spikes",
+            "layers": [{"gravity": "inside", "barWidth": 5, "thickness": 30}],
+        }
+    )
+    assert tpl2["layers"][0]["gravity"] == "inward"
 
 
 def test_normalize_maps_legacy_normal_gravity() -> None:

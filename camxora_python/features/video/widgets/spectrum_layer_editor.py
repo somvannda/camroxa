@@ -31,10 +31,12 @@ from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL
 from shared.widgets.settings_ui import form_row, note_box
 
 GRAVITY_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("top", "Top (raise up)"),
-    ("bottom", "Bottom (raise down)"),
-    ("left", "Left (raise left)"),
-    ("right", "Right (raise right)"),
+    ("top", "Top side"),
+    ("bottom", "Bottom side"),
+    ("left", "Left side"),
+    ("right", "Right side"),
+    ("outward", "All around — face out"),
+    ("inward", "All around — face in"),
 )
 
 # How the ring is laid out. This is separate from blend mode.
@@ -42,6 +44,12 @@ CIRCLE_FORM_OPTIONS: tuple[tuple[str, str], ...] = (
     ("linear", "Linear (straight row)"),
     ("semi", "Circle Raise (180°)"),
     ("full", "Full Circle Raise (360°)"),
+)
+
+PATH_MODE_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("auto", "Auto (follow logo shape)"),
+    ("circle", "Circle"),
+    ("rect", "Rectangle"),
 )
 
 BLEND_OPTIONS: tuple[tuple[str, str], ...] = (
@@ -136,15 +144,27 @@ class SpectrumLayerEditor(InspectorSection):
         self._circle_form_combo.currentIndexChanged.connect(self._on_circle_form_changed)
         self.add_widget(form_row("Circle Form", self._circle_form_combo))
 
+        self._path_mode_combo = QComboBox()
+        self._path_mode_combo.setToolTip(
+            "Auto uses a rectangle path when the spectrum is attached to a square logo; "
+            "otherwise a circle. Force Circle or Rectangle to override."
+        )
+        for value, label in PATH_MODE_OPTIONS:
+            self._path_mode_combo.addItem(label, value)
+        self._path_mode_combo.currentIndexChanged.connect(self._on_path_mode_changed)
+        self.add_widget(form_row("Path Shape", self._path_mode_combo))
+
         self._gravity_combo = QComboBox()
         self._gravity_combo.setToolTip(
-            "Bar raise direction: Top / Bottom / Left / Right. "
-            "On a circle, bars sit on that side and raise in that direction."
+            "Where bars sit on the ring. Top/Bottom/Left/Right = that side only; "
+            "each bar raises the way it faces (out from the ring). "
+            "All around face out/in = full ring spikes. "
+            "All-around modes auto-enable Full Circle Raise when the layer is linear."
         )
         for value, label in GRAVITY_OPTIONS:
             self._gravity_combo.addItem(label, value)
         self._gravity_combo.currentIndexChanged.connect(self._on_gravity_changed)
-        self.add_widget(form_row("Bar Growth", self._gravity_combo))
+        self.add_widget(form_row("Ring Side", self._gravity_combo))
 
         self._blend_combo = QComboBox()
         self._blend_combo.setToolTip(
@@ -156,8 +176,8 @@ class SpectrumLayerEditor(InspectorSection):
         self.add_widget(form_row("Blend Mode", self._blend_combo))
 
         self._attach_note = note_box(
-            "Spectrum is attached to the logo core. Use Spectrum Outer Gap in the Logo tab "
-            "to control the shared outer radius."
+            "Spectrum is attached to the logo. Path Shape Auto follows square logos on a "
+            "rectangle perimeter; use Spectrum Outer Gap in the Logo tab for shared spacing."
         )
         self._attach_note.hide()
         self.add_widget(self._attach_note)
@@ -171,6 +191,7 @@ class SpectrumLayerEditor(InspectorSection):
             (
                 ("fillCircle", "Fill Circle"),
                 ("solidBand", "Solid Band"),
+                ("reflectionEnabled", "Floor Reflection"),
             )
         ):
             checkbox = QCheckBox(label)
@@ -237,6 +258,14 @@ class SpectrumLayerEditor(InspectorSection):
                 "Moves this ring outward from the logo/core.",
             ),
             ("opacity", "Opacity (this layer)", 0, 1, 0.01, ""),
+            (
+                "reflectionOpacity",
+                "Reflection Opacity (this layer)",
+                0.05,
+                0.85,
+                0.01,
+                "Strength of the floor reflection copy when Floor Reflection is on.",
+            ),
             ("glow", "Glow Strength (this layer)", 0, 100, 1, ""),
             ("blur", "Glow Softness (this layer)", 0, 30, 1, ""),
             ("peakCapGap", "Peak Cap Gap (this layer)", 0, 24, 0.25, ""),
@@ -369,7 +398,14 @@ class SpectrumLayerEditor(InspectorSection):
         value = self._gravity_combo.currentData()
         if not isinstance(value, str):
             return
-        self.layer_patch_requested.emit({"gravity": value})
+        patch: dict[str, object] = {"gravity": value}
+        # Radial spikes need a ring — promote Linear → Full Circle Raise.
+        if value in ("outward", "inward"):
+            layer = self._selected_layer() or {}
+            if self._circle_form_from_layer(layer) == "linear":
+                patch["curved"] = True
+                patch["mirrored"] = True
+        self.layer_patch_requested.emit(patch)
 
     def _on_circle_form_changed(self, _index: int) -> None:
         if self._binding:
@@ -382,6 +418,14 @@ class SpectrumLayerEditor(InspectorSection):
         else:
             self.layer_patch_requested.emit({"curved": False, "mirrored": False})
 
+    def _on_path_mode_changed(self, _index: int) -> None:
+        if self._binding:
+            return
+        value = str(self._path_mode_combo.currentData() or "auto")
+        if value not in ("auto", "circle", "rect"):
+            value = "auto"
+        self.layer_patch_requested.emit({"pathMode": value})
+
     @staticmethod
     def _circle_form_from_layer(layer: dict) -> str:
         curved = bool(layer.get("curved"))
@@ -391,6 +435,15 @@ class SpectrumLayerEditor(InspectorSection):
         if curved:
             return "semi"
         return "linear"
+
+    @staticmethod
+    def _path_mode_from_layer(layer: dict) -> str:
+        value = str(layer.get("pathMode") or "auto").lower().strip()
+        if value in ("rectangle", "square"):
+            return "rect"
+        if value in ("auto", "circle", "rect"):
+            return value
+        return "auto"
 
     def _on_blend_changed(self, _index: int) -> None:
         if self._binding:
@@ -530,6 +583,10 @@ class SpectrumLayerEditor(InspectorSection):
             circle_index = self._circle_form_combo.findData(circle_form)
             if circle_index >= 0:
                 self._circle_form_combo.setCurrentIndex(circle_index)
+            path_mode = self._path_mode_from_layer(layer)
+            path_index = self._path_mode_combo.findData(path_mode)
+            if path_index >= 0:
+                self._path_mode_combo.setCurrentIndex(path_index)
             gravity_index = self._gravity_combo.findData(gravity)
             if gravity_index >= 0:
                 self._gravity_combo.setCurrentIndex(gravity_index)
@@ -549,6 +606,7 @@ class SpectrumLayerEditor(InspectorSection):
                 "thickness": 36.0,
                 "radiusOffset": 0.0,
                 "opacity": 1.0,
+                "reflectionOpacity": 0.32,
                 "glow": 0.0,
                 "blur": 0.0,
                 "peakCapGap": 4.0,

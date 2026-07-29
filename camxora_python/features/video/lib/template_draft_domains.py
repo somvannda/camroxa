@@ -114,6 +114,10 @@ def _pick_particles_slice(draft: dict[str, Any]) -> dict[str, Any]:
         "particlesColorMode",
         "particlesPaletteColors",
         "particlesReactStrength",
+        "particlesTrailEnabled",
+        "particlesTrailLength",
+        "particlesTrailFade",
+        "particlesTrailWidth",
     )
     return {key: draft.get(key) for key in keys}
 

@@ -48,6 +48,7 @@ class ParticlesInspector(QWidget):
         ("particlesSizeJitter", "Size Variance", 0, 1, 0.05),
         ("particlesDrift", "Drift", 0, 1, 0.05),
         ("particlesSwirl", "Swirl", 0, 1, 0.05),
+        ("particlesTrailWidth", "Trail Width", 0.1, 1.0, 0.05),
     )
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -107,8 +108,44 @@ class ParticlesInspector(QWidget):
         section.add_widget(self._build_combo("particlesTravelMode", "Travel Mode", PARTICLE_TRAVEL_MODE_OPTIONS))
         section.add_widget(self._build_combo("particlesSpawnMode", "Spawn Mode", PARTICLE_SPAWN_MODE_OPTIONS))
 
+        self._trail_toggle = QCheckBox("Motion Trail")
+        self._trail_toggle.setToolTip(
+            "Draw fading position history behind each particle. Particles domain only."
+        )
+        self._trail_toggle.toggled.connect(
+            lambda checked: self._emit_patch({"particlesTrailEnabled": checked})
+        )
+        section.add_widget(self._trail_toggle)
+
         for field, label, minimum, maximum, step in self._MAIN_FLOATS:
             section.add_widget(self._add_float(field, label, minimum, maximum, step))
+
+        trail_len_widget, trail_len_setter = build_float_slider(
+            "Trail Length",
+            minimum=2,
+            maximum=24,
+            step=1,
+            value=8,
+            on_change=lambda value: self._emit_patch({"particlesTrailLength": int(round(value))}),
+            format_value=lambda value: f"{int(round(value))}",
+        )
+        trail_len_widget.setToolTip("How many past positions to keep (2–24). Longer = longer streaks.")
+        self._float_setters["particlesTrailLength"] = trail_len_setter
+        section.add_widget(trail_len_widget)
+
+        trail_fade_widget, trail_fade_setter = build_float_slider(
+            "Trail Fade",
+            minimum=0.05,
+            maximum=0.98,
+            step=0.05,
+            value=0.65,
+            on_change=lambda value: self._emit_patch({"particlesTrailFade": round(float(value), 2)}),
+        )
+        trail_fade_widget.setToolTip(
+            "How quickly older trail segments dim. Lower = longer visible streak; higher = snappier fade."
+        )
+        self._float_setters["particlesTrailFade"] = trail_fade_setter
+        section.add_widget(trail_fade_widget)
 
         self._color_editor = ParticleColorEditor(self)
         self._color_editor.color_patch_requested.connect(self._on_color_engine_patch)
@@ -174,7 +211,11 @@ class ParticlesInspector(QWidget):
             step=step,
             value=minimum,
             on_change=lambda value, key=field: self._emit_patch(
-                {key: int(value) if key in {"particlesMaxCount", "particlesSpawnRate"} else value}
+                {
+                    key: int(value)
+                    if key in {"particlesMaxCount", "particlesSpawnRate", "particlesTrailLength"}
+                    else value
+                }
             ),
         )
         self._float_setters[field] = setter
@@ -286,6 +327,7 @@ class ParticlesInspector(QWidget):
         try:
             self._draft_snapshot = dict(draft)
             self._enabled_toggle.setChecked(bool(draft.get("particlesEnabled", True)))
+            self._trail_toggle.setChecked(bool(draft.get("particlesTrailEnabled", False)))
 
             for field, combo in self._combo_fields.items():
                 index = combo.findData(str(draft.get(field) or ""))

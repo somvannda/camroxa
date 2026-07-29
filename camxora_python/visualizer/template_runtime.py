@@ -7,6 +7,15 @@ import json
 from typing import Any
 
 
+def _normalize_layer_path_mode(value: Any) -> str:
+    v = str(value or "auto").lower().strip()
+    if v in ("rectangle", "square"):
+        return "rect"
+    if v in ("auto", "circle", "rect"):
+        return v
+    return "auto"
+
+
 def default_renderer_template() -> dict:
     return {
         "templateName": "New Template",
@@ -42,6 +51,7 @@ def default_renderer_template() -> dict:
                 "peakCapGap": 4.0,
                 "peakCapThickness": 3.0,
                 "peakCapDecay": 0.92,
+                "pathMode": "auto",
             }
         ],
         "globalColor": {
@@ -107,6 +117,10 @@ def default_renderer_template() -> dict:
             "reactColor": "#ffffff",
             "reactStrength": 0.65,
             "style": "dot",
+            "trailEnabled": False,
+            "trailLength": 8,
+            "trailFade": 0.65,
+            "trailWidth": 0.45,
         },
         "effects": {
             "vignette": {"enabled": False, "strength": 0.35, "feather": 0.65, "color": "#000000", "opacity": 0.65},
@@ -207,6 +221,14 @@ def normalize_renderer_template(input_template: Any) -> dict:
     ps["style"] = str(ps.get("style", "dot"))
     if ps["style"] not in ("dot", "glow", "ring", "spark", "bokeh"):
         ps["style"] = "dot"
+    ps["trailEnabled"] = bool(ps.get("trailEnabled", False))
+    try:
+        trail_len = int(round(float(ps.get("trailLength", 8) or 8)))
+    except (TypeError, ValueError):
+        trail_len = 8
+    ps["trailLength"] = int(max(2, min(24, trail_len)))
+    ps["trailFade"] = float(max(0.05, min(0.98, float(ps.get("trailFade", 0.65) or 0.65))))
+    ps["trailWidth"] = float(max(0.1, min(1.0, float(ps.get("trailWidth", 0.45) or 0.45))))
 
     bg = out["backgroundSettings"]
     bg["brightness"] = float(max(0.0, min(3.0, float(bg.get("brightness", 1.0)))))
@@ -416,12 +438,22 @@ def normalize_renderer_template(input_template: Any) -> dict:
         gravity = str(layer_in.get("gravity", fallback_layer.get("gravity", "top")))
         if gravity == "normal":
             gravity = "top"
-        if gravity not in ("top", "bottom", "left", "right"):
+        g_low = gravity.lower().strip()
+        if g_low in ("outside", "out", "radial-out", "radial_out"):
+            gravity = "outward"
+        elif g_low in ("inside", "in", "radial-in", "radial_in"):
+            gravity = "inward"
+        elif g_low in ("top", "bottom", "left", "right", "outward", "inward"):
+            gravity = g_low
+        else:
             gravity = str(fallback_layer.get("gravity", "top"))
             if gravity == "normal":
                 gravity = "top"
-            if gravity not in ("top", "bottom", "left", "right"):
+            g_fb = gravity.lower().strip()
+            if g_fb not in ("top", "bottom", "left", "right", "outward", "inward"):
                 gravity = "top"
+            else:
+                gravity = g_fb
 
         col_in = layer_in.get("color") if _is_obj(layer_in.get("color")) else {}
         color = {**fallback_layer.get("color", {}), **col_in}
@@ -458,6 +490,27 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "peakCapGap": float(max(0.0, min(24.0, float(layer_in.get("peakCapGap", fallback_layer.get("peakCapGap", 4.0)) or 0.0)))),
                 "peakCapThickness": float(max(1.0, min(16.0, float(layer_in.get("peakCapThickness", fallback_layer.get("peakCapThickness", 3.0)) or 1.0)))),
                 "peakCapDecay": float(max(0.7, min(0.995, float(layer_in.get("peakCapDecay", fallback_layer.get("peakCapDecay", 0.92)) or 0.92)))),
+                "reflectionEnabled": bool(
+                    layer_in.get("reflectionEnabled", fallback_layer.get("reflectionEnabled", False))
+                ),
+                "reflectionOpacity": float(
+                    max(
+                        0.05,
+                        min(
+                            0.85,
+                            float(
+                                layer_in.get(
+                                    "reflectionOpacity",
+                                    fallback_layer.get("reflectionOpacity", 0.32),
+                                )
+                                or 0.32
+                            ),
+                        ),
+                    )
+                ),
+                "pathMode": _normalize_layer_path_mode(
+                    layer_in.get("pathMode", fallback_layer.get("pathMode", "auto"))
+                ),
             }
         )
     out["layers"] = out_layers

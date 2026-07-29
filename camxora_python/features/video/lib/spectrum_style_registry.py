@@ -28,6 +28,7 @@ SPECTRUM_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     ("aurora-ribbon", "Aurora Ribbon"),
     ("magma-ridge", "Magma Ridge"),
     ("plasma-bloom", "Plasma Bloom"),
+    ("contour-waves", "Contour Waves"),
     ("grid-steps", "Grid Steps"),
     ("ignition-flare", "Ignition Flare"),
     ("drift-capsules", "Drift Capsules"),
@@ -161,6 +162,26 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "color": {
             "mode": "gradient",
             "gradientColors": ["#4c1d95", "#9f1239", "#0e7490", "#1e3a8a"],
+            "gradientDirection": "left-to-right",
+        },
+    },
+    "contour-waves": {
+        "curved": True,
+        "mirrored": True,
+        "fillCircle": False,
+        "solidBand": False,
+        "barWidth": 2.0,
+        "thickness": 48.0,
+        "barCount": 96,
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "reflectionEnabled": True,
+        "reflectionOpacity": 0.28,
+        "color": {
+            "mode": "gradient",
+            "gradientColors": ["#0e7490", "#1e3a8a", "#4c1d95", "#9f1239"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -386,6 +407,7 @@ _PRESET_ALIASES = {
     "aurora-ribbon": "aurora-ribbon",
     "magma-ridge": "magma-ridge",
     "plasma-bloom": "plasma-bloom",
+    "contour-waves": "contour-waves",
     "grid-steps": "grid-steps",
     "ignition-flare": "ignition-flare",
     "drift-capsules": "drift-capsules",
@@ -403,6 +425,9 @@ _PRESET_ALIASES = {
     "mountain": "magma-ridge",
     "liquid": "plasma-bloom",
     "liquid-mass": "plasma-bloom",
+    "radio-wave": "contour-waves",
+    "contour": "contour-waves",
+    "contour-wave": "contour-waves",
     "pixel-bars": "grid-steps",
     "neon-pulse": "ignition-flare",
     "flying-glow": "ignition-flare",
@@ -415,6 +440,7 @@ _PRESET_ALIASES = {
 }
 
 WAVEFORM_STYLE_IDS = frozenset({"aurora-ribbon", "magma-ridge", "plasma-bloom"})
+CONTOUR_STYLE_IDS = frozenset({"contour-waves"})
 BAR_STYLE_IDS = frozenset(
     {
         "orbit-spikes",
@@ -474,6 +500,10 @@ def normalize_spectrum_preset_key_for_apply(preset_key: str) -> str:
 
 def is_waveform_spectrum_style(style_key: str) -> bool:
     return normalize_spectrum_preset_key_for_apply(style_key) in WAVEFORM_STYLE_IDS
+
+
+def is_contour_spectrum_style(style_key: str) -> bool:
+    return normalize_spectrum_preset_key_for_apply(style_key) in CONTOUR_STYLE_IDS
 
 
 def is_flare_spectrum_style(style_key: str) -> bool:

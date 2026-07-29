@@ -35,6 +35,7 @@ def normalize_spectrum_preset_key(style_key: str) -> str:
         "grid-steps": "grid-steps",
         "ignition-flare": "ignition-flare",
         "drift-capsules": "drift-capsules",
+        "contour-waves": "contour-waves",
         # Legacy → Camxora
         "classic-vertical": "orbit-spikes",
         "straight-bars": "orbit-spikes",
@@ -49,6 +50,9 @@ def normalize_spectrum_preset_key(style_key: str) -> str:
         "mountain": "magma-ridge",
         "liquid": "plasma-bloom",
         "liquid-mass": "plasma-bloom",
+        "radio-wave": "contour-waves",
+        "contour": "contour-waves",
+        "contour-wave": "contour-waves",
         "pixel-bars": "grid-steps",
         "neon-pulse": "ignition-flare",
         "flying-glow": "ignition-flare",
@@ -267,6 +271,10 @@ def build_particle_settings_state(template: dict[str, Any]) -> dict[str, Any]:
         "particlesColorMode": color_mode,
         "particlesPaletteColors": palette_colors,
         "particlesReactStrength": to_number(particles_settings.get("reactStrength"), 0.65),
+        "particlesTrailEnabled": to_boolean(particles_settings.get("trailEnabled"), False),
+        "particlesTrailLength": int(to_number(particles_settings.get("trailLength"), 8)),
+        "particlesTrailFade": to_number(particles_settings.get("trailFade"), 0.65),
+        "particlesTrailWidth": to_number(particles_settings.get("trailWidth"), 0.45),
     }
 
 

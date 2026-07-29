@@ -27,6 +27,18 @@ class ParticleConfig:
     travel_mode: str = "spawnFlow"
     color_mode: str = "solid"
     palette_colors: tuple[tuple[int, int, int], ...] = ()
+    trail_enabled: bool = False
+    trail_length: int = 8
+    trail_fade: float = 0.65
+    trail_width: float = 0.45
+
+
+def clamp_particle_trail_length(value: float | int | None, default: int = 8) -> int:
+    try:
+        n = int(round(float(value if value is not None else default)))
+    except (TypeError, ValueError):
+        n = int(default)
+    return int(max(2, min(24, n)))
 
 
 class ParticleSystem:
@@ -40,7 +52,22 @@ class ParticleSystem:
         self._age = np.zeros((0,), dtype=np.float32)
         self._size = np.zeros((0,), dtype=np.float32)
         self._rgb = np.zeros((0, 3), dtype=np.float32)
+        self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
         self._speed_last = float(max(1e-6, float(cfg.speed)))
+        self._spawn_carry = 0.0
+
+    def _trail_len(self) -> int:
+        if not bool(getattr(self._cfg, "trail_enabled", False)):
+            return 0
+        return clamp_particle_trail_length(getattr(self._cfg, "trail_length", 8))
+
+    def _clear_particles(self) -> None:
+        self._pos = self._pos[:0]
+        self._vel = self._vel[:0]
+        self._age = self._age[:0]
+        self._size = self._size[:0]
+        self._rgb = self._rgb[:0]
+        self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
         self._spawn_carry = 0.0
 
     def update_cfg(self, cfg: ParticleConfig) -> None:
@@ -53,13 +80,98 @@ class ParticleSystem:
             or str(getattr(prev, "travel_mode", "") or "") != str(getattr(cfg, "travel_mode", "") or "")
             or str(getattr(prev, "color_mode", "") or "") != str(getattr(cfg, "color_mode", "") or "")
         ):
-            self._pos = self._pos[:0]
-            self._vel = self._vel[:0]
-            self._age = self._age[:0]
-            self._size = self._size[:0]
-            self._rgb = self._rgb[:0]
-            self._spawn_carry = 0.0
+            self._clear_particles()
             self._speed_last = float(max(1e-6, float(cfg.speed)))
+            return
+        prev_len = clamp_particle_trail_length(getattr(prev, "trail_length", 8)) if bool(
+            getattr(prev, "trail_enabled", False)
+        ) else 0
+        next_len = self._trail_len()
+        if prev_len != next_len:
+            # Rebuild trail buffer for the new history length.
+            n = int(self._pos.shape[0])
+            if next_len <= 0 or n <= 0:
+                self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
+            else:
+                hist = np.repeat(self._pos[:, None, :], next_len, axis=1).astype(np.float32)
+                self._trail_pos = hist
+
+    def _append_trail_rows(self, pos: np.ndarray) -> None:
+        L = self._trail_len()
+        n_new = int(pos.shape[0])
+        if L <= 0:
+            self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
+            return
+        rows = np.repeat(pos[:, None, :], L, axis=1).astype(np.float32)
+        if self._trail_pos.shape[0] == 0 or self._trail_pos.shape[1] != L:
+            self._trail_pos = np.repeat(self._pos[:, None, :], L, axis=1).astype(np.float32)
+            return
+        if self._trail_pos.shape[0] + n_new == self._pos.shape[0]:
+            self._trail_pos = np.concatenate([self._trail_pos, rows], axis=0)
+            return
+        self._trail_pos = np.repeat(self._pos[:, None, :], L, axis=1).astype(np.float32)
+
+    def _advance_trails(self) -> None:
+        L = self._trail_len()
+        n = int(self._pos.shape[0])
+        if L <= 0 or n <= 0:
+            self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
+            return
+        if self._trail_pos.shape[0] != n or self._trail_pos.shape[1] != L:
+            self._trail_pos = np.repeat(self._pos[:, None, :], L, axis=1).astype(np.float32)
+            return
+        self._trail_pos[:, 1:, :] = self._trail_pos[:, :-1, :]
+        self._trail_pos[:, 0, :] = self._pos
+
+    def build_trail_draw_arrays(
+        self,
+        *,
+        w: int,
+        h: int,
+        head_colors_rgba: np.ndarray | None,
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """Build NDC trail quads behind particle heads.
+
+        Returns ``(pts, colors_rgba)`` where ``pts`` is ``(M, 3)`` = x,y,scale
+        and colors are ``(M, 4)``. Excludes the newest sample (drawn as the head).
+        """
+        L = self._trail_len()
+        n = int(self._pos.shape[0])
+        if L <= 1 or n <= 0 or self._trail_pos.shape[0] != n or self._trail_pos.shape[1] != L:
+            return None
+        segs = L - 1
+        max_quads = int(min(n * segs, max(n, int(max(1, self._cfg.max_count)) * 12)))
+        positions = self._trail_pos[:, 1:, :].astype(np.float32)
+        j = np.arange(1, L, dtype=np.float32)
+        fade = float(max(0.05, min(0.98, float(getattr(self._cfg, "trail_fade", 0.65) or 0.65))))
+        width = float(max(0.1, min(1.0, float(getattr(self._cfg, "trail_width", 0.45) or 0.45))))
+        alpha_mul = np.power(fade, j).astype(np.float32)
+        size_mul = (width * np.maximum(0.12, 1.0 - (j / float(L)))).astype(np.float32)
+        flat_pos = positions.reshape(-1, 2)
+        flat_scale = (self._size[:, None].astype(np.float32) * size_mul[None, :]).reshape(-1)
+
+        if head_colors_rgba is not None and int(head_colors_rgba.shape[0]) == n:
+            rgb = head_colors_rgba[:, :3].astype(np.float32)
+            alpha = head_colors_rgba[:, 3:4].astype(np.float32)
+            flat_rgb = np.repeat(rgb, segs, axis=0)
+            flat_a = (alpha * alpha_mul[None, :]).reshape(-1)
+        else:
+            base = np.array(self._cfg.color, dtype=np.float32) / 255.0
+            flat_rgb = np.tile(base, (n * segs, 1))
+            flat_a = (
+                float(max(0.0, min(1.0, float(self._cfg.opacity)))) * np.tile(alpha_mul, n)
+            ).astype(np.float32)
+
+        xs = flat_pos[:, 0] / float(max(1, w)) * 2.0 - 1.0
+        ys = 1.0 - (flat_pos[:, 1] / float(max(1, h)) * 2.0)
+        pts = np.column_stack([xs, ys, flat_scale]).astype(np.float32)
+        colors = np.column_stack([flat_rgb, flat_a]).astype(np.float32)
+        if pts.shape[0] > max_quads:
+            pts = pts[:max_quads]
+            colors = colors[:max_quads]
+        if pts.shape[0] <= 0:
+            return None
+        return pts, colors
 
     @staticmethod
     def _blend_direction(
@@ -233,16 +345,12 @@ class ParticleSystem:
         self._age = np.concatenate([self._age, np.zeros((n,), dtype=np.float32)], axis=0)
         self._size = np.concatenate([self._size, size_factor], axis=0)
         self._rgb = np.concatenate([self._rgb, rgb], axis=0)
+        self._append_trail_rows(pos)
 
     def update(self, dt: float, audio: dict) -> None:
         if not self._cfg.enabled:
-            self._pos = self._pos[:0]
-            self._vel = self._vel[:0]
-            self._age = self._age[:0]
-            self._size = self._size[:0]
-            self._rgb = self._rgb[:0]
+            self._clear_particles()
             self._speed_last = float(max(1e-6, float(self._cfg.speed)))
-            self._spawn_carry = 0.0
             return
 
         dt = float(dt)
@@ -287,6 +395,7 @@ class ParticleSystem:
                 self._vel += tang * (float(swirl * 90.0) * dt)
             self._pos += self._vel * dt
             self._age += dt
+            self._advance_trails()
 
             edge_pad = float(max(32.0, float(self._cfg.size) * 4.0))
             alive = (
@@ -301,6 +410,18 @@ class ParticleSystem:
             self._age = self._age[alive]
             self._size = self._size[alive]
             self._rgb = self._rgb[alive]
+            if self._trail_pos.shape[0] == alive.shape[0]:
+                self._trail_pos = self._trail_pos[alive]
+            elif self._trail_len() <= 0:
+                self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
+            else:
+                # Mismatch fallback — rebuild from survivors.
+                if self._pos.shape[0] <= 0:
+                    self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
+                else:
+                    self._trail_pos = np.repeat(
+                        self._pos[:, None, :], self._trail_len(), axis=1
+                    ).astype(np.float32)
 
     def render(self, surface: "pygame.Surface") -> None:
         import pygame

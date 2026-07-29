@@ -15,6 +15,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Preview hitch: stop periodic `grabFramebuffer` while audio plays; cache logo visible-radius scan. See `docs/changelog/2026-07-29-preview-playback-hitch-fix.md`.
+- Spectrum Ring Side: Top/Left/Right/Bottom place the arc; each bar raises the way it faces (not uniform screen shove). See `docs/changelog/2026-07-29-spectrum-ring-side-face-raise.md`.
+- Spectrum Bar Growth: add Outside (radial spikes out) and Inside (spikes into the circle). See `docs/changelog/2026-07-29-spectrum-radial-bar-spikes.md`.
+- Spectrum Phase 4: Particles Motion Trail (history quads with length/fade/width). See `docs/changelog/2026-07-29-spectrum-phase4-particle-trails.md`.
+- Spectrum Phase 3: Path Shape (`auto` / circle / rect) so attached square logos get a rectangle perimeter; `LogoBounds` DTO. See `docs/changelog/2026-07-29-spectrum-phase3-path-mode.md`.
+- Spectrum Phase 2: Contour Waves style (multi-line radio-wave outlines) + Floor Reflection per layer. See `docs/changelog/2026-07-29-spectrum-phase2-contour-reflection.md`.
 - Spectrum Bar Growth: remove rabbit ears / outward specials; only Top / Bottom / Left / Right directional raise. See `docs/changelog/2026-07-29-spectrum-directional-bar-growth.md`.
 - Spectrum Top bar growth: force top-arc Circle Raise with upward twin peaks; dark crystal-clear style colors; glow/blur defaults to 0 (no soft haze). See `docs/changelog/2026-07-29-spectrum-top-dark-crystal-colors.md`.
 - Spectrum rabbit ears: seat inward ring outside the logo so top→bottom tips stay visible; skip center fill; add twin-ear amplitude bias. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-visible-raise.md`.

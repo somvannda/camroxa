@@ -17,6 +17,7 @@ from visualizer.gpu_render import (
     _compile,
     _compile_particle_quads,
     _compute_visible_logo_radius_ratio,
+    _particle_trail_cfg_from_settings,
     _quad_vao,
     _render_particle_styled_quads,
     _resolve_attached_layer_base_offset,
@@ -27,16 +28,17 @@ from visualizer.gpu_render import (
     ParticleConfig,
 )
 from visualizer._spectrum_fast import (
+    build_contour_wave_strips,
     build_solid_band_strip_vertices,
     clamp_spectrum_bar_count,
-    generate_points_curved,
-    generate_points_linear,
+    generate_spectrum_layer_geometry,
+    mirror_spectrum_points_vertical,
     normalize_spectrum_gravity,
     resample_fft_bins,
     resolve_bar_pixel_width,
-    resolve_curved_spectrum_basis,
     smooth_fft_envelope,
 )
+from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
 from features.video.lib.particle_color_engine import (
     build_particle_rgba_rows,
     extract_particle_color_model,
@@ -240,6 +242,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self.bg_path = None
         self.logo_path = None
         self._logo_rgba_cache = None
+        self._logo_visible_radius_ratio = 1.0
+        self._logo_visible_radius_key: tuple[int, bool] | None = None
+        self._last_clean_preview_at = 0.0
         self.analyzer = None
         self.current_time = 0.0
         self.particles = None
@@ -477,6 +482,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             spawn_radius = float(max(min(w, h) * 0.22, ps_size * sf * 6.0))
         speed_boost = float(18.0 + self.particle_audio_env * (50.0 + prb * 130.0))
         speed2 = float(max(0.0, min(2500.0, ps_speed * speed_boost * sf)))
+        trail_enabled, trail_length, trail_fade, trail_width = _particle_trail_cfg_from_settings(ps)
         self.particles.update_cfg(
             ParticleConfig(
                 enabled=True,
@@ -495,6 +501,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 travel_mode=str(ps.get("travelMode", "spawnFlow") or "spawnFlow"),
                 color_mode=str(color_model.get("mode") or "solid"),
                 palette_colors=palette_rgb,
+                trail_enabled=trail_enabled,
+                trail_length=trail_length,
+                trail_fade=trail_fade,
+                trail_width=trail_width,
             )
         )
         self.particles.update(self.dt, feats)
@@ -524,6 +534,23 @@ class VideoSpectrumPreview(QOpenGLWidget):
         style = str(ps.get("style", "dot") or "dot")
         pt_style = _resolve_particle_style_index(variant, style)
         pt_size = float(max(1.0, ps_size * (2.0 if style == "bokeh" else 1.5) * sf))
+        trail_batch = None
+        if trail_enabled and hasattr(self.particles, "build_trail_draw_arrays"):
+            trail_batch = self.particles.build_trail_draw_arrays(
+                w=w,
+                h=h,
+                head_colors_rgba=colors_rgba,
+            )
+        if trail_batch is not None:
+            trail_pts, trail_cols = trail_batch
+            self._draw_particle_batch(
+                pts=trail_pts,
+                colors_rgba=trail_cols,
+                pt_size=pt_size,
+                pt_style=pt_style,
+                w=w,
+                h=h,
+            )
         self._draw_particle_batch(
             pts=pts,
             colors_rgba=colors_rgba,
@@ -735,19 +762,47 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 label.setGeometry(*rect)
 
     def _cache_clean_preview_frame(self) -> None:
-        """Store a known-good preview snapshot while the live compositor is healthy."""
+        """Store a known-good preview snapshot while the live compositor is healthy.
+
+        ``grabFramebuffer`` stalls the GPU pipeline — never do it every few frames
+        while audio is playing (that caused periodic preview freezes).
+        """
         if self._export_overlay_active or not getattr(self, "_gl_ready", False):
             return
-        # Snapshot occasionally — enough for freeze UX, low grab cost.
-        if int(self._frame_counter) % 15 != 0:
+        # Freeze frame is for export UX; skip while playback is live.
+        if bool(getattr(self, "audio_playing", False)):
+            return
+        now = time.perf_counter()
+        last = float(getattr(self, "_last_clean_preview_at", 0.0) or 0.0)
+        # At most ~once every 2.5s when idle/paused.
+        if (now - last) < 2.5 and getattr(self, "_last_clean_preview", None) is not None:
             return
         try:
             img = self.grabFramebuffer()
             if img.isNull():
                 return
             self._last_clean_preview = QPixmap.fromImage(img)
+            self._last_clean_preview_at = now
         except Exception:
             pass
+
+    def _invalidate_logo_visible_radius_cache(self) -> None:
+        self._logo_visible_radius_key = None
+        self._logo_visible_radius_ratio = 1.0
+
+    def _logo_visible_radius_ratio_cached(self, *, circle_mask: bool) -> float:
+        """Alpha-scan once per logo / mask change — not every paint frame."""
+        logo_rgba = getattr(self, "_logo_rgba_cache", None)
+        if logo_rgba is None:
+            self._invalidate_logo_visible_radius_cache()
+            return 1.0
+        key = (int(id(logo_rgba)), bool(circle_mask))
+        if self._logo_visible_radius_key == key:
+            return float(self._logo_visible_radius_ratio)
+        ratio = float(_compute_visible_logo_radius_ratio(logo_rgba, bool(circle_mask)))
+        self._logo_visible_radius_ratio = ratio
+        self._logo_visible_radius_key = key
+        return ratio
 
     def _apply_freeze_pixmap(self, pix: QPixmap | None) -> None:
         freeze = getattr(self, "_export_freeze_label", None)
@@ -954,6 +1009,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
         except Exception:
             pass
         self.audio_playing = False
+        # Allow one freeze-frame grab on the next idle paint for export UX.
+        self._last_clean_preview_at = 0.0
         self._mark_playback_paused()
         self._emit_playback_state()
 
@@ -1211,6 +1268,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         if not p or not Path(p).exists():
             self.logo_path = ""
             self._logo_rgba_cache = None
+            self._invalidate_logo_visible_radius_cache()
             self._log(f"[{time.strftime('%H:%M:%S')}] Logo cleared")
             if self.ctx:
                 self.makeCurrent()
@@ -1231,6 +1289,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             arr = np.array(img, dtype=np.uint8)
             arr = np.flipud(arr)
             self._logo_rgba_cache = arr
+            self._invalidate_logo_visible_radius_cache()
             if hasattr(self, 'tex_logo'):
                 self.tex_logo.release()
             self.tex_logo = self.ctx.texture((img.width, img.height), 4, arr.tobytes())
@@ -1602,10 +1661,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
             logo_cy += shake_out.y
             spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
             logo_circle_mask = bool(ls.get("circleMask", True))
-            logo_rgba_for_ratio = getattr(self, "_logo_rgba_cache", None)
+            logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)
             logo_visible_radius_ratio = (
-                _compute_visible_logo_radius_ratio(logo_rgba_for_ratio, logo_circle_mask)
-                if spectrum_attach_to_logo and logo_rgba_for_ratio is not None
+                self._logo_visible_radius_ratio_cached(circle_mask=logo_circle_mask)
+                if spectrum_attach_to_logo
                 else 1.0
             )
             attached_to_logo = bool(spectrum_attach_to_logo and logo_enabled and bool(str(self.logo_path or "").strip()))
@@ -1714,34 +1773,55 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 )
                 sampled_fft = resample_fft_bins(render_fft, bar_count)
                 n = int(sampled_fft.shape[0])
-                px_arr = np.zeros(n, dtype=np.float32)
-                py_arr = np.zeros(n, dtype=np.float32)
-                dx_arr = np.zeros(n, dtype=np.float32)
-                dy_arr = np.zeros(n, dtype=np.float32)
-                if curved:
-                    start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
-                    px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(
-                        n, radius, mirrored, start_angle, growth_dx, growth_dy
-                    )
-                else:
-                    total_length = float(h * 0.8) if gravity in ('left', 'right') else float(w * 0.8)
-                    px_arr, py_arr, dx_arr, dy_arr = generate_points_linear(n, total_length, gravity)
+                px_arr, py_arr, dx_arr, dy_arr, base_total_length = generate_spectrum_layer_geometry(
+                    n,
+                    curved=curved,
+                    mirrored=mirrored,
+                    gravity=gravity,
+                    path_mode=sl.get("pathMode", "auto"),
+                    radius=radius,
+                    half_w=radius,
+                    half_h=radius,
+                    attached_to_logo=attached_to_logo,
+                    logo_shape=logo_shape,
+                    frame_w=w,
+                    frame_h=h,
+                )
+                contour_style = style_preset == 'contour-waves'
                 waveform_style = style_preset in ('aurora-ribbon', 'magma-ridge', 'plasma-bloom', 'soft-waveform', 'mountain', 'liquid', 'continuous-waveform')
-                if curved and mirrored and waveform_style:
+                ring_close_style = waveform_style or contour_style
+                if curved and mirrored and ring_close_style:
                     px_arr = np.concatenate([px_arr, px_arr[:1]])
                     py_arr = np.concatenate([py_arr, py_arr[:1]])
                     dx_arr = np.concatenate([dx_arr, dx_arr[:1]])
                     dy_arr = np.concatenate([dy_arr, dy_arr[:1]])
-                base_total_length = radius * (np.pi * 2.0 if mirrored else np.pi) if curved else float(h * 0.8) if gravity in ('left', 'right') else float(w * 0.8)
+                reflection_enabled = bool(sl.get('reflectionEnabled', False))
+                try:
+                    reflection_opacity = float(sl.get('reflectionOpacity', 0.32) or 0.32)
+                except (TypeError, ValueError):
+                    reflection_opacity = 0.32
+                reflection_opacity = float(max(0.05, min(0.85, reflection_opacity)))
+                draw_variants: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]] = [
+                    (px_arr, py_arr, dx_arr, dy_arr, 1.0)
+                ]
+                if reflection_enabled:
+                    r_px, r_py, r_dx, r_dy = mirror_spectrum_points_vertical(px_arr, py_arr, dx_arr, dy_arr)
+                    draw_variants.append((r_px, r_py, r_dx, r_dy, reflection_opacity))
+                main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
                 pass_specs: list[dict] = []
                 if glow_strength > 0.0:
                     pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.14 + glow_strength * 0.22), 'bar_width': bar_width_px + (glow_softness * 1.8 + glow_strength * 18.0) * sf, 'spike_height': spike_height_px + (glow_softness * 2.2 + glow_strength * 22.0) * sf, 'fill_circle': False})
                     pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.08 + glow_strength * 0.15), 'bar_width': bar_width_px + (glow_softness * 3.0 + glow_strength * 32.0) * sf, 'spike_height': spike_height_px + (glow_softness * 3.4 + glow_strength * 34.0) * sf, 'fill_circle': False})
                 pass_specs.append({'is_glow': False, 'alpha': layer_op, 'bar_width': bar_width_px, 'spike_height': spike_height_px, 'fill_circle': bool(sl.get('fillCircle', False))})
-                for pass_cfg in pass_specs:
+                for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
+                  px_arr, py_arr, dx_arr, dy_arr = v_px, v_py, v_dx, v_dy
+                  for pass_cfg in pass_specs:
+                    # Skip expensive glow passes on the reflection copy.
+                    if pass_cfg['is_glow'] and v_alpha_mul < 0.999:
+                        continue
                     pass_bar_width_px = float(pass_cfg['bar_width'])
                     pass_spike_height_px = float(pass_cfg['spike_height'])
-                    pass_alpha = float(max(0.0, min(1.0, float(pass_cfg['alpha']))))
+                    pass_alpha = float(max(0.0, min(1.0, float(pass_cfg['alpha']) * float(v_alpha_mul))))
                     fill_circle_pass = bool(pass_cfg['fill_circle'])
                     if pass_cfg['is_glow']:
                         self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
@@ -1750,7 +1830,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     else:
                         self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
                     val_arr = (sampled_fft * pass_spike_height_px).astype(np.float32)
-                    if curved and mirrored and waveform_style:
+                    if curved and mirrored and ring_close_style:
                         val_arr = np.concatenate([val_arr, val_arr[:1]])
                     nn = int(px_arr.shape[0])
                     half_t = float(max(1.0, pass_bar_width_px)) * 0.5
@@ -1769,7 +1849,34 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     ctx_col = mk_col_array(nn)
                     slot_w = float(base_total_length / max(1, n))
                     bw = resolve_bar_pixel_width(pass_bar_width_px, slot_w)
-                    if waveform_style:
+                    if contour_style:
+                        strips = build_contour_wave_strips(
+                            px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
+                            line_count=5,
+                            line_half_px=float(max(0.7, pass_bar_width_px * 0.45)),
+                        )
+                        for strip_i, strip_pos in enumerate(strips):
+                            strip_nn = int(strip_pos.shape[0] // 2)
+                            strip_alpha = float(max(0.0, min(1.0, pass_alpha * (0.45 + 0.55 * ((strip_i + 1) / max(1, len(strips)))))))
+                            strip_cols = np.repeat(
+                                build_spectrum_vertex_rgba(
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    count=strip_nn,
+                                    alpha=strip_alpha,
+                                ),
+                                2,
+                                axis=0,
+                            )
+                            if pass_cfg["is_glow"]:
+                                strip_cols = dampen_spectrum_glow_rgba(strip_cols, strength=0.38)
+                            strip_verts = np.column_stack([strip_pos, strip_cols]).astype(np.float32)
+                            if strip_verts.nbytes > self.line_vbo.size:
+                                self.line_vbo.orphan(size=strip_verts.nbytes)
+                            self.line_vbo.write(strip_verts.tobytes())
+                            self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(strip_pos.shape[0]))
+                    elif waveform_style:
                         xs_o = np.zeros(nn, dtype=np.float32)
                         ys_o = np.zeros(nn, dtype=np.float32)
                         xs_i = np.zeros(nn, dtype=np.float32)
@@ -1854,6 +1961,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                 self.line_vbo.orphan(size=verts.nbytes)
                             self.line_vbo.write(verts.tobytes())
                             self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+                px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
                 if solid_band:
                     band_pos = build_solid_band_strip_vertices(
                         px_arr,

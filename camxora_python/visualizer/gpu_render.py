@@ -15,7 +15,6 @@ import moderngl
 from ._spectrum_fast import (
     normalize_spectrum_gravity,
     resolve_bar_pixel_width,
-    resolve_curved_spectrum_basis,
 )
 
 def _audio_bar_height_mult(template: dict) -> float:
@@ -740,6 +739,26 @@ def _build_particle_styled_quad_verts(
     return np.column_stack([pos, uv, cols]).astype(np.float32)
 
 
+def _particle_trail_cfg_from_settings(ps: dict) -> tuple[bool, int, float, float]:
+    enabled = bool(ps.get("trailEnabled", False))
+    try:
+        length = int(round(float(ps.get("trailLength", 8) or 8)))
+    except (TypeError, ValueError):
+        length = 8
+    length = int(max(2, min(24, length)))
+    try:
+        fade = float(ps.get("trailFade", 0.65) or 0.65)
+    except (TypeError, ValueError):
+        fade = 0.65
+    fade = float(max(0.05, min(0.98, fade)))
+    try:
+        width = float(ps.get("trailWidth", 0.45) or 0.45)
+    except (TypeError, ValueError):
+        width = 0.45
+    width = float(max(0.1, min(1.0, width)))
+    return enabled, length, fade, width
+
+
 def _render_particle_styled_quads(
     ctx: moderngl.Context,
     *,
@@ -811,6 +830,7 @@ def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None)
         "aurora-ribbon",
         "magma-ridge",
         "plasma-bloom",
+        "contour-waves",
         "grid-steps",
         "ignition-flare",
         "drift-capsules",
@@ -2514,11 +2534,12 @@ def run_gpu_render(
     # --- Pre-compute spectrum mapping (once, outside frame loop) ---
     from ._spectrum_fast import (
         precompute_fft_mapping, fft_to_log_bins, smooth_and_mirror, smooth_fft_envelope,
-        generate_points_curved, generate_points_linear,
+        generate_spectrum_layer_geometry,
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
-        resolve_curved_spectrum_basis, clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
-        normalize_spectrum_gravity,
+        clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
+        normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
     )
+    from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
     # Pre-compute frame-invariant template lookups
     _tpl_style_preset = str(template.get("style", "orbit-spikes")).lower().strip()
@@ -2533,6 +2554,7 @@ def run_gpu_render(
     if not _tpl_spectrum_enabled:
         _tpl_spectrum_layers = []
     _tpl_attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
+    _tpl_logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)
     _tpl_attached_base_radius = float(max(0.0, (logo_base_radius * logo_scale_base * logo_visible_radius_ratio) + spectrum_logo_gap))
     _tpl_attached_layer_base_offset = _resolve_attached_layer_base_offset(_tpl_spectrum_layers, sf)
     last_analysis_idx = -1
@@ -2597,24 +2619,20 @@ def run_gpu_render(
             glow_strength_pre = float(max(0.0, min(100.0, float(sl_pre.get("glow", 0.0))))) / 100.0
             glow_softness_pre = float(max(0.0, min(30.0, float(sl_pre.get("blur", 0.0)))))
             n_pre = clamp_spectrum_bar_count(sl_pre.get("barCount", 64))
-            total_length_pre = 0.0
-            if curved_pre:
-                total_angle_pre = np.pi * 2.0 if mirrored_pre else np.pi
-                total_length_pre = radius_pre * total_angle_pre
-            else:
-                total_length_pre = (
-                    float(h * 0.8) if gravity_pre in ("left", "right") else float(w * 0.8)
-                )
-            start_angle_pre, growth_dx_pre, growth_dy_pre = resolve_curved_spectrum_basis(gravity_pre)
-            if curved_pre:
-                px_pre, py_pre, dx_pre, dy_pre = generate_points_curved(
-                    n_pre, radius_pre, mirrored_pre, start_angle_pre, growth_dx_pre, growth_dy_pre
-                )
-            else:
-                px_pre, py_pre, dx_pre, dy_pre = generate_points_linear(
-                    n_pre, total_length_pre, gravity_pre
-                )
-            base_total_length_pre = total_length_pre
+            px_pre, py_pre, dx_pre, dy_pre, base_total_length_pre = generate_spectrum_layer_geometry(
+                n_pre,
+                curved=curved_pre,
+                mirrored=mirrored_pre,
+                gravity=gravity_pre,
+                path_mode=sl_pre.get("pathMode", "auto"),
+                radius=radius_pre,
+                half_w=radius_pre,
+                half_h=radius_pre,
+                attached_to_logo=_tpl_attached_to_logo,
+                logo_shape=_tpl_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
             pass_specs_pre: list[dict] = []
             if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
                 pass_specs_pre.append(
@@ -2934,21 +2952,31 @@ def run_gpu_render(
 
             # 3) Generate Points (vectorized)
             n = int(sampled_fft.shape[0])
-            total_length = 0.0
-            if curved:
-                total_angle = np.pi * 2.0 if mirrored else np.pi
-                total_length = radius * total_angle
-            else:
-                total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
-                
-            start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
-            
-            if curved:
-                px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(
-                    n, radius, mirrored, start_angle, growth_dx, growth_dy
-                )
-            else:
-                px_arr, py_arr, dx_arr, dy_arr = generate_points_linear(n, total_length, gravity)
+            px_arr, py_arr, dx_arr, dy_arr, total_length = generate_spectrum_layer_geometry(
+                n,
+                curved=curved,
+                mirrored=mirrored,
+                gravity=gravity,
+                path_mode=sl.get("pathMode", "auto"),
+                radius=radius,
+                half_w=radius,
+                half_h=radius,
+                attached_to_logo=_tpl_attached_to_logo,
+                logo_shape=_tpl_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
+            reflection_enabled = bool(sl.get("reflectionEnabled", False))
+            try:
+                reflection_opacity = float(sl.get("reflectionOpacity", 0.32) or 0.32)
+            except (TypeError, ValueError):
+                reflection_opacity = 0.32
+            reflection_opacity = float(max(0.05, min(0.85, reflection_opacity)))
+            draw_variants = [(px_arr, py_arr, dx_arr, dy_arr, 1.0)]
+            if reflection_enabled:
+                r_px, r_py, r_dx, r_dy = mirror_spectrum_points_vertical(px_arr, py_arr, dx_arr, dy_arr)
+                draw_variants.append((r_px, r_py, r_dx, r_dy, reflection_opacity))
+            main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
             base_total_length = total_length
             prog_lines["clip_enabled"].value = 0
             pass_specs: list[dict] = []
@@ -2983,7 +3011,11 @@ def run_gpu_render(
                 }
             )
 
-            for pass_i, pass_cfg in enumerate(pass_specs):
+            for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
+              px_arr, py_arr, dx_arr, dy_arr = v_px, v_py, v_dx, v_dy
+              for pass_i, pass_cfg in enumerate(pass_specs):
+                if pass_cfg["is_glow"] and v_alpha_mul < 0.999:
+                    continue
                 if pass_cfg["is_glow"]:
                     ctx.blend_func = moderngl.ADDITIVE_BLENDING
                 elif blend_mode in ("screen", "add", "lighten"):
@@ -2991,7 +3023,7 @@ def run_gpu_render(
                 else:
                     ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
 
-                pass_alpha = float(max(0.0, min(1.0, float(pass_cfg["alpha"]))))
+                pass_alpha = float(max(0.0, min(1.0, float(pass_cfg["alpha"]) * float(v_alpha_mul))))
                 pass_bar_width = float(pass_cfg["bar_width"])
                 pass_thickness = float(pass_cfg["thickness"])
                 fill_circle_pass = bool(pass_cfg["fill_circle"])
@@ -3008,7 +3040,44 @@ def run_gpu_render(
 
                 bw = resolve_bar_pixel_width(pass_bar_width, base_total_length / max(1, n))
 
-                if style_preset in ("aurora-ribbon", "magma-ridge", "plasma-bloom", "soft-waveform", "mountain", "liquid", "continuous-waveform"):
+                if style_preset == "contour-waves":
+                    nn = n
+                    px2, py2, dx2, dy2 = px_arr, py_arr, dx_arr, dy_arr
+                    val2 = val_arr
+                    if curved and mirrored:
+                        px2 = np.concatenate([px_arr, px_arr[:1]])
+                        py2 = np.concatenate([py_arr, py_arr[:1]])
+                        dx2 = np.concatenate([dx_arr, dx_arr[:1]])
+                        dy2 = np.concatenate([dy_arr, dy_arr[:1]])
+                        val2 = np.concatenate([val_arr, val_arr[:1]])
+                        nn += 1
+                    strips = build_contour_wave_strips(
+                        px2, py2, dx2, dy2, val2, cx, cy, w, h,
+                        line_count=5,
+                        line_half_px=float(max(0.7, pass_bar_width * 0.45)),
+                    )
+                    for strip_i, strip_pos in enumerate(strips):
+                        strip_nn = int(strip_pos.shape[0] // 2)
+                        strip_alpha = float(
+                            max(0.0, min(1.0, pass_alpha * (0.45 + 0.55 * ((strip_i + 1) / max(1, len(strips))))))
+                        )
+                        strip_cols = np.repeat(
+                            _build_spectrum_vertex_colors(
+                                color_cfg,
+                                spec_col,
+                                strip_nn,
+                                strip_alpha,
+                                glow=bool(pass_cfg["is_glow"]),
+                            ),
+                            2,
+                            axis=0,
+                        )
+                        strip_verts = np.column_stack([strip_pos, strip_cols]).astype(np.float32)
+                        if strip_verts.nbytes > line_vbo.size:
+                            line_vbo.orphan(size=strip_verts.nbytes)
+                        line_vbo.write(strip_verts.tobytes())
+                        vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(strip_pos.shape[0]))
+                elif style_preset in ("aurora-ribbon", "magma-ridge", "plasma-bloom", "soft-waveform", "mountain", "liquid", "continuous-waveform"):
                     nn = n
                     val_arr2 = val_arr
                     cols2 = cols
@@ -3097,6 +3166,7 @@ def run_gpu_render(
                         line_vbo.orphan(size=verts.nbytes)
                     line_vbo.write(verts.tobytes())
                     vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+            px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
             if solid_band:
                 band_pos = build_solid_band_strip_vertices(
                     px_arr,
@@ -3236,6 +3306,10 @@ def run_gpu_render(
         except Exception:
             palette_rgb = ()
             color_mode = "solid"
+
+        _pt_trail_enabled, _pt_trail_length, _pt_trail_fade, _pt_trail_width = _particle_trail_cfg_from_settings(
+            particles_cfg_raw if isinstance(particles_cfg_raw, dict) else {}
+        )
         
         particles.update_cfg(
             ParticleConfig(
@@ -3255,6 +3329,10 @@ def run_gpu_render(
                 travel_mode=str(particles_cfg_raw.get("travelMode", "spawnFlow") or "spawnFlow"),
                 color_mode=color_mode,
                 palette_colors=palette_rgb,
+                trail_enabled=_pt_trail_enabled,
+                trail_length=_pt_trail_length,
+                trail_fade=_pt_trail_fade,
+                trail_width=_pt_trail_width,
             )
         )
         particles.update(encode_dt, feats)
@@ -3284,6 +3362,26 @@ def run_gpu_render(
                 style_scale = {0: 1.0, 1: 2.0, 2: 1.5, 3: 1.5, 4: 2.0}.get(int(pt_style), 1.0)
                 pt_size_px = float(max(1.0, pt_size * (2.0 if style == "bokeh" else 1.5) * sf))
                 base_px = float(max(2.5, pt_size_px)) * style_scale
+                if _pt_trail_enabled and hasattr(particles, "build_trail_draw_arrays"):
+                    trail_batch = particles.build_trail_draw_arrays(
+                        w=w,
+                        h=h,
+                        head_colors_rgba=colors_rgba,
+                    )
+                    if trail_batch is not None:
+                        trail_pts, trail_cols = trail_batch
+                        _render_particle_styled_quads(
+                            ctx,
+                            prog_particle_quads=prog_particle_quads,
+                            particle_quad_vbo=particle_quad_vbo,
+                            vao_particle_quads=vao_particle_quads,
+                            pts=trail_pts,
+                            colors_rgba=trail_cols,
+                            pt_style=int(pt_style),
+                            w=w,
+                            h=h,
+                            pt_size=base_px,
+                        )
                 _render_particle_styled_quads(
                     ctx,
                     prog_particle_quads=prog_particle_quads,
@@ -4025,44 +4123,23 @@ def render_preview_png(
             
             # 3) Generate Points
             n = BINS
-            total_length = 0.0
-            if curved:
-                total_angle = np.pi * 2.0 if mirrored else np.pi
-                total_length = radius * total_angle
-            else:
-                total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
-                
-            start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
-            draw_radius = radius
-            
-            start_x = -total_length / 2.0
-            
-            px_arr = np.zeros(n, dtype=np.float32)
-            py_arr = np.zeros(n, dtype=np.float32)
-            dx_arr = np.zeros(n, dtype=np.float32)
-            dy_arr = np.zeros(n, dtype=np.float32)
-            val_arr = np.zeros(n, dtype=np.float32)
-            
-            for i in range(n):
-                t = float(i) / float(n - 1) if n > 1 else 0.0
-                if curved:
-                    total_angle = np.pi * 2.0 if mirrored else np.pi
-                    angle = start_angle - (total_angle / 2.0) + (t * total_angle)
-                    px_arr[i] = np.cos(angle) * draw_radius
-                    py_arr[i] = np.sin(angle) * draw_radius
-                    dx_arr[i] = growth_dx
-                    dy_arr[i] = growth_dy
-                else:
-                    offset = start_x + (t * total_length)
-                    if gravity == "top":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, 1.0
-                    elif gravity == "bottom":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, -1.0
-                    elif gravity == "left":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, -1.0, 0.0
-                    elif gravity == "right":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
-                val_arr[i] = render_fft[i] * thickness
+            _legacy_logo_shape = "square" if not bool(logo_circle_mask) else "circle"
+            from ._spectrum_fast import generate_spectrum_layer_geometry as _gen_spec_geom
+            px_arr, py_arr, dx_arr, dy_arr, total_length = _gen_spec_geom(
+                n,
+                curved=curved,
+                mirrored=mirrored,
+                gravity=gravity,
+                path_mode=sl.get("pathMode", "auto"),
+                radius=radius,
+                half_w=radius,
+                half_h=radius,
+                attached_to_logo=attached_to_logo,
+                logo_shape=_legacy_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
+            val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))
 
@@ -5111,44 +5188,23 @@ def run_live_preview(opts: GpuOptions) -> int:
                     render_fft[i] = smoothed
 
             n = BINS
-            total_length = 0.0
-            if curved:
-                total_angle = np.pi * 2.0 if mirrored else np.pi
-                total_length = radius * total_angle
-            else:
-                total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
-                
-            start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
-            draw_radius = radius
-            
-            start_x = -total_length / 2.0
-            
-            px_arr = np.zeros(n, dtype=np.float32)
-            py_arr = np.zeros(n, dtype=np.float32)
-            dx_arr = np.zeros(n, dtype=np.float32)
-            dy_arr = np.zeros(n, dtype=np.float32)
-            val_arr = np.zeros(n, dtype=np.float32)
-            
-            for i in range(n):
-                t = float(i) / float(n - 1) if n > 1 else 0.0
-                if curved:
-                    total_angle = np.pi * 2.0 if mirrored else np.pi
-                    angle = start_angle - (total_angle / 2.0) + (t * total_angle)
-                    px_arr[i] = np.cos(angle) * draw_radius
-                    py_arr[i] = np.sin(angle) * draw_radius
-                    dx_arr[i] = growth_dx
-                    dy_arr[i] = growth_dy
-                else:
-                    offset = start_x + (t * total_length)
-                    if gravity == "top":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, 1.0
-                    elif gravity == "bottom":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, -1.0
-                    elif gravity == "left":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, -1.0, 0.0
-                    elif gravity == "right":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
-                val_arr[i] = render_fft[i] * thickness
+            _legacy_logo_shape = "square" if not bool(logo_circle_mask) else "circle"
+            from ._spectrum_fast import generate_spectrum_layer_geometry as _gen_spec_geom
+            px_arr, py_arr, dx_arr, dy_arr, total_length = _gen_spec_geom(
+                n,
+                curved=curved,
+                mirrored=mirrored,
+                gravity=gravity,
+                path_mode=sl.get("pathMode", "auto"),
+                radius=radius,
+                half_w=radius,
+                half_h=radius,
+                attached_to_logo=attached_to_logo,
+                logo_shape=_legacy_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
+            val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))
 

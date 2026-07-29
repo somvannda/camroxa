@@ -126,17 +126,29 @@ def resample_fft_bins(render_fft: np.ndarray, count: int) -> np.ndarray:
 
 
 def normalize_spectrum_gravity(gravity: str | None) -> str:
-    """Map legacy values to Top / Bottom / Left / Right."""
+    """Map gravity to Top / Bottom / Left / Right / Outward / Inward."""
     g = str(gravity or "top").lower().strip()
     if g == "normal":
         return "top"
-    if g in ("top", "bottom", "left", "right"):
+    if g in ("outside", "out", "radial-out", "radial_out"):
+        return "outward"
+    if g in ("inside", "in", "radial-in", "radial_in"):
+        return "inward"
+    if g in ("top", "bottom", "left", "right", "outward", "inward"):
         return g
     return "top"
 
 
+def is_radial_spectrum_gravity(gravity: str | None) -> bool:
+    return normalize_spectrum_gravity(gravity) in ("outward", "inward")
+
+
 def resolve_spectrum_growth_direction(gravity: str | None) -> tuple[float, float]:
-    """Return screen-space ``(dx, dy)`` for bar raise direction."""
+    """Return screen-space ``(dx, dy)`` for linear / uniform raise.
+
+    On a curved ring, Top/Left/Right/Bottom and radial modes use per-bar
+    facing normals from ``generate_points_curved`` instead of this vector.
+    """
     g = normalize_spectrum_gravity(gravity)
     if g == "bottom":
         return (0.0, -1.0)
@@ -144,17 +156,22 @@ def resolve_spectrum_growth_direction(gravity: str | None) -> tuple[float, float
         return (-1.0, 0.0)
     if g == "right":
         return (1.0, 0.0)
+    if g in ("outward", "inward"):
+        return (0.0, 0.0)
     return (0.0, 1.0)
 
 
 def resolve_curved_spectrum_basis(gravity: str | None) -> tuple[float, float, float]:
     """Return ``(start_angle, growth_dx, growth_dy)`` for curved spectrum layers.
 
-    Bars sit on the arc centered on the chosen side and raise in that
-    screen direction (Top up, Bottom down, Left left, Right right).
+    Top/Bottom/Left/Right choose which arc the bars sit on. Raise direction is
+    per-bar facing (radial) in ``generate_points_curved``. Outside/Inside use a
+    full-ring layout with out/in facing.
     """
     g = normalize_spectrum_gravity(gravity)
     growth_dx, growth_dy = resolve_spectrum_growth_direction(g)
+    if g in ("outward", "inward"):
+        return float(np.pi / 2.0), float(growth_dx), float(growth_dy)
     if g == "bottom":
         start_angle = float(-np.pi / 2.0)
     elif g == "left":
@@ -173,28 +190,43 @@ def generate_points_curved(
     start_angle: float,
     growth_dx: float = 0.0,
     growth_dy: float = 1.0,
+    gravity: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Generate curved spectrum point positions and raise directions.
 
     Returns:
         (px, py, dx, dy) arrays of shape (n,) float32
+
+    Bars raise along the direction they face on the ring:
+    - ``outward`` / Top/Bottom/Left/Right → radially out
+    - ``inward`` → radially in
     """
     t0 = np.linspace(0.0, 1.0, n, dtype=np.float32) if n > 1 else np.zeros(1, dtype=np.float32)
     total_angle = np.pi * 2.0 if mirrored else np.pi
     ang = start_angle - total_angle / 2.0 + t0 * total_angle
     cos_a = np.cos(ang).astype(np.float32)
     sin_a = np.sin(ang).astype(np.float32)
-    gdx = float(growth_dx)
-    gdy = float(growth_dy)
-    length = float(np.hypot(gdx, gdy))
-    if length <= 1e-6:
-        gdx, gdy = 0.0, 1.0
-    else:
-        gdx /= length
-        gdy /= length
-    dx = np.full(n, gdx, dtype=np.float32)
-    dy = np.full(n, gdy, dtype=np.float32)
-    return cos_a * radius, sin_a * radius, dx, dy
+    g = normalize_spectrum_gravity(gravity) if gravity is not None else None
+    if g is None:
+        # Legacy callers without gravity: keep uniform growth_dx/growth_dy.
+        gdx = float(growth_dx)
+        gdy = float(growth_dy)
+        length = float(np.hypot(gdx, gdy))
+        if length <= 1e-6:
+            gdx, gdy = 0.0, 1.0
+        else:
+            gdx /= length
+            gdy /= length
+        return (
+            cos_a * radius,
+            sin_a * radius,
+            np.full(n, gdx, dtype=np.float32),
+            np.full(n, gdy, dtype=np.float32),
+        )
+    if g == "inward":
+        return cos_a * radius, sin_a * radius, (-cos_a).astype(np.float32), (-sin_a).astype(np.float32)
+    # outward + top/bottom/left/right: each bar raises the way it faces (out).
+    return cos_a * radius, sin_a * radius, cos_a, sin_a
 
 
 def generate_points_linear(n: int, total_length: float, gravity: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -207,13 +239,199 @@ def generate_points_linear(n: int, total_length: float, gravity: str) -> tuple[n
     start_x = -total_length / 2.0
     off = start_x + t0 * total_length
     zeros = np.zeros(n, dtype=np.float32)
-    ones = np.ones(n, dtype=np.float32)
     g = normalize_spectrum_gravity(gravity)
+    # Radial modes have no meaning on a straight row — treat as Top.
+    if g in ("outward", "inward"):
+        g = "top"
     gdx, gdy = resolve_spectrum_growth_direction(g)
     # Baseline is perpendicular to raise direction.
     if g in ("left", "right"):
         return zeros, off, np.full(n, gdx, dtype=np.float32), np.full(n, gdy, dtype=np.float32)
     return off, zeros, np.full(n, gdx, dtype=np.float32), np.full(n, gdy, dtype=np.float32)
+
+
+def normalize_spectrum_path_mode(path_mode: str | None) -> str:
+    """Normalize layer ``pathMode`` to ``auto`` | ``circle`` | ``rect``."""
+    v = str(path_mode or "auto").lower().strip()
+    if v in ("rectangle", "square"):
+        return "rect"
+    if v in ("auto", "circle", "rect"):
+        return v
+    return "auto"
+
+
+def resolve_spectrum_path_mode(
+    path_mode: str | None,
+    *,
+    curved: bool,
+    attached_to_logo: bool,
+    logo_shape: str | None,
+) -> str:
+    """Resolve geometry path: ``linear`` | ``circle`` | ``rect``."""
+    if not curved:
+        return "linear"
+    mode = normalize_spectrum_path_mode(path_mode)
+    if mode == "auto":
+        shape = str(logo_shape or "circle").lower().strip()
+        if attached_to_logo and shape in ("square", "rect", "rectangle"):
+            return "rect"
+        return "circle"
+    return mode
+
+
+def rect_path_length(half_w: float, half_h: float, mirrored: bool, gravity: str | None) -> float:
+    hw = float(max(1.0, half_w))
+    hh = float(max(1.0, half_h))
+    g = normalize_spectrum_gravity(gravity)
+    if mirrored or g in ("outward", "inward"):
+        return float(2.0 * (2.0 * hw + 2.0 * hh))
+    if g in ("left", "right"):
+        return float(2.0 * hh)
+    return float(2.0 * hw)
+
+
+def generate_points_rect(
+    n: int,
+    half_w: float,
+    half_h: float,
+    mirrored: bool,
+    gravity: str | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Sample a rectangle perimeter; raise directions are edge normals.
+
+    Full circle form (``mirrored``) walks the whole perimeter. Circle Raise
+    (semi) samples only the edge matching Bar Growth. Radial outward/inward
+    always walk the full perimeter (spikes around the square).
+    """
+    nn = int(max(1, n))
+    hw = float(max(1.0, half_w))
+    hh = float(max(1.0, half_h))
+    g = normalize_spectrum_gravity(gravity)
+    t0 = np.linspace(0.0, 1.0, nn, dtype=np.float32) if nn > 1 else np.zeros(1, dtype=np.float32)
+    radial = g in ("outward", "inward")
+
+    if not mirrored and not radial:
+        if g == "bottom":
+            px = (hw - t0 * (2.0 * hw)).astype(np.float32)
+            py = np.full(nn, -hh, dtype=np.float32)
+            return px, py, np.zeros(nn, dtype=np.float32), np.full(nn, -1.0, dtype=np.float32)
+        if g == "left":
+            px = np.full(nn, -hw, dtype=np.float32)
+            py = (hh - t0 * (2.0 * hh)).astype(np.float32)
+            return px, py, np.full(nn, -1.0, dtype=np.float32), np.zeros(nn, dtype=np.float32)
+        if g == "right":
+            px = np.full(nn, hw, dtype=np.float32)
+            py = (-hh + t0 * (2.0 * hh)).astype(np.float32)
+            return px, py, np.full(nn, 1.0, dtype=np.float32), np.zeros(nn, dtype=np.float32)
+        px = (-hw + t0 * (2.0 * hw)).astype(np.float32)
+        py = np.full(nn, hh, dtype=np.float32)
+        return px, py, np.zeros(nn, dtype=np.float32), np.full(nn, 1.0, dtype=np.float32)
+
+    top_len = 2.0 * hw
+    right_len = 2.0 * hh
+    bottom_len = 2.0 * hw
+    left_len = 2.0 * hh
+    peri = top_len + right_len + bottom_len + left_len
+    # Start at the midpoint of the gravity edge so bass lands on that side.
+    if g == "bottom":
+        start = top_len + right_len + bottom_len * 0.5
+    elif g == "left":
+        start = top_len + right_len + bottom_len + left_len * 0.5
+    elif g == "right":
+        start = top_len + right_len * 0.5
+    else:
+        start = top_len * 0.5
+
+    # endpoint=False avoids duplicating the seam; callers may close waveform rings.
+    s = (start + np.linspace(0.0, peri, nn, endpoint=False, dtype=np.float64)) % peri
+    px = np.empty(nn, dtype=np.float32)
+    py = np.empty(nn, dtype=np.float32)
+    dx = np.empty(nn, dtype=np.float32)
+    dy = np.empty(nn, dtype=np.float32)
+    c1 = top_len
+    c2 = c1 + right_len
+    c3 = c2 + bottom_len
+    for i in range(nn):
+        d = float(s[i])
+        if d < c1:
+            u = d / top_len if top_len > 1e-6 else 0.0
+            px[i] = float(-hw + u * 2.0 * hw)
+            py[i] = hh
+            dx[i], dy[i] = 0.0, 1.0
+        elif d < c2:
+            u = (d - c1) / right_len if right_len > 1e-6 else 0.0
+            px[i] = hw
+            py[i] = float(hh - u * 2.0 * hh)
+            dx[i], dy[i] = 1.0, 0.0
+        elif d < c3:
+            u = (d - c2) / bottom_len if bottom_len > 1e-6 else 0.0
+            px[i] = float(hw - u * 2.0 * hw)
+            py[i] = -hh
+            dx[i], dy[i] = 0.0, -1.0
+        else:
+            u = (d - c3) / left_len if left_len > 1e-6 else 0.0
+            px[i] = -hw
+            py[i] = float(-hh + u * 2.0 * hh)
+            dx[i], dy[i] = -1.0, 0.0
+    if g == "inward":
+        dx = (-dx).astype(np.float32)
+        dy = (-dy).astype(np.float32)
+    return px, py, dx, dy
+
+
+def generate_spectrum_layer_geometry(
+    n: int,
+    *,
+    curved: bool,
+    mirrored: bool,
+    gravity: str | None,
+    path_mode: str | None,
+    radius: float,
+    half_w: float | None = None,
+    half_h: float | None = None,
+    attached_to_logo: bool = False,
+    logo_shape: str | None = None,
+    frame_w: int = 1920,
+    frame_h: int = 1080,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+    """Build bar bases for a layer.
+
+    Returns:
+        ``(px, py, dx, dy, path_length)``
+    """
+    path = resolve_spectrum_path_mode(
+        path_mode,
+        curved=bool(curved),
+        attached_to_logo=bool(attached_to_logo),
+        logo_shape=logo_shape,
+    )
+    g = normalize_spectrum_gravity(gravity)
+    hw = float(half_w if half_w is not None else radius)
+    hh = float(half_h if half_h is not None else radius)
+    if path == "linear":
+        total = float(frame_h * 0.8) if g in ("left", "right") else float(frame_w * 0.8)
+        px, py, dx, dy = generate_points_linear(n, total, g)
+        return px, py, dx, dy, float(total)
+    if path == "rect":
+        # Radial spikes always wrap the full rectangle perimeter.
+        rect_mirrored = bool(mirrored) or g in ("outward", "inward")
+        px, py, dx, dy = generate_points_rect(n, hw, hh, rect_mirrored, g)
+        total = rect_path_length(hw, hh, rect_mirrored, g)
+        return px, py, dx, dy, float(total)
+    # Circle path: radial modes look best on a full ring — keep caller's
+    # mirrored flag so Circle Raise 180° still works as a semi-arc.
+    start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(g)
+    px, py, dx, dy = generate_points_curved(
+        n,
+        float(radius),
+        bool(mirrored),
+        start_angle,
+        growth_dx,
+        growth_dy,
+        gravity=g,
+    )
+    total = float(radius) * (np.pi * 2.0 if mirrored else np.pi)
+    return px, py, dx, dy, float(total)
 
 
 def resolve_bar_pixel_width(
@@ -271,6 +489,70 @@ def build_solid_band_strip_vertices(
     pos[1::2, 0] = xs_r
     pos[1::2, 1] = ys_r
     return pos
+
+
+def mirror_spectrum_points_vertical(
+    px: np.ndarray,
+    py: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Mirror spectrum bases across the horizontal axis through the layer origin."""
+    return (
+        np.asarray(px, dtype=np.float32).copy(),
+        (-np.asarray(py, dtype=np.float32)).astype(np.float32),
+        np.asarray(dx, dtype=np.float32).copy(),
+        (-np.asarray(dy, dtype=np.float32)).astype(np.float32),
+    )
+
+
+def build_contour_wave_strips(
+    px: np.ndarray,
+    py: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
+    val_arr: np.ndarray,
+    cx: float,
+    cy: float,
+    w: int,
+    h: int,
+    *,
+    line_count: int = 5,
+    line_half_px: float = 1.35,
+) -> list[np.ndarray]:
+    """Build multi-line outlined contour strips (radio-wave look).
+
+    Returns a list of NDC TRIANGLE_STRIP position arrays shaped ``(nn*2, 2)``.
+    """
+    nn = int(len(px))
+    if nn <= 0:
+        return []
+    count = int(max(3, min(8, line_count)))
+    half = float(max(0.6, line_half_px))
+    h_val = np.maximum(1.5, np.asarray(val_arr[:nn], dtype=np.float32))
+    inv_w = 2.0 / float(max(1, w))
+    inv_h = 2.0 / float(max(1, h))
+    px_a = np.asarray(px[:nn], dtype=np.float32)
+    py_a = np.asarray(py[:nn], dtype=np.float32)
+    dx_a = np.asarray(dx[:nn], dtype=np.float32)
+    dy_a = np.asarray(dy[:nn], dtype=np.float32)
+    strips: list[np.ndarray] = []
+    for i in range(count):
+        # Inner contours quieter; outer contour tracks full spike height.
+        frac = float(i + 1) / float(count)
+        scale = 0.22 + 0.78 * frac
+        tip = h_val * scale
+        xs_o = (cx + px_a + dx_a * (tip + half)) * inv_w - 1.0
+        ys_o = (cy + py_a + dy_a * (tip + half)) * inv_h - 1.0
+        xs_i = (cx + px_a + dx_a * (tip - half)) * inv_w - 1.0
+        ys_i = (cy + py_a + dy_a * (tip - half)) * inv_h - 1.0
+        pos = np.empty((nn * 2, 2), dtype=np.float32)
+        pos[0::2, 0] = xs_o
+        pos[0::2, 1] = ys_o
+        pos[1::2, 0] = xs_i
+        pos[1::2, 1] = ys_i
+        strips.append(pos)
+    return strips
 
 
 def build_waveform_vertices(

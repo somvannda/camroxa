@@ -178,6 +178,10 @@ def build_particles_template_patch(template: dict[str, Any], draft: VideoTemplat
             "colorMode": draft.get("particlesColorMode", "solid"),
             "paletteColors": list(draft.get("particlesPaletteColors") or []),
             "reactStrength": draft["particlesReactStrength"],
+            "trailEnabled": bool(draft.get("particlesTrailEnabled", False)),
+            "trailLength": int(draft.get("particlesTrailLength", 8) or 8),
+            "trailFade": float(draft.get("particlesTrailFade", 0.65) or 0.65),
+            "trailWidth": float(draft.get("particlesTrailWidth", 0.45) or 0.45),
         }
     }
 
