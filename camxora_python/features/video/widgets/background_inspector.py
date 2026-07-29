@@ -78,7 +78,7 @@ class BackgroundInspector(QWidget):
         background_section.add_widget(restore_host)
         background_section.add_widget(
             note_box(
-                "Preset tweaks are saved locally and survive app restart. "
+                "Preset tweaks stay for this session only and reset when the app closes. "
                 "Restore original clears only this preset look. Save still writes the current look to the video template."
             )
         )

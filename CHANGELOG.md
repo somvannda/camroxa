@@ -15,6 +15,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Spectrum rabbit ears (Inward Bar Growth): stop style-hydrate from forcing gravity back to Outward; picking Inward on a linear layer auto-enables Circle Raise 180°. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-fix.md`.
+- Spectrum inspector: restore missing `style` bind in `bind_draft` (fixed Video page crash `NameError: style is not defined`).
+- Spectrum: vivid built-in/stacked colors (no white wash), free spectrum position vs logo unless Attach is on, and Audio knobs that actually work on desktop. See `docs/changelog/2026-07-29-spectrum-vivid-position-audio.md`.
+- Video templates: unsaved style/draft edits are session-only (reset on restart); Save keeps a restorable `originalTemplate`. See `docs/changelog/2026-07-29-session-only-template-edits.md`.
+- Spectrum bar controls: Global Height Gain vs Bar Length are labeled separately (not duplicates); Bar Width reserves a clear gap vs density; density max raised to 192. See `docs/changelog/2026-07-29-spectrum-bar-width-density-separation.md`.
 - Spectrum live preview now paints **all** gradient color stops (was first→last only), so multi-stop palettes look rich around circular rings. See `docs/changelog/2026-07-29-spectrum-multi-stop-gradient-preview.md`.
 - Spectrum Layers: Up/Down reorder, clearer per-layer vs global labels, Add offsets ring size; curved Bottom (rabbit ears) grows inward. See `docs/changelog/2026-07-29-spectrum-layer-reorder-and-rabbit-ears.md`.
 - Spectrum Phase 1: per-layer bar density (16-128), optional peak caps (gap/size/decay/color), solid base band render, and top-to-bottom bar gradient support. See `docs/changelog/2026-07-29-spectrum-phase1-peakcaps-density-solidband.md`.

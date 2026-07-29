@@ -1,22 +1,43 @@
-"""Local video workspace draft persistence — port of videoWorkspaceDraftStore.ts."""
+"""In-memory video workspace draft store (session only).
+
+Unsaved draft edits stay while the app is open so switching templates mid-session
+can restore each draft. Closing the app discards them. Explicit Save writes the
+catalog in ``video-templates.json``; restart loads the last saved template only.
+
+Legacy on-disk ``video-drafts/*.json`` files are ignored and removed once.
+"""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
 from features.video.lib.video_template_draft import clone_layer_records
 from shared.lib.app_paths import get_video_draft_store_dir
 
-
-def _draft_path(template_id: str) -> Path:
-    normalized = str(template_id or "").strip()
-    return get_video_draft_store_dir() / f"{normalized}.json"
+_MEMORY: dict[str, dict[str, Any]] = {}
+_DISK_CLEANED = False
 
 
 def _is_record(value: Any) -> bool:
     return isinstance(value, dict)
+
+
+def _cleanup_legacy_disk_drafts() -> None:
+    global _DISK_CLEANED
+    if _DISK_CLEANED:
+        return
+    _DISK_CLEANED = True
+    root = get_video_draft_store_dir()
+    if not root.is_dir():
+        return
+    try:
+        for path in root.glob("*.json"):
+            try:
+                path.unlink()
+            except OSError:
+                continue
+    except OSError:
+        return
 
 
 def _apply_legacy_spectrum_fields(draft: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
@@ -55,19 +76,12 @@ def read_video_workspace_draft_snapshot(
     persisted_draft: dict[str, Any],
     persisted_template_name: str,
 ) -> dict[str, Any] | None:
+    _cleanup_legacy_disk_drafts()
     normalized_id = str(template_id or "").strip()
     if not normalized_id:
         return None
 
-    path = _draft_path(normalized_id)
-    if not path.is_file():
-        return None
-
-    try:
-        parsed = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
+    parsed = _MEMORY.get(normalized_id)
     if not _is_record(parsed):
         return None
 
@@ -94,30 +108,27 @@ def write_video_workspace_draft_snapshot(
     draft: dict[str, Any],
     layers: list[dict[str, Any]],
 ) -> None:
+    _cleanup_legacy_disk_drafts()
     normalized_id = str(template_id or "").strip()
     if not normalized_id:
         return
-
-    path = _draft_path(normalized_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    _MEMORY[normalized_id] = {
         "templateName": template_name,
-        "draft": draft,
+        "draft": dict(draft),
         "layers": clone_layer_records(layers),
     }
-    try:
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    except OSError:
-        return
 
 
 def clear_video_workspace_draft_snapshot(template_id: str) -> None:
+    _cleanup_legacy_disk_drafts()
     normalized_id = str(template_id or "").strip()
     if not normalized_id:
         return
-    path = _draft_path(normalized_id)
-    if path.is_file():
-        try:
-            path.unlink()
-        except OSError:
-            return
+    _MEMORY.pop(normalized_id, None)
+
+
+def reset_video_draft_memory_for_tests() -> None:
+    """Test helper: wipe in-memory drafts and allow disk cleanup again."""
+    global _DISK_CLEANED
+    _MEMORY.clear()
+    _DISK_CLEANED = False

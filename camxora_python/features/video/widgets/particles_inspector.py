@@ -86,7 +86,9 @@ class ParticlesInspector(QWidget):
         restore_row.addStretch()
         restore_btn = QPushButton("Restore original")
         restore_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        restore_btn.setToolTip("Reset the selected preset to factory defaults. Tweaks are stored per-preset in local JSON.")
+        restore_btn.setToolTip(
+            "Reset the selected preset to factory defaults. Session tweaks reset when the app closes."
+        )
         restore_btn.clicked.connect(self.preset_restore_requested.emit)
         restore_row.addWidget(restore_btn)
         restore_host = QWidget()
@@ -94,7 +96,7 @@ class ParticlesInspector(QWidget):
         section.add_widget(restore_host)
         section.add_widget(
             note_box(
-                "Presets apply a full particle recipe. Tweaks are saved locally per-preset and survive app restarts. "
+                "Presets apply a full particle recipe. Tweaks stay for this session only and reset when the app closes. "
                 "Restore original resets only the selected preset look to factory. "
                 "Save still writes the current look to this video template."
             )

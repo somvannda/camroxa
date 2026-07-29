@@ -111,7 +111,7 @@ def gpu_bar_half_width_scale(style: str) -> float:
     """Width scale vs default bars for GPU-ready slice-2 styles."""
     key = normalize_spectrum_style_key(style)
     if key in {"thin-lines", "signal-needles"}:
-        return 0.28
+        return 0.55
     if key in {"ignition-flare", "neon-pulse"}:
         return 1.2
     return 1.0

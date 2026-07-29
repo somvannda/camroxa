@@ -26,7 +26,10 @@ _freq_boost = (1.0 + ((_bin_indices / float(_BINS)) ** 2) * 2.0).astype(np.float
 _SMOOTH_KERNEL = np.array([0.1, 0.2, 0.4, 0.2, 0.1], dtype=np.float32)
 
 _MIN_BAR_COUNT = 16
-_MAX_BAR_COUNT = 128
+_MAX_BAR_COUNT = 192
+# Leave headroom between bars so density + width do not melt into a solid wall.
+_BAR_SLOT_MAX_FILL = 0.72
+_BAR_MIN_GAP_PX = 2.0
 
 
 def precompute_fft_mapping(point_count: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -125,22 +128,24 @@ def resample_fft_bins(render_fft: np.ndarray, count: int) -> np.ndarray:
 def resolve_curved_spectrum_basis(gravity: str) -> tuple[float, float]:
     """Return ``(start_angle, radial_sign)`` for curved spectrum layers.
 
-    ``radial_sign`` is ``+1`` for outward growth (normal) and ``-1`` for inward
-    growth (bottom / rabbit ears). For Curve 180, bottom also places the arc on
-    the lower semicircle so growth toward center reads bottom→top.
+    ``radial_sign`` is ``+1`` for outward growth and ``-1`` for inward.
+    Rabbit ears (``bottom``) sit on the **top** semicircle and grow inward so
+    the crest raises top→bottom toward the logo/center.
     """
     g = str(gravity or "normal").lower().strip()
     start_angle = float(np.pi / 2.0)
     radial_sign = 1.0
     if g == "top":
-        start_angle = float(-np.pi / 2.0)
+        # Top semicircle, outward (away from center / upward at the crest).
+        start_angle = float(np.pi / 2.0)
+        radial_sign = 1.0
     elif g == "left":
         start_angle = float(np.pi)
     elif g == "right":
         start_angle = 0.0
     elif g == "bottom":
-        # Rabbit ears: grow inward. On the bottom of the ring that is bottom→top.
-        start_angle = float(-np.pi / 2.0)
+        # Rabbit ears: top arc, grow inward → at the crest that is top→bottom.
+        start_angle = float(np.pi / 2.0)
         radial_sign = -1.0
     return start_angle, radial_sign
 
@@ -191,11 +196,27 @@ def generate_points_linear(n: int, total_length: float, gravity: str) -> tuple[n
     return zeros, off, -ones, zeros
 
 
-def resolve_bar_pixel_width(pass_bar_width: float, slot_w: float) -> float:
-    """Clamp bar width so bars don't overlap their neighbors too aggressively."""
+def resolve_bar_pixel_width(
+    pass_bar_width: float,
+    slot_w: float = 0.0,
+    *,
+    slot_width: float | None = None,
+    max_fill: float = _BAR_SLOT_MAX_FILL,
+    min_gap_px: float = _BAR_MIN_GAP_PX,
+) -> float:
+    """Map bar-width slider to pixels, reserving a visible gap between bars.
+
+    Density chooses how many slots fit along the ring/row. Width fills inside
+    each slot. Past the gap-reserved max, width is clamped so bars stay separated
+    (higher density => smaller usable width).
+    """
     bw = float(max(1.0, pass_bar_width))
-    if slot_w > 1.0:
-        bw = float(min(bw, slot_w * 0.95))
+    slot = float(slot_width if slot_width is not None else slot_w)
+    if slot > 1.0:
+        fill = float(max(0.35, min(0.95, max_fill)))
+        gap = float(max(min_gap_px, slot * (1.0 - fill)))
+        max_bw = float(max(1.0, slot - gap))
+        bw = float(min(bw, max_bw))
     return bw
 
 
@@ -424,7 +445,8 @@ def build_bar_vertices(
         p3x = px + dx * h_val - wx
         p3y = py + dy * h_val - wy
     elif style in ("signal-needles", "thin-lines"):
-        needle = float(max(1.0, bw * 0.28))
+        # Keep needles thin vs classic bars, but still track Bar Width linearly.
+        needle = float(max(1.0, bw * 0.55))
         wx_t = -dy * (needle / 2.0)
         wy_t = dx * (needle / 2.0)
         p0x = px - wx_t

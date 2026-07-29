@@ -1935,6 +1935,26 @@ def _get_anchor_coords(anchor: str, offset_x: float, offset_y: float, w: int, h:
     return (cx + offset_x, cy - offset_y)
 
 
+def _resolve_spectrum_logo_centers(
+    *,
+    w: int,
+    h: int,
+    sf: float,
+    position: dict | None,
+    spectrum_attach_to_logo: bool,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    from features.video.lib.logo_spectrum_bindings import resolve_spectrum_logo_centers
+
+    return resolve_spectrum_logo_centers(
+        _get_anchor_coords,
+        w=w,
+        h=h,
+        sf=sf,
+        position=position if isinstance(position, dict) else {},
+        spectrum_attach_to_logo=bool(spectrum_attach_to_logo),
+    )
+
+
 def _text_quad_center_offset(anchor: str, tw: float, th: float) -> tuple[float, float]:
     """Shift from anchor point to texture-quad center (shader centers on text_px).
 
@@ -2469,6 +2489,11 @@ def run_gpu_render(
     particle_audio_state = ParticleAudioState()
     audio_settings = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
     aud_smooth = float(max(0.0, min(0.99, float(audio_settings.get("smoothing", 0.8) or 0.8))))
+    if audio_settings.get("motionSmoothing") is not None:
+        try:
+            aud_smooth = float(max(0.0, min(0.99, float(audio_settings.get("motionSmoothing")))))
+        except (TypeError, ValueError):
+            pass
     fft_smoothed = np.zeros(64, dtype=np.float32)
     spectrum_peak_cache: dict[str, np.ndarray] = {}
     particles_warmed = False
@@ -2721,14 +2746,14 @@ def run_gpu_render(
                     angle = float(logo_spin_dir_s) * float(logo_spin_speed_deg) * 0.017453292519943295 * time_sec
                 prog_logo["logo_rot_rad"].value = float(angle)
             
-            logo_anchor = template.get("position", {}).get("anchor", "center")
-            logo_off_x = float(template.get("position", {}).get("x", 0.0)) * sf
-            logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
-            
-            l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
-            # Notice the Y-axis calculation:
-            # ModernGL / OpenGL has Y=0 at the BOTTOM.
-            # `l_pos[1]` is the exact target pixel (e.g. 1080 for Top, 0 for Bottom).
+            logo_anchor_pos = template.get("position") if isinstance(template.get("position"), dict) else {}
+            _spec_c, l_pos = _resolve_spectrum_logo_centers(
+                w=w,
+                h=h,
+                sf=sf,
+                position=logo_anchor_pos,
+                spectrum_attach_to_logo=spectrum_attach_to_logo,
+            )
             # The shader expects `logo_px` to be an offset from the CENTER (w/2, h/2).
             prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
 
@@ -2834,7 +2859,13 @@ def run_gpu_render(
         rg = float(max(0.1, min(8.0, react_gain)))
         fft_s = np.clip(fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
         
-        c_pos = _get_anchor_coords(_tpl_anchor_val, _tpl_off_x, _tpl_off_y, w, h)
+        c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+            w=w,
+            h=h,
+            sf=sf,
+            position=_tpl_position,
+            spectrum_attach_to_logo=spectrum_attach_to_logo,
+        )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
         
@@ -3698,11 +3729,13 @@ def render_preview_png(
             final_logo_size = base_radius * 2.0 * s_logo
             prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
             
-            logo_anchor = template.get("position", {}).get("anchor", "center")
-            logo_off_x = float(template.get("position", {}).get("x", 0.0)) * sf
-            logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
-            
-            l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
+            _spec_c, l_pos = _resolve_spectrum_logo_centers(
+                w=w,
+                h=h,
+                sf=sf,
+                position=template.get("position") if isinstance(template.get("position"), dict) else {},
+                spectrum_attach_to_logo=spectrum_attach_to_logo,
+            )
             prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
 
         # Ensure particles use new schema properties
@@ -3911,11 +3944,13 @@ def render_preview_png(
         bass_feat = float(feats.get("bass", 0.0))
         fft_s = np.clip(fft_log * rg * (1.0 + bass_feat * rb), 0.0, 2.5).astype(np.float32)
         
-        anchor_val = template.get("position", {}).get("anchor", "center") if isinstance(template.get("position"), dict) else "center"
-        off_x = float(template.get("position", {}).get("x", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        off_y = float(template.get("position", {}).get("y", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        
-        c_pos = _get_anchor_coords(anchor_val, off_x, off_y, w, h)
+        c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+            w=w,
+            h=h,
+            sf=sf,
+            position=template.get("position") if isinstance(template.get("position"), dict) else {},
+            spectrum_attach_to_logo=spectrum_attach_to_logo,
+        )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
         
@@ -4143,7 +4178,7 @@ def render_preview_png(
                         p3x = px_arr[i] + dx_arr[i] * h_val - wx
                         p3y = py_arr[i] + dy_arr[i] * h_val - wy
                     elif style_preset in ("signal-needles", "thin-lines"):
-                        needle = float(max(1.0, bw * 0.28))
+                        needle = float(max(1.0, bw * 0.55))
                         wx = -dy_arr[i] * (needle / 2.0)
                         wy = dx_arr[i] * (needle / 2.0)
                         p0x = px_arr[i] - wx
@@ -4999,11 +5034,13 @@ def run_live_preview(opts: GpuOptions) -> int:
         rb = 0.0
         fft_s = np.clip(fft_log * rg * (1.0 + bass * rb), 0.0, 2.5).astype(np.float32)
         
-        anchor_val = template.get("position", {}).get("anchor", "center") if isinstance(template.get("position"), dict) else "center"
-        off_x = float(template.get("position", {}).get("x", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        off_y = float(template.get("position", {}).get("y", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        
-        c_pos = _get_anchor_coords(anchor_val, off_x, off_y, w, h)
+        c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+            w=w,
+            h=h,
+            sf=sf,
+            position=template.get("position") if isinstance(template.get("position"), dict) else {},
+            spectrum_attach_to_logo=spectrum_attach_to_logo,
+        )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
         attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
@@ -5200,7 +5237,7 @@ def run_live_preview(opts: GpuOptions) -> int:
                         p3x = px_arr[i] + dx_arr[i] * h_val - wx
                         p3y = py_arr[i] + dy_arr[i] * h_val - wy
                     elif style_preset in ("signal-needles", "thin-lines"):
-                        needle = float(max(1.0, bw * 0.28))
+                        needle = float(max(1.0, bw * 0.55))
                         wx = -dy_arr[i] * (needle / 2.0)
                         wy = dx_arr[i] * (needle / 2.0)
                         p0x = px_arr[i] - wx
@@ -5386,11 +5423,13 @@ def run_live_preview(opts: GpuOptions) -> int:
                 final_logo_size = base_radius * 2.0 * s_logo
                 prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
                 
-                logo_anchor = template.get("position", {}).get("anchor", "center")
-                logo_off_x = float(template.get("position", {}).get("x", 0.0)) * sf
-                logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
-                
-                l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
+                _spec_c, l_pos = _resolve_spectrum_logo_centers(
+                    w=w,
+                    h=h,
+                    sf=sf,
+                    position=template.get("position") if isinstance(template.get("position"), dict) else {},
+                    spectrum_attach_to_logo=spectrum_attach_to_logo,
+                )
                 prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_out.x), l_pos[1] - float(h)*0.5 + float(shake_out.y))
             tex_logo.use(location=1)
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)

@@ -19,8 +19,11 @@ def _apply_renderer_audio_aliases(merged: dict[str, Any]) -> None:
         audio["sensitivity"] = input_gain
     elif sensitivity is not None:
         audio["inputGain"] = sensitivity
-    if "motionSmoothing" in audio:
-        audio.pop("smoothing", None)
+    if audio.get("motionSmoothing") is not None:
+        try:
+            audio["smoothing"] = float(max(0.0, min(0.99, float(audio.get("motionSmoothing")))))
+        except (TypeError, ValueError):
+            audio["smoothing"] = float(audio.get("smoothing", 0.8) or 0.8)
 
 
 class TemplateNormalizer:

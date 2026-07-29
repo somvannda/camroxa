@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from datetime import datetime, timezone
@@ -152,6 +153,7 @@ class VideoLocalStore:
             "name": name or "Untitled",
             "source": "marketplace",
             "template": payload,
+            "originalTemplate": copy.deepcopy(payload),
             "kind": kind or "video",
             "user_id": user_id,
             "marketplace_item_id": str(marketplace_item_id or "").strip(),
@@ -185,6 +187,7 @@ class VideoLocalStore:
             "name": display_name,
             "source": "user",
             "template": payload,
+            "originalTemplate": copy.deepcopy(payload),
             "updated_at": now,
         }
         templates = self._read_user_templates()
@@ -219,11 +222,15 @@ class VideoLocalStore:
         if name and not str(payload.get("templateName") or "").strip():
             payload["templateName"] = name
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        original = existing.get("originalTemplate")
+        if not isinstance(original, dict):
+            original = copy.deepcopy(payload)
         record = {
             **existing,
             "name": name or str(existing.get("name") or "Untitled"),
             "source": "marketplace",
             "template": payload,
+            "originalTemplate": copy.deepcopy(original),
             "kind": kind or str(existing.get("kind") or "video"),
             "updated_at": now,
         }
@@ -437,12 +444,17 @@ class VideoLocalStore:
 
         record = templates[index]
         current_template = record.get("template") if isinstance(record.get("template"), dict) else {}
+        # Keep the first known snapshot forever so Save/overwrite stays restorable.
+        original = record.get("originalTemplate")
+        if not isinstance(original, dict):
+            original = copy.deepcopy(current_template)
         next_template = merge_records(current_template, patch if isinstance(patch, dict) else {})
         next_name = str(next_template.get("templateName") or record.get("name") or "Untitled Template").strip()
         templates[index] = {
             **record,
             "name": next_name or "Untitled Template",
             "template": next_template,
+            "originalTemplate": copy.deepcopy(original),
             "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
         }
         self.write_templates(templates)
@@ -450,6 +462,52 @@ class VideoLocalStore:
         if str(prefs.get("templateId") or "").strip() == selected_id:
             _apply_template_asset_prefs(prefs, next_template)
             self.write_prefs(prefs)
+        return self.read_workspace_state(settings)
+
+    def restore_template_to_original(
+        self,
+        template_id: str | None = None,
+        *,
+        settings: dict[str, Any] | None = None,
+    ) -> VideoWorkspaceState | None:
+        """Replace the saved template payload with the preserved original snapshot."""
+        templates = self.read_templates()
+        if not templates:
+            return None
+
+        workspace = self.read_workspace_state(settings)
+        selected_id = str(template_id or workspace.template_id or "").strip()
+        if not selected_id and workspace.templates:
+            selected_id = workspace.templates[0].id
+        if not selected_id:
+            return None
+
+        index = next(
+            (idx for idx, item in enumerate(templates) if str(item.get("id") or "") == selected_id),
+            -1,
+        )
+        if index < 0:
+            return None
+
+        record = templates[index]
+        original = record.get("originalTemplate")
+        if not isinstance(original, dict):
+            current = record.get("template") if isinstance(record.get("template"), dict) else {}
+            original = copy.deepcopy(current)
+        restored = copy.deepcopy(original)
+        next_name = str(restored.get("templateName") or record.get("name") or "Untitled Template").strip()
+        templates[index] = {
+            **record,
+            "name": next_name or "Untitled Template",
+            "template": restored,
+            "originalTemplate": copy.deepcopy(original),
+            "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        }
+        self.write_templates(templates)
+        prefs = self.read_prefs()
+        prefs["templateId"] = selected_id
+        _apply_template_asset_prefs(prefs, restored)
+        self.write_prefs(prefs)
         return self.read_workspace_state(settings)
 
     def delete_template(self, template_id: str) -> VideoWorkspaceState:

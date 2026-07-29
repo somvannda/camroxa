@@ -11,7 +11,7 @@ Phase 1 is now implemented for Spectrum visuals: per-layer bar density, optional
 ## Product impact
 
 - **Before:** fixed ~64-bin density, no floating peak caps, `solidBand` toggle was mostly inert, and bar gradients only moved around the ring.
-- **After:** each layer can change bar density (16-128), enable peak caps (gap/size/decay/color), render a solid base band, and use top-to-bottom bar gradients.
+- **After:** each layer can change bar density (16-192), enable peak caps (gap/size/decay/color), render a solid base band, and use top-to-bottom bar gradients.
 
 ## Technical impact
 

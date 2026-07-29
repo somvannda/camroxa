@@ -32,8 +32,8 @@ from shared.widgets.settings_ui import form_row, note_box
 
 GRAVITY_OPTIONS: tuple[tuple[str, str], ...] = (
     ("normal", "Outward (bars raise like a straight EQ)"),
-    ("bottom", "Inward (rabbit ears)"),
-    ("top", "Top"),
+    ("bottom", "Inward (rabbit ears — top→bottom)"),
+    ("top", "Top (outward from top)"),
     ("left", "Left"),
     ("right", "Right"),
 )
@@ -139,7 +139,9 @@ class SpectrumLayerEditor(InspectorSection):
 
         self._gravity_combo = QComboBox()
         self._gravity_combo.setToolTip(
-            "Growth direction of each bar. Outward raises away from the ring center (classic circular EQ)."
+            "Outward = bars raise away from the ring. Inward (rabbit ears) hangs from the "
+            "top of the ring and raises toward the center (top → bottom). Auto-uses "
+            "Circle Raise (180°) if the layer is linear."
         )
         for value, label in GRAVITY_OPTIONS:
             self._gravity_combo.addItem(label, value)
@@ -184,7 +186,7 @@ class SpectrumLayerEditor(InspectorSection):
         self.add_widget(toggle_host)
 
         bar_height_widget, bar_height_setter = build_float_slider(
-            "Bar Height (all layers)",
+            "Global Height Gain (all layers)",
             minimum=0.5,
             maximum=6,
             step=0.05,
@@ -193,22 +195,60 @@ class SpectrumLayerEditor(InspectorSection):
                 {"audioBarHeight": round(value, 2)}
             ),
         )
+        bar_height_widget.setToolTip(
+            "Multiplies every layer's bar length. Not the same as Bar Length below — "
+            "this is a shared gain; Bar Length is this layer's base spike size."
+        )
         self._float_setters["audioBarHeight"] = bar_height_setter
         self.add_widget(bar_height_widget)
 
-        for field, label, minimum, maximum, step in (
-            ("barCount", "Bar Density (this layer)", 16, 128, 1),
-            ("barWidth", "Bar Width (this layer)", 1, 120, 0.25),
-            ("thickness", "Spike Height (this layer)", 1, 220, 0.25),
-            ("radiusOffset", "Layer Gap / Ring Size (this layer)", 0, 400, 0.5),
-            ("opacity", "Opacity (this layer)", 0, 1, 0.01),
-            ("glow", "Glow Strength (this layer)", 0, 100, 1),
-            ("blur", "Glow Softness (this layer)", 0, 30, 1),
-            ("peakCapGap", "Peak Cap Gap (this layer)", 0, 24, 0.25),
-            ("peakCapThickness", "Peak Cap Size (this layer)", 1, 16, 0.25),
-            ("peakCapDecay", "Peak Cap Decay (this layer)", 0.7, 0.995, 0.005),
+        for field, label, minimum, maximum, step, tip in (
+            (
+                "barCount",
+                "Bar Density (this layer)",
+                16,
+                192,
+                1,
+                "How many bars along the ring/row. Higher density makes each slot "
+                "narrower, so usable Bar Width shrinks to keep a clear gap.",
+            ),
+            (
+                "barWidth",
+                "Bar Width (this layer)",
+                1,
+                120,
+                0.25,
+                "Thickness of each bar in pixels. Capped below the density slot so "
+                "bars stay separated (raise Density and Width fight for the same space).",
+            ),
+            (
+                "thickness",
+                "Bar Length (this layer)",
+                1,
+                220,
+                0.25,
+                "How far each bar/spike grows from the ring (per layer). "
+                "Global Height Gain multiplies this for all layers.",
+            ),
+            (
+                "radiusOffset",
+                "Layer Gap / Ring Size (this layer)",
+                0,
+                400,
+                0.5,
+                "Moves this ring outward from the logo/core.",
+            ),
+            ("opacity", "Opacity (this layer)", 0, 1, 0.01, ""),
+            ("glow", "Glow Strength (this layer)", 0, 100, 1, ""),
+            ("blur", "Glow Softness (this layer)", 0, 30, 1, ""),
+            ("peakCapGap", "Peak Cap Gap (this layer)", 0, 24, 0.25, ""),
+            ("peakCapThickness", "Peak Cap Size (this layer)", 1, 16, 0.25, ""),
+            ("peakCapDecay", "Peak Cap Decay (this layer)", 0.7, 0.995, 0.005, ""),
         ):
-            self.add_widget(self._add_layer_float(field, label, minimum, maximum, step))
+            widget = self._add_layer_float(field, label, minimum, maximum, step)
+            if tip:
+                widget.setToolTip(tip)
+            self.add_widget(widget)
 
         self._peak_caps_enabled = QCheckBox("Peak Caps")
         self._peak_caps_enabled.toggled.connect(
@@ -329,8 +369,16 @@ class SpectrumLayerEditor(InspectorSection):
         if self._binding:
             return
         value = self._gravity_combo.currentData()
-        if isinstance(value, str):
-            self.layer_patch_requested.emit({"gravity": value})
+        if not isinstance(value, str):
+            return
+        # Rabbit ears need a semicircle; linear "bottom" just flips bars off-screen.
+        layer = self._selected_layer()
+        if value == "bottom" and layer is not None and not bool(layer.get("curved")):
+            self.layer_patch_requested.emit(
+                {"gravity": "bottom", "curved": True, "mirrored": False}
+            )
+            return
+        self.layer_patch_requested.emit({"gravity": value})
 
     def _on_circle_form_changed(self, _index: int) -> None:
         if self._binding:

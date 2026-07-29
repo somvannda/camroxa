@@ -107,7 +107,8 @@
     "motionSmoothing": 0.8,
     "flyingGlowWingMotionSpeed": 1,
     "flyingGlowWingRelease": 0.9,
-    "sensitivity": 1.31
+    "sensitivity": 1.31,
+    "smoothing": 0.8
   },
   "previewBindings": {
     "spectrumAttachToLogo": true,
@@ -166,6 +167,7 @@
     "album": null,
     "title": null
   },
+  "previewBackground": "",
   "albumText": {
     "enabled": false,
     "contentMode": "pipeline",

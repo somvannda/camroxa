@@ -20,14 +20,14 @@ SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     ("#ff8800,#ff0000", "EDM Fire"),
     ("#00ff00,#ffff00", "Toxic"),
     ("#8a2be2,#4b0082", "Galaxy"),
-    ("#00ffff,#ffffff", "Ice"),
+    ("#22d3ee,#67e8f9,#a5f3fc", "Ice"),
     ("#ff4500,#ff1493", "Lava"),
     ("#ff8c00,#ff69b4", "Sunset"),
     ("#ff0000,#00ff00,#0000ff", "RGB Flow"),
-    ("#ffffff,#ec4899,#8b5cf6,#22d3ee", "Aurora"),
+    ("#ec4899,#8b5cf6,#22d3ee", "Aurora"),
     ("#fde68a,#fb7185,#c084fc,#60a5fa", "Festival"),
     ("#22c55e,#14b8a6,#06b6d4,#3b82f6", "Emerald Wave"),
-    ("#ffffff,#f472b6,#fde68a,#f97316,#ef4444", "Solar Bloom"),
+    ("#f472b6,#fde68a,#f97316,#ef4444", "Solar Bloom"),
 )
 
 

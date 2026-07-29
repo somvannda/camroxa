@@ -52,6 +52,25 @@ def test_curved_bottom_grows_inward_unlike_normal() -> None:
     assert float(dx_n[idx_n] * px_n[idx_n] + dy_n[idx_n] * py_n[idx_n]) > 0.0
 
 
+def test_align_style_geometry_does_not_overwrite_user_gravity() -> None:
+    from features.video.lib.spectrum_style_registry import align_spectrum_layers_to_style_geometry
+
+    layers = [{"id": "l1", "gravity": "bottom", "curved": True, "mirrored": False}]
+    aligned = align_spectrum_layers_to_style_geometry(layers, "orbit-spikes")
+    assert aligned[0]["gravity"] == "bottom"
+    assert aligned[0]["curved"] is True
+    assert aligned[0]["mirrored"] is False
+
+
+def test_semi_circle_bottom_arc_covers_lower_half() -> None:
+    start_b, sign_b = resolve_curved_spectrum_basis("bottom")
+    px, py, _dx, _dy = generate_points_curved(32, 100.0, False, start_b, sign_b)
+    # Semicircle for rabbit ears should sit on the lower half (negative Y in GL).
+    assert float(np.mean(py)) < 0.0
+    assert float(np.min(py)) < -50.0
+    assert float(np.max(py)) <= 5.0
+
+
 def test_normalize_accepts_normal_gravity() -> None:
     tpl = normalize_renderer_template(
         {
@@ -79,7 +98,7 @@ def test_normalize_clamps_phase1_layer_fields() -> None:
         }
     )
     layer = tpl["layers"][0]
-    assert layer["barCount"] == 128
+    assert layer["barCount"] == 192
     assert layer["solidBand"] is True
     assert layer["peakCapsEnabled"] is True
     assert layer["peakCapGap"] == 24.0
@@ -90,7 +109,7 @@ def test_normalize_clamps_phase1_layer_fields() -> None:
 def test_bar_count_clamp_and_fft_resample() -> None:
     assert clamp_spectrum_bar_count(None) == 64
     assert clamp_spectrum_bar_count(2) == 16
-    assert clamp_spectrum_bar_count(300) == 128
+    assert clamp_spectrum_bar_count(300) == 192
     src = np.linspace(0.0, 1.0, 64, dtype=np.float32)
     out = resample_fft_bins(src, 24)
     assert out.shape == (24,)

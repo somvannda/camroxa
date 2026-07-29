@@ -50,6 +50,7 @@ ANCHOR_OPTIONS: tuple[tuple[str, str], ...] = (
 )
 
 # Straight-bar Camxora recipes; Curve 180 / Mirror 360 turn them into a ring.
+# Gradients stay vivid (no white lead stops). Glow stays modest for premium color.
 STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
     "orbit-spikes": {
         "curved": False,
@@ -58,11 +59,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 5.0,
         "thickness": 36.0,
         "gravity": "normal",
-        "glow": 28,
-        "blur": 8,
+        "glow": 22,
+        "blur": 6,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#ff4fd8", "#22d3ee"],
+            "gradientColors": ["#ff00ff", "#00ffff"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -73,11 +75,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 1.6,
         "thickness": 44.0,
         "gravity": "normal",
-        "glow": 18,
-        "blur": 4,
+        "glow": 14,
+        "blur": 3,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#a78bfa", "#38bdf8"],
+            "gradientColors": ["#a78bfa", "#38bdf8"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -88,8 +91,9 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 4.5,
         "thickness": 40.0,
         "gravity": "normal",
-        "glow": 36,
-        "blur": 10,
+        "glow": 24,
+        "blur": 6,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
             "gradientColors": ["#ff4fd8", "#22d3ee"],
@@ -103,11 +107,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 5.5,
         "thickness": 42.0,
         "gravity": "normal",
-        "glow": 22,
-        "blur": 6,
+        "glow": 18,
+        "blur": 5,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#60a5fa", "#22d3ee"],
+            "gradientColors": ["#3b82f6", "#22d3ee"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -118,11 +123,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 6.0,
         "thickness": 28.0,
         "gravity": "normal",
-        "glow": 48,
-        "blur": 14,
+        "glow": 28,
+        "blur": 8,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#22d3ee", "#ff4fd8", "#f9a8d4"],
+            "gradientColors": ["#22d3ee", "#ff4fd8", "#c084fc"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -133,11 +139,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 7.0,
         "thickness": 58.0,
         "gravity": "normal",
-        "glow": 40,
-        "blur": 12,
+        "glow": 26,
+        "blur": 7,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#ff4fd8", "#7c3aed"],
+            "gradientColors": ["#ff4500", "#ff1493", "#7c3aed"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -148,11 +155,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 10.0,
         "thickness": 46.0,
         "gravity": "normal",
-        "glow": 56,
-        "blur": 16,
+        "glow": 30,
+        "blur": 8,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#c084fc", "#22d3ee"],
+            "gradientColors": ["#8b5cf6", "#ec4899", "#22d3ee"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -163,11 +171,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 6.0,
         "thickness": 38.0,
         "gravity": "normal",
-        "glow": 20,
-        "blur": 5,
+        "glow": 16,
+        "blur": 4,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#34d399", "#22d3ee"],
+            "gradientColors": ["#22c55e", "#14b8a6", "#06b6d4"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -178,11 +187,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 7.5,
         "thickness": 48.0,
         "gravity": "normal",
-        "glow": 72,
-        "blur": 18,
+        "glow": 32,
+        "blur": 8,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#ff4fd8", "#f97316"],
+            "gradientColors": ["#ff0000", "#ff8800", "#ff4fd8"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -193,11 +203,12 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "barWidth": 6.5,
         "thickness": 34.0,
         "gravity": "normal",
-        "glow": 30,
-        "blur": 9,
+        "glow": 22,
+        "blur": 6,
+        "blend_mode": "normal",
         "color": {
             "mode": "gradient",
-            "gradientColors": ["#ffffff", "#818cf8", "#22d3ee"],
+            "gradientColors": ["#6366f1", "#22d3ee"],
             "gradientDirection": "left-to-right",
         },
     },
@@ -215,11 +226,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "fillCircle": True,
                 "opacity": 0.95,
                 "blend_mode": "normal",
-                "glow": 28,
-                "blur": 8,
+                "glow": 20,
+                "blur": 5,
                 "color": {
                     "mode": "gradient",
-                    "gradientColors": ["#ffffff", "#ffe082"],
+                    "gradientColors": ["#ff8800", "#ff0000"],
                     "gradientDirection": "circular",
                 },
             },
@@ -229,10 +240,10 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 8,
                 "thickness": 44,
                 "fillCircle": False,
-                "opacity": 0.86,
-                "blend_mode": "add",
-                "glow": 70,
-                "blur": 14,
+                "opacity": 0.9,
+                "blend_mode": "normal",
+                "glow": 28,
+                "blur": 7,
                 "color": {
                     "mode": "gradient",
                     "gradientColors": ["#ff4d9d", "#22d3ee"],
@@ -245,10 +256,10 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 7,
                 "thickness": 32,
                 "fillCircle": False,
-                "opacity": 0.7,
-                "blend_mode": "screen",
-                "glow": 84,
-                "blur": 20,
+                "opacity": 0.78,
+                "blend_mode": "normal",
+                "glow": 34,
+                "blur": 8,
                 "color": {
                     "mode": "gradient",
                     "gradientColors": ["#7c3aed", "#38bdf8"],
@@ -266,13 +277,13 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 12,
                 "thickness": 38,
                 "fillCircle": True,
-                "opacity": 0.92,
+                "opacity": 0.94,
                 "blend_mode": "normal",
-                "glow": 22,
-                "blur": 6,
+                "glow": 18,
+                "blur": 5,
                 "color": {
                     "mode": "gradient",
-                    "gradientColors": ["#ffffff", "#f5f3ff"],
+                    "gradientColors": ["#8b5cf6", "#ec4899"],
                     "gradientDirection": "circular",
                 },
             },
@@ -282,13 +293,13 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 11,
                 "thickness": 54,
                 "fillCircle": False,
-                "opacity": 0.82,
-                "blend_mode": "add",
-                "glow": 74,
-                "blur": 16,
+                "opacity": 0.88,
+                "blend_mode": "normal",
+                "glow": 28,
+                "blur": 7,
                 "color": {
                     "mode": "gradient",
-                    "gradientColors": ["#8b5cf6", "#ec4899"],
+                    "gradientColors": ["#ec4899", "#22d3ee"],
                     "gradientDirection": "circular",
                 },
             },
@@ -298,13 +309,13 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 6,
                 "thickness": 62,
                 "fillCircle": False,
-                "opacity": 0.68,
-                "blend_mode": "screen",
-                "glow": 90,
-                "blur": 22,
+                "opacity": 0.72,
+                "blend_mode": "normal",
+                "glow": 32,
+                "blur": 8,
                 "color": {
                     "mode": "gradient",
-                    "gradientColors": ["#60a5fa", "#ffffff"],
+                    "gradientColors": ["#60a5fa", "#a78bfa"],
                     "gradientDirection": "radial",
                 },
             },
@@ -319,13 +330,13 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 8,
                 "thickness": 24,
                 "fillCircle": False,
-                "opacity": 0.84,
+                "opacity": 0.88,
                 "blend_mode": "normal",
-                "glow": 26,
-                "blur": 10,
+                "glow": 18,
+                "blur": 6,
                 "color": {
                     "mode": "gradient",
-                    "gradientColors": ["#c084fc", "#f0abfc"],
+                    "gradientColors": ["#c084fc", "#22d3ee"],
                     "gradientDirection": "circular",
                 },
             },
@@ -335,13 +346,13 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 5,
                 "thickness": 30,
                 "fillCircle": False,
-                "opacity": 0.74,
-                "blend_mode": "screen",
-                "glow": 60,
-                "blur": 14,
+                "opacity": 0.82,
+                "blend_mode": "normal",
+                "glow": 24,
+                "blur": 7,
                 "color": {
                     "mode": "gradient",
-                    "gradientColors": ["#ffffff", "#67e8f9"],
+                    "gradientColors": ["#ff4fd8", "#67e8f9"],
                     "gradientDirection": "circular",
                 },
             },
@@ -351,10 +362,10 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 9,
                 "thickness": 20,
                 "fillCircle": False,
-                "opacity": 0.55,
-                "blend_mode": "screen",
-                "glow": 78,
-                "blur": 18,
+                "opacity": 0.7,
+                "blend_mode": "normal",
+                "glow": 28,
+                "blur": 8,
                 "color": {
                     "mode": "gradient",
                     "gradientColors": ["#38bdf8", "#818cf8"],
@@ -469,35 +480,28 @@ def is_flare_spectrum_style(style_key: str) -> bool:
     return normalize_spectrum_preset_key_for_apply(style_key) in FLARE_STYLE_IDS
 
 
-# Only gravity is forced from style recipes. curved/mirrored are user toggles
-# (Curve 180 / Mirror 360) so presets can start as straight bars.
-_STYLE_GEOMETRY_KEYS = ("gravity",)
+# curved / mirrored / gravity are user-owned (Circle Form + Bar Growth).
+# Style recipes still seed defaults when a preset is applied via
+# ``build_spectrum_preset_template``; hydrate must not overwrite user gravity.
+_STYLE_GEOMETRY_KEYS: tuple[str, ...] = ()
 
 
 def style_geometry_patch(style_key: str) -> dict[str, Any]:
-    """Return gravity for a known Camxora spectrum style (toggles stay user-owned)."""
-    normalized = normalize_spectrum_preset_key_for_apply(style_key)
-    patch = STYLE_PRESET_PATCHES.get(normalized, STYLE_PRESET_PATCHES["orbit-spikes"])
-    return {key: patch[key] for key in _STYLE_GEOMETRY_KEYS if key in patch}
+    """Legacy helper — no longer forces gravity (user-owned Bar Growth)."""
+    del style_key
+    return {}
 
 
 def align_spectrum_layers_to_style_geometry(
     layers: list[dict[str, Any]] | None,
     style_key: str,
 ) -> list[dict[str, Any]]:
-    """Apply non-toggle geometry from a style recipe (gravity).
+    """Pass-through clone. Gravity / circle form stay under user control.
 
-    Curve 180 / Mirror 360 stay under user control and are not overwritten.
+    Kept for call-site compatibility after Bar Growth became user-owned.
     """
-    geometry = style_geometry_patch(style_key)
-    if not geometry:
-        return clone_layers(layers)
-    aligned: list[dict[str, Any]] = []
-    for layer in layers or []:
-        if not isinstance(layer, dict):
-            continue
-        aligned.append({**copy.deepcopy(layer), **geometry})
-    return aligned
+    del style_key
+    return clone_layers(layers)
 
 
 def clone_layers(layers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:

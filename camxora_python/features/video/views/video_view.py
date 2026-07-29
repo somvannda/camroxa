@@ -546,6 +546,7 @@ class VideoView(QWidget):
         self._left_rail.new_requested.connect(self._create_blank_template)
         self._left_rail.save_requested.connect(self._save_template)
         self._left_rail.delete_requested.connect(self._delete_template)
+        self._left_rail.restore_original_requested.connect(self._restore_template_to_original)
         self._left_rail.export_requested.connect(self._export_template_for_marketplace)
         self._left_rail.domain_tab_changed.connect(self._on_domain_tab_changed)
         self._right_rail.side_tab_changed.connect(self._on_side_tab_changed)
@@ -3113,7 +3114,10 @@ class VideoView(QWidget):
         index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
         current = layers[index] if isinstance(layers[index], dict) else {}
         layers[index] = {**current, **patch}
-        self._set_spectrum_layers(layers, selected_index=index, defer_rebind=True)
+        # Geometry / form changes need an immediate inspector rebind (Circle Form, etc.).
+        structural = {"curved", "mirrored", "gravity", "blend_mode", "name", "fillCircle", "solidBand"}
+        defer = not any(key in patch for key in structural)
+        self._set_spectrum_layers(layers, selected_index=index, defer_rebind=defer)
 
     def _patch_selected_spectrum_layer_color(self, patch: dict) -> None:
         layers = clone_layer_records(self._spectrum_layers)
@@ -3829,6 +3833,36 @@ class VideoView(QWidget):
         self._persist_local_draft_snapshot()
         self._render_workspace()
         notify_action("Reset the local Video workspace draft back to the saved template.", tone="success")
+
+    def _restore_template_to_original(self) -> None:
+        if not self._workspace or self._saving or self._deleting:
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Restore original template",
+            "Replace the saved template with its original snapshot? Unsaved session edits will be discarded.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        template_id = str(self._workspace.template_id or "")
+        if template_id:
+            clear_video_workspace_draft_snapshot(template_id)
+        workspace = self._store.restore_template_to_original(template_id, settings=self._settings)
+        if workspace is None:
+            notify_action("Unable to restore the original template snapshot.", tone="error")
+            return
+        self._workspace = workspace
+        self._hydrated_template_id = ""
+        self._hydrate_draft_from_workspace(force_from_saved=True)
+        self._persist_local_draft_snapshot()
+        self._render_workspace()
+        self._update_preview()
+        if self._cache is not None:
+            self._cache.apply_video_workspace(self._workspace, self._settings)
+        emit_video_template_catalog_changed()
+        notify_action("Restored the selected template to its original snapshot.", tone="success")
 
     def _copy_diagnostics(self) -> None:
         payload = getattr(self, "_diagnostics_payload", None)

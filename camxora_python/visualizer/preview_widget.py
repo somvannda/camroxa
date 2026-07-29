@@ -1447,7 +1447,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
             aud_sens = float(tpl_audio.get('sensitivity', 1.0))
             aud_bar_height = float(tpl_audio.get('barHeight', 1.0) or 1.0)
             aud_bar_height = float(max(0.25, min(8.0, aud_bar_height)))
-            aud_smooth = float(tpl_audio.get('smoothing', 0.8))
+            if tpl_audio.get("motionSmoothing") is not None:
+                aud_smooth = float(tpl_audio.get("motionSmoothing", 0.8))
+            else:
+                aud_smooth = float(tpl_audio.get("smoothing", 0.8))
             aud_smooth = float(max(0.0, min(0.99, aud_smooth)))
             peak_hold_blend = float(max(0.0, min(1.0, float(tpl_audio.get("peakHoldBlend", 0.0) or 0.0))))
             ls_early = self.template.get('logoSettings', {}) if isinstance(self.template.get('logoSettings'), dict) else {}
@@ -1547,9 +1550,6 @@ class VideoSpectrumPreview(QOpenGLWidget):
             if bg_enabled and bool(str(self.bg_path or "").strip()):
                 self.vao_quad_scene.render(mode=moderngl.TRIANGLE_STRIP)
             pos_cfg = self.template.get('position', {}) if isinstance(self.template.get('position'), dict) else {}
-            anchor = str(pos_cfg.get('anchor', 'center'))
-            off_x = float(pos_cfg.get('x', 0.0)) * sf
-            off_y = float(pos_cfg.get('y', 0.0)) * sf
             fx_motion = self.template.get("effects") if isinstance(self.template.get("effects"), dict) else {}
             shake_raw = fx_motion.get("camera_shake") if isinstance(fx_motion.get("camera_shake"), dict) else {}
             shake_enabled = bool(shake_raw.get("enabled", False))
@@ -1572,9 +1572,6 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 CameraShakeConfig(enabled=shake_enabled, smoothing=shake_smoothing),
                 dt=self.dt,
             )
-            cx, cy = _get_anchor_coords(anchor, off_x, off_y, w, h)
-            cx += shake_out.x
-            cy += shake_out.y
             ls = self.template.get('logoSettings', {}) if isinstance(self.template.get('logoSettings'), dict) else {}
             logo_enabled = bool(ls.get('enabled', True))
             logo_size_base = float(ls.get('size', 192.0))
@@ -1588,6 +1585,20 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 else {}
             )
             spectrum_attach_to_logo = bool(preview_bindings.get("spectrumAttachToLogo", True))
+            from features.video.lib.logo_spectrum_bindings import resolve_spectrum_logo_centers
+
+            (cx, cy), (logo_cx, logo_cy) = resolve_spectrum_logo_centers(
+                _get_anchor_coords,
+                w=w,
+                h=h,
+                sf=sf,
+                position=pos_cfg,
+                spectrum_attach_to_logo=spectrum_attach_to_logo,
+            )
+            cx += shake_out.x
+            cy += shake_out.y
+            logo_cx += shake_out.x
+            logo_cy += shake_out.y
             spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
             logo_circle_mask = bool(ls.get("circleMask", True))
             logo_rgba_for_ratio = getattr(self, "_logo_rgba_cache", None)
@@ -1953,7 +1964,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     self.tex_logo.use(location=1)
                 if 'out_size' in self.prog_logo:
                     self.prog_logo['out_size'].value = (float(w), float(h))
-                ax, ay = (cx, cy)
+                ax, ay = (logo_cx, logo_cy)
                 self.prog_logo['logo_px'].value = (float(ax) - float(w) * 0.5, float(ay) - float(h) * 0.5)
                 s_logo = logo_scale_base * (1.0 + self.logo_audio_env * logo_react)
                 s_logo = float(max(0.05, min(4.0, s_logo)))

@@ -48,13 +48,15 @@
     "motionSmoothing": 0.65,
     "flyingGlowWingMotionSpeed": 1.4,
     "flyingGlowWingRelease": 0.85,
-    "sensitivity": 1.2
+    "sensitivity": 1.2,
+    "smoothing": 0.65
   },
   "position": {
     "anchor": "center",
     "x": 12,
     "y": -8
   },
+  "previewBackground": "",
   "backgroundSettings": {
     "enabled": true,
     "fitMode": "cover",

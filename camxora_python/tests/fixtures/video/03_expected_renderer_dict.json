@@ -13,6 +13,7 @@
   ],
   "audioSettings": {
     "sensitivity": 1.45,
+    "smoothing": 0.72,
     "inputGain": 1.45,
     "barHeight": 1,
     "bandContrast": 1,
@@ -43,6 +44,7 @@
     "x": 0,
     "y": 0
   },
+  "previewBackground": "",
   "backgroundSettings": {
     "enabled": true,
     "fitMode": "cover",

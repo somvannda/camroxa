@@ -438,7 +438,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "solidBand": solid_band,
                 "thickness": thickness_clamped,
                 "barWidth": float(bar_width),
-                "barCount": int(max(16, min(128, round(float(bar_count))))),
+                "barCount": int(max(16, min(192, round(float(bar_count))))),
                 "radiusOffset": float(max(0.0, min(400.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
                 "gravity": gravity,
                 "color": color,

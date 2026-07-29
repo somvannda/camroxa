@@ -79,8 +79,8 @@ def test_style_classification_slice1() -> None:
 
 
 def test_gpu_ready_slice2_half_width_and_quantize() -> None:
-    assert gpu_bar_half_width_scale("thin-lines") == pytest.approx(0.28)
-    assert gpu_bar_half_width_scale("signal-needles") == pytest.approx(0.28)
+    assert gpu_bar_half_width_scale("thin-lines") == pytest.approx(0.55)
+    assert gpu_bar_half_width_scale("signal-needles") == pytest.approx(0.55)
     assert gpu_bar_half_width_scale("ignition-flare") == pytest.approx(1.2)
     assert gpu_bar_half_width_scale("orbit-spikes") == pytest.approx(1.0)
 
