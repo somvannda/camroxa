@@ -125,29 +125,45 @@ def resample_fft_bins(render_fft: np.ndarray, count: int) -> np.ndarray:
     return np.interp(x_dst, x_src, src).astype(np.float32)
 
 
-def resolve_curved_spectrum_basis(gravity: str) -> tuple[float, float]:
-    """Return ``(start_angle, radial_sign)`` for curved spectrum layers.
+def normalize_spectrum_gravity(gravity: str | None) -> str:
+    """Map legacy values to Top / Bottom / Left / Right."""
+    g = str(gravity or "top").lower().strip()
+    if g == "normal":
+        return "top"
+    if g in ("top", "bottom", "left", "right"):
+        return g
+    return "top"
 
-    ``radial_sign`` is ``+1`` for outward growth and ``-1`` for inward.
-    Rabbit ears (``bottom``) sit on the **top** semicircle and grow inward so
-    the crest raises top→bottom toward the logo/center.
+
+def resolve_spectrum_growth_direction(gravity: str | None) -> tuple[float, float]:
+    """Return screen-space ``(dx, dy)`` for bar raise direction."""
+    g = normalize_spectrum_gravity(gravity)
+    if g == "bottom":
+        return (0.0, -1.0)
+    if g == "left":
+        return (-1.0, 0.0)
+    if g == "right":
+        return (1.0, 0.0)
+    return (0.0, 1.0)
+
+
+def resolve_curved_spectrum_basis(gravity: str | None) -> tuple[float, float, float]:
+    """Return ``(start_angle, growth_dx, growth_dy)`` for curved spectrum layers.
+
+    Bars sit on the arc centered on the chosen side and raise in that
+    screen direction (Top up, Bottom down, Left left, Right right).
     """
-    g = str(gravity or "normal").lower().strip()
-    start_angle = float(np.pi / 2.0)
-    radial_sign = 1.0
-    if g == "top":
-        # Top semicircle, outward (away from center / upward at the crest).
-        start_angle = float(np.pi / 2.0)
-        radial_sign = 1.0
+    g = normalize_spectrum_gravity(gravity)
+    growth_dx, growth_dy = resolve_spectrum_growth_direction(g)
+    if g == "bottom":
+        start_angle = float(-np.pi / 2.0)
     elif g == "left":
         start_angle = float(np.pi)
     elif g == "right":
         start_angle = 0.0
-    elif g == "bottom":
-        # Rabbit ears: top arc, grow inward → at the crest that is top→bottom.
+    else:
         start_angle = float(np.pi / 2.0)
-        radial_sign = -1.0
-    return start_angle, radial_sign
+    return start_angle, float(growth_dx), float(growth_dy)
 
 
 def generate_points_curved(
@@ -155,9 +171,10 @@ def generate_points_curved(
     radius: float,
     mirrored: bool,
     start_angle: float,
-    radial_sign: float = 1.0,
+    growth_dx: float = 0.0,
+    growth_dy: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Generate curved spectrum point positions and directions (vectorized).
+    """Generate curved spectrum point positions and raise directions.
 
     Returns:
         (px, py, dx, dy) arrays of shape (n,) float32
@@ -167,17 +184,22 @@ def generate_points_curved(
     ang = start_angle - total_angle / 2.0 + t0 * total_angle
     cos_a = np.cos(ang).astype(np.float32)
     sin_a = np.sin(ang).astype(np.float32)
-    sign = float(radial_sign)
-    if sign >= 0.0:
-        sign = 1.0
+    gdx = float(growth_dx)
+    gdy = float(growth_dy)
+    length = float(np.hypot(gdx, gdy))
+    if length <= 1e-6:
+        gdx, gdy = 0.0, 1.0
     else:
-        sign = -1.0
-    return cos_a * radius, sin_a * radius, cos_a * sign, sin_a * sign
+        gdx /= length
+        gdy /= length
+    dx = np.full(n, gdx, dtype=np.float32)
+    dy = np.full(n, gdy, dtype=np.float32)
+    return cos_a * radius, sin_a * radius, dx, dy
 
 
 def generate_points_linear(n: int, total_length: float, gravity: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Generate linear spectrum point positions and directions (vectorized).
-    
+    """Generate linear spectrum point positions and raise directions.
+
     Returns:
         (px, py, dx, dy) arrays of shape (n,) float32
     """
@@ -186,14 +208,12 @@ def generate_points_linear(n: int, total_length: float, gravity: str) -> tuple[n
     off = start_x + t0 * total_length
     zeros = np.zeros(n, dtype=np.float32)
     ones = np.ones(n, dtype=np.float32)
-    g = str(gravity or "normal").lower().strip()
-    if g in ("normal", "top"):
-        return off, zeros, zeros, ones
-    if g == "bottom":
-        return off, zeros, zeros, -ones
-    if g == "left":
-        return zeros, off, ones, zeros
-    return zeros, off, -ones, zeros
+    g = normalize_spectrum_gravity(gravity)
+    gdx, gdy = resolve_spectrum_growth_direction(g)
+    # Baseline is perpendicular to raise direction.
+    if g in ("left", "right"):
+        return zeros, off, np.full(n, gdx, dtype=np.float32), np.full(n, gdy, dtype=np.float32)
+    return off, zeros, np.full(n, gdx, dtype=np.float32), np.full(n, gdy, dtype=np.float32)
 
 
 def resolve_bar_pixel_width(

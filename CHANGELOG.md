@@ -15,6 +15,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Spectrum Bar Growth: remove rabbit ears / outward specials; only Top / Bottom / Left / Right directional raise. See `docs/changelog/2026-07-29-spectrum-directional-bar-growth.md`.
+- Spectrum Top bar growth: force top-arc Circle Raise with upward twin peaks; dark crystal-clear style colors; glow/blur defaults to 0 (no soft haze). See `docs/changelog/2026-07-29-spectrum-top-dark-crystal-colors.md`.
+- Spectrum rabbit ears: seat inward ring outside the logo so top→bottom tips stay visible; skip center fill; add twin-ear amplitude bias. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-visible-raise.md`.
+- Spectrum rabbit ears: Inward hangs from the top arc and raises top→bottom; around-ring gradients mix with smoothstep + neighbor blend; neon palettes replace flat RGB/emerald wedges. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-gradient-mix.md`.
 - Spectrum rabbit ears (Inward Bar Growth): stop style-hydrate from forcing gravity back to Outward; picking Inward on a linear layer auto-enables Circle Raise 180°. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-fix.md`.
 - Spectrum inspector: restore missing `style` bind in `bind_draft` (fixed Video page crash `NameError: style is not defined`).
 - Spectrum: vivid built-in/stacked colors (no white wash), free spectrum position vs logo unless Attach is on, and Audio knobs that actually work on desktop. See `docs/changelog/2026-07-29-spectrum-vivid-position-audio.md`.

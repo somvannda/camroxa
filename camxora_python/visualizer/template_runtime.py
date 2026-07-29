@@ -25,15 +25,15 @@ def default_renderer_template() -> dict:
                 "barWidth": 5,
                 "barCount": 64,
                 "radiusOffset": 0,
-                "gravity": "normal",
+                "gravity": "top",
                 "color": {
                     "mode": "gradient",
                     "solidColor": "#ff4fd8",
                     "gradientColors": ["#ffffff", "#ff4fd8", "#22d3ee"],
                     "gradientDirection": "left-to-right",
                 },
-                "glow": 28,
-                "blur": 8,
+                "glow": 0,
+                "blur": 0,
                 "rotation": 0,
                 "blend_mode": "normal",
                 "opacity": 1,
@@ -413,9 +413,15 @@ def normalize_renderer_template(input_template: Any) -> dict:
             thickness = fallback_layer.get("thickness", 150)
         thickness_clamped = float(max(1, min(220, float(thickness))))
 
-        gravity = str(layer_in.get("gravity", fallback_layer.get("gravity", "normal")))
-        if gravity not in ("normal", "bottom", "top", "left", "right"):
-            gravity = str(fallback_layer.get("gravity", "normal"))
+        gravity = str(layer_in.get("gravity", fallback_layer.get("gravity", "top")))
+        if gravity == "normal":
+            gravity = "top"
+        if gravity not in ("top", "bottom", "left", "right"):
+            gravity = str(fallback_layer.get("gravity", "top"))
+            if gravity == "normal":
+                gravity = "top"
+            if gravity not in ("top", "bottom", "left", "right"):
+                gravity = "top"
 
         col_in = layer_in.get("color") if _is_obj(layer_in.get("color")) else {}
         color = {**fallback_layer.get("color", {}), **col_in}

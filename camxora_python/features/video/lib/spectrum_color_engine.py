@@ -9,30 +9,30 @@ import numpy as np
 from features.video.lib.template_value_utils import normalize_color, to_record, to_string_value
 
 MAX_GRADIENT_COLOR_STOPS = 5
-GRADIENT_FALLBACK_COLOR = "#22d3ee"
+GRADIENT_FALLBACK_COLOR = "#1e3a8a"
 
 VALID_GRADIENT_DIRECTIONS = frozenset(
     {"left-to-right", "top-to-bottom", "diagonal", "radial", "circular"}
 )
 
 SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("#ff00ff,#00ffff", "Cyber Blue"),
-    ("#ff8800,#ff0000", "EDM Fire"),
-    ("#00ff00,#ffff00", "Toxic"),
-    ("#8a2be2,#4b0082", "Galaxy"),
-    ("#22d3ee,#67e8f9,#a5f3fc", "Ice"),
-    ("#ff4500,#ff1493", "Lava"),
-    ("#ff8c00,#ff69b4", "Sunset"),
-    ("#ff0000,#00ff00,#0000ff", "RGB Flow"),
-    ("#ec4899,#8b5cf6,#22d3ee", "Aurora"),
-    ("#fde68a,#fb7185,#c084fc,#60a5fa", "Festival"),
-    ("#22c55e,#14b8a6,#06b6d4,#3b82f6", "Emerald Wave"),
-    ("#f472b6,#fde68a,#f97316,#ef4444", "Solar Bloom"),
+    ("#9f1239,#6b21a8,#1e3a8a,#0f766e", "Ruby Night"),
+    ("#7f1d1d,#9a3412,#854d0e,#1e3a8a", "Ember Dark"),
+    ("#4c1d95,#831843,#0e7490,#1e40af", "Violet Depth"),
+    ("#065f46,#0e7490,#1d4ed8,#5b21b6", "Abyss Teal"),
+    ("#9f1239,#be123c,#c2410c,#a16207", "Crimson Heat"),
+    ("#1e3a8a,#3730a3,#6b21a8,#9f1239", "Indigo Blood"),
+    ("#0f766e,#155e75,#1d4ed8,#4c1d95", "Deep Ocean"),
+    ("#7c2d12,#9f1239,#6b21a8,#1e3a8a", "Lava Night"),
+    ("#14532d,#166534,#0f766e,#1e40af", "Forest Depth"),
+    ("#701a75,#9d174d,#9a3412,#1e3a8a", "Magenta Ember"),
+    ("#1e293b,#334155,#0f766e,#4c1d95", "Slate Neon"),
+    ("#450a0a,#7f1d1d,#9a3412,#5b21b6", "Blood Amber"),
 )
 
 
 def get_spectrum_layer_color_fallback(index: int) -> str:
-    return "#8b5cf6" if index % 2 == 0 else "#22d3ee"
+    return "#4c1d95" if index % 2 == 0 else "#0e7490"
 
 
 def _normalize_spectrum_color(value: Any, fallback: str) -> str:
@@ -134,6 +134,27 @@ def _linear_to_srgb(rgb: np.ndarray) -> np.ndarray:
     return np.power(np.clip(rgb, 0.0, 1.0), 1.0 / 2.2).astype(np.float32)
 
 
+def _smoothstep01(t: np.ndarray) -> np.ndarray:
+    """Hermite smoothstep so stop transitions blend instead of hard linear cuts."""
+    x = np.clip(t, 0.0, 1.0)
+    return (x * x * (3.0 - 2.0 * x)).astype(np.float32)
+
+
+def _mix_neighbor_rgb(rgb: np.ndarray, *, strength: float = 0.35) -> np.ndarray:
+    """Soft-mix adjacent bar colors so around-ring hues join as a continuous wash.
+
+    Edges are clamped (no wrap) so linear left→right gradients keep true end stops.
+    """
+    n = int(rgb.shape[0])
+    if n < 3 or strength <= 0.0:
+        return rgb
+    s = float(max(0.0, min(0.5, strength)))
+    prev_idx = np.concatenate(([0], np.arange(0, n - 1, dtype=np.int32)))
+    next_idx = np.concatenate((np.arange(1, n, dtype=np.int32), [n - 1]))
+    mixed = rgb * (1.0 - 2.0 * s) + rgb[prev_idx] * s + rgb[next_idx] * s
+    return mixed.astype(np.float32)
+
+
 def build_spectrum_vertex_rgba(
     *,
     mode: str,
@@ -144,7 +165,8 @@ def build_spectrum_vertex_rgba(
 ) -> np.ndarray:
     """Build per-bar RGBA colors for preview/export spectrum draws.
 
-    Multi-stop gradients interpolate through every stop (not first→last only).
+    Multi-stop gradients interpolate through every stop (not first→last only)
+    for crystal-clear hue bands (no soft wash / neighbor blur).
     """
     n = int(max(1, count))
     a = float(max(0.0, min(1.0, alpha)))
@@ -158,7 +180,8 @@ def build_spectrum_vertex_rgba(
             segment_count = int(stops.shape[0] - 1)
             scaled = t * float(segment_count)
             seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
-            local_t = (scaled - seg_idx.astype(np.float32)).reshape((n, 1))
+            # Mild smoothstep only — keep stops readable (no neighbor wash).
+            local_t = _smoothstep01(scaled - seg_idx.astype(np.float32)).reshape((n, 1))
             c1 = stops_lin[seg_idx]
             c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
             rgb_lin = c1 * (1.0 - local_t) + c2 * local_t

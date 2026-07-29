@@ -59,6 +59,24 @@ def test_build_spectrum_vertex_rgba_uses_all_gradient_stops() -> None:
     assert float(rgba[2, 1]) > float(rgba[2, 2])
 
 
+def test_build_spectrum_vertex_rgba_keeps_stops_crystal_clear() -> None:
+    """Stops stay readable — no neighbor wash that muddies dark palettes."""
+    from features.video.lib.spectrum_color_engine import build_spectrum_vertex_rgba
+
+    rgba = build_spectrum_vertex_rgba(
+        mode="gradient",
+        solid_color="#ffffff",
+        gradient_colors=["#9f1239", "#1e3a8a", "#0f766e"],
+        count=9,
+        alpha=1.0,
+    )
+    # First stop stays deep red-dominant; last stays teal-dominant.
+    assert float(rgba[0, 0]) > float(rgba[0, 2])
+    assert float(rgba[8, 1]) > float(rgba[8, 0]) * 0.5
+    # Mid stop near blue.
+    assert float(rgba[4, 2]) > float(rgba[4, 0])
+
+
 def test_build_spectrum_bar_quad_rgba_uses_vertical_gradient_for_top_to_bottom() -> None:
     rows = build_spectrum_bar_quad_rgba(
         mode="gradient",

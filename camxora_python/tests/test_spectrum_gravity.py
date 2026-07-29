@@ -1,4 +1,4 @@
-"""Tests for spectrum gravity modes including Normal (straight rising)."""
+"""Tests for spectrum bar-growth directions: Top / Bottom / Left / Right."""
 
 from __future__ import annotations
 
@@ -9,47 +9,62 @@ from visualizer._spectrum_fast import (
     clamp_spectrum_bar_count,
     generate_points_curved,
     generate_points_linear,
+    normalize_spectrum_gravity,
     resample_fft_bins,
     resolve_curved_spectrum_basis,
+    resolve_spectrum_growth_direction,
 )
 from visualizer.template_runtime import normalize_renderer_template
 
 
-def test_gravity_options_include_normal_first() -> None:
+def test_gravity_options_are_four_directions_only() -> None:
     values = [value for value, _label in GRAVITY_OPTIONS]
-    assert values[0] == "normal"
-    assert "bottom" in values
-    assert "top" in values
+    assert values == ["top", "bottom", "left", "right"]
+    assert "normal" not in values
 
 
-def test_normal_gravity_rises_upward_not_rabbit_ears() -> None:
-    _px, _py, dx, dy = generate_points_linear(8, 100.0, "normal")
-    assert np.allclose(dx, 0.0)
-    assert np.allclose(dy, 1.0)
-
-    _px_b, _py_b, dx_b, dy_b = generate_points_linear(8, 100.0, "bottom")
-    assert np.allclose(dx_b, 0.0)
-    assert np.allclose(dy_b, -1.0)
+def test_normalize_maps_legacy_normal_to_top() -> None:
+    assert normalize_spectrum_gravity("normal") == "top"
+    assert normalize_spectrum_gravity("BOTTOM") == "bottom"
 
 
-def test_curved_bottom_grows_inward_unlike_normal() -> None:
-    start_n, sign_n = resolve_curved_spectrum_basis("normal")
-    start_b, sign_b = resolve_curved_spectrum_basis("bottom")
-    assert sign_n == 1.0
-    assert sign_b == -1.0
-    assert start_b == float(-np.pi / 2.0)
+def test_linear_directions_raise_as_labeled() -> None:
+    _px, _py, dx, dy = generate_points_linear(8, 100.0, "top")
+    assert np.allclose(dx, 0.0) and np.allclose(dy, 1.0)
 
-    px_b, py_b, dx_b, dy_b = generate_points_curved(16, 100.0, True, start_b, sign_b)
-    px_n, py_n, dx_n, dy_n = generate_points_curved(16, 100.0, True, start_n, sign_n)
+    _px, _py, dx, dy = generate_points_linear(8, 100.0, "bottom")
+    assert np.allclose(dx, 0.0) and np.allclose(dy, -1.0)
 
-    # Bottom-most bar on rabbit-ears ring grows toward center (upward / inward).
-    idx_b = int(np.argmin(py_b))
-    assert float(dy_b[idx_b]) > 0.5
-    assert float(dx_b[idx_b] * px_b[idx_b] + dy_b[idx_b] * py_b[idx_b]) < 0.0
+    _px, _py, dx, dy = generate_points_linear(8, 100.0, "left")
+    assert np.allclose(dx, -1.0) and np.allclose(dy, 0.0)
 
-    # Normal outward growth points away from center.
-    idx_n = int(np.argmin(py_n))
-    assert float(dx_n[idx_n] * px_n[idx_n] + dy_n[idx_n] * py_n[idx_n]) > 0.0
+    _px, _py, dx, dy = generate_points_linear(8, 100.0, "right")
+    assert np.allclose(dx, 1.0) and np.allclose(dy, 0.0)
+
+
+def test_curved_directions_raise_uniformly() -> None:
+    for gravity, expect_dx, expect_dy in (
+        ("top", 0.0, 1.0),
+        ("bottom", 0.0, -1.0),
+        ("left", -1.0, 0.0),
+        ("right", 1.0, 0.0),
+    ):
+        start, gdx, gdy = resolve_curved_spectrum_basis(gravity)
+        assert (gdx, gdy) == resolve_spectrum_growth_direction(gravity)
+        assert (gdx, gdy) == (expect_dx, expect_dy)
+        _px, _py, dx, dy = generate_points_curved(16, 100.0, True, start, gdx, gdy)
+        assert np.allclose(dx, expect_dx)
+        assert np.allclose(dy, expect_dy)
+
+
+def test_semi_circle_sits_on_chosen_side() -> None:
+    start_t, gdx_t, gdy_t = resolve_curved_spectrum_basis("top")
+    _px, py, _dx, _dy = generate_points_curved(32, 100.0, False, start_t, gdx_t, gdy_t)
+    assert float(np.mean(py)) > 0.0
+
+    start_b, gdx_b, gdy_b = resolve_curved_spectrum_basis("bottom")
+    _px, py, _dx, _dy = generate_points_curved(32, 100.0, False, start_b, gdx_b, gdy_b)
+    assert float(np.mean(py)) < 0.0
 
 
 def test_align_style_geometry_does_not_overwrite_user_gravity() -> None:
@@ -58,27 +73,26 @@ def test_align_style_geometry_does_not_overwrite_user_gravity() -> None:
     layers = [{"id": "l1", "gravity": "bottom", "curved": True, "mirrored": False}]
     aligned = align_spectrum_layers_to_style_geometry(layers, "orbit-spikes")
     assert aligned[0]["gravity"] == "bottom"
-    assert aligned[0]["curved"] is True
-    assert aligned[0]["mirrored"] is False
 
 
-def test_semi_circle_bottom_arc_covers_lower_half() -> None:
-    start_b, sign_b = resolve_curved_spectrum_basis("bottom")
-    px, py, _dx, _dy = generate_points_curved(32, 100.0, False, start_b, sign_b)
-    # Semicircle for rabbit ears should sit on the lower half (negative Y in GL).
-    assert float(np.mean(py)) < 0.0
-    assert float(np.min(py)) < -50.0
-    assert float(np.max(py)) <= 5.0
+def test_normalize_accepts_top_gravity() -> None:
+    tpl = normalize_renderer_template(
+        {
+            "style": "orbit-spikes",
+            "layers": [{"gravity": "top", "barWidth": 5, "thickness": 30}],
+        }
+    )
+    assert tpl["layers"][0]["gravity"] == "top"
 
 
-def test_normalize_accepts_normal_gravity() -> None:
+def test_normalize_maps_legacy_normal_gravity() -> None:
     tpl = normalize_renderer_template(
         {
             "style": "orbit-spikes",
             "layers": [{"gravity": "normal", "barWidth": 5, "thickness": 30}],
         }
     )
-    assert tpl["layers"][0]["gravity"] == "normal"
+    assert tpl["layers"][0]["gravity"] == "top"
 
 
 def test_normalize_clamps_phase1_layer_fields() -> None:

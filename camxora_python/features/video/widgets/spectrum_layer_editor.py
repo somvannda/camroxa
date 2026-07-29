@@ -31,11 +31,10 @@ from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL
 from shared.widgets.settings_ui import form_row, note_box
 
 GRAVITY_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("normal", "Outward (bars raise like a straight EQ)"),
-    ("bottom", "Inward (rabbit ears — top→bottom)"),
-    ("top", "Top (outward from top)"),
-    ("left", "Left"),
-    ("right", "Right"),
+    ("top", "Top (raise up)"),
+    ("bottom", "Bottom (raise down)"),
+    ("left", "Left (raise left)"),
+    ("right", "Right (raise right)"),
 )
 
 # How the ring is laid out. This is separate from blend mode.
@@ -139,9 +138,8 @@ class SpectrumLayerEditor(InspectorSection):
 
         self._gravity_combo = QComboBox()
         self._gravity_combo.setToolTip(
-            "Outward = bars raise away from the ring. Inward (rabbit ears) hangs from the "
-            "top of the ring and raises toward the center (top → bottom). Auto-uses "
-            "Circle Raise (180°) if the layer is linear."
+            "Bar raise direction: Top / Bottom / Left / Right. "
+            "On a circle, bars sit on that side and raise in that direction."
         )
         for value, label in GRAVITY_OPTIONS:
             self._gravity_combo.addItem(label, value)
@@ -371,13 +369,6 @@ class SpectrumLayerEditor(InspectorSection):
         value = self._gravity_combo.currentData()
         if not isinstance(value, str):
             return
-        # Rabbit ears need a semicircle; linear "bottom" just flips bars off-screen.
-        layer = self._selected_layer()
-        if value == "bottom" and layer is not None and not bool(layer.get("curved")):
-            self.layer_patch_requested.emit(
-                {"gravity": "bottom", "curved": True, "mirrored": False}
-            )
-            return
         self.layer_patch_requested.emit({"gravity": value})
 
     def _on_circle_form_changed(self, _index: int) -> None:
@@ -531,7 +522,9 @@ class SpectrumLayerEditor(InspectorSection):
             self._name_input.setText(str(layer.get("name") or ""))
             self._name_input.blockSignals(False)
 
-            gravity = str(layer.get("gravity") or "normal")
+            gravity = str(layer.get("gravity") or "top")
+            if gravity == "normal":
+                gravity = "top"
             blend = str(layer.get("blend_mode") or "normal")
             circle_form = self._circle_form_from_layer(layer)
             circle_index = self._circle_form_combo.findData(circle_form)

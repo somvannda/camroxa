@@ -12,7 +12,11 @@ from typing import Any, Callable
 
 import glfw
 import moderngl
-from ._spectrum_fast import resolve_bar_pixel_width, resolve_curved_spectrum_basis
+from ._spectrum_fast import (
+    normalize_spectrum_gravity,
+    resolve_bar_pixel_width,
+    resolve_curved_spectrum_basis,
+)
 
 def _audio_bar_height_mult(template: dict) -> float:
     audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
@@ -2513,6 +2517,7 @@ def run_gpu_render(
         generate_points_curved, generate_points_linear,
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
         resolve_curved_spectrum_basis, clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
+        normalize_spectrum_gravity,
     )
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
     # Pre-compute frame-invariant template lookups
@@ -2565,7 +2570,7 @@ def run_gpu_render(
             mirrored_pre = bool(sl_pre.get("mirrored", False))
             bar_width_pre = float(sl_pre.get("barWidth", 4.0)) * sf
             thickness_pre = float(sl_pre.get("thickness", 30.0)) * sf * bar_height_mult_pre
-            gravity_pre = str(sl_pre.get("gravity", "normal")).lower().strip()
+            gravity_pre = normalize_spectrum_gravity(sl_pre.get("gravity", "top"))
             radius_offset_pre = float(sl_pre.get("radiusOffset", 0.0)) * sf
             radius_pre = _resolve_spectrum_layer_radius(
                 attached_to_logo=_tpl_attached_to_logo,
@@ -2600,10 +2605,10 @@ def run_gpu_render(
                 total_length_pre = (
                     float(h * 0.8) if gravity_pre in ("left", "right") else float(w * 0.8)
                 )
-            start_angle_pre, radial_sign_pre = resolve_curved_spectrum_basis(gravity_pre)
+            start_angle_pre, growth_dx_pre, growth_dy_pre = resolve_curved_spectrum_basis(gravity_pre)
             if curved_pre:
                 px_pre, py_pre, dx_pre, dy_pre = generate_points_curved(
-                    n_pre, radius_pre, mirrored_pre, start_angle_pre, radial_sign_pre
+                    n_pre, radius_pre, mirrored_pre, start_angle_pre, growth_dx_pre, growth_dy_pre
                 )
             else:
                 px_pre, py_pre, dx_pre, dy_pre = generate_points_linear(
@@ -2878,7 +2883,7 @@ def run_gpu_render(
             bar_height_mult = _audio_bar_height_mult(template)
             # Match preview default thickness (30), not the old export fallback (150).
             thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
-            gravity = str(sl.get("gravity", "normal")).lower().strip()
+            gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
             
             logo_visual_radius = logo_base_radius * logo_scale_base
             radius_offset = float(sl.get("radiusOffset", 0.0)) * sf
@@ -2936,11 +2941,11 @@ def run_gpu_render(
             else:
                 total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
                 
-            start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
+            start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
             
             if curved:
                 px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(
-                    n, radius, mirrored, start_angle, radial_sign
+                    n, radius, mirrored, start_angle, growth_dx, growth_dy
                 )
             else:
                 px_arr, py_arr, dx_arr, dy_arr = generate_points_linear(n, total_length, gravity)
@@ -2967,13 +2972,14 @@ def run_gpu_render(
                             "fill_circle": False,
                         }
                     )
+            allow_fill_circle = bool(sl.get("fillCircle", False))
             pass_specs.append(
                 {
                     "is_glow": False,
                     "alpha": op,
                     "bar_width": bar_width,
                     "thickness": thickness,
-                    "fill_circle": bool(sl.get("fillCircle", False)),
+                    "fill_circle": allow_fill_circle,
                 }
             )
 
@@ -3961,7 +3967,7 @@ def render_preview_png(
             bar_width = float(sl.get("barWidth", 4.0)) * sf
             bar_height_mult = _audio_bar_height_mult(template)
             thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
-            gravity = str(sl.get("gravity", "normal")).lower().strip()
+            gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
             
             logo_visual_radius = (float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base)
             radius_offset = float(sl.get("radiusOffset", 0.0)) * sf
@@ -4026,7 +4032,8 @@ def render_preview_png(
             else:
                 total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
                 
-            start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
+            start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
+            draw_radius = radius
             
             start_x = -total_length / 2.0
             
@@ -4041,20 +4048,20 @@ def render_preview_png(
                 if curved:
                     total_angle = np.pi * 2.0 if mirrored else np.pi
                     angle = start_angle - (total_angle / 2.0) + (t * total_angle)
-                    px_arr[i] = np.cos(angle) * radius
-                    py_arr[i] = np.sin(angle) * radius
-                    dx_arr[i] = np.cos(angle) * radial_sign
-                    dy_arr[i] = np.sin(angle) * radial_sign
+                    px_arr[i] = np.cos(angle) * draw_radius
+                    py_arr[i] = np.sin(angle) * draw_radius
+                    dx_arr[i] = growth_dx
+                    dy_arr[i] = growth_dy
                 else:
                     offset = start_x + (t * total_length)
-                    if gravity in ("normal", "top"):
+                    if gravity == "top":
                         px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, 1.0
                     elif gravity == "bottom":
                         px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, -1.0
                     elif gravity == "left":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
-                    elif gravity == "right":
                         px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, -1.0, 0.0
+                    elif gravity == "right":
+                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
                 val_arr[i] = render_fft[i] * thickness
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))
@@ -5056,7 +5063,7 @@ def run_live_preview(opts: GpuOptions) -> int:
             bar_width = float(sl.get("barWidth", 4.0)) * sf
             bar_height_mult = _audio_bar_height_mult(template)
             thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
-            gravity = str(sl.get("gravity", "normal")).lower().strip()
+            gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
             
             logo_visual_radius = (float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base)
             radius = _resolve_spectrum_layer_radius(
@@ -5111,7 +5118,8 @@ def run_live_preview(opts: GpuOptions) -> int:
             else:
                 total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
                 
-            start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
+            start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
+            draw_radius = radius
             
             start_x = -total_length / 2.0
             
@@ -5126,20 +5134,20 @@ def run_live_preview(opts: GpuOptions) -> int:
                 if curved:
                     total_angle = np.pi * 2.0 if mirrored else np.pi
                     angle = start_angle - (total_angle / 2.0) + (t * total_angle)
-                    px_arr[i] = np.cos(angle) * radius
-                    py_arr[i] = np.sin(angle) * radius
-                    dx_arr[i] = np.cos(angle) * radial_sign
-                    dy_arr[i] = np.sin(angle) * radial_sign
+                    px_arr[i] = np.cos(angle) * draw_radius
+                    py_arr[i] = np.sin(angle) * draw_radius
+                    dx_arr[i] = growth_dx
+                    dy_arr[i] = growth_dy
                 else:
                     offset = start_x + (t * total_length)
-                    if gravity in ("normal", "top"):
+                    if gravity == "top":
                         px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, 1.0
                     elif gravity == "bottom":
                         px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, -1.0
                     elif gravity == "left":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
-                    elif gravity == "right":
                         px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, -1.0, 0.0
+                    elif gravity == "right":
+                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
                 val_arr[i] = render_fft[i] * thickness
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))

@@ -129,7 +129,7 @@ def test_register_layer_accepts_bar_count_below_bins() -> None:
         from visualizer.spectrum_gpu import SpectrumGpuRenderer
 
         bar_count = 16
-        px, py, dx, dy = generate_points_linear(bar_count, 800.0, "normal")
+        px, py, dx, dy = generate_points_linear(bar_count, 800.0, "top")
         colors = np.tile(np.array([[0.2, 0.4, 0.8, 1.0]], dtype=np.float32), (bar_count, 1))
         renderer = SpectrumGpuRenderer(ctx)
         assert renderer.register_layer(

@@ -31,6 +31,7 @@ from visualizer._spectrum_fast import (
     clamp_spectrum_bar_count,
     generate_points_curved,
     generate_points_linear,
+    normalize_spectrum_gravity,
     resample_fft_bins,
     resolve_bar_pixel_width,
     resolve_curved_spectrum_basis,
@@ -1660,7 +1661,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             for layer_idx, sl in enumerate(spectrum_layers):
                 curved = bool(sl.get('curved', False))
                 mirrored = bool(sl.get('mirrored', False))
-                gravity = str(sl.get('gravity', 'normal')).lower().strip()
+                gravity = normalize_spectrum_gravity(sl.get('gravity', 'top'))
                 style_preset = _resolve_export_spectrum_style(
                     str(self.template.get('style', 'orbit-spikes')),
                     sl,
@@ -1718,9 +1719,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 dx_arr = np.zeros(n, dtype=np.float32)
                 dy_arr = np.zeros(n, dtype=np.float32)
                 if curved:
-                    start_angle, radial_sign = resolve_curved_spectrum_basis(gravity)
+                    start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(gravity)
                     px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(
-                        n, radius, mirrored, start_angle, radial_sign
+                        n, radius, mirrored, start_angle, growth_dx, growth_dy
                     )
                 else:
                     total_length = float(h * 0.8) if gravity in ('left', 'right') else float(w * 0.8)
