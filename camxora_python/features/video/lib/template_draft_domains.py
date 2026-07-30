@@ -81,6 +81,8 @@ def _pick_logo_slice(draft: dict[str, Any]) -> dict[str, Any]:
         "logoMotionZoomStrength",
         "logoMotionVibrateStrength",
         "logoMotionSpeed",
+        "logoPositionX",
+        "logoPositionY",
         "spectrumAttachToLogo",
         "spectrumLogoGap",
     )

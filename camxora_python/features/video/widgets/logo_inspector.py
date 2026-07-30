@@ -142,15 +142,16 @@ class LogoInspector(QWidget):
 
         self._attach_toggle = QCheckBox("Attach Spectrum to Logo")
         self._attach_toggle.setToolTip(
-            "When on: spectrum rings lock around the logo and both share position. "
-            "When off: move the spectrum freely; the logo stays centered."
+            "When on: spectrum rings lock around the logo and both share position — drag the logo on the preview. "
+            "When off: drag the logo freely; move the spectrum from the Spectrum tab."
         )
         self._attach_toggle.toggled.connect(self.spectrum_attach_toggle_requested.emit)
         section.add_widget(self._attach_toggle)
         section.add_widget(
             note_box(
-                "Off = free spectrum position (logo stays center). "
-                "On = spectrum follows the logo ring and shared position."
+                "On the Logo tab, drag the preview to move the logo. "
+                "Off = free logo + free spectrum. "
+                "On = spectrum follows the logo (shared position)."
             )
         )
 

@@ -109,6 +109,7 @@ def build_default_text_overlay_draft() -> dict[str, Any]:
 def build_logo_settings_state(template: dict[str, Any], logo_path: str) -> dict[str, Any]:
     logo_settings = to_record(template.get("logoSettings"))
     logo_shape = "circle" if to_boolean(logo_settings.get("circleMask"), True) else "square"
+    logo_pos = to_record(logo_settings.get("position"))
     return {
         "logoEnabled": to_boolean(logo_settings.get("enabled"), True),
         "logoSpinEnabled": to_boolean(logo_settings.get("spinEnabled"), False),
@@ -124,6 +125,8 @@ def build_logo_settings_state(template: dict[str, Any], logo_path: str) -> dict[
         "logoMotionZoomStrength": to_number(logo_settings.get("motionZoomStrength"), 1),
         "logoMotionVibrateStrength": to_number(logo_settings.get("motionVibrateStrength"), 1),
         "logoMotionSpeed": to_number(logo_settings.get("motionSpeed"), 1),
+        "logoPositionX": to_number(logo_pos.get("x"), 0),
+        "logoPositionY": to_number(logo_pos.get("y"), 0),
     }
 
 

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDial,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -18,15 +21,17 @@ from PySide6.QtWidgets import (
 from features.video.lib.lightning_style_registry import (
     LIGHTNING_BLEND_OPTIONS,
     LIGHTNING_DIRECTION_OPTIONS,
+    LIGHTNING_SPAWN_OPTIONS,
     LIGHTNING_STYLE_OPTIONS,
     LIGHTNING_TRIGGER_OPTIONS,
     normalize_lightning_blend,
     normalize_lightning_direction,
+    normalize_lightning_spawn,
     normalize_lightning_style,
     normalize_lightning_trigger,
 )
 from features.video.widgets.inspector_fields import InspectorSection, build_color_field, build_float_slider
-from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID
+from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import form_row, note_box
 
 
@@ -87,6 +92,7 @@ class LightningLayerEditor(InspectorSection):
         self.add_widget(self._enabled)
 
         self.add_widget(self._build_combo("style", "Style", LIGHTNING_STYLE_OPTIONS))
+        self.add_widget(self._build_combo("spawnMode", "Spawn", LIGHTNING_SPAWN_OPTIONS))
         self.add_widget(self._build_combo("direction", "Direction", LIGHTNING_DIRECTION_OPTIONS))
         self.add_widget(self._build_combo("blend", "Blend", LIGHTNING_BLEND_OPTIONS))
         self.add_widget(self._build_combo("trigger", "Trigger", LIGHTNING_TRIGGER_OPTIONS))
@@ -95,40 +101,51 @@ class LightningLayerEditor(InspectorSection):
         self._seed_lock.toggled.connect(lambda checked: self.layer_patch_requested.emit({"seedLock": checked}))
         self.add_widget(self._seed_lock)
 
+        reset_row = QHBoxLayout()
+        reset_row.setContentsMargins(0, 0, 0, 0)
+        reset_btn = QPushButton("Reset Position (center)")
+        reset_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        reset_btn.clicked.connect(lambda: self.layer_patch_requested.emit({"x": 0.0, "y": 0.0}))
+        reset_row.addWidget(reset_btn)
+        reset_row.addStretch(1)
+        reset_host = QWidget()
+        reset_host.setLayout(reset_row)
+        self.add_widget(reset_host)
+
         self.add_widget(
             note_box(
-                "Each layer is one bolt. Use Add for more bolts. "
-                "Drag the preview to place the selected bolt. "
-                "Rotation spins the bolt a full 360° on top of Direction. "
-                "Motion / Grow Speed stretches bolt reach. "
-                "Flash Rate is how often a single strike fires (not how many bolts). "
-                "Branchiness adds small twigs on that one bolt. "
-                "Trigger chooses when it fires; Lock Seed keeps the same jagged shape."
+                "Drag the selected bolt on the preview to place it (Anchored spawn). "
+                "Random on screen = new full-frame position every strike. "
+                "Rotation wheel spins the bolt 0–360° on top of Direction. "
+                "Branchiness = side twigs on this one bolt (0 = clean stroke, 1 = up to 2 forks). "
+                "Use Add for more independent bolts. "
+                "Strike Motion Speed / React Motion Speed control timing feel — not bolt length. "
+                "Length React (optional) is the only control that lets volume stretch reach. "
+                "Thickness Taper: thin at the start → thicker toward the tip. "
+                "Glow adds the bright air bloom around each strike. "
+                "Opacity 0 fully hides the bolt (including glow)."
             )
         )
 
+        self.add_widget(self._build_rotation_wheel())
+
         for field, label, minimum, maximum, step in (
-            ("x", "Position X", -500, 500, 1),
-            ("y", "Position Y", -500, 500, 1),
-            ("rotation", "Rotation", 0, 360, 1),
-            ("length", "Bolt Length", 40, 600, 5),
-            ("thickness", "Thickness", 0.5, 24, 0.25),
+            ("length", "Bolt Length", 20, 600, 5),
+            ("thickness", "Thickness", 0, 24, 0.25),
+            ("taper", "Thickness Taper", 0, 1, 0.05),
             ("glow", "Glow", 0, 1, 0.05),
             ("branchiness", "Branchiness", 0, 1, 0.05),
             ("opacity", "Opacity", 0, 1, 0.05),
             ("intensity", "Intensity", 0, 1, 0.05),
             ("reactivity", "Audio Reactivity", 0, 1, 0.05),
-            ("speed", "Motion / Grow Speed", 0.05, 4, 0.05),
-            ("flashRate", "Flash Rate", 0.05, 4, 0.05),
-            ("triggerThreshold", "Trigger Threshold", 0.05, 0.95, 0.01),
+            ("reactMotionSpeed", "React Motion Speed", 0, 4, 0.05),
+            ("speed", "Strike Motion Speed", 0, 4, 0.05),
+            ("flashRate", "Flash Rate", 0, 4, 0.05),
+            ("lengthReactivity", "Length React (volume→reach)", 0, 1, 0.05),
+            ("triggerThreshold", "Trigger Threshold", 0, 0.95, 0.01),
             ("seed", "Seed", 0, 9999, 1),
         ):
-            if field == "rotation":
-                self.add_widget(
-                    self._add_float(field, label, minimum, maximum, step, format_value=lambda v: f"{round(v)}°")
-                )
-            else:
-                self.add_widget(self._add_float(field, label, minimum, maximum, step))
+            self.add_widget(self._add_float(field, label, minimum, maximum, step))
 
         color_widget, color_setter = build_color_field(
             "Bolt Color",
@@ -140,6 +157,71 @@ class LightningLayerEditor(InspectorSection):
         )
         self._color_setters["solidColor"] = color_setter
         self.add_widget(color_widget)
+
+    def _build_rotation_wheel(self) -> QWidget:
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self._rotation_label = QLabel("Rotation (0°)")
+        self._rotation_label.setObjectName(SUBTITLE_LABEL_ID)
+        layout.addWidget(self._rotation_label)
+
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(12)
+
+        self._rotation_dial = QDial()
+        self._rotation_dial.setRange(0, 360)
+        self._rotation_dial.setWrapping(True)
+        self._rotation_dial.setNotchesVisible(True)
+        self._rotation_dial.setFixedSize(96, 96)
+        self._rotation_dial.setToolTip("Drag the wheel to rotate the bolt")
+        self._rotation_dial.setStyleSheet(
+            """
+            QDial {
+                background-color: #0c1230;
+                border: 1px solid #2a3566;
+                border-radius: 48px;
+            }
+            QDial::handle {
+                background-color: #a855f7;
+            }
+            """
+        )
+        self._rotation_dial.valueChanged.connect(self._on_rotation_dial)
+
+        tip = QLabel("0° = Direction\n90° = clockwise")
+        tip.setObjectName(SUBTITLE_LABEL_ID)
+        tip_font = QFont("Open Sans")
+        tip_font.setPixelSize(12)
+        tip.setFont(tip_font)
+        tip.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        row.addWidget(self._rotation_dial, 0, Qt.AlignmentFlag.AlignLeft)
+        row.addWidget(tip, 1)
+        layout.addLayout(row)
+
+        # Keep a float setter so bind_layers can drive the dial.
+        def _set_rotation(value: float) -> None:
+            deg = int(round(max(0.0, min(360.0, float(value))))) % 361
+            if deg == 360:
+                deg = 0
+            self._rotation_dial.blockSignals(True)
+            self._rotation_dial.setValue(deg)
+            self._rotation_dial.blockSignals(False)
+            self._rotation_label.setText(f"Rotation ({deg}°)")
+
+        self._float_setters["rotation"] = _set_rotation
+        return host
+
+    def _on_rotation_dial(self, value: int) -> None:
+        if self._binding:
+            return
+        deg = int(value) % 360
+        self._rotation_label.setText(f"Rotation ({deg}°)")
+        self.layer_patch_requested.emit({"rotation": float(deg)})
 
     def _build_combo(self, field: str, label: str, options: tuple[tuple[str, str], ...]) -> QWidget:
         combo = QComboBox()
@@ -187,6 +269,8 @@ class LightningLayerEditor(InspectorSection):
             value = normalize_lightning_blend(value)
         elif field == "trigger":
             value = normalize_lightning_trigger(value)
+        elif field == "spawnMode":
+            value = normalize_lightning_spawn(value)
         self.layer_patch_requested.emit({field: value})
 
     def _on_layer_combo_changed(self, index: int) -> None:
@@ -238,12 +322,17 @@ class LightningLayerEditor(InspectorSection):
                     value = normalize_lightning_blend(value)
                 elif field == "trigger":
                     value = normalize_lightning_trigger(value)
+                elif field == "spawnMode":
+                    value = normalize_lightning_spawn(value)
                 index = combo.findData(value)
                 if index >= 0:
                     combo.setCurrentIndex(index)
 
             for field, setter in self._float_setters.items():
-                setter(float(layer.get(field, 0.0) or 0.0))
+                raw = layer.get(field, 0.0)
+                if raw is None:
+                    raw = 0.0
+                setter(float(raw))
 
             color = layer.get("color") if isinstance(layer.get("color"), dict) else {}
             solid = str(color.get("solidColor") or "#e0f2fe")

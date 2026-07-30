@@ -9,30 +9,37 @@ import numpy as np
 from features.video.lib.template_value_utils import normalize_color, to_record, to_string_value
 
 MAX_GRADIENT_COLOR_STOPS = 5
-GRADIENT_FALLBACK_COLOR = "#1e3a8a"
+GRADIENT_FALLBACK_COLOR = "#22d3ee"
 
 VALID_GRADIENT_DIRECTIONS = frozenset(
     {"left-to-right", "top-to-bottom", "diagonal", "radial", "circular"}
 )
 
+# Bright / light spectrum gradient catalogs (UI dropdown + style recipes).
+# Avoid pure white lead stops — they wash bars to chalk on dark stage.
 SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("#9f1239,#6b21a8,#1e3a8a,#0f766e", "Ruby Night"),
-    ("#7f1d1d,#9a3412,#854d0e,#1e3a8a", "Ember Dark"),
-    ("#4c1d95,#831843,#0e7490,#1e40af", "Violet Depth"),
-    ("#065f46,#0e7490,#1d4ed8,#5b21b6", "Abyss Teal"),
-    ("#9f1239,#be123c,#c2410c,#a16207", "Crimson Heat"),
-    ("#1e3a8a,#3730a3,#6b21a8,#9f1239", "Indigo Blood"),
-    ("#0f766e,#155e75,#1d4ed8,#4c1d95", "Deep Ocean"),
-    ("#7c2d12,#9f1239,#6b21a8,#1e3a8a", "Lava Night"),
-    ("#14532d,#166534,#0f766e,#1e40af", "Forest Depth"),
-    ("#701a75,#9d174d,#9a3412,#1e3a8a", "Magenta Ember"),
-    ("#1e293b,#334155,#0f766e,#4c1d95", "Slate Neon"),
-    ("#450a0a,#7f1d1d,#9a3412,#5b21b6", "Blood Amber"),
+    ("#ff4fd8,#22d3ee,#a78bfa,#f472b6", "Neon Candy"),
+    ("#38bdf8,#22d3ee,#818cf8,#c084fc", "Electric Sky"),
+    ("#fb7185,#f472b6,#e879f9,#c084fc", "Hot Magenta"),
+    ("#fb923c,#fbbf24,#f472b6,#a78bfa", "Solar Pop"),
+    ("#2dd4bf,#22d3ee,#60a5fa,#a78bfa", "Mint Freeze"),
+    ("#ff00ff,#00ffff,#a78bfa,#f472b6", "Prism Beam"),
+    ("#a3e635,#22d3ee,#818cf8,#f472b6", "Lime Pulse"),
+    ("#fb7185,#fb923c,#fbbf24,#38bdf8", "Coral Wave"),
+    ("#c084fc,#a78bfa,#67e8f9,#22d3ee", "Violet Ice"),
+    ("#fda4af,#fb7185,#f0abfc,#7dd3fc", "Peach Neon"),
+    ("#67e8f9,#22d3ee,#fb923c,#f472b6", "Aqua Flame"),
+    ("#f472b6,#a78bfa,#38bdf8,#34d399", "Prism Bright"),
 )
 
 
+def spectrum_gradient_preset_colors(preset_value: str) -> list[str]:
+    """Split a comma-joined palette preset into hex stops."""
+    return [part.strip() for part in str(preset_value or "").split(",") if part.strip()]
+
+
 def get_spectrum_layer_color_fallback(index: int) -> str:
-    return "#4c1d95" if index % 2 == 0 else "#0e7490"
+    return "#ff4fd8" if index % 2 == 0 else "#22d3ee"
 
 
 def _normalize_spectrum_color(value: Any, fallback: str) -> str:

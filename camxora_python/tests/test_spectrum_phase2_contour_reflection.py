@@ -44,9 +44,10 @@ def test_mirror_spectrum_points_flips_vertical() -> None:
     py = np.array([30.0, -40.0], dtype=np.float32)
     dx = np.array([0.0, 0.0], dtype=np.float32)
     dy = np.array([1.0, 1.0], dtype=np.float32)
-    mpx, mpy, mdx, mdy = mirror_spectrum_points_vertical(px, py, dx, dy)
+    mpx, mpy, mdx, mdy = mirror_spectrum_points_vertical(px, py, dx, dy, floor_gap=10.0)
     assert np.allclose(mpx, px)
-    assert np.allclose(mpy, -py)
+    # Flipped + shifted under the geometry (not a pure origin mirror).
+    assert float(np.max(mpy)) < float(np.min(py))
     assert np.allclose(mdx, dx)
     assert np.allclose(mdy, -dy)
 

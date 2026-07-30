@@ -28,11 +28,16 @@ def _direction_vector(direction: str, *, seed: float = 0.0) -> tuple[float, floa
     return (0.0, -1.0)  # down (y-up screen space for NDC later flips)
 
 
-def _hash01(*parts: float) -> float:
+def hash01(*parts: float) -> float:
+    """Deterministic 0..1 hash from float parts (stable per strike seed)."""
     x = 0.0
     for p in parts:
         x = math.sin(x * 12.9898 + float(p) * 78.233) * 43758.5453
     return float(x - math.floor(x))
+
+
+# Back-compat alias used by older call sites / tests.
+_hash01 = hash01
 
 
 def _rotate2(dx: float, dy: float, degrees: float) -> tuple[float, float]:
@@ -57,6 +62,7 @@ def build_lightning_polylines(
     seed: float = 1.0,
     speed: float = 1.0,
     rotation: float = 0.0,
+    length_reactivity: float = 0.0,
 ) -> list[np.ndarray]:
     """Return polylines for **one** lightning bolt (one layer = one bolt).
 
@@ -64,7 +70,12 @@ def build_lightning_polylines(
     Side forks from ``branchiness`` belong to that single bolt; they are not
     extra independent lightnings. Want more bolts → add more layers.
     ``rotation`` is an extra 0..360° clockwise spin on top of ``direction``.
+
+    Length is stable by default. ``length_reactivity`` (0..1) optionally lets
+    flash/volume stretch reach — off (0) keeps Bolt Length fixed.
+    ``speed`` no longer stretches length (timing only in the flash envelope).
     """
+    del speed  # reserved for callers / API compatibility; length is independent
     style_key = normalize_lightning_style(style)
     if flash <= 0.02:
         return []
@@ -73,29 +84,28 @@ def build_lightning_polylines(
     dx, dy_up = _direction_vector(direction, seed=seed + time_sec * 0.17)
     dy = -dy_up
     dx, dy = _rotate2(dx, dy, rotation)
-    # Speed stretches reach: at speed=1.0 length matches Bolt Length; higher = longer.
-    speed_n = float(max(0.05, min(4.0, float(speed or 1.0))))
-    length = float(max(20.0, length_px)) * float(0.55 + 0.45 * flash) * float(0.55 + 0.45 * speed_n)
+    length_react = float(max(0.0, min(1.0, length_reactivity)))
+    length_mul = (1.0 - length_react) + length_react * float(0.55 + 0.45 * flash)
+    length = float(max(20.0, length_px)) * float(length_mul)
     branch = float(max(0.0, min(1.0, branchiness)))
 
     if style_key == "pulse":
-        return _pulse_ring(cx, cy, length * 0.35 * flash, segments=28)
+        return _pulse_ring(cx, cy, length * 0.35 * max(0.35, flash), segments=28)
     if style_key == "sheet":
         return _sheet_flash(cx, cy, length, dx, dy, flash)
     if style_key == "horizon":
         return _horizon_band(cx, cy, length, flash, dx=dx, dy=dy)
     if style_key == "spider":
-        # One radial strike (not a fan of independent bolts).
         return _spider_single(cx, cy, length, branch, time_sec, seed, flash, dx, dy)
     if style_key == "storm":
-        # One turbulent fork — stormy look without spawning extra bolts.
+        # Respect branchiness=0 (no forced min forks).
         return _fork_bolt(
             cx,
             cy,
             length,
             dx,
             dy,
-            max(0.35, branch),
+            branch if branch > 0.0 else 0.0,
             time_sec,
             seed,
             segments=18,
@@ -108,7 +118,8 @@ def build_lightning_polylines(
     if style_key == "ribbon":
         return [_jagged_bolt(cx, cy, length, dx, dy, time_sec, seed, segments=10, jitter=0.08)]
     if style_key == "neon":
-        return _fork_bolt(cx, cy, length, dx, dy, max(0.2, branch * 0.6), time_sec, seed)
+        neon_branch = branch * 0.6 if branch > 0.0 else 0.0
+        return _fork_bolt(cx, cy, length, dx, dy, neon_branch, time_sec, seed)
     # fork (default)
     return _fork_bolt(cx, cy, length, dx, dy, branch, time_sec, seed)
 
@@ -134,9 +145,11 @@ def _jagged_bolt(
     qx, qy = -py, px
     for i in range(n):
         t = float(i) / float(n - 1)
-        j = (_hash01(seed, time_sec * 3.1, i) - 0.5) * 2.0 * jitter * length
-        # re-jitter along path over time for flicker
-        j *= 0.65 + 0.35 * math.sin(time_sec * 17.0 + i * 1.7 + seed)
+        # Slightly stronger mid-path wander for a more natural bolt.
+        mid = math.sin(t * math.pi)
+        j = (_hash01(seed, time_sec * 3.1, i) - 0.5) * 2.0 * jitter * length * (0.55 + 0.45 * mid)
+        # Locked shape uses shape_time; keep flicker soft (not frantic).
+        j *= 0.78 + 0.22 * math.sin(time_sec * 9.0 + i * 1.7 + seed)
         pts[i, 0] = cx + px * length * t + qx * j
         pts[i, 1] = cy + py * length * t + qy * j
     return pts
@@ -195,9 +208,7 @@ def _arc_bolt(cx: float, cy: float, length: float, dx: float, dy: float, time_se
 
 
 def _chain_bolt(cx: float, cy: float, length: float, dx: float, dy: float, time_sec: float, seed: float) -> np.ndarray:
-    base = _jagged_bolt(cx, cy, length, dx, dy, time_sec, seed, segments=18, jitter=0.1)
-    # Drop every other segment visually by collapsing pairs slightly.
-    return base
+    return _jagged_bolt(cx, cy, length, dx, dy, time_sec, seed, segments=18, jitter=0.1)
 
 
 def _pulse_ring(cx: float, cy: float, radius: float, *, segments: int) -> list[np.ndarray]:
@@ -217,7 +228,7 @@ def _sheet_flash(cx: float, cy: float, length: float, dx: float, dy: float, flas
     px /= norm
     py /= norm
     qx, qy = -py, px
-    half_w = length * (0.55 + 0.35 * flash)
+    half_w = length * (0.7 + 0.2 * flash)
     return [
         np.array(
             [
@@ -239,7 +250,7 @@ def _horizon_band(
     dy: float = 0.0,
 ) -> list[np.ndarray]:
     """One horizon flash band per layer (follows rotation via dx/dy)."""
-    half = length * (0.8 + 0.4 * flash)
+    half = length * (0.9 + 0.2 * flash)
     px, py = float(dx), float(dy)
     norm = math.hypot(px, py) or 1.0
     # Band runs perpendicular to strike direction.
@@ -263,18 +274,20 @@ def _spider_single(
     """One spider-like strike: primary ray + short side forks (still one bolt)."""
     ang = math.atan2(dy, dx) + (_hash01(seed, time_sec, 0.3) - 0.5) * 0.35
     sdx, sdy = math.cos(ang), math.sin(ang)
+    spider_branch = branch if branch > 0.0 else 0.0
     return _fork_bolt(
         cx,
         cy,
-        length * (0.7 + 0.3 * flash),
+        length * (0.85 + 0.15 * flash),
         sdx,
         sdy,
-        max(0.45, branch),
+        spider_branch,
         time_sec,
         seed,
         segments=12,
         jitter=0.16,
     )
+
 
 def lightning_strike_index(
     *,
@@ -282,21 +295,41 @@ def lightning_strike_index(
     flash_rate: float,
     speed: float,
     seed: float = 1.0,
+    react_motion_speed: float = 1.0,
 ) -> int:
     """Stable strike counter — shape stays locked for the whole flash window."""
-    rate = float(max(0.05, flash_rate)) * float(max(0.05, speed))
+    rate = float(max(0.0, flash_rate)) * float(max(0.0, speed)) * float(max(0.05, react_motion_speed))
+    if rate <= 1e-6:
+        return 0
     return int(math.floor(float(time_sec) * rate + float(seed) * 7.13))
 
 
-def _strike_pulse(*, time_sec: float, flash_rate: float, speed: float, seed: float) -> float:
-    """Brief on-window per strike period (sparse flashes, not a continuous strobe)."""
-    rate = float(max(0.05, flash_rate)) * float(max(0.05, speed))
+def _strike_pulse(
+    *,
+    time_sec: float,
+    flash_rate: float,
+    speed: float,
+    seed: float,
+    react_motion_speed: float = 1.0,
+) -> float:
+    """Brief on-window per strike — sharp attack, soft natural decay."""
+    motion = float(max(0.05, min(4.0, react_motion_speed if react_motion_speed > 0 else 0.05)))
+    rate = float(max(0.0, flash_rate)) * float(max(0.0, speed)) * motion
+    if rate <= 1e-6:
+        return 0.0
     phase = float(time_sec) * rate + float(seed) * 7.13
     period = phase - math.floor(phase)
-    duty = 0.12
+    # Faster react motion → snappier (shorter) duty; slower → linger.
+    duty = float(max(0.06, min(0.28, 0.16 / math.sqrt(motion))))
     if period >= duty:
         return 0.0
-    return float((1.0 - period / duty) ** 0.55)
+    t = period / duty
+    # Fast rise (~first 12%), then soft power-curve fall — reads more like real lightning.
+    if t < 0.12:
+        attack = t / 0.12
+        return float(attack * attack)
+    fall = (1.0 - (t - 0.12) / 0.88) ** (0.7 + 0.35 / motion)
+    return float(max(0.0, fall))
 
 
 def lightning_flash_envelope(
@@ -313,23 +346,29 @@ def lightning_flash_envelope(
     beat: float = 0.0,
     onset: float = 0.0,
     threshold: float = 0.22,
+    react_motion_speed: float = 1.0,
 ) -> float:
     """0..1 flash amount — discrete strikes only (never a constant multi-bolt glow)."""
     from features.video.lib.lightning_style_registry import normalize_lightning_trigger
 
-    pulse = _strike_pulse(time_sec=time_sec, flash_rate=flash_rate, speed=speed, seed=seed)
+    pulse = _strike_pulse(
+        time_sec=time_sec,
+        flash_rate=flash_rate,
+        speed=speed,
+        seed=seed,
+        react_motion_speed=react_motion_speed,
+    )
     audio = float(max(0.0, min(1.0, audio_env)))
     bass_v = float(max(0.0, min(1.0, bass)))
     kick_v = float(max(0.0, min(1.0, kick)))
     beat_v = float(max(0.0, min(1.0, max(beat, onset))))
     react = float(max(0.0, min(1.0, reactivity)))
-    thr = float(max(0.05, min(0.95, threshold)))
+    thr = float(max(0.0, min(0.95, threshold)))
     mode = normalize_lightning_trigger(trigger)
 
     if mode == "timed":
         return float(max(0.0, min(1.0, pulse)))
     if mode == "audio":
-        # Audio scales strike brightness — does not keep lightning permanently on.
         if pulse <= 0.0 or audio < thr * 0.5:
             return 0.0
         return float(max(0.0, min(1.0, pulse * (0.4 + 0.6 * audio))))
@@ -357,16 +396,23 @@ def polyline_to_ndc_strip(
     half_width: float,
     frame_w: float,
     frame_h: float,
+    half_width_end: float | None = None,
 ) -> np.ndarray | None:
-    """Expand a pixel-space polyline into an NDC triangle strip ``(2N, 2)``."""
+    """Expand a pixel-space polyline into an NDC triangle strip ``(2N, 2)``.
+
+    When ``half_width_end`` is set, width lerps along the path (taper).
+    """
     if pts is None or pts.ndim != 2 or pts.shape[0] < 2 or pts.shape[1] < 2:
         return None
     n = int(pts.shape[0])
-    hw = float(max(0.35, half_width))
+    hw0 = float(max(0.05, half_width))
+    hw1 = float(max(0.05, half_width if half_width_end is None else half_width_end))
     out = np.empty((n * 2, 2), dtype=np.float32)
     inv_w = 2.0 / float(max(1.0, frame_w))
     inv_h = 2.0 / float(max(1.0, frame_h))
     for i in range(n):
+        t = float(i) / float(max(1, n - 1))
+        hw = hw0 + (hw1 - hw0) * t
         if i == 0:
             tx = float(pts[1, 0] - pts[0, 0])
             ty = float(pts[1, 1] - pts[0, 1])

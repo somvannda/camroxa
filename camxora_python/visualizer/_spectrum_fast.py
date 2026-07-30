@@ -496,14 +496,30 @@ def mirror_spectrum_points_vertical(
     py: np.ndarray,
     dx: np.ndarray,
     dy: np.ndarray,
+    *,
+    floor_gap: float = 12.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Mirror spectrum bases across the horizontal axis through the layer origin."""
-    return (
-        np.asarray(px, dtype=np.float32).copy(),
-        (-np.asarray(py, dtype=np.float32)).astype(np.float32),
-        np.asarray(dx, dtype=np.float32).copy(),
-        (-np.asarray(dy, dtype=np.float32)).astype(np.float32),
-    )
+    """Mirror spectrum bases onto a floor line *under* the geometry.
+
+    Older code flipped through the layer origin (``py -> -py``). For a centered
+    circular ring that is a no-op visually, so Floor Reflection looked broken.
+    We still flip vertically, then shift the copy downward by ~2R + gap so it
+    sits under the original like a classic visualizer floor reflection.
+    """
+    px_a = np.asarray(px, dtype=np.float32).copy()
+    py_a = np.asarray(py, dtype=np.float32)
+    dx_a = np.asarray(dx, dtype=np.float32).copy()
+    dy_a = np.asarray(dy, dtype=np.float32)
+    if py_a.size == 0:
+        return px_a, py_a.copy(), dx_a, dy_a.copy()
+    radius_est = float(np.max(np.abs(py_a)))
+    if radius_est < 1.0:
+        # Linear / near-flat rows: use vertical span so the copy still clears.
+        radius_est = float(max(1.0, np.max(py_a) - np.min(py_a)))
+    gap = float(max(4.0, floor_gap))
+    r_py = ((-py_a) - (2.0 * radius_est + gap)).astype(np.float32)
+    r_dy = (-dy_a).astype(np.float32)
+    return px_a, r_py, dx_a, r_dy
 
 
 def build_contour_wave_strips(

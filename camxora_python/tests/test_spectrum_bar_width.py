@@ -36,7 +36,7 @@ def test_audio_bar_height_mult_scales_spike_height() -> None:
     assert _audio_bar_height_mult({"audioSettings": {"barHeight": 1.0}}) == 1.0
     assert _audio_bar_height_mult({"audioSettings": {"barHeight": 2.5}}) == 2.5
     assert _audio_bar_height_mult({"audioSettings": {"barHeight": 0.1}}) == 0.25
-    assert _audio_bar_height_mult({"audioSettings": {"barHeight": 99.0}}) == 8.0
+    assert _audio_bar_height_mult({"audioSettings": {"barHeight": 99.0}}) == 12.0
     assert _audio_bar_height_mult({}) == 1.0
 
 

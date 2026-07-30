@@ -104,11 +104,13 @@ def resolve_spectrum_logo_centers(
     sf: float,
     position: dict[str, Any] | None,
     spectrum_attach_to_logo: bool,
+    logo_position: dict[str, Any] | None = None,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     """Return ``(spectrum_center, logo_center)`` in pixel space.
 
-    When attached, both share the spectrum position so the ring follows the logo.
-    When detached, spectrum uses ``position`` and the logo stays frame-centered.
+    When attached, both share the spectrum ``position`` so the ring follows the logo.
+    When detached, spectrum uses ``position`` and the logo uses ``logo_position``
+    (defaults to frame center when offsets are 0).
     """
     pos = position if isinstance(position, dict) else {}
     anchor = str(pos.get("anchor") or "center")
@@ -123,5 +125,16 @@ def resolve_spectrum_logo_centers(
     spectrum = get_anchor_coords(anchor, ox, oy, int(w), int(h))
     if spectrum_attach_to_logo:
         return spectrum, spectrum
-    logo = get_anchor_coords("center", 0.0, 0.0, int(w), int(h))
+
+    logo_pos = logo_position if isinstance(logo_position, dict) else {}
+    logo_anchor = str(logo_pos.get("anchor") or "center")
+    try:
+        lox = float(logo_pos.get("x", 0.0) or 0.0) * float(sf)
+    except (TypeError, ValueError):
+        lox = 0.0
+    try:
+        loy = float(logo_pos.get("y", 0.0) or 0.0) * float(sf)
+    except (TypeError, ValueError):
+        loy = 0.0
+    logo = get_anchor_coords(logo_anchor, lox, loy, int(w), int(h))
     return spectrum, logo

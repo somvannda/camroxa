@@ -19,6 +19,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Multi-Spectrum instances: up to 8 independent Spectrums (position/attach/audio/rings each). See `docs/changelog/2026-07-30-multi-spectrum-instances.md`.
+- Fix: heal empty Spectrum instance layers + map legacy sensitivity→inputGain so templates keep reactive spectrums after multi-instance.
+- Fix: Magma Ridge / waveform presets sync style onto the selected Spectrum instance and refresh preview.
+- Bright spectrum color palettes: replace dark gradient catalog; wire all style/stack recipes to neon presets. See `docs/changelog/2026-07-30-bright-spectrum-palettes.md`.
+- Fix: heal fully-transparent spectrum layers + over-smoothed audio so templates like Thunder Bass 29July show reactive styles again. See `docs/changelog/2026-07-30-heal-invisible-dead-spectrum.md`.
+- Fix: Fill Circle / Floor Reflection / Peak Caps toggles work across bar + ring templates. See `docs/changelog/2026-07-30-spectrum-layer-toggles.md`.
+- Logo drag: Logo tab enables preview drag again; detached logos can leave center via `logoSettings.position`. See `docs/changelog/2026-07-30-logo-drag-fix.md`.
+- Lightning UX polish: opacity/glow/branchiness honor 0, rotation taper, rotation wheel, react motion speed, random on-screen spawn, stronger strike glow; volume no longer stretches bolt length by default. See `docs/changelog/2026-07-30-lightning-ux-polish.md`.
 - Preview hitch every ~4s (round 3): hard-pause music-download polls while preview plays — pending sync can no longer re-arm the 4s timer over live playback. See `docs/changelog/2026-07-29-preview-hitch-round3.md`.
 - Preview hitch round 2: skip identical template pushes, avoid particle `.tobytes()` copies, back off download/pipeline polls while preview plays. See `docs/changelog/2026-07-29-preview-hitch-round2.md`.
 - Preview hitch: remove periodic `grabFramebuffer` from the 60fps paint loop (one-shot on pause only); reuse FFT buffers / avoid VBO `.tobytes()` copies. See `docs/changelog/2026-07-29-preview-hitch-deep-fix.md`.

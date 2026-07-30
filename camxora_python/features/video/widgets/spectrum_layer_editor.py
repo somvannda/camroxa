@@ -195,8 +195,20 @@ class SpectrumLayerEditor(InspectorSection):
             )
         ):
             checkbox = QCheckBox(label)
+            if field == "fillCircle":
+                checkbox.setToolTip(
+                    "Fills the inside of a circular spectrum. Turns on Circle Form if needed."
+                )
+            elif field == "reflectionEnabled":
+                checkbox.setToolTip(
+                    "Draws a mirrored copy under the spectrum (floor reflection)."
+                )
             checkbox.toggled.connect(
-                lambda checked, key=field: self.layer_patch_requested.emit({key: checked})
+                lambda checked, key=field: (
+                    None
+                    if self._binding
+                    else self.layer_patch_requested.emit({key: checked})
+                )
             )
             self._toggle_fields[field] = checkbox
             toggle_row.addWidget(checkbox, index // 2, index % 2)
@@ -206,8 +218,8 @@ class SpectrumLayerEditor(InspectorSection):
 
         bar_height_widget, bar_height_setter = build_float_slider(
             "Global Height Gain (all layers)",
-            minimum=0.5,
-            maximum=6,
+            minimum=0.25,
+            maximum=12,
             step=0.05,
             value=1,
             on_change=lambda value: self.draft_patch_requested.emit(
@@ -235,16 +247,16 @@ class SpectrumLayerEditor(InspectorSection):
                 "barWidth",
                 "Bar Width (this layer)",
                 1,
-                120,
+                240,
                 0.25,
-                "Thickness of each bar in pixels. Capped below the density slot so "
-                "bars stay separated (raise Density and Width fight for the same space).",
+                "Thickness of each bar in pixels. Raise freely for bold strokes; "
+                "very wide bars may touch neighbors at high Density.",
             ),
             (
                 "thickness",
                 "Bar Length (this layer)",
                 1,
-                220,
+                600,
                 0.25,
                 "How far each bar/spike grows from the ring (per layer). "
                 "Global Height Gain multiplies this for all layers.",
@@ -253,7 +265,7 @@ class SpectrumLayerEditor(InspectorSection):
                 "radiusOffset",
                 "Layer Gap / Ring Size (this layer)",
                 0,
-                400,
+                800,
                 0.5,
                 "Moves this ring outward from the logo/core.",
             ),
@@ -278,8 +290,15 @@ class SpectrumLayerEditor(InspectorSection):
             self.add_widget(widget)
 
         self._peak_caps_enabled = QCheckBox("Peak Caps")
+        self._peak_caps_enabled.setToolTip(
+            "Floating caps that hold peak bar heights. Arms Peak Hold Blend if it was zero."
+        )
         self._peak_caps_enabled.toggled.connect(
-            lambda checked: self.layer_patch_requested.emit({"peakCapsEnabled": checked})
+            lambda checked: (
+                None
+                if self._binding
+                else self.layer_patch_requested.emit({"peakCapsEnabled": checked})
+            )
         )
         self.add_widget(self._peak_caps_enabled)
 
@@ -595,7 +614,9 @@ class SpectrumLayerEditor(InspectorSection):
                 self._blend_combo.setCurrentIndex(blend_index)
 
             for field, checkbox in self._toggle_fields.items():
+                checkbox.blockSignals(True)
                 checkbox.setChecked(bool(layer.get(field)))
+                checkbox.blockSignals(False)
 
             if "audioBarHeight" in self._float_setters:
                 self._float_setters["audioBarHeight"](float(draft.get("audioBarHeight") or 1))
@@ -621,7 +642,9 @@ class SpectrumLayerEditor(InspectorSection):
                     self._float_setters[field](float(raw))
                 else:
                     self._float_setters[field](float(default))
+            self._peak_caps_enabled.blockSignals(True)
             self._peak_caps_enabled.setChecked(bool(layer.get("peakCapsEnabled", False)))
+            self._peak_caps_enabled.blockSignals(False)
             self._peak_cap_color_setter(str(layer.get("peakCapColor") or "#ffffff"))
 
             self._color_model = extract_spectrum_layer_color_model(

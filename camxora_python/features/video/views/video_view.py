@@ -71,6 +71,7 @@ from features.video.lib.spectrum_style_registry import (
     build_spectrum_preset_template,
     build_stacked_spectrum_preset_template,
     build_unified_spectrum_preset_options,
+    heal_spectrum_layer_visibility,
     normalize_spectrum_preset_key_for_apply,
 )
 from features.video.lib.template_draft_domains import build_draft_dirty_state
@@ -262,6 +263,8 @@ class VideoView(QWidget):
         self._active_title_preset_key: str | None = None
         self._spectrum_layers: list[dict] = []
         self._selected_spectrum_layer_index = 0
+        self._spectrum_instances: list[dict] = []
+        self._selected_spectrum_instance_index = 0
         self._lightning_layers: list[dict] = []
         self._selected_lightning_layer_index = 0
         self._selected_text_overlay_index = 0
@@ -374,6 +377,13 @@ class VideoView(QWidget):
         self._spectrum_inspector.layer_move_up_requested.connect(self._move_spectrum_layer_up)
         self._spectrum_inspector.layer_move_down_requested.connect(self._move_spectrum_layer_down)
         self._spectrum_inspector.layer_selected.connect(self._select_spectrum_layer)
+        self._spectrum_inspector.instance_selected.connect(self._select_spectrum_instance)
+        self._spectrum_inspector.instance_add_requested.connect(self._add_spectrum_instance)
+        self._spectrum_inspector.instance_duplicate_requested.connect(self._duplicate_spectrum_instance)
+        self._spectrum_inspector.instance_delete_requested.connect(self._delete_spectrum_instance)
+        self._spectrum_inspector.instance_move_up_requested.connect(self._move_spectrum_instance_up)
+        self._spectrum_inspector.instance_move_down_requested.connect(self._move_spectrum_instance_down)
+        self._spectrum_inspector.instance_patch_requested.connect(self._patch_selected_spectrum_instance)
 
         self._background_inspector = BackgroundInspector()
         self._background_inspector.draft_patch_requested.connect(self._patch_template_draft)
@@ -462,6 +472,7 @@ class VideoView(QWidget):
         self._stage.playback_seek_requested.connect(self._seek_preview_playback)
         self._stage.spectrum_position_changed.connect(self._on_preview_spectrum_position_changed)
         self._stage.lightning_position_changed.connect(self._on_preview_lightning_position_changed)
+        self._stage.logo_position_changed.connect(self._on_preview_logo_position_changed)
         self._stage.background_transform_changed.connect(self._on_preview_background_transform_changed)
         self._stage.text_domain_position_changed.connect(self._on_preview_text_domain_position_changed)
         self._stage.text_domain_box_resize_changed.connect(self._on_preview_text_domain_box_resize_changed)
@@ -943,6 +954,74 @@ class VideoView(QWidget):
         )
         if style_key in STYLE_PRESET_PATCHES and self._spectrum_layers:
             self._spectrum_layers = align_spectrum_layers_to_style_geometry(self._spectrum_layers, style_key)
+        # Accidental opacity=0 on every ring makes the spectrum vanish and styles look broken.
+        self._spectrum_layers = heal_spectrum_layer_visibility(self._spectrum_layers)
+        # Extreme motion smoothing (~0.99) freezes the FFT envelope → “dead” ring.
+        if self._template_draft is not None:
+            try:
+                smooth = float(self._template_draft.get("audioMotionSmoothing", 0.8) or 0.8)
+            except (TypeError, ValueError):
+                smooth = 0.8
+            if smooth > 0.95:
+                self._template_draft = {**self._template_draft, "audioMotionSmoothing": 0.85}
+
+        from features.video.lib.spectrum_instance_registry import (
+            migrate_legacy_spectrum_to_instances,
+            normalize_spectrum_instances,
+            project_instance_to_draft_fields,
+        )
+        snap_instances = snapshot.get("spectrumInstances") if snapshot else None
+        if isinstance(snap_instances, list) and snap_instances:
+            seeded = dict(template)
+            seeded["layers"] = clone_layer_records(self._spectrum_layers) or clone_layer_records(template.get("layers"))
+            self._spectrum_instances = normalize_spectrum_instances(snap_instances, template=seeded)
+        else:
+            # Prefer live layers on instance[0] after hydrate.
+            seeded = dict(template)
+            seeded["layers"] = clone_layer_records(self._spectrum_layers)
+            if self._template_draft:
+                seeded["style"] = self._template_draft.get("style") or seeded.get("style")
+                seeded["position"] = {
+                    "anchor": self._template_draft.get("anchor") or "center",
+                    "x": self._template_draft.get("positionX", 0),
+                    "y": self._template_draft.get("positionY", 0),
+                }
+                seeded["previewBindings"] = {
+                    **(seeded.get("previewBindings") if isinstance(seeded.get("previewBindings"), dict) else {}),
+                    "spectrumAttachToLogo": bool(self._template_draft.get("spectrumAttachToLogo", True)),
+                    "spectrumLogoGap": float(self._template_draft.get("spectrumLogoGap", 0) or 0),
+                }
+                if self._template_draft.get("audioInputGain") is not None:
+                    seeded["audioSettings"] = {
+                        **(seeded.get("audioSettings") if isinstance(seeded.get("audioSettings"), dict) else {}),
+                        "inputGain": self._template_draft.get("audioInputGain"),
+                        "barHeight": self._template_draft.get("audioBarHeight", 1.0),
+                        "bandContrast": self._template_draft.get("audioBandContrast", 1.0),
+                        "transientFocus": self._template_draft.get("audioTransientFocus", 1.0),
+                        "kickImpact": self._template_draft.get("audioKickImpact", 0.0),
+                        "bassEmphasis": self._template_draft.get("audioBassEmphasis", 1.0),
+                        "trebleShimmer": self._template_draft.get("audioTrebleShimmer", 1.0),
+                        "peakHoldBlend": self._template_draft.get("audioPeakHoldBlend", 0.0),
+                        "motionSmoothing": self._template_draft.get("audioMotionSmoothing", 0.8),
+                        "flyingGlowWingMotionSpeed": self._template_draft.get("flyingGlowWingMotionSpeed", 1.0),
+                        "flyingGlowWingRelease": self._template_draft.get("flyingGlowWingRelease", 0.9),
+                    }
+            self._spectrum_instances = migrate_legacy_spectrum_to_instances(seeded)
+        if self._spectrum_instances:
+            # Keep working layers as selected instance rings without wiping multi-instance data.
+            self._selected_spectrum_instance_index = 0
+            inst0 = self._spectrum_instances[0] if isinstance(self._spectrum_instances[0], dict) else {}
+            inst0_layers = clone_layer_records(inst0.get("layers"))
+            if self._spectrum_layers:
+                if not inst0_layers or len(self._spectrum_instances) == 1:
+                    self._spectrum_instances[0]["layers"] = clone_layer_records(self._spectrum_layers)
+                else:
+                    # Multi-instance snapshot: trust instance rings; project into the editor.
+                    self._spectrum_layers = clone_layer_records(inst0_layers)
+            elif inst0_layers:
+                self._spectrum_layers = clone_layer_records(inst0_layers)
+            if self._template_draft is not None:
+                self._template_draft = {**self._template_draft, **project_instance_to_draft_fields(self._spectrum_instances[0])}
 
         self._hydrated_template_id = template_id
         self._persisted_draft_snapshot = draft_snapshot(self._template_draft)
@@ -994,6 +1073,8 @@ class VideoView(QWidget):
             self._template_draft,
             layers=self._spectrum_layers,
             selected_layer_index=self._selected_spectrum_layer_index,
+            instances=self._spectrum_instances,
+            selected_instance_index=self._selected_spectrum_instance_index,
         )
         self._background_inspector.bind_draft(self._template_draft)
         self._logo_inspector.bind_draft(self._template_draft)
@@ -2590,11 +2671,13 @@ class VideoView(QWidget):
             return
         track_paths = self._current_track_paths()
         active_track = str(self._workspace.selected_mp3_path or "")
+        self._flush_active_spectrum_instance_layers()
         renderer_template = self._template_normalizer.to_renderer_dict(
             base=dict(self._workspace.template),
             draft=self._template_draft,
             layers=self._spectrum_layers,
             lightning_layers=self._lightning_layers,
+            spectrum_instances=self._spectrum_instances,
             workspace={
                 "logoPath": self._workspace.logo_path,
                 "trackPaths": track_paths,
@@ -2607,18 +2690,23 @@ class VideoView(QWidget):
             active_track_path=active_track or None,
         )
         aspect = self._workspace.preview_aspect_ratio
-        background_edit, spectrum_position_edit, text_domain_edit, lightning_position_edit = resolve_preview_edit_modes(
-            self._active_domain_tab,
-            self._active_side_tab,
-            edit_focus=self._preview_edit_focus,
+        background_edit, spectrum_position_edit, text_domain_edit, lightning_position_edit, logo_position_edit = (
+            resolve_preview_edit_modes(
+                self._active_domain_tab,
+                self._active_side_tab,
+                edit_focus=self._preview_edit_focus,
+            )
         )
         self._stage.set_preview_edit_modes(
             background=background_edit,
             spectrum_position=spectrum_position_edit,
             text_domain=text_domain_edit,
             lightning_position=lightning_position_edit,
+            logo_position=logo_position_edit,
         )
         self._stage.set_selected_lightning_layer_index(self._selected_lightning_layer_index)
+        if hasattr(self._stage, "set_selected_spectrum_instance_index"):
+            self._stage.set_selected_spectrum_instance_index(self._selected_spectrum_instance_index)
         self._sync_text_drag_overlay(text_domain_edit)
         self._stage.set_renderer_preview(
             template=renderer_template,
@@ -2836,13 +2924,29 @@ class VideoView(QWidget):
         pos_cfg = self._template_draft.get("position") if isinstance(self._template_draft.get("position"), dict) else {}
         anchor = str(pos_cfg.get("anchor") or self._template_draft.get("anchor") or "center")
         self._patch_template_draft({"anchor": anchor, "positionX": int(x), "positionY": int(y)})
+        if self._spectrum_instances:
+            idx = max(0, min(self._selected_spectrum_instance_index, len(self._spectrum_instances) - 1))
+            inst = dict(self._spectrum_instances[idx]) if isinstance(self._spectrum_instances[idx], dict) else {}
+            inst["x"] = float(x)
+            inst["y"] = float(y)
+            inst["anchor"] = anchor
+            self._spectrum_instances[idx] = inst
 
     def _on_preview_lightning_position_changed(self, x: int, y: int) -> None:
         if not self._lightning_layers:
             return
         index = max(0, min(self._selected_lightning_layer_index, len(self._lightning_layers) - 1))
         self._patch_selected_lightning_layer({"x": float(x), "y": float(y)})
-        self._selected_lightning_layer_index = index
+
+    def _on_preview_logo_position_changed(self, x: int, y: int) -> None:
+        if not self._template_draft:
+            return
+        patch: dict = {"logoPositionX": int(x), "logoPositionY": int(y)}
+        # While attached, shared spectrum position must move with the logo.
+        if bool(self._template_draft.get("spectrumAttachToLogo", True)):
+            anchor = str(self._template_draft.get("anchor") or "center")
+            patch.update({"anchor": anchor, "positionX": int(x), "positionY": int(y)})
+        self._patch_template_draft(patch)
 
     def _on_preview_text_domain_position_changed(self, domain: str, x: float, y: float) -> None:
         """Persist Album/Title offsets after GPU real-time drag ends."""
@@ -3152,6 +3256,146 @@ class VideoView(QWidget):
         notify_action(f"Removed {item.get('name')} ({item.get('version')}).", tone="success")
         self._refresh_effect_pack_catalog()
 
+
+    def _flush_active_spectrum_instance_layers(self) -> None:
+        """Write working draft + ring layers into the selected Spectrum instance.
+
+        Preview/export read per-instance ``style`` (waveform vs bars). Preset
+        apply updates the flat draft; without this sync, Magma Ridge / Aurora /
+        Plasma keep drawing as the previous bar style.
+        """
+        if not self._spectrum_instances:
+            return
+        from features.video.lib.spectrum_instance_registry import apply_draft_fields_to_instance
+
+        idx = max(0, min(self._selected_spectrum_instance_index, len(self._spectrum_instances) - 1))
+        inst = dict(self._spectrum_instances[idx]) if isinstance(self._spectrum_instances[idx], dict) else {}
+        if self._template_draft:
+            inst = apply_draft_fields_to_instance(inst, self._template_draft)
+        inst["layers"] = clone_layer_records(self._spectrum_layers)
+        self._spectrum_instances[idx] = inst
+
+    def _commit_spectrum_preset_to_preview(self) -> None:
+        """After style/stack preset changes: sync instance, inspectors, dirty, preview."""
+        self._flush_active_spectrum_instance_layers()
+        self._update_inspectors()
+        self._update_dirty_state()
+        self._flush_preview_update()
+
+    def _project_selected_spectrum_instance(self) -> None:
+        from features.video.lib.spectrum_instance_registry import (
+            normalize_spectrum_instance,
+            project_instance_to_draft_fields,
+        )
+        if not self._spectrum_instances:
+            return
+        idx = max(0, min(self._selected_spectrum_instance_index, len(self._spectrum_instances) - 1))
+        inst = normalize_spectrum_instance(self._spectrum_instances[idx], index=idx)
+        self._spectrum_instances[idx] = inst
+        self._spectrum_layers = clone_layer_records(inst.get("layers") or [])
+        self._selected_spectrum_layer_index = 0 if not self._spectrum_layers else min(
+            self._selected_spectrum_layer_index, len(self._spectrum_layers) - 1
+        )
+        if self._template_draft is not None:
+            self._template_draft = {**self._template_draft, **project_instance_to_draft_fields(inst)}
+
+    def _set_spectrum_instances(self, instances: list[dict], *, selected_index: int) -> None:
+        from features.video.lib.spectrum_instance_registry import normalize_spectrum_instances
+        self._spectrum_instances = normalize_spectrum_instances(instances)
+        self._selected_spectrum_instance_index = max(0, min(selected_index, max(len(self._spectrum_instances) - 1, 0)))
+        self._project_selected_spectrum_instance()
+        if hasattr(self, "_stage") and self._stage is not None:
+            if hasattr(self._stage, "set_selected_spectrum_instance_index"):
+                self._stage.set_selected_spectrum_instance_index(self._selected_spectrum_instance_index)
+        self._update_inspectors()
+        self._schedule_dirty_state_update()
+        self._schedule_preview_update()
+
+    def _select_spectrum_instance(self, index: int) -> None:
+        self._flush_active_spectrum_instance_layers()
+        self._selected_spectrum_instance_index = max(0, index)
+        self._project_selected_spectrum_instance()
+        if hasattr(self._stage, "set_selected_spectrum_instance_index"):
+            self._stage.set_selected_spectrum_instance_index(self._selected_spectrum_instance_index)
+        self._update_inspectors()
+        self._schedule_preview_update()
+
+    def _patch_selected_spectrum_instance(self, patch: dict) -> None:
+        from features.video.lib.spectrum_instance_registry import normalize_spectrum_instance
+        if not self._spectrum_instances:
+            return
+        idx = max(0, min(self._selected_spectrum_instance_index, len(self._spectrum_instances) - 1))
+        current = self._spectrum_instances[idx] if isinstance(self._spectrum_instances[idx], dict) else {}
+        next_inst = {**current, **(patch if isinstance(patch, dict) else {})}
+        next_inst["layers"] = clone_layer_records(self._spectrum_layers)
+        self._spectrum_instances[idx] = normalize_spectrum_instance(next_inst, index=idx)
+        self._project_selected_spectrum_instance()
+        self._update_inspectors(defer_rebind=True)
+        self._schedule_dirty_state_update()
+        self._schedule_preview_update()
+
+    def _add_spectrum_instance(self) -> None:
+        from features.video.lib.spectrum_instance_registry import default_spectrum_instance, normalize_spectrum_instances
+        self._flush_active_spectrum_instance_layers()
+        instances = list(self._spectrum_instances)
+        if len(instances) >= 8:
+            notify_action("Maximum of 8 Spectrums.", tone="warning")
+            return
+        basis = dict(instances[-1]) if instances else default_spectrum_instance(index=1)
+        nxt = default_spectrum_instance(index=len(instances) + 1, layers=basis.get("layers") or self._spectrum_layers)
+        nxt["x"] = float(basis.get("x", 0) or 0) + 40.0
+        nxt["y"] = float(basis.get("y", 0) or 0)
+        nxt["spectrumAttachToLogo"] = False
+        instances.append(nxt)
+        self._set_spectrum_instances(instances, selected_index=len(instances) - 1)
+
+    def _duplicate_spectrum_instance(self) -> None:
+        from features.video.lib.spectrum_instance_registry import default_spectrum_instance
+        self._flush_active_spectrum_instance_layers()
+        instances = list(self._spectrum_instances)
+        if not instances or len(instances) >= 8:
+            if len(instances) >= 8:
+                notify_action("Maximum of 8 Spectrums.", tone="warning")
+            return
+        idx = max(0, min(self._selected_spectrum_instance_index, len(instances) - 1))
+        basis = dict(instances[idx])
+        name = str(basis.get("name") or "").strip()
+        nxt = {
+            **basis,
+            "id": f"spectrum-{len(instances) + 1}",
+            "name": f"{name} Copy" if name else f"Spectrum {len(instances) + 1}",
+            "x": float(basis.get("x", 0) or 0) + 36.0,
+            "layers": clone_layer_records(basis.get("layers") or self._spectrum_layers),
+        }
+        instances.append(nxt)
+        self._set_spectrum_instances(instances, selected_index=len(instances) - 1)
+
+    def _delete_spectrum_instance(self) -> None:
+        instances = list(self._spectrum_instances)
+        if len(instances) < 2:
+            return
+        idx = max(0, min(self._selected_spectrum_instance_index, len(instances) - 1))
+        instances.pop(idx)
+        self._set_spectrum_instances(instances, selected_index=max(0, idx - 1))
+
+    def _move_spectrum_instance_up(self) -> None:
+        instances = list(self._spectrum_instances)
+        idx = max(0, min(self._selected_spectrum_instance_index, len(instances) - 1))
+        if idx <= 0 or len(instances) < 2:
+            return
+        self._flush_active_spectrum_instance_layers()
+        instances[idx - 1], instances[idx] = instances[idx], instances[idx - 1]
+        self._set_spectrum_instances(instances, selected_index=idx - 1)
+
+    def _move_spectrum_instance_down(self) -> None:
+        instances = list(self._spectrum_instances)
+        idx = max(0, min(self._selected_spectrum_instance_index, len(instances) - 1))
+        if idx >= len(instances) - 1 or len(instances) < 2:
+            return
+        self._flush_active_spectrum_instance_layers()
+        instances[idx + 1], instances[idx] = instances[idx], instances[idx + 1]
+        self._set_spectrum_instances(instances, selected_index=idx + 1)
+
     def _set_spectrum_layers(
         self,
         layers: list[dict],
@@ -3161,9 +3405,11 @@ class VideoView(QWidget):
     ) -> None:
         self._spectrum_layers = clone_layer_records(layers)
         self._selected_spectrum_layer_index = selected_index
+        self._flush_active_spectrum_instance_layers()
         self._remember_active_spectrum_preset_session()
         self._update_inspectors(defer_rebind=defer_rebind)
         self._schedule_dirty_state_update()
+        self._schedule_preview_update()
 
     def _set_lightning_layers(
         self,
@@ -3271,10 +3517,33 @@ class VideoView(QWidget):
             layers = [{}]
         index = max(0, min(self._selected_spectrum_layer_index, len(layers) - 1))
         current = layers[index] if isinstance(layers[index], dict) else {}
-        layers[index] = {**current, **patch}
+        next_patch = dict(patch) if isinstance(patch, dict) else {}
+        # Fill Circle is a disc fill of the ring — enable Circle Form when needed.
+        if next_patch.get("fillCircle") is True and not bool(current.get("curved", False)):
+            next_patch["curved"] = True
+            next_patch["mirrored"] = True
+        layers[index] = {**current, **next_patch}
+        # Peak Caps used to require Peak Hold Blend > 0; auto-arm a usable hold.
+        if next_patch.get("peakCapsEnabled") is True and self._template_draft is not None:
+            try:
+                hold = float(self._template_draft.get("audioPeakHoldBlend", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                hold = 0.0
+            if hold <= 0.001:
+                self._template_draft = {**self._template_draft, "audioPeakHoldBlend": 0.45}
+                if self._spectrum_instances:
+                    from features.video.lib.spectrum_instance_registry import apply_draft_fields_to_instance
+                    idx = max(0, min(self._selected_spectrum_instance_index, len(self._spectrum_instances) - 1))
+                    self._spectrum_instances[idx] = apply_draft_fields_to_instance(
+                        self._spectrum_instances[idx],
+                        {"audioPeakHoldBlend": 0.45},
+                    )
         # Geometry / form changes need an immediate inspector rebind (Circle Form, etc.).
-        structural = {"curved", "mirrored", "gravity", "blend_mode", "name", "fillCircle", "solidBand", "reflectionEnabled"}
-        defer = not any(key in patch for key in structural)
+        structural = {
+            "curved", "mirrored", "gravity", "blend_mode", "name",
+            "fillCircle", "solidBand", "reflectionEnabled", "peakCapsEnabled",
+        }
+        defer = not any(key in next_patch for key in structural)
         self._set_spectrum_layers(layers, selected_index=index, defer_rebind=defer)
 
     def _patch_selected_spectrum_layer_color(self, patch: dict) -> None:
@@ -3373,6 +3642,21 @@ class VideoView(QWidget):
         if not self._template_draft:
             return
         self._template_draft = {**self._template_draft, **patch}
+        from features.video.lib.spectrum_instance_registry import apply_draft_fields_to_instance
+        spectrum_keys = {
+            "style", "anchor", "positionX", "positionY",
+            "spectrumAttachToLogo", "spectrumLogoGap",
+            "audioInputGain", "audioBarHeight", "audioBandContrast",
+            "audioTransientFocus", "audioKickImpact", "audioBassEmphasis",
+            "audioTrebleShimmer", "audioPeakHoldBlend", "audioMotionSmoothing",
+            "flyingGlowWingMotionSpeed", "flyingGlowWingRelease",
+        }
+        if spectrum_keys & set(patch.keys()) and self._spectrum_instances:
+            idx = max(0, min(self._selected_spectrum_instance_index, len(self._spectrum_instances) - 1))
+            self._spectrum_instances[idx] = apply_draft_fields_to_instance(
+                self._spectrum_instances[idx], patch
+            )
+            self._spectrum_instances[idx]["layers"] = clone_layer_records(self._spectrum_layers)
         if particle_patch_touches_preset_fields(patch):
             self._remember_active_particle_preset_session()
         if spectrum_patch_touches_preset_fields(patch):
@@ -3384,8 +3668,13 @@ class VideoView(QWidget):
         # The control that emitted the patch already shows the new value;
         # rebind the rest once the user pauses instead of on every tick.
         self._update_inspectors(defer_rebind=True)
+        self._schedule_dirty_state_update()
         if {"particlesEnabled", "spectrumEnabled", "backgroundEnabled", "logoEnabled"} & set(patch.keys()):
             self._flush_preview_update()
+        elif spectrum_keys & set(patch.keys()):
+            self._schedule_preview_update()
+        elif particle_patch_touches_preset_fields(patch) or background_patch_touches_preset_fields(patch) or logo_patch_touches_preset_fields(patch):
+            self._schedule_preview_update()
 
     def _remember_active_particle_preset_session(self) -> None:
         if not self._template_draft:
@@ -3660,8 +3949,7 @@ class VideoView(QWidget):
                 self._spectrum_layers = clone_layer_records(next_layers)
             self._selected_spectrum_layer_index = 0
             self._active_spectrum_preset_key = None
-            self._update_inspectors()
-            self._update_dirty_state()
+            self._commit_spectrum_preset_to_preview()
             notify_action(f"Applied pack preset: {item.get('name')}.", tone="success")
             return
 
@@ -3680,8 +3968,7 @@ class VideoView(QWidget):
                 max(0, len(self._spectrum_layers) - 1),
             )
             self._active_spectrum_preset_key = preset_key
-            self._update_inspectors()
-            self._update_dirty_state()
+            self._commit_spectrum_preset_to_preview()
             return
 
         base_template = {**dict(self._workspace.template), **self._template_draft, "layers": self._spectrum_layers}
@@ -3691,8 +3978,7 @@ class VideoView(QWidget):
         self._spectrum_layers = clone_layer_records(patched.get("layers"))
         self._selected_spectrum_layer_index = 0
         self._active_spectrum_preset_key = preset_key
-        self._update_inspectors()
-        self._update_dirty_state()
+        self._commit_spectrum_preset_to_preview()
 
     def _apply_stacked_spectrum_preset(self, preset_key: str) -> None:
         if not self._workspace or not self._template_draft:
@@ -3714,8 +4000,7 @@ class VideoView(QWidget):
             self._spectrum_layers = layers
             self._selected_spectrum_layer_index = 0
             self._active_spectrum_preset_key = preset_key
-            self._update_inspectors()
-            self._update_dirty_state()
+            self._commit_spectrum_preset_to_preview()
             notify_action(f"Restored stacked preset: {preset_key.replace('-', ' ').title()}.", tone="success")
             return
 
@@ -3728,8 +4013,7 @@ class VideoView(QWidget):
         self._spectrum_layers = clone_layer_records(patched.get("layers"))
         self._selected_spectrum_layer_index = 0
         self._active_spectrum_preset_key = preset_key
-        self._update_inspectors()
-        self._update_dirty_state()
+        self._commit_spectrum_preset_to_preview()
         notify_action(f"Applied stacked preset: {preset_key.replace('-', ' ').title()}.", tone="success")
 
     def _clear_stacked_spectrum_preset(self) -> None:
@@ -3746,8 +4030,7 @@ class VideoView(QWidget):
             if patched and isinstance(patched.get("layers"), list) and patched["layers"]:
                 self._spectrum_layers = clone_layer_records(patched["layers"][:1])
         self._selected_spectrum_layer_index = 0
-        self._update_inspectors()
-        self._update_dirty_state()
+        self._commit_spectrum_preset_to_preview()
         notify_action("Cleared stacked spectrum layers.", tone="success")
 
     def _restore_particle_preset(self) -> None:
@@ -3792,8 +4075,7 @@ class VideoView(QWidget):
         self._spectrum_layers = clone_layer_records(patched.get("layers"))
         self._selected_spectrum_layer_index = 0
         self._active_spectrum_preset_key = key
-        self._update_inspectors()
-        self._update_dirty_state()
+        self._commit_spectrum_preset_to_preview()
         notify_action(f"Restored spectrum preset '{key}' to factory defaults.", tone="success")
 
     def _restore_background_preset(self) -> None:

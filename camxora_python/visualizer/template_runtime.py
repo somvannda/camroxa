@@ -475,7 +475,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
             thickness = float(layer_in.get("strength", 0)) * float(layer_in.get("reactivity", 1))
         if not isinstance(thickness, (int, float)):
             thickness = fallback_layer.get("thickness", 150)
-        thickness_clamped = float(max(1, min(220, float(thickness))))
+        thickness_clamped = float(max(1, min(600, float(thickness))))
 
         gravity = str(layer_in.get("gravity", fallback_layer.get("gravity", "top")))
         if gravity == "normal":
@@ -517,9 +517,9 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "fillCircle": fill_circle,
                 "solidBand": solid_band,
                 "thickness": thickness_clamped,
-                "barWidth": float(bar_width),
+                "barWidth": float(max(0.5, min(240.0, float(bar_width)))),
                 "barCount": int(max(16, min(192, round(float(bar_count))))),
-                "radiusOffset": float(max(0.0, min(400.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
+                "radiusOffset": float(max(0.0, min(800.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
                 "gravity": gravity,
                 "color": color,
                 "glow": float(max(0.0, min(100.0, float(layer_in.get("glow", fallback_layer.get("glow", 0)) or 0.0)))),
@@ -556,6 +556,29 @@ def normalize_renderer_template(input_template: Any) -> dict:
             }
         )
     out["layers"] = out_layers
+
+    try:
+        from features.video.lib.spectrum_instance_registry import (
+            migrate_legacy_spectrum_to_instances,
+            mirror_spectrum_instance0_to_legacy,
+            normalize_spectrum_instances,
+        )
+
+        raw_instances = input_template.get("spectrumInstances") if isinstance(input_template, dict) else None
+        if isinstance(raw_instances, list) and raw_instances:
+            instances = normalize_spectrum_instances(raw_instances, template=out)
+        else:
+            # Ensure out has layers/style/position for migrate wrap.
+            instances = migrate_legacy_spectrum_to_instances(out)
+        # Heal empty primary rings from normalized top-level layers (never wipe a good stack).
+        if instances and out_layers:
+            primary_layers = instances[0].get("layers") if isinstance(instances[0], dict) else None
+            if not (isinstance(primary_layers, list) and primary_layers):
+                instances[0]["layers"] = list(out_layers)
+        mirror_spectrum_instance0_to_legacy(out, instances)
+    except Exception:
+        out.setdefault("spectrumInstances", [])
+
     return out
 
 

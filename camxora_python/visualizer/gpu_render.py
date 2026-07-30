@@ -23,7 +23,7 @@ def _audio_bar_height_mult(template: dict) -> float:
         value = float(audio.get("barHeight", 1.0) or 1.0)
     except Exception:
         value = 1.0
-    return float(max(0.25, min(8.0, value)))
+    return float(max(0.25, min(12.0, value)))
 
 import numpy as np
 from PIL import Image
@@ -2082,8 +2082,16 @@ def _resolve_spectrum_logo_centers(
     sf: float,
     position: dict | None,
     spectrum_attach_to_logo: bool,
+    logo_position: dict | None = None,
+    template: dict | None = None,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     from features.video.lib.logo_spectrum_bindings import resolve_spectrum_logo_centers
+
+    logo_pos = logo_position
+    if logo_pos is None and isinstance(template, dict):
+        ls = template.get("logoSettings")
+        if isinstance(ls, dict) and isinstance(ls.get("position"), dict):
+            logo_pos = ls.get("position")
 
     return resolve_spectrum_logo_centers(
         _get_anchor_coords,
@@ -2092,7 +2100,35 @@ def _resolve_spectrum_logo_centers(
         sf=sf,
         position=position if isinstance(position, dict) else {},
         spectrum_attach_to_logo=bool(spectrum_attach_to_logo),
+        logo_position=logo_pos if isinstance(logo_pos, dict) else {},
     )
+
+
+def _spectrum_draw_jobs(template: dict) -> list[dict]:
+    """Return enabled spectrum instances for export; legacy templates → one job."""
+    from features.video.lib.spectrum_instance_registry import iter_render_spectrum_instances
+    jobs = iter_render_spectrum_instances(template if isinstance(template, dict) else {})
+    if jobs:
+        return jobs
+    layers = template.get("layers") if isinstance(template, dict) and isinstance(template.get("layers"), list) else []
+    layers = [sl for sl in layers if isinstance(sl, dict)]
+    if not layers:
+        return []
+    pos = template.get("position") if isinstance(template.get("position"), dict) else {}
+    pb = template.get("previewBindings") if isinstance(template.get("previewBindings"), dict) else {}
+    audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
+    return [{
+        "style": str(template.get("style") or "orbit-spikes"),
+        "anchor": str(pos.get("anchor") or "center"),
+        "x": float(pos.get("x", 0.0) or 0.0),
+        "y": float(pos.get("y", 0.0) or 0.0),
+        "spectrumAttachToLogo": bool(pb.get("spectrumAttachToLogo", True)),
+        "spectrumLogoGap": float(pb.get("spectrumLogoGap", 0.0) or 0.0),
+        "audioSettings": dict(audio),
+        "layers": layers,
+        "enabled": True,
+    }]
+
 
 
 def _text_quad_center_offset(anchor: str, tw: float, th: float) -> tuple[float, float]:
@@ -2893,6 +2929,7 @@ def run_gpu_render(
                 sf=sf,
                 position=logo_anchor_pos,
                 spectrum_attach_to_logo=spectrum_attach_to_logo,
+                template=template,
             )
             # The shader expects `logo_px` to be an offset from the CENTER (w/2, h/2).
             prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
@@ -3033,6 +3070,7 @@ def run_gpu_render(
             sf=sf,
             position=_tpl_position,
             spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
         )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
@@ -3106,7 +3144,12 @@ def run_gpu_render(
             peak_hold_blend = float(
                 max(0.0, min(1.0, float(audio_settings.get("peakHoldBlend", 0.0) or 0.0)))
             )
-            peak_caps_enabled = bool(sl.get("peakCapsEnabled", False)) and peak_hold_blend > 0.0
+            peak_caps_wanted = bool(sl.get("peakCapsEnabled", False))
+            effective_peak_hold = float(peak_hold_blend)
+            if peak_caps_wanted and effective_peak_hold <= 0.001:
+                effective_peak_hold = 0.45
+            peak_caps_enabled = peak_caps_wanted
+            peak_hold_blend = effective_peak_hold
             peak_cap_gap = float(max(0.0, min(24.0, float(sl.get("peakCapGap", 4.0) or 0.0)))) * sf
             peak_cap_thickness = float(max(1.0, min(16.0, float(sl.get("peakCapThickness", 3.0) or 1.0)))) * sf
             peak_cap_decay = float(max(0.7, min(0.995, float(sl.get("peakCapDecay", 0.92) or 0.92))))
@@ -3334,6 +3377,29 @@ def run_gpu_render(
                         line_vbo.orphan(size=verts.nbytes)
                     line_vbo.write(verts.tobytes())
                     vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+                    if curved and fill_circle_pass and n > 0:
+                        tip_h = np.maximum(2.0, val_arr[:n]).astype(np.float32)
+                        xs_o = ((cx + px_arr[:n] + dx_arr[:n] * tip_h) / float(w) * 2.0 - 1.0).astype(np.float32)
+                        ys_o = ((cy + py_arr[:n] + dy_arr[:n] * tip_h) / float(h) * 2.0 - 1.0).astype(np.float32)
+                        if curved and mirrored:
+                            xs_o = np.concatenate([xs_o, xs_o[:1]])
+                            ys_o = np.concatenate([ys_o, ys_o[:1]])
+                        tip_n = int(xs_o.shape[0])
+                        cx_ndc = float(cx) / float(w) * 2.0 - 1.0
+                        cy_ndc = float(cy) / float(h) * 2.0 - 1.0
+                        pos_fill = np.empty((tip_n + 1, 2), dtype=np.float32)
+                        pos_fill[0, 0] = cx_ndc
+                        pos_fill[0, 1] = cy_ndc
+                        pos_fill[1:, 0] = xs_o
+                        pos_fill[1:, 1] = ys_o
+                        cols_edge = _build_spectrum_vertex_colors(color_cfg, spec_col, tip_n, pass_alpha)
+                        cols_center = cols_edge[:1].copy()
+                        cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                        verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
+                        if verts_fill.nbytes > line_vbo.size:
+                            line_vbo.orphan(size=verts_fill.nbytes)
+                        line_vbo.write(verts_fill.tobytes())
+                        vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(tip_n + 1))
             px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
             if solid_band:
                 band_pos = build_solid_band_strip_vertices(
@@ -4022,6 +4088,7 @@ def render_preview_png(
                 sf=sf,
                 position=template.get("position") if isinstance(template.get("position"), dict) else {},
                 spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
             )
             prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
 
@@ -4267,6 +4334,7 @@ def render_preview_png(
             sf=sf,
             position=template.get("position") if isinstance(template.get("position"), dict) else {},
             spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
         )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
@@ -5391,6 +5459,7 @@ def run_live_preview(opts: GpuOptions) -> int:
             sf=sf,
             position=template.get("position") if isinstance(template.get("position"), dict) else {},
             spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
         )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
@@ -5783,6 +5852,7 @@ def run_live_preview(opts: GpuOptions) -> int:
                     sf=sf,
                     position=template.get("position") if isinstance(template.get("position"), dict) else {},
                     spectrum_attach_to_logo=spectrum_attach_to_logo,
+                template=template,
                 )
                 prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_out.x), l_pos[1] - float(h)*0.5 + float(shake_out.y))
             tex_logo.use(location=1)

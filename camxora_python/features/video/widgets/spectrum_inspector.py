@@ -26,6 +26,7 @@ from features.video.lib.spectrum_style_registry import (
     build_stacked_spectrum_preset_template,
 )
 from features.video.widgets.inspector_fields import InspectorSection
+from features.video.widgets.spectrum_instance_editor import SpectrumInstanceEditor
 from features.video.widgets.spectrum_layer_editor import SpectrumLayerEditor
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 
@@ -43,6 +44,13 @@ class SpectrumInspector(QWidget):
     layer_move_up_requested = Signal()
     layer_move_down_requested = Signal()
     layer_selected = Signal(int)
+    instance_selected = Signal(int)
+    instance_add_requested = Signal()
+    instance_duplicate_requested = Signal()
+    instance_delete_requested = Signal()
+    instance_move_up_requested = Signal()
+    instance_move_down_requested = Signal()
+    instance_patch_requested = Signal(dict)
 
     _AUDIO_FIELDS: tuple[tuple[str, float, float, int], ...] = (
         ("audioInputGain", 1, 10, SPECTRUM_AUDIO_DIAL_MAX),
@@ -68,6 +76,16 @@ class SpectrumInspector(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(12)
+
+        self._instance_editor = SpectrumInstanceEditor(self)
+        self._instance_editor.instance_selected.connect(self.instance_selected.emit)
+        self._instance_editor.instance_add_requested.connect(self.instance_add_requested.emit)
+        self._instance_editor.instance_duplicate_requested.connect(self.instance_duplicate_requested.emit)
+        self._instance_editor.instance_delete_requested.connect(self.instance_delete_requested.emit)
+        self._instance_editor.instance_move_up_requested.connect(self.instance_move_up_requested.emit)
+        self._instance_editor.instance_move_down_requested.connect(self.instance_move_down_requested.emit)
+        self._instance_editor.instance_patch_requested.connect(self.instance_patch_requested.emit)
+        root.addWidget(self._instance_editor)
 
         spectrum_section = InspectorSection("")
         self._spectrum_toggle = QCheckBox("Enable Spectrum")
@@ -311,10 +329,18 @@ class SpectrumInspector(QWidget):
         *,
         layers: list[dict],
         selected_layer_index: int,
+        instances: list[dict] | None = None,
+        selected_instance_index: int = 0,
     ) -> None:
         self._binding = True
         try:
             style = str(draft.get("style") or "orbit-spikes")
+
+            if getattr(self, "_instance_editor", None) is not None and instances is not None:
+                self._instance_editor.bind_instances(
+                    instances,
+                    selected_index=selected_instance_index,
+                )
 
             if self._layer_editor is not None:
                 self._layer_editor.bind_state(

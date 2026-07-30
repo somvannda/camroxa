@@ -110,7 +110,21 @@ def test_one_bolt_per_layer_storm_and_spider() -> None:
 
 
 def test_speed_grows_bolt_length() -> None:
-    slow = build_lightning_polylines(
+    """Length is stable by default; Length React optionally stretches with flash."""
+    quiet = build_lightning_polylines(
+        style="ribbon",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=0.0,
+        time_sec=0.0,
+        flash=0.2,
+        seed=1.0,
+        speed=1.0,
+        length_reactivity=0.0,
+    )[0]
+    loud = build_lightning_polylines(
         style="ribbon",
         cx=0.0,
         cy=0.0,
@@ -120,9 +134,27 @@ def test_speed_grows_bolt_length() -> None:
         time_sec=0.0,
         flash=1.0,
         seed=1.0,
-        speed=0.5,
+        speed=1.0,
+        length_reactivity=0.0,
     )[0]
-    fast = build_lightning_polylines(
+    quiet_span = float(np.linalg.norm(quiet[-1] - quiet[0]))
+    loud_span = float(np.linalg.norm(loud[-1] - loud[0]))
+    assert abs(loud_span - quiet_span) < 1.0
+
+    soft = build_lightning_polylines(
+        style="ribbon",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=0.0,
+        time_sec=0.0,
+        flash=0.2,
+        seed=1.0,
+        speed=1.0,
+        length_reactivity=1.0,
+    )[0]
+    hard = build_lightning_polylines(
         style="ribbon",
         cx=0.0,
         cy=0.0,
@@ -132,11 +164,77 @@ def test_speed_grows_bolt_length() -> None:
         time_sec=0.0,
         flash=1.0,
         seed=1.0,
-        speed=3.0,
+        speed=1.0,
+        length_reactivity=1.0,
     )[0]
-    slow_span = float(np.linalg.norm(slow[-1] - slow[0]))
-    fast_span = float(np.linalg.norm(fast[-1] - fast[0]))
-    assert fast_span > slow_span * 1.2
+    soft_span = float(np.linalg.norm(soft[-1] - soft[0]))
+    hard_span = float(np.linalg.norm(hard[-1] - hard[0]))
+    assert hard_span > soft_span * 1.15
+
+
+def test_zero_floats_are_preserved() -> None:
+    layers = normalize_lightning_layers(
+        [
+            {
+                "opacity": 0.0,
+                "glow": 0.0,
+                "branchiness": 0.0,
+                "intensity": 0.0,
+                "reactivity": 0.0,
+                "thickness": 0.0,
+                "speed": 0.0,
+                "flashRate": 0.0,
+                "lengthReactivity": 0.0,
+                "taper": 0.0,
+                "reactMotionSpeed": 0.0,
+            }
+        ]
+    )
+    layer = layers[0]
+    assert layer["opacity"] == 0.0
+    assert layer["glow"] == 0.0
+    assert layer["branchiness"] == 0.0
+    assert layer["intensity"] == 0.0
+    assert layer["reactivity"] == 0.0
+    assert layer["thickness"] == 0.0
+    assert layer["speed"] == 0.0
+    assert layer["flashRate"] == 0.0
+    assert layer["spawnMode"] == "fixed"
+    assert layer["taper"] == 0.0
+
+
+def test_polyline_taper_width() -> None:
+    pts = np.array([[100.0, 100.0], [140.0, 180.0], [120.0, 240.0]], dtype=np.float32)
+    strip = polyline_to_ndc_strip(
+        pts, half_width=1.0, half_width_end=4.0, frame_w=800.0, frame_h=450.0
+    )
+    assert strip is not None
+    assert strip.shape == (6, 2)
+
+
+def test_branchiness_zero_means_no_forks() -> None:
+    storm = build_lightning_polylines(
+        style="storm",
+        cx=0.0,
+        cy=0.0,
+        length_px=200.0,
+        direction="down",
+        branchiness=0.0,
+        time_sec=1.0,
+        flash=1.0,
+        seed=1.0,
+        speed=1.0,
+    )
+    assert len(storm) == 1
+
+
+def test_wandering_preset_is_random_spawn() -> None:
+    assert is_lightning_preset_key("wandering_bolt")
+    patch = build_lightning_preset_layer_patch("wandering_bolt")
+    assert patch is not None
+    assert patch["spawnMode"] == "random"
+    merged = normalize_lightning_layers([{**default_lightning_layer(index=1), **patch}])[0]
+    assert merged["spawnMode"] == "random"
 
 
 def test_default_layer_shape() -> None:

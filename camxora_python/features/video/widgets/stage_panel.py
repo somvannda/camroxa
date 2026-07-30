@@ -67,6 +67,7 @@ class VideoStagePanel(SettingsPanel):
     playback_seek_requested = Signal(float)
     spectrum_position_changed = Signal(int, int)
     lightning_position_changed = Signal(int, int)
+    logo_position_changed = Signal(int, int)
     background_transform_changed = Signal(float, float, float)
     text_domain_position_changed = Signal(str, float, float)
     # domain, patch dict (boxWidth / fontSize / letterSpacing / x / y)
@@ -261,6 +262,8 @@ class VideoStagePanel(SettingsPanel):
             return
         self._preview.position_changed.connect(self.spectrum_position_changed.emit)
         self._preview.lightning_position_changed.connect(self.lightning_position_changed.emit)
+        if hasattr(self._preview, "logo_position_changed"):
+            self._preview.logo_position_changed.connect(self.logo_position_changed.emit)
         self._preview.background_transform_changed.connect(self.background_transform_changed.emit)
         self._preview.text_domain_position_changed.connect(self.text_domain_position_changed.emit)
         self._preview.playback_state_changed.connect(self._on_preview_playback_state)
@@ -308,6 +311,7 @@ class VideoStagePanel(SettingsPanel):
         spectrum_position: bool,
         text_domain: str = "",
         lightning_position: bool = False,
+        logo_position: bool = False,
     ) -> None:
         domain = str(text_domain or "").strip().lower()
         self._active_text_domain = domain if domain in {"album", "title"} else ""
@@ -317,6 +321,7 @@ class VideoStagePanel(SettingsPanel):
                 spectrum_position=spectrum_position,
                 text_domain=self._active_text_domain,
                 lightning_position=lightning_position,
+                logo_position=logo_position,
             )
         if self._text_drag_overlay is not None:
             self._text_drag_overlay.set_edit_domain(self._active_text_domain)
@@ -324,6 +329,10 @@ class VideoStagePanel(SettingsPanel):
     def set_selected_lightning_layer_index(self, index: int) -> None:
         if self._preview is not None and hasattr(self._preview, "set_selected_lightning_layer_index"):
             self._preview.set_selected_lightning_layer_index(int(index))
+
+    def set_selected_spectrum_instance_index(self, index: int) -> None:
+        if self._preview is not None and hasattr(self._preview, "set_selected_spectrum_instance_index"):
+            self._preview.set_selected_spectrum_instance_index(int(index))
 
     def bind_text_drag_overlay(
         self,
