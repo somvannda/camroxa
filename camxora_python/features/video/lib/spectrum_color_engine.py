@@ -8,15 +8,16 @@ import numpy as np
 
 from features.video.lib.template_value_utils import normalize_color, to_record, to_string_value
 
-MAX_GRADIENT_COLOR_STOPS = 5
+MAX_GRADIENT_COLOR_STOPS = 12
 GRADIENT_FALLBACK_COLOR = "#22d3ee"
 
 VALID_GRADIENT_DIRECTIONS = frozenset(
     {"left-to-right", "top-to-bottom", "diagonal", "radial", "circular"}
 )
 
-# Bright / light spectrum gradient catalogs (UI dropdown + style recipes).
+# Bright / vivid spectrum gradient catalogs (UI dropdown + style recipes).
 # Avoid pure white lead stops — they wash bars to chalk on dark stage.
+# Presets may use 3–8 stops; users can add up to MAX_GRADIENT_COLOR_STOPS.
 SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     ("#ff4fd8,#22d3ee,#a78bfa,#f472b6", "Neon Candy"),
     ("#38bdf8,#22d3ee,#818cf8,#c084fc", "Electric Sky"),
@@ -30,6 +31,19 @@ SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     ("#fda4af,#fb7185,#f0abfc,#7dd3fc", "Peach Neon"),
     ("#67e8f9,#22d3ee,#fb923c,#f472b6", "Aqua Flame"),
     ("#f472b6,#a78bfa,#38bdf8,#34d399", "Prism Bright"),
+    # Extra vivid / multi-stop palettes
+    ("#ff006e,#ffbe0b,#8338ec,#3a86ff,#fb5607", "Carnival Riot"),
+    ("#00f5d4,#00bbf9,#9b5de5,#f15bb5,#fee440", "Hyper Pop"),
+    ("#ff1744,#ff9100,#ffea00,#00e676,#2979ff,#d500f9", "Rainbow Rush"),
+    ("#ff2d95,#7b2cbf,#00d4ff,#39ff14,#ffea00", "Laser Party"),
+    ("#ff0066,#ff66cc,#66ffcc,#00ccff,#9966ff", "Sugar Rush"),
+    ("#ff5722,#ff9100,#ffc400,#76ff03,#00e5ff,#7c4dff", "Spectrum Blast"),
+    ("#e91e63,#9c27b0,#5c6bc0,#00bcd4,#8bc34a,#ffeb3b,#ff9800", "Full Spectrum"),
+    ("#ff0080,#ff8c00,#40e0d0,#7fff00,#da70d6", "Tropic Neon"),
+    ("#f72585,#ff6bcb,#c77dff,#9b5de5,#7b2cbf,#4361ee,#4895ef,#4cc9f0", "Ultraviolet Sweep"),
+    ("#ff0a54,#ff477e,#ff5c8a,#ff7096,#ff85a1,#ff99ac,#fbb1bd,#f9bec7", "Hot Pink Parade"),
+    ("#0aff99,#00f5d4,#00bbf9,#9b5de5,#f15bb5,#fee440,#ff006e", "Festival Glow"),
+    ("#39ff14,#00ff9f,#00e5ff,#2979ff,#d500f9,#ff1744,#ffea00", "Cyber Rainbow"),
 )
 
 

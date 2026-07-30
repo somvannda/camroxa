@@ -34,6 +34,8 @@ def default_renderer_template() -> dict:
                 "barWidth": 5,
                 "barCount": 64,
                 "radiusOffset": 0,
+                "linearSpan": 1.0,
+                "frequencyScroll": 0.0,
                 "gravity": "top",
                 "color": {
                     "mode": "gradient",
@@ -520,6 +522,33 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "barWidth": float(max(0.5, min(240.0, float(bar_width)))),
                 "barCount": int(max(16, min(192, round(float(bar_count))))),
                 "radiusOffset": float(max(0.0, min(800.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
+                "linearSpan": float(
+                    max(
+                        0.1,
+                        min(
+                            1.0,
+                            float(
+                                layer_in.get(
+                                    "linearSpan",
+                                    fallback_layer.get("linearSpan", 1.0),
+                                )
+                                or 1.0
+                            ),
+                        ),
+                    )
+                ),
+                "frequencyScroll": float(
+                    (
+                        float(
+                            layer_in.get(
+                                "frequencyScroll",
+                                fallback_layer.get("frequencyScroll", 0.0),
+                            )
+                            or 0.0
+                        )
+                        % 1.0
+                    )
+                ),
                 "gravity": gravity,
                 "color": color,
                 "glow": float(max(0.0, min(100.0, float(layer_in.get("glow", fallback_layer.get("glow", 0)) or 0.0)))),

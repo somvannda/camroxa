@@ -215,10 +215,22 @@ def render_lightning_layers_gl(
         glow = float(max(0.0, min(1.0, _layer_float(layer, "glow", 0.5))))
         taper = float(max(0.0, min(1.0, _layer_float(layer, "taper", 0.65))))
         blend = str(layer.get("blend") or "add").lower().strip()
+        # RGB blends as usual; alpha stays opaque so QOpenGLWidget preview
+        # does not composite the desktop UI through soft glow.
         if blend in {"add", "screen", "lighten"}:
-            ctx.blend_func = moderngl.ADDITIVE_BLENDING
+            ctx.blend_func = (
+                moderngl.SRC_ALPHA,
+                moderngl.ONE,
+                moderngl.ZERO,
+                moderngl.ONE,
+            )
         else:
-            ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            ctx.blend_func = (
+                moderngl.SRC_ALPHA,
+                moderngl.ONE_MINUS_SRC_ALPHA,
+                moderngl.ZERO,
+                moderngl.ONE,
+            )
 
         # Taper: thin at start → thicker toward the tip (real bolts often look this way).
         start_mul = float(max(0.12, 1.0 - taper * 0.88))
@@ -288,4 +300,9 @@ def render_lightning_layers_gl(
                 line_vbo.write(np.ascontiguousarray(verts, dtype=np.float32))
                 vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=nn)
 
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE_MINUS_SRC_ALPHA,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )

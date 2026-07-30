@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from features.video.lib.spectrum_color_engine import (
+    MAX_GRADIENT_COLOR_STOPS,
     SPECTRUM_GRADIENT_PRESET_OPTIONS,
     apply_spectrum_layer_color_patch,
     build_spectrum_gradient_preset_value,
@@ -251,6 +252,24 @@ class SpectrumLayerEditor(InspectorSection):
                 0.25,
                 "Thickness of each bar in pixels. Raise freely for bold strokes; "
                 "very wide bars may touch neighbors at high Density.",
+            ),
+            (
+                "linearSpan",
+                "Row Width (preview span)",
+                0.1,
+                1.0,
+                0.01,
+                "How wide a linear (non-circle) spectrum is across the preview. "
+                "1.0 = full preview width (or height for Left/Right growth).",
+            ),
+            (
+                "frequencyScroll",
+                "Raise Scroll (along path)",
+                0.0,
+                0.99,
+                0.01,
+                "Slides where bass/spikes raise along the row or ring. "
+                "0 = default (bass on the left). Drag freely — not locked to left/center/right.",
             ),
             (
                 "thickness",
@@ -505,7 +524,7 @@ class SpectrumLayerEditor(InspectorSection):
 
     def _add_gradient_stop(self) -> None:
         colors = list(self._color_model.get("gradientColors") or [])
-        if len(colors) >= 5:
+        if len(colors) >= MAX_GRADIENT_COLOR_STOPS:
             return
         colors.append(colors[-1] if colors else str(self._color_model.get("solidColor") or "#ffffff"))
         self.layer_color_patch_requested.emit(
@@ -624,6 +643,8 @@ class SpectrumLayerEditor(InspectorSection):
             layer_defaults = {
                 "barCount": 64.0,
                 "barWidth": 5.0,
+                "linearSpan": 1.0,
+                "frequencyScroll": 0.0,
                 "thickness": 36.0,
                 "radiusOffset": 0.0,
                 "opacity": 1.0,

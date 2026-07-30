@@ -70,12 +70,225 @@ TITLE_NUMBER_INDENT_OPTIONS: tuple[tuple[str, str], ...] = (
 )
 
 TITLE_LAYOUT_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("column", "List"),
+    ("column", "List (free drag)"),
+    ("split", "Split Stage (snap right)"),
+    ("split_left", "Split Stage (snap left)"),
+    ("list_card", "Playlist Card (glass list)"),
+    ("glass_card", "Glass Card (free drag)"),
+    ("vinyl", "Retro Vinyl (free drag)"),
     ("grid2_td", "2 columns"),
     ("grid2_lr", "2 columns · rows"),
     ("grid3_td", "3 columns"),
     ("grid3_lr", "3 columns · rows"),
 )
+
+# Template-unit anchors for split layouts (16:9 @ renderBaseHeight 450 → ~800 wide).
+PLAYLIST_LAYOUT_SIDE_POSITIONS: dict[str, tuple[float, float]] = {
+    "split": (400.0, -40.0),
+    "split_left": (-420.0, -40.0),
+}
+
+# Playlist Look presets (Phase 1+) — layout + colors + fonts + glass chrome.
+PLAYLIST_LOOK_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("split_stage", "Split Stage"),
+    ("glass_aurora", "Glass Aurora"),
+    ("neon_spectrum", "Neon Spectrum"),
+    ("purple_neon_glowing", "Purple Neon Glowing"),
+    ("retro_vinyl", "Retro Vinyl"),
+    ("noir_press", "Noir Press"),
+    ("gold_lacquer", "Gold Lacquer"),
+)
+
+PLAYLIST_LOOK_PRESET_PATCHES: dict[str, dict[str, Any]] = {
+    "split_stage": {
+        "layout": "split",
+        "listStyle": "number_pad",
+        "listColor": "#e2e8f0",
+        "listActiveColor": "#a3e635",
+        "showDurations": True,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": True,
+        "trackCountBadge": True,
+        "panelOpacity": 0.55,
+        "panelFrost": 0.35,
+        "panelBorderWidth": 1.0,
+        "panelBorderColor": "#94a3b8",
+        "panelSpecular": 0.45,
+        "panelFill": "#0f172a",
+        "fontFamily": "inter",
+        "bold": True,
+        "color": "#f8fafc",
+        "x": 420,
+        "y": -40,
+        "boxWidth": 320,
+        "fontSize": 12.0,
+        "align": "left",
+        "anchor": "center",
+    },
+    "glass_aurora": {
+        "layout": "glass_card",
+        "listStyle": "plain",
+        "listColor": "#c4b5fd",
+        "listActiveColor": "#67e8f9",
+        "showDurations": True,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": True,
+        "trackCountBadge": False,
+        "panelOpacity": 0.42,
+        "panelFrost": 0.7,
+        "panelBorderWidth": 1.2,
+        "panelBorderColor": "#a78bfa",
+        "panelSpecular": 0.75,
+        "panelFill": "#1e1b4b",
+        "fontFamily": "inter",
+        "bold": True,
+        "color": "#f5f3ff",
+        "glow": 0.35,
+        "glowColor": "#22d3ee",
+        "x": 380,
+        "y": -20,
+        "boxWidth": 340,
+        "fontSize": 12.0,
+        "align": "left",
+        "anchor": "center",
+    },
+    "neon_spectrum": {
+        "layout": "split",
+        "listStyle": "number_pad",
+        "listColor": "#f0abfc",
+        "listActiveColor": "#22d3ee",
+        "showDurations": True,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": True,
+        "trackCountBadge": True,
+        "panelOpacity": 0.5,
+        "panelFrost": 0.4,
+        "panelBorderWidth": 1.5,
+        "panelBorderColor": "#ff00ff",
+        "panelSpecular": 0.65,
+        "panelFill": "#0a0e27",
+        "fontFamily": "montserrat",
+        "bold": True,
+        "color": "#ffffff",
+        "glow": 0.45,
+        "glowColor": "#ff00ff",
+        "x": 400,
+        "y": -30,
+        "boxWidth": 330,
+        "fontSize": 12.0,
+        "align": "left",
+        "anchor": "center",
+    },
+    # Glass tracklist card only (boxed list) — not a full Pulse Rail stage.
+    "purple_neon_glowing": {
+        "layout": "list_card",
+        "listStyle": "number_pad",
+        "listColor": "#e2e8f0",
+        "listActiveColor": "#e879f9",
+        "showDurations": True,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": False,
+        "trackCountBadge": False,
+        "tracklistHeader": True,
+        "activeRowPlate": True,
+        "panelOpacity": 0.72,
+        "panelFrost": 0.6,
+        "panelBorderWidth": 2.8,
+        "panelBorderColor": "#e879f9",
+        "panelSpecular": 0.75,
+        "panelFill": "#0c0614",
+        "fontFamily": "montserrat",
+        "bold": True,
+        "color": "#f8fafc",
+        "glow": 0.35,
+        "glowColor": "#d946ef",
+        "glowBlur": 10.0,
+        "x": 380,
+        "y": -40,
+        "boxWidth": 320,
+        "fontSize": 11.0,
+        "letterSpacing": 0.2,
+        "lineSpacing": 1.3,
+        "align": "left",
+        "anchor": "center",
+    },
+    "retro_vinyl": {
+        "layout": "vinyl",
+        "listStyle": "number",
+        "listColor": "#fda4af",
+        "listActiveColor": "#f472b6",
+        "showDurations": True,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": False,
+        "trackCountBadge": True,
+        "panelOpacity": 0.48,
+        "panelFrost": 0.25,
+        "panelBorderWidth": 2.0,
+        "panelBorderColor": "#f472b6",
+        "panelSpecular": 0.4,
+        "panelFill": "#1a1025",
+        "fontFamily": "montserrat",
+        "bold": True,
+        "color": "#ffe4e6",
+        "x": 390,
+        "y": -10,
+        "boxWidth": 300,
+        "fontSize": 12.0,
+        "align": "left",
+        "anchor": "center",
+    },
+    "noir_press": {
+        "layout": "split",
+        "listStyle": "number_pad",
+        "listColor": "#d4d4d8",
+        "listActiveColor": "#ef4444",
+        "showDurations": False,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": False,
+        "trackCountBadge": True,
+        "panelOpacity": 0.7,
+        "panelFrost": 0.1,
+        "panelBorderWidth": 1.0,
+        "panelBorderColor": "#fafafa",
+        "panelSpecular": 0.2,
+        "panelFill": "#09090b",
+        "fontFamily": "bebasneue",
+        "bold": False,
+        "color": "#fafafa",
+        "x": 400,
+        "y": -50,
+        "boxWidth": 340,
+        "fontSize": 16.0,
+        "letterSpacing": 1.5,
+        "align": "left",
+        "anchor": "center",
+    },
+    "gold_lacquer": {
+        "layout": "glass_card",
+        "listStyle": "plain",
+        "listColor": "#fde68a",
+        "listActiveColor": "#fbbf24",
+        "showDurations": True,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": True,
+        "trackCountBadge": False,
+        "panelOpacity": 0.6,
+        "panelFrost": 0.3,
+        "panelBorderWidth": 1.25,
+        "panelBorderColor": "#d4af37",
+        "panelSpecular": 0.85,
+        "panelFill": "#0c0a09",
+        "fontFamily": "playfair",
+        "bold": True,
+        "color": "#fef3c7",
+        "x": 390,
+        "y": -20,
+        "boxWidth": 320,
+        "fontSize": 13.0,
+        "align": "left",
+        "anchor": "center",
+    },
+}
 
 # Builtin shortlist; inspectors use list_font_options() for the full PC font list.
 FONT_OPTIONS: tuple[tuple[str, str], ...] = BUILTIN_FONT_OPTIONS
@@ -534,6 +747,19 @@ def default_title_text_settings() -> dict[str, Any]:
         "listColor": "#c4b5fd",
         "listActiveColor": "#fde047",
         "listActiveIndex": 0,
+        "showDurations": False,
+        "nowPlayingEnabled": True,
+        "nowPlayingPill": False,
+        "trackCountBadge": False,
+        "tracklistHeader": False,
+        "activeRowPlate": False,
+        "playlistLook": "",
+        "panelOpacity": 0.45,
+        "panelFrost": 0.0,
+        "panelBorderWidth": 0.0,
+        "panelBorderColor": "#94a3b8",
+        "panelSpecular": 0.0,
+        "panelFill": "#0f172a",
         "stylePreset": "midnight_stack",
         "style": style,
     }
@@ -584,6 +810,9 @@ def normalize_title_text_settings(raw: Any) -> dict[str, Any]:
         titles = [line.strip() for line in manual.splitlines() if line.strip()]
     active_index = int(round(to_number(src.get("listActiveIndex"), base["listActiveIndex"])))
     active_index = int(max(-1, min(200, active_index)))
+    look = to_string_value(src.get("playlistLook"), base.get("playlistLook", "")).lower()
+    if look and look not in {key for key, _ in PLAYLIST_LOOK_PRESET_OPTIONS}:
+        look = ""
     return {
         "enabled": to_boolean(src.get("enabled"), base["enabled"]),
         "contentMode": mode,
@@ -594,6 +823,19 @@ def normalize_title_text_settings(raw: Any) -> dict[str, Any]:
         "listColor": normalize_color(src.get("listColor"), base["listColor"]),
         "listActiveColor": normalize_color(src.get("listActiveColor"), base["listActiveColor"]),
         "listActiveIndex": active_index,
+        "showDurations": to_boolean(src.get("showDurations"), base["showDurations"]),
+        "nowPlayingEnabled": to_boolean(src.get("nowPlayingEnabled"), base["nowPlayingEnabled"]),
+        "nowPlayingPill": to_boolean(src.get("nowPlayingPill"), base["nowPlayingPill"]),
+        "trackCountBadge": to_boolean(src.get("trackCountBadge"), base["trackCountBadge"]),
+        "tracklistHeader": to_boolean(src.get("tracklistHeader"), base["tracklistHeader"]),
+        "activeRowPlate": to_boolean(src.get("activeRowPlate"), base["activeRowPlate"]),
+        "playlistLook": look,
+        "panelOpacity": float(max(0.05, min(1.0, to_number(src.get("panelOpacity"), base["panelOpacity"])))),
+        "panelFrost": float(max(0.0, min(1.0, to_number(src.get("panelFrost"), base["panelFrost"])))),
+        "panelBorderWidth": float(max(0.0, min(8.0, to_number(src.get("panelBorderWidth"), base["panelBorderWidth"])))),
+        "panelBorderColor": normalize_color(src.get("panelBorderColor"), base["panelBorderColor"]),
+        "panelSpecular": float(max(0.0, min(1.0, to_number(src.get("panelSpecular"), base["panelSpecular"])))),
+        "panelFill": normalize_color(src.get("panelFill"), base["panelFill"]),
         "stylePreset": _normalize_preset_key(src.get("stylePreset"), base["stylePreset"]),
         "style": normalize_text_style(src.get("style") or base["style"]),
     }
@@ -690,6 +932,19 @@ def build_title_settings_state(template: dict[str, Any]) -> dict[str, Any]:
         "titleListColor": settings["listColor"],
         "titleListActiveColor": settings["listActiveColor"],
         "titleListActiveIndex": settings["listActiveIndex"],
+        "titleShowDurations": settings["showDurations"],
+        "titleNowPlayingEnabled": settings["nowPlayingEnabled"],
+        "titleNowPlayingPill": settings["nowPlayingPill"],
+        "titleTrackCountBadge": settings["trackCountBadge"],
+        "titleTracklistHeader": settings["tracklistHeader"],
+        "titleActiveRowPlate": settings["activeRowPlate"],
+        "titlePlaylistLook": settings["playlistLook"],
+        "titlePanelOpacity": settings["panelOpacity"],
+        "titlePanelFrost": settings["panelFrost"],
+        "titlePanelBorderWidth": settings["panelBorderWidth"],
+        "titlePanelBorderColor": settings["panelBorderColor"],
+        "titlePanelSpecular": settings["panelSpecular"],
+        "titlePanelFill": settings["panelFill"],
         "titleStylePreset": settings["stylePreset"],
         **_style_draft_keys("title", style),
     }
@@ -719,10 +974,93 @@ def title_settings_from_draft(draft: dict[str, Any]) -> dict[str, Any]:
             "listColor": draft.get("titleListColor"),
             "listActiveColor": draft.get("titleListActiveColor"),
             "listActiveIndex": draft.get("titleListActiveIndex"),
+            "showDurations": draft.get("titleShowDurations", False),
+            "nowPlayingEnabled": draft.get("titleNowPlayingEnabled", True),
+            "nowPlayingPill": draft.get("titleNowPlayingPill", False),
+            "trackCountBadge": draft.get("titleTrackCountBadge", False),
+            "tracklistHeader": draft.get("titleTracklistHeader", False),
+            "activeRowPlate": draft.get("titleActiveRowPlate", False),
+            "playlistLook": draft.get("titlePlaylistLook", ""),
+            "panelOpacity": draft.get("titlePanelOpacity"),
+            "panelFrost": draft.get("titlePanelFrost"),
+            "panelBorderWidth": draft.get("titlePanelBorderWidth"),
+            "panelBorderColor": draft.get("titlePanelBorderColor"),
+            "panelSpecular": draft.get("titlePanelSpecular"),
+            "panelFill": draft.get("titlePanelFill"),
             "stylePreset": draft.get("titleStylePreset", "midnight_stack"),
             "style": _style_from_draft_keys("title", draft),
         }
     )
+
+
+def build_playlist_layout_side_draft_patch(layout_key: str) -> dict[str, Any]:
+    """When Layout is split / split_left, snap Playlist x/y to the labeled side."""
+    key = str(layout_key or "").strip().lower()
+    patch: dict[str, Any] = {"titleLayout": key if key else "column"}
+    side = PLAYLIST_LAYOUT_SIDE_POSITIONS.get(key)
+    if side is not None:
+        patch["titleX"] = float(side[0])
+        patch["titleY"] = float(side[1])
+    return patch
+
+
+def build_playlist_look_draft_patch(look_key: str) -> dict[str, Any] | None:
+    """Map a Playlist Look preset into flat draft keys (layout + chrome + style)."""
+    key = str(look_key or "").strip().lower()
+    raw = PLAYLIST_LOOK_PRESET_PATCHES.get(key)
+    if not isinstance(raw, dict):
+        return None
+    patch: dict[str, Any] = {
+        "titlePlaylistLook": key,
+        "titleEnabled": True,
+    }
+    style_keys = {
+        "fontFamily",
+        "fontSize",
+        "bold",
+        "italic",
+        "color",
+        "glow",
+        "glowColor",
+        "glowBlur",
+        "letterSpacing",
+        "lineSpacing",
+        "boxWidth",
+        "align",
+        "anchor",
+        "x",
+        "y",
+        "opacity",
+        "strokeWidth",
+        "strokeColor",
+        "shadow",
+        "shadowBlur",
+    }
+    field_map = {
+        "layout": "titleLayout",
+        "listStyle": "titleListStyle",
+        "listColor": "titleListColor",
+        "listActiveColor": "titleListActiveColor",
+        "showDurations": "titleShowDurations",
+        "nowPlayingEnabled": "titleNowPlayingEnabled",
+        "nowPlayingPill": "titleNowPlayingPill",
+        "trackCountBadge": "titleTrackCountBadge",
+        "tracklistHeader": "titleTracklistHeader",
+        "activeRowPlate": "titleActiveRowPlate",
+        "panelOpacity": "titlePanelOpacity",
+        "panelFrost": "titlePanelFrost",
+        "panelBorderWidth": "titlePanelBorderWidth",
+        "panelBorderColor": "titlePanelBorderColor",
+        "panelSpecular": "titlePanelSpecular",
+        "panelFill": "titlePanelFill",
+    }
+    for src_key, value in raw.items():
+        if src_key in field_map:
+            patch[field_map[src_key]] = value
+        elif src_key in style_keys:
+            camel = src_key[0].upper() + src_key[1:]
+            patch[f"title{camel}"] = value
+    return patch
 
 
 def is_builtin_text_domain_preset(preset_key: str | None) -> bool:

@@ -77,3 +77,13 @@ Desktop-only. Fully restart the app. Existing templates become one Spectrum auto
 **Fix:** Flushing the selected Spectrum instance now copies draft style/audio + layers; preset/stack/restore paths call `_commit_spectrum_preset_to_preview()`.
 
 **Verify:** Restart app → Spectrum preset → **Magma Ridge** — should show a filled ridge/mountain waveform, not orbit spikes.
+
+## Incident — Save overwrite resets template to previous look (2026-07-30)
+
+**Symptom:** Editing a template then **Save** (overwrite) reloaded the old/original spectrum look (style, position, layers, colors).
+
+**Root cause:** `_save_template` / server sync built the save patch without flushing or passing live `_spectrum_instances`. With `spectrumInstances` already on disk, save rebuilt from the stale catalog snapshot and `mirror_spectrum_instance0_to_legacy` overwrote draft edits; post-save hydrate then showed the reverted template.
+
+**Fix:** Flush the active Spectrum instance, then pass `spectrum_instances=self._spectrum_instances` into `build_video_workspace_template_save_patch` for both local save and server sync. Blank-template create also preserves live instances.
+
+**Verify:** Edit Spectrum style/position/layers → Save → template should keep edits (Restore original still returns the first snapshot).

@@ -16,6 +16,7 @@ from features.video.lib.particle_color_engine import (
     extract_particle_color_model,
     normalize_particle_palette_colors,
 )
+from features.video.lib.spectrum_color_engine import MAX_GRADIENT_COLOR_STOPS
 from features.video.widgets.inspector_fields import build_color_field
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID
 from shared.widgets.settings_ui import form_row
@@ -110,7 +111,7 @@ class ParticleColorEditor(QWidget):
 
     def _add_palette_stop(self) -> None:
         colors = list(self._color_model.get("paletteColors") or [])
-        if len(colors) >= 5:
+        if len(colors) >= MAX_GRADIENT_COLOR_STOPS:
             return
         colors.append(colors[-1] if colors else str(self._color_model.get("solidColor") or "#ffffff"))
         self._emit_patch(

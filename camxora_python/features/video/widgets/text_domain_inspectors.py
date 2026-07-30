@@ -23,11 +23,14 @@ from features.video.lib.text_color_engine import (
 )
 from features.video.lib.text_domain_registry import (
     CONTENT_MODE_OPTIONS,
+    PLAYLIST_LOOK_PRESET_OPTIONS,
     TEXT_ALIGN_OPTIONS,
     TEXT_DOMAIN_PRESET_OPTIONS,
     TITLE_LAYOUT_OPTIONS,
     TITLE_LIST_STYLE_OPTIONS,
     TITLE_NUMBER_INDENT_OPTIONS,
+    build_playlist_layout_side_draft_patch,
+    build_playlist_look_draft_patch,
     get_font_options,
 )
 from features.video.widgets.inspector_fields import (
@@ -92,6 +95,8 @@ class _TextDomainInspectorBase(QWidget):
         self._list_style: QComboBox | None = None
         self._number_indent: QComboBox | None = None
         self._layout_combo: QComboBox | None = None
+        self._playlist_look: QComboBox | None = None
+        self._toggle_fields: dict[str, QCheckBox] = {}
         self._effect_pack_host: QVBoxLayout | None = None
 
         root = QVBoxLayout(self)
@@ -553,11 +558,22 @@ class AlbumInspector(_TextDomainInspectorBase):
 class TitleInspector(_TextDomainInspectorBase):
     _DOMAIN = "title"
     _PREFIX = "title"
-    _ENABLE_LABEL = "Enable Title"
-    _TITLE = "Title"
-    _SUBTITLE = "Track titles auto-load from the track list. Choose list + grid layout."
+    _ENABLE_LABEL = "Enable Playlist"
+    _TITLE = "Playlist"
+    _SUBTITLE = (
+        "Long-play track list. Auto-loads from the pipeline track list. "
+        "Pick a Playlist Look, layout, and glass panel."
+    )
 
     def _build_content_fields(self, section: InspectorSection) -> None:
+        self._playlist_look = QComboBox()
+        self._playlist_look.addItem("Custom / none", "")
+        for value, label in PLAYLIST_LOOK_PRESET_OPTIONS:
+            self._playlist_look.addItem(label, value)
+        self._playlist_look.setToolTip("Playlist Look — layout, glass panel, fonts, and colors")
+        self._playlist_look.currentIndexChanged.connect(self._on_playlist_look_changed)
+        section.add_widget(_stacked_field("Playlist Look", self._playlist_look))
+
         self._list_style = QComboBox()
         for value, label in TITLE_LIST_STYLE_OPTIONS:
             self._list_style.addItem(label, value)
@@ -577,10 +593,56 @@ class TitleInspector(_TextDomainInspectorBase):
         self._layout_combo = QComboBox()
         for value, label in TITLE_LAYOUT_OPTIONS:
             self._layout_combo.addItem(label, value)
-        self._layout_combo.currentIndexChanged.connect(
-            lambda _i: self._emit_combo(self._layout_combo, "titleLayout")
-        )
+        self._layout_combo.currentIndexChanged.connect(self._on_playlist_layout_changed)
         section.add_widget(_stacked_field("Layout", self._layout_combo))
+
+        for field, label in (
+            ("titleShowDurations", "Show durations"),
+            ("titleNowPlayingEnabled", "Now Playing highlight"),
+            ("titleNowPlayingPill", "NOW PLAYING pill"),
+            ("titleTracklistHeader", "TRACKLIST header"),
+            ("titleActiveRowPlate", "Active row neon plate"),
+            ("titleTrackCountBadge", "Track count badge"),
+        ):
+            box = QCheckBox(label)
+            box.toggled.connect(
+                lambda checked, key=field: (
+                    None if self._binding else self._emit_patch({key: bool(checked)})
+                )
+            )
+            self._toggle_fields[field] = box
+            section.add_widget(box)
+
+        for field, label, minimum, maximum, step in (
+            ("titlePanelOpacity", "Panel Opacity", 0.05, 1.0, 0.01),
+            ("titlePanelFrost", "Panel Frost", 0.0, 1.0, 0.01),
+            ("titlePanelBorderWidth", "Panel Border", 0.0, 8.0, 0.25),
+            ("titlePanelSpecular", "Panel Specular", 0.0, 1.0, 0.01),
+        ):
+            widget, setter = build_float_slider(
+                label,
+                minimum=minimum,
+                maximum=maximum,
+                step=step,
+                value=minimum,
+                on_change=lambda value, key=field: self._emit_patch({key: round(float(value), 3)}),
+            )
+            self._float_setters[field] = setter
+            section.add_widget(widget)
+
+        for field, label, default in (
+            ("titlePanelBorderColor", "Panel Border Color", "#94a3b8"),
+            ("titlePanelFill", "Panel Fill", "#0f172a"),
+        ):
+            widget, setter = build_color_field(
+                label,
+                value=default,
+                on_change=lambda value, key=field: self._emit_patch({key: value}),
+                parent=self,
+                show_label=False,
+            )
+            self._color_setters[field] = setter
+            section.add_widget(_stacked_field(label, widget))
 
         self._manual_titles = QPlainTextEdit()
         self._manual_titles.setPlaceholderText("One title per line (manual mode)")
@@ -588,6 +650,25 @@ class TitleInspector(_TextDomainInspectorBase):
         self._manual_titles.setFixedHeight(110)
         self._manual_titles.textChanged.connect(self._on_manual_titles)
         section.add_widget(self._manual_titles)
+
+    def _on_playlist_layout_changed(self, _index: int) -> None:
+        if self._binding or self._layout_combo is None:
+            return
+        key = self._layout_combo.currentData()
+        if not isinstance(key, str):
+            return
+        self._emit_patch(build_playlist_layout_side_draft_patch(key))
+
+    def _on_playlist_look_changed(self, _index: int) -> None:
+        if self._binding or self._playlist_look is None:
+            return
+        key = self._playlist_look.currentData()
+        if not isinstance(key, str) or not key:
+            self._emit_patch({"titlePlaylistLook": ""})
+            return
+        patch = build_playlist_look_draft_patch(key)
+        if patch:
+            self._emit_patch(patch)
 
     def _build_list_color_fields(self, style: InspectorSection) -> None:
         for field, label in (
@@ -626,9 +707,14 @@ class TitleInspector(_TextDomainInspectorBase):
         self._emit_patch({"titleManualTitles": lines})
 
     def _bind_domain_fields(self, draft: dict) -> None:
+        self._set_combo(self._playlist_look, str(draft.get("titlePlaylistLook") or ""))
         self._set_combo(self._list_style, str(draft.get("titleListStyle") or "number"))
         self._set_combo(self._number_indent, str(draft.get("titleNumberIndent") or "aligned"))
         self._set_combo(self._layout_combo, str(draft.get("titleLayout") or "column"))
+        for field, checkbox in self._toggle_fields.items():
+            checkbox.blockSignals(True)
+            checkbox.setChecked(bool(draft.get(field)))
+            checkbox.blockSignals(False)
         if self._manual_titles is not None:
             titles = draft.get("titleManualTitles")
             text = "\n".join(str(item) for item in titles) if isinstance(titles, list) else ""

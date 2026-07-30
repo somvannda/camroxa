@@ -84,6 +84,85 @@ def test_save_does_not_wipe_layers_when_instance_empty() -> None:
     assert len((patch.get("spectrumInstances") or [{}])[0].get("layers") or []) == 1
 
 
+def test_save_uses_live_spectrum_instances_not_stale_disk() -> None:
+    """Overwrite must persist live instance edits, not rebuild from old catalog instances."""
+    disk_layers = [{"id": "old", "thickness": 10, "barWidth": 2, "curved": True, "mirrored": True}]
+    live_layers = [
+        {
+            "id": "new",
+            "thickness": 90,
+            "barWidth": 12,
+            "curved": False,
+            "mirrored": False,
+            "linearSpan": 0.5,
+            "color": {"mode": "solid", "solidColor": "#00ff00"},
+        }
+    ]
+    disk_inst = {
+        **default_spectrum_instance(index=1, layers=disk_layers),
+        "style": "orbit-spikes",
+        "x": 0.0,
+        "y": 0.0,
+        "audioSettings": {"inputGain": 1.0, "motionSmoothing": 0.8, "peakHoldBlend": 0.0},
+    }
+    live_inst = {
+        **default_spectrum_instance(index=1, layers=live_layers),
+        "style": "magma-ridge",
+        "x": 55.0,
+        "y": -20.0,
+        "audioSettings": {"inputGain": 3.0, "motionSmoothing": 0.4, "peakHoldBlend": 0.2},
+    }
+    second_live = {
+        **default_spectrum_instance(index=2, layers=[{"id": "row", "thickness": 40, "curved": False}]),
+        "enabled": True,
+        "x": 100.0,
+    }
+    tpl = normalize_renderer_template(
+        {
+            **default_renderer_template(),
+            "style": "orbit-spikes",
+            "layers": disk_layers,
+            "spectrumInstances": [disk_inst],
+            "position": {"anchor": "center", "x": 0, "y": 0},
+            "audioSettings": {"inputGain": 1.0},
+        }
+    )
+    draft = build_video_template_draft(tpl, logo_path="")
+    draft = {
+        **draft,
+        "style": "magma-ridge",
+        "positionX": 55.0,
+        "positionY": -20.0,
+        "audioInputGain": 3.0,
+    }
+
+    bad = build_video_workspace_template_save_patch(
+        template=tpl,
+        draft=draft,
+        template_name="t",
+        layers=live_layers,
+        # Missing live instances reproduces the overwrite-reset bug.
+    )
+    assert bad["style"] == "orbit-spikes"
+    assert float((bad.get("position") or {}).get("x", 0)) == 0.0
+    assert float(bad["layers"][0]["thickness"]) == 10
+
+    good = build_video_workspace_template_save_patch(
+        template=tpl,
+        draft=draft,
+        template_name="t",
+        layers=live_layers,
+        spectrum_instances=[live_inst, second_live],
+    )
+    assert good["style"] == "magma-ridge"
+    assert float((good.get("position") or {}).get("x", 0)) == 55.0
+    assert float((good.get("position") or {}).get("y", 0)) == -20.0
+    assert float(good["layers"][0]["thickness"]) == 90
+    assert float(good["layers"][0].get("linearSpan", 1.0)) == 0.5
+    assert len(good.get("spectrumInstances") or []) == 2
+    assert float((good["spectrumInstances"][0].get("audioSettings") or {}).get("inputGain", 0)) == 3.0
+
+
 def test_normalize_keeps_multiple_instances() -> None:
     raw = [
         default_spectrum_instance(index=1, layers=[{"curved": True, "thickness": 40}]),

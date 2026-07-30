@@ -11,6 +11,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Playlist Phase 1+: **Purple Neon Glowing** = glass **tracklist card** only (framed list + active outline). Full-stage chrome dropped from the Look. Timing plan-only. See `docs/changelog/2026-07-30-playlist-phase1.md`.
 - Lightning domain: stack as many bolts as you want, each with its own style and free preview position (like Spectrum). Phase A/B/C: triggers, glow/branchiness, presets, seed lock, export draw parity. See `docs/changelog/2026-07-29-lightning-layers.md`.
 - Background vignette: Audio React opens dark corners on bass/kick and lightning strikes so a bright plate can flash with bolts. See `docs/changelog/2026-07-29-vignette-audio-lightning-react.md`.
 - Particles: Music Notes style (random neon note icons) + Neon Glow slider for dots and icons. See `docs/changelog/2026-07-29-particle-music-neon-glow.md`.
@@ -19,6 +20,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Spectrum **Raise Scroll**: free continuous slider to move bar/spike energy along the row or ring (not locked left/center/right). See `docs/changelog/2026-07-30-spectrum-raise-scroll.md`.
+- Color Engine: more vivid shared palettes (24) + up to **12** gradient/palette stops (was 5). See `docs/changelog/2026-07-30-vivid-palettes-twelve-stops.md`.
+- Fix: Save overwrite kept stale `spectrumInstances` and reset Spectrum edits; save now flushes and persists live instances. See `docs/changelog/2026-07-30-multi-spectrum-instances.md` (Save overwrite incident).
+- Preview drag: Spectrum / Logo / Lightning stay inside the frame and can sit flush on edges; linear **Row Width** can span full preview (was hard 80%). Freer spectrum sizing — Bar Length up to 600, Bar Width up to 240, Global Height Gain up to 12×. See `docs/changelog/2026-07-30-preview-drag-clamp-spectrum-resize.md`.
 - Multi-Spectrum instances: up to 8 independent Spectrums (position/attach/audio/rings each). See `docs/changelog/2026-07-30-multi-spectrum-instances.md`.
 - Fix: heal empty Spectrum instance layers + map legacy sensitivity→inputGain so templates keep reactive spectrums after multi-instance.
 - Fix: Magma Ridge / waveform presets sync style onto the selected Spectrum instance and refresh preview.

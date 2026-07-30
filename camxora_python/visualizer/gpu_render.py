@@ -15,6 +15,7 @@ import moderngl
 from ._spectrum_fast import (
     normalize_spectrum_gravity,
     resolve_bar_pixel_width,
+    scroll_spectrum_heights,
 )
 
 def _audio_bar_height_mult(template: dict) -> float:
@@ -1030,6 +1031,289 @@ def _hex_to_rgba(hex_color: str, alpha: int = 255) -> tuple[int, int, int, int]:
     return (255, 255, 255, int(max(0, min(255, alpha))))
 
 
+def _render_panel_rgba(
+    width_px: float,
+    height_px: float,
+    *,
+    fill: str = "#0f172a",
+    opacity: float = 0.45,
+    border_color: str = "#94a3b8",
+    border_width: float = 1.0,
+    radius: float = 12.0,
+    frost: float = 0.4,
+    specular: float = 0.5,
+    label: str = "",
+    label_size_px: float = 0.0,
+    label_font_family: str = "montserrat",
+    label_bold: bool = True,
+) -> tuple[np.ndarray, int, int]:
+    """Rasterize a rounded glass plate (optional centered label for NOW PLAYING pills)."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+    from features.video.lib.system_fonts import resolve_font_file
+
+    w = int(max(4, min(4096, round(float(width_px)))))
+    h = int(max(4, min(4096, round(float(height_px)))))
+    rad = float(max(0.0, min(min(w, h) * 0.5, float(radius))))
+    op = float(max(0.0, min(1.0, float(opacity))))
+    frost_amt = float(max(0.0, min(1.0, float(frost))))
+    spec_amt = float(max(0.0, min(1.0, float(specular))))
+    bw = float(max(0.0, min(24.0, float(border_width))))
+    pad = int(max(2, round(bw + 4.0 + frost_amt * 6.0)))
+    img_w = w + pad * 2
+    img_h = h + pad * 2
+    img = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    box = (pad, pad, pad + w - 1, pad + h - 1)
+    # Keep plate readable on dark video backgrounds (floor alpha).
+    fill_a = int(round(255 * max(0.35, op * (0.65 + frost_amt * 0.3))))
+    fill_rgba = _hex_to_rgba(fill, fill_a)
+    border_rgba = _hex_to_rgba(border_color, 255)
+    # Soft outer neon glow for the frame edge.
+    if bw > 0.05:
+        glow = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow)
+        glow_box = (pad - 2, pad - 2, pad + w + 1, pad + h + 1)
+        gd.rounded_rectangle(
+            glow_box,
+            radius=rad + 2,
+            outline=(border_rgba[0], border_rgba[1], border_rgba[2], 180),
+            width=max(2, int(round(bw + 2))),
+        )
+        glow = glow.filter(ImageFilter.GaussianBlur(radius=max(2, int(round(2 + frost_amt * 3)))))
+        img = Image.alpha_composite(img, glow)
+        draw = ImageDraw.Draw(img)
+    # Soft drop shadow.
+    shadow = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    sd.rounded_rectangle(box, radius=rad, fill=(0, 0, 0, int(110 * (0.4 + frost_amt * 0.5))))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(3 + frost_amt * 5)))))
+    img = Image.alpha_composite(img, shadow)
+    draw = ImageDraw.Draw(img)
+    # Reliable border ring: outer accent fill, then punch inner plate fill.
+    # (Pillow outline width is inconsistent across versions.)
+    inset = max(1, int(round(max(bw, 1.5))))
+    if bw > 0.05:
+        draw.rounded_rectangle(box, radius=rad, fill=border_rgba)
+        inner = (pad + inset, pad + inset, pad + w - 1 - inset, pad + h - 1 - inset)
+        inner_rad = max(0.0, rad - float(inset))
+        draw.rounded_rectangle(inner, radius=inner_rad, fill=fill_rgba)
+        plate_box = inner
+        plate_rad = inner_rad
+    else:
+        draw.rounded_rectangle(box, radius=rad, fill=fill_rgba)
+        plate_box = box
+        plate_rad = rad
+    # Frost veil: soft white wash stronger at the top (fake glass, no scene blur).
+    if frost_amt > 0.04:
+        veil = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+        vd = ImageDraw.Draw(veil)
+        bands = max(4, min(24, int(round(8 + frost_amt * 10))))
+        px0, py0, px1, py1 = plate_box
+        ph = max(1, py1 - py0)
+        for i in range(bands):
+            t0 = i / bands
+            t1 = (i + 1) / bands
+            y0 = py0 + int(round(ph * t0))
+            y1 = py0 + int(round(ph * t1))
+            a = int(round(150 * frost_amt * (1.0 - t0 * 0.9)))
+            if a <= 0 or y1 <= y0:
+                continue
+            vd.rectangle((px0, y0, px1, y1), fill=(220, 235, 255, a))
+        mask = Image.new("L", (img_w, img_h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(plate_box, radius=plate_rad, fill=255)
+        r, g, b, a_ch = veil.split()
+        from PIL import ImageChops
+
+        veil = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a_ch, mask)))
+        veil = veil.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(1 + frost_amt * 2.5)))))
+        img = Image.alpha_composite(img, veil)
+        draw = ImageDraw.Draw(img)
+    if spec_amt > 0.05:
+        # Specular edge along the top of the plate.
+        highlight = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+        hd = ImageDraw.Draw(highlight)
+        hy1 = pad + max(1, int(round(h * 0.08)))
+        hd.rounded_rectangle(
+            (pad + 2, pad + 1, pad + w - 3, hy1),
+            radius=max(2.0, rad * 0.35),
+            fill=(255, 255, 255, int(round(160 * spec_amt))),
+        )
+        highlight = highlight.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(1.5 + spec_amt * 2)))))
+        img = Image.alpha_composite(img, highlight)
+        draw = ImageDraw.Draw(img)
+    label_text = str(label or "").strip()
+    if label_text:
+        size = int(max(6, min(128, round(float(label_size_px or max(8.0, h * 0.42))))))
+        try:
+            font = ImageFont.truetype(resolve_font_file(label_font_family, bold=bool(label_bold)), size)
+        except Exception:
+            try:
+                font = ImageFont.truetype("arial.ttf", size)
+            except Exception:
+                font = ImageFont.load_default()
+        # Dark text on bright pill, light text on dark plate.
+        r, g, b, _a = fill_rgba
+        luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+        ink = (15, 23, 42, 255) if luminance > 0.55 else (248, 250, 252, 255)
+        if "\n" in label_text:
+            tb = draw.multiline_textbbox((0, 0), label_text, font=font, align="center", spacing=2)
+            tw = float(tb[2] - tb[0])
+            th = float(tb[3] - tb[1])
+            tx = pad + (w - tw) * 0.5 - tb[0]
+            ty = pad + (h - th) * 0.5 - tb[1]
+            draw.multiline_text((tx, ty), label_text, font=font, fill=ink, align="center", spacing=2)
+        else:
+            tb = draw.textbbox((0, 0), label_text, font=font)
+            tw = float(tb[2] - tb[0])
+            th = float(tb[3] - tb[1])
+            tx = pad + (w - tw) * 0.5 - tb[0]
+            ty = pad + (h - th) * 0.5 - tb[1]
+            draw.text((tx, ty), label_text, font=font, fill=ink)
+    arr = np.array(img.convert("RGBA"), dtype=np.uint8)
+    arr = np.flipud(arr)
+    return arr, int(img.width), int(img.height)
+
+
+def _render_stage_art_rgba(
+    width_px: float,
+    height_px: float,
+    *,
+    logo_path: str = "",
+    ring_color: str = "#e879f9",
+    ring_count: int = 4,
+    border_width: float = 2.0,
+    fill: str = "#12041c",
+) -> tuple[np.ndarray, int, int]:
+    """Circular cover art with concentric neon rings (Playlist Stage)."""
+    from PIL import Image, ImageDraw, ImageFilter
+
+    w = int(max(8, min(2048, round(float(width_px)))))
+    h = int(max(8, min(2048, round(float(height_px)))))
+    size = min(w, h)
+    pad = int(max(8, round(size * 0.18)))
+    canvas = size + pad * 2
+    img = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    cx = cy = canvas * 0.5
+    r = size * 0.5
+    accent = _hex_to_rgba(ring_color, 255)
+    # Concentric rings outside the disc
+    rings = max(1, min(8, int(ring_count)))
+    for i in range(rings, 0, -1):
+        rr = r + (pad * 0.55) * (i / rings)
+        a = int(max(40, 200 - i * 28))
+        draw.ellipse(
+            (cx - rr, cy - rr, cx + rr, cy + rr),
+            outline=(accent[0], accent[1], accent[2], a),
+            width=max(1, int(round(1.0 + (rings - i) * 0.35))),
+        )
+    # Disc fill / photo
+    disc = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(disc)
+    fill_rgba = _hex_to_rgba(fill, 230)
+    dd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=fill_rgba)
+    path = str(logo_path or "").strip()
+    if path:
+        try:
+            from pathlib import Path
+
+            if Path(path).is_file():
+                cover = Image.open(path).convert("RGBA")
+                side = int(max(8, round(r * 2)))
+                cover = cover.resize((side, side), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (side, side), 0)
+                ImageDraw.Draw(mask).ellipse((0, 0, side - 1, side - 1), fill=255)
+                ox = int(round(cx - r))
+                oy = int(round(cy - r))
+                disc.paste(cover, (ox, oy), mask)
+        except Exception:
+            pass
+    # Neon rim
+    bw = max(1, int(round(float(border_width))))
+    dd = ImageDraw.Draw(disc)
+    dd.ellipse((cx - r, cy - r, cx + r, cy + r), outline=accent, width=bw)
+    glow = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse((cx - r - 2, cy - r - 2, cx + r + 2, cy + r + 2), outline=(accent[0], accent[1], accent[2], 160), width=3)
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=max(2, int(round(size * 0.04)))))
+    img = Image.alpha_composite(img, glow)
+    img = Image.alpha_composite(img, disc)
+    arr = np.array(img.convert("RGBA"), dtype=np.uint8)
+    arr = np.flipud(arr)
+    return arr, int(img.width), int(img.height)
+
+
+def _render_overlay_rgba(overlay: dict, scale: float) -> tuple[np.ndarray, int, int]:
+    """Dispatch text vs panel/pill/stage-art rasters for preview + export."""
+    kind = str((overlay or {}).get("overlayKind") or "text").strip().lower()
+    scale = float(max(0.05, min(16.0, float(scale or 1.0))))
+    if kind == "stage_art":
+        return _render_stage_art_rgba(
+            float((overlay or {}).get("panelWidth") or 120.0) * scale,
+            float((overlay or {}).get("panelHeight") or 120.0) * scale,
+            logo_path=str((overlay or {}).get("logoPath") or ""),
+            ring_color=str((overlay or {}).get("ringColor") or (overlay or {}).get("strokeColor") or "#e879f9"),
+            ring_count=int((overlay or {}).get("ringCount") or 4),
+            border_width=float((overlay or {}).get("strokeWidth") or 2.0) * scale,
+            fill=str((overlay or {}).get("color") or "#12041c"),
+        )
+    if kind in {"panel", "pill"}:
+        return _render_panel_rgba(
+            float((overlay or {}).get("panelWidth") or 120.0) * scale,
+            float((overlay or {}).get("panelHeight") or 40.0) * scale,
+            fill=str((overlay or {}).get("color") or "#0f172a"),
+            opacity=float((overlay or {}).get("opacity") if "opacity" in (overlay or {}) else 0.45),
+            border_color=str((overlay or {}).get("strokeColor") or "#94a3b8"),
+            border_width=float((overlay or {}).get("strokeWidth") or 0.0) * scale,
+            radius=float((overlay or {}).get("panelRadius") or 12.0) * scale,
+            frost=float((overlay or {}).get("panelFrost") or 0.0),
+            specular=float((overlay or {}).get("panelSpecular") or 0.0),
+            label=str((overlay or {}).get("text") or "") if kind == "pill" else "",
+            label_size_px=float((overlay or {}).get("sizePx") or 0.0) * scale,
+            label_font_family=str((overlay or {}).get("fontFamily") or "montserrat"),
+            label_bold=bool((overlay or {}).get("bold", True)),
+        )
+    text = str((overlay or {}).get("text", "") or "").strip()
+    size_px = float((overlay or {}).get("sizePx", 46.0) if "sizePx" in (overlay or {}) else 46.0)
+    return _render_text_rgba(
+        text,
+        size_px * scale,
+        str((overlay or {}).get("color", "#ffffff") or "#ffffff"),
+        str((overlay or {}).get("strokeColor", "#000000") or "#000000"),
+        float((overlay or {}).get("strokeWidth", 2.0) if "strokeWidth" in (overlay or {}) else 2.0) * scale,
+        float((overlay or {}).get("shadow", 0.4) if "shadow" in (overlay or {}) else 0.4),
+        font_family=str((overlay or {}).get("fontFamily", "arial") or "arial"),
+        bold=bool((overlay or {}).get("bold", False)),
+        italic=bool((overlay or {}).get("italic", False)),
+        letter_spacing=float((overlay or {}).get("letterSpacing", 0.0) if "letterSpacing" in (overlay or {}) else 0.0)
+        * scale,
+        line_spacing=float((overlay or {}).get("lineSpacing", 1.15) if "lineSpacing" in (overlay or {}) else 1.15),
+        align=str((overlay or {}).get("align", "left") or "left"),
+        box_width=float((overlay or {}).get("boxWidth", 0.0) if "boxWidth" in (overlay or {}) else 0.0) * scale,
+        fill_mode=str((overlay or {}).get("fillMode", "solid") or "solid"),
+        gradient_colors=(overlay or {}).get("gradientColors")
+        if isinstance((overlay or {}).get("gradientColors"), list)
+        else [],
+        gradient_direction=str((overlay or {}).get("gradientDirection", "vertical") or "vertical"),
+        glow=float((overlay or {}).get("glow", 0.0) if "glow" in (overlay or {}) else 0.0),
+        glow_color=str((overlay or {}).get("glowColor", "#ff4fd8") or "#ff4fd8"),
+        glow_blur=float((overlay or {}).get("glowBlur", 8.0) if "glowBlur" in (overlay or {}) else 8.0) * scale,
+        glow_mode=str((overlay or {}).get("glowMode", "solid") or "solid"),
+        glow_gradient_colors=(overlay or {}).get("glowGradientColors")
+        if isinstance((overlay or {}).get("glowGradientColors"), list)
+        else [],
+        glow_gradient_direction=str(
+            (overlay or {}).get("glowGradientDirection", "horizontal") or "horizontal"
+        ),
+        shadow_blur=float((overlay or {}).get("shadowBlur", 0.0) if "shadowBlur" in (overlay or {}) else 0.0)
+        * scale,
+        extrude_depth=float((overlay or {}).get("extrudeDepth", 0.0) if "extrudeDepth" in (overlay or {}) else 0.0)
+        * scale,
+        extrude_color=str((overlay or {}).get("extrudeColor", "#1a1a1a") or "#1a1a1a"),
+    )
+
+
 def _text_letter_spacing_px(size_px: float, letter_spacing: float) -> float:
     # Inspector letterSpacing is tracking in px (CapCut-like; allow tight negative).
     _ = size_px
@@ -1587,8 +1871,9 @@ def _draw_text_overlays(
     for idx, o in enumerate(overlays):
         if not isinstance(o, dict) or not bool(o.get("enabled", False)):
             continue
+        kind = str(o.get("overlayKind") or "text").strip().lower()
         text = str(o.get("text", "") or "").strip()
-        if not text:
+        if kind not in {"panel", "pill", "stage_art"} and not text:
             continue
         start = float(o.get("startSec", 0.0) or 0.0)
         dur = float(o.get("durationSec", 3.0) or 3.0)
@@ -1631,69 +1916,52 @@ def _draw_text_overlays(
             k = float(max(0.0, min(1.0, u))) * (1.0 - float(max(0.0, min(1.0, u))))
             dx += float(math.sin((start + float(time_sec)) * 38.0 + idx * 7.0) * 10.0 * sf * k)
             dy += float(math.cos((start + float(time_sec)) * 41.0 + idx * 11.0) * 10.0 * sf * k)
-        size_px = float(o.get("sizePx", 46.0) if "sizePx" in o else 46.0)
-        col = str(o.get("color", "#ffffff") or "#ffffff").strip()
-        scol = str(o.get("strokeColor", "#000000") or "#000000").strip()
-        sw = float(o.get("strokeWidth", 2.0) if "strokeWidth" in o else 2.0)
-        sh = float(o.get("shadow", 0.4) if "shadow" in o else 0.4)
-        font_family = str(o.get("fontFamily", "arial") or "arial")
-        bold = bool(o.get("bold", False))
-        italic = bool(o.get("italic", False))
         opacity_mul = float(o.get("opacity", 1.0) if "opacity" in o else 1.0)
-        letter_spacing = float(o.get("letterSpacing", 0.0) if "letterSpacing" in o else 0.0)
-        line_spacing = float(o.get("lineSpacing", 1.15) if "lineSpacing" in o else 1.15)
-        align = str(o.get("align", "left") or "left")
-        box_width = float(o.get("boxWidth", 0.0) if "boxWidth" in o else 0.0)
-        fill_mode = str(o.get("fillMode", "solid") or "solid")
-        gradient_colors = o.get("gradientColors") if isinstance(o.get("gradientColors"), list) else []
-        gradient_direction = str(o.get("gradientDirection", "vertical") or "vertical")
-        glow_amt = float(o.get("glow", 0.0) if "glow" in o else 0.0)
-        glow_color = str(o.get("glowColor", "#ff4fd8") or "#ff4fd8")
-        glow_blur = float(o.get("glowBlur", 8.0) if "glowBlur" in o else 8.0)
-        glow_mode = str(o.get("glowMode", "solid") or "solid")
-        glow_gradient_colors = o.get("glowGradientColors") if isinstance(o.get("glowGradientColors"), list) else []
-        glow_gradient_direction = str(o.get("glowGradientDirection", "horizontal") or "horizontal")
-        shadow_blur = float(o.get("shadowBlur", 0.0) if "shadowBlur" in o else 0.0)
-        extrude_depth = float(o.get("extrudeDepth", 0.0) if "extrudeDepth" in o else 0.0)
-        extrude_color = str(o.get("extrudeColor", "#1a1a1a") or "#1a1a1a")
-        grad_key = ",".join(str(c) for c in gradient_colors)
-        glow_grad_key = ",".join(str(c) for c in glow_gradient_colors)
         # Scale with output height / renderBaseHeight (no 4× cap — preview ↔ export match).
         scale = float(max(0.05, min(16.0, float(sf or 1.0))))
-        key = (
-            f"{text}|{size_px:.2f}|{col}|{scol}|{sw:.2f}|{sh:.2f}|{font_family}|{int(bold)}|{int(italic)}"
-            f"|{letter_spacing:.2f}|{line_spacing:.2f}|{align}|{box_width:.1f}|{fill_mode}|{grad_key}|{gradient_direction}"
-            f"|{glow_amt:.2f}|{glow_color}|{glow_blur:.2f}|{glow_mode}|{glow_grad_key}|{glow_gradient_direction}"
-            f"|{shadow_blur:.2f}|{extrude_depth:.2f}|{extrude_color}|sf:{scale:.4f}"
-        )
-        if key_list[idx] != key or tex_list[idx] is None:
-            arr, tw, th = _render_text_rgba(
-                text,
-                size_px * scale,
-                col,
-                scol,
-                sw * scale,
-                sh,
-                font_family=font_family,
-                bold=bold,
-                italic=italic,
-                letter_spacing=letter_spacing * scale,
-                line_spacing=line_spacing,
-                align=align,
-                box_width=box_width * scale,
-                fill_mode=fill_mode,
-                gradient_colors=gradient_colors,
-                gradient_direction=gradient_direction,
-                glow=glow_amt,
-                glow_color=glow_color,
-                glow_blur=glow_blur * scale,
-                glow_mode=glow_mode,
-                glow_gradient_colors=glow_gradient_colors,
-                glow_gradient_direction=glow_gradient_direction,
-                shadow_blur=shadow_blur * scale,
-                extrude_depth=extrude_depth * scale,
-                extrude_color=extrude_color,
+        if kind in {"panel", "pill", "stage_art"}:
+            key = (
+                f"shape:{kind}|{float(o.get('panelWidth') or 0):.1f}|{float(o.get('panelHeight') or 0):.1f}"
+                f"|{o.get('color')}|{opacity_mul:.3f}|{o.get('strokeColor')}|{float(o.get('strokeWidth') or 0):.2f}"
+                f"|{float(o.get('panelRadius') or 0):.2f}|{float(o.get('panelFrost') or 0):.2f}"
+                f"|{float(o.get('panelSpecular') or 0):.2f}|{text}|{float(o.get('sizePx') or 0):.2f}"
+                f"|{o.get('fontFamily')}|{o.get('logoPath')}|sf:{scale:.4f}"
             )
+        else:
+            size_px = float(o.get("sizePx", 46.0) if "sizePx" in o else 46.0)
+            col = str(o.get("color", "#ffffff") or "#ffffff").strip()
+            scol = str(o.get("strokeColor", "#000000") or "#000000").strip()
+            sw = float(o.get("strokeWidth", 2.0) if "strokeWidth" in o else 2.0)
+            sh = float(o.get("shadow", 0.4) if "shadow" in o else 0.4)
+            font_family = str(o.get("fontFamily", "arial") or "arial")
+            bold = bool(o.get("bold", False))
+            italic = bool(o.get("italic", False))
+            letter_spacing = float(o.get("letterSpacing", 0.0) if "letterSpacing" in o else 0.0)
+            line_spacing = float(o.get("lineSpacing", 1.15) if "lineSpacing" in o else 1.15)
+            align = str(o.get("align", "left") or "left")
+            box_width = float(o.get("boxWidth", 0.0) if "boxWidth" in o else 0.0)
+            fill_mode = str(o.get("fillMode", "solid") or "solid")
+            gradient_colors = o.get("gradientColors") if isinstance(o.get("gradientColors"), list) else []
+            gradient_direction = str(o.get("gradientDirection", "vertical") or "vertical")
+            glow_amt = float(o.get("glow", 0.0) if "glow" in o else 0.0)
+            glow_color = str(o.get("glowColor", "#ff4fd8") or "#ff4fd8")
+            glow_blur = float(o.get("glowBlur", 8.0) if "glowBlur" in o else 8.0)
+            glow_mode = str(o.get("glowMode", "solid") or "solid")
+            glow_gradient_colors = o.get("glowGradientColors") if isinstance(o.get("glowGradientColors"), list) else []
+            glow_gradient_direction = str(o.get("glowGradientDirection", "horizontal") or "horizontal")
+            shadow_blur = float(o.get("shadowBlur", 0.0) if "shadowBlur" in o else 0.0)
+            extrude_depth = float(o.get("extrudeDepth", 0.0) if "extrudeDepth" in o else 0.0)
+            extrude_color = str(o.get("extrudeColor", "#1a1a1a") or "#1a1a1a")
+            grad_key = ",".join(str(c) for c in gradient_colors)
+            glow_grad_key = ",".join(str(c) for c in glow_gradient_colors)
+            key = (
+                f"{text}|{size_px:.2f}|{col}|{scol}|{sw:.2f}|{sh:.2f}|{font_family}|{int(bold)}|{int(italic)}"
+                f"|{letter_spacing:.2f}|{line_spacing:.2f}|{align}|{box_width:.1f}|{fill_mode}|{grad_key}|{gradient_direction}"
+                f"|{glow_amt:.2f}|{glow_color}|{glow_blur:.2f}|{glow_mode}|{glow_grad_key}|{glow_gradient_direction}"
+                f"|{shadow_blur:.2f}|{extrude_depth:.2f}|{extrude_color}|sf:{scale:.4f}"
+            )
+        if key_list[idx] != key or tex_list[idx] is None:
+            arr, tw, th = _render_overlay_rgba(o, scale)
             if tex_list[idx] is not None:
                 try:
                     tex_list[idx].release()
@@ -1715,6 +1983,8 @@ def _draw_text_overlays(
         draw_w = float(tw) * scale_t
         draw_h = float(th) * scale_t
         qx, qy = _text_quad_center_offset(anchor_t, draw_w, draw_h)
+        # Panel opacity is baked into the raster; avoid double-multiplying fill alpha.
+        draw_opacity = float(opacity if kind in {"panel", "pill", "stage_art"} else opacity * opacity_mul)
         prog_text["tex_text"].value = 2
         tx.use(location=2)
         prog_text["out_size"].value = (float(w), float(h))
@@ -1723,7 +1993,7 @@ def _draw_text_overlays(
             float(ay) - float(h) * 0.5 + dy + qy,
         )
         prog_text["text_size_px"].value = (draw_w, draw_h)
-        prog_text["text_opacity"].value = float(max(0.0, min(1.0, opacity * opacity_mul)))
+        prog_text["text_opacity"].value = float(max(0.0, min(1.0, draw_opacity)))
         prog_text["reveal"].value = float(max(0.0, min(1.0, reveal)))
         vao_quad_text.render(mode=moderngl.TRIANGLE_STRIP)
 
@@ -2691,6 +2961,7 @@ def run_gpu_render(
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
         clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
         normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
+        scroll_spectrum_heights,
     )
     from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
@@ -2785,6 +3056,7 @@ def run_gpu_render(
                 logo_shape=_tpl_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl_pre.get("linearSpan", 1.0) or 1.0),
             )
             pass_specs_pre: list[dict] = []
             if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
@@ -3158,6 +3430,7 @@ def run_gpu_render(
 
             # 2) 5-Tap Moving Average Smoothing & Mirroring (vectorized)
             render_fft = smooth_and_mirror(fft_s, mirrored)
+            render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
 
             sampled_fft = resample_fft_bins(render_fft, bar_count)
 
@@ -3176,6 +3449,7 @@ def run_gpu_render(
                 logo_shape=_tpl_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
             )
             reflection_enabled = bool(sl.get("reflectionEnabled", False))
             try:
@@ -4425,6 +4699,8 @@ def render_preview_png(
                         smoothed = (fft_s[i-2]*0.1 + fft_s[i-1]*0.2 + fft_s[i]*0.4 + fft_s[i+1]*0.2 + fft_s[i+2]*0.1)
                     render_fft[i] = smoothed
 
+            render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
+
             react_mult = rg * thickness
             
             # 3) Generate Points
@@ -4444,6 +4720,7 @@ def render_preview_png(
                 logo_shape=_legacy_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
             )
             val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
@@ -5546,6 +5823,8 @@ def run_live_preview(opts: GpuOptions) -> int:
                         smoothed = (fft_s[i-2]*0.1 + fft_s[i-1]*0.2 + fft_s[i]*0.4 + fft_s[i+1]*0.2 + fft_s[i+2]*0.1)
                     render_fft[i] = smoothed
 
+            render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
+
             n = BINS
             _legacy_logo_shape = "square" if not bool(logo_circle_mask) else "circle"
             from ._spectrum_fast import generate_spectrum_layer_geometry as _gen_spec_geom
@@ -5562,6 +5841,7 @@ def run_live_preview(opts: GpuOptions) -> int:
                 logo_shape=_legacy_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
             )
             val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
