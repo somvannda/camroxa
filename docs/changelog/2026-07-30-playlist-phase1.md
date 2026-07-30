@@ -12,11 +12,13 @@ Follow-up polish (same day): preview now draws a **real glass panel plate** and 
 
 Follow-up: glass **card border was too faint / Pillow outline unreliable** — panel raster now draws a solid accent border ring + stronger fill so the list card frame is visible on dark video backgrounds.
 
+Follow-up: **preview see-through** — soft glow / translucent overlays were writing framebuffer alpha &lt; 1, so Qt composited the app chrome through the preview. Preview (and lightning/particle passes that share the preview GL context) now use `blend_func_separate` so RGB blends normally while alpha stays opaque.
+
 
 ## Product impact
 
-- **Before:** Tab labeled Title; typography presets only; OS fonts. Panel sliders only thickened text stroke; “list right” did not move the list; NOW PLAYING was a tiny `▶`.
-- **After:** Tab labeled **Playlist**. Pick a **Playlist Look** for layout + glass chrome + fonts/colors. **Glass panel** is a rounded frosted plate behind the list; **NOW PLAYING** is a pill badge above the active row. Layout **snap right/left** recenters the list; free-drag layouts stay free.
+- **Before:** Tab labeled Title; typography presets only; OS fonts. Panel sliders only thickened text stroke; “list right” did not move the list; NOW PLAYING was a tiny `▶`. Soft glow / glass in the preview could show the desktop UI behind the OpenGL widget.
+- **After:** Tab labeled **Playlist**. Pick a **Playlist Look** for layout + glass chrome + fonts/colors. **Glass panel** is a rounded frosted plate behind the list; **NOW PLAYING** is a pill badge above the active row. Layout **snap right/left** recenters the list; free-drag layouts stay free. Preview stays fully opaque over the app chrome.
 
 ## Technical impact
 
@@ -31,7 +33,8 @@ Follow-up: glass **card border was too faint / Pillow outline unreliable** — p
 - `docs/playlist-domain-glass-polish.md`
 - `camxora_python/assets/fonts/**`
 - `camxora_python/features/video/lib/system_fonts.py`
-- `camxora_python/features/video/lib/playlist_list_card.py`
+- `camxora_python/features/video/lib/lightning_render.py` (opaque alpha blend for preview)
+- `camxora_python/visualizer/gpu_render.py` (particle blend alpha lock)
 - `camxora_python/features/video/lib/playlist_stage.py` (unused by Purple Neon Look; list-card is the goal)
 - `camxora_python/features/video/lib/text_domain_runtime.py`
 - `camxora_python/features/video/lib/text_domain_registry.py`

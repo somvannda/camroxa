@@ -910,12 +910,28 @@ def _render_particle_styled_quads(
             prog_particle_quads["atlas_cols"].value = int(cols)
     ctx.enable(moderngl.BLEND)
     # Neon bloom reads better with additive when glow is on.
+    # Keep framebuffer alpha opaque (preview QOpenGLWidget compositing).
     if glow > 0.08:
-        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+        ctx.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE,
+            moderngl.ZERO,
+            moderngl.ONE,
+        )
     else:
-        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+        ctx.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE_MINUS_SRC_ALPHA,
+            moderngl.ZERO,
+            moderngl.ONE,
+        )
     vao_particle_quads.render(mode=moderngl.TRIANGLES, vertices=int(pts.shape[0] * 6))
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE_MINUS_SRC_ALPHA,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
 
 def _as_rgb(v: any) -> tuple[int, int, int]:
     if isinstance(v, (list, tuple)) and len(v) == 3:

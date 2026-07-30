@@ -11,7 +11,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Playlist Phase 1+: **Purple Neon Glowing** = glass **tracklist card** only (framed list + active outline). Full-stage chrome dropped from the Look. Timing plan-only. See `docs/changelog/2026-07-30-playlist-phase1.md`.
+- Playlist Phase 1+: **Purple Neon Glowing** = glass **tracklist card** only (framed list + active outline). Full-stage chrome dropped from the Look. Timing plan-only. Preview glow no longer see-through to app chrome (opaque GL alpha). See `docs/changelog/2026-07-30-playlist-phase1.md`.
 - Lightning domain: stack as many bolts as you want, each with its own style and free preview position (like Spectrum). Phase A/B/C: triggers, glow/branchiness, presets, seed lock, export draw parity. See `docs/changelog/2026-07-29-lightning-layers.md`.
 - Background vignette: Audio React opens dark corners on bass/kick and lightning strikes so a bright plate can flash with bolts. See `docs/changelog/2026-07-29-vignette-audio-lightning-react.md`.
 - Particles: Music Notes style (random neon note icons) + Neon Glow slider for dots and icons. See `docs/changelog/2026-07-29-particle-music-neon-glow.md`.
