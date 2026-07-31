@@ -15,9 +15,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-## [1.0.2] - 2026-07-31
+## [1.0.4] - 2026-07-31
 
 Spectrum, Lightning, Particles, and Vignette enhancement wave — shipped from the pre-Playlist checkpoint (everything below was already committed before the Playlist/Title-rename work started; that work continues separately and is not in this release).
+
+Note: versioned 1.0.4 (not 1.0.2/1.0.3) because those tag numbers were already used and pushed for the earlier progress-filters/album-2/frozen-export hotfixes, which were later consolidated and shipped to users as 1.0.1.
 
 ### Added
 

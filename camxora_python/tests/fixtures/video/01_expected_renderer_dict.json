@@ -13,27 +13,27 @@
   },
   "previewBindings": {
     "spectrumAttachToLogo": false,
-    "spectrumLogoGap": 28
+    "spectrumLogoGap": 28.0
   },
   "audioSettings": {
-    "inputGain": 1,
-    "barHeight": 1,
-    "bandContrast": 1,
-    "transientFocus": 1,
-    "kickImpact": 0,
-    "bassEmphasis": 1,
-    "trebleShimmer": 1,
-    "peakHoldBlend": 0,
+    "inputGain": 1.0,
+    "barHeight": 1.0,
+    "bandContrast": 1.0,
+    "transientFocus": 1.0,
+    "kickImpact": 0.0,
+    "bassEmphasis": 1.0,
+    "trebleShimmer": 1.0,
+    "peakHoldBlend": 0.0,
     "motionSmoothing": 0.8,
-    "flyingGlowWingMotionSpeed": 1,
+    "flyingGlowWingMotionSpeed": 1.0,
     "flyingGlowWingRelease": 0.9,
-    "sensitivity": 1,
+    "sensitivity": 1.0,
     "smoothing": 0.8
   },
   "position": {
     "anchor": "center",
-    "x": 0,
-    "y": 0
+    "x": 0.0,
+    "y": 0.0
   },
   "previewBackground": "",
   "backgroundSettings": {
@@ -59,7 +59,8 @@
       "strength": 0.35,
       "feather": 0.65,
       "opacity": 0.65,
-      "color": "#000000"
+      "color": "#000000",
+      "reactivity": 0.0
     },
     "smoke": {
       "enabled": false,
@@ -86,7 +87,12 @@
     "motionMode": "none",
     "motionZoomStrength": 1,
     "motionVibrateStrength": 1,
-    "motionSpeed": 1
+    "motionSpeed": 1,
+    "position": {
+      "anchor": "center",
+      "x": 0,
+      "y": 0
+    }
   },
   "particlesSettings": {
     "enabled": true,
@@ -108,14 +114,59 @@
     "drift": 0,
     "swirl": 0,
     "style": "dot",
+    "glow": 0.0,
     "size": 2,
     "opacity": 0.35,
     "color": "#ffffff",
     "reactColor": "#ffffff",
     "colorMode": "solid",
     "paletteColors": [],
-    "reactStrength": 0.65
+    "reactStrength": 0.65,
+    "trailEnabled": false,
+    "trailLength": 8,
+    "trailFade": 0.65,
+    "trailWidth": 0.45
   },
+  "lightningEnabled": false,
+  "lightningLayers": [
+    {
+      "id": "lightning-1",
+      "name": "Bolt 1",
+      "enabled": true,
+      "style": "fork",
+      "spawnMode": "fixed",
+      "x": 0.0,
+      "y": 0.0,
+      "direction": "down",
+      "rotation": 0.0,
+      "color": {
+        "mode": "gradient",
+        "solidColor": "#e0f2fe",
+        "gradientColors": [
+          "#ffffff",
+          "#7dd3fc",
+          "#38bdf8"
+        ]
+      },
+      "opacity": 0.85,
+      "intensity": 0.72,
+      "reactivity": 0.55,
+      "speed": 1.0,
+      "reactMotionSpeed": 1.0,
+      "flashRate": 0.85,
+      "thickness": 2.8,
+      "taper": 0.65,
+      "glow": 0.5,
+      "branchiness": 0.35,
+      "blend": "add",
+      "length": 200.0,
+      "lengthReactivity": 0.0,
+      "trigger": "always",
+      "triggerThreshold": 0.22,
+      "seed": 1.0,
+      "seedLock": false
+    }
+  ],
   "albumText": {
     "enabled": false,
     "contentMode": "pipeline",
@@ -193,5 +244,34 @@
       "y": 48.0,
       "opacity": 1.0
     }
-  }
+  },
+  "spectrumInstances": [
+    {
+      "id": "spectrum-1",
+      "name": "Spectrum 1",
+      "enabled": true,
+      "style": "orbit-spikes",
+      "anchor": "center",
+      "x": 0.0,
+      "y": 0.0,
+      "spectrumAttachToLogo": false,
+      "spectrumLogoGap": 28.0,
+      "audioSettings": {
+        "inputGain": 1.0,
+        "barHeight": 1.0,
+        "bandContrast": 1.0,
+        "transientFocus": 1.0,
+        "kickImpact": 0.0,
+        "bassEmphasis": 1.0,
+        "trebleShimmer": 1.0,
+        "peakHoldBlend": 0.0,
+        "motionSmoothing": 0.8,
+        "flyingGlowWingMotionSpeed": 1.0,
+        "flyingGlowWingRelease": 0.9,
+        "sensitivity": 1.0,
+        "smoothing": 0.8
+      },
+      "layers": []
+    }
+  ]
 }
