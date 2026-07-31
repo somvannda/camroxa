@@ -109,6 +109,9 @@ class AppShellWidget(QWidget):
 
         bind_session(self._session)
         self._music_downloads = MusicDownloadCoordinator(self._api, self)
+        from shared.services.music_download_coordinator import bind_music_download_coordinator
+
+        bind_music_download_coordinator(self._music_downloads)
         self._music_downloads.start()
         self._pipeline_recovery = PipelineRecoveryCoordinator(self._api, self)
         self._pipeline_recovery.start()

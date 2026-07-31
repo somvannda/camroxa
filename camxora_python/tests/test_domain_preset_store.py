@@ -46,6 +46,7 @@ from features.video.lib.text_style_registry import (
 @pytest.fixture(autouse=True)
 def _isolated_presets_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(domain_preset_store, "get_video_presets_dir", lambda: tmp_path / "video-presets")
+    domain_preset_store.reset_domain_preset_memory_for_tests()
     clear_session_particle_presets()
     clear_session_spectrum_presets()
     clear_all_domain_preset_overrides("background")
@@ -54,12 +55,22 @@ def _isolated_presets_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     yield
     clear_session_particle_presets()
     clear_session_spectrum_presets()
+    domain_preset_store.reset_domain_preset_memory_for_tests()
 
 
 def test_domain_preset_store_round_trip(tmp_path: Path) -> None:
     save_domain_preset_override("particles", "embers", {"particlesSpeed": 9.0})
     assert get_domain_preset_override("particles", "embers")["particlesSpeed"] == 9.0
-    assert (tmp_path / "video-presets" / "particles.json").is_file()
+    # Session-only: must not write disk files.
+    assert not (tmp_path / "video-presets" / "particles.json").is_file()
+
+
+def test_domain_preset_store_is_session_memory_only(tmp_path: Path) -> None:
+    save_domain_preset_override("spectrum", "orbit-spikes", {"draft": {"audioInputGain": 3.0}})
+    assert get_domain_preset_override("spectrum", "orbit-spikes") is not None
+    domain_preset_store.reset_domain_preset_memory_for_tests()
+    assert get_domain_preset_override("spectrum", "orbit-spikes") is None
+    assert not (tmp_path / "video-presets" / "spectrum.json").is_file()
 
 
 def test_particle_override_survives_resolve_and_restore() -> None:

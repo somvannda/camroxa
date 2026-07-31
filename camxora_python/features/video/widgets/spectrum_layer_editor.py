@@ -31,25 +31,39 @@ from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL
 from shared.widgets.settings_ui import form_row, note_box
 
 GRAVITY_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("normal", "Normal (Straight Rising)"),
-    ("bottom", "Bottom (Rabbit Ears on Top)"),
-    ("top", "Top"),
-    ("left", "Left"),
-    ("right", "Right"),
+    ("top", "Top side"),
+    ("bottom", "Bottom side"),
+    ("left", "Left side"),
+    ("right", "Right side"),
+    ("outward", "All around — face out"),
+    ("inward", "All around — face in"),
+)
+
+# How the ring is laid out. This is separate from blend mode.
+CIRCLE_FORM_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("linear", "Linear (straight row)"),
+    ("semi", "Circle Raise (180°)"),
+    ("full", "Full Circle Raise (360°)"),
+)
+
+PATH_MODE_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("auto", "Auto (follow logo shape)"),
+    ("circle", "Circle"),
+    ("rect", "Rectangle"),
 )
 
 BLEND_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("normal", "Normal"),
-    ("add", "Additive"),
-    ("screen", "Screen"),
+    ("normal", "Normal (true colors)"),
+    ("add", "Additive (brighter / can wash out)"),
+    ("screen", "Screen (lighten / can wash out)"),
 )
 
 GRADIENT_DIRECTION_OPTIONS: tuple[tuple[str, str], ...] = (
-    ("left-to-right", "Left to Right"),
-    ("top-to-bottom", "Top to Bottom"),
-    ("diagonal", "Diagonal"),
-    ("radial", "Radial"),
-    ("circular", "Circular"),
+    ("left-to-right", "Around Ring"),
+    ("top-to-bottom", "Base to Tip"),
+    ("radial", "Radial (Base to Tip)"),
+    ("circular", "Circular (Around Ring)"),
+    ("diagonal", "Diagonal (Around + Tip)"),
 )
 
 
@@ -60,12 +74,17 @@ class SpectrumLayerEditor(InspectorSection):
     layer_add_requested = Signal()
     layer_duplicate_requested = Signal()
     layer_delete_requested = Signal()
+    layer_move_up_requested = Signal()
+    layer_move_down_requested = Signal()
     layer_selected = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             "Layers",
-            subtitle="Presets start with one layer. Add or duplicate layers only when you want a stacked look.",
+            subtitle=(
+                "Each ring has its own settings. Last in the list draws on top. "
+                "Use Up/Down to reorder. Layer Gap changes that ring's size."
+            ),
             parent=parent,
         )
         self._binding = False
@@ -81,7 +100,7 @@ class SpectrumLayerEditor(InspectorSection):
         self._attach_note: QWidget | None = None
 
         self._layer_combo = QComboBox()
-        self._layer_combo.setToolTip("Layer")
+        self._layer_combo.setToolTip("Selected layer (edits apply only to this ring)")
         self._layer_combo.currentIndexChanged.connect(self._on_layer_combo_changed)
         self.add_widget(self._layer_combo)
 
@@ -96,7 +115,15 @@ class SpectrumLayerEditor(InspectorSection):
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._delete_btn.clicked.connect(self.layer_delete_requested.emit)
-        for button in (add_btn, dup_btn, self._delete_btn):
+        self._up_btn = QPushButton("Up")
+        self._up_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._up_btn.setToolTip("Move selected layer earlier (draws under)")
+        self._up_btn.clicked.connect(self.layer_move_up_requested.emit)
+        self._down_btn = QPushButton("Down")
+        self._down_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._down_btn.setToolTip("Move selected layer later (draws on top)")
+        self._down_btn.clicked.connect(self.layer_move_down_requested.emit)
+        for button in (add_btn, dup_btn, self._delete_btn, self._up_btn, self._down_btn):
             actions.addWidget(button)
         action_host = QWidget()
         action_host.setLayout(actions)
@@ -108,23 +135,49 @@ class SpectrumLayerEditor(InspectorSection):
         )
         self.add_widget(form_row("Layer Name", self._name_input))
 
+        self._circle_form_combo = QComboBox()
+        self._circle_form_combo.setToolTip(
+            "Linear = straight EQ row. Circle Raise = half ring. Full Circle Raise = bars around the whole ring."
+        )
+        for value, label in CIRCLE_FORM_OPTIONS:
+            self._circle_form_combo.addItem(label, value)
+        self._circle_form_combo.currentIndexChanged.connect(self._on_circle_form_changed)
+        self.add_widget(form_row("Circle Form", self._circle_form_combo))
+
+        self._path_mode_combo = QComboBox()
+        self._path_mode_combo.setToolTip(
+            "Auto uses a rectangle path when the spectrum is attached to a square logo; "
+            "otherwise a circle. Force Circle or Rectangle to override."
+        )
+        for value, label in PATH_MODE_OPTIONS:
+            self._path_mode_combo.addItem(label, value)
+        self._path_mode_combo.currentIndexChanged.connect(self._on_path_mode_changed)
+        self.add_widget(form_row("Path Shape", self._path_mode_combo))
+
         self._gravity_combo = QComboBox()
-        self._gravity_combo.setToolTip("Gravity")
+        self._gravity_combo.setToolTip(
+            "Where bars sit on the ring. Top/Bottom/Left/Right = that side only; "
+            "each bar raises the way it faces (out from the ring). "
+            "All around face out/in = full ring spikes. "
+            "All-around modes auto-enable Full Circle Raise when the layer is linear."
+        )
         for value, label in GRAVITY_OPTIONS:
             self._gravity_combo.addItem(label, value)
         self._gravity_combo.currentIndexChanged.connect(self._on_gravity_changed)
-        self.add_widget(self._gravity_combo)
+        self.add_widget(form_row("Ring Side", self._gravity_combo))
 
         self._blend_combo = QComboBox()
-        self._blend_combo.setToolTip("Blend")
+        self._blend_combo.setToolTip(
+            "How this layer composites over the background. Additive/Screen make colors brighter and can wash them out."
+        )
         for value, label in BLEND_OPTIONS:
             self._blend_combo.addItem(label, value)
         self._blend_combo.currentIndexChanged.connect(self._on_blend_changed)
-        self.add_widget(self._blend_combo)
+        self.add_widget(form_row("Blend Mode", self._blend_combo))
 
         self._attach_note = note_box(
-            "Spectrum is attached to the logo core. Use Spectrum Outer Gap in the Logo tab "
-            "to control the shared outer radius."
+            "Spectrum is attached to the logo. Path Shape Auto follows square logos on a "
+            "rectangle perimeter; use Spectrum Outer Gap in the Logo tab for shared spacing."
         )
         self._attach_note.hide()
         self.add_widget(self._attach_note)
@@ -136,15 +189,26 @@ class SpectrumLayerEditor(InspectorSection):
         self._toggle_fields = {}
         for index, (field, label) in enumerate(
             (
-                ("curved", "Curve 180"),
-                ("mirrored", "Mirror 360"),
                 ("fillCircle", "Fill Circle"),
                 ("solidBand", "Solid Band"),
+                ("reflectionEnabled", "Floor Reflection"),
             )
         ):
             checkbox = QCheckBox(label)
+            if field == "fillCircle":
+                checkbox.setToolTip(
+                    "Fills the inside of a circular spectrum. Turns on Circle Form if needed."
+                )
+            elif field == "reflectionEnabled":
+                checkbox.setToolTip(
+                    "Draws a mirrored copy under the spectrum (floor reflection)."
+                )
             checkbox.toggled.connect(
-                lambda checked, key=field: self.layer_patch_requested.emit({key: checked})
+                lambda checked, key=field: (
+                    None
+                    if self._binding
+                    else self.layer_patch_requested.emit({key: checked})
+                )
             )
             self._toggle_fields[field] = checkbox
             toggle_row.addWidget(checkbox, index // 2, index % 2)
@@ -153,27 +217,99 @@ class SpectrumLayerEditor(InspectorSection):
         self.add_widget(toggle_host)
 
         bar_height_widget, bar_height_setter = build_float_slider(
-            "Bar Height",
-            minimum=0.5,
-            maximum=6,
+            "Global Height Gain (all layers)",
+            minimum=0.25,
+            maximum=12,
             step=0.05,
             value=1,
             on_change=lambda value: self.draft_patch_requested.emit(
                 {"audioBarHeight": round(value, 2)}
             ),
         )
+        bar_height_widget.setToolTip(
+            "Multiplies every layer's bar length. Not the same as Bar Length below — "
+            "this is a shared gain; Bar Length is this layer's base spike size."
+        )
         self._float_setters["audioBarHeight"] = bar_height_setter
         self.add_widget(bar_height_widget)
 
-        for field, label, minimum, maximum, step in (
-            ("barWidth", "Bar Width", 1, 120, 0.25),
-            ("thickness", "Spike Height", 1, 220, 0.25),
-            ("radiusOffset", "Layer Gap", 0, 400, 0.5),
-            ("opacity", "Opacity", 0, 1, 0.01),
-            ("glow", "Glow Strength", 0, 100, 1),
-            ("blur", "Glow Softness", 0, 30, 1),
+        for field, label, minimum, maximum, step, tip in (
+            (
+                "barCount",
+                "Bar Density (this layer)",
+                16,
+                192,
+                1,
+                "How many bars along the ring/row. Higher density makes each slot "
+                "narrower, so usable Bar Width shrinks to keep a clear gap.",
+            ),
+            (
+                "barWidth",
+                "Bar Width (this layer)",
+                1,
+                240,
+                0.25,
+                "Thickness of each bar in pixels. Raise freely for bold strokes; "
+                "very wide bars may touch neighbors at high Density.",
+            ),
+            (
+                "thickness",
+                "Bar Length (this layer)",
+                1,
+                600,
+                0.25,
+                "How far each bar/spike grows from the ring (per layer). "
+                "Global Height Gain multiplies this for all layers.",
+            ),
+            (
+                "radiusOffset",
+                "Layer Gap / Ring Size (this layer)",
+                0,
+                800,
+                0.5,
+                "Moves this ring outward from the logo/core.",
+            ),
+            ("opacity", "Opacity (this layer)", 0, 1, 0.01, ""),
+            (
+                "reflectionOpacity",
+                "Reflection Opacity (this layer)",
+                0.05,
+                0.85,
+                0.01,
+                "Strength of the floor reflection copy when Floor Reflection is on.",
+            ),
+            ("glow", "Glow Strength (this layer)", 0, 100, 1, ""),
+            ("blur", "Glow Softness (this layer)", 0, 30, 1, ""),
+            ("peakCapGap", "Peak Cap Gap (this layer)", 0, 24, 0.25, ""),
+            ("peakCapThickness", "Peak Cap Size (this layer)", 1, 16, 0.25, ""),
+            ("peakCapDecay", "Peak Cap Decay (this layer)", 0.7, 0.995, 0.005, ""),
         ):
-            self.add_widget(self._add_layer_float(field, label, minimum, maximum, step))
+            widget = self._add_layer_float(field, label, minimum, maximum, step)
+            if tip:
+                widget.setToolTip(tip)
+            self.add_widget(widget)
+
+        self._peak_caps_enabled = QCheckBox("Peak Caps")
+        self._peak_caps_enabled.setToolTip(
+            "Floating caps that hold peak bar heights. Arms Peak Hold Blend if it was zero."
+        )
+        self._peak_caps_enabled.toggled.connect(
+            lambda checked: (
+                None
+                if self._binding
+                else self.layer_patch_requested.emit({"peakCapsEnabled": checked})
+            )
+        )
+        self.add_widget(self._peak_caps_enabled)
+
+        peak_color_widget, peak_color_setter = build_color_field(
+            "Peak Cap Color",
+            value="#ffffff",
+            on_change=lambda value: self.layer_patch_requested.emit({"peakCapColor": value}),
+            parent=self,
+        )
+        self._peak_cap_color_setter = peak_color_setter
+        self.add_widget(peak_color_widget)
 
         self._color_mode_combo = QComboBox()
         self._color_mode_combo.setToolTip("Color Style")
@@ -250,6 +386,8 @@ class SpectrumLayerEditor(InspectorSection):
             payload = value
             if field in {"glow", "blur"}:
                 payload = round(value)
+            elif field == "barCount":
+                payload = int(round(value))
             self.layer_patch_requested.emit({field: payload})
 
         widget, setter = build_float_slider(
@@ -277,8 +415,54 @@ class SpectrumLayerEditor(InspectorSection):
         if self._binding:
             return
         value = self._gravity_combo.currentData()
-        if isinstance(value, str):
-            self.layer_patch_requested.emit({"gravity": value})
+        if not isinstance(value, str):
+            return
+        patch: dict[str, object] = {"gravity": value}
+        # Radial spikes need a ring — promote Linear → Full Circle Raise.
+        if value in ("outward", "inward"):
+            layer = self._selected_layer() or {}
+            if self._circle_form_from_layer(layer) == "linear":
+                patch["curved"] = True
+                patch["mirrored"] = True
+        self.layer_patch_requested.emit(patch)
+
+    def _on_circle_form_changed(self, _index: int) -> None:
+        if self._binding:
+            return
+        value = str(self._circle_form_combo.currentData() or "linear")
+        if value == "full":
+            self.layer_patch_requested.emit({"curved": True, "mirrored": True})
+        elif value == "semi":
+            self.layer_patch_requested.emit({"curved": True, "mirrored": False})
+        else:
+            self.layer_patch_requested.emit({"curved": False, "mirrored": False})
+
+    def _on_path_mode_changed(self, _index: int) -> None:
+        if self._binding:
+            return
+        value = str(self._path_mode_combo.currentData() or "auto")
+        if value not in ("auto", "circle", "rect"):
+            value = "auto"
+        self.layer_patch_requested.emit({"pathMode": value})
+
+    @staticmethod
+    def _circle_form_from_layer(layer: dict) -> str:
+        curved = bool(layer.get("curved"))
+        mirrored = bool(layer.get("mirrored"))
+        if curved and mirrored:
+            return "full"
+        if curved:
+            return "semi"
+        return "linear"
+
+    @staticmethod
+    def _path_mode_from_layer(layer: dict) -> str:
+        value = str(layer.get("pathMode") or "auto").lower().strip()
+        if value in ("rectangle", "square"):
+            return "rect"
+        if value in ("auto", "circle", "rect"):
+            return value
+        return "auto"
 
     def _on_blend_changed(self, _index: int) -> None:
         if self._binding:
@@ -400,6 +584,8 @@ class SpectrumLayerEditor(InspectorSection):
             self._layer_combo.blockSignals(False)
 
             self._delete_btn.setEnabled(len(layers) >= 2)
+            self._up_btn.setEnabled(len(layers) >= 2 and self._selected_index > 0)
+            self._down_btn.setEnabled(len(layers) >= 2 and self._selected_index < len(layers) - 1)
 
             if not layer:
                 return
@@ -408,8 +594,18 @@ class SpectrumLayerEditor(InspectorSection):
             self._name_input.setText(str(layer.get("name") or ""))
             self._name_input.blockSignals(False)
 
-            gravity = str(layer.get("gravity") or "normal")
+            gravity = str(layer.get("gravity") or "top")
+            if gravity == "normal":
+                gravity = "top"
             blend = str(layer.get("blend_mode") or "normal")
+            circle_form = self._circle_form_from_layer(layer)
+            circle_index = self._circle_form_combo.findData(circle_form)
+            if circle_index >= 0:
+                self._circle_form_combo.setCurrentIndex(circle_index)
+            path_mode = self._path_mode_from_layer(layer)
+            path_index = self._path_mode_combo.findData(path_mode)
+            if path_index >= 0:
+                self._path_mode_combo.setCurrentIndex(path_index)
             gravity_index = self._gravity_combo.findData(gravity)
             if gravity_index >= 0:
                 self._gravity_combo.setCurrentIndex(gravity_index)
@@ -418,14 +614,38 @@ class SpectrumLayerEditor(InspectorSection):
                 self._blend_combo.setCurrentIndex(blend_index)
 
             for field, checkbox in self._toggle_fields.items():
+                checkbox.blockSignals(True)
                 checkbox.setChecked(bool(layer.get(field)))
+                checkbox.blockSignals(False)
 
             if "audioBarHeight" in self._float_setters:
                 self._float_setters["audioBarHeight"](float(draft.get("audioBarHeight") or 1))
 
-            for field in ("barWidth", "thickness", "radiusOffset", "opacity", "glow", "blur"):
-                if field in self._float_setters:
-                    self._float_setters[field](float(layer.get(field) or 0))
+            layer_defaults = {
+                "barCount": 64.0,
+                "barWidth": 5.0,
+                "thickness": 36.0,
+                "radiusOffset": 0.0,
+                "opacity": 1.0,
+                "reflectionOpacity": 0.32,
+                "glow": 0.0,
+                "blur": 0.0,
+                "peakCapGap": 4.0,
+                "peakCapThickness": 3.0,
+                "peakCapDecay": 0.92,
+            }
+            for field, default in layer_defaults.items():
+                if field not in self._float_setters:
+                    continue
+                raw = layer.get(field)
+                if isinstance(raw, (int, float)):
+                    self._float_setters[field](float(raw))
+                else:
+                    self._float_setters[field](float(default))
+            self._peak_caps_enabled.blockSignals(True)
+            self._peak_caps_enabled.setChecked(bool(layer.get("peakCapsEnabled", False)))
+            self._peak_caps_enabled.blockSignals(False)
+            self._peak_cap_color_setter(str(layer.get("peakCapColor") or "#ffffff"))
 
             self._color_model = extract_spectrum_layer_color_model(
                 layer,

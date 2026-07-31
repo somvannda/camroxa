@@ -14,10 +14,25 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from features.video.lib.spectrum_color_engine import (
+    SPECTRUM_GRADIENT_PRESET_OPTIONS,
+    spectrum_gradient_preset_colors,
+)
 from features.video.lib.video_template_draft import normalize_spectrum_preset_key
 from visualizer.template_runtime import normalize_renderer_template
 
 PACK_PRESET_PREFIX = "pack:"
+
+# Bright palette catalog → style recipes (one palette per built-in look).
+_P = {label: spectrum_gradient_preset_colors(value) for value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS}
+
+
+def _gradient(colors: list[str], *, direction: str = "left-to-right") -> dict[str, Any]:
+    return {
+        "mode": "gradient",
+        "gradientColors": list(colors),
+        "gradientDirection": direction,
+    }
 
 # Camxora built-in single styles (marketplace-sellable ids).
 SPECTRUM_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
@@ -28,6 +43,7 @@ SPECTRUM_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     ("aurora-ribbon", "Aurora Ribbon"),
     ("magma-ridge", "Magma Ridge"),
     ("plasma-bloom", "Plasma Bloom"),
+    ("contour-waves", "Contour Waves"),
     ("grid-steps", "Grid Steps"),
     ("ignition-flare", "Ignition Flare"),
     ("drift-capsules", "Drift Capsules"),
@@ -50,6 +66,8 @@ ANCHOR_OPTIONS: tuple[tuple[str, str], ...] = (
 )
 
 # Straight-bar Camxora recipes; Curve 180 / Mirror 360 turn them into a ring.
+# Colors come from the bright SPECTRUM_GRADIENT_PRESET_OPTIONS catalog.
+# Glow stays off by default so hue stays clear (glow washes to haze).
 STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
     "orbit-spikes": {
         "curved": False,
@@ -57,14 +75,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 5.0,
         "thickness": 36.0,
-        "gravity": "normal",
-        "glow": 28,
-        "blur": 8,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#ff4fd8", "#22d3ee"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Prism Beam"]),
     },
     "signal-needles": {
         "curved": False,
@@ -72,14 +87,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 1.6,
         "thickness": 44.0,
-        "gravity": "normal",
-        "glow": 18,
-        "blur": 4,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#a78bfa", "#38bdf8"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Electric Sky"]),
     },
     "pulse-beads": {
         "curved": False,
@@ -87,14 +99,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 4.5,
         "thickness": 40.0,
-        "gravity": "normal",
-        "glow": 36,
-        "blur": 10,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ff4fd8", "#22d3ee"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Hot Magenta"]),
     },
     "mirror-blades": {
         "curved": False,
@@ -102,14 +111,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 5.5,
         "thickness": 42.0,
-        "gravity": "normal",
-        "glow": 22,
-        "blur": 6,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#60a5fa", "#22d3ee"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Mint Freeze"]),
     },
     "aurora-ribbon": {
         "curved": False,
@@ -117,14 +123,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 6.0,
         "thickness": 28.0,
-        "gravity": "normal",
-        "glow": 48,
-        "blur": 14,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#22d3ee", "#ff4fd8", "#f9a8d4"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Neon Candy"]),
     },
     "magma-ridge": {
         "curved": False,
@@ -132,14 +135,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": True,
         "barWidth": 7.0,
         "thickness": 58.0,
-        "gravity": "normal",
-        "glow": 40,
-        "blur": 12,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#ff4fd8", "#7c3aed"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Solar Pop"]),
     },
     "plasma-bloom": {
         "curved": False,
@@ -147,14 +147,27 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": True,
         "barWidth": 10.0,
         "thickness": 46.0,
-        "gravity": "normal",
-        "glow": 56,
-        "blur": 16,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#c084fc", "#22d3ee"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Violet Ice"]),
+    },
+    "contour-waves": {
+        "curved": True,
+        "mirrored": True,
+        "fillCircle": False,
+        "solidBand": False,
+        "barWidth": 2.0,
+        "thickness": 48.0,
+        "barCount": 96,
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "reflectionEnabled": True,
+        "reflectionOpacity": 0.28,
+        "color": _gradient(_P["Aqua Flame"]),
     },
     "grid-steps": {
         "curved": False,
@@ -162,14 +175,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 6.0,
         "thickness": 38.0,
-        "gravity": "normal",
-        "glow": 20,
-        "blur": 5,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#34d399", "#22d3ee"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Lime Pulse"]),
     },
     "ignition-flare": {
         "curved": False,
@@ -177,14 +187,11 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 7.5,
         "thickness": 48.0,
-        "gravity": "normal",
-        "glow": 72,
-        "blur": 18,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#ff4fd8", "#f97316"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Coral Wave"]),
     },
     "drift-capsules": {
         "curved": False,
@@ -192,16 +199,16 @@ STYLE_PRESET_PATCHES: dict[str, dict[str, Any]] = {
         "fillCircle": False,
         "barWidth": 6.5,
         "thickness": 34.0,
-        "gravity": "normal",
-        "glow": 30,
-        "blur": 9,
-        "color": {
-            "mode": "gradient",
-            "gradientColors": ["#ffffff", "#818cf8", "#22d3ee"],
-            "gradientDirection": "left-to-right",
-        },
+        "gravity": "top",
+        "glow": 0,
+        "blur": 0,
+        "blend_mode": "normal",
+        "color": _gradient(_P["Peach Neon"]),
     },
 }
+
+for _style_patch in STYLE_PRESET_PATCHES.values():
+    _style_patch.setdefault("opacity", 1.0)
 
 STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
     "triple-halo-orbit": {
@@ -215,13 +222,9 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "fillCircle": True,
                 "opacity": 0.95,
                 "blend_mode": "normal",
-                "glow": 28,
-                "blur": 8,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#ffffff", "#ffe082"],
-                    "gradientDirection": "circular",
-                },
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Solar Pop"], direction="circular"),
             },
             {
                 "name": "Pulse Orbit",
@@ -229,15 +232,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 8,
                 "thickness": 44,
                 "fillCircle": False,
-                "opacity": 0.86,
-                "blend_mode": "add",
-                "glow": 70,
-                "blur": 14,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#ff4d9d", "#22d3ee"],
-                    "gradientDirection": "circular",
-                },
+                "opacity": 0.9,
+                "blend_mode": "normal",
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Hot Magenta"], direction="circular"),
             },
             {
                 "name": "Outer Halo",
@@ -245,15 +244,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 7,
                 "thickness": 32,
                 "fillCircle": False,
-                "opacity": 0.7,
-                "blend_mode": "screen",
-                "glow": 84,
-                "blur": 20,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#7c3aed", "#38bdf8"],
-                    "gradientDirection": "circular",
-                },
+                "opacity": 0.88,
+                "blend_mode": "normal",
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Electric Sky"], direction="circular"),
             },
         ],
     },
@@ -266,15 +261,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 12,
                 "thickness": 38,
                 "fillCircle": True,
-                "opacity": 0.92,
+                "opacity": 0.94,
                 "blend_mode": "normal",
-                "glow": 22,
-                "blur": 6,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#ffffff", "#f5f3ff"],
-                    "gradientDirection": "circular",
-                },
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Violet Ice"], direction="circular"),
             },
             {
                 "name": "Energy Ring",
@@ -282,15 +273,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 11,
                 "thickness": 54,
                 "fillCircle": False,
-                "opacity": 0.82,
-                "blend_mode": "add",
-                "glow": 74,
-                "blur": 16,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#8b5cf6", "#ec4899"],
-                    "gradientDirection": "circular",
-                },
+                "opacity": 0.9,
+                "blend_mode": "normal",
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Neon Candy"], direction="circular"),
             },
             {
                 "name": "Shock Aura",
@@ -298,15 +285,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 6,
                 "thickness": 62,
                 "fillCircle": False,
-                "opacity": 0.68,
-                "blend_mode": "screen",
-                "glow": 90,
-                "blur": 22,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#60a5fa", "#ffffff"],
-                    "gradientDirection": "radial",
-                },
+                "opacity": 0.85,
+                "blend_mode": "normal",
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Prism Bright"], direction="radial"),
             },
         ],
     },
@@ -319,15 +302,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 8,
                 "thickness": 24,
                 "fillCircle": False,
-                "opacity": 0.84,
+                "opacity": 0.92,
                 "blend_mode": "normal",
-                "glow": 26,
-                "blur": 10,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#c084fc", "#f0abfc"],
-                    "gradientDirection": "circular",
-                },
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Mint Freeze"], direction="circular"),
             },
             {
                 "name": "Bright Ribbon",
@@ -335,15 +314,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 5,
                 "thickness": 30,
                 "fillCircle": False,
-                "opacity": 0.74,
-                "blend_mode": "screen",
-                "glow": 60,
-                "blur": 14,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#ffffff", "#67e8f9"],
-                    "gradientDirection": "circular",
-                },
+                "opacity": 0.9,
+                "blend_mode": "normal",
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Neon Candy"], direction="circular"),
             },
             {
                 "name": "Outer Drift",
@@ -351,15 +326,11 @@ STACKED_LAYER_PRESETS: dict[str, dict[str, Any]] = {
                 "barWidth": 9,
                 "thickness": 20,
                 "fillCircle": False,
-                "opacity": 0.55,
-                "blend_mode": "screen",
-                "glow": 78,
-                "blur": 18,
-                "color": {
-                    "mode": "gradient",
-                    "gradientColors": ["#38bdf8", "#818cf8"],
-                    "gradientDirection": "radial",
-                },
+                "opacity": 0.86,
+                "blend_mode": "normal",
+                "glow": 0,
+                "blur": 0,
+                "color": _gradient(_P["Peach Neon"], direction="radial"),
             },
         ],
     },
@@ -375,6 +346,7 @@ _PRESET_ALIASES = {
     "aurora-ribbon": "aurora-ribbon",
     "magma-ridge": "magma-ridge",
     "plasma-bloom": "plasma-bloom",
+    "contour-waves": "contour-waves",
     "grid-steps": "grid-steps",
     "ignition-flare": "ignition-flare",
     "drift-capsules": "drift-capsules",
@@ -392,6 +364,9 @@ _PRESET_ALIASES = {
     "mountain": "magma-ridge",
     "liquid": "plasma-bloom",
     "liquid-mass": "plasma-bloom",
+    "radio-wave": "contour-waves",
+    "contour": "contour-waves",
+    "contour-wave": "contour-waves",
     "pixel-bars": "grid-steps",
     "neon-pulse": "ignition-flare",
     "flying-glow": "ignition-flare",
@@ -404,6 +379,7 @@ _PRESET_ALIASES = {
 }
 
 WAVEFORM_STYLE_IDS = frozenset({"aurora-ribbon", "magma-ridge", "plasma-bloom"})
+CONTOUR_STYLE_IDS = frozenset({"contour-waves"})
 BAR_STYLE_IDS = frozenset(
     {
         "orbit-spikes",
@@ -465,43 +441,62 @@ def is_waveform_spectrum_style(style_key: str) -> bool:
     return normalize_spectrum_preset_key_for_apply(style_key) in WAVEFORM_STYLE_IDS
 
 
+def is_contour_spectrum_style(style_key: str) -> bool:
+    return normalize_spectrum_preset_key_for_apply(style_key) in CONTOUR_STYLE_IDS
+
+
 def is_flare_spectrum_style(style_key: str) -> bool:
     return normalize_spectrum_preset_key_for_apply(style_key) in FLARE_STYLE_IDS
 
 
-# Only gravity is forced from style recipes. curved/mirrored are user toggles
-# (Curve 180 / Mirror 360) so presets can start as straight bars.
-_STYLE_GEOMETRY_KEYS = ("gravity",)
+# curved / mirrored / gravity are user-owned (Circle Form + Bar Growth).
+# Style recipes still seed defaults when a preset is applied via
+# ``build_spectrum_preset_template``; hydrate must not overwrite user gravity.
+_STYLE_GEOMETRY_KEYS: tuple[str, ...] = ()
 
 
 def style_geometry_patch(style_key: str) -> dict[str, Any]:
-    """Return gravity for a known Camxora spectrum style (toggles stay user-owned)."""
-    normalized = normalize_spectrum_preset_key_for_apply(style_key)
-    patch = STYLE_PRESET_PATCHES.get(normalized, STYLE_PRESET_PATCHES["orbit-spikes"])
-    return {key: patch[key] for key in _STYLE_GEOMETRY_KEYS if key in patch}
+    """Legacy helper — no longer forces gravity (user-owned Bar Growth)."""
+    del style_key
+    return {}
 
 
 def align_spectrum_layers_to_style_geometry(
     layers: list[dict[str, Any]] | None,
     style_key: str,
 ) -> list[dict[str, Any]]:
-    """Apply non-toggle geometry from a style recipe (gravity).
+    """Pass-through clone. Gravity / circle form stay under user control.
 
-    Curve 180 / Mirror 360 stay under user control and are not overwritten.
+    Kept for call-site compatibility after Bar Growth became user-owned.
     """
-    geometry = style_geometry_patch(style_key)
-    if not geometry:
-        return clone_layers(layers)
-    aligned: list[dict[str, Any]] = []
-    for layer in layers or []:
-        if not isinstance(layer, dict):
-            continue
-        aligned.append({**copy.deepcopy(layer), **geometry})
-    return aligned
+    del style_key
+    return clone_layers(layers)
 
 
 def clone_layers(layers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     return [copy.deepcopy(item) for item in (layers or []) if isinstance(item, dict)]
+
+
+def heal_spectrum_layer_visibility(layers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """If every ring is fully transparent, restore opacity so styles are visible again.
+
+    Accidental Opacity=0 (or leftover from edits) makes every style preset look
+    \"broken\" because ``build_spectrum_preset_template`` used to keep the old
+    opacity when the recipe did not set one.
+    """
+    out = clone_layers(layers)
+    if not out:
+        return out
+    opacities: list[float] = []
+    for layer in out:
+        try:
+            opacities.append(float(layer.get("opacity", 1.0)))
+        except (TypeError, ValueError):
+            opacities.append(1.0)
+    if opacities and all(value <= 0.001 for value in opacities):
+        for layer in out:
+            layer["opacity"] = 1.0
+    return out
 
 
 def build_spectrum_preset_template(
@@ -529,6 +524,12 @@ def build_spectrum_preset_template(
         layers.append(copy.deepcopy(fallback_layer))
     idx = int(max(0, min(len(layers) - 1, layer_index)))
     patched_layer = {**layers[idx], **patch}
+    # Factory styles must paint: never keep a leftover opacity=0 from the old layer.
+    try:
+        patch_opacity = float(patch["opacity"]) if "opacity" in patch else 1.0
+    except (TypeError, ValueError):
+        patch_opacity = 1.0
+    patched_layer["opacity"] = float(max(0.05, min(1.0, patch_opacity)))
 
     if replace_stack:
         layers = [patched_layer]

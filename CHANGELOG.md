@@ -15,6 +15,52 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.2] - 2026-07-31
+
+Spectrum, Lightning, Particles, and Vignette enhancement wave — shipped from the pre-Playlist checkpoint (everything below was already committed before the Playlist/Title-rename work started; that work continues separately and is not in this release).
+
+### Added
+
+- Lightning domain: stack as many bolts as you want, each with its own style and free preview position (like Spectrum). Phase A/B/C: triggers, glow/branchiness, presets, seed lock, export draw parity. See `docs/changelog/2026-07-29-lightning-layers.md`.
+- Background vignette: Audio React opens dark corners on bass/kick and lightning strikes so a bright plate can flash with bolts. See `docs/changelog/2026-07-29-vignette-audio-lightning-react.md`.
+- Particles: Music Notes style (random neon note icons) + Neon Glow slider for dots and icons. See `docs/changelog/2026-07-29-particle-music-neon-glow.md`.
+
+### Fixed
+
+- Multi-Spectrum instances: up to 8 independent Spectrums (position/attach/audio/rings each). See `docs/changelog/2026-07-30-multi-spectrum-instances.md`.
+- Fix: heal empty Spectrum instance layers + map legacy sensitivity→inputGain so templates keep reactive spectrums after multi-instance.
+- Fix: Magma Ridge / waveform presets sync style onto the selected Spectrum instance and refresh preview.
+- Bright spectrum color palettes: replace dark gradient catalog; wire all style/stack recipes to neon presets. See `docs/changelog/2026-07-30-bright-spectrum-palettes.md`.
+- Fix: heal fully-transparent spectrum layers + over-smoothed audio so templates like Thunder Bass 29July show reactive styles again. See `docs/changelog/2026-07-30-heal-invisible-dead-spectrum.md`.
+- Fix: Fill Circle / Floor Reflection / Peak Caps toggles work across bar + ring templates. See `docs/changelog/2026-07-30-spectrum-layer-toggles.md`.
+- Logo drag: Logo tab enables preview drag again; detached logos can leave center via `logoSettings.position`. See `docs/changelog/2026-07-30-logo-drag-fix.md`.
+- Lightning UX polish: opacity/glow/branchiness honor 0, rotation taper, rotation wheel, react motion speed, random on-screen spawn, stronger strike glow; volume no longer stretches bolt length by default. See `docs/changelog/2026-07-30-lightning-ux-polish.md`.
+- Preview hitch every ~4s (round 3): hard-pause music-download polls while preview plays — pending sync can no longer re-arm the 4s timer over live playback. See `docs/changelog/2026-07-29-preview-hitch-round3.md`.
+- Preview hitch round 2: skip identical template pushes, avoid particle `.tobytes()` copies, back off download/pipeline polls while preview plays. See `docs/changelog/2026-07-29-preview-hitch-round2.md`.
+- Preview hitch: remove periodic `grabFramebuffer` from the 60fps paint loop (one-shot on pause only); reuse FFT buffers / avoid VBO `.tobytes()` copies. See `docs/changelog/2026-07-29-preview-hitch-deep-fix.md`.
+- Preview hitch: stop periodic `grabFramebuffer` while audio plays; cache logo visible-radius scan. See `docs/changelog/2026-07-29-preview-playback-hitch-fix.md`.
+- Spectrum Ring Side: Top/Left/Right/Bottom place the arc; each bar raises the way it faces (not uniform screen shove). See `docs/changelog/2026-07-29-spectrum-ring-side-face-raise.md`.
+- Spectrum Bar Growth: add Outside (radial spikes out) and Inside (spikes into the circle). See `docs/changelog/2026-07-29-spectrum-radial-bar-spikes.md`.
+- Spectrum Phase 4: Particles Motion Trail (history quads with length/fade/width). See `docs/changelog/2026-07-29-spectrum-phase4-particle-trails.md`.
+- Spectrum Phase 3: Path Shape (`auto` / circle / rect) so attached square logos get a rectangle perimeter; `LogoBounds` DTO. See `docs/changelog/2026-07-29-spectrum-phase3-path-mode.md`.
+- Spectrum Phase 2: Contour Waves style (multi-line radio-wave outlines) + Floor Reflection per layer. See `docs/changelog/2026-07-29-spectrum-phase2-contour-reflection.md`.
+- Spectrum Bar Growth: remove rabbit ears / outward specials; only Top / Bottom / Left / Right directional raise. See `docs/changelog/2026-07-29-spectrum-directional-bar-growth.md`.
+- Spectrum Top bar growth: force top-arc Circle Raise with upward twin peaks; dark crystal-clear style colors; glow/blur defaults to 0 (no soft haze). See `docs/changelog/2026-07-29-spectrum-top-dark-crystal-colors.md`.
+- Spectrum rabbit ears: seat inward ring outside the logo so top→bottom tips stay visible; skip center fill; add twin-ear amplitude bias. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-visible-raise.md`.
+- Spectrum rabbit ears: Inward hangs from the top arc and raises top→bottom; around-ring gradients mix with smoothstep + neighbor blend; neon palettes replace flat RGB/emerald wedges. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-gradient-mix.md`.
+- Spectrum rabbit ears (Inward Bar Growth): stop style-hydrate from forcing gravity back to Outward; picking Inward on a linear layer auto-enables Circle Raise 180°. See `docs/changelog/2026-07-29-spectrum-rabbit-ears-fix.md`.
+- Spectrum inspector: restore missing `style` bind in `bind_draft` (fixed Video page crash `NameError: style is not defined`).
+- Spectrum: vivid built-in/stacked colors (no white wash), free spectrum position vs logo unless Attach is on, and Audio knobs that actually work on desktop. See `docs/changelog/2026-07-29-spectrum-vivid-position-audio.md`.
+- Video templates: unsaved style/draft edits are session-only (reset on restart); Save keeps a restorable `originalTemplate`. See `docs/changelog/2026-07-29-session-only-template-edits.md`.
+- Spectrum bar controls: Global Height Gain vs Bar Length are labeled separately (not duplicates); Bar Width reserves a clear gap vs density; density max raised to 192. See `docs/changelog/2026-07-29-spectrum-bar-width-density-separation.md`.
+- Spectrum live preview now paints **all** gradient color stops (was first→last only), so multi-stop palettes look rich around circular rings. See `docs/changelog/2026-07-29-spectrum-multi-stop-gradient-preview.md`.
+- Spectrum Layers: Up/Down reorder, clearer per-layer vs global labels, Add offsets ring size; curved Bottom (rabbit ears) grows inward. See `docs/changelog/2026-07-29-spectrum-layer-reorder-and-rabbit-ears.md`.
+- Spectrum Phase 1: per-layer bar density (16-128), optional peak caps (gap/size/decay/color), solid base band render, and top-to-bottom bar gradient support. See `docs/changelog/2026-07-29-spectrum-phase1-peakcaps-density-solidband.md`.
+- Spectrum preview/export fix: `solidBand` now derives color-row count from generated strip geometry, preventing mirrored curved waveform crashes from mismatched array lengths.
+- Spectrum Layers: labeled Circle Form (180° / Full Circle 360°), Bar Growth, and Blend Mode; dampen glow wash; wire radial/circular/diagonal gradient directions. See `docs/changelog/2026-07-29-spectrum-circle-form-and-color-wash.md`.
+- Spectrum peak caps: slice geometry to bar count when mirrored waveform closes the ring (fixes `113` vs `112` paintGL broadcast crash).
+- Login UI: hide “No session found.” error pill when bootstrap detects missing saved session tokens.
+
 ## [1.0.1] - 2026-07-28
 
 ### Fixed

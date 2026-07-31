@@ -214,7 +214,9 @@ class SessionService:
         if tokens is None:
             self.clear()
             _report("Opening sign in", "No session found.", 100)
-            return BootstrapResult(BootstrapDestination.LOGIN, message="No session found.")
+            # This is a normal "need to sign in" state for fresh installs / cleared sessions.
+            # Keep the login UI clean (no error pill) by returning an empty message.
+            return BootstrapResult(BootstrapDestination.LOGIN, message="")
 
         now_ms = int(time.time() * 1000)
         if now_ms > tokens.expiresAt - 30_000:

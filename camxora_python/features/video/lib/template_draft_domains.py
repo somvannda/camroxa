@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-DOMAIN_KEYS = ("spectrum", "background", "logo", "particles", "album", "title", "text")
+DOMAIN_KEYS = ("spectrum", "background", "logo", "particles", "lightning", "album", "title", "text")
 
 
 def _pick_spectrum_slice(draft: dict[str, Any]) -> dict[str, Any]:
@@ -53,6 +53,7 @@ def _pick_background_slice(draft: dict[str, Any]) -> dict[str, Any]:
         "vignetteFeather",
         "vignetteOpacity",
         "vignetteColor",
+        "vignetteReactivity",
         "smokeEnabled",
         "smokeStrength",
         "smokeBlur",
@@ -80,6 +81,8 @@ def _pick_logo_slice(draft: dict[str, Any]) -> dict[str, Any]:
         "logoMotionZoomStrength",
         "logoMotionVibrateStrength",
         "logoMotionSpeed",
+        "logoPositionX",
+        "logoPositionY",
         "spectrumAttachToLogo",
         "spectrumLogoGap",
     )
@@ -107,6 +110,7 @@ def _pick_particles_slice(draft: dict[str, Any]) -> dict[str, Any]:
         "particlesDrift",
         "particlesSwirl",
         "particlesStyle",
+        "particlesGlow",
         "particlesSize",
         "particlesOpacity",
         "particlesColor",
@@ -114,6 +118,10 @@ def _pick_particles_slice(draft: dict[str, Any]) -> dict[str, Any]:
         "particlesColorMode",
         "particlesPaletteColors",
         "particlesReactStrength",
+        "particlesTrailEnabled",
+        "particlesTrailLength",
+        "particlesTrailFade",
+        "particlesTrailWidth",
     )
     return {key: draft.get(key) for key in keys}
 
@@ -229,11 +237,20 @@ def pick_particles_draft_slice(draft: dict[str, Any]) -> dict[str, Any]:
     return _pick_particles_slice(draft)
 
 
+def _pick_lightning_slice(draft: dict[str, Any]) -> dict[str, Any]:
+    return {"lightningEnabled": draft.get("lightningEnabled")}
+
+
+def pick_lightning_draft_slice(draft: dict[str, Any]) -> dict[str, Any]:
+    return _pick_lightning_slice(draft)
+
+
 def build_draft_dirty_state(
     draft: dict[str, Any] | None,
     persisted: dict[str, Any] | None,
     *,
     spectrum_dirty: bool = False,
+    lightning_dirty: bool = False,
 ) -> dict[str, bool]:
     if not draft or not persisted:
         return {domain: False for domain in DOMAIN_KEYS}
@@ -246,6 +263,7 @@ def build_draft_dirty_state(
         "background": changed(_pick_background_slice(draft), _pick_background_slice(persisted)),
         "logo": changed(_pick_logo_slice(draft), _pick_logo_slice(persisted)),
         "particles": changed(_pick_particles_slice(draft), _pick_particles_slice(persisted)),
+        "lightning": lightning_dirty or changed(_pick_lightning_slice(draft), _pick_lightning_slice(persisted)),
         "album": changed(_pick_album_slice(draft), _pick_album_slice(persisted)),
         "title": changed(_pick_title_slice(draft), _pick_title_slice(persisted)),
         "text": changed(_pick_text_slice(draft), _pick_text_slice(persisted)),

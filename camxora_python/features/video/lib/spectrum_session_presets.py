@@ -1,4 +1,4 @@
-"""Persistent spectrum preset overrides (local JSON + factory recipes)."""
+"""Session spectrum preset overrides (in-memory + factory recipes)."""
 
 from __future__ import annotations
 

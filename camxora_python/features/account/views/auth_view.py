@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -13,13 +14,21 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
+    QSizePolicy,
     QWidget,
 )
 
 from shared.constants.auth import REGISTRATION_ENABLED
-from shared.services.account_token_store import list_saved_accounts
+from shared.services.account_token_store import list_saved_accounts, remove_saved_account
+from shared.services.build_config import (
+    build_environment,
+    footer_environment_badge,
+    footer_version_badge,
+)
 from shared.services.secure_storage import SecureStorage
-from shared.themes.deep_blue import START_BUTTON_ID, SUBTITLE_LABEL_ID, TITLE_LABEL_ID
+from shared.widgets.shell_footer_bar import ShellFooterBar
+from shared.themes.deep_blue import SUBTITLE_LABEL_ID, TITLE_LABEL_ID
+from shared.widgets.window_title_bar import _WindowControlButton
 
 
 class AuthView(QFrame):
@@ -31,6 +40,8 @@ class AuthView(QFrame):
 
     def __init__(self, storage: SecureStorage | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setObjectName("startup_page")
         self._storage = storage or SecureStorage()
 
         self._stack = QStackedWidget()
@@ -48,8 +59,16 @@ class AuthView(QFrame):
         self._loading_label.setWordWrap(True)
         self._loading_label.hide()
 
+        # Use the same footer widget as the post-login app shell so the
+        # environment is visible even when auth fails.
+        self._footer_bar = ShellFooterBar()
+        self._footer_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        version_label, version_tooltip = footer_version_badge()
+        self._footer_bar.set_version_badge(version_label, tooltip=version_tooltip)
+        self._refresh_login_footer_badges()
+
         card = QFrame()
-        card.setObjectName("account_card")
+        card.setObjectName("startup_loading_card")
         card.setFixedWidth(420)
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(20, 20, 20, 20)
@@ -58,9 +77,15 @@ class AuthView(QFrame):
         card_layout.addWidget(self._error_label)
 
         outer = QVBoxLayout(self)
-        outer.addStretch()
-        outer.addWidget(card, alignment=Qt.AlignmentFlag.AlignHCenter)
-        outer.addStretch()
+        outer.setContentsMargins(0, 0, 0, 0)
+        # Center the login card within the available space above the footer.
+        top = QVBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.addStretch()
+        top.addWidget(card, alignment=Qt.AlignmentFlag.AlignHCenter)
+        top.addStretch()
+        outer.addLayout(top, stretch=1)
+        outer.addWidget(self._footer_bar, stretch=0)
 
     def get_api_base_url(self) -> str:
         return self._storage.get_api_base_url()
@@ -68,6 +93,7 @@ class AuthView(QFrame):
     def show_login_form(self) -> None:
         self._stack.setCurrentIndex(0)
         self.clear_error()
+        self._refresh_login_footer_badges()
         self._refresh_saved_accounts()
 
     def _refresh_saved_accounts(self) -> None:
@@ -80,16 +106,63 @@ class AuthView(QFrame):
                 widget.deleteLater()
         for account in accounts:
             label = account.display_name or account.email or account.user_id
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(10)
+            row_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
             button = QPushButton(label)
             button.setToolTip(account.email or account.user_id)
+            button.setObjectName("saved_account_button")
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda _checked=False, uid=account.user_id: self._request_switch_account(uid))
-            self._saved_accounts_layout.addWidget(button)
+            row_layout.addWidget(button, stretch=1)
+
+            remove_btn = _WindowControlButton("close", row)
+            remove_btn.setToolTip("Remove this pinned profile")
+            # Header close is larger; shrink for the pinned-profile row.
+            remove_btn.setFixedSize(28, 28)
+            remove_btn.clicked.connect(lambda _checked=False, uid=account.user_id: self._remove_saved_account(uid))
+            row_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+            self._saved_accounts_layout.addWidget(row)
+
+    def _remove_saved_account(self, user_id: str) -> None:
+        remove_saved_account(self._storage, user_id)
+        self._refresh_saved_accounts()
 
     def show_register_form(self) -> None:
         if not REGISTRATION_ENABLED:
             return
         self._stack.setCurrentIndex(1)
         self.clear_error()
+
+    def _refresh_login_footer_badges(self) -> None:
+        # In production builds `footer_environment_badge()` returns (None, "").
+        # For login diagnostics we still show a label so users know which
+        # endpoint the app is calling.
+        env_label, env_tooltip = footer_environment_badge()
+        api_base_url = self._storage.get_api_base_url()
+        env = build_environment()
+
+        if not env_label:
+            api_lower = (api_base_url or "").lower()
+            if env == "sandbox":
+                env_label = "Sandbox API"
+            elif env == "production":
+                env_label = "Production API"
+            elif "localhost" in api_lower or "127.0.0.1" in api_lower:
+                env_label = "Local API"
+            else:
+                env_label = "Dev API"
+            env_tooltip = api_base_url
+
+        host = urlparse(env_tooltip).netloc if env_tooltip else ""
+        tip_host = host or env_tooltip or api_base_url or env_label
+        tooltip_text = f"{env_label} -> {tip_host}"
+
+        self._footer_bar.set_environment_badge(env_label, tooltip=tooltip_text)
 
     def set_error(self, message: str) -> None:
         self._error_label.setText(message)
@@ -165,8 +238,11 @@ class AuthView(QFrame):
             switch_row.addWidget(to_register)
             layout.addLayout(switch_row)
 
+        # Give breathing room between the password field and the primary CTA.
+        layout.addSpacing(12)
+
         self._login_btn = QPushButton("Sign In")
-        self._login_btn.setObjectName(START_BUTTON_ID)
+        self._login_btn.setObjectName("login_primary_button")
         self._login_btn.setDefault(True)
         self._login_btn.setAutoDefault(True)
         self._login_btn.clicked.connect(self._submit_login)
@@ -211,7 +287,7 @@ class AuthView(QFrame):
         layout.addLayout(switch_row)
 
         self._create_btn = QPushButton("Create Account")
-        self._create_btn.setObjectName(START_BUTTON_ID)
+        self._create_btn.setObjectName("login_primary_button")
         self._create_btn.clicked.connect(self._submit_register)
         layout.addWidget(self._create_btn)
 

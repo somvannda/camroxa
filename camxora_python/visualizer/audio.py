@@ -445,6 +445,9 @@ class AudioAnalyzer:
         inst._frames_bins = int(inst._mag.shape[1])
         inst._x_in = np.linspace(0.0, 1.0, num=inst._freq_bins, dtype=np.float32)
         inst._x_out = np.linspace(0.0, 1.0, num=inst._point_count, dtype=np.float32)
+        inst._fft_out = np.zeros(inst._point_count, dtype=np.float32)
+        inst._feat_cache_idx = -1
+        inst._feat_cache: dict = {}
         return inst
 
     def _analyze_waveform(self, y: np.ndarray, *, on_progress: ProgressCallback | None = None) -> None:
@@ -488,6 +491,9 @@ class AudioAnalyzer:
         self._frames_bins = self._mag.shape[1]
         self._x_in = np.linspace(0.0, 1.0, num=self._freq_bins, dtype=np.float32)
         self._x_out = np.linspace(0.0, 1.0, num=self._point_count, dtype=np.float32)
+        self._fft_out = np.zeros(self._point_count, dtype=np.float32)
+        self._feat_cache_idx = -1
+        self._feat_cache: dict = {}
 
         t1 = time.perf_counter()
         _progress("Detecting onset...")
@@ -545,6 +551,8 @@ class AudioAnalyzer:
     def point_count(self, val: int) -> None:
         self._point_count = int(val)
         self._x_out = np.linspace(0.0, 1.0, num=self._point_count, dtype=np.float32)
+        self._fft_out = np.zeros(self._point_count, dtype=np.float32)
+        self._feat_cache_idx = -1
 
     @property
     def fps(self) -> int:
@@ -557,12 +565,19 @@ class AudioAnalyzer:
     def fft_for_frame(self, frame_index: int) -> np.ndarray:
         idx = min(max(0, int(frame_index)), max(0, self._frames_bins - 1))
         col = self._mag[:, idx]
-        out = np.interp(self._x_out, self._x_in, col).astype(np.float32)
-        out = np.clip(out, 0.0, 1.0)
+        # Reuse output buffer — avoids a new allocation every paint frame (GC hitch).
+        out = getattr(self, "_fft_out", None)
+        if out is None or int(out.shape[0]) != int(self._point_count):
+            self._fft_out = np.zeros(self._point_count, dtype=np.float32)
+            out = self._fft_out
+        out[:] = np.interp(self._x_out, self._x_in, col)
+        np.clip(out, 0.0, 1.0, out=out)
         return out
 
     def features_for_frame(self, frame_index: int) -> dict:
         idx = min(max(0, int(frame_index)), max(0, self._frames_bins - 1))
+        if int(getattr(self, "_feat_cache_idx", -1)) == idx and getattr(self, "_feat_cache", None):
+            return self._feat_cache
         col = self._mag[:, idx]
 
         def mean_or_zero(indices: np.ndarray) -> float:
@@ -579,7 +594,7 @@ class AudioAnalyzer:
         onset = float(self._onset_env[onset_idx]) if self._onset_env.size else 0.0
         beat = 1.0 if idx in self._beat_set else 0.0
 
-        return {
+        self._feat_cache = {
             "bass": bass,
             "mid": mid,
             "treble": treble,
@@ -587,3 +602,5 @@ class AudioAnalyzer:
             "onset": onset,
             "beat": beat,
         }
+        self._feat_cache_idx = idx
+        return self._feat_cache

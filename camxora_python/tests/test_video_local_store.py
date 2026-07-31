@@ -178,6 +178,22 @@ def test_patch_template_updates_name_and_style(isolated_video_store: VideoLocalS
     assert workspace.template.get("style") == "flying-glow"
 
 
+def test_patch_template_preserves_original_snapshot(isolated_video_store: VideoLocalStore) -> None:
+    before = isolated_video_store.read_workspace_state({"outputResolution": "1920x1080"})
+    original_style = before.template.get("style")
+    original_name = before.template_name
+    isolated_video_store.patch_template(
+        {"templateName": "Changed", "style": "flying-glow"},
+        settings={"outputResolution": "1920x1080"},
+    )
+    restored = isolated_video_store.restore_template_to_original(
+        settings={"outputResolution": "1920x1080"}
+    )
+    assert restored is not None
+    assert restored.template.get("style") == original_style
+    assert restored.template_name == original_name
+
+
 def test_patch_template_persists_preview_background(isolated_video_store: VideoLocalStore) -> None:
     workspace = isolated_video_store.patch_template(
         {

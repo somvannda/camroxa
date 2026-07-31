@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 )
 
 from features.video.lib.spectrum_audio_dial import (
-    FLYING_GLOW_WING_SPEED_DIAL_MAX,
     SPECTRUM_AUDIO_DIAL_MAX,
     from_spectrum_audio_dial,
     to_spectrum_audio_dial,
@@ -27,6 +26,7 @@ from features.video.lib.spectrum_style_registry import (
     build_stacked_spectrum_preset_template,
 )
 from features.video.widgets.inspector_fields import InspectorSection
+from features.video.widgets.spectrum_instance_editor import SpectrumInstanceEditor
 from features.video.widgets.spectrum_layer_editor import SpectrumLayerEditor
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 
@@ -41,19 +41,21 @@ class SpectrumInspector(QWidget):
     layer_add_requested = Signal()
     layer_duplicate_requested = Signal()
     layer_delete_requested = Signal()
+    layer_move_up_requested = Signal()
+    layer_move_down_requested = Signal()
     layer_selected = Signal(int)
+    instance_selected = Signal(int)
+    instance_add_requested = Signal()
+    instance_duplicate_requested = Signal()
+    instance_delete_requested = Signal()
+    instance_move_up_requested = Signal()
+    instance_move_down_requested = Signal()
+    instance_patch_requested = Signal(dict)
 
     _AUDIO_FIELDS: tuple[tuple[str, float, float, int], ...] = (
         ("audioInputGain", 1, 10, SPECTRUM_AUDIO_DIAL_MAX),
-        ("audioKickImpact", 0, 5, SPECTRUM_AUDIO_DIAL_MAX),
-        ("audioBassEmphasis", 0.35, 4, SPECTRUM_AUDIO_DIAL_MAX),
-        ("audioBandContrast", 0.35, 5, SPECTRUM_AUDIO_DIAL_MAX),
-        ("audioTransientFocus", 0.35, 4, SPECTRUM_AUDIO_DIAL_MAX),
-        ("audioTrebleShimmer", 0.35, 4, SPECTRUM_AUDIO_DIAL_MAX),
-        ("audioPeakHoldBlend", 0, 1, SPECTRUM_AUDIO_DIAL_MAX),
         ("audioMotionSmoothing", 0, 0.99, SPECTRUM_AUDIO_DIAL_MAX),
-        ("flyingGlowWingMotionSpeed", 0.5, 20, FLYING_GLOW_WING_SPEED_DIAL_MAX),
-        ("flyingGlowWingRelease", 0, 4, SPECTRUM_AUDIO_DIAL_MAX),
+        ("audioPeakHoldBlend", 0, 1, SPECTRUM_AUDIO_DIAL_MAX),
     )
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -65,7 +67,6 @@ class SpectrumInspector(QWidget):
         self._previous_preset_key: str | None = None
         self._anchor_combo: QComboBox | None = None
         self._layer_editor: SpectrumLayerEditor | None = None
-        self._flying_glow_host: QWidget | None = None
         self._position_x_slider: QSlider | None = None
         self._position_y_slider: QSlider | None = None
         self._position_x_label: QLabel | None = None
@@ -75,6 +76,16 @@ class SpectrumInspector(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(12)
+
+        self._instance_editor = SpectrumInstanceEditor(self)
+        self._instance_editor.instance_selected.connect(self.instance_selected.emit)
+        self._instance_editor.instance_add_requested.connect(self.instance_add_requested.emit)
+        self._instance_editor.instance_duplicate_requested.connect(self.instance_duplicate_requested.emit)
+        self._instance_editor.instance_delete_requested.connect(self.instance_delete_requested.emit)
+        self._instance_editor.instance_move_up_requested.connect(self.instance_move_up_requested.emit)
+        self._instance_editor.instance_move_down_requested.connect(self.instance_move_down_requested.emit)
+        self._instance_editor.instance_patch_requested.connect(self.instance_patch_requested.emit)
+        root.addWidget(self._instance_editor)
 
         spectrum_section = InspectorSection("")
         self._spectrum_toggle = QCheckBox("Enable Spectrum")
@@ -95,7 +106,9 @@ class SpectrumInspector(QWidget):
         preset_restore_row.addStretch()
         spectrum_restore_btn = QPushButton("Restore original")
         spectrum_restore_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        spectrum_restore_btn.setToolTip("Reset the selected spectrum preset to factory defaults (local JSON override only).")
+        spectrum_restore_btn.setToolTip(
+            "Reset the selected spectrum preset to factory defaults for this session."
+        )
         spectrum_restore_btn.clicked.connect(self.preset_restore_requested.emit)
         preset_restore_row.addWidget(spectrum_restore_btn)
         preset_restore_host = QWidget()
@@ -124,31 +137,20 @@ class SpectrumInspector(QWidget):
         spectrum_section.add_widget(stack_host)
         root.addWidget(spectrum_section)
 
-        audio_section = InspectorSection("Audio")
-        for field, minimum, maximum, dial_max in self._AUDIO_FIELDS[:3]:
-            audio_section.add_widget(self._build_audio_slider(field, minimum, maximum, dial_max))
-
-        advanced = InspectorSection(
-            "Advanced",
-            subtitle="Separation, shimmer, tail, and smoothing controls.",
+        audio_section = InspectorSection(
+            "Audio",
+            subtitle="Global spectrum response. Layer colors/glow live in Layers below.",
         )
-        for field, minimum, maximum, dial_max in self._AUDIO_FIELDS[3:8]:
-            advanced.add_widget(self._build_audio_slider(field, minimum, maximum, dial_max))
-
-        self._flying_glow_host = QWidget()
-        flying_layout = QVBoxLayout(self._flying_glow_host)
-        flying_layout.setContentsMargins(0, 0, 0, 0)
-        flying_layout.setSpacing(8)
-        for field, minimum, maximum, dial_max in self._AUDIO_FIELDS[8:]:
-            flying_layout.addWidget(self._build_audio_slider(field, minimum, maximum, dial_max))
-        self._flying_glow_host.hide()
-        advanced.add_widget(self._flying_glow_host)
-        audio_section.add_widget(advanced)
+        for field, minimum, maximum, dial_max in self._AUDIO_FIELDS:
+            audio_section.add_widget(self._build_audio_slider(field, minimum, maximum, dial_max))
         root.addWidget(audio_section)
 
         position_section = InspectorSection(
             "Positioning",
-            subtitle="Move the spectrum and logo anchor around the preview.",
+            subtitle=(
+                "Moves the spectrum only. Logo stays centered unless Attach Spectrum to Logo "
+                "is enabled in the Logo tab (then both move together)."
+            ),
         )
         reset_row = QHBoxLayout()
         reset_row.setContentsMargins(0, 0, 0, 0)
@@ -192,6 +194,8 @@ class SpectrumInspector(QWidget):
         self._layer_editor.layer_add_requested.connect(self.layer_add_requested.emit)
         self._layer_editor.layer_duplicate_requested.connect(self.layer_duplicate_requested.emit)
         self._layer_editor.layer_delete_requested.connect(self.layer_delete_requested.emit)
+        self._layer_editor.layer_move_up_requested.connect(self.layer_move_up_requested.emit)
+        self._layer_editor.layer_move_down_requested.connect(self.layer_move_down_requested.emit)
         self._layer_editor.layer_selected.connect(self.layer_selected.emit)
         root.addWidget(self._layer_editor)
         root.addStretch()
@@ -252,15 +256,8 @@ class SpectrumInspector(QWidget):
     def _audio_label(field: str) -> str:
         labels = {
             "audioInputGain": "Input Gain",
-            "audioKickImpact": "Kick Impact",
-            "audioBassEmphasis": "Bass Emphasis",
-            "audioBandContrast": "Band Contrast",
-            "audioTransientFocus": "Transient Focus",
-            "audioTrebleShimmer": "Treble Shimmer",
             "audioPeakHoldBlend": "Peak Hold Blend",
             "audioMotionSmoothing": "Motion Smoothing",
-            "flyingGlowWingMotionSpeed": "Flying Glow Wing Speed",
-            "flyingGlowWingRelease": "Flying Glow Wing Release",
         }
         return labels.get(field, field)
 
@@ -332,13 +329,18 @@ class SpectrumInspector(QWidget):
         *,
         layers: list[dict],
         selected_layer_index: int,
+        instances: list[dict] | None = None,
+        selected_instance_index: int = 0,
     ) -> None:
         self._binding = True
         try:
             style = str(draft.get("style") or "orbit-spikes")
-            if self._flying_glow_host is not None:
-                # Ignition Flare (+ legacy neon-pulse packs) expose wing motion dials.
-                self._flying_glow_host.setVisible(style in {"ignition-flare", "neon-pulse"})
+
+            if getattr(self, "_instance_editor", None) is not None and instances is not None:
+                self._instance_editor.bind_instances(
+                    instances,
+                    selected_index=selected_instance_index,
+                )
 
             if self._layer_editor is not None:
                 self._layer_editor.bind_state(
