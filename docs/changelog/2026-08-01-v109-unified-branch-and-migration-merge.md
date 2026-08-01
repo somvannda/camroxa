@@ -1,7 +1,7 @@
 # v1.0.9: unified release branch (desktop + backend) + Alembic head merge
 
 **Date:** 2026-08-01
-**Status:** implemented locally (sandbox pending deploy, installer pending build)
+**Status:** shipped — deployed to sandbox and production, desktop installers built for both
 
 ## Summary
 
@@ -98,15 +98,35 @@ enumerate here; see `git diff` on `release/desktop-1.0.9` vs `fix/album2-progres
 
 ## Migration / deploy
 
-1. Deploy `release/desktop-1.0.9`'s `platform_api` to sandbox, run `alembic upgrade head`
-   — verified locally: `alembic heads` resolves to a single head,
-   `079_image_job_storage_key`.
-2. Build the v1.0.9 desktop sandbox installer from `release/desktop-1.0.9` (not the old
-   `fix/startup-freeze-hardening` worktree — that branch is now superseded by this one).
-3. **Separate, pre-existing hygiene gap (not blocking):** `platform_api/data/music_genre_catalog.py`
+Completed for both environments:
+
+1. **Sandbox** — synced `platform_api` (`sync_platform_api_sandbox.py`), ran
+   `alembic upgrade head` (`run_alembic_upgrade_sandbox.py`). Sandbox was already on
+   `075_batch_channel_pipeline_complete`; upgrade path was `075 + 077 -> 078 (merge) -> 079`.
+   `alembic_version` confirmed at `079_image_job_storage_key` (single head), `/health` → 200.
+2. **Production** — synced `platform_api` (`sync_platform_api_production.py`), ran
+   `alembic upgrade head` via new `run_alembic_upgrade_production.py` (mirrors the sandbox
+   script; added to this branch). Production was still on `074_suno_audio_ids` (had never
+   picked up the pipeline-complete *or* DistroKid migrations), so the upgrade path ran the
+   full chain: `074 -> 075_distrokid_addon -> 076_distrokid_wav -> 077_batch_auto_distrokid
+   -> 078 (merge) -> 079`. This adds DistroKid's dormant schema (add-on entitlement columns,
+   WAV job tables) to production — additive only, no behavior change, since DistroKid's
+   router/services stay unregistered in `main.py`. `alembic_version` confirmed at
+   `079_image_job_storage_key`, `/health` → 200, journalctl showed a clean migration run
+   with no errors.
+3. Desktop installers built from `release/desktop-1.0.9` for both environments:
+   - Sandbox: `CamxoraSetup-1.0.9-sandbox.exe` (`api.sandbox.camxora.com`)
+   - Production: `CamxoraSetup-1.0.9-production.exe` (`api.camxora.com`)
+   - Both under `camxora_python/dist/installer/`, renamed on disk immediately after each
+     build since Inno Setup's `OutputBaseFilename` is version-only and would otherwise let
+     the production build silently overwrite the sandbox one (known pre-existing gap; not
+     fixed here — see Follow-ups).
+4. Branch pushed to origin as `release/desktop-1.0.9`; tagged `v1.0.9` (no prior collision —
+   existing tags stopped at `v1.0.4`).
+5. **Separate, pre-existing hygiene gap (not blocking):** `platform_api/data/music_genre_catalog.py`
    (used by migration `063`) exists on disk on sandbox/production and in the local root
    workspace, but is **not committed to git on any branch**. Fine for now (tarball-based
-   sandbox deploys carry it along), but should be committed on `main` separately.
+   deploys carry it along from local disk), but should be committed on `main` separately.
 
 ## Tests
 
@@ -134,7 +154,16 @@ enumerate here; see `git diff` on `release/desktop-1.0.9` vs `fix/album2-progres
   syncs).
 - Fix the pre-existing `blog_posts.py` `DELETE .../{post_id}` `status_code=204` FastAPI
   assertion so router-level tests can run at all.
-- The 6 pre-existing desktop test failures and 47 pre-existing backend test failures are
-  unrelated to this work but still open; worth a dedicated cleanup pass.
+- The 6 pre-existing desktop test failures and other pre-existing backend test failures
+  (confirmed via `git stash` to predate this branch) are unrelated to this work but still
+  open; worth a dedicated cleanup pass.
 - `feature/pipeline-stuck-alerts` still parked, independent, portable the same way whenever
   prioritized.
+- Installer filename collision between environments (`CamxoraSetup-{version}.exe` for both
+  sandbox and production) is a standing gap in `installer/Camxora.iss` — worth adding
+  `-sandbox`/`-production` to `OutputBaseFilename` directly so a rebuild can't silently clobber
+  the other environment's installer on disk.
+- Production DB now carries DistroKid's dormant schema (columns/tables from `075`/`076`/`077`)
+  even though the feature is unreleased — intentional per the merge-migration design, but
+  worth a reminder when DistroKid actually ships that its own migration lineage is already
+  applied everywhere.

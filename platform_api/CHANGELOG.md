@@ -7,7 +7,14 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.9] - 2026-08-01
+
+Deployed to sandbox and production (`release/desktop-1.0.9`, tag `v1.0.9`). Migration head
+merge (`078`) plus `079_image_job_storage_key` applied to both — production had not yet
+picked up `075_batch_channel_pipeline_complete` or any DistroKid migration, so its upgrade
+ran the full `074 -> 075_distrokid_addon -> 076_distrokid_wav -> 077_batch_auto_distrokid ->
+078 -> 079` chain (additive schema only; DistroKid's router/services remain unregistered).
+See `docs/changelog/2026-08-01-v109-unified-branch-and-migration-merge.md`.
 
 ### Fixed
 
@@ -22,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `image_jobs.storage_key` (migration `079_image_job_storage_key`, after a `078` merge revision reconciling this lineage with the parked, unreleased DistroKid migrations — see Fixed) — background/thumbnail image job outputs are now durably archived to Backblaze in the background on every successful generation (mirrors the existing MP3 streaming-archive pattern), instead of only living in the API server's local disk cache. `GET /api/v1/image-jobs/{job_id}/output` now falls back to the Backblaze copy (and repopulates the local cache) if the local cache and any client-reachable path are both missing, so a lost server cache no longer means paying the AI provider again to regenerate a previous batch's images. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md` (v1.0.9 part 4).
 - `POST /music/downloads/batch-redownload-plan` — batch/channel-scoped Suno audio re-download plan (ignores `downloaded_ok`/`downloaded_alt`), powering the desktop "Change Run Folder & Resume" recovery flow. `download_url` is the original Suno URL (primary — Suno retains audio 14 days); a new optional `fallback_download_url` carries a signed Backblaze URL (`stream_tracks.storage_key`, archived automatically on every successful Suno callback) for the desktop client to retry with only if the Suno URL is dead — Backblaze is never hit proactively. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md` (v1.0.9 update).
+
+## [Unreleased]
 
 - Admin POST /api/v1/users/{user_id}/set-password — set password + revoke sessions (same complexity rules as self-service). See docs/changelog/2026-07-27-admin-set-user-password.md
 - Streaming play counts: `stream_tracks.play_count` (migration `072`); increment on public `play-url`; album lists expose sum as `play_count`
