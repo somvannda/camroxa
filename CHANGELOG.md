@@ -15,6 +15,23 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.11] - 2026-08-01
+
+### Fixed
+
+- **"Change Run Folder & Resume" left already-submitted songs stuck retrying
+  the old (full) folder forever.** Any song already sent to Suno before the
+  folder change kept its original snapshotted download path even after the
+  row was moved, so the background download sync spammed
+  `Not enough free disk space to download MP3, skipping: <old path>` every
+  ~5 seconds indefinitely — once per still-pending song in that album, on
+  every poll — with no new folder or files ever created for those songs at
+  the new location. The recovery flow now repoints each song's tracked
+  download state (`output_dir`/`downloaded`) to the new folder as part of
+  the move, whether its own re-download succeeded or failed, so the
+  background sync stops targeting the dead path. See
+  `docs/changelog/2026-08-01-run-folder-recovery-stale-output-dir.md`.
+
 ## [1.0.10] - 2026-08-01
 
 Rebuild of 1.0.9 with no desktop code changes — pairs the client with a

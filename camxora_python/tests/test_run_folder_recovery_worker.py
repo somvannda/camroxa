@@ -151,6 +151,18 @@ def test_recovery_worker_repoints_run_dir_and_redownloads(qapp: QApplication, tm
     assert (new_dir / "1. Shadow Rebels_OK.mp3").is_file()
     assert (new_dir / "background-16x9-ok.png").is_file()
 
+    # Must repoint this song's tracked output_dir/downloaded state to the new folder —
+    # otherwise the account-wide background download sync keeps retrying it against the
+    # old (bad/full) folder forever, since that poller reads per-song state, not run_dir.
+    api.sync_music_downloads.assert_called_once()
+    synced = api.sync_music_downloads.call_args.args[0]
+    assert len(synced) == 1
+    assert synced[0].task_id == "task-1"
+    assert synced[0].downloaded_primary is True
+    assert synced[0].downloaded_secondary is None
+    assert synced[0].output_dir_primary == str(new_dir)
+    assert synced[0].output_dir_secondary is None
+
 
 def test_recovery_worker_falls_back_to_backblaze_when_suno_url_dead(
     qapp: QApplication, tmp_path, monkeypatch
@@ -267,3 +279,61 @@ def test_recovery_worker_counts_partial_failures(qapp: QApplication, tmp_path, m
     assert result.mp3_downloaded == 1
     assert result.mp3_failed == 1
     assert result.had_any_failure
+
+    # Even the *failed* re-download must still repoint output_dir to the new folder
+    # (downloaded=False) — otherwise the background sync keeps hammering the old folder.
+    synced = api.sync_music_downloads.call_args.args[0]
+    synced_by_task = {item.task_id: item for item in synced}
+    assert synced_by_task["task-1"].downloaded_primary is True
+    assert synced_by_task["task-1"].output_dir_primary == str(new_dir)
+    assert synced_by_task["task-2"].downloaded_primary is False
+    assert synced_by_task["task-2"].output_dir_primary == str(new_dir)
+
+
+def test_recovery_worker_syncs_download_state_for_alt_role(
+    qapp: QApplication, tmp_path, monkeypatch
+) -> None:
+    """ALT-role recovery must update output_dir_secondary/downloaded_secondary, not
+    the primary/OK fields, so it doesn't clobber the other channel's tracked state."""
+    new_dir = tmp_path / "new_run"
+    api = MagicMock()
+    api.sync_local_progress.return_value = ProgressLocalSyncResponse(updated=1)
+    api.get_batch_redownload_plan.return_value = BatchRedownloadPlanResponse(
+        items=[
+            BatchRedownloadItem(
+                task_id="task-1",
+                title="Shadow Rebels",
+                download_url="https://example.test/shadow-rebels.mp3",
+                target_path=str(new_dir / "1. Shadow Rebels_ALT.mp3"),
+            )
+        ]
+    )
+    api.list_image_jobs.return_value = ImageJobsListResponse(items=[])
+
+    def fake_download(_url: str, path: str) -> bool:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_bytes(b"mp3")
+        return True
+
+    monkeypatch.setattr(
+        "shared.workers.data_workers.MusicDownloadSyncWorker._download_file",
+        staticmethod(fake_download),
+    )
+
+    worker = RunFolderRecoveryWorker(
+        api,
+        batch_id="batch-1",
+        profile_id="profile-1",
+        role="ALT",
+        new_run_dir=str(new_dir),
+    )
+    worker.start()
+    assert worker.wait(5_000)
+    _pump()
+
+    synced = api.sync_music_downloads.call_args.args[0]
+    assert len(synced) == 1
+    assert synced[0].downloaded_primary is None
+    assert synced[0].downloaded_secondary is True
+    assert synced[0].output_dir_primary is None
+    assert synced[0].output_dir_secondary == str(new_dir)

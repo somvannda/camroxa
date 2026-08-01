@@ -409,10 +409,14 @@ class RunFolderRecoveryWorker(QThread):
 
         # 2. Re-download already-successful MP3s (stable Suno URLs) into the new folder.
         try:
+            from shared.models.platform import MusicDownloadSyncItem
+
             plan = self._api.get_batch_redownload_plan(
                 batch_id=self._batch_id, role=self._role, run_dir=normalized_dir
             )
             result.mp3_total = len(plan.items)
+            is_primary = self._role != "ALT"
+            sync_items: list[MusicDownloadSyncItem] = []
             for item in plan.items:
                 try:
                     ok = MusicDownloadSyncWorker._download_file(item.download_url, item.target_path)
@@ -431,10 +435,33 @@ class RunFolderRecoveryWorker(QThread):
                         result.mp3_downloaded += 1
                     else:
                         result.mp3_failed += 1
+                    # Repoint this song's tracked output_dir/downloaded state to the new
+                    # folder regardless of outcome — otherwise the account-wide background
+                    # download sync (MusicDownloadSyncWorker) keeps retrying this exact
+                    # song against the *old* (bad/full) folder forever, since it reads
+                    # per-song output_dir/downloaded state, not the batch's run_dir.
+                    sync_items.append(
+                        MusicDownloadSyncItem(
+                            task_id=item.task_id,
+                            downloaded_primary=ok if is_primary else None,
+                            downloaded_secondary=ok if not is_primary else None,
+                            output_dir_primary=normalized_dir if is_primary else None,
+                            output_dir_secondary=normalized_dir if not is_primary else None,
+                        )
+                    )
                 except Exception as exc:
                     result.mp3_failed += 1
                     log_error(
                         f"Re-download into new run folder failed for {item.title or item.task_id}",
+                        category="music",
+                        exc=exc,
+                    )
+            if sync_items:
+                try:
+                    self._api.sync_music_downloads(sync_items)
+                except PlatformApiError as exc:
+                    log_error(
+                        f"Could not sync re-downloaded state for batch {self._batch_id}",
                         category="music",
                         exc=exc,
                     )
