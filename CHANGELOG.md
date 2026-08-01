@@ -15,6 +15,19 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.13] - 2026-08-01
+
+### Fixed
+
+- **Login screen always showed a "Production API"/"Sandbox API"/etc. badge,
+  even in production installers.** The main app shell already hid this badge
+  for production builds, but the login screen had its own fallback label that
+  unconditionally displayed the resolved environment — including the literal
+  text "Production API" — to every end user. The login footer badge is now
+  hidden outright for production builds (matching the rest of the app) and is
+  only shown for sandbox/dev/local builds, for internal testers. See
+  `docs/changelog/2026-08-01-hide-login-env-badge-production.md`.
+
 ## [1.0.12] - 2026-08-01
 
 ### Fixed

@@ -139,19 +139,24 @@ class AuthView(QFrame):
         self.clear_error()
 
     def _refresh_login_footer_badges(self) -> None:
-        # In production builds `footer_environment_badge()` returns (None, "").
-        # For login diagnostics we still show a label so users know which
-        # endpoint the app is calling.
+        env = build_environment()
+        if env == "production":
+            # End users never see this badge, on the login screen or anywhere
+            # else — production installers must never surface which internal
+            # API target they're hitting.
+            self._footer_bar.set_environment_badge(None)
+            return
+
+        # Sandbox/dev/local builds still show a label here (even though
+        # `footer_environment_badge()` itself only covers the main app shell)
+        # so internal testers know which endpoint the login screen is calling.
         env_label, env_tooltip = footer_environment_badge()
         api_base_url = self._storage.get_api_base_url()
-        env = build_environment()
 
         if not env_label:
             api_lower = (api_base_url or "").lower()
             if env == "sandbox":
                 env_label = "Sandbox API"
-            elif env == "production":
-                env_label = "Production API"
             elif "localhost" in api_lower or "127.0.0.1" in api_lower:
                 env_label = "Local API"
             else:
