@@ -209,6 +209,7 @@ User=camxora
 Group=camxora
 WorkingDirectory=${REPO_DIR}
 Environment=PYTHONPATH=${REPO_DIR}
+Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/uvicorn platform_api.main:app \\
   --host 127.0.0.1 --port ${API_PORT} --workers ${API_WORKERS} \\

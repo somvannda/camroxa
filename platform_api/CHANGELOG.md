@@ -32,6 +32,11 @@ See `docs/changelog/2026-08-01-v109-unified-branch-and-migration-merge.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Startup `alembic upgrade heads` now serializes across worker processes via a Postgres advisory lock — with `API_WORKERS` > 1, every worker previously ran migrations independently and concurrently, which raced DDL against other workers' open connection pools and caused a ~30 minute burst of 500s across nearly every endpoint after today's v1.0.9 production deploy. See `docs/changelog/2026-08-01-migration-worker-race-incident.md`.
+- Production/sandbox systemd unit templates now set `PYTHONUNBUFFERED=1` — stdout was block-buffered, so error tracebacks (including this incident's) were invisible in `journalctl` until a restart. Same incident doc.
+
 - Admin POST /api/v1/users/{user_id}/set-password — set password + revoke sessions (same complexity rules as self-service). See docs/changelog/2026-07-27-admin-set-user-password.md
 - Streaming play counts: `stream_tracks.play_count` (migration `072`); increment on public `play-url`; album lists expose sum as `play_count`
 - Public streaming list pagination: `GET /public/streaming/albums|artists|search` return `{ items, total, limit, offset }`; search accepts `offset`
