@@ -15,6 +15,57 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.10] - 2026-08-01
+
+Rebuild of 1.0.9 with no desktop code changes — pairs the client with a
+same-day **backend** hotfix (`platform_api`) for a production incident: with
+2 API workers, every worker independently ran `alembic upgrade heads` on
+startup, racing DDL against the other worker's connections and causing a
+~30 minute burst of `500` errors across nearly every screen right after a
+deploy. Fixed server-side with a Postgres advisory lock serializing startup
+migrations across workers; already deployed to sandbox and production. See
+`docs/changelog/2026-08-01-migration-worker-race-incident.md` (platform API
+repo). Desktop version bumped for release tracking/support purposes only.
+
+## [1.0.9] - 2026-08-01
+
+### Added
+
+- **Change Run Folder & Resume**: right-click a Progress row → "Change Run
+  Folder & Resume…" to move a batch/channel to a new folder (e.g. off a
+  full/bad drive) and re-download already-successful MP3s (Suno URL first,
+  Backblaze fallback) and images there, without re-drafting lyrics/title/album
+  or re-requesting Suno generation. Auto-continues the pipeline from where it
+  left off after the move completes.
+- Disk-space guard (`shared/lib/disk_space.py`, 200MB floor): workspace path
+  defaults self-heal off a low-space drive, and MP3 downloads pre-check free
+  space, verify written file size against content length, and clean up 0-byte
+  leftovers instead of silently producing empty files.
+- Async `ProfileMediaCacheWorker` for Settings profile-media downloads —
+  removed UI-blocking synchronous network calls that could hang the Settings
+  page.
+- Bounded one-attempt retry on `PlatformClient.request_bytes()` GET requests
+  for transport-level errors ("peer closed connection", timeouts).
+
+### Fixed
+
+- Cross-machine `PermissionError`/`FileNotFoundError`: account-level settings
+  no longer propagate one machine's absolute local paths to another — invalid
+  synced paths self-heal to the current machine's own defaults.
+  `ensure_directory()` caches known-uncreatable paths to avoid repeated
+  blocking syscalls on the UI thread (previously caused Settings-page hangs).
+- Startup hardening: global exception hooks and a bounded import-retry (with
+  module cache clearing) for transient `TypeError: 'NoneType' object is not
+  subscriptable`-style failures during early boot.
+- Redundant "Saving music defaults..." status flashing fixed to a single
+  message per save cycle.
+
+### Changed
+
+- Ported the visualizer/spectrum GPU-rendering overhaul (session presets,
+  particle styles, encode pipeline hardening for low-VRAM GPUs) onto the
+  current release line.
+
 ## [1.0.0] - 2026-07-26
 
 First official production release of the Camxora desktop studio.
