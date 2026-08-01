@@ -214,6 +214,82 @@ def test_change_run_folder_auto_continues_matching_row_once(qapp: QApplication) 
     view._continue_progress.assert_not_called()
 
 
+def test_change_run_folder_recreates_channel_and_album_subfolders(
+    qapp: QApplication, monkeypatch
+) -> None:
+    """Picking a new drive/folder must recreate {channel}/{date_album} underneath
+    it — mirroring how a batch is generated — instead of dumping files flat into
+    whatever folder the user picked."""
+    import features.progress.views.progress_view as progress_view_module
+
+    view = ProgressView(PlatformApi())
+    row = _sample_row().model_copy(
+        update={
+            "meta": _sample_row().meta.model_copy(
+                update={"run_dir": r"E:\SUNO\bass-drive\2026-08-02_Grateful-Hearts-Rest"}
+            )
+        }
+    )
+
+    monkeypatch.setattr(
+        progress_view_module.QFileDialog,
+        "getExistingDirectory",
+        staticmethod(lambda *args, **kwargs: r"D:\NewDrive"),
+    )
+
+    created_workers: list[MagicMock] = []
+
+    def fake_worker(api, *, batch_id, profile_id, role, new_run_dir, parent=None):
+        worker = MagicMock()
+        worker.new_run_dir = new_run_dir
+        worker.succeeded = MagicMock()
+        worker.failed = MagicMock()
+        worker.finished = MagicMock()
+        worker.isRunning.return_value = False
+        created_workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(progress_view_module, "RunFolderRecoveryWorker", fake_worker)
+
+    view._change_run_folder(row)
+
+    assert len(created_workers) == 1
+    assert created_workers[0].new_run_dir == r"D:\NewDrive\bass-drive\2026-08-02_Grateful-Hearts-Rest"
+
+
+def test_change_run_folder_rejects_when_recreated_path_matches_current(
+    qapp: QApplication, monkeypatch
+) -> None:
+    """If the picked folder's recreated {channel}/{date_album} path resolves back
+    to the row's current run_dir, this must be treated as a no-op, not a move."""
+    import features.progress.views.progress_view as progress_view_module
+
+    view = ProgressView(PlatformApi())
+    current = r"E:\SUNO\bass-drive\2026-08-02_Grateful-Hearts-Rest"
+    row = _sample_row().model_copy(
+        update={"meta": _sample_row().meta.model_copy(update={"run_dir": current})}
+    )
+
+    monkeypatch.setattr(
+        progress_view_module.QFileDialog,
+        "getExistingDirectory",
+        staticmethod(lambda *args, **kwargs: r"E:\SUNO"),
+    )
+
+    created_workers: list[MagicMock] = []
+    monkeypatch.setattr(
+        progress_view_module,
+        "RunFolderRecoveryWorker",
+        lambda *a, **k: created_workers.append(k) or MagicMock(),
+    )
+
+    view._show_retry_notice = MagicMock()  # type: ignore[method-assign]
+    view._change_run_folder(row)
+
+    assert created_workers == []
+    view._show_retry_notice.assert_called_once_with("That is already this row's run folder.")
+
+
 def test_flush_pending_auto_continue_noop_when_row_not_found(qapp: QApplication) -> None:
     view = ProgressView(PlatformApi())
     view._pending_auto_continue_key = ("missing-batch", "missing-profile", "OK")

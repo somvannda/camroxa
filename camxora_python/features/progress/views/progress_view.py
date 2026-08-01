@@ -630,14 +630,28 @@ class ProgressView(PollablePageMixin, QScrollArea):
             return
 
         current_dir = str(meta.run_dir or "").strip()
-        new_dir = QFileDialog.getExistingDirectory(
+        picked_root = QFileDialog.getExistingDirectory(
             self,
-            "Choose a new run folder",
+            "Choose a new drive/folder (the channel and date-album subfolders "
+            "will be recreated inside it, same as when a batch is generated)",
             current_dir or "",
         )
-        new_dir = str(new_dir or "").strip()
-        if not new_dir:
+        picked_root = str(picked_root or "").strip()
+        if not picked_root:
             return
+        # The picked folder is a new *base* location, not the exact run folder —
+        # recreate the same {channel}/{date_album} structure the pipeline already
+        # uses for this row underneath it, instead of dumping files flat into
+        # whatever the user picked.
+        new_dir = picked_root
+        if current_dir:
+            from pathlib import Path as _Path
+
+            old_path = _Path(current_dir)
+            channel_folder = old_path.parent.name
+            album_folder = old_path.name
+            if channel_folder and album_folder:
+                new_dir = str(_Path(picked_root) / channel_folder / album_folder)
         if current_dir and _same_local_path(new_dir, current_dir):
             self._show_retry_notice("That is already this row's run folder.")
             return

@@ -15,6 +15,18 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.12] - 2026-08-01
+
+### Fixed
+
+- **"Change Run Folder & Resume" wrote files flat into the picked folder
+  instead of recreating the channel/date-album structure.** The picked
+  folder is now treated as a base directory: the row's existing
+  `{channel}/{date}_{album}` subfolder names are recreated underneath it
+  before any MP3s or images are re-downloaded, matching exactly what the
+  normal Generate pipeline creates for a new batch. See
+  `docs/changelog/2026-08-01-run-folder-recovery-missing-subfolders.md`.
+
 ## [1.0.11] - 2026-08-01
 
 ### Fixed
