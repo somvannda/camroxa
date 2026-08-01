@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -58,6 +59,26 @@ class MusicDownloadSyncResponse(BaseModel):
     updated: int
 
 
+class BatchRedownloadItemResponse(BaseModel):
+    song_id: str | None = None
+    task_id: str
+    title: str | None = None
+    track_number: int | None = None
+    download_url: str
+    fallback_download_url: str | None = None
+    target_path: str
+
+
+class BatchRedownloadPlanRequest(BaseModel):
+    batch_id: str
+    role: str = "OK"
+    run_dir: str
+
+
+class BatchRedownloadPlanResponse(BaseModel):
+    items: list[BatchRedownloadItemResponse] = Field(default_factory=list)
+
+
 @router.get("/pending", response_model=PendingMusicDownloadsResponse, status_code=200)
 async def list_pending_music_downloads(
     ctx: CurrentUserDep,
@@ -82,3 +103,26 @@ async def sync_music_downloads(
     payload: list[dict[str, Any]] = [item.model_dump(exclude_none=True) for item in request.items]
     updated = await service.sync_suno_downloads(user_id=ctx.user_id, items=payload)
     return MusicDownloadSyncResponse(updated=updated)
+
+
+@router.post("/batch-redownload-plan", response_model=BatchRedownloadPlanResponse, status_code=200)
+async def batch_redownload_plan(
+    request: BatchRedownloadPlanRequest,
+    ctx: CurrentUserDep,
+    service: BatchServiceDep,
+) -> BatchRedownloadPlanResponse:
+    """List already-successful Suno audio for one batch/channel, targeted at a new folder.
+
+    Used by the desktop "change run folder + resume" recovery flow — ignores whether the
+    account already marked a track downloaded, since that download may have landed on a
+    bad/full drive and needs to be re-fetched into a different folder.
+    """
+    items = await service.build_batch_redownload_plan(
+        user_id=ctx.user_id,
+        batch_id=UUID(request.batch_id),
+        role=request.role,
+        run_dir=request.run_dir,
+    )
+    return BatchRedownloadPlanResponse(
+        items=[BatchRedownloadItemResponse.model_validate(item) for item in items]
+    )

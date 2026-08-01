@@ -40,6 +40,18 @@ def mock_batch_service() -> AsyncMock:
         ]
     )
     service.sync_suno_downloads = AsyncMock(return_value=1)
+    service.build_batch_redownload_plan = AsyncMock(
+        return_value=[
+            {
+                "song_id": str(uuid4()),
+                "task_id": str(uuid4()),
+                "title": "Dark Trap",
+                "track_number": 1,
+                "download_url": "https://cdn.example.com/primary.mp3",
+                "target_path": "E:/NewFolder/1. Dark Trap_OK.mp3",
+            }
+        ]
+    )
     return service
 
 
@@ -87,3 +99,22 @@ async def test_sync_music_downloads(client: AsyncClient, mock_batch_service: Asy
     assert response.status_code == 200
     assert response.json()["updated"] == 1
     mock_batch_service.sync_suno_downloads.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_batch_redownload_plan(client: AsyncClient, mock_batch_service: AsyncMock) -> None:
+    batch_id = str(uuid4())
+    response = await client.post(
+        "/api/v1/music/downloads/batch-redownload-plan",
+        json={"batch_id": batch_id, "role": "OK", "run_dir": "E:/NewFolder"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["download_url"] == "https://cdn.example.com/primary.mp3"
+    assert payload["items"][0]["target_path"] == "E:/NewFolder/1. Dark Trap_OK.mp3"
+    mock_batch_service.build_batch_redownload_plan.assert_awaited_once()
+    _, kwargs = mock_batch_service.build_batch_redownload_plan.call_args
+    assert str(kwargs["batch_id"]) == batch_id
+    assert kwargs["role"] == "OK"
+    assert kwargs["run_dir"] == "E:/NewFolder"

@@ -196,7 +196,14 @@ class SessionService:
                 refreshed = self._api.refresh(tokens.refreshToken)
                 self.set_tokens(AuthTokens.from_token_response(refreshed))
                 return True
-            except Exception:
+            except Exception as exc:
+                # Silent refresh failures here previously left no trace, showing
+                # up only as downstream "Unauthenticated" pauses in coordinators
+                # minutes later with no way to tell why the refresh itself failed
+                # (network, clock skew, revoked token, etc.).
+                from shared.services.app_logger import log_error
+
+                log_error("Session token refresh failed", category="auth", exc=exc)
                 return False
             finally:
                 event.set()
@@ -214,7 +221,9 @@ class SessionService:
         if tokens is None:
             self.clear()
             _report("Opening sign in", "No session found.", 100)
-            return BootstrapResult(BootstrapDestination.LOGIN, message="No session found.")
+            # This is a normal "need to sign in" state for fresh installs / cleared sessions.
+            # Keep the login UI clean (no error pill) by returning an empty message.
+            return BootstrapResult(BootstrapDestination.LOGIN, message="")
 
         now_ms = int(time.time() * 1000)
         if now_ms > tokens.expiresAt - 30_000:

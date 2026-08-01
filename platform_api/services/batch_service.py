@@ -2912,6 +2912,117 @@ class BatchService:
             await self.refresh_batch_status(batch_id)
         return updated
 
+    async def build_batch_redownload_plan(
+        self,
+        *,
+        user_id: str,
+        batch_id: UUID,
+        role: str,
+        run_dir: str,
+    ) -> list[dict[str, Any]]:
+        """Songs + Suno audio URLs for one batch/channel, targeted at a NEW run folder.
+
+        Powers the "change run folder + resume" recovery flow: re-download already
+        -successful MP3s into a different folder without re-drafting lyrics/title/album
+        or re-requesting Suno generation. Deliberately ignores `downloaded_*` flags —
+        those tracked downloads into the *old* (possibly bad/full-drive) folder.
+
+        Each item's `download_url` is the original Suno URL (primary — Suno retains
+        generated audio for 14 days) with an optional `fallback_download_url` pointing
+        at our own Backblaze-archived copy, used only if the Suno URL has expired/gone.
+        """
+        normalized_dir = str(run_dir or "").strip()
+        if not normalized_dir:
+            return []
+        batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
+        if batch is None:
+            return []
+        role_norm = str(role or "OK").strip().upper()
+        variant = "primary" if role_norm in {"OK", "PRIMARY"} else "secondary"
+        url_field = "audio_url_ok" if variant == "primary" else "audio_url_alt"
+        # `stream_tracks.variant` uses the "ok"/"alt" vocabulary (StreamingUploadService),
+        # distinct from this method's own "primary"/"secondary" download-target naming.
+        stream_variant = "ok" if variant == "primary" else "alt"
+
+        rows = await self._batch_repo.list_suno_audio_for_batch(batch_id=batch_id, user_id=UUID(user_id))
+        storage_keys = await self._resolve_redownload_storage_keys(rows, variant=stream_variant)
+
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            task_id = str(row["id"])
+            suno_url = str(row.get(url_field) or "").strip()
+            # Suno keeps generated audio for 14 days, so its URL is the primary source —
+            # we only reach for our own Backblaze copy as a fallback if the Suno URL is
+            # gone/expired (e.g. an old batch outside that window), not proactively.
+            backblaze_url = storage_keys.get(task_id)
+            primary_url = suno_url or backblaze_url or ""
+            fallback_url = backblaze_url if (suno_url and backblaze_url and backblaze_url != suno_url) else None
+            if not primary_url:
+                continue
+            track_no_raw = row.get("batch_index")
+            track_no = int(track_no_raw) + 1 if isinstance(track_no_raw, int) else None
+            title = str(row.get("title") or "").strip()
+            target_path = self._build_suno_download_target_path(
+                output_dir=normalized_dir,
+                title=title,
+                track_no=track_no,
+                variant=variant,
+            )
+            if not target_path:
+                continue
+            items.append(
+                {
+                    "song_id": str(row["song_id"]) if row.get("song_id") else None,
+                    "task_id": task_id,
+                    "title": title or None,
+                    "track_number": track_no,
+                    "download_url": primary_url,
+                    "fallback_download_url": fallback_url,
+                    "target_path": target_path,
+                }
+            )
+        return items
+
+    async def _resolve_redownload_storage_keys(
+        self, rows: list[dict[str, Any]], *, variant: str
+    ) -> dict[str, str]:
+        """Best-effort: signed Backblaze GET URLs for {task_id: url}, or {} on any failure.
+
+        These are only ever used as a *fallback* if the Suno URL (primary — Suno
+        retains audio for 14 days) turns out to be dead; never fetched eagerly on
+        their own. Never raises — a streaming-storage hiccup must still leave the
+        Suno-URL-only path fully usable in `build_batch_redownload_plan`.
+        """
+        task_ids = [UUID(str(row["id"])) for row in rows if row.get("id")]
+        if not task_ids:
+            return {}
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.repositories.streaming_repo import StreamingRepository
+            from platform_api.services.storage_service import StorageService
+            from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+            pool = get_db_pool()
+            config = await resolve_streaming_storage_config(pool)
+            if not config.configured:
+                return {}
+            storage_keys = await StreamingRepository(pool).get_track_storage_keys_for_suno_tasks(task_ids)
+            if not storage_keys:
+                return {}
+            storage = StorageService.from_config(config)
+            urls: dict[str, str] = {}
+            for (task_id, track_variant), storage_key in storage_keys.items():
+                if track_variant != variant:
+                    continue
+                urls[task_id] = await storage.get_signed_get_url(storage_key)
+            return urls
+        except Exception:
+            logger.warning(
+                "Could not resolve Backblaze redownload URLs; falling back to Suno CDN URLs.",
+                exc_info=True,
+            )
+            return {}
+
     async def on_suno_task_completed(
         self,
         song_id: UUID,

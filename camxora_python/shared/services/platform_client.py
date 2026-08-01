@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from typing import Any, Literal
 
 import httpx
@@ -81,16 +82,49 @@ class PlatformClient:
         auth: bool = False,
         _retry: bool = True,
         timeout: float | None = None,
+        max_network_attempts: int = 2,
     ) -> bytes:
-        response = self._send(
-            path,
-            method=method,
-            auth=auth,
-            _retry=_retry,
-            accept="*/*",
-            timeout=timeout if timeout is not None else self._default_timeout,
-        )
-        return bytes(response.content or b"")
+        """Fetch a binary payload (logo/cover images, etc).
+
+        Large downloads are the most exposed to transient connection drops
+        (e.g. "peer closed connection without sending complete message
+        body" mid-transfer). GET is idempotent, so a bounded retry here is
+        safe and saves the caller from surfacing a one-off network hiccup
+        as a hard failure.
+        """
+        attempts = max(1, int(max_network_attempts)) if method.upper() == "GET" else 1
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                response = self._send(
+                    path,
+                    method=method,
+                    auth=auth,
+                    _retry=_retry,
+                    accept="*/*",
+                    timeout=timeout if timeout is not None else self._default_timeout,
+                )
+                return bytes(response.content or b"")
+            except PlatformApiError as exc:
+                # Only transport-level failures (status 0) are worth retrying —
+                # a real 4xx/5xx from the server won't fix itself.
+                if exc.status != 0 or attempt >= attempts:
+                    raise
+                last_error = exc
+                try:
+                    from shared.services.app_logger import log_warn
+
+                    log_warn(
+                        f"Retrying {method.upper()} {path} after transient network error "
+                        f"(attempt {attempt + 1}/{attempts}): {exc}",
+                        category="api",
+                    )
+                except Exception:
+                    pass
+                time.sleep(min(1.5 * attempt, 3.0))
+        if last_error is not None:
+            raise last_error
+        raise PlatformApiError(0, "Request failed with no response.")
 
     def _send(
         self,

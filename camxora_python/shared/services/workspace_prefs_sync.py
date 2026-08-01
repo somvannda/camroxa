@@ -18,6 +18,28 @@ from shared.services.local_user_scope import get_active_user_id
 DESKTOP_WORKSPACE_PREFS_KEY = "desktopWorkspacePrefs"
 SYNC_VERSION = 1
 
+# Video workspace prefs carry local filesystem references (background/logo
+# image, selected MP3, MP3 folder) but are synced account-wide via
+# desktopWorkspacePrefs, so a snapshot pulled down after being written on a
+# different machine can carry paths that don't exist here — same class of
+# bug as the workspace_defaults folder-path fix. Same-machine round-trips are
+# unaffected since the paths still resolve.
+_VIDEO_FILE_PATH_KEYS = ("backgroundPath", "logoPath", "selectedMp3Path")
+_VIDEO_DIR_PATH_KEYS = ("mp3Directory",)
+
+
+def _sanitize_video_paths(payload: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(payload)
+    for key in _VIDEO_FILE_PATH_KEYS:
+        value = str(cleaned.get(key) or "").strip()
+        if value and not Path(value).is_file():
+            cleaned.pop(key, None)
+    for key in _VIDEO_DIR_PATH_KEYS:
+        value = str(cleaned.get(key) or "").strip()
+        if value and not Path(value).is_dir():
+            cleaned.pop(key, None)
+    return cleaned
+
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
@@ -47,14 +69,18 @@ def apply_workspace_snapshot(user_id: str, snapshot: dict[str, Any]) -> None:
     if not isinstance(snapshot, dict):
         return
 
-    def _write(path: Path, payload: object) -> None:
+    def _write(path: Path, payload: object, *, sanitize=None) -> None:
         if not isinstance(payload, dict) or not payload:
             return
+        if sanitize is not None:
+            payload = sanitize(payload)
+            if not payload:
+                return
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     _write(get_music_workspace_prefs_path(user_id), snapshot.get("music"))
-    _write(get_video_workspace_prefs_path(user_id), snapshot.get("video"))
+    _write(get_video_workspace_prefs_path(user_id), snapshot.get("video"), sanitize=_sanitize_video_paths)
     _write(get_image_workspace_prefs_path(user_id), snapshot.get("image"))
     _write(get_workflow_workspace_prefs_path(user_id), snapshot.get("workflow"))
 

@@ -88,6 +88,103 @@ def test_sync_worker_downloads_and_syncs(qapp: QApplication, tmp_path, monkeypat
     assert synced[0].downloaded_primary is True
 
 
+def test_sync_worker_skips_item_with_unwritable_output_dir_but_syncs_others(
+    qapp: QApplication, tmp_path, monkeypatch
+) -> None:
+    # One pending item pointing at a bad/cross-machine output_dir must not
+    # abort the whole sync cycle — every other pending download this cycle
+    # should still succeed.
+    blocker = tmp_path / "blocked"
+    blocker.write_text("not a directory", encoding="utf-8")
+    bad_dir = blocker / "nested"
+
+    good_target = tmp_path / "good" / "track.mp3"
+    api = MagicMock()
+    api.list_pending_music_downloads.return_value = PendingMusicDownloadsResponse(
+        items=[
+            PendingMusicDownloadItem(
+                task_id="task-bad",
+                primary=PendingMusicDownloadTarget(
+                    download_url="https://example.test/bad.mp3",
+                    downloaded=False,
+                    output_dir=str(bad_dir),
+                    target_path=str(bad_dir / "bad.mp3"),
+                ),
+            ),
+            PendingMusicDownloadItem(
+                task_id="task-good",
+                primary=PendingMusicDownloadTarget(
+                    download_url="https://example.test/good.mp3",
+                    downloaded=False,
+                    output_dir=str(tmp_path / "good"),
+                    target_path=str(good_target),
+                ),
+            ),
+        ]
+    )
+
+    def fake_download(url: str, path: str) -> bool:
+        if "bad" in url:
+            raise RuntimeError("simulated download-side failure")
+        Path(path).write_bytes(b"mp3")
+        return True
+
+    monkeypatch.setattr(MusicDownloadSyncWorker, "_download_file", staticmethod(fake_download))
+
+    results: list[MusicDownloadSyncResult] = []
+    worker = MusicDownloadSyncWorker(api, limit=24)
+    worker.succeeded.connect(results.append)
+    worker.start()
+    assert worker.wait(5_000)
+    _pump()
+
+    assert results == [MusicDownloadSyncResult(pending_count=2, synced_count=1)]
+    synced = api.sync_music_downloads.call_args.args[0]
+    assert len(synced) == 1
+    assert synced[0].task_id == "task-good"
+
+
+def test_download_file_rejects_empty_response_body(tmp_path, monkeypatch) -> None:
+    class _FakeResponse:
+        content = b""
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self) -> "_FakeClient":
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+        def get(self, _url: str) -> _FakeResponse:
+            return _FakeResponse()
+
+    monkeypatch.setattr("httpx.Client", _FakeClient)
+
+    target = tmp_path / "empty.mp3"
+    ok = MusicDownloadSyncWorker._download_file("https://example.test/empty.mp3", str(target))
+
+    assert ok is False
+    assert not target.exists()
+
+
+def test_download_file_rejects_when_disk_has_too_little_space(tmp_path, monkeypatch) -> None:
+    import shared.workers.data_workers as data_workers_module
+
+    monkeypatch.setattr(data_workers_module, "has_sufficient_free_space", lambda *_a, **_k: False)
+
+    target = tmp_path / "track.mp3"
+    ok = MusicDownloadSyncWorker._download_file("https://example.test/track.mp3", str(target))
+
+    assert ok is False
+    assert not target.exists()
+
+
 def test_sync_worker_api_error_emits_failed(qapp: QApplication) -> None:
     api = MagicMock()
     api.list_pending_music_downloads.side_effect = PlatformApiError(0, "Cannot connect")
@@ -114,4 +211,35 @@ def test_coordinator_poll_uses_worker_not_blocking_api(qapp: QApplication) -> No
 
     assert coordinator._timer.interval() == 12_000
     api.list_pending_music_downloads.assert_called()
+    coordinator.stop()
+
+
+def test_coordinator_pauses_poll_while_preview_playing(qapp: QApplication) -> None:
+    api = MagicMock()
+    api.list_pending_music_downloads.return_value = PendingMusicDownloadsResponse(items=[])
+
+    coordinator = MusicDownloadCoordinator(api)
+    coordinator.start()
+    assert coordinator._worker is not None
+    assert coordinator._worker.wait(5_000)
+    _pump()
+    api.reset_mock()
+
+    coordinator.set_preview_playing(True)
+    assert not coordinator._timer.isActive()
+
+    # Success path must not re-arm the 4s pending cadence over a live preview.
+    coordinator._had_pending = True
+    coordinator._on_sync_succeeded(
+        MusicDownloadSyncResult(pending_count=3, synced_count=0)
+    )
+    assert not coordinator._timer.isActive()
+
+    coordinator._poll()
+    assert coordinator._worker is None
+    api.list_pending_music_downloads.assert_not_called()
+
+    coordinator.set_preview_playing(False)
+    assert coordinator._timer.isActive()
+    assert coordinator._timer.interval() == 4_000
     coordinator.stop()

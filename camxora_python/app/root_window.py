@@ -316,7 +316,15 @@ class RootWindow(QMainWindow):
             return
         self._startup.set_progress("Opening studio", "Workspace ready.", 100)
         # Apply cached dashboard before the shell is shown so Home is not empty.
-        shell.show_home()
+        # This must never leave the user stuck on the startup screen: log and
+        # still reveal the shell even if home-page activation raises (e.g. a
+        # machine-specific rendering/network fault during dashboard load).
+        try:
+            shell.show_home()
+        except Exception as exc:
+            from shared.services.app_logger import log_error
+
+            log_error("show_home() failed during startup", category="startup", exc=exc)
         self._stack.setCurrentWidget(shell)
 
     def _on_shell_warmup_failed(self, _message: str) -> None:

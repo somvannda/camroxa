@@ -60,6 +60,27 @@ def verify_dist(dist_dir: Path) -> list[str]:
             if not hits:
                 missing.append(f"_internal/**/{name}*")
 
+        # MP3 decode path for librosa.load — missing these freezes exports on Loading audio.
+        audio_decode_required = (
+            "soundfile.py",
+            "_soundfile.py",
+            "threadpoolctl.py",
+            "decorator.py",
+            "audioread/__init__.py",
+            "librosa/__init__.py",
+            "lazy_loader/__init__.py",
+            "_soundfile_data/__init__.py",
+            "_soundfile_data/libsndfile_x64.dll",
+        )
+        for relative in audio_decode_required:
+            if not (internal / relative).is_file():
+                missing.append(f"_internal/{relative}")
+        if not list(internal.rglob("libsndfile*")):
+            missing.append("_internal/**/libsndfile*")
+        for package_name in ("pooch", "joblib", "scipy", "numpy", "sklearn", "numba", "soxr"):
+            if not (internal / package_name).exists() and not list(internal.glob(f"{package_name}*")):
+                missing.append(f"_internal/{package_name}*")
+
     ffmpeg = dist_dir / "ffmpeg" / "ffmpeg.exe"
     if not ffmpeg.is_file():
         missing.append("ffmpeg/ffmpeg.exe")

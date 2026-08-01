@@ -35,6 +35,7 @@ def normalize_spectrum_preset_key(style_key: str) -> str:
         "grid-steps": "grid-steps",
         "ignition-flare": "ignition-flare",
         "drift-capsules": "drift-capsules",
+        "contour-waves": "contour-waves",
         # Legacy → Camxora
         "classic-vertical": "orbit-spikes",
         "straight-bars": "orbit-spikes",
@@ -49,6 +50,9 @@ def normalize_spectrum_preset_key(style_key: str) -> str:
         "mountain": "magma-ridge",
         "liquid": "plasma-bloom",
         "liquid-mass": "plasma-bloom",
+        "radio-wave": "contour-waves",
+        "contour": "contour-waves",
+        "contour-wave": "contour-waves",
         "pixel-bars": "grid-steps",
         "neon-pulse": "ignition-flare",
         "flying-glow": "ignition-flare",
@@ -105,6 +109,7 @@ def build_default_text_overlay_draft() -> dict[str, Any]:
 def build_logo_settings_state(template: dict[str, Any], logo_path: str) -> dict[str, Any]:
     logo_settings = to_record(template.get("logoSettings"))
     logo_shape = "circle" if to_boolean(logo_settings.get("circleMask"), True) else "square"
+    logo_pos = to_record(logo_settings.get("position"))
     return {
         "logoEnabled": to_boolean(logo_settings.get("enabled"), True),
         "logoSpinEnabled": to_boolean(logo_settings.get("spinEnabled"), False),
@@ -120,6 +125,8 @@ def build_logo_settings_state(template: dict[str, Any], logo_path: str) -> dict[
         "logoMotionZoomStrength": to_number(logo_settings.get("motionZoomStrength"), 1),
         "logoMotionVibrateStrength": to_number(logo_settings.get("motionVibrateStrength"), 1),
         "logoMotionSpeed": to_number(logo_settings.get("motionSpeed"), 1),
+        "logoPositionX": to_number(logo_pos.get("x"), 0),
+        "logoPositionY": to_number(logo_pos.get("y"), 0),
     }
 
 
@@ -212,6 +219,7 @@ def build_atmosphere_settings_state(template: dict[str, Any]) -> dict[str, Any]:
         "vignetteFeather": to_number(vignette.get("feather"), 0.65),
         "vignetteOpacity": to_number(vignette.get("opacity"), 0.65),
         "vignetteColor": normalize_color(vignette.get("color"), "#000000"),
+        "vignetteReactivity": to_number(vignette.get("reactivity"), 0.0),
         "smokeEnabled": to_boolean(smoke.get("enabled"), False),
         "smokeStrength": to_number(smoke.get("strength"), 0.35),
         "smokeBlur": to_number(smoke.get("blur"), 0.55),
@@ -260,6 +268,7 @@ def build_particle_settings_state(template: dict[str, Any]) -> dict[str, Any]:
         "particlesDrift": to_number(particles_settings.get("drift"), 0),
         "particlesSwirl": to_number(particles_settings.get("swirl"), 0),
         "particlesStyle": to_string_value(particles_settings.get("style"), "dot"),
+        "particlesGlow": to_number(particles_settings.get("glow"), 0.0),
         "particlesSize": to_number(particles_settings.get("size"), 2),
         "particlesOpacity": to_number(particles_settings.get("opacity"), 0.35),
         "particlesColor": base_color,
@@ -267,6 +276,16 @@ def build_particle_settings_state(template: dict[str, Any]) -> dict[str, Any]:
         "particlesColorMode": color_mode,
         "particlesPaletteColors": palette_colors,
         "particlesReactStrength": to_number(particles_settings.get("reactStrength"), 0.65),
+        "particlesTrailEnabled": to_boolean(particles_settings.get("trailEnabled"), False),
+        "particlesTrailLength": int(to_number(particles_settings.get("trailLength"), 8)),
+        "particlesTrailFade": to_number(particles_settings.get("trailFade"), 0.65),
+        "particlesTrailWidth": to_number(particles_settings.get("trailWidth"), 0.45),
+    }
+
+
+def build_lightning_settings_state(template: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "lightningEnabled": to_boolean(template.get("lightningEnabled"), False),
     }
 
 
@@ -296,6 +315,7 @@ def build_video_template_draft(
     draft.update(build_atmosphere_settings_state(template))
     draft.update(logo_state)
     draft.update(build_particle_settings_state(template))
+    draft.update(build_lightning_settings_state(template))
     draft.update(build_text_settings_state(template))
     from features.video.lib.text_domain_registry import (
         build_album_settings_state,

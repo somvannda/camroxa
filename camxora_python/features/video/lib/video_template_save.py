@@ -107,6 +107,7 @@ def build_atmosphere_template_patch(template: dict[str, Any], draft: VideoTempla
                 "feather": draft["vignetteFeather"],
                 "opacity": draft["vignetteOpacity"],
                 "color": draft["vignetteColor"],
+                "reactivity": draft.get("vignetteReactivity", 0.0),
             },
             "smoke": {
                 **current_smoke,
@@ -124,6 +125,7 @@ def build_atmosphere_template_patch(template: dict[str, Any], draft: VideoTempla
 
 def build_logo_template_patch(template: dict[str, Any], draft: VideoTemplateDraft) -> dict[str, Any]:
     current = to_record(template.get("logoSettings"))
+    current_pos = to_record(current.get("position"))
     logo_path = str(draft.get("logoPath", "")).strip()
     return {
         "logoPath": logo_path,
@@ -143,6 +145,12 @@ def build_logo_template_patch(template: dict[str, Any], draft: VideoTemplateDraf
             "motionZoomStrength": draft["logoMotionZoomStrength"],
             "motionVibrateStrength": draft["logoMotionVibrateStrength"],
             "motionSpeed": draft["logoMotionSpeed"],
+            "position": {
+                **current_pos,
+                "anchor": "center",
+                "x": to_number(draft.get("logoPositionX"), to_number(current_pos.get("x"), 0)),
+                "y": to_number(draft.get("logoPositionY"), to_number(current_pos.get("y"), 0)),
+            },
         },
     }
 
@@ -171,6 +179,7 @@ def build_particles_template_patch(template: dict[str, Any], draft: VideoTemplat
             "drift": draft["particlesDrift"],
             "swirl": draft["particlesSwirl"],
             "style": draft["particlesStyle"],
+            "glow": float(draft.get("particlesGlow", 0.0) or 0.0),
             "size": draft["particlesSize"],
             "opacity": draft["particlesOpacity"],
             "color": draft["particlesColor"],
@@ -178,6 +187,10 @@ def build_particles_template_patch(template: dict[str, Any], draft: VideoTemplat
             "colorMode": draft.get("particlesColorMode", "solid"),
             "paletteColors": list(draft.get("particlesPaletteColors") or []),
             "reactStrength": draft["particlesReactStrength"],
+            "trailEnabled": bool(draft.get("particlesTrailEnabled", False)),
+            "trailLength": int(draft.get("particlesTrailLength", 8) or 8),
+            "trailFade": float(draft.get("particlesTrailFade", 0.65) or 0.65),
+            "trailWidth": float(draft.get("particlesTrailWidth", 0.45) or 0.45),
         }
     }
 
@@ -187,6 +200,18 @@ def build_text_template_patch(draft: VideoTemplateDraft) -> dict[str, Any]:
     # Always clear the array on save so old animated layers cannot persist.
     _ = draft
     return {"textOverlays": []}
+
+
+def build_lightning_template_patch(
+    draft: VideoTemplateDraft,
+    lightning_layers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    from features.video.lib.lightning_style_registry import normalize_lightning_layers
+
+    return {
+        "lightningEnabled": bool(draft.get("lightningEnabled", False)),
+        "lightningLayers": normalize_lightning_layers(lightning_layers),
+    }
 
 
 def build_album_template_patch(draft: VideoTemplateDraft) -> dict[str, Any]:
@@ -207,10 +232,17 @@ def build_video_workspace_template_save_patch(
     draft: VideoTemplateDraft,
     template_name: str,
     layers: list[dict[str, Any]],
+    lightning_layers: list[dict[str, Any]] | None = None,
+    spectrum_instances: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    from features.video.lib.spectrum_instance_registry import (
+        mirror_spectrum_instance0_to_legacy,
+        normalize_spectrum_instances,
+    )
+
     effect_packs = draft.get("effectPacks") if isinstance(draft.get("effectPacks"), dict) else {}
     pack_entry = lambda domain: effect_packs.get(domain) if isinstance(effect_packs.get(domain), dict) else None
-    return {
+    patch: dict[str, Any] = {
         "templateName": template_name.strip(),
         "effectPacks": {
             "spectrum": pack_entry("spectrum"),
@@ -225,8 +257,33 @@ def build_video_workspace_template_save_patch(
         **build_atmosphere_template_patch(template, draft),
         **build_logo_template_patch(template, draft),
         **build_particles_template_patch(template, draft),
+        **build_lightning_template_patch(draft, list(lightning_layers or [])),
         **build_album_template_patch(draft),
         **build_title_template_patch(draft),
         **build_text_template_patch(draft),
         "layers": clone_layer_records(layers),
     }
+    working_layers = clone_layer_records(layers)
+    # Prefer explicit instance list; otherwise wrap legacy + current layers.
+    seed_template = {**template, **patch, "layers": working_layers or clone_layer_records(template.get("layers"))}
+    if isinstance(spectrum_instances, list) and spectrum_instances:
+        instances = normalize_spectrum_instances(spectrum_instances, template=seed_template)
+    else:
+        instances = normalize_spectrum_instances(None, template=seed_template)
+    # Never let an empty primary instance wipe a healthy working ring stack.
+    if instances and working_layers:
+        primary = instances[0] if isinstance(instances[0], dict) else {}
+        if not (isinstance(primary.get("layers"), list) and primary.get("layers")):
+            instances[0] = {**primary, "layers": clone_layer_records(working_layers)}
+    mirror_holder: dict[str, Any] = {**template, **patch, "layers": working_layers or clone_layer_records(patch.get("layers"))}
+    mirror_spectrum_instance0_to_legacy(mirror_holder, instances)
+    patched_layers = mirror_holder.get("layers")
+    if not (isinstance(patched_layers, list) and patched_layers) and working_layers:
+        patched_layers = working_layers
+    patch["spectrumInstances"] = mirror_holder.get("spectrumInstances", instances)
+    patch["layers"] = clone_layer_records(patched_layers)
+    patch["style"] = mirror_holder.get("style", patch.get("style"))
+    patch["position"] = mirror_holder.get("position", patch.get("position"))
+    patch["audioSettings"] = mirror_holder.get("audioSettings", patch.get("audioSettings"))
+    patch["previewBindings"] = mirror_holder.get("previewBindings", patch.get("previewBindings"))
+    return patch

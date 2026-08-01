@@ -59,9 +59,8 @@ if factory_templates.is_file():
 datas += collect_data_files("certifi")
 binaries += collect_dynamic_libs("glfw")
 
-# Native / data-heavy packages only. Avoid collect_all() on numpy / PIL / OpenGL /
-# librosa — that walks every submodule and dominates Analysis time on rebuilds.
-# PyInstaller hooks + import tracing cover the pure-Python surface.
+# Native / data-heavy packages only. Avoid collect_all() on numpy / PIL / OpenGL
+# (huge Analysis time). The audio stack below uses collect_all intentionally.
 for package in ("cv2", "moderngl", "pygame", "glfw", "glcontext"):
     try:
         datas += collect_data_files(package)
@@ -70,13 +69,100 @@ for package in ("cv2", "moderngl", "pygame", "glfw", "glcontext"):
         pass
     hiddenimports.append(package)
 
-# soundfile is a top-level module; natives live in _soundfile_data.
+
+def _bundle_module_file(module_name: str) -> None:
+    try:
+        module = __import__(module_name)
+    except Exception:
+        return
+    module_path = Path(getattr(module, "__file__", "") or "")
+    if module_path.is_file():
+        datas.append((str(module_path), "."))
+
+
+def _bundle_package_dir(package_name: str) -> None:
+    """Copy an entire package tree into onedir (not only PYZ)."""
+    try:
+        module = __import__(package_name)
+    except Exception:
+        return
+    module_file = Path(getattr(module, "__file__", "") or "").resolve()
+    if not module_file:
+        return
+    package_dir = module_file.parent if module_file.name.startswith("__init__.") else None
+    if package_dir is None or not package_dir.is_dir() or package_dir.name != package_name:
+        return
+    datas.append((str(package_dir), package_name))
+
+
+# Audio / analysis stack — bundle COMPLETE package trees (not PYZ-only).
+# Earlier builds used hiddenimports alone; PyInstaller then omitted top-level
+# modules like soundfile.py and _soundfile_data/__init__.py, which made frozen
+# librosa/soundfile paths hang. Prefer collect_all for this subsystem.
+from PyInstaller.utils.hooks import collect_all  # noqa: E402
+
+_AUDIO_STACK = (
+    "soundfile",
+    "_soundfile_data",
+    "audioread",
+    "librosa",
+    "soxr",
+    "lazy_loader",
+    "pooch",
+    "joblib",
+    "decorator",
+    "threadpoolctl",
+    "msgpack",
+    "packaging",
+)
+for _package_name in _AUDIO_STACK:
+    try:
+        _pkg_datas, _pkg_binaries, _pkg_hidden = collect_all(_package_name)
+        datas += _pkg_datas
+        binaries += _pkg_binaries
+        hiddenimports += _pkg_hidden
+    except Exception:
+        pass
+    _bundle_package_dir(_package_name)
+    try:
+        hiddenimports += collect_submodules(_package_name)
+    except Exception:
+        pass
+
+for _module_name in ("soundfile", "_soundfile", "threadpoolctl", "decorator", "msgpack"):
+    _bundle_module_file(_module_name)
+
+# Guarantee _soundfile_data includes __init__.py + DLL (collect_data_files alone
+# previously dropped __init__.py and broke soundfile in frozen installs).
 try:
-    datas += collect_data_files("_soundfile_data")
-    binaries += collect_dynamic_libs("_soundfile_data")
+    import _soundfile_data as _soundfile_data_pkg
+
+    _soundfile_data_dir = Path(getattr(_soundfile_data_pkg, "__file__", "") or "").resolve().parent
+    if _soundfile_data_dir.is_dir():
+        datas.append((str(_soundfile_data_dir), "_soundfile_data"))
 except Exception:
     pass
-hiddenimports += ["soundfile", "_soundfile", "_soundfile_data"]
+
+hiddenimports += [
+    "soundfile",
+    "_soundfile",
+    "_soundfile_data",
+    "audioread",
+    "audioread.ffdec",
+    "audioread.rawread",
+    "threadpoolctl",
+    "decorator",
+    "lazy_loader",
+    "pooch",
+    "joblib",
+    "soxr",
+    "msgpack",
+    "librosa",
+    "librosa.core",
+    "librosa.beat",
+    "librosa.onset",
+    "librosa.feature",
+]
 
 # OpenGL needs platform .dll/.pyd data; pull files without collect_all(OpenGL).
 try:
@@ -115,6 +201,9 @@ hiddenimports += [
     "OpenGL.GL",
     "librosa",
     "soundfile",
+    "_soundfile",
+    "audioread",
+    "threadpoolctl",
     "cv2",
     "visualizer.preview_widget",
     "visualizer.gpu_render",

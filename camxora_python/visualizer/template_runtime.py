@@ -7,6 +7,15 @@ import json
 from typing import Any
 
 
+def _normalize_layer_path_mode(value: Any) -> str:
+    v = str(value or "auto").lower().strip()
+    if v in ("rectangle", "square"):
+        return "rect"
+    if v in ("auto", "circle", "rect"):
+        return v
+    return "auto"
+
+
 def default_renderer_template() -> dict:
     return {
         "templateName": "New Template",
@@ -20,21 +29,29 @@ def default_renderer_template() -> dict:
                 "curved": False,
                 "mirrored": False,
                 "fillCircle": False,
+                "solidBand": False,
                 "thickness": 36,
                 "barWidth": 5,
+                "barCount": 64,
                 "radiusOffset": 0,
-                "gravity": "normal",
+                "gravity": "top",
                 "color": {
                     "mode": "gradient",
                     "solidColor": "#ff4fd8",
                     "gradientColors": ["#ffffff", "#ff4fd8", "#22d3ee"],
                     "gradientDirection": "left-to-right",
                 },
-                "glow": 28,
-                "blur": 8,
+                "glow": 0,
+                "blur": 0,
                 "rotation": 0,
                 "blend_mode": "normal",
                 "opacity": 1,
+                "peakCapsEnabled": False,
+                "peakCapColor": "#ffffff",
+                "peakCapGap": 4.0,
+                "peakCapThickness": 3.0,
+                "peakCapDecay": 0.92,
+                "pathMode": "auto",
             }
         ],
         "globalColor": {
@@ -100,11 +117,44 @@ def default_renderer_template() -> dict:
             "reactColor": "#ffffff",
             "reactStrength": 0.65,
             "style": "dot",
+            "glow": 0.0,
+            "trailEnabled": False,
+            "trailLength": 8,
+            "trailFade": 0.65,
+            "trailWidth": 0.45,
         },
         "effects": {
-            "vignette": {"enabled": False, "strength": 0.35, "feather": 0.65, "color": "#000000", "opacity": 0.65},
+            "vignette": {"enabled": False, "strength": 0.35, "feather": 0.65, "color": "#000000", "opacity": 0.65, "reactivity": 0.0},
             "smoke": {"enabled": False, "strength": 0.35, "blur": 0.55, "noise": 0.55, "speed": 0.35, "color": "#000000", "opacity": 0.55},
         },
+        "lightningEnabled": False,
+        "lightningLayers": [
+            {
+                "id": "lightning-1",
+                "name": "Bolt 1",
+                "enabled": True,
+                "style": "fork",
+                "x": 0.0,
+                "y": 0.0,
+                "direction": "down",
+                "rotation": 0.0,
+                "color": {
+                    "mode": "gradient",
+                    "solidColor": "#e0f2fe",
+                    "gradientColors": ["#ffffff", "#7dd3fc", "#38bdf8"],
+                },
+                "opacity": 0.85,
+                "intensity": 0.72,
+                "reactivity": 0.55,
+                "speed": 1.0,
+                "flashRate": 0.85,
+                "thickness": 2.8,
+                "glow": 0.5,
+                "branchiness": 0.55,
+                "blend": "add",
+                "length": 200.0,
+            }
+        ],
         "textOverlays": [],
     }
 
@@ -198,8 +248,20 @@ def normalize_renderer_template(input_template: Any) -> dict:
     if ps["variant"] not in ("classic", "bokeh", "soap", "dust"):
         ps["variant"] = "classic"
     ps["style"] = str(ps.get("style", "dot"))
-    if ps["style"] not in ("dot", "glow", "ring", "spark", "bokeh"):
+    if ps["style"] not in ("dot", "glow", "ring", "spark", "bokeh", "music"):
         ps["style"] = "dot"
+    try:
+        ps["glow"] = float(max(0.0, min(1.0, float(ps.get("glow", 0.0) or 0.0))))
+    except (TypeError, ValueError):
+        ps["glow"] = 0.0
+    ps["trailEnabled"] = bool(ps.get("trailEnabled", False))
+    try:
+        trail_len = int(round(float(ps.get("trailLength", 8) or 8)))
+    except (TypeError, ValueError):
+        trail_len = 8
+    ps["trailLength"] = int(max(2, min(24, trail_len)))
+    ps["trailFade"] = float(max(0.05, min(0.98, float(ps.get("trailFade", 0.65) or 0.65))))
+    ps["trailWidth"] = float(max(0.1, min(1.0, float(ps.get("trailWidth", 0.45) or 0.45))))
 
     bg = out["backgroundSettings"]
     bg["brightness"] = float(max(0.0, min(3.0, float(bg.get("brightness", 1.0)))))
@@ -270,6 +332,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
         "feather": float(max(0.0, min(1.0, float(vignette_in.get("feather", 0.65) or 0.65)))),
         "color": str(vignette_in.get("color", "#000000") or "#000000"),
         "opacity": float(max(0.0, min(1.0, float(vignette_in.get("opacity", 0.65) or 0.65)))),
+        "reactivity": float(max(0.0, min(5.0, float(vignette_in.get("reactivity", 0.0) or 0.0)))),
     }
     effects["smoke"] = {
         **(base.get("effects", {}).get("smoke", {}) if _is_obj(base.get("effects")) else {}),
@@ -283,6 +346,14 @@ def normalize_renderer_template(input_template: Any) -> dict:
         "opacity": float(max(0.0, min(1.0, float(smoke_in.get("opacity", 0.55) or 0.55)))),
     }
     out["effects"] = effects
+
+    out["lightningEnabled"] = bool(out.get("lightningEnabled", True))
+    try:
+        from features.video.lib.lightning_style_registry import normalize_lightning_layers
+
+        out["lightningLayers"] = normalize_lightning_layers(out.get("lightningLayers"))
+    except Exception:
+        out["lightningLayers"] = list(base.get("lightningLayers") or [])
 
     overlays_in = input_template.get("textOverlays") if isinstance(input_template.get("textOverlays"), list) else []
     overlays: list[dict] = []
@@ -388,21 +459,43 @@ def normalize_renderer_template(input_template: Any) -> dict:
         bar_width = layer_in.get("barWidth")
         if not isinstance(bar_width, (int, float)):
             bar_width = fallback_layer.get("barWidth", 4)
+        bar_count = layer_in.get("barCount")
+        if not isinstance(bar_count, (int, float)):
+            bar_count = fallback_layer.get("barCount", 64)
 
         fill_circle = layer_in.get("fillCircle")
         if not isinstance(fill_circle, bool):
             fill_circle = bool(fallback_layer.get("fillCircle", False))
+        solid_band = layer_in.get("solidBand")
+        if not isinstance(solid_band, bool):
+            solid_band = bool(fallback_layer.get("solidBand", False))
 
         thickness = layer_in.get("thickness")
         if not isinstance(thickness, (int, float)) and isinstance(layer_in.get("strength"), (int, float)):
             thickness = float(layer_in.get("strength", 0)) * float(layer_in.get("reactivity", 1))
         if not isinstance(thickness, (int, float)):
             thickness = fallback_layer.get("thickness", 150)
-        thickness_clamped = float(max(1, min(220, float(thickness))))
+        thickness_clamped = float(max(1, min(600, float(thickness))))
 
-        gravity = str(layer_in.get("gravity", fallback_layer.get("gravity", "normal")))
-        if gravity not in ("normal", "bottom", "top", "left", "right"):
-            gravity = str(fallback_layer.get("gravity", "normal"))
+        gravity = str(layer_in.get("gravity", fallback_layer.get("gravity", "top")))
+        if gravity == "normal":
+            gravity = "top"
+        g_low = gravity.lower().strip()
+        if g_low in ("outside", "out", "radial-out", "radial_out"):
+            gravity = "outward"
+        elif g_low in ("inside", "in", "radial-in", "radial_in"):
+            gravity = "inward"
+        elif g_low in ("top", "bottom", "left", "right", "outward", "inward"):
+            gravity = g_low
+        else:
+            gravity = str(fallback_layer.get("gravity", "top"))
+            if gravity == "normal":
+                gravity = "top"
+            g_fb = gravity.lower().strip()
+            if g_fb not in ("top", "bottom", "left", "right", "outward", "inward"):
+                gravity = "top"
+            else:
+                gravity = g_fb
 
         col_in = layer_in.get("color") if _is_obj(layer_in.get("color")) else {}
         color = {**fallback_layer.get("color", {}), **col_in}
@@ -422,9 +515,11 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "curved": curved,
                 "mirrored": mirrored,
                 "fillCircle": fill_circle,
+                "solidBand": solid_band,
                 "thickness": thickness_clamped,
-                "barWidth": float(bar_width),
-                "radiusOffset": float(max(0.0, min(400.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
+                "barWidth": float(max(0.5, min(240.0, float(bar_width)))),
+                "barCount": int(max(16, min(192, round(float(bar_count))))),
+                "radiusOffset": float(max(0.0, min(800.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
                 "gravity": gravity,
                 "color": color,
                 "glow": float(max(0.0, min(100.0, float(layer_in.get("glow", fallback_layer.get("glow", 0)) or 0.0)))),
@@ -432,9 +527,58 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "rotation": float(layer_in.get("rotation", fallback_layer.get("rotation", 0)) or 0),
                 "blend_mode": str(layer_in.get("blend_mode", fallback_layer.get("blend_mode", "normal")) or "normal").lower(),
                 "opacity": float(max(0.0, min(1.0, float(layer_in.get("opacity", fallback_layer.get("opacity", 1)) or 1)))),
+                "peakCapsEnabled": bool(layer_in.get("peakCapsEnabled", fallback_layer.get("peakCapsEnabled", False))),
+                "peakCapColor": str(layer_in.get("peakCapColor", fallback_layer.get("peakCapColor", "#ffffff")) or "#ffffff"),
+                "peakCapGap": float(max(0.0, min(24.0, float(layer_in.get("peakCapGap", fallback_layer.get("peakCapGap", 4.0)) or 0.0)))),
+                "peakCapThickness": float(max(1.0, min(16.0, float(layer_in.get("peakCapThickness", fallback_layer.get("peakCapThickness", 3.0)) or 1.0)))),
+                "peakCapDecay": float(max(0.7, min(0.995, float(layer_in.get("peakCapDecay", fallback_layer.get("peakCapDecay", 0.92)) or 0.92)))),
+                "reflectionEnabled": bool(
+                    layer_in.get("reflectionEnabled", fallback_layer.get("reflectionEnabled", False))
+                ),
+                "reflectionOpacity": float(
+                    max(
+                        0.05,
+                        min(
+                            0.85,
+                            float(
+                                layer_in.get(
+                                    "reflectionOpacity",
+                                    fallback_layer.get("reflectionOpacity", 0.32),
+                                )
+                                or 0.32
+                            ),
+                        ),
+                    )
+                ),
+                "pathMode": _normalize_layer_path_mode(
+                    layer_in.get("pathMode", fallback_layer.get("pathMode", "auto"))
+                ),
             }
         )
     out["layers"] = out_layers
+
+    try:
+        from features.video.lib.spectrum_instance_registry import (
+            migrate_legacy_spectrum_to_instances,
+            mirror_spectrum_instance0_to_legacy,
+            normalize_spectrum_instances,
+        )
+
+        raw_instances = input_template.get("spectrumInstances") if isinstance(input_template, dict) else None
+        if isinstance(raw_instances, list) and raw_instances:
+            instances = normalize_spectrum_instances(raw_instances, template=out)
+        else:
+            # Ensure out has layers/style/position for migrate wrap.
+            instances = migrate_legacy_spectrum_to_instances(out)
+        # Heal empty primary rings from normalized top-level layers (never wipe a good stack).
+        if instances and out_layers:
+            primary_layers = instances[0].get("layers") if isinstance(instances[0], dict) else None
+            if not (isinstance(primary_layers, list) and primary_layers):
+                instances[0]["layers"] = list(out_layers)
+        mirror_spectrum_instance0_to_legacy(out, instances)
+    except Exception:
+        out.setdefault("spectrumInstances", [])
+
     return out
 
 

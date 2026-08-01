@@ -566,6 +566,20 @@ class MusicDownloadSyncResponse(BaseModel):
     updated: int = 0
 
 
+class BatchRedownloadItem(BaseModel):
+    song_id: str | None = None
+    task_id: str
+    title: str | None = None
+    track_number: int | None = None
+    download_url: str
+    fallback_download_url: str | None = None
+    target_path: str
+
+
+class BatchRedownloadPlanResponse(BaseModel):
+    items: list[BatchRedownloadItem] = Field(default_factory=list)
+
+
 class ProgressLocalSyncItem(BaseModel):
     batch_id: str
     profile_id: str

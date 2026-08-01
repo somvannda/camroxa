@@ -37,7 +37,9 @@ def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
         return
     if sys.platform == "win32":
         try:
-            subprocess.run(
+            from shared.lib.subprocess_utils import run_hidden
+
+            run_hidden(
                 ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                 check=False,
                 capture_output=True,

@@ -78,3 +78,19 @@ class StorageService:
             )
 
         return await asyncio.to_thread(_sign)
+
+    async def download_bytes(self, key: str) -> bytes:
+        """Fetch an object's raw bytes directly (server-side read-back).
+
+        Used for server-side fallback reads (e.g. image job output serving) where
+        the API itself needs the bytes, as opposed to `get_signed_get_url()` which
+        hands the client a URL to fetch from directly.
+        """
+        normalized_key = key.lstrip("/")
+
+        def _get() -> bytes:
+            client = self._client()
+            response = client.get_object(Bucket=self._config.bucket, Key=normalized_key)
+            return response["Body"].read()
+
+        return await asyncio.to_thread(_get)

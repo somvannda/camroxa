@@ -134,6 +134,28 @@ def test_resolve_local_video_pipeline_inputs_uses_disk_truth(tmp_path) -> None:
     assert result.background_path is not None
 
 
+def test_resolve_local_video_pipeline_inputs_ready_with_background_only(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "background-16x9.png").write_bytes(b"bg")
+
+    row = _sample_row(run_dir=str(run_dir)).model_copy(
+        update={"meta": _sample_row().meta.model_copy(update={"long_ready": False, "run_dir": str(run_dir)})}
+    )
+    profile = ProfileResponse(
+        id="profile-1",
+        user_id="user-1",
+        name="Primary",
+        folder_name="Primary",
+        run_prefix="PRI",
+        video_template_id="video-template-1",
+        reel_template_id="reel-template-1",
+    )
+    result = resolve_local_video_pipeline_inputs(row, "long", profile)
+    assert result.ready is True
+    assert result.thumbnail_path is None
+
+
 def test_local_audio_downloads_ready_requires_local_mp3s(tmp_path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()

@@ -20,7 +20,25 @@ def test_pipeline_defaults_to_draft_tier() -> None:
 def test_manual_defaults_to_standard_tier() -> None:
     tier = resolve_export_tier_settings({}, pipeline=False)
     assert tier.tier == DEFAULT_MANUAL_EXPORT_TIER
-    assert tier.speed_mode == "fast"
+    assert tier.speed_mode == "balanced"
+    assert tier.fps == 24
+    assert tier.resolution == "1920x1080"
+
+
+def test_standard_tier_honors_user_fps_and_speed() -> None:
+    tier = resolve_export_tier_settings(
+        {
+            "videoExportTier": "standard",
+            "outputResolution": "1920x1080",
+            "videoExportFps": 30,
+            "videoExportSpeedMode": "balanced",
+        },
+        pipeline=False,
+    )
+    assert tier.tier == "standard"
+    assert tier.resolution == "1920x1080"
+    assert tier.fps == 30
+    assert tier.speed_mode == "balanced"
 
 
 def test_master_tier_uses_user_settings() -> None:

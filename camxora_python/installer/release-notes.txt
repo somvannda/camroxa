@@ -1,15 +1,19 @@
-﻿Camxora 1.0.0 — First official release
+﻿Camxora 1.0.1 — Progress + export stability
+Date: 2026-07-28
 
-What's included
----------------
-• Music automation: drafts, Suno, images, history, and Progress pipeline
-• GPU video export + merge for channel long/reel workflows
-• Account, plans, credits, and portal-connected desktop studio
-• Streaming catalog support for music.camxora.com
-• Admin-managed prompts, moods, languages, and AI routing
+What's new
+----------
+• Frozen export hang / beat crash / multi-worker beats hang fixes
+• Export console flashes hidden (nvidia-smi / taskkill)
+• Progress Limit: 10 / 25 / 50 / 100 (default 10)
+• Progress Active only uses effective stage (hides Done + Completed)
+• Update column freezes when Done / Error / Completed
+• Moved/archived run folders no longer reopen Music/Export
+• New stage: Completed (desktop pipeline finished); Done = YouTube
+• Video export starts when background is ready (thumbnail is YouTube-only)
 
 Notes
 -----
-• This build talks to production API: https://api.camxora.com
-• Portal: https://app.camxora.com
-• Installer: CamxoraSetup-1.0.0.exe
+• Production API only
+• API: https://api.camxora.com/api/v1
+• Installer file: CamxoraSetup-1.0.1.exe

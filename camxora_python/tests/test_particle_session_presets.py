@@ -23,9 +23,11 @@ from features.video.lib.particle_style_registry import (
 @pytest.fixture(autouse=True)
 def _isolated_presets_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(domain_preset_store, "get_video_presets_dir", lambda: tmp_path / "video-presets")
+    domain_preset_store.reset_domain_preset_memory_for_tests()
     clear_session_particle_presets()
     yield
     clear_session_particle_presets()
+    domain_preset_store.reset_domain_preset_memory_for_tests()
 
 
 def test_session_override_survives_switch_away_and_back() -> None:

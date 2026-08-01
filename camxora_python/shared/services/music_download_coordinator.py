@@ -10,11 +10,29 @@ from shared.services.platform_api import PlatformApi
 from shared.workers.data_workers import MusicDownloadSyncResult, MusicDownloadSyncWorker
 
 
+_IDLE_POLL_MS = 12_000
+_PENDING_POLL_MS = 4_000
+
+_bound_music_download_coordinator: "MusicDownloadCoordinator | None" = None
+
+
+def bind_music_download_coordinator(coordinator: "MusicDownloadCoordinator | None") -> None:
+    global _bound_music_download_coordinator
+    _bound_music_download_coordinator = coordinator
+
+
+def get_music_download_coordinator() -> "MusicDownloadCoordinator | None":
+    return _bound_music_download_coordinator
+
+
 class MusicDownloadCoordinator(QObject):
     """Polls pending downloads and saves MP3 files locally.
 
     Network I/O runs on a worker thread so the UI never freezes on the
     12s (empty) / 4s (pending) poll cadence.
+
+    While Video preview is playing, polling is fully paused — the old 4s
+    pending cadence was hitching ``paintGL`` every few seconds.
     """
 
     def __init__(self, api: PlatformApi, parent: QObject | None = None) -> None:
@@ -24,14 +42,33 @@ class MusicDownloadCoordinator(QObject):
         self._timer.timeout.connect(self._poll)
         self._worker: MusicDownloadSyncWorker | None = None
         self._active = False
+        self._preview_playing = False
+        self._had_pending = False
 
     def start(self) -> None:
         self._active = True
-        self._timer.start(12_000)
+        self._timer.start(_IDLE_POLL_MS)
         self._poll()
+
+    def set_preview_playing(self, playing: bool) -> None:
+        """Pause download polls entirely while Video preview is playing."""
+        playing = bool(playing)
+        if self._preview_playing == playing:
+            return
+        self._preview_playing = playing
+        if not self._active:
+            return
+        if playing:
+            # Stop the timer so nothing fires mid-playback (4s pending was the hitch).
+            self._timer.stop()
+            return
+        # Resume: prefer pending cadence if we last saw work, else idle.
+        interval = _PENDING_POLL_MS if self._had_pending else _IDLE_POLL_MS
+        self._timer.start(interval)
 
     def stop(self) -> None:
         self._active = False
+        self._preview_playing = False
         self._timer.stop()
         worker = self._worker
         if worker is not None:
@@ -45,6 +82,9 @@ class MusicDownloadCoordinator(QObject):
 
     def _poll(self) -> None:
         if not self._active:
+            return
+        # Hard gate — do not start workers while preview owns the UI/GPU thread.
+        if self._preview_playing:
             return
         from shared.services.video_pipeline_activity import is_app_quitting
 
@@ -61,19 +101,30 @@ class MusicDownloadCoordinator(QObject):
         track_app_thread(worker)
         worker.start()
 
+    def _apply_interval(self, interval_ms: int) -> None:
+        if self._preview_playing:
+            # Never re-arm the 4s pending cadence over a live preview.
+            self._timer.stop()
+            return
+        self._timer.setInterval(int(interval_ms))
+        if self._active and not self._timer.isActive():
+            self._timer.start()
+
     def _on_sync_succeeded(self, payload: object) -> None:
         if not isinstance(payload, MusicDownloadSyncResult):
-            self._timer.setInterval(12_000)
+            self._had_pending = False
+            self._apply_interval(_IDLE_POLL_MS)
             return
-        if payload.pending_count > 0:
-            self._timer.setInterval(4_000)
+        self._had_pending = bool(payload.pending_count > 0)
+        if self._had_pending:
+            self._apply_interval(_PENDING_POLL_MS)
         else:
-            self._timer.setInterval(12_000)
+            self._apply_interval(_IDLE_POLL_MS)
 
     def _on_sync_failed(self, _message: str) -> None:
         # Keep the idle cadence on API/network errors so a down backend
         # does not hammer the UI thread with rapid retries.
-        self._timer.setInterval(12_000)
+        self._apply_interval(_IDLE_POLL_MS)
 
     def _on_worker_finished(self) -> None:
         self._worker = None

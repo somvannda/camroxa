@@ -64,7 +64,7 @@ from shared.lib.settings_workspace import (
 from features.settings.widgets.user_owned_prompt_panel import UserOwnedPromptPanel
 from shared.models.auth import ProfileResponse, UserMeResponse
 from shared.models.platform import PromptNameOption, YouTubeConnectionResponse
-from shared.services.app_logger import get_app_logger, log_error, log_info
+from shared.services.app_logger import get_app_logger, log_error, log_info, log_warn
 from shared.services.build_config import get_portal_base_url
 from shared.services.ffmpeg_setup import (
     FFMPEG_DOWNLOAD_PAGE_URL,
@@ -74,7 +74,6 @@ from shared.services.ffmpeg_setup import (
 from shared.services.file_service import list_directory_image_paths, open_external_url, open_path, read_file_bytes
 from shared.services.log_sync import SyncLogsWorker, build_client_log_payload
 from shared.services.platform_api import PlatformApi
-from shared.services.platform_client import PlatformApiError
 from shared.services.session_service import SessionService
 from shared.services.shell_status import emit_shell_status
 from shared.services.workspace_cache import WorkspaceCache, cache_entry_is_fresh
@@ -111,6 +110,8 @@ from shared.workers.data_workers import (
     MyPromptMutationResult,
     MyPromptMutationWorker,
     PatchSettingsWorker,
+    ProfileMediaCacheResult,
+    ProfileMediaCacheWorker,
     SamplePackInstallWorker,
     SaveProfileWorker,
     SettingsWorkspacePayload,
@@ -181,6 +182,7 @@ class SettingsView(QWidget):
         self._playlists_worker: YouTubePlaylistsWorker | None = None
         self._sample_packs_worker: ImageSamplePacksWorker | None = None
         self._sample_pack_install_worker: SamplePackInstallWorker | None = None
+        self._profile_media_cache_worker: ProfileMediaCacheWorker | None = None
         self._diag_sync_worker: SyncLogsWorker | None = None
         self._profiles: list[ProfileResponse] = []
         self._settings_raw: dict[str, object] = {}
@@ -764,7 +766,21 @@ class SettingsView(QWidget):
         self._set_footer_notice("All supported Settings changes are saved.", tone="neutral")
 
     def _refresh_footer(self) -> None:
+        import time
+
+        started = time.monotonic()
         dirty = self._dirty_tabs()
+        elapsed_ms = (time.monotonic() - started) * 1000
+        if elapsed_ms > 150:
+            # This runs synchronously on the UI thread on every keystroke.
+            # Seen in the wild: a broken workspace path made a downstream
+            # dirty-check call attempt directory creation on every call,
+            # stalling the whole app while the user typed. Surface it loudly
+            # if this regresses again instead of silently freezing.
+            log_warn(
+                f"Settings dirty-check took {elapsed_ms:.0f}ms (UI thread) — investigate slow path in _dirty_tabs().",
+                category="settings",
+            )
         if dirty:
             self._footer_reset_timer.stop()
             self._footer_status.setText(f"Unsaved changes in {', '.join(dirty)}.")
@@ -2019,44 +2035,80 @@ class SettingsView(QWidget):
         self._profile_reel_template.blockSignals(False)
 
     def _resolve_profile_media_paths(self, profile: ProfileResponse | None, draft: ProfileDraft) -> ProfileDraft:
-        """Download server logo/cover into a local cache so Open/Browse paths work."""
+        """Fill in local cache paths for server logo/cover if already downloaded.
+
+        Cache-only and network-free by design: this used to download missing
+        files synchronously here, which blocked the entire UI thread on
+        every profile switch whenever the file wasn't cached yet (a real,
+        multi-megabyte network call with no protection against a slow or
+        unreliable connection). Missing files are now fetched in the
+        background by _start_profile_media_cache_download() instead.
+        """
         if profile is None:
             return draft
         cache_dir = get_profile_media_cache_dir() / str(profile.id)
-        cache_dir.mkdir(parents=True, exist_ok=True)
 
         logo_path = draft.logo_path.strip()
         if logo_path and not Path(logo_path).is_file():
             local_logo = cache_dir / "logo.png"
             if local_logo.is_file():
                 draft.logo_path = str(local_logo)
-            else:
-                try:
-                    raw = self._api.download_profile_logo(profile.id)
-                    if raw:
-                        local_logo.write_bytes(raw)
-                        draft.logo_path = str(local_logo)
-                except PlatformApiError:
-                    pass
-                except Exception:
-                    pass
 
         cover_path = draft.cover_path.strip()
         if cover_path and not Path(cover_path).is_file():
             local_cover = cache_dir / "cover.png"
             if local_cover.is_file():
                 draft.cover_path = str(local_cover)
-            else:
-                try:
-                    raw = self._api.download_profile_cover(profile.id, 0)
-                    if raw:
-                        local_cover.write_bytes(raw)
-                        draft.cover_path = str(local_cover)
-                except PlatformApiError:
-                    pass
-                except Exception:
-                    pass
         return draft
+
+    def _start_profile_media_cache_download(self, profile: ProfileResponse | None) -> None:
+        """Kick off a background download for any logo/cover not yet cached locally."""
+        if profile is None:
+            return
+        logo_path = str(getattr(self._profile_draft, "logo_path", "") or "").strip()
+        cover_path = str(getattr(self._profile_draft, "cover_path", "") or "").strip()
+        need_logo = bool(logo_path) and not Path(logo_path).is_file()
+        need_cover = bool(cover_path) and not Path(cover_path).is_file()
+        if not need_logo and not need_cover:
+            return
+        if self._profile_media_cache_worker is not None and self._profile_media_cache_worker.isRunning():
+            # Let the in-flight download finish; it re-checks the cache next bind.
+            return
+        cache_dir = get_profile_media_cache_dir() / str(profile.id)
+        worker = ProfileMediaCacheWorker(
+            self._api,
+            profile_id=str(profile.id),
+            cache_dir=cache_dir,
+            need_logo=need_logo,
+            need_cover=need_cover,
+            parent=self,
+        )
+        worker.succeeded.connect(self._on_profile_media_cached)
+        worker.finished.connect(self._finish_profile_media_cache_worker)
+        self._profile_media_cache_worker = worker
+        worker.start()
+
+    def _on_profile_media_cached(self, result: object) -> None:
+        if not isinstance(result, ProfileMediaCacheResult):
+            return
+        # Ignore stale results from a profile the user already navigated away from.
+        if self._selected_profile_key != result.profile_id:
+            return
+        if result.logo_path:
+            self._profile_draft.logo_path = result.logo_path
+            self._baseline_profile_draft.logo_path = result.logo_path
+            self._profile_logo.blockSignals(True)
+            self._profile_logo.setText(result.logo_path)
+            self._profile_logo.blockSignals(False)
+        if result.cover_path:
+            self._profile_draft.cover_path = result.cover_path
+            self._baseline_profile_draft.cover_path = result.cover_path
+            self._profile_cover.blockSignals(True)
+            self._profile_cover.setText(result.cover_path)
+            self._profile_cover.blockSignals(False)
+
+    def _finish_profile_media_cache_worker(self) -> None:
+        self._profile_media_cache_worker = None
 
     def _filter_profile_list(self) -> None:
         """Filter the profile list without resetting the active draft."""
@@ -2672,6 +2724,7 @@ class SettingsView(QWidget):
         self._profile_delete_btn.setEnabled(bool(profile))
         self._profile_save_btn.setText("Save Changes")
         self._profile_save_btn.setEnabled(bool(profile) and not is_new)
+        self._start_profile_media_cache_download(profile)
 
     def _refresh_profile_identity(self, *, is_new: bool, profile: ProfileResponse | None) -> None:
         channel_title = self._profile_draft.name or (profile.name if profile else "No profile selected")

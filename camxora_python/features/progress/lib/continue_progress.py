@@ -142,7 +142,7 @@ def _prefer_merge_over_export(entry: EffectiveProgressRow) -> bool:
     if not run_dir:
         return False
     stage = entry.effective_stage.strip().lower()
-    if stage in {"youtube", "done", "error"}:
+    if stage in {"youtube", "done", "completed", "error"}:
         return False
     try:
         from features.video.lib.pipeline_merge import list_branch_export_outputs
@@ -165,7 +165,7 @@ def _can_continue_export(entry: EffectiveProgressRow) -> bool:
     if not str(meta.run_dir or "").strip():
         return False
     stage = entry.effective_stage.strip().lower()
-    if stage in {"youtube", "done", "error", "merge", "merger"}:
+    if stage in {"youtube", "done", "completed", "error", "merge", "merger"}:
         return False
     if stage in {"export", "converter"}:
         return True
@@ -177,7 +177,7 @@ def _can_continue_merge(entry: EffectiveProgressRow) -> bool:
     if not str(meta.run_dir or "").strip():
         return False
     stage = entry.effective_stage.strip().lower()
-    if stage in {"youtube", "done", "error"}:
+    if stage in {"youtube", "done", "completed", "error"}:
         return False
     if stage in {"merge", "merger"}:
         return True

@@ -13,6 +13,33 @@ class StreamingRepository:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
 
+    async def get_track_storage_keys_for_suno_tasks(
+        self, suno_task_ids: list[UUID]
+    ) -> dict[tuple[str, str], str]:
+        """Map (suno_task_id, variant) -> B2 storage_key for already-archived tracks.
+
+        Used by "change run folder + resume" style recovery flows to prefer the
+        durable Backblaze copy (uploaded automatically on every successful Suno
+        callback) over the original Suno CDN URL, which is not guaranteed to stay
+        valid forever.
+        """
+        if not suno_task_ids:
+            return {}
+        rows = await self._pool.fetch(
+            """
+            SELECT suno_task_id, variant, storage_key
+            FROM stream_tracks
+            WHERE suno_task_id = ANY($1::uuid[])
+              AND storage_key IS NOT NULL
+              AND storage_key <> ''
+            """,
+            suno_task_ids,
+        )
+        return {
+            (str(row["suno_task_id"]), str(row["variant"])): str(row["storage_key"])
+            for row in rows
+        }
+
     async def create_upload_job(
         self,
         *,

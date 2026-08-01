@@ -3,7 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from shared.lib.ffmpeg_paths import resolve_ffmpeg_path
-from shared.lib.workspace_defaults import apply_workspace_path_defaults, default_workspace_paths
+from shared.lib.workspace_defaults import (
+    apply_workspace_path_defaults,
+    default_workspace_paths,
+    ensure_directory,
+)
 
 
 def test_apply_workspace_path_defaults_creates_folders(tmp_path: Path, monkeypatch) -> None:
@@ -19,6 +23,64 @@ def test_apply_workspace_path_defaults_creates_folders(tmp_path: Path, monkeypat
     assert "downloadsDir" in patch
 
 
+def test_ensure_directory_does_not_raise_when_uncreatable(tmp_path: Path) -> None:
+    # Seen in the wild: %LOCALAPPDATA% points at a Windows profile folder that
+    # doesn't exist and can't be created by the process (permission denied).
+    # A file blocking the target path reproduces the same "can't mkdir here"
+    # shape cross-platform without needing OS-level permission tricks.
+    blocker = tmp_path / "blocked"
+    blocker.write_text("not a directory", encoding="utf-8")
+    target = blocker / "nested"
+
+    result = ensure_directory(str(target))
+
+    assert result == str(target)
+    assert not target.exists()
+
+
+def test_ensure_directory_caches_known_uncreatable_path(tmp_path: Path, monkeypatch) -> None:
+    # Regression test: Settings page re-derives current settings on every
+    # keystroke via _dirty_tabs() -> build_system_settings_patch() ->
+    # apply_workspace_path_defaults() -> ensure_directory(). Retrying a real
+    # mkdir(parents=True) against a permanently broken path on every
+    # keystroke turned a fast crash into a silent, repeating multi-level
+    # failure cascade that froze the UI thread. Repeated calls to the same
+    # known-bad path must only attempt the syscall once.
+    blocker = tmp_path / "blocked"
+    blocker.write_text("not a directory", encoding="utf-8")
+    target = str(blocker / "nested")
+
+    call_count = 0
+    original_mkdir = Path.mkdir
+
+    def _counting_mkdir(self, *args, **kwargs):
+        nonlocal call_count
+        if str(self) == target:
+            call_count += 1
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _counting_mkdir)
+
+    ensure_directory(target)
+    ensure_directory(target)
+    ensure_directory(target)
+
+    assert call_count == 1
+
+
+def test_apply_workspace_path_defaults_survives_uncreatable_root(tmp_path: Path, monkeypatch) -> None:
+    blocker = tmp_path / "blocked-root"
+    blocker.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setenv("LOCALAPPDATA", str(blocker))
+
+    # Must not raise even though every default path lives under an
+    # uncreatable root — this previously crashed every settings/navigation
+    # action that touched workspace defaults.
+    settings, patch = apply_workspace_path_defaults({})
+    assert settings["downloadsDir"]
+    assert "downloadsDir" in patch
+
+
 def test_apply_workspace_path_defaults_preserves_user_paths(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     custom = tmp_path / "custom-downloads"
@@ -26,6 +88,49 @@ def test_apply_workspace_path_defaults_preserves_user_paths(tmp_path: Path, monk
     settings, patch = apply_workspace_path_defaults({"downloadsDir": str(custom)})
     assert settings["downloadsDir"] == str(custom)
     assert "downloadsDir" not in patch
+
+
+def test_apply_workspace_path_defaults_heals_stale_cross_machine_path(tmp_path: Path, monkeypatch) -> None:
+    # Reproduces the reported bug: downloadsDir etc. are saved account-wide
+    # (server-side), so a path saved from a *different* machine/Windows
+    # profile gets replayed here and can never be created on this machine
+    # (simulated by a file blocking the target, same shape as "parent isn't
+    # a directory I can create things under").
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    blocker = tmp_path / "someone-elses-profile"
+    blocker.write_text("not a directory", encoding="utf-8")
+    stale_path = str(blocker / "Camxora" / "Media" / "Downloads")
+
+    settings, patch = apply_workspace_path_defaults({"downloadsDir": stale_path})
+
+    defaults = default_workspace_paths()
+    assert settings["downloadsDir"] == defaults["downloadsDir"]
+    assert Path(settings["downloadsDir"]).is_dir()
+    assert patch["downloadsDir"] == defaults["downloadsDir"]
+
+
+def test_apply_workspace_path_defaults_heals_low_disk_space_path(tmp_path: Path, monkeypatch) -> None:
+    # Reproduces the "E:\Suno lands on a near-full USB stick" report: the
+    # synced path is a perfectly valid, creatable directory (mkdir/is_dir
+    # both succeed) but the drive has almost no free space, so every
+    # download/export into it would silently produce 0-byte files.
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    low_space_dir = tmp_path / "near-full-drive" / "Suno"
+    low_space_dir.mkdir(parents=True)
+
+    import shared.lib.workspace_defaults as workspace_defaults_module
+
+    monkeypatch.setattr(
+        workspace_defaults_module,
+        "has_sufficient_free_space",
+        lambda _path, minimum_bytes=0: False,
+    )
+
+    settings, patch = apply_workspace_path_defaults({"sunoOutputDir": str(low_space_dir)})
+
+    defaults = default_workspace_paths()
+    assert settings["sunoOutputDir"] == defaults["sunoOutputDir"]
+    assert patch["sunoOutputDir"] == defaults["sunoOutputDir"]
 
 
 def test_apply_workspace_defaults_seeds_fast_speed_when_unset(tmp_path: Path, monkeypatch) -> None:

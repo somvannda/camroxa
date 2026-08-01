@@ -377,6 +377,68 @@ QPushButton#start_button:hover {
     background-color: #00c88b;
 }
 
+QPushButton#login_primary_button {
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #7466F1,
+        stop: 1 #A259FF
+    );
+    color: #ffffff;
+    font-weight: bold;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+}
+
+QPushButton#login_primary_button:hover {
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #7c3aed,
+        stop: 1 #c084fc
+    );
+}
+
+QPushButton#login_primary_button:pressed {
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #5b21b6,
+        stop: 1 #7e22ce
+    );
+}
+
+QPushButton#login_primary_button:disabled {
+    background-color: #1a2a3c;
+    color: #5a6a7a;
+}
+
+QPushButton#remove_profile_button {
+    background-color: transparent;
+    color: #fda4af;
+    border: 1px solid rgba(244, 63, 94, 0.0);
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 12pt;
+    padding: 0px;
+    text-align: center;
+    min-height: 0px;
+}
+
+QPushButton#remove_profile_button:hover {
+    background-color: rgba(244, 63, 94, 0.12);
+    color: #fecdd3;
+    border-color: rgba(244, 63, 94, 0.35);
+}
+
+QPushButton#remove_profile_button:pressed {
+    background-color: rgba(244, 63, 94, 0.18);
+    color: #fecdd3;
+}
+
+QPushButton#remove_profile_button:disabled {
+    color: #5a6a7a;
+    border-color: transparent;
+}
+
 QPushButton#stop_button {
     background-color: #c0392b;
 }
@@ -636,6 +698,10 @@ QWidget#settings_path_row {
 /* Flat nested hosts inside settings panels — global QWidget #020617 otherwise
    paints dark bands behind pack labels, Publish-at rows, and Suno columns. */
 QFrame#account_card .QWidget {
+    background-color: transparent;
+}
+
+QFrame#startup_loading_card .QWidget {
     background-color: transparent;
 }
 

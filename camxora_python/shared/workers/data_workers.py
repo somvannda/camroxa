@@ -9,6 +9,7 @@ from PySide6.QtCore import QThread, Signal
 
 from pydantic import ValidationError
 
+from shared.lib.disk_space import has_sufficient_free_space
 from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, build_runtime_presentation_map
 from shared.models.platform import DashboardOverview, ProgressFilters, ProgressListResponse
 from shared.services.platform_api import PlatformApi
@@ -205,22 +206,36 @@ class MusicDownloadSyncWorker(QThread):
                         or target.downloaded
                     ):
                         continue
-                    output_dir = str(target.output_dir or "").strip()
-                    if output_dir and output_dir not in ensured_dirs:
-                        from shared.services.file_service import ensure_directory
+                    try:
+                        output_dir = str(target.output_dir or "").strip()
+                        if output_dir and output_dir not in ensured_dirs:
+                            from shared.services.file_service import ensure_directory
 
-                        ensure_directory(output_dir)
-                        ensured_dirs.add(output_dir)
-                    from pathlib import Path
+                            ensure_directory(output_dir)
+                            ensured_dirs.add(output_dir)
+                        from pathlib import Path
 
-                    from shared.services.file_service import sanitize_local_path
+                        from shared.services.file_service import sanitize_local_path
 
-                    target_file = Path(sanitize_local_path(str(target.target_path)))
-                    target_path = str(target_file)
-                    if target_file.is_file() and target_file.stat().st_size > 0:
-                        downloaded = True
-                    else:
-                        downloaded = self._download_file(target.download_url, target_path)
+                        target_file = Path(sanitize_local_path(str(target.target_path)))
+                        target_path = str(target_file)
+                        if target_file.is_file() and target_file.stat().st_size > 0:
+                            downloaded = True
+                        else:
+                            downloaded = self._download_file(target.download_url, target_path)
+                    except Exception as exc:
+                        # One item's bad/unreachable output_dir (e.g. a stale
+                        # cross-machine path from another profile's pending
+                        # download) must never abort every other pending
+                        # download in this account for this cycle.
+                        from shared.services.app_logger import log_error
+
+                        log_error(
+                            f"Skipping pending download for task {item.task_id} ({channel})",
+                            category="music",
+                            exc=exc,
+                        )
+                        continue
                     if not downloaded:
                         continue
                     current = sync_map.get(item.task_id) or MusicDownloadSyncItem(task_id=item.task_id)
@@ -254,18 +269,211 @@ class MusicDownloadSyncWorker(QThread):
 
         import httpx
 
+        from shared.services.app_logger import log_error
         from shared.services.file_service import sanitize_local_path
 
         path = Path(sanitize_local_path(target_path))
         path.parent.mkdir(parents=True, exist_ok=True)
+        if not has_sufficient_free_space(path.parent):
+            log_error(
+                f"Not enough free disk space to download MP3, skipping: {path.parent}",
+                category="music",
+            )
+            return False
         try:
             with httpx.Client(timeout=60.0, follow_redirects=True) as client:
                 response = client.get(url)
                 response.raise_for_status()
-                path.write_bytes(response.content)
-            return True
-        except (OSError, httpx.HTTPError):
+                content = response.content
+                if not content:
+                    log_error(f"MP3 download returned an empty response body: {url}", category="music")
+                    return False
+                path.write_bytes(content)
+        except (OSError, httpx.HTTPError) as exc:
+            log_error(f"MP3 download failed: {url}", category="music", exc=exc)
+            MusicDownloadSyncWorker._discard_empty_file(path)
             return False
+
+        if not path.is_file() or path.stat().st_size != len(content):
+            log_error(
+                f"MP3 download wrote an incomplete file (disk full?): {path}",
+                category="music",
+            )
+            MusicDownloadSyncWorker._discard_empty_file(path)
+            return False
+        return True
+
+    @staticmethod
+    def _discard_empty_file(path) -> None:
+        try:
+            if path.is_file() and path.stat().st_size == 0:
+                path.unlink()
+        except OSError:
+            pass
+
+
+@dataclass
+class RunFolderRecoveryResult:
+    """Outcome of moving a batch/channel's run folder and re-fetching its assets."""
+
+    new_run_dir: str
+    mp3_total: int = 0
+    mp3_downloaded: int = 0
+    mp3_failed: int = 0
+    images_total: int = 0
+    images_downloaded: int = 0
+    images_failed: int = 0
+
+    @property
+    def had_any_failure(self) -> bool:
+        return self.mp3_failed > 0 or self.images_failed > 0
+
+
+class RunFolderRecoveryWorker(QThread):
+    """Change a batch/channel's run folder and resume — without re-drafting or re-Suno.
+
+    Repoints the server-side run folder for this row, then re-downloads already
+    -successful MP3s (stable Suno URLs) and already-successful server images into the
+    new folder, reusing the exact download/integrity primitives the regular sync
+    workers use. Never touches drafts, lyrics, album/title, or Suno task state — this
+    is a "recover from a bad/full drive mid-batch" action, not a retry of failed work.
+    """
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        batch_id: str,
+        profile_id: str,
+        role: str,
+        new_run_dir: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("RunFolderRecoveryWorker")
+        self._api = api
+        self._batch_id = str(batch_id or "").strip()
+        self._profile_id = str(profile_id or "").strip()
+        self._role = str(role or "OK").strip().upper() or "OK"
+        self._new_run_dir = str(new_run_dir or "").strip()
+
+    def run(self) -> None:
+        from pathlib import Path
+
+        from shared.lib.disk_space import get_free_bytes
+        from shared.models.platform import ProgressLocalSyncItem
+        from shared.services.app_logger import log_error, log_warn
+        from shared.services.file_service import ensure_directory, read_file_bytes, sanitize_local_path
+
+        if not self._batch_id or not self._profile_id or not self._new_run_dir:
+            self.failed.emit("Missing batch, channel, or new run folder.")
+            return
+
+        normalized_dir = sanitize_local_path(self._new_run_dir)
+        if not has_sufficient_free_space(normalized_dir):
+            free = get_free_bytes(normalized_dir)
+            free_mb = f"{free / (1024 * 1024):.0f} MB" if free is not None else "unknown"
+            self.failed.emit(
+                f"Selected folder does not have enough free space ({free_mb} free). "
+                "Choose a different drive/folder."
+            )
+            return
+
+        try:
+            ensure_directory(normalized_dir)
+        except Exception as exc:
+            self.failed.emit(f"Could not create the new run folder: {exc}")
+            return
+
+        result = RunFolderRecoveryResult(new_run_dir=normalized_dir)
+
+        # 1. Repoint the server-side run folder FIRST — even if a download below fails,
+        # Continue Progress / pending-download sync will look in the right place next time.
+        try:
+            self._api.sync_local_progress(
+                [
+                    ProgressLocalSyncItem(
+                        batch_id=self._batch_id,
+                        profile_id=self._profile_id,
+                        role=self._role,
+                        run_dir=normalized_dir,
+                    )
+                ]
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(f"Could not update the run folder on the server: {exc}")
+            return
+
+        # 2. Re-download already-successful MP3s (stable Suno URLs) into the new folder.
+        try:
+            plan = self._api.get_batch_redownload_plan(
+                batch_id=self._batch_id, role=self._role, run_dir=normalized_dir
+            )
+            result.mp3_total = len(plan.items)
+            for item in plan.items:
+                try:
+                    ok = MusicDownloadSyncWorker._download_file(item.download_url, item.target_path)
+                    if not ok and item.fallback_download_url:
+                        # Suno's URL (primary — Suno retains audio for 14 days) is dead;
+                        # fall back to our own Backblaze-archived copy of the same track.
+                        log_warn(
+                            f"Suno URL expired for {item.title or item.task_id}; "
+                            "falling back to Backblaze copy.",
+                            category="music",
+                        )
+                        ok = MusicDownloadSyncWorker._download_file(
+                            item.fallback_download_url, item.target_path
+                        )
+                    if ok:
+                        result.mp3_downloaded += 1
+                    else:
+                        result.mp3_failed += 1
+                except Exception as exc:
+                    result.mp3_failed += 1
+                    log_error(
+                        f"Re-download into new run folder failed for {item.title or item.task_id}",
+                        category="music",
+                        exc=exc,
+                    )
+        except PlatformApiError as exc:
+            log_error(f"Could not list MP3s to re-download for batch {self._batch_id}", category="music", exc=exc)
+
+        # 3. Re-download already-successful images (background/thumbnail) into the new folder.
+        try:
+            from shared.lib.image_output_utils import ensure_image_output_local
+
+            response = self._api.list_image_jobs(batch_id=self._batch_id, status=["success"], limit=50)
+            matching = [
+                job for job in response.items if str(job.channel_role or "").strip().upper() == self._role
+            ]
+            result.images_total = len(matching)
+            for job in matching:
+                source_name = str(job.output_image_path or "").strip()
+                if not source_name:
+                    continue
+                new_path = str(Path(normalized_dir) / Path(source_name).name)
+                try:
+                    if read_file_bytes(new_path):
+                        result.images_downloaded += 1
+                        continue
+                    if ensure_image_output_local(self._api, new_path, job.id):
+                        result.images_downloaded += 1
+                    else:
+                        result.images_failed += 1
+                except Exception as exc:
+                    result.images_failed += 1
+                    log_error(
+                        f"Re-download of image job {job.id} into new run folder failed",
+                        category="images",
+                        exc=exc,
+                    )
+        except PlatformApiError as exc:
+            log_error(f"Could not list images to re-download for batch {self._batch_id}", category="images", exc=exc)
+
+        self.succeeded.emit(result)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1747,6 +1955,84 @@ class SaveProfileWorker(QThread):
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Failed to save profile.")
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileMediaCacheResult:
+    profile_id: str
+    logo_path: str | None = None
+    cover_path: str | None = None
+
+
+class ProfileMediaCacheWorker(QThread):
+    """Downloads a profile's server logo/cover into the local cache off the UI thread.
+
+    Selecting a profile in Settings used to call this synchronously — a real,
+    multi-megabyte network download blocking the entire UI on every profile
+    switch whenever the file wasn't cached yet, and hanging hard on any slow
+    or unreliable connection to the API. This mirrors the existing
+    SamplePackInstallWorker pattern so the UI updates the moment the download
+    finishes instead of freezing until it does.
+    """
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        profile_id: str,
+        cache_dir,
+        need_logo: bool,
+        need_cover: bool,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("ProfileMediaCacheWorker")
+        self._api = api
+        self._profile_id = profile_id
+        self._cache_dir = cache_dir
+        self._need_logo = need_logo
+        self._need_cover = need_cover
+
+    def run(self) -> None:
+        logo_path: str | None = None
+        cover_path: str | None = None
+        try:
+            self._cache_dir.mkdir(parents=True, exist_ok=True)
+            if self._need_logo:
+                logo_path = self._download(
+                    lambda: self._api.download_profile_logo(self._profile_id),
+                    self._cache_dir / "logo.png",
+                )
+            if self._need_cover:
+                cover_path = self._download(
+                    lambda: self._api.download_profile_cover(self._profile_id, 0),
+                    self._cache_dir / "cover.png",
+                )
+            self.succeeded.emit(
+                ProfileMediaCacheResult(
+                    profile_id=self._profile_id,
+                    logo_path=logo_path,
+                    cover_path=cover_path,
+                )
+            )
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to download profile media.")
+
+    @staticmethod
+    def _download(fetch, destination) -> str | None:
+        try:
+            raw = fetch()
+        except PlatformApiError:
+            return None
+        except Exception:
+            return None
+        if not raw:
+            return None
+        destination.write_bytes(raw)
+        return str(destination)
 
 
 class DeleteProfileWorker(QThread):

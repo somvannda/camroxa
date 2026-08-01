@@ -78,7 +78,7 @@ def _build_batch_album_labels(batches: list[MusicHistoryBatch]) -> dict[tuple[st
         if not alt_album or alt_album.lower() == ok_album.lower():
             alt_album = f"{ok_album} II" if ok_album else f"{fallback} II"
         labels[(batch.batch_id, "ok")] = ok_album
-        labels[(batch.batch_id, "alt")] = alt_album
+        labels[(batch.batch_id, "alt")] = alt_album or "—"
     return labels
 
 

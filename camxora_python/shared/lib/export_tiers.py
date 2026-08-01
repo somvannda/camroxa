@@ -37,25 +37,29 @@ def resolve_export_tier_settings(
     default_tier = DEFAULT_PIPELINE_EXPORT_TIER if pipeline else DEFAULT_MANUAL_EXPORT_TIER
     tier = normalize_export_tier(raw.get("videoExportTier"), default=default_tier)
 
+    def _fps_from_settings(*, default: int = 24) -> int:
+        try:
+            return int(raw.get("videoExportFps", default))
+        except (TypeError, ValueError):
+            return int(default)
+
     if tier == "draft":
+        # Draft stays a fixed fast preset (preview / pipeline default).
         resolution = str(raw.get("videoExportDraftResolution") or "1280x720").strip() or "1280x720"
         fps = 24
         speed_mode = "very_fast"
         label = "Draft"
     elif tier == "master":
         resolution = str(raw.get("outputResolution") or "1920x1080").strip() or "1920x1080"
-        fps_raw = raw.get("videoExportFps", 24)
-        try:
-            fps = int(fps_raw)
-        except (TypeError, ValueError):
-            fps = 24
+        fps = _fps_from_settings(default=24)
         speed_mode = normalize_export_speed_mode(raw.get("videoExportSpeedMode"), default="balanced")
         label = "Master"
     else:
+        # Standard: Preferences resolution + Video page FPS / speed.
         tier = "standard"
         resolution = str(raw.get("outputResolution") or "1920x1080").strip() or "1920x1080"
-        fps = 24
-        speed_mode = normalize_export_speed_mode(raw.get("videoExportSpeedMode"), default="fast")
+        fps = _fps_from_settings(default=24)
+        speed_mode = normalize_export_speed_mode(raw.get("videoExportSpeedMode"), default="balanced")
         label = "Standard"
 
     return ExportTierSettings(

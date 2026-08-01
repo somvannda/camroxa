@@ -12,7 +12,10 @@ from typing import Any, Callable
 
 import glfw
 import moderngl
-from ._spectrum_fast import resolve_bar_pixel_width
+from ._spectrum_fast import (
+    normalize_spectrum_gravity,
+    resolve_bar_pixel_width,
+)
 
 def _audio_bar_height_mult(template: dict) -> float:
     audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
@@ -20,7 +23,7 @@ def _audio_bar_height_mult(template: dict) -> float:
         value = float(audio.get("barHeight", 1.0) or 1.0)
     except Exception:
         value = 1.0
-    return float(max(0.25, min(8.0, value)))
+    return float(max(0.25, min(12.0, value)))
 
 import numpy as np
 from PIL import Image
@@ -118,7 +121,9 @@ class GpuOptions:
 
 
 def _send(payload: dict) -> None:
-    print("MG_EVENT " + json.dumps(payload, ensure_ascii=False), flush=True)
+    # ensure_ascii=True: frozen Windows consoles are often cp1252 and crash on
+    # Unicode progress text (e.g. "48000→22050"), which aborted soundfile decode.
+    print("MG_EVENT " + json.dumps(payload, ensure_ascii=True), flush=True)
 
 
 def _load_template(opts: GpuOptions) -> dict:
@@ -627,11 +632,14 @@ def _compile_particle_quads(ctx: moderngl.Context):
     in vec2 in_pos;
     in vec2 in_uv;
     in vec4 in_col;
+    in vec2 in_meta;
     out vec2 v_uv;
     out vec4 v_col;
+    out vec2 v_meta;
     void main() {
-        v_uv = in_uv * 2.0 - 1.0;
+        v_uv = in_uv;
         v_col = in_col;
+        v_meta = in_meta;
         gl_Position = vec4(in_pos, 0.0, 1.0);
     }
     """
@@ -639,44 +647,89 @@ def _compile_particle_quads(ctx: moderngl.Context):
     #version 330
     in vec2 v_uv;
     in vec4 v_col;
+    in vec2 v_meta;
     uniform int pt_style;
+    uniform float glow_amount;
+    uniform sampler2D icon_atlas;
+    uniform int atlas_cols;
     out vec4 frag;
     float sat(float x) { return clamp(x, 0.0, 1.0); }
     void main() {
-        vec2 p = v_uv;
+        vec2 p = v_uv * 2.0 - 1.0;
         float r2 = dot(p, p);
         float r = sqrt(max(r2, 0.0));
         float edge = 1.0 - smoothstep(0.92, 1.0, r);
-        if (r > 1.0) discard;
-        float a = edge;
-        if (pt_style == 1) {
-            float core = 1.0 - smoothstep(0.55, 1.0, r);
-            float halo = 1.0 - smoothstep(0.0, 1.0, r);
-            a = max(core, halo * 0.35) * edge;
-        } else if (pt_style == 2) {
-            float inner = smoothstep(0.55, 0.62, r);
-            float outer = 1.0 - smoothstep(0.82, 0.90, r);
-            a = sat(inner * outer) * edge;
-        } else if (pt_style == 3) {
-            float w = 0.10;
-            float ax = 1.0 - smoothstep(w, w + 0.04, abs(p.x));
-            float ay = 1.0 - smoothstep(w, w + 0.04, abs(p.y));
-            float d1 = abs(p.x - p.y) * 0.70710678;
-            float d2 = abs(p.x + p.y) * 0.70710678;
-            float ad1 = 1.0 - smoothstep(w, w + 0.04, d1);
-            float ad2 = 1.0 - smoothstep(w, w + 0.04, d2);
-            float spike = max(max(ax, ay), max(ad1, ad2));
-            float core = 1.0 - smoothstep(0.40, 1.0, r);
-            float halo = 1.0 - smoothstep(0.0, 1.0, r);
-            a = max(core, max(spike * 0.85, halo * 0.25)) * edge;
-        } else if (pt_style == 4) {
-            float soft = 1.0 - smoothstep(0.0, 1.0, r);
-            a = pow(soft, 1.8) * edge;
+        float a = 0.0;
+        vec3 rgb = v_col.rgb;
+
+        if (pt_style == 5) {
+            // Music icon atlas sample with per-particle rotation.
+            float cols = float(max(1, atlas_cols));
+            float icon = floor(mod(max(v_meta.x, 0.0), cols));
+            float ang = v_meta.y;
+            float ca = cos(ang);
+            float sa = sin(ang);
+            vec2 q = v_uv - 0.5;
+            vec2 rq = vec2(ca * q.x - sa * q.y, sa * q.x + ca * q.y);
+            vec2 local = rq + 0.5;
+            if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) discard;
+            vec2 atlas_uv = vec2((icon + local.x) / cols, local.y);
+            float icon_a = texture(icon_atlas, atlas_uv).a;
+            a = icon_a;
+            float core = smoothstep(0.15, 0.85, icon_a);
+            rgb = mix(v_col.rgb, vec3(1.0), glow_amount * 0.55 * core);
+        } else {
+            if (r > 1.0) discard;
+            a = edge;
+            if (pt_style == 1) {
+                float core = 1.0 - smoothstep(0.55, 1.0, r);
+                float halo = 1.0 - smoothstep(0.0, 1.0, r);
+                a = max(core, halo * 0.35) * edge;
+            } else if (pt_style == 2) {
+                float inner = smoothstep(0.55, 0.62, r);
+                float outer = 1.0 - smoothstep(0.82, 0.90, r);
+                a = sat(inner * outer) * edge;
+            } else if (pt_style == 3) {
+                float w = 0.10;
+                float ax = 1.0 - smoothstep(w, w + 0.04, abs(p.x));
+                float ay = 1.0 - smoothstep(w, w + 0.04, abs(p.y));
+                float d1 = abs(p.x - p.y) * 0.70710678;
+                float d2 = abs(p.x + p.y) * 0.70710678;
+                float ad1 = 1.0 - smoothstep(w, w + 0.04, d1);
+                float ad2 = 1.0 - smoothstep(w, w + 0.04, d2);
+                float spike = max(max(ax, ay), max(ad1, ad2));
+                float core = 1.0 - smoothstep(0.40, 1.0, r);
+                float halo = 1.0 - smoothstep(0.0, 1.0, r);
+                a = max(core, max(spike * 0.85, halo * 0.25)) * edge;
+            } else if (pt_style == 4) {
+                float soft = 1.0 - smoothstep(0.0, 1.0, r);
+                a = pow(soft, 1.8) * edge;
+            }
+            float core_w = 1.0 - smoothstep(0.0, 0.55, r);
+            rgb = mix(v_col.rgb, vec3(1.0), glow_amount * 0.5 * core_w);
         }
-        frag = vec4(v_col.rgb, v_col.a * a);
+
+        float g = clamp(glow_amount, 0.0, 1.0);
+        if (g > 0.001) {
+            float halo = 1.0 - smoothstep(0.0, 1.0, r);
+            if (pt_style == 5) {
+                halo = a * (1.0 - smoothstep(0.35, 1.0, a));
+            }
+            a = max(a, halo * (0.22 + g * 0.55));
+            a = sat(a * (1.0 + g * 0.35));
+        }
+        if (a <= 0.001) discard;
+        frag = vec4(rgb, v_col.a * a);
     }
     """
-    return ctx.program(vertex_shader=vs_particle_quads, fragment_shader=fs_particle_quads)
+    prog = ctx.program(vertex_shader=vs_particle_quads, fragment_shader=fs_particle_quads)
+    if "icon_atlas" in prog:
+        prog["icon_atlas"].value = 3
+    if "atlas_cols" in prog:
+        prog["atlas_cols"].value = 4
+    if "glow_amount" in prog:
+        prog["glow_amount"].value = 0.0
+    return prog
 
 
 def _resolve_particle_style_index(variant: str, style: str) -> int:
@@ -694,7 +747,13 @@ def _resolve_particle_style_index(variant: str, style: str) -> int:
         return 3
     if style == "bokeh":
         return 4
+    if style in ("music", "musicNotes", "notes"):
+        return 5
     return 0
+
+
+def _particle_style_size_scale(pt_style: int) -> float:
+    return {0: 1.0, 1: 2.0, 2: 1.5, 3: 1.5, 4: 2.0, 5: 2.4}.get(int(pt_style), 1.0)
 
 
 def _build_particle_styled_quad_verts(
@@ -706,6 +765,8 @@ def _build_particle_styled_quad_verts(
     w: int,
     h: int,
     base_px: float,
+    icons: np.ndarray | None = None,
+    angles: np.ndarray | None = None,
 ) -> np.ndarray:
     hx = (base_px * scales) * 2.0 / max(1.0, float(w))
     hy = (base_px * scales) * 2.0 / max(1.0, float(h))
@@ -733,7 +794,64 @@ def _build_particle_styled_quad_verts(
     )
     uv = np.tile(uv_template, (n, 1))
     cols = np.repeat(colors_rgba.astype(np.float32), 6, axis=0)
-    return np.column_stack([pos, uv, cols]).astype(np.float32)
+    if icons is None or int(getattr(icons, "shape", [0])[0]) != n:
+        icon_f = np.zeros((n,), dtype=np.float32)
+    else:
+        icon_f = icons.astype(np.float32).reshape(n)
+    if angles is None or int(getattr(angles, "shape", [0])[0]) != n:
+        ang_f = np.zeros((n,), dtype=np.float32)
+    else:
+        ang_f = angles.astype(np.float32).reshape(n)
+    meta = np.column_stack([icon_f, ang_f]).astype(np.float32)
+    meta = np.repeat(meta, 6, axis=0)
+    return np.column_stack([pos, uv, cols, meta]).astype(np.float32)
+
+
+def _ensure_music_icon_texture(ctx: moderngl.Context, holder: dict | None = None):
+    """Upload / reuse music-icon atlas on texture unit-ready Moderngl texture."""
+    store = holder if isinstance(holder, dict) else {}
+    tex = store.get("tex")
+    cols = int(store.get("cols") or 0)
+    if tex is not None and cols > 0:
+        return tex, cols
+    from features.video.lib.particle_music_icons import build_music_icon_atlas
+
+    atlas, cols = build_music_icon_atlas()
+    h, w = int(atlas.shape[0]), int(atlas.shape[1])
+    tex = ctx.texture((w, h), 4, atlas.tobytes())
+    tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+    tex.repeat_x = False
+    tex.repeat_y = False
+    store["tex"] = tex
+    store["cols"] = int(cols)
+    return tex, int(cols)
+
+
+def _particle_trail_cfg_from_settings(ps: dict) -> tuple[bool, int, float, float]:
+    enabled = bool(ps.get("trailEnabled", False))
+    try:
+        length = int(round(float(ps.get("trailLength", 8) or 8)))
+    except (TypeError, ValueError):
+        length = 8
+    length = int(max(2, min(24, length)))
+    try:
+        fade = float(ps.get("trailFade", 0.65) or 0.65)
+    except (TypeError, ValueError):
+        fade = 0.65
+    fade = float(max(0.05, min(0.98, fade)))
+    try:
+        width = float(ps.get("trailWidth", 0.45) or 0.45)
+    except (TypeError, ValueError):
+        width = 0.45
+    width = float(max(0.1, min(1.0, width)))
+    return enabled, length, fade, width
+
+
+def _clamp_particle_glow(value) -> float:
+    try:
+        return float(max(0.0, min(1.0, float(value if value is not None else 0.0))))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _render_particle_styled_quads(
@@ -748,6 +866,10 @@ def _render_particle_styled_quads(
     w: int,
     h: int,
     pt_size: float,
+    glow_amount: float = 0.0,
+    icons: np.ndarray | None = None,
+    angles: np.ndarray | None = None,
+    music_tex_holder: dict | None = None,
 ) -> None:
     if pts.shape[0] <= 0:
         return
@@ -759,6 +881,10 @@ def _render_particle_styled_quads(
     xs = pts[:, 0].astype(np.float32)
     ys = pts[:, 1].astype(np.float32)
     scales = np.maximum(0.2, pts[:, 2].astype(np.float32))
+    glow = _clamp_particle_glow(glow_amount)
+    size_boost = 1.0 + glow * 1.75
+    if int(pt_style) == 5:
+        size_boost *= 1.15
     verts = _build_particle_styled_quad_verts(
         xs=xs,
         ys=ys,
@@ -766,16 +892,31 @@ def _render_particle_styled_quads(
         colors_rgba=colors_rgba,
         w=w,
         h=h,
-        base_px=float(pt_size),
+        base_px=float(pt_size) * size_boost,
+        icons=icons,
+        angles=angles,
     )
     if verts.nbytes > particle_quad_vbo.size:
         particle_quad_vbo.orphan(size=verts.nbytes)
-    particle_quad_vbo.write(verts.tobytes())
+    particle_quad_vbo.write(np.ascontiguousarray(verts, dtype=np.float32))
     prog_particle_quads["pt_style"].value = int(pt_style)
+    if "glow_amount" in prog_particle_quads:
+        prog_particle_quads["glow_amount"].value = float(glow)
+    if int(pt_style) == 5:
+        tex, cols = _ensure_music_icon_texture(ctx, music_tex_holder)
+        tex.use(location=3)
+        if "icon_atlas" in prog_particle_quads:
+            prog_particle_quads["icon_atlas"].value = 3
+        if "atlas_cols" in prog_particle_quads:
+            prog_particle_quads["atlas_cols"].value = int(cols)
     ctx.enable(moderngl.BLEND)
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    # Neon bloom reads better with additive when glow is on.
+    if glow > 0.08:
+        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+    else:
+        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
     vao_particle_quads.render(mode=moderngl.TRIANGLES, vertices=int(pts.shape[0] * 6))
-
+    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
 
 def _as_rgb(v: any) -> tuple[int, int, int]:
     if isinstance(v, (list, tuple)) and len(v) == 3:
@@ -807,6 +948,7 @@ def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None)
         "aurora-ribbon",
         "magma-ridge",
         "plasma-bloom",
+        "contour-waves",
         "grid-steps",
         "ignition-flare",
         "drift-capsules",
@@ -821,28 +963,62 @@ def _build_spectrum_vertex_colors(
     spec_col: tuple[float, float, float, float] | tuple[float, float, float],
     count: int,
     alpha: float,
+    *,
+    glow: bool = False,
 ) -> np.ndarray:
-    mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
-    gradient_colors = color_cfg.get("gradientColors")
-    if mode == "gradient" and isinstance(gradient_colors, list):
-        stops = [np.array(_as_rgb(value), dtype=np.float32) / 255.0 for value in gradient_colors if isinstance(value, str)]
-        if len(stops) >= 2:
-            t = np.linspace(0.0, 1.0, int(max(1, count)), dtype=np.float32)
-            rgb = np.empty((t.shape[0], 3), dtype=np.float32)
-            segment_count = len(stops) - 1
-            for idx, step in enumerate(t):
-                scaled = float(step) * float(segment_count)
-                seg_idx = int(min(segment_count - 1, max(0, int(np.floor(scaled)))))
-                local_t = scaled - float(seg_idx)
-                c1 = stops[seg_idx]
-                c2 = stops[min(seg_idx + 1, len(stops) - 1)]
-                rgb[idx] = c1 * (1.0 - local_t) + c2 * local_t
-            a = np.full((t.shape[0], 1), float(alpha), dtype=np.float32)
-            return np.concatenate([rgb, a], axis=1)
+    from features.video.lib.spectrum_color_engine import (
+        build_spectrum_vertex_rgba,
+        dampen_spectrum_glow_rgba,
+    )
 
-    base_rgb = np.array(spec_col[:3], dtype=np.float32)
-    base = np.array([base_rgb[0], base_rgb[1], base_rgb[2], float(alpha)], dtype=np.float32)
-    return np.tile(base[None, :], (int(max(1, count)), 1))
+    mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
+    solid = color_cfg.get("solidColor")
+    if not isinstance(solid, str) or not solid.strip():
+        # Fall back to the already-resolved solid RGB float tuple.
+        solid = "#{:02x}{:02x}{:02x}".format(
+            int(max(0, min(255, round(float(spec_col[0]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[1]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[2]) * 255.0)))),
+        )
+    gradient_colors = color_cfg.get("gradientColors") if isinstance(color_cfg.get("gradientColors"), list) else None
+    colors = build_spectrum_vertex_rgba(
+        mode=mode,
+        solid_color=str(solid),
+        gradient_colors=gradient_colors,
+        count=count,
+        alpha=alpha,
+    )
+    if glow:
+        return dampen_spectrum_glow_rgba(colors, strength=0.38)
+    return colors
+
+
+def _build_spectrum_bar_quad_colors(
+    color_cfg: dict,
+    spec_col: tuple[float, float, float, float] | tuple[float, float, float],
+    count: int,
+    alpha: float,
+) -> np.ndarray:
+    from features.video.lib.spectrum_color_engine import build_spectrum_bar_quad_rgba
+
+    mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
+    solid = color_cfg.get("solidColor")
+    if not isinstance(solid, str) or not solid.strip():
+        solid = "#{:02x}{:02x}{:02x}".format(
+            int(max(0, min(255, round(float(spec_col[0]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[1]) * 255.0)))),
+            int(max(0, min(255, round(float(spec_col[2]) * 255.0)))),
+        )
+    gradient_colors = color_cfg.get("gradientColors") if isinstance(color_cfg.get("gradientColors"), list) else None
+    gradient_direction = str(color_cfg.get("gradientDirection", "left-to-right") or "left-to-right")
+    return build_spectrum_bar_quad_rgba(
+        mode=mode,
+        solid_color=str(solid),
+        gradient_colors=gradient_colors,
+        count=count,
+        alpha=alpha,
+        gradient_direction=gradient_direction,
+    )
 
 def _hex_to_rgba(hex_color: str, alpha: int = 255) -> tuple[int, int, int, int]:
     raw = str(hex_color or "#ffffff").strip()
@@ -1901,6 +2077,62 @@ def _get_anchor_coords(anchor: str, offset_x: float, offset_y: float, w: int, h:
     return (cx + offset_x, cy - offset_y)
 
 
+def _resolve_spectrum_logo_centers(
+    *,
+    w: int,
+    h: int,
+    sf: float,
+    position: dict | None,
+    spectrum_attach_to_logo: bool,
+    logo_position: dict | None = None,
+    template: dict | None = None,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    from features.video.lib.logo_spectrum_bindings import resolve_spectrum_logo_centers
+
+    logo_pos = logo_position
+    if logo_pos is None and isinstance(template, dict):
+        ls = template.get("logoSettings")
+        if isinstance(ls, dict) and isinstance(ls.get("position"), dict):
+            logo_pos = ls.get("position")
+
+    return resolve_spectrum_logo_centers(
+        _get_anchor_coords,
+        w=w,
+        h=h,
+        sf=sf,
+        position=position if isinstance(position, dict) else {},
+        spectrum_attach_to_logo=bool(spectrum_attach_to_logo),
+        logo_position=logo_pos if isinstance(logo_pos, dict) else {},
+    )
+
+
+def _spectrum_draw_jobs(template: dict) -> list[dict]:
+    """Return enabled spectrum instances for export; legacy templates → one job."""
+    from features.video.lib.spectrum_instance_registry import iter_render_spectrum_instances
+    jobs = iter_render_spectrum_instances(template if isinstance(template, dict) else {})
+    if jobs:
+        return jobs
+    layers = template.get("layers") if isinstance(template, dict) and isinstance(template.get("layers"), list) else []
+    layers = [sl for sl in layers if isinstance(sl, dict)]
+    if not layers:
+        return []
+    pos = template.get("position") if isinstance(template.get("position"), dict) else {}
+    pb = template.get("previewBindings") if isinstance(template.get("previewBindings"), dict) else {}
+    audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
+    return [{
+        "style": str(template.get("style") or "orbit-spikes"),
+        "anchor": str(pos.get("anchor") or "center"),
+        "x": float(pos.get("x", 0.0) or 0.0),
+        "y": float(pos.get("y", 0.0) or 0.0),
+        "spectrumAttachToLogo": bool(pb.get("spectrumAttachToLogo", True)),
+        "spectrumLogoGap": float(pb.get("spectrumLogoGap", 0.0) or 0.0),
+        "audioSettings": dict(audio),
+        "layers": layers,
+        "enabled": True,
+    }]
+
+
+
 def _text_quad_center_offset(anchor: str, tw: float, th: float) -> tuple[float, float]:
     """Shift from anchor point to texture-quad center (shader centers on text_px).
 
@@ -1951,9 +2183,9 @@ def run_gpu_render(
     fps = int(max(1, min(60, int(opts.fps))))
     if fps <= 0:
         fps = 30
-    # Keep encode FPS (24/30/…) for speed, but analyze audio at preview rate so
-    # spectrum/particles react identically to paintGL (frame_idx = time * 60).
-    ANALYSIS_FPS = 60
+    # Export analysis rate: 30 keeps spectrum reactive enough and avoids multi-minute
+    # librosa.stft stalls on long tracks in frozen builds (fps=60 hop is far denser).
+    ANALYSIS_FPS = 30
     export_speed_mode = normalize_export_speed_mode(getattr(opts, "speed_mode", "balanced"))
     glow_pass_limit = export_glow_pass_limit(export_speed_mode)
 
@@ -1971,6 +2203,78 @@ def run_gpu_render(
     base_h = float(template.get("renderBaseHeight", 450.0))
     base_h = float(max(1.0, min(4000.0, base_h)))
     sf = float(h) / base_h
+
+    # Analyze audio BEFORE creating an OpenGL context. Frozen installs were hanging
+    # forever on librosa.stft when OpenBLAS ran after pygame/moderngl init.
+    spectrum_container = template
+    point_count = 1024
+    bg_scale = 1.0
+    bg_offset = (0.0, 0.0)
+
+    from shared.services.audio_analysis_cache import get_audio_analysis_cache, set_audio_analysis_cache
+    from .audio import AudioAnalyzer
+
+    _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
+    if existing_analyzer is not None:
+        analyzer = existing_analyzer
+        _emit_event(
+            {
+                "status": "running",
+                "message": "Reusing preview audio analysis",
+                "progress": 0.09,
+                "cacheHit": True,
+            }
+        )
+    else:
+        cached_analyzer = get_audio_analysis_cache(
+            opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count
+        )
+        if cached_analyzer is not None:
+            analyzer = cached_analyzer
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis loaded from cache",
+                    "progress": 0.09,
+                    "cacheHit": True,
+                }
+            )
+        else:
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Analyzing audio (first track can take a minute)...",
+                    "progress": 0.08,
+                }
+            )
+
+            def _analysis_progress(message: str) -> None:
+                _emit_event(
+                    {
+                        "status": "running",
+                        "message": str(message or "Analyzing audio..."),
+                        "progress": 0.08,
+                    }
+                )
+
+            analyzer = AudioAnalyzer(
+                opts.mp3_path,
+                fps=ANALYSIS_FPS,
+                point_count=point_count,
+                on_progress=_analysis_progress,
+            )
+            set_audio_analysis_cache(analyzer, opts.mp3_path)
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis complete, preparing encoder...",
+                    "progress": 0.09,
+                    "cacheHit": False,
+                }
+            )
+
+    duration_sec = float(analyzer.info.duration_sec)
+    total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
 
     _emit_event({"status": "running", "message": "Initializing GPU renderer...", "progress": 0.0})
     if ctx_factory is not None:
@@ -2059,85 +2363,12 @@ def run_gpu_render(
     vao_pts = ctx.vertex_array(prog_points, [(pt_vbo, "2f 1f", "in_pos", "in_size")])
     # Same styled-quad particle path as live preview (not GL_POINTS).
     prog_particle_quads = _compile_particle_quads(ctx)
-    particle_quad_vbo = ctx.buffer(reserve=4 * 8 * 6 * 2048)
+    particle_quad_vbo = ctx.buffer(reserve=4 * 10 * 6 * 2048)
     vao_particle_quads = ctx.vertex_array(
         prog_particle_quads,
-        [(particle_quad_vbo, "2f 2f 4f", "in_pos", "in_uv", "in_col")],
+        [(particle_quad_vbo, "2f 2f 4f 2f", "in_pos", "in_uv", "in_col", "in_meta")],
     )
-
-    _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
-
-    # In the new format, the root template IS the spectrum container
-    spectrum_container = template
-    point_count = 1024 # Fixed to 1024 for high-res FFT
-    
-    # We no longer have spec_style or spec_tex for background scale/offset in the spectrum layer.
-    # Background scale/offset is now handled via backgroundSettings (if added) or just defaults to 1.0/0.0
-    bg_scale = 1.0
-    bg_offset = (0.0, 0.0)
-
-    from shared.services.audio_analysis_cache import get_audio_analysis_cache, set_audio_analysis_cache
-
-    if existing_analyzer is not None:
-        analyzer = existing_analyzer
-        _emit_event(
-            {
-                "status": "running",
-                "message": "Reusing preview audio analysis",
-                "progress": 0.09,
-                "cacheHit": True,
-            }
-        )
-    else:
-        cached_analyzer = get_audio_analysis_cache(
-            opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count
-        )
-        if cached_analyzer is not None:
-            analyzer = cached_analyzer
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Audio analysis loaded from cache",
-                    "progress": 0.09,
-                    "cacheHit": True,
-                }
-            )
-        else:
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Analyzing audio (first track can take a minute)…",
-                    "progress": 0.08,
-                }
-            )
-
-            def _analysis_progress(message: str) -> None:
-                _emit_event(
-                    {
-                        "status": "running",
-                        "message": str(message or "Analyzing audio…"),
-                        "progress": 0.08,
-                    }
-                )
-
-            analyzer = AudioAnalyzer(
-                opts.mp3_path,
-                fps=ANALYSIS_FPS,
-                point_count=point_count,
-                on_progress=_analysis_progress,
-            )
-            set_audio_analysis_cache(analyzer, opts.mp3_path)
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Audio analysis complete, preparing encoder...",
-                    "progress": 0.09,
-                    "cacheHit": False,
-                }
-            )
-    duration_sec = float(analyzer.info.duration_sec)
-    # Encode at export fps, but sample audio analysis at preview fps (60).
-    total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
+    music_icon_tex_holder: dict = {}
 
     particles_cfg_raw = template.get("particlesSettings", {}) if isinstance(template.get("particlesSettings"), dict) else {}
     if not particles_cfg_raw and isinstance(template.get("particles"), dict):
@@ -2435,7 +2666,13 @@ def run_gpu_render(
     particle_audio_state = ParticleAudioState()
     audio_settings = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
     aud_smooth = float(max(0.0, min(0.99, float(audio_settings.get("smoothing", 0.8) or 0.8))))
+    if audio_settings.get("motionSmoothing") is not None:
+        try:
+            aud_smooth = float(max(0.0, min(0.99, float(audio_settings.get("motionSmoothing")))))
+        except (TypeError, ValueError):
+            pass
     fft_smoothed = np.zeros(64, dtype=np.float32)
+    spectrum_peak_cache: dict[str, np.ndarray] = {}
     particles_warmed = False
 
     _emit_event(
@@ -2450,9 +2687,12 @@ def run_gpu_render(
     # --- Pre-compute spectrum mapping (once, outside frame loop) ---
     from ._spectrum_fast import (
         precompute_fft_mapping, fft_to_log_bins, smooth_and_mirror, smooth_fft_envelope,
-        generate_points_curved, generate_points_linear,
+        generate_spectrum_layer_geometry,
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
+        clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
+        normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
     )
+    from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
     # Pre-compute frame-invariant template lookups
     _tpl_style_preset = str(template.get("style", "orbit-spikes")).lower().strip()
@@ -2467,6 +2707,7 @@ def run_gpu_render(
     if not _tpl_spectrum_enabled:
         _tpl_spectrum_layers = []
     _tpl_attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
+    _tpl_logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)
     _tpl_attached_base_radius = float(max(0.0, (logo_base_radius * logo_scale_base * logo_visible_radius_ratio) + spectrum_logo_gap))
     _tpl_attached_layer_base_offset = _resolve_attached_layer_base_offset(_tpl_spectrum_layers, sf)
     last_analysis_idx = -1
@@ -2485,19 +2726,26 @@ def run_gpu_render(
         _gpu_preregister_layers = []
 
     if gpu_spectrum is not None and _tpl_spectrum_enabled and _gpu_preregister_layers:
-        BINS_PRE = 64
         bar_height_mult_pre = _audio_bar_height_mult(template)
         logo_base_radius_pre = float(logo_raw.get("size", 192.0)) * 0.5 * sf if isinstance(logo_raw, dict) else 96.0 * sf
         logo_visual_radius_pre = logo_base_radius_pre * logo_scale_base
         for layer_idx, sl_pre in enumerate(_gpu_preregister_layers):
             style_pre = _resolve_export_spectrum_style(_tpl_style_preset, sl_pre)
-            if is_waveform_spectrum_style(style_pre) or not is_gpu_bar_style_slice1(style_pre):
+            color_cfg_pre = sl_pre.get("color", {}) if isinstance(sl_pre.get("color"), dict) else {}
+            dir_pre = str(color_cfg_pre.get("gradientDirection", "left-to-right") or "left-to-right").lower().strip()
+            if (
+                is_waveform_spectrum_style(style_pre)
+                or not is_gpu_bar_style_slice1(style_pre)
+                or bool(sl_pre.get("solidBand", False))
+                or bool(sl_pre.get("peakCapsEnabled", False))
+                or dir_pre == "top-to-bottom"
+            ):
                 continue
             curved_pre = bool(sl_pre.get("curved", False))
             mirrored_pre = bool(sl_pre.get("mirrored", False))
             bar_width_pre = float(sl_pre.get("barWidth", 4.0)) * sf
             thickness_pre = float(sl_pre.get("thickness", 30.0)) * sf * bar_height_mult_pre
-            gravity_pre = str(sl_pre.get("gravity", "normal")).lower().strip()
+            gravity_pre = normalize_spectrum_gravity(sl_pre.get("gravity", "top"))
             radius_offset_pre = float(sl_pre.get("radiusOffset", 0.0)) * sf
             radius_pre = _resolve_spectrum_layer_radius(
                 attached_to_logo=_tpl_attached_to_logo,
@@ -2507,7 +2755,6 @@ def run_gpu_render(
                 bar_width=bar_width_pre,
                 radius_offset=radius_offset_pre,
             )
-            color_cfg_pre = sl_pre.get("color", {})
             c_pre = color_cfg_pre.get("solidColor", "#ffffff")
             if isinstance(c_pre, str) and c_pre.startswith("#"):
                 c_pre = c_pre.lstrip("#")
@@ -2524,31 +2771,21 @@ def run_gpu_render(
                 spec_col_pre = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op_pre))))
             glow_strength_pre = float(max(0.0, min(100.0, float(sl_pre.get("glow", 0.0))))) / 100.0
             glow_softness_pre = float(max(0.0, min(30.0, float(sl_pre.get("blur", 0.0)))))
-            n_pre = BINS_PRE
-            total_length_pre = 0.0
-            if curved_pre:
-                total_angle_pre = np.pi * 2.0 if mirrored_pre else np.pi
-                total_length_pre = radius_pre * total_angle_pre
-            else:
-                total_length_pre = (
-                    float(h * 0.8) if gravity_pre in ("left", "right") else float(w * 0.8)
-                )
-            start_angle_pre = np.pi / 2.0
-            if gravity_pre == "top":
-                start_angle_pre = -np.pi / 2.0
-            elif gravity_pre == "left":
-                start_angle_pre = np.pi
-            elif gravity_pre == "right":
-                start_angle_pre = 0.0
-            if curved_pre:
-                px_pre, py_pre, dx_pre, dy_pre = generate_points_curved(
-                    n_pre, radius_pre, mirrored_pre, start_angle_pre
-                )
-            else:
-                px_pre, py_pre, dx_pre, dy_pre = generate_points_linear(
-                    n_pre, total_length_pre, gravity_pre
-                )
-            base_total_length_pre = total_length_pre
+            n_pre = clamp_spectrum_bar_count(sl_pre.get("barCount", 64))
+            px_pre, py_pre, dx_pre, dy_pre, base_total_length_pre = generate_spectrum_layer_geometry(
+                n_pre,
+                curved=curved_pre,
+                mirrored=mirrored_pre,
+                gravity=gravity_pre,
+                path_mode=sl_pre.get("pathMode", "auto"),
+                radius=radius_pre,
+                half_w=radius_pre,
+                half_h=radius_pre,
+                attached_to_logo=_tpl_attached_to_logo,
+                logo_shape=_tpl_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
             pass_specs_pre: list[dict] = []
             if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
                 pass_specs_pre.append(
@@ -2574,10 +2811,17 @@ def run_gpu_render(
                 }
             )
             pass_colors_pre: list[np.ndarray] = []
-            for pass_cfg_pre in pass_specs_pre:
+            for pass_i_pre, pass_cfg_pre in enumerate(pass_specs_pre):
                 pass_alpha_pre = float(max(0.0, min(1.0, float(pass_cfg_pre["alpha"]))))
+                is_glow_pre = pass_i_pre < (len(pass_specs_pre) - 1)
                 pass_colors_pre.append(
-                    _build_spectrum_vertex_colors(color_cfg_pre, spec_col_pre, n_pre, pass_alpha_pre)
+                    _build_spectrum_vertex_colors(
+                        color_cfg_pre,
+                        spec_col_pre,
+                        n_pre,
+                        pass_alpha_pre,
+                        glow=is_glow_pre,
+                    )
                 )
                 bw_pre = resolve_bar_pixel_width(
                     float(pass_cfg_pre["bar_width"]),
@@ -2678,14 +2922,15 @@ def run_gpu_render(
                     angle = float(logo_spin_dir_s) * float(logo_spin_speed_deg) * 0.017453292519943295 * time_sec
                 prog_logo["logo_rot_rad"].value = float(angle)
             
-            logo_anchor = template.get("position", {}).get("anchor", "center")
-            logo_off_x = float(template.get("position", {}).get("x", 0.0)) * sf
-            logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
-            
-            l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
-            # Notice the Y-axis calculation:
-            # ModernGL / OpenGL has Y=0 at the BOTTOM.
-            # `l_pos[1]` is the exact target pixel (e.g. 1080 for Top, 0 for Bottom).
+            logo_anchor_pos = template.get("position") if isinstance(template.get("position"), dict) else {}
+            _spec_c, l_pos = _resolve_spectrum_logo_centers(
+                w=w,
+                h=h,
+                sf=sf,
+                position=logo_anchor_pos,
+                spectrum_attach_to_logo=spectrum_attach_to_logo,
+                template=template,
+            )
             # The shader expects `logo_px` to be an offset from the CENTER (w/2, h/2).
             prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
 
@@ -2735,10 +2980,36 @@ def run_gpu_render(
         fx = template.get("effects") if isinstance(template.get("effects"), dict) else {}
         vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
         sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
+        try:
+            from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+
+            lightning_flash = peak_lightning_flash(
+                template if isinstance(template, dict) else {},
+                time_sec=float(time_sec),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            apply_vignette_reactivity = None  # type: ignore[assignment]
+            lightning_flash = 0.0
+        flash_env = float(max(bg_audio_env, lightning_flash))
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
-        prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_opacity = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        vig_react = float(max(0.0, min(5.0, float(vig.get("reactivity", 0.0) or 0.0))))
+        if apply_vignette_reactivity is not None and vig_react > 0.0:
+            vig_strength, vig_opacity = apply_vignette_reactivity(
+                strength=vig_strength,
+                opacity=vig_opacity,
+                reactivity=vig_react,
+                flash_env=flash_env,
+            )
+        prog_scene["vignette_strength"].value = float(vig_strength)
         prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
-        prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        prog_scene["vignette_opacity"].value = float(vig_opacity)
         vcol = str(vig.get("color", "#000000") or "#000000")
         prog_scene["vignette_color"].value = (
             (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0)
@@ -2758,7 +3029,9 @@ def run_gpu_render(
             else (0.0, 0.0, 0.0)
         )
         prog_scene["time_sec"].value = float(time_sec)
-        prog_scene["bg_brightness"].value = float(max(0.0, min(3.0, bg_brightness * (1.0 + bg_audio_env * bg_react_bass))))
+        prog_scene["bg_brightness"].value = float(
+            max(0.0, min(3.0, bg_brightness * (1.0 + flash_env * bg_react_bass + lightning_flash * 0.55)))
+        )
         if "bg_contrast" in prog_scene:
             prog_scene["bg_contrast"].value = float(bg_contrast)
         if "bg_saturation" in prog_scene:
@@ -2791,19 +3064,50 @@ def run_gpu_render(
         rg = float(max(0.1, min(8.0, react_gain)))
         fft_s = np.clip(fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
         
-        c_pos = _get_anchor_coords(_tpl_anchor_val, _tpl_off_x, _tpl_off_y, w, h)
+        c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+            w=w,
+            h=h,
+            sf=sf,
+            position=_tpl_position,
+            spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
+        )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
+
+        try:
+            from features.video.lib.lightning_render import render_lightning_layers_gl
+
+            render_lightning_layers_gl(
+                ctx,
+                line_vbo=line_vbo,
+                vao_lines=vao_lines,
+                template=template if isinstance(template, dict) else {},
+                w=w,
+                h=h,
+                sf=sf,
+                cx=cx,
+                cy=cy,
+                time_sec=float(time_sec),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            pass
         
         for layer_idx, sl in enumerate(spectrum_layers):
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
             curved = bool(sl.get("curved", False))
             mirrored = bool(sl.get("mirrored", False))
             bar_width = float(sl.get("barWidth", 4.0)) * sf
+            bar_count = clamp_spectrum_bar_count(sl.get("barCount", 64))
             bar_height_mult = _audio_bar_height_mult(template)
             # Match preview default thickness (30), not the old export fallback (150).
             thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
-            gravity = str(sl.get("gravity", "normal")).lower().strip()
+            gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
             
             logo_visual_radius = logo_base_radius * logo_scale_base
             radius_offset = float(sl.get("radiusOffset", 0.0)) * sf
@@ -2837,28 +3141,53 @@ def run_gpu_render(
             blend_mode = str(sl.get("blend_mode", "normal")).lower().strip()
             glow_strength = float(max(0.0, min(100.0, float(sl.get("glow", 0.0))))) / 100.0
             glow_softness = float(max(0.0, min(30.0, float(sl.get("blur", 0.0)))))
+            peak_hold_blend = float(
+                max(0.0, min(1.0, float(audio_settings.get("peakHoldBlend", 0.0) or 0.0)))
+            )
+            peak_caps_wanted = bool(sl.get("peakCapsEnabled", False))
+            effective_peak_hold = float(peak_hold_blend)
+            if peak_caps_wanted and effective_peak_hold <= 0.001:
+                effective_peak_hold = 0.45
+            peak_caps_enabled = peak_caps_wanted
+            peak_hold_blend = effective_peak_hold
+            peak_cap_gap = float(max(0.0, min(24.0, float(sl.get("peakCapGap", 4.0) or 0.0)))) * sf
+            peak_cap_thickness = float(max(1.0, min(16.0, float(sl.get("peakCapThickness", 3.0) or 1.0)))) * sf
+            peak_cap_decay = float(max(0.7, min(0.995, float(sl.get("peakCapDecay", 0.92) or 0.92))))
+            peak_cap_color = str(sl.get("peakCapColor", "#ffffff") or "#ffffff")
+            solid_band = bool(sl.get("solidBand", False))
 
             # 2) 5-Tap Moving Average Smoothing & Mirroring (vectorized)
             render_fft = smooth_and_mirror(fft_s, mirrored)
 
+            sampled_fft = resample_fft_bins(render_fft, bar_count)
+
             # 3) Generate Points (vectorized)
-            n = BINS
-            total_length = 0.0
-            if curved:
-                total_angle = np.pi * 2.0 if mirrored else np.pi
-                total_length = radius * total_angle
-            else:
-                total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
-                
-            start_angle = np.pi / 2.0
-            if gravity == "top": start_angle = -np.pi / 2.0
-            elif gravity == "left": start_angle = np.pi
-            elif gravity == "right": start_angle = 0.0
-            
-            if curved:
-                px_arr, py_arr, dx_arr, dy_arr = generate_points_curved(n, radius, mirrored, start_angle)
-            else:
-                px_arr, py_arr, dx_arr, dy_arr = generate_points_linear(n, total_length, gravity)
+            n = int(sampled_fft.shape[0])
+            px_arr, py_arr, dx_arr, dy_arr, total_length = generate_spectrum_layer_geometry(
+                n,
+                curved=curved,
+                mirrored=mirrored,
+                gravity=gravity,
+                path_mode=sl.get("pathMode", "auto"),
+                radius=radius,
+                half_w=radius,
+                half_h=radius,
+                attached_to_logo=_tpl_attached_to_logo,
+                logo_shape=_tpl_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
+            reflection_enabled = bool(sl.get("reflectionEnabled", False))
+            try:
+                reflection_opacity = float(sl.get("reflectionOpacity", 0.32) or 0.32)
+            except (TypeError, ValueError):
+                reflection_opacity = 0.32
+            reflection_opacity = float(max(0.05, min(0.85, reflection_opacity)))
+            draw_variants = [(px_arr, py_arr, dx_arr, dy_arr, 1.0)]
+            if reflection_enabled:
+                r_px, r_py, r_dx, r_dy = mirror_spectrum_points_vertical(px_arr, py_arr, dx_arr, dy_arr)
+                draw_variants.append((r_px, r_py, r_dx, r_dy, reflection_opacity))
+            main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
             base_total_length = total_length
             prog_lines["clip_enabled"].value = 0
             pass_specs: list[dict] = []
@@ -2882,17 +3211,22 @@ def run_gpu_render(
                             "fill_circle": False,
                         }
                     )
+            allow_fill_circle = bool(sl.get("fillCircle", False))
             pass_specs.append(
                 {
                     "is_glow": False,
                     "alpha": op,
                     "bar_width": bar_width,
                     "thickness": thickness,
-                    "fill_circle": bool(sl.get("fillCircle", False)),
+                    "fill_circle": allow_fill_circle,
                 }
             )
 
-            for pass_i, pass_cfg in enumerate(pass_specs):
+            for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
+              px_arr, py_arr, dx_arr, dy_arr = v_px, v_py, v_dx, v_dy
+              for pass_i, pass_cfg in enumerate(pass_specs):
+                if pass_cfg["is_glow"] and v_alpha_mul < 0.999:
+                    continue
                 if pass_cfg["is_glow"]:
                     ctx.blend_func = moderngl.ADDITIVE_BLENDING
                 elif blend_mode in ("screen", "add", "lighten"):
@@ -2900,18 +3234,61 @@ def run_gpu_render(
                 else:
                     ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
 
-                pass_alpha = float(max(0.0, min(1.0, float(pass_cfg["alpha"]))))
+                pass_alpha = float(max(0.0, min(1.0, float(pass_cfg["alpha"]) * float(v_alpha_mul))))
                 pass_bar_width = float(pass_cfg["bar_width"])
                 pass_thickness = float(pass_cfg["thickness"])
                 fill_circle_pass = bool(pass_cfg["fill_circle"])
 
-                val_arr = (render_fft * pass_thickness).astype(np.float32)
+                val_arr = (sampled_fft * pass_thickness).astype(np.float32)
 
-                cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, pass_alpha)
+                cols = _build_spectrum_vertex_colors(
+                    color_cfg,
+                    spec_col,
+                    n,
+                    pass_alpha,
+                    glow=bool(pass_cfg["is_glow"]),
+                )
 
                 bw = resolve_bar_pixel_width(pass_bar_width, base_total_length / max(1, n))
 
-                if style_preset in ("aurora-ribbon", "magma-ridge", "plasma-bloom", "soft-waveform", "mountain", "liquid", "continuous-waveform"):
+                if style_preset == "contour-waves":
+                    nn = n
+                    px2, py2, dx2, dy2 = px_arr, py_arr, dx_arr, dy_arr
+                    val2 = val_arr
+                    if curved and mirrored:
+                        px2 = np.concatenate([px_arr, px_arr[:1]])
+                        py2 = np.concatenate([py_arr, py_arr[:1]])
+                        dx2 = np.concatenate([dx_arr, dx_arr[:1]])
+                        dy2 = np.concatenate([dy_arr, dy_arr[:1]])
+                        val2 = np.concatenate([val_arr, val_arr[:1]])
+                        nn += 1
+                    strips = build_contour_wave_strips(
+                        px2, py2, dx2, dy2, val2, cx, cy, w, h,
+                        line_count=5,
+                        line_half_px=float(max(0.7, pass_bar_width * 0.45)),
+                    )
+                    for strip_i, strip_pos in enumerate(strips):
+                        strip_nn = int(strip_pos.shape[0] // 2)
+                        strip_alpha = float(
+                            max(0.0, min(1.0, pass_alpha * (0.45 + 0.55 * ((strip_i + 1) / max(1, len(strips))))))
+                        )
+                        strip_cols = np.repeat(
+                            _build_spectrum_vertex_colors(
+                                color_cfg,
+                                spec_col,
+                                strip_nn,
+                                strip_alpha,
+                                glow=bool(pass_cfg["is_glow"]),
+                            ),
+                            2,
+                            axis=0,
+                        )
+                        strip_verts = np.column_stack([strip_pos, strip_cols]).astype(np.float32)
+                        if strip_verts.nbytes > line_vbo.size:
+                            line_vbo.orphan(size=strip_verts.nbytes)
+                        line_vbo.write(strip_verts.tobytes())
+                        vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(strip_pos.shape[0]))
+                elif style_preset in ("aurora-ribbon", "magma-ridge", "plasma-bloom", "soft-waveform", "mountain", "liquid", "continuous-waveform"):
                     nn = n
                     val_arr2 = val_arr
                     cols2 = cols
@@ -2992,12 +3369,128 @@ def run_gpu_render(
                     else:
                         pos = bar_out
                         colsi = np.repeat(cols, 6, axis=0)
+                    if colsi.shape[0] == n * 6:
+                        colsi = _build_spectrum_bar_quad_colors(color_cfg, spec_col, n, pass_alpha)
 
                     verts = np.column_stack([pos, colsi]).astype(np.float32)
                     if verts.nbytes > line_vbo.size:
                         line_vbo.orphan(size=verts.nbytes)
                     line_vbo.write(verts.tobytes())
                     vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+                    if curved and fill_circle_pass and n > 0:
+                        tip_h = np.maximum(2.0, val_arr[:n]).astype(np.float32)
+                        xs_o = ((cx + px_arr[:n] + dx_arr[:n] * tip_h) / float(w) * 2.0 - 1.0).astype(np.float32)
+                        ys_o = ((cy + py_arr[:n] + dy_arr[:n] * tip_h) / float(h) * 2.0 - 1.0).astype(np.float32)
+                        if curved and mirrored:
+                            xs_o = np.concatenate([xs_o, xs_o[:1]])
+                            ys_o = np.concatenate([ys_o, ys_o[:1]])
+                        tip_n = int(xs_o.shape[0])
+                        cx_ndc = float(cx) / float(w) * 2.0 - 1.0
+                        cy_ndc = float(cy) / float(h) * 2.0 - 1.0
+                        pos_fill = np.empty((tip_n + 1, 2), dtype=np.float32)
+                        pos_fill[0, 0] = cx_ndc
+                        pos_fill[0, 1] = cy_ndc
+                        pos_fill[1:, 0] = xs_o
+                        pos_fill[1:, 1] = ys_o
+                        cols_edge = _build_spectrum_vertex_colors(color_cfg, spec_col, tip_n, pass_alpha)
+                        cols_center = cols_edge[:1].copy()
+                        cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                        verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
+                        if verts_fill.nbytes > line_vbo.size:
+                            line_vbo.orphan(size=verts_fill.nbytes)
+                        line_vbo.write(verts_fill.tobytes())
+                        vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(tip_n + 1))
+            px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
+            if solid_band:
+                band_pos = build_solid_band_strip_vertices(
+                    px_arr,
+                    py_arr,
+                    dx_arr,
+                    dy_arr,
+                    cx=float(cx),
+                    cy=float(cy),
+                    w=int(w),
+                    h=int(h),
+                    band_width_px=float(max(1.0, bar_width * 0.45)),
+                )
+                if band_pos.shape[0]:
+                    # Keep color rows aligned with strip rows when geometry adds
+                    # a closing point for mirrored curved waveform layers.
+                    band_bar_count = int(max(1, band_pos.shape[0] // 2))
+                    band_cols = np.repeat(
+                        _build_spectrum_vertex_colors(
+                            color_cfg,
+                            spec_col,
+                            band_bar_count,
+                            float(max(0.0, min(1.0, op * 0.6))),
+                        ),
+                        2,
+                        axis=0,
+                    )
+                    band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
+                    if band_verts.nbytes > line_vbo.size:
+                        line_vbo.orphan(size=band_verts.nbytes)
+                    line_vbo.write(band_verts.tobytes())
+                    vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
+            if peak_caps_enabled and n > 0:
+                # Mirrored curved waveform styles may append a closing point;
+                # peak caps must use the original bar-count geometry only.
+                cap_px = px_arr[:n]
+                cap_py = py_arr[:n]
+                cap_dx = dx_arr[:n]
+                cap_dy = dy_arr[:n]
+                peak_key = f"{layer_idx}:{'c' if curved else 'l'}:{'m' if mirrored else 's'}:{gravity}:{n}"
+                prev = spectrum_peak_cache.get(peak_key)
+                if prev is None or prev.shape[0] != n:
+                    prev = np.zeros((n,), dtype=np.float32)
+                peak_vals = np.maximum(sampled_fft, prev * peak_cap_decay).astype(np.float32)
+                spectrum_peak_cache[peak_key] = peak_vals
+                cap_vals = (peak_vals * thickness).astype(np.float32)
+                cap_base = cap_vals + peak_cap_gap
+                wx = -cap_dy * (bw * 0.5)
+                wy = cap_dx * (bw * 0.5)
+                p0x = cap_px + cap_dx * cap_base - wx
+                p0y = cap_py + cap_dy * cap_base - wy
+                p1x = cap_px + cap_dx * cap_base + wx
+                p1y = cap_py + cap_dy * cap_base + wy
+                p2x = cap_px + cap_dx * (cap_base + peak_cap_thickness) + wx
+                p2y = cap_py + cap_dy * (cap_base + peak_cap_thickness) + wy
+                p3x = cap_px + cap_dx * (cap_base + peak_cap_thickness) - wx
+                p3y = cap_py + cap_dy * (cap_base + peak_cap_thickness) - wy
+                inv_w = 2.0 / float(w)
+                inv_h = 2.0 / float(h)
+                cap_pos = np.empty((n * 6, 2), dtype=np.float32)
+                ndc_p0x = (cx + p0x) * inv_w - 1.0
+                ndc_p0y = (cy + p0y) * inv_h - 1.0
+                ndc_p1x = (cx + p1x) * inv_w - 1.0
+                ndc_p1y = (cy + p1y) * inv_h - 1.0
+                ndc_p2x = (cx + p2x) * inv_w - 1.0
+                ndc_p2y = (cy + p2y) * inv_h - 1.0
+                ndc_p3x = (cx + p3x) * inv_w - 1.0
+                ndc_p3y = (cy + p3y) * inv_h - 1.0
+                cap_pos[0::6, 0] = ndc_p0x
+                cap_pos[0::6, 1] = ndc_p0y
+                cap_pos[1::6, 0] = ndc_p1x
+                cap_pos[1::6, 1] = ndc_p1y
+                cap_pos[2::6, 0] = ndc_p2x
+                cap_pos[2::6, 1] = ndc_p2y
+                cap_pos[3::6, 0] = ndc_p0x
+                cap_pos[3::6, 1] = ndc_p0y
+                cap_pos[4::6, 0] = ndc_p2x
+                cap_pos[4::6, 1] = ndc_p2y
+                cap_pos[5::6, 0] = ndc_p3x
+                cap_pos[5::6, 1] = ndc_p3y
+                cap_cols = _build_spectrum_bar_quad_colors(
+                    {"mode": "solid", "solidColor": peak_cap_color},
+                    spec_col,
+                    n,
+                    float(max(0.0, min(1.0, op * peak_hold_blend))),
+                )
+                cap_verts = np.column_stack([cap_pos, cap_cols]).astype(np.float32)
+                if cap_verts.nbytes > line_vbo.size:
+                    line_vbo.orphan(size=cap_verts.nbytes)
+                line_vbo.write(cap_verts.tobytes())
+                vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
 
         ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
         spawn_rate = float(particles_cfg_raw.get("spawnRate", particles_cfg_raw.get("spawn_rate", particles_cfg.spawn_rate)))
@@ -3047,6 +3540,10 @@ def run_gpu_render(
         except Exception:
             palette_rgb = ()
             color_mode = "solid"
+
+        _pt_trail_enabled, _pt_trail_length, _pt_trail_fade, _pt_trail_width = _particle_trail_cfg_from_settings(
+            particles_cfg_raw if isinstance(particles_cfg_raw, dict) else {}
+        )
         
         particles.update_cfg(
             ParticleConfig(
@@ -3066,6 +3563,10 @@ def run_gpu_render(
                 travel_mode=str(particles_cfg_raw.get("travelMode", "spawnFlow") or "spawnFlow"),
                 color_mode=color_mode,
                 palette_colors=palette_rgb,
+                trail_enabled=_pt_trail_enabled,
+                trail_length=_pt_trail_length,
+                trail_fade=_pt_trail_fade,
+                trail_width=_pt_trail_width,
             )
         )
         particles.update(encode_dt, feats)
@@ -3092,9 +3593,40 @@ def run_gpu_render(
                 variant = str(particles_cfg_raw.get("variant", "classic") or "classic")
                 style = str(particles_cfg_raw.get("style", "dot") or "dot")
                 pt_style = _resolve_particle_style_index(variant, style)
-                style_scale = {0: 1.0, 1: 2.0, 2: 1.5, 3: 1.5, 4: 2.0}.get(int(pt_style), 1.0)
-                pt_size_px = float(max(1.0, pt_size * (2.0 if style == "bokeh" else 1.5) * sf))
+                style_scale = _particle_style_size_scale(int(pt_style))
+                glow_amount = _clamp_particle_glow(particles_cfg_raw.get("glow", 0.0))
+                pt_size_px = float(max(1.0, pt_size * (2.2 if style in ("bokeh", "music") else 1.5) * sf))
                 base_px = float(max(2.5, pt_size_px)) * style_scale
+                icons = None
+                angles = None
+                if pt_style == 5 and hasattr(particles, "_icon") and hasattr(particles, "_angle"):
+                    icons = particles._icon
+                    angles = particles._angle
+                    if icons.shape[0] != pts.shape[0]:
+                        icons = None
+                        angles = None
+                if _pt_trail_enabled and hasattr(particles, "build_trail_draw_arrays"):
+                    trail_batch = particles.build_trail_draw_arrays(
+                        w=w,
+                        h=h,
+                        head_colors_rgba=colors_rgba,
+                    )
+                    if trail_batch is not None:
+                        trail_pts, trail_cols = trail_batch
+                        _render_particle_styled_quads(
+                            ctx,
+                            prog_particle_quads=prog_particle_quads,
+                            particle_quad_vbo=particle_quad_vbo,
+                            vao_particle_quads=vao_particle_quads,
+                            pts=trail_pts,
+                            colors_rgba=trail_cols,
+                            pt_style=1 if pt_style == 5 else int(pt_style),
+                            w=w,
+                            h=h,
+                            pt_size=base_px * 0.55,
+                            glow_amount=glow_amount * 0.55,
+                            music_tex_holder=music_icon_tex_holder,
+                        )
                 _render_particle_styled_quads(
                     ctx,
                     prog_particle_quads=prog_particle_quads,
@@ -3106,6 +3638,10 @@ def run_gpu_render(
                     w=w,
                     h=h,
                     pt_size=base_px,
+                    glow_amount=glow_amount,
+                    icons=icons,
+                    angles=angles,
+                    music_tex_holder=music_icon_tex_holder,
                 )
 
         # Draw logo ON TOP of spectrum and particles
@@ -3546,11 +4082,14 @@ def render_preview_png(
             final_logo_size = base_radius * 2.0 * s_logo
             prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
             
-            logo_anchor = template.get("position", {}).get("anchor", "center")
-            logo_off_x = float(template.get("position", {}).get("x", 0.0)) * sf
-            logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
-            
-            l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
+            _spec_c, l_pos = _resolve_spectrum_logo_centers(
+                w=w,
+                h=h,
+                sf=sf,
+                position=template.get("position") if isinstance(template.get("position"), dict) else {},
+                spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
+            )
             prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_state.x), l_pos[1] - float(h)*0.5 + float(shake_state.y))
 
         # Ensure particles use new schema properties
@@ -3685,10 +4224,40 @@ def render_preview_png(
         fx = template.get("effects") if isinstance(template.get("effects"), dict) else {}
         vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
         sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
+        _time_sec_bg = float(i) / float(max(1.0, float(fps)))
+        try:
+            from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+
+            lightning_flash = peak_lightning_flash(
+                template if isinstance(template, dict) else {},
+                time_sec=_time_sec_bg,
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            apply_vignette_reactivity = None  # type: ignore[assignment]
+            lightning_flash = 0.0
+        flash_env = float(max(bg_audio_env, lightning_flash))
+        prog_scene["bg_brightness"].value = float(
+            max(0.0, min(3.0, bg_brightness * (1.0 + flash_env * bg_react_bass + lightning_flash * 0.55)))
+        )
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
-        prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_opacity = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        vig_react = float(max(0.0, min(5.0, float(vig.get("reactivity", 0.0) or 0.0))))
+        if apply_vignette_reactivity is not None and vig_react > 0.0:
+            vig_strength, vig_opacity = apply_vignette_reactivity(
+                strength=vig_strength,
+                opacity=vig_opacity,
+                reactivity=vig_react,
+                flash_env=flash_env,
+            )
+        prog_scene["vignette_strength"].value = float(vig_strength)
         prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
-        prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        prog_scene["vignette_opacity"].value = float(vig_opacity)
         vcol = str(vig.get("color", "#000000") or "#000000")
         prog_scene["vignette_color"].value = (
             (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0)
@@ -3707,7 +4276,7 @@ def render_preview_png(
             if scol.startswith("#") and len(scol) == 7
             else (0.0, 0.0, 0.0)
         )
-        prog_scene["time_sec"].value = float(i) / float(max(1.0, float(fps)))
+        prog_scene["time_sec"].value = _time_sec_bg
         vao_quad_scene.render(mode=moderngl.TRIANGLE_STRIP)
 
         scale = float(state.get("spectrum.scale", 1.0))
@@ -3759,13 +4328,41 @@ def render_preview_png(
         bass_feat = float(feats.get("bass", 0.0))
         fft_s = np.clip(fft_log * rg * (1.0 + bass_feat * rb), 0.0, 2.5).astype(np.float32)
         
-        anchor_val = template.get("position", {}).get("anchor", "center") if isinstance(template.get("position"), dict) else "center"
-        off_x = float(template.get("position", {}).get("x", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        off_y = float(template.get("position", {}).get("y", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        
-        c_pos = _get_anchor_coords(anchor_val, off_x, off_y, w, h)
+        c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+            w=w,
+            h=h,
+            sf=sf,
+            position=template.get("position") if isinstance(template.get("position"), dict) else {},
+            spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
+        )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
+
+        try:
+            from features.video.lib.lightning_render import render_lightning_layers_gl
+
+            _time_sec = float(i) / float(max(1.0, float(fps)))
+            _bass = float(feats.get("bass", 0.0) or 0.0)
+            render_lightning_layers_gl(
+                ctx,
+                line_vbo=line_vbo,
+                vao_lines=vao_lines,
+                template=template if isinstance(template, dict) else {},
+                w=w,
+                h=h,
+                sf=sf,
+                cx=cx,
+                cy=cy,
+                time_sec=_time_sec,
+                bass=_bass,
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(_bass, float(kick_pow), float(bg_audio_env))),
+            )
+        except Exception:
+            pass
         
         for sl in spectrum_layers:
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
@@ -3774,7 +4371,7 @@ def render_preview_png(
             bar_width = float(sl.get("barWidth", 4.0)) * sf
             bar_height_mult = _audio_bar_height_mult(template)
             thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
-            gravity = str(sl.get("gravity", "normal")).lower().strip()
+            gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
             
             logo_visual_radius = (float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base)
             radius_offset = float(sl.get("radiusOffset", 0.0)) * sf
@@ -3832,46 +4429,23 @@ def render_preview_png(
             
             # 3) Generate Points
             n = BINS
-            total_length = 0.0
-            if curved:
-                total_angle = np.pi * 2.0 if mirrored else np.pi
-                total_length = radius * total_angle
-            else:
-                total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
-                
-            start_angle = np.pi / 2.0
-            if gravity == "top": start_angle = -np.pi / 2.0
-            elif gravity == "left": start_angle = np.pi
-            elif gravity == "right": start_angle = 0.0
-            
-            start_x = -total_length / 2.0
-            
-            px_arr = np.zeros(n, dtype=np.float32)
-            py_arr = np.zeros(n, dtype=np.float32)
-            dx_arr = np.zeros(n, dtype=np.float32)
-            dy_arr = np.zeros(n, dtype=np.float32)
-            val_arr = np.zeros(n, dtype=np.float32)
-            
-            for i in range(n):
-                t = float(i) / float(n - 1) if n > 1 else 0.0
-                if curved:
-                    total_angle = np.pi * 2.0 if mirrored else np.pi
-                    angle = start_angle - (total_angle / 2.0) + (t * total_angle)
-                    px_arr[i] = np.cos(angle) * radius
-                    py_arr[i] = np.sin(angle) * radius
-                    dx_arr[i] = np.cos(angle)
-                    dy_arr[i] = np.sin(angle)
-                else:
-                    offset = start_x + (t * total_length)
-                    if gravity in ("normal", "top"):
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, 1.0
-                    elif gravity == "bottom":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, -1.0
-                    elif gravity == "left":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
-                    elif gravity == "right":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, -1.0, 0.0
-                val_arr[i] = render_fft[i] * thickness
+            _legacy_logo_shape = "square" if not bool(logo_circle_mask) else "circle"
+            from ._spectrum_fast import generate_spectrum_layer_geometry as _gen_spec_geom
+            px_arr, py_arr, dx_arr, dy_arr, total_length = _gen_spec_geom(
+                n,
+                curved=curved,
+                mirrored=mirrored,
+                gravity=gravity,
+                path_mode=sl.get("pathMode", "auto"),
+                radius=radius,
+                half_w=radius,
+                half_h=radius,
+                attached_to_logo=attached_to_logo,
+                logo_shape=_legacy_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
+            val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))
 
@@ -3994,7 +4568,7 @@ def render_preview_png(
                         p3x = px_arr[i] + dx_arr[i] * h_val - wx
                         p3y = py_arr[i] + dy_arr[i] * h_val - wy
                     elif style_preset in ("signal-needles", "thin-lines"):
-                        needle = float(max(1.0, bw * 0.28))
+                        needle = float(max(1.0, bw * 0.55))
                         wx = -dy_arr[i] * (needle / 2.0)
                         wy = dx_arr[i] * (needle / 2.0)
                         p0x = px_arr[i] - wx
@@ -4021,16 +4595,27 @@ def render_preview_png(
                         if style_preset in ("ignition-flare", "neon-pulse"):
                             pulse = 1.0 + logo_audio_env * 0.18 + particle_audio_env * 0.12
                             h_val *= pulse
-                            wx *= 1.2
-                            wy *= 1.2
-                        p0x = px_arr[i] - wx
-                        p0y = py_arr[i] - wy
-                        p1x = px_arr[i] + wx
-                        p1y = py_arr[i] + wy
-                        p2x = px_arr[i] + dx_arr[i] * h_val + wx
-                        p2y = py_arr[i] + dy_arr[i] * h_val + wy
-                        p3x = px_arr[i] + dx_arr[i] * h_val - wx
-                        p3y = py_arr[i] + dy_arr[i] * h_val - wy
+                            wx_base = wx * 1.35
+                            wy_base = wy * 1.35
+                            wx_tip = wx * 0.55
+                            wy_tip = wy * 0.55
+                            p0x = px_arr[i] - wx_base
+                            p0y = py_arr[i] - wy_base
+                            p1x = px_arr[i] + wx_base
+                            p1y = py_arr[i] + wy_base
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx_tip
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy_tip
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx_tip
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy_tip
+                        else:
+                            p0x = px_arr[i] - wx
+                            p0y = py_arr[i] - wy
+                            p1x = px_arr[i] + wx
+                            p1y = py_arr[i] + wy
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy
 
                     idx = i * 6
                     pos[idx+0] = [(cx + p0x) / float(w) * 2.0 - 1.0, (cy + p0y) / float(h) * 2.0 - 1.0]
@@ -4749,10 +5334,39 @@ def run_live_preview(opts: GpuOptions) -> int:
         fx = template.get("effects") if isinstance(template.get("effects"), dict) else {}
         vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
         sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
+        try:
+            from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+
+            lightning_flash = peak_lightning_flash(
+                template if isinstance(template, dict) else {},
+                time_sec=float(c_time),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            apply_vignette_reactivity = None  # type: ignore[assignment]
+            lightning_flash = 0.0
+        flash_env = float(max(bg_audio_env, lightning_flash))
+        prog_scene["bg_brightness"].value = float(
+            max(0.0, min(3.0, bg_brightness * (1.0 + flash_env * bg_react_bass + lightning_flash * 0.55)))
+        )
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
-        prog_scene["vignette_strength"].value = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
+        vig_opacity = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        vig_react = float(max(0.0, min(5.0, float(vig.get("reactivity", 0.0) or 0.0))))
+        if apply_vignette_reactivity is not None and vig_react > 0.0:
+            vig_strength, vig_opacity = apply_vignette_reactivity(
+                strength=vig_strength,
+                opacity=vig_opacity,
+                reactivity=vig_react,
+                flash_env=flash_env,
+            )
+        prog_scene["vignette_strength"].value = float(vig_strength)
         prog_scene["vignette_feather"].value = float(max(0.0, min(1.0, float(vig.get("feather", 0.65) or 0.65))))
-        prog_scene["vignette_opacity"].value = float(max(0.0, min(1.0, float(vig.get("opacity", 0.65) or 0.65))))
+        prog_scene["vignette_opacity"].value = float(vig_opacity)
         vcol = str(vig.get("color", "#000000") or "#000000")
         prog_scene["vignette_color"].value = (
             (int(vcol[1:3], 16) / 255.0, int(vcol[3:5], 16) / 255.0, int(vcol[5:7], 16) / 255.0)
@@ -4839,11 +5453,14 @@ def run_live_preview(opts: GpuOptions) -> int:
         rb = 0.0
         fft_s = np.clip(fft_log * rg * (1.0 + bass * rb), 0.0, 2.5).astype(np.float32)
         
-        anchor_val = template.get("position", {}).get("anchor", "center") if isinstance(template.get("position"), dict) else "center"
-        off_x = float(template.get("position", {}).get("x", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        off_y = float(template.get("position", {}).get("y", 0.0)) * sf if isinstance(template.get("position"), dict) else 0.0
-        
-        c_pos = _get_anchor_coords(anchor_val, off_x, off_y, w, h)
+        c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+            w=w,
+            h=h,
+            sf=sf,
+            position=template.get("position") if isinstance(template.get("position"), dict) else {},
+            spectrum_attach_to_logo=spectrum_attach_to_logo,
+            template=template,
+        )
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
         attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
@@ -4851,6 +5468,29 @@ def run_live_preview(opts: GpuOptions) -> int:
             max(0.0, ((float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base) * logo_visible_radius_ratio) + spectrum_logo_gap)
         )
         attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
+
+        try:
+            from features.video.lib.lightning_render import render_lightning_layers_gl
+
+            render_lightning_layers_gl(
+                ctx,
+                line_vbo=line_vbo,
+                vao_lines=vao_lines,
+                template=template if isinstance(template, dict) else {},
+                w=w,
+                h=h,
+                sf=sf,
+                cx=cx,
+                cy=cy,
+                time_sec=float(c_time),
+                bass=float(bass),
+                kick=float(kick_pow),
+                beat=float(feats.get("beat", 0.0) or 0.0),
+                onset=float(feats.get("onset", 0.0) or 0.0),
+                audio_env=float(max(bass, kick_pow, bg_audio_env)),
+            )
+        except Exception:
+            pass
         
         for sl in spectrum_layers:
             style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
@@ -4859,7 +5499,7 @@ def run_live_preview(opts: GpuOptions) -> int:
             bar_width = float(sl.get("barWidth", 4.0)) * sf
             bar_height_mult = _audio_bar_height_mult(template)
             thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
-            gravity = str(sl.get("gravity", "normal")).lower().strip()
+            gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
             
             logo_visual_radius = (float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base)
             radius = _resolve_spectrum_layer_radius(
@@ -4907,46 +5547,23 @@ def run_live_preview(opts: GpuOptions) -> int:
                     render_fft[i] = smoothed
 
             n = BINS
-            total_length = 0.0
-            if curved:
-                total_angle = np.pi * 2.0 if mirrored else np.pi
-                total_length = radius * total_angle
-            else:
-                total_length = float(h * 0.8) if gravity in ("left", "right") else float(w * 0.8)
-                
-            start_angle = np.pi / 2.0
-            if gravity == "top": start_angle = -np.pi / 2.0
-            elif gravity == "left": start_angle = np.pi
-            elif gravity == "right": start_angle = 0.0
-            
-            start_x = -total_length / 2.0
-            
-            px_arr = np.zeros(n, dtype=np.float32)
-            py_arr = np.zeros(n, dtype=np.float32)
-            dx_arr = np.zeros(n, dtype=np.float32)
-            dy_arr = np.zeros(n, dtype=np.float32)
-            val_arr = np.zeros(n, dtype=np.float32)
-            
-            for i in range(n):
-                t = float(i) / float(n - 1) if n > 1 else 0.0
-                if curved:
-                    total_angle = np.pi * 2.0 if mirrored else np.pi
-                    angle = start_angle - (total_angle / 2.0) + (t * total_angle)
-                    px_arr[i] = np.cos(angle) * radius
-                    py_arr[i] = np.sin(angle) * radius
-                    dx_arr[i] = np.cos(angle)
-                    dy_arr[i] = np.sin(angle)
-                else:
-                    offset = start_x + (t * total_length)
-                    if gravity in ("normal", "top"):
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, 1.0
-                    elif gravity == "bottom":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = offset, 0.0, 0.0, -1.0
-                    elif gravity == "left":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, 1.0, 0.0
-                    elif gravity == "right":
-                        px_arr[i], py_arr[i], dx_arr[i], dy_arr[i] = 0.0, offset, -1.0, 0.0
-                val_arr[i] = render_fft[i] * thickness
+            _legacy_logo_shape = "square" if not bool(logo_circle_mask) else "circle"
+            from ._spectrum_fast import generate_spectrum_layer_geometry as _gen_spec_geom
+            px_arr, py_arr, dx_arr, dy_arr, total_length = _gen_spec_geom(
+                n,
+                curved=curved,
+                mirrored=mirrored,
+                gravity=gravity,
+                path_mode=sl.get("pathMode", "auto"),
+                radius=radius,
+                half_w=radius,
+                half_h=radius,
+                attached_to_logo=attached_to_logo,
+                logo_shape=_legacy_logo_shape,
+                frame_w=w,
+                frame_h=h,
+            )
+            val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))
 
@@ -5043,7 +5660,7 @@ def run_live_preview(opts: GpuOptions) -> int:
                         p3x = px_arr[i] + dx_arr[i] * h_val - wx
                         p3y = py_arr[i] + dy_arr[i] * h_val - wy
                     elif style_preset in ("signal-needles", "thin-lines"):
-                        needle = float(max(1.0, bw * 0.28))
+                        needle = float(max(1.0, bw * 0.55))
                         wx = -dy_arr[i] * (needle / 2.0)
                         wy = dx_arr[i] * (needle / 2.0)
                         p0x = px_arr[i] - wx
@@ -5070,16 +5687,27 @@ def run_live_preview(opts: GpuOptions) -> int:
                         if style_preset in ("ignition-flare", "neon-pulse"):
                             pulse = 1.0 + logo_audio_env * 0.18 + particle_audio_env * 0.12
                             h_val *= pulse
-                            wx *= 1.2
-                            wy *= 1.2
-                        p0x = px_arr[i] - wx
-                        p0y = py_arr[i] - wy
-                        p1x = px_arr[i] + wx
-                        p1y = py_arr[i] + wy
-                        p2x = px_arr[i] + dx_arr[i] * h_val + wx
-                        p2y = py_arr[i] + dy_arr[i] * h_val + wy
-                        p3x = px_arr[i] + dx_arr[i] * h_val - wx
-                        p3y = py_arr[i] + dy_arr[i] * h_val - wy
+                            wx_base = wx * 1.35
+                            wy_base = wy * 1.35
+                            wx_tip = wx * 0.55
+                            wy_tip = wy * 0.55
+                            p0x = px_arr[i] - wx_base
+                            p0y = py_arr[i] - wy_base
+                            p1x = px_arr[i] + wx_base
+                            p1y = py_arr[i] + wy_base
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx_tip
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy_tip
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx_tip
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy_tip
+                        else:
+                            p0x = px_arr[i] - wx
+                            p0y = py_arr[i] - wy
+                            p1x = px_arr[i] + wx
+                            p1y = py_arr[i] + wy
+                            p2x = px_arr[i] + dx_arr[i] * h_val + wx
+                            p2y = py_arr[i] + dy_arr[i] * h_val + wy
+                            p3x = px_arr[i] + dx_arr[i] * h_val - wx
+                            p3y = py_arr[i] + dy_arr[i] * h_val - wy
 
                     idx = i * 6
                     pos[idx+0] = [(cx + p0x) / float(w) * 2.0 - 1.0, (cy + p0y) / float(h) * 2.0 - 1.0]
@@ -5218,11 +5846,14 @@ def run_live_preview(opts: GpuOptions) -> int:
                 final_logo_size = base_radius * 2.0 * s_logo
                 prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
                 
-                logo_anchor = template.get("position", {}).get("anchor", "center")
-                logo_off_x = float(template.get("position", {}).get("x", 0.0)) * sf
-                logo_off_y = float(template.get("position", {}).get("y", 0.0)) * sf
-                
-                l_pos = _get_anchor_coords(logo_anchor, logo_off_x, logo_off_y, w, h)
+                _spec_c, l_pos = _resolve_spectrum_logo_centers(
+                    w=w,
+                    h=h,
+                    sf=sf,
+                    position=template.get("position") if isinstance(template.get("position"), dict) else {},
+                    spectrum_attach_to_logo=spectrum_attach_to_logo,
+                template=template,
+                )
                 prog_logo["logo_px"].value = (l_pos[0] - float(w)*0.5 + float(shake_out.x), l_pos[1] - float(h)*0.5 + float(shake_out.y))
             tex_logo.use(location=1)
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)

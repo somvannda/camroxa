@@ -77,6 +77,16 @@ class VideoPipelineCoordinator(QObject):
         disconnect_quietly(worker.failed)
         disconnect_quietly(worker.finished)
 
+    def set_preview_playing(self, playing: bool) -> None:
+        """Pause orchestration polls while Video preview is playing."""
+        if not self._active:
+            return
+        if playing:
+            self._timer.stop()
+            return
+        if not self._timer.isActive():
+            self._timer.start(6_000)
+
     def kick(self) -> None:
         """Force an immediate orchestration poll (e.g. after API recovery or Continue)."""
         if not self._active:

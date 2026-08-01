@@ -108,6 +108,7 @@ class OperationalRowsCard(QFrame):
     rebuild_export_requested = Signal(object)
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
+    change_run_folder_requested = Signal(object)
     cancel_job_requested = Signal(object)
     stop_exporting_requested = Signal(object)
     continue_progress_requested = Signal(object)
@@ -315,7 +316,7 @@ class OperationalRowsCard(QFrame):
         stage_key = str(stage or "").strip().lower()
         if stage_key == "done" and meta.youtube_updated_at is not None:
             return meta.youtube_updated_at
-        if stage_key in {"done", "error"}:
+        if stage_key in {"done", "completed", "error"}:
             candidates = [
                 meta.youtube_updated_at,
                 meta.image_updated_at,
@@ -525,6 +526,14 @@ class OperationalRowsCard(QFrame):
             run_dir = meta.run_dir
             action = menu.addAction("Open Run Folder")
             action.triggered.connect(partial(self._emit_open_run_folder, run_dir))
+
+            action = menu.addAction("Change Run Folder && Resume…")
+            action.setToolTip(
+                "Move this run to a different folder (e.g. a bad/full drive) and "
+                "re-download already-successful MP3s/images there — without "
+                "re-drafting or re-requesting Suno."
+            )
+            action.triggered.connect(partial(self.change_run_folder_requested.emit, entry.row))
 
         if meta.youtube_url:
             youtube_url = meta.youtube_url

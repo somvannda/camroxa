@@ -95,6 +95,61 @@ def test_profile_search_filters_list(qapp: QApplication) -> None:
     assert view._profile_list.count() == 0
 
 
+def test_resolve_profile_media_paths_never_calls_network(qapp: QApplication, monkeypatch, tmp_path) -> None:
+    """Regression test: selecting a profile used to synchronously download a
+    multi-megabyte logo/cover over the network, freezing the whole UI on any
+    profile switch until the (possibly slow/unreliable) download finished.
+    _resolve_profile_media_paths() must stay cache-only and never touch the
+    network; downloading now happens in a background worker instead.
+    """
+    import features.settings.views.settings_view as settings_view_mod
+    from shared.lib.settings_workspace import ProfileDraft
+
+    monkeypatch.setattr(settings_view_mod, "get_profile_media_cache_dir", lambda: tmp_path)
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("network download must not be called from _resolve_profile_media_paths")
+
+    view = SettingsView(PlatformApi())
+    monkeypatch.setattr(view._api, "download_profile_logo", _boom)
+    monkeypatch.setattr(view._api, "download_profile_cover", _boom)
+
+    profile = ProfileResponse(
+        id="profile-cache-1",
+        user_id="user-1",
+        name="Cache Test",
+        folder_name="cache-test",
+        run_prefix="cache",
+        logo_path="remote-logo-key",
+    )
+    draft = ProfileDraft(logo_path="remote-logo-key", cover_path="remote-cover-key")
+
+    resolved = view._resolve_profile_media_paths(profile, draft)
+
+    # Nothing cached locally yet, so both remote identifiers pass through unchanged.
+    assert resolved.logo_path == "remote-logo-key"
+    assert resolved.cover_path == "remote-cover-key"
+
+
+def test_bind_profiles_tab_starts_background_download_for_uncached_media(
+    qapp: QApplication, monkeypatch, tmp_path
+) -> None:
+    import features.settings.views.settings_view as settings_view_mod
+
+    monkeypatch.setattr(settings_view_mod, "get_profile_media_cache_dir", lambda: tmp_path)
+
+    view = SettingsView(PlatformApi())
+    view.show()
+    payload = _payload()
+    payload.profiles[0].logo_path = "remote-logo-key"
+    view._on_loaded(payload)
+    view._selected_profile_key = payload.profiles[0].id
+    view._bind_profiles_tab()
+
+    assert view._profile_media_cache_worker is not None
+    view._profile_media_cache_worker.wait(2000)
+
+
 def test_settings_view_resets_when_account_cache_mismatch(qapp: QApplication, monkeypatch) -> None:
     from shared.services.workspace_cache import WorkspaceCache
     from shared.workers.data_workers import SettingsWorkspaceWorker

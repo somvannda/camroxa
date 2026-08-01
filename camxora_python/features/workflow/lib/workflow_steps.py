@@ -475,8 +475,8 @@ def build_current_focus(
         assets_ready = row.meta.long_ready and (row.meta.reel_ready if include_reel else True)
         if not assets_ready:
             if include_reel:
-                return "Waiting for the required long/reel background and thumbnail assets to become ready."
-            return "Waiting for the required long background and thumbnail assets to become ready."
+                return "Waiting for the required long/reel background image(s) before video export can start."
+            return "Waiting for the required long background image before video export can start."
         return "Image generation is finishing and the lane is preparing the video inputs."
     if stage == "converter":
         converter = runtime.converter if runtime else row.converter

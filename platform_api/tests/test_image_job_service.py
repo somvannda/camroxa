@@ -192,3 +192,147 @@ def test_write_image_output_uses_canonical_run_folder_name(tmp_path) -> None:
     )
     assert output_path.endswith("background-16x9.png")
     assert (run_dir / "background-16x9.png").read_bytes() == b"png-bytes"
+
+
+@pytest.mark.asyncio
+async def test_archive_image_output_to_storage_uploads_and_persists_key(monkeypatch) -> None:
+    """A successful image job's bytes must be archived to Backblaze (durable — avoids
+    paying the AI provider again to regenerate a background/thumbnail) when streaming
+    storage is configured, and the returned key persisted on the job row."""
+    user_id = uuid4()
+    batch_id = uuid4()
+    job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        batch_id=batch_id,
+        profile_id=uuid4(),
+        kind=ImageKind.BACKGROUND,
+        channel_role=ChannelRole.OK,
+        status=TaskStatus.SUCCESS,
+    )
+    repo = AsyncMock()
+    service = ImageJobService(
+        repo=repo,
+        settings_service=AsyncMock(),
+        routing_service=AsyncMock(),
+        enforcement_service=AsyncMock(),
+        generation_service=AsyncMock(),
+    )
+
+    config = SimpleNamespace(configured=True)
+    monkeypatch.setattr(
+        "platform_api.services.streaming_config_service.resolve_streaming_storage_config",
+        AsyncMock(return_value=config),
+    )
+    storage = AsyncMock()
+    storage.upload_bytes = AsyncMock(return_value="images/whatever.png")
+    monkeypatch.setattr(
+        "platform_api.services.storage_service.StorageService.from_config",
+        lambda _config: storage,
+    )
+    monkeypatch.setattr(service, "_pool_for_storage", lambda: object())
+
+    await service._archive_image_output_to_storage(job=job, user_id=user_id, image_bytes=b"png-bytes")
+
+    storage.upload_bytes.assert_awaited_once()
+    kwargs = storage.upload_bytes.await_args.kwargs
+    assert kwargs["data"] == b"png-bytes"
+    assert kwargs["content_type"] == "image/png"
+    expected_key = f"images/{user_id}/{batch_id}/background-ok-{job.id}.png"
+    assert kwargs["key"] == expected_key
+    repo.update_image_job_storage_key.assert_awaited_once_with(job.id, user_id, storage_key=expected_key)
+
+
+@pytest.mark.asyncio
+async def test_archive_image_output_to_storage_noop_when_not_configured(monkeypatch) -> None:
+    """Must never raise or attempt an upload when streaming storage isn't configured
+    for this environment — this is a durability bonus, not a hard dependency."""
+    user_id = uuid4()
+    job = ImageJob(id=uuid4(), user_id=user_id, kind=ImageKind.THUMBNAIL, status=TaskStatus.SUCCESS)
+    repo = AsyncMock()
+    service = ImageJobService(
+        repo=repo,
+        settings_service=AsyncMock(),
+        routing_service=AsyncMock(),
+        enforcement_service=AsyncMock(),
+        generation_service=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "platform_api.services.streaming_config_service.resolve_streaming_storage_config",
+        AsyncMock(return_value=SimpleNamespace(configured=False)),
+    )
+    monkeypatch.setattr(service, "_pool_for_storage", lambda: object())
+
+    await service._archive_image_output_to_storage(job=job, user_id=user_id, image_bytes=b"png-bytes")
+
+    repo.update_image_job_storage_key.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_read_job_output_bytes_falls_back_to_backblaze_when_cache_missing(tmp_path, monkeypatch) -> None:
+    """If the local server cache AND the client-path copy are both gone (disk wipe,
+    VPS migration, redeploy to a fresh disk), fall back to the durable Backblaze
+    archive instead of surfacing a 404 that forces an expensive AI regeneration."""
+    user_id = uuid4()
+    job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        kind=ImageKind.BACKGROUND,
+        status=TaskStatus.SUCCESS,
+        output_image_path=str(tmp_path / "gone" / "background-16x9.png"),
+        storage_key="images/whatever/adhoc/background-ok-job.png",
+    )
+    repo = AsyncMock()
+    repo.get_image_job_by_id = AsyncMock(return_value=job)
+    service = ImageJobService(
+        repo=repo,
+        settings_service=AsyncMock(),
+        routing_service=AsyncMock(),
+        enforcement_service=AsyncMock(),
+        generation_service=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        service, "_server_image_cache_path", lambda _job_id: tmp_path / "cache" / f"{job.id}.png"
+    )
+    monkeypatch.setattr(
+        service, "_read_archived_image_bytes", AsyncMock(return_value=b"archived-png-bytes")
+    )
+
+    data, content_type = await service.read_job_output_bytes(job.id, user_id)
+
+    assert data == b"archived-png-bytes"
+    assert content_type == "image/png"
+    # Cache should be repopulated so the next read is fast and doesn't hit Backblaze again.
+    assert (tmp_path / "cache" / f"{job.id}.png").read_bytes() == b"archived-png-bytes"
+
+
+@pytest.mark.asyncio
+async def test_read_job_output_bytes_raises_when_no_cache_no_client_path_no_archive(
+    tmp_path, monkeypatch
+) -> None:
+    user_id = uuid4()
+    job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        kind=ImageKind.BACKGROUND,
+        status=TaskStatus.SUCCESS,
+        output_image_path=str(tmp_path / "gone" / "background-16x9.png"),
+        storage_key=None,
+    )
+    repo = AsyncMock()
+    repo.get_image_job_by_id = AsyncMock(return_value=job)
+    service = ImageJobService(
+        repo=repo,
+        settings_service=AsyncMock(),
+        routing_service=AsyncMock(),
+        enforcement_service=AsyncMock(),
+        generation_service=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        service, "_server_image_cache_path", lambda _job_id: tmp_path / "cache" / f"{job.id}.png"
+    )
+
+    from platform_api.exceptions import NotFoundError
+
+    with pytest.raises(NotFoundError):
+        await service.read_job_output_bytes(job.id, user_id)

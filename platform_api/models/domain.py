@@ -315,6 +315,7 @@ class ImageJob:
     status: TaskStatus = TaskStatus.PENDING
     attempt_count: int = 0
     output_image_path: str | None = None
+    storage_key: str | None = None
     error: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)

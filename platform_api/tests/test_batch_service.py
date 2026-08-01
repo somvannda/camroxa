@@ -1804,6 +1804,239 @@ def test_derive_batch_status_processing_when_drafts_done_before_suno() -> None:
 
 
 @pytest.mark.asyncio
+async def test_build_batch_redownload_plan_ignores_downloaded_flag(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    """Redownload plan must include tracks already marked downloaded server-side.
+
+    Those flags describe the OLD (possibly bad/full-drive) folder — the whole point of
+    "change run folder + resume" is to re-fetch into a NEW folder regardless.
+    """
+    user_id = uuid4()
+    batch_id = uuid4()
+    batch = Batch(id=batch_id, user_id=user_id, ok_profile_id=uuid4(), song_count=2)
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.list_suno_audio_for_batch = AsyncMock(
+        return_value=[
+            {
+                "id": uuid4(),
+                "song_id": uuid4(),
+                "title": "Shadow Rebels",
+                "audio_url_ok": "https://cdn.example.com/shadow-rebels.mp3",
+                "audio_url_alt": None,
+                "batch_index": 0,
+            },
+            {
+                "id": uuid4(),
+                "song_id": uuid4(),
+                "title": "Midnight Drive",
+                "audio_url_ok": None,
+                "audio_url_alt": "https://cdn.example.com/midnight-drive-alt.mp3",
+                "batch_index": 1,
+            },
+        ]
+    )
+
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+
+    ok_items = await service.build_batch_redownload_plan(
+        user_id=str(user_id),
+        batch_id=batch_id,
+        role="OK",
+        run_dir="E:/NewFolder",
+    )
+    assert len(ok_items) == 1
+    assert ok_items[0]["title"] == "Shadow Rebels"
+    assert ok_items[0]["download_url"] == "https://cdn.example.com/shadow-rebels.mp3"
+    assert ok_items[0]["target_path"].endswith("1. Shadow Rebels_OK.mp3")
+
+    alt_items = await service.build_batch_redownload_plan(
+        user_id=str(user_id),
+        batch_id=batch_id,
+        role="ALT",
+        run_dir="E:/NewFolder",
+    )
+    assert len(alt_items) == 1
+    assert alt_items[0]["title"] == "Midnight Drive"
+    assert alt_items[0]["target_path"].endswith("2. Midnight Drive_Alt.mp3")
+
+
+@pytest.mark.asyncio
+async def test_build_batch_redownload_plan_prefers_suno_url_with_backblaze_as_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    """Suno's URL (retained 14 days) is the primary source; the durable Backblaze
+    copy only rides along as `fallback_download_url` for the desktop client to use
+    if the Suno URL turns out to be dead — never fetched from Backblaze proactively."""
+    user_id = uuid4()
+    batch_id = uuid4()
+    task_id = uuid4()
+    batch = Batch(id=batch_id, user_id=user_id, ok_profile_id=uuid4(), song_count=1)
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.list_suno_audio_for_batch = AsyncMock(
+        return_value=[
+            {
+                "id": task_id,
+                "song_id": uuid4(),
+                "title": "Shadow Rebels",
+                "audio_url_ok": "https://suno.cdn.example.com/shadow-rebels.mp3",
+                "audio_url_alt": None,
+                "batch_index": 0,
+            }
+        ]
+    )
+
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    monkeypatch.setattr(
+        service,
+        "_resolve_redownload_storage_keys",
+        AsyncMock(return_value={str(task_id): "https://b2.example.com/signed/shadow-rebels.mp3"}),
+    )
+
+    items = await service.build_batch_redownload_plan(
+        user_id=str(user_id),
+        batch_id=batch_id,
+        role="OK",
+        run_dir="E:/NewFolder",
+    )
+    assert len(items) == 1
+    assert items[0]["download_url"] == "https://suno.cdn.example.com/shadow-rebels.mp3"
+    assert items[0]["fallback_download_url"] == "https://b2.example.com/signed/shadow-rebels.mp3"
+
+
+@pytest.mark.asyncio
+async def test_build_batch_redownload_plan_uses_backblaze_when_suno_url_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    """If Suno no longer has the audio at all (e.g. outside its 14-day retention),
+    the Backblaze copy becomes the primary `download_url` with no fallback left."""
+    user_id = uuid4()
+    batch_id = uuid4()
+    task_id = uuid4()
+    batch = Batch(id=batch_id, user_id=user_id, ok_profile_id=uuid4(), song_count=1)
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.list_suno_audio_for_batch = AsyncMock(
+        return_value=[
+            {
+                "id": task_id,
+                "song_id": uuid4(),
+                "title": "Shadow Rebels",
+                "audio_url_ok": None,
+                "audio_url_alt": None,
+                "batch_index": 0,
+            }
+        ]
+    )
+
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    monkeypatch.setattr(
+        service,
+        "_resolve_redownload_storage_keys",
+        AsyncMock(return_value={str(task_id): "https://b2.example.com/signed/shadow-rebels.mp3"}),
+    )
+
+    items = await service.build_batch_redownload_plan(
+        user_id=str(user_id),
+        batch_id=batch_id,
+        role="OK",
+        run_dir="E:/NewFolder",
+    )
+    assert len(items) == 1
+    assert items[0]["download_url"] == "https://b2.example.com/signed/shadow-rebels.mp3"
+    assert items[0]["fallback_download_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_redownload_storage_keys_returns_empty_when_pool_unavailable(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    """Any Backblaze-lookup failure (e.g. DB pool unavailable in this call path)
+    must never break the base Suno-URL redownload flow."""
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    result = await service._resolve_redownload_storage_keys(
+        [{"id": uuid4()}], variant="ok"
+    )
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_build_batch_redownload_plan_empty_run_dir_returns_nothing(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    items = await service.build_batch_redownload_plan(
+        user_id=str(uuid4()),
+        batch_id=uuid4(),
+        role="OK",
+        run_dir="   ",
+    )
+    assert items == []
+    batch_repo.get_batch_for_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_sanitize_suno_payload_uses_learned_terms_and_persists(
     monkeypatch: pytest.MonkeyPatch,
     batch_repo: AsyncMock,

@@ -87,3 +87,17 @@ def test_resolve_pipeline_export_workers_forces_one_on_low(monkeypatch: pytest.M
     monkeypatch.setenv("CAMXORA_GPU_TIER", "mid")
     clear_export_gpu_tier_cache()
     assert resolve_pipeline_export_workers(3) == 3
+
+
+def test_resolve_pipeline_export_workers_honors_prefs_when_frozen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+
+    monkeypatch.setenv("CAMXORA_GPU_TIER", "high")
+    clear_export_gpu_tier_cache()
+    monkeypatch.setattr(
+        "shared.lib.runtime_paths.is_frozen_runtime",
+        lambda: True,
+    )
+    assert resolve_pipeline_export_workers(4) == 4

@@ -113,6 +113,7 @@ class ImageJobRepositoryProtocol(Protocol):
         limit: int = 200,
     ) -> list[ImageJob]: ...
     async def get_image_job_by_id(self, job_id: UUID, user_id: UUID) -> ImageJob | None: ...
+    async def update_image_job_storage_key(self, job_id: UUID, user_id: UUID, *, storage_key: str) -> None: ...
     async def update_image_job_status(
         self,
         job_id: UUID,
@@ -557,6 +558,16 @@ class ImageJobService:
                     )
                 except Exception as exc:
                     logger.warning("Failed to schedule streaming cover upload for job %s: %s", job.id, exc)
+                try:
+                    asyncio.create_task(
+                        self._archive_image_output_to_storage(
+                            job=job,
+                            user_id=user_id,
+                            image_bytes=image_bytes,
+                        )
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to schedule image archive upload for job %s: %s", job.id, exc)
                 return True
             except DependencyPendingError as exc:
                 if quota_reserved and self._enforcement_service is not None:
@@ -996,7 +1007,72 @@ class ImageJobService:
             if candidate.is_file():
                 return candidate.read_bytes(), "image/png"
 
+        # Local cache and any server-reachable client path are both gone (disk
+        # wipe, VPS migration, redeploy to a fresh disk, etc.) — fall back to the
+        # durable Backblaze archive rather than forcing an expensive AI regeneration.
+        storage_key = str(job.storage_key or "").strip()
+        if storage_key:
+            image_bytes = await self._read_archived_image_bytes(storage_key)
+            if image_bytes is not None:
+                try:
+                    cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    cache_path.write_bytes(image_bytes)
+                except OSError as exc:
+                    logger.warning("Could not repopulate image cache for job %s: %s", job.id, exc)
+                return image_bytes, "image/png"
+
         raise NotFoundError("Image file was not found on the server.")
+
+    async def _archive_image_output_to_storage(
+        self,
+        *,
+        job: ImageJob,
+        user_id: UUID,
+        image_bytes: bytes,
+    ) -> None:
+        """Best-effort: archive a successful image job's output to Backblaze.
+
+        Never raises — mirrors the MP3 streaming-archive pattern so a storage
+        hiccup never affects the primary (local-cache) success path. Skips
+        silently if streaming storage isn't configured for this environment.
+        """
+        try:
+            from platform_api.services.storage_service import StorageService
+            from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+            config = await resolve_streaming_storage_config(self._pool_for_storage())
+            if not config.configured:
+                return
+            batch_segment = str(job.batch_id) if job.batch_id else "adhoc"
+            role_segment = str(getattr(job.channel_role, "value", job.channel_role) or "ok").lower()
+            kind_segment = str(getattr(job.kind, "value", job.kind) or "image").lower()
+            storage_key = f"images/{user_id}/{batch_segment}/{kind_segment}-{role_segment}-{job.id}.png"
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(key=storage_key, data=image_bytes, content_type="image/png")
+            await self._repo.update_image_job_storage_key(job.id, user_id, storage_key=storage_key)
+        except Exception as exc:
+            logger.warning("Failed to archive image output for job %s to Backblaze: %s", job.id, exc)
+
+    async def _read_archived_image_bytes(self, storage_key: str) -> bytes | None:
+        """Best-effort: fetch archived image bytes from Backblaze, or None on any failure."""
+        try:
+            from platform_api.services.storage_service import StorageService
+            from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+            config = await resolve_streaming_storage_config(self._pool_for_storage())
+            if not config.configured:
+                return None
+            storage = StorageService.from_config(config)
+            return await storage.download_bytes(storage_key)
+        except Exception as exc:
+            logger.warning("Failed to read archived image bytes for key %s: %s", storage_key, exc)
+            return None
+
+    @staticmethod
+    def _pool_for_storage() -> Any:
+        from platform_api.dependencies import get_db_pool
+
+        return get_db_pool()
 
     def _write_image_output(
         self,

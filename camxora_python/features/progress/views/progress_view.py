@@ -6,6 +6,7 @@ from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -43,6 +44,8 @@ from shared.workers.data_workers import (
     BatchRetrySunoWorker,
     ImageRetryJobsWorker,
     ManualInspectionWorker,
+    RunFolderRecoveryResult,
+    RunFolderRecoveryWorker,
     SettingsWorker,
     SyncManualImageWorker,
     WorkflowLoadResult,
@@ -59,6 +62,12 @@ SUMMARY_SUFFIX = (
     "Desktop MP3 downloading, converter truth, and merger truth now read the real "
     "desktop runtime when local outputs exist."
 )
+def _same_local_path(left: str, right: str) -> bool:
+    import os
+
+    return os.path.normcase(os.path.normpath(left)) == os.path.normcase(os.path.normpath(right))
+
+
 MANUAL_MODE_TEXT = (
     "Manual image mode is active. This page is the recovery handoff for missing "
     "`background-16x9`, `background-9x16`, `thumbnail-16x9`, and `thumbnail-9x16` "
@@ -72,6 +81,7 @@ STAGE_OPTIONS = (
     ("Export", "export"),
     ("Merge", "merge"),
     ("YouTube", "youtube"),
+    ("Completed", "completed"),
     ("Done", "done"),
     ("Error", "error"),
 )
@@ -100,6 +110,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._image_retry_worker: ImageRetryJobsWorker | None = None
         self._draft_retry_worker: BatchRetryDraftsWorker | None = None
         self._suno_retry_worker: BatchRetrySunoWorker | None = None
+        self._run_folder_recovery_worker: RunFolderRecoveryWorker | None = None
+        self._pending_auto_continue_key: tuple[str, str, str] | None = None
         self._rows: list[ProgressRow] = []
         self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
         self._manual_inspections: dict[str, ManualAssetInspection] = {}
@@ -219,6 +231,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.cancel_job_requested.connect(self._cancel_active_video_job)
         self._rows_card.stop_exporting_requested.connect(self._stop_exporting)
         self._rows_card.continue_progress_requested.connect(self._continue_progress)
+        self._rows_card.change_run_folder_requested.connect(self._change_run_folder)
         self._rows_card.row_selected.connect(self._on_row_selected)
 
         self._detail_card = ProgressDetailCard()
@@ -406,6 +419,29 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._summary_label.setText(f"{payload.response.summary} {SUMMARY_SUFFIX}")
         self._render()
         self._refresh_manual_inspections()
+        self._flush_pending_auto_continue()
+
+    def _flush_pending_auto_continue(self) -> None:
+        """After a "Change Run Folder & Resume" refresh, run Continue Progress once.
+
+        Same single-step resolver a manual right-click uses — never chains beyond
+        one step, so drafts/Suno/export/merge still each need their own trigger
+        (or their own automation) exactly as if the user had clicked Continue.
+        """
+        pending = self._pending_auto_continue_key
+        if pending is None:
+            return
+        self._pending_auto_continue_key = None
+        batch_id, profile_id, role = pending
+        for entry in self._effective_rows():
+            meta = entry.row.meta
+            if (
+                str(meta.batch_id or "").strip() == batch_id
+                and str(meta.profile_id or "").strip() == profile_id
+                and str(meta.role or "").strip().upper() == role
+            ):
+                self._continue_progress(entry)
+                return
 
     def _effective_rows(self) -> list[EffectiveProgressRow]:
         entries: list[EffectiveProgressRow] = []
@@ -430,11 +466,11 @@ class ProgressView(PollablePageMixin, QScrollArea):
         stage = self._current_stage_filter()
         entries = self._effective_rows()
         if self._active_only.isChecked():
-            # Match Stage filter behavior: hide terminal Done after desktop overlays.
+            # Match Stage filter behavior: hide terminal Done/Completed after desktop overlays.
             entries = [
                 entry
                 for entry in entries
-                if str(entry.effective_stage or "").strip().lower() != "done"
+                if str(entry.effective_stage or "").strip().lower() not in {"done", "completed"}
             ]
         if stage != "all":
             entries = [
@@ -573,6 +609,92 @@ class ProgressView(PollablePageMixin, QScrollArea):
             return
         ensure_directory(directory)
         open_path(directory)
+
+    def _change_run_folder(self, row: ProgressRow | None) -> None:
+        """Move this row's run folder (e.g. off a bad/full drive) and resume.
+
+        Re-downloads already-successful MP3s and images into the new folder without
+        re-drafting lyrics/title/album or re-requesting Suno generation.
+        """
+        if row is None:
+            self._show_retry_notice("No row selected.")
+            return
+        meta = row.meta
+        batch_id = str(meta.batch_id or "").strip()
+        profile_id = str(meta.profile_id or "").strip()
+        if not batch_id or not profile_id:
+            self._show_retry_notice("Missing batch/channel id for this row.")
+            return
+        if self._run_folder_recovery_worker is not None and self._run_folder_recovery_worker.isRunning():
+            self._show_retry_notice("A run-folder change is already in progress.")
+            return
+
+        current_dir = str(meta.run_dir or "").strip()
+        new_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Choose a new run folder",
+            current_dir or "",
+        )
+        new_dir = str(new_dir or "").strip()
+        if not new_dir:
+            return
+        if current_dir and _same_local_path(new_dir, current_dir):
+            self._show_retry_notice("That is already this row's run folder.")
+            return
+
+        from shared.services.app_logger import log_info
+
+        log_info(
+            f"Change-run-folder requested for batch {batch_id} ({meta.role}): "
+            f"{current_dir or '(none)'} -> {new_dir}",
+            category="progress",
+        )
+        self._error_banner.hide()
+        self._show_retry_notice(
+            "Moving run folder and re-downloading already-successful tracks/images…",
+            tone="neutral",
+        )
+        role = str(meta.role or "OK").strip().upper() or "OK"
+        worker = RunFolderRecoveryWorker(
+            self._api,
+            batch_id=batch_id,
+            profile_id=profile_id,
+            role=role,
+            new_run_dir=new_dir,
+            parent=self,
+        )
+        worker.succeeded.connect(
+            lambda result, b=batch_id, p=profile_id, r=role: self._on_change_run_folder_succeeded(result, b, p, r)
+        )
+        worker.failed.connect(self._on_change_run_folder_failed)
+        worker.finished.connect(lambda: setattr(self, "_run_folder_recovery_worker", None))
+        self._run_folder_recovery_worker = worker
+        worker.start()
+
+    def _on_change_run_folder_succeeded(
+        self, result: object, batch_id: str, profile_id: str, role: str
+    ) -> None:
+        if not isinstance(result, RunFolderRecoveryResult):
+            self._show_retry_notice("Run folder updated. Continuing…", tone="success")
+        else:
+            tone = "warning" if result.had_any_failure else "success"
+            message = (
+                f"Run folder moved to {result.new_run_dir}. "
+                f"MP3s: {result.mp3_downloaded}/{result.mp3_total}, "
+                f"images: {result.images_downloaded}/{result.images_total}. Continuing…"
+            )
+            if result.had_any_failure:
+                message += " Some files failed — check the log and retry if needed."
+            self._show_retry_notice(message, tone=tone)
+        # Don't auto-run the whole pipeline — just refresh, then let the normal
+        # Continue Progress resolver decide the next single step (export/merge/etc.)
+        # from the row's now-updated run_dir, same as a manual right-click would.
+        self._pending_auto_continue_key = (batch_id, profile_id, role)
+        self.refresh_data()
+
+    def _on_change_run_folder_failed(self, message: str) -> None:
+        detail = str(message or "").strip() or "Could not change the run folder."
+        self._show_retry_notice(detail, tone="error")
 
     def _sync_manual_assets(self, batch_id: str) -> None:
         if not batch_id:

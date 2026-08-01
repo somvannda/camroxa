@@ -972,12 +972,26 @@ class BatchRepository:
             LEFT JOIN songs s ON s.id = st.song_id
             LEFT JOIN batches b ON b.id = st.batch_id
             LEFT JOIN channel_profiles altp ON altp.id = b.alt_profile_id
+            LEFT JOIN batch_channel_assets bca_ok
+                ON bca_ok.batch_id = st.batch_id
+               AND bca_ok.profile_id = b.ok_profile_id
+               AND bca_ok.role = 'OK'
+            LEFT JOIN batch_channel_assets bca_alt
+                ON bca_alt.batch_id = st.batch_id
+               AND bca_alt.profile_id = b.alt_profile_id
+               AND bca_alt.role = 'ALT'
             WHERE st.user_id = $1
               AND st.status = $2
               AND (
-                (st.audio_url_ok IS NOT NULL AND COALESCE(st.downloaded_ok, false) = false)
+                (
+                  st.audio_url_ok IS NOT NULL AND COALESCE(st.downloaded_ok, false) = false
+                  AND COALESCE(bca_ok.pipeline_complete, false) = false
+                )
                 OR
-                (st.audio_url_alt IS NOT NULL AND COALESCE(st.downloaded_alt, false) = false)
+                (
+                  st.audio_url_alt IS NOT NULL AND COALESCE(st.downloaded_alt, false) = false
+                  AND COALESCE(bca_alt.pipeline_complete, false) = false
+                )
               )
               AND (
                 b.id IS NULL
@@ -990,6 +1004,40 @@ class BatchRepository:
             TaskStatus.SUCCESS.value,
             max(1, min(int(limit or 20), 100)),
             max(1, min(int(max_age_days or 30), 365)),
+        )
+        return [dict(row) for row in rows]
+
+    async def list_suno_audio_for_batch(
+        self,
+        *,
+        batch_id: UUID,
+        user_id: UUID,
+    ) -> list[dict[str, Any]]:
+        """Successful Suno audio URLs for one batch, regardless of `downloaded_*` flags.
+
+        Used by the "change run folder + resume" recovery flow, which must be able to
+        re-fetch tracks the account already marked downloaded (into a *new* folder) —
+        unlike `list_pending_suno_downloads`, which intentionally excludes those.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT
+                st.id,
+                st.song_id,
+                st.title,
+                st.audio_url_ok,
+                st.audio_url_alt,
+                s.batch_index
+            FROM suno_tasks st
+            LEFT JOIN songs s ON s.id = st.song_id
+            WHERE st.batch_id = $1
+              AND st.user_id = $2
+              AND st.status = $3
+            ORDER BY s.batch_index ASC NULLS LAST, st.created_at ASC
+            """,
+            batch_id,
+            user_id,
+            TaskStatus.SUCCESS.value,
         )
         return [dict(row) for row in rows]
 
@@ -1270,7 +1318,7 @@ class BatchRepository:
             SELECT id, song_id, user_id, batch_id, profile_id, kind,
                    channel_role, prompt, provider, resolution, style_strength,
                    input_image_path, style_reference_path, source_job_id,
-                   status, attempt_count, output_image_path, error,
+                   status, attempt_count, output_image_path, storage_key, error,
                    created_at, updated_at
             FROM image_jobs
             WHERE batch_id = $1
@@ -1377,7 +1425,7 @@ class BatchRepository:
             SELECT id, song_id, user_id, batch_id, profile_id, kind,
                    channel_role, prompt, provider, resolution, style_strength,
                    input_image_path, style_reference_path, source_job_id,
-                   status, attempt_count, output_image_path, error,
+                   status, attempt_count, output_image_path, storage_key, error,
                    created_at, updated_at
             FROM image_jobs
             WHERE user_id = $1
@@ -1456,7 +1504,7 @@ class BatchRepository:
             SELECT id, song_id, user_id, batch_id, profile_id, kind,
                    channel_role, prompt, provider, resolution, style_strength,
                    input_image_path, style_reference_path, source_job_id,
-                   status, attempt_count, output_image_path, error,
+                   status, attempt_count, output_image_path, storage_key, error,
                    created_at, updated_at
             FROM image_jobs
             WHERE id = $1 AND user_id = $2
@@ -1467,6 +1515,23 @@ class BatchRepository:
         if row is None:
             return None
         return self._row_to_image_job(row)
+
+    async def update_image_job_storage_key(self, job_id: UUID, user_id: UUID, *, storage_key: str) -> None:
+        """Record the durable Backblaze key for an image job's archived output.
+
+        Best-effort archival metadata — never blocks the primary local-cache path.
+        """
+        await self._pool.execute(
+            """
+            UPDATE image_jobs
+            SET storage_key = $3,
+                updated_at = NOW()
+            WHERE id = $1 AND user_id = $2
+            """,
+            job_id,
+            user_id,
+            storage_key,
+        )
 
     async def update_image_job_prompt(
         self,
@@ -1900,6 +1965,7 @@ class BatchRepository:
             status=TaskStatus(row["status"]),
             attempt_count=row["attempt_count"],
             output_image_path=row["output_image_path"],
+            storage_key=row.get("storage_key"),
             error=row["error"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],

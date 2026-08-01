@@ -79,8 +79,8 @@ def test_style_classification_slice1() -> None:
 
 
 def test_gpu_ready_slice2_half_width_and_quantize() -> None:
-    assert gpu_bar_half_width_scale("thin-lines") == pytest.approx(0.28)
-    assert gpu_bar_half_width_scale("signal-needles") == pytest.approx(0.28)
+    assert gpu_bar_half_width_scale("thin-lines") == pytest.approx(0.55)
+    assert gpu_bar_half_width_scale("signal-needles") == pytest.approx(0.55)
     assert gpu_bar_half_width_scale("ignition-flare") == pytest.approx(1.2)
     assert gpu_bar_half_width_scale("orbit-spikes") == pytest.approx(1.0)
 
@@ -129,7 +129,7 @@ def test_register_layer_accepts_bar_count_below_bins() -> None:
         from visualizer.spectrum_gpu import SpectrumGpuRenderer
 
         bar_count = 16
-        px, py, dx, dy = generate_points_linear(bar_count, 800.0, "normal")
+        px, py, dx, dy = generate_points_linear(bar_count, 800.0, "top")
         colors = np.tile(np.array([[0.2, 0.4, 0.8, 1.0]], dtype=np.float32), (bar_count, 1))
         renderer = SpectrumGpuRenderer(ctx)
         assert renderer.register_layer(

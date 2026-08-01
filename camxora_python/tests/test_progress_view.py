@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from PySide6.QtWidgets import QApplication, QLabel
 
@@ -181,3 +183,47 @@ def test_stage_filter_matches_converter_alias(qapp: QApplication) -> None:
     assert "1 visible row" in view._meta_label.text()
     assert view._rows_card._table.rowCount() == 1
     assert view._rows_card._table.item(0, _COL_CHANNEL) is not None
+
+
+def test_change_run_folder_auto_continues_matching_row_once(qapp: QApplication) -> None:
+    """After "Change Run Folder & Resume", the next refresh runs Continue Progress
+    exactly once for that row — not the whole pipeline, and not repeated on later
+    unrelated refreshes."""
+    view = ProgressView(PlatformApi())
+    row = _sample_row().model_copy(
+        update={"meta": _sample_row().meta.model_copy(update={"role": "OK"})}
+    )
+    view._pending_auto_continue_key = ("batch-1", "profile-1", "OK")
+    view._continue_progress = MagicMock()  # type: ignore[method-assign]
+
+    result = WorkflowLoadResult(
+        response=ProgressListResponse(rows=[row], summary="Ready"),
+        runtime_by_key={},
+    )
+    view._on_loaded(result)
+
+    assert view._pending_auto_continue_key is None
+    view._continue_progress.assert_called_once()
+    (called_entry,) = view._continue_progress.call_args.args
+    assert isinstance(called_entry, EffectiveProgressRow)
+    assert called_entry.row.meta.batch_id == "batch-1"
+
+    # A later, unrelated refresh must not re-trigger Continue Progress.
+    view._continue_progress.reset_mock()
+    view._on_loaded(result)
+    view._continue_progress.assert_not_called()
+
+
+def test_flush_pending_auto_continue_noop_when_row_not_found(qapp: QApplication) -> None:
+    view = ProgressView(PlatformApi())
+    view._pending_auto_continue_key = ("missing-batch", "missing-profile", "OK")
+    view._continue_progress = MagicMock()  # type: ignore[method-assign]
+
+    result = WorkflowLoadResult(
+        response=ProgressListResponse(rows=[_sample_row()], summary="Ready"),
+        runtime_by_key={},
+    )
+    view._on_loaded(result)
+
+    assert view._pending_auto_continue_key is None
+    view._continue_progress.assert_not_called()

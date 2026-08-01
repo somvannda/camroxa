@@ -59,6 +59,28 @@ def test_loaded_binds_content(qapp: QApplication) -> None:
     assert view._automation_card.selected_description_id() == "desc-1"
 
 
+def test_schedule_settings_save_flashes_once_per_debounce_window(qapp: QApplication, monkeypatch) -> None:
+    """Regression test: multiple field edits within one 400ms debounce window
+    used to each flash/log "Saving music defaults..." even though only one
+    _persist_settings() call ever fires — showing up in logs as the same
+    save happening 3x in a row and making the app look slower than it is.
+    """
+    view = MusicView(PlatformApi())
+    view.show()
+    view._on_loaded(_payload())
+
+    flashes: list[str] = []
+    monkeypatch.setattr(view, "_flash_status", lambda message, **_kwargs: flashes.append(message))
+    monkeypatch.setattr(view, "_persist_settings", lambda: None)
+
+    view._on_shuffle_changed()
+    view._on_mood_shuffle_changed()
+    view._music_settings.shuffle_structure = not view._music_settings.shuffle_structure
+    view._schedule_settings_save()
+
+    assert flashes.count("Saving music defaults...") == 1
+
+
 def test_invalid_date_range_disables_generate(qapp: QApplication) -> None:
     view = MusicView(PlatformApi())
     view.show()

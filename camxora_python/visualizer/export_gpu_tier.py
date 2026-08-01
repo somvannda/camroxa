@@ -87,7 +87,11 @@ def classify_export_gpu_tier(*, name: str | None = None, memory_mib: float | Non
 
 
 def resolve_pipeline_export_workers(requested: object, *, default: int = 1) -> int:
-    """Clamp Preferences workers; force 1 on low-VRAM / 1050 Ti-class GPUs."""
+    """Clamp Preferences workers; force 1 on low-VRAM GPUs only.
+
+    Frozen installers may use Preferences multi-worker once audio decode uses
+    soundfile+soxr and analysis runs before OpenGL init.
+    """
     try:
         limit = max(1, min(10, int(requested)))  # type: ignore[arg-type]
     except (TypeError, ValueError):
@@ -99,10 +103,11 @@ def resolve_pipeline_export_workers(requested: object, *, default: int = 1) -> i
         pass
     return limit
 
-
 def _probe_nvidia_smi() -> tuple[str | None, float | None]:
     try:
-        completed = subprocess.run(
+        from shared.lib.subprocess_utils import run_hidden
+
+        completed = run_hidden(
             [
                 "nvidia-smi",
                 "--query-gpu=name,memory.total",

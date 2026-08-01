@@ -58,8 +58,14 @@ class AppShellWidget(QWidget):
             key = self._prewarm_queue.pop(0)
             try:
                 self._router.prewarm_page(key)
-            except Exception:
-                pass  # Page falls back to on-demand build during navigation.
+            except Exception as exc:
+                # Page falls back to on-demand build during navigation, but
+                # log it — silent swallows here have historically hidden
+                # machine-specific startup crashes (GPU/driver, missing
+                # resources) that only show up as an infinite loading screen.
+                from shared.services.app_logger import log_error
+
+                log_error(f"Prewarm failed for page '{key}'", category="startup", exc=exc)
             return key
         return None
 
@@ -109,6 +115,9 @@ class AppShellWidget(QWidget):
 
         bind_session(self._session)
         self._music_downloads = MusicDownloadCoordinator(self._api, self)
+        from shared.services.music_download_coordinator import bind_music_download_coordinator
+
+        bind_music_download_coordinator(self._music_downloads)
         self._music_downloads.start()
         self._pipeline_recovery = PipelineRecoveryCoordinator(self._api, self)
         self._pipeline_recovery.start()

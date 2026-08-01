@@ -25,6 +25,7 @@ class VideoLeftRail(SettingsPanel):
     save_requested = Signal()
     delete_requested = Signal()
     export_requested = Signal()
+    restore_original_requested = Signal()
     domain_tab_changed = Signal(str)
 
     _DOMAIN_TABS = (
@@ -32,6 +33,7 @@ class VideoLeftRail(SettingsPanel):
         ("background", "Background"),
         ("logo", "Logo"),
         ("particles", "Particles"),
+        ("lightning", "Lightning"),
     )
 
     def __init__(
@@ -64,7 +66,15 @@ class VideoLeftRail(SettingsPanel):
         self._new_btn.setToolTip("Create a blank video template from scratch")
         self._new_btn.clicked.connect(self.new_requested.emit)
         self._save_btn = QPushButton("Save")
+        self._save_btn.setToolTip("Save the current look into this video template.")
         self._save_btn.clicked.connect(self.save_requested.emit)
+        self._restore_original_btn = QPushButton("Restore original")
+        self._restore_original_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._restore_original_btn.setToolTip(
+            "Restore this video template to the snapshot saved when it was first created "
+            "(or first saved after upgrade). Unsaved session edits are discarded."
+        )
+        self._restore_original_btn.clicked.connect(self.restore_original_requested.emit)
         self._delete_btn = QPushButton("Delete")
         self._delete_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._delete_btn.clicked.connect(self.delete_requested.emit)
@@ -75,6 +85,7 @@ class VideoLeftRail(SettingsPanel):
         self._export_btn.setVisible(False)  # Hidden by default, shown only for admin
         actions.addWidget(self._new_btn)
         actions.addWidget(self._save_btn)
+        actions.addWidget(self._restore_original_btn)
         actions.addWidget(self._delete_btn)
         actions.addWidget(self._export_btn)
         action_host = QWidget()
@@ -149,6 +160,7 @@ class VideoLeftRail(SettingsPanel):
     def set_busy(self, *, saving: bool, deleting: bool) -> None:
         self._new_btn.setEnabled(not saving and not deleting)
         self._save_btn.setEnabled(not saving and not deleting)
+        self._restore_original_btn.setEnabled(not saving and not deleting)
         self._delete_btn.setEnabled(not saving and not deleting)
         self._template_select.setEnabled(not saving)
         self._save_btn.setText("Saving..." if saving else "Save")

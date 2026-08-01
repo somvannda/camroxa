@@ -67,7 +67,7 @@ def _normalize_stage_key(stage: str) -> str:
 
 
 def _is_terminal_stage(stage: str) -> bool:
-    return _normalize_stage_key(stage) in {"youtube", "done", "error"}
+    return _normalize_stage_key(stage) in {"youtube", "done", "completed", "error"}
 
 
 def _stage_rank(stage: str) -> int:

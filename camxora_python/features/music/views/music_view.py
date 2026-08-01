@@ -933,7 +933,12 @@ class MusicView(QWidget):
         snapshot = settings_snapshot(self._music_settings)
         if snapshot == self._last_persisted_settings:
             return
-        self._set_save_status("saving")
+        # Multiple field edits within one debounce window (400ms) all land
+        # here, but only one _persist_settings() call actually fires. Only
+        # flash/log "Saving..." once per window instead of once per edit —
+        # otherwise a single save shows up as 3 identical log lines.
+        if not self._save_timer.isActive():
+            self._set_save_status("saving")
         self._save_timer.start()
 
     def _persist_settings(self) -> None:

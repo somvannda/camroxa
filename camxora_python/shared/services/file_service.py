@@ -64,7 +64,19 @@ def list_directory_image_paths(directory_path: str, *, max_results: int = 50) ->
 
 
 def ensure_directory(directory_path: str) -> None:
-    Path(directory_path.strip()).mkdir(parents=True, exist_ok=True)
+    """Best-effort mkdir. Never raises — a single bad/cross-machine path (e.g.
+    an account-wide pending-download output_dir from a different Windows
+    profile) must not abort a whole sync/batch loop for every other item.
+    """
+    normalized = str(directory_path or "").strip()
+    if not normalized:
+        return
+    try:
+        Path(normalized).mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        from shared.services.app_logger import log_error
+
+        log_error(f"Could not create directory: {normalized}", category="filesystem", exc=exc)
 
 
 def open_path(target_path: str) -> None:

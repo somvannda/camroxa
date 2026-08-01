@@ -19,6 +19,7 @@ from shared.models.platform import (
     BatchCreateRequest,
     BatchCreateResponse,
     BatchDeleteResponse,
+    BatchRedownloadPlanResponse,
     BatchStatusResponse,
     SongRetryResponse,
     TitleRewriteResponse,
@@ -599,6 +600,22 @@ class PlatformApi:
             params={"limit": limit},
         )
         return PendingMusicDownloadsResponse.model_validate(data)
+
+    def get_batch_redownload_plan(
+        self, *, batch_id: str, role: str, run_dir: str
+    ) -> BatchRedownloadPlanResponse:
+        """Already-successful Suno audio for one batch/channel, targeted at a new folder.
+
+        Used by "change run folder + resume" — ignores the account's `downloaded_*`
+        flags, since those tracked a download into a folder we're now moving away from.
+        """
+        data = self._client.request(
+            "/music/downloads/batch-redownload-plan",
+            method="POST",
+            auth=True,
+            body={"batch_id": batch_id, "role": role, "run_dir": run_dir},
+        )
+        return BatchRedownloadPlanResponse.model_validate(data)
 
     def sync_manual_image_jobs(self, batch_id: str) -> ImageJobsSyncManualResponse:
         data = self._client.request(

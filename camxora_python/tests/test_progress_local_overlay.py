@@ -134,6 +134,22 @@ def test_overlay_promotes_image_stage_when_assets_exist(tmp_path) -> None:
     assert "Pending · no exports yet" in row.converter
 
 
+def test_overlay_promotes_image_stage_when_background_only(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "background-16x9.png").write_bytes(b"bg")
+    (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
+
+    source = _row(run_dir=str(run_dir), long_ready=False, th_ready=0, th_total=1).model_copy(
+        update={"stage": "Image", "converter": "Waiting for image assets"},
+    )
+    row = apply_local_progress_overlays([source])[0]
+
+    assert row.stage == "Export"
+    assert row.meta.long_ready is True
+    assert row.meta.thumbnail_16x9_path in (None, "")
+
+
 def test_overlay_maps_queued_converter_to_export_pending(tmp_path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
