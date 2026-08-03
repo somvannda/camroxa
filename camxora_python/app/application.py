@@ -129,6 +129,14 @@ class AppShellWidget(QWidget):
         self._video_pipeline = VideoPipelineCoordinator(self._api, self)
         bind_video_pipeline_coordinator(self._video_pipeline)
         self._video_pipeline.start()
+        from shared.services.distrokid_pipeline_coordinator import (
+            DistroKidPipelineCoordinator,
+            bind_distrokid_pipeline_coordinator,
+        )
+
+        self._distrokid_pipeline = DistroKidPipelineCoordinator(self._api, self)
+        bind_distrokid_pipeline_coordinator(self._distrokid_pipeline)
+        self._distrokid_pipeline.start()
 
         self._session_keepalive = QTimer(self)
         self._session_keepalive.setInterval(60_000)
@@ -194,6 +202,7 @@ class AppShellWidget(QWidget):
             "_image_outputs",
             "_progress_local_sync",
             "_video_pipeline",
+            "_distrokid_pipeline",
         ):
             coordinator = getattr(self, attr, None)
             if coordinator is None:

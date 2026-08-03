@@ -95,6 +95,8 @@ class License:
     revoked_at: datetime | None = None
     profile_addon_slots: int = 0
     profile_addon_pending: int = 0
+    distrokid_enabled: bool = False
+    distrokid_expires_at: datetime | None = None
     pending_plan_id: UUID | None = None
     pending_plan_effective_at: datetime | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -337,6 +339,8 @@ class Batch:
     status: str = "pending"
     auto_gen_image: bool = False
     auto_gsuno: bool = False
+    auto_distrokid: bool = False
+    auto_reel_after_video: bool = False
     planned_from_date: date | None = None
     planned_to_date: date | None = None
     ok_run_dir: str | None = None

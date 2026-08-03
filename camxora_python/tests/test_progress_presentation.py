@@ -8,6 +8,8 @@ from shared.lib.progress_presentation import (
     format_images_compact,
     format_merge_compact,
     format_album_label,
+    format_distrokid_compact,
+    format_distrokid_detail,
     format_pipeline_step_text,
     format_run_date_label,
     format_video_compact,
@@ -68,6 +70,23 @@ def test_format_youtube_compact_uses_meta_counts() -> None:
     row.meta.youtube_pending = 0
     row.meta.youtube_success = 1
     assert format_youtube_compact(row) == "Completed ✓"
+
+
+def test_format_distrokid_compact_and_detail() -> None:
+    assert format_distrokid_compact(None) == "—"
+    assert format_distrokid_compact({"compact": "WAV …"}) == "WAV …"
+    detail = format_distrokid_detail(
+        {
+            "job_status": "uploading",
+            "compact": "Uploading …",
+            "detail": "Uploading to DistroKid",
+            "album_name": "Night Drive",
+            "message": "Track 1/4",
+        }
+    )
+    assert "Uploading …" in detail
+    assert "does not fail" in detail.lower()
+    assert "Night Drive" in detail
 
 
 def test_compute_stage_progress_percent_for_music_and_merger() -> None:

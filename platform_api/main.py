@@ -424,6 +424,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         control_panel,
         content_pools,
         credits,
+        distrokid,
         generation,
         health,
         image_jobs,
@@ -458,6 +459,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(licenses.router, prefix=settings.api_v1_prefix)
     app.include_router(plans.router, prefix=settings.api_v1_prefix)
     app.include_router(credits.router, prefix=settings.api_v1_prefix)
+    app.include_router(distrokid.router, prefix=settings.api_v1_prefix)
     app.include_router(profiles.router, prefix=settings.api_v1_prefix)
     from platform_api.routers import profile_video_templates
 

@@ -44,7 +44,7 @@ WORKFLOW_STEP_BADGE_INACTIVE = "workflow_step_badge_inactive"
 BADGE_PAD_H = 14
 BADGE_PAD_V = 3
 
-PIPELINE_STAGES = frozenset({"music", "image", "converter", "merger", "youtube"})
+PIPELINE_STAGES = frozenset({"music", "image", "converter", "merger", "distrokid", "youtube"})
 ACTIVE_VERB_STATUSES = frozenset(
     {
         "running",
