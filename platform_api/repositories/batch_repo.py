@@ -1007,6 +1007,103 @@ class BatchRepository:
         )
         return [dict(row) for row in rows]
 
+    async def list_stuck_batches(
+        self,
+        *,
+        min_age_seconds: int,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Account-wide: non-terminal batches with no pipeline activity for a while.
+
+        Used by the pipeline stuck-batch housekeeping scan
+        (`PipelineStuckAlertService`, `docs/PLATFORM_WORKERS_REQUIREMENTS.md` §8).
+
+        "Activity" is the most recent `updated_at` across the batch row itself and
+        every song/suno_task/image_job/batch_channel_assets row belonging to it —
+        not a single `stage` column (this codebase derives that per-role, on read,
+        for the desktop/admin progress views; this query intentionally avoids that
+        heavier per-role join for a lightweight scheduled scan).
+
+        A batch only counts as "done" (excluded here) once every channel role it's
+        actually configured for (OK and/or ALT) has a `batch_channel_assets` row
+        with `pipeline_complete = true`. A configured role with no such row yet is
+        treated as still running, not stuck-and-abandoned — it only shows up here
+        once it's also past `min_age_seconds` with no activity.
+        """
+        rows = await self._pool.fetch(
+            """
+            WITH batch_activity AS (
+                SELECT
+                    b.id AS batch_id,
+                    b.user_id,
+                    b.status,
+                    b.ok_profile_id,
+                    b.alt_profile_id,
+                    GREATEST(
+                        b.updated_at,
+                        COALESCE(
+                            (SELECT MAX(s.updated_at) FROM songs s WHERE s.batch_id = b.id),
+                            b.updated_at
+                        ),
+                        COALESCE(
+                            (SELECT MAX(st.updated_at) FROM suno_tasks st WHERE st.batch_id = b.id),
+                            b.updated_at
+                        ),
+                        COALESCE(
+                            (SELECT MAX(ij.updated_at) FROM image_jobs ij WHERE ij.batch_id = b.id),
+                            b.updated_at
+                        ),
+                        COALESCE(
+                            (
+                                SELECT MAX(bca.updated_at)
+                                FROM batch_channel_assets bca
+                                WHERE bca.batch_id = b.id
+                            ),
+                            b.updated_at
+                        )
+                    ) AS last_activity_at
+                FROM batches b
+                WHERE b.status = ANY($1::text[])
+            ),
+            role_completion AS (
+                SELECT
+                    ba.batch_id,
+                    BOOL_AND(COALESCE(bca.pipeline_complete, false)) AS all_roles_complete
+                FROM batch_activity ba
+                JOIN LATERAL (
+                    SELECT 'OK'::text AS role, ba.ok_profile_id AS profile_id
+                    WHERE ba.ok_profile_id IS NOT NULL
+                    UNION ALL
+                    SELECT 'ALT'::text AS role, ba.alt_profile_id AS profile_id
+                    WHERE ba.alt_profile_id IS NOT NULL
+                ) roles ON true
+                LEFT JOIN batch_channel_assets bca
+                    ON bca.batch_id = ba.batch_id
+                   AND bca.profile_id = roles.profile_id
+                   AND bca.role = roles.role
+                GROUP BY ba.batch_id
+            )
+            SELECT
+                ba.batch_id,
+                ba.user_id,
+                u.email AS user_email,
+                ba.status,
+                ba.last_activity_at,
+                EXTRACT(EPOCH FROM (NOW() - ba.last_activity_at))::bigint AS age_seconds
+            FROM batch_activity ba
+            JOIN role_completion rc ON rc.batch_id = ba.batch_id
+            LEFT JOIN users u ON u.id = ba.user_id
+            WHERE rc.all_roles_complete = false
+              AND (NOW() - ba.last_activity_at) >= make_interval(secs => $2::double precision)
+            ORDER BY ba.last_activity_at ASC
+            LIMIT $3
+            """,
+            ["pending", "processing", "partial"],
+            max(60, int(min_age_seconds or 900)),
+            max(1, min(int(limit or 100), 500)),
+        )
+        return [dict(row) for row in rows]
+
     async def list_suno_audio_for_batch(
         self,
         *,

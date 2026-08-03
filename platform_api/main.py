@@ -1,5 +1,6 @@
 """FastAPI application factory for the Platform API."""
 
+import asyncio
 import logging
 import os
 import sys
@@ -107,6 +108,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     db_pool = None
     redis_conn = None
+    pipeline_stuck_task: asyncio.Task | None = None
 
     configure_api_logging()
     logger.info("API logging ready — batch/music, image, and credit progress appear in this terminal.")
@@ -208,22 +210,24 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         logger.info("WebSocket notification dependencies configured.")
 
+        class _DbAdminProvider:
+            """Resolves admin user IDs for WebSocket alert fan-out (abuse + pipeline-stuck)."""
+
+            def __init__(self, pool: Any) -> None:
+                self._pool = pool
+
+            async def get_admin_user_ids(self) -> list[str]:
+                rows = await self._pool.fetch(
+                    "SELECT id::text AS id FROM users WHERE role = 'admin'"
+                )
+                return [str(r["id"]) for r in rows]
+
         # --- Abuse alerts (Phase 3) ---
         try:
             from platform_api.services.abuse_alert_service import (
                 AbuseAlertService,
                 set_abuse_alert_service,
             )
-
-            class _DbAdminProvider:
-                def __init__(self, pool: Any) -> None:
-                    self._pool = pool
-
-                async def get_admin_user_ids(self) -> list[str]:
-                    rows = await self._pool.fetch(
-                        "SELECT id::text AS id FROM users WHERE role = 'admin'"
-                    )
-                    return [str(r["id"]) for r in rows]
 
             set_abuse_alert_service(
                 AbuseAlertService(
@@ -239,6 +243,46 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("Abuse alert service configured.")
         except Exception as exc:
             logger.warning("Abuse alert service not configured (non-fatal): %s", exc)
+
+        # --- Pipeline stuck-batch housekeeping (PLATFORM_WORKERS_REQUIREMENTS.md §8) ---
+        # No dedicated `platform_worker` process exists yet, so this runs as an
+        # in-process scheduled loop (same stopgap pattern as other periodic sweeps
+        # in this codebase) until that infra lands.
+        try:
+            from platform_api.dependencies import get_batch_repo
+            from platform_api.services.pipeline_stuck_alert_service import (
+                PipelineStuckAlertService,
+                set_pipeline_stuck_alert_service,
+            )
+
+            pipeline_stuck_service = PipelineStuckAlertService(
+                batch_repo=get_batch_repo(),
+                redis=redis_conn,
+                notification_service=get_notification_service(),
+                admin_provider=_DbAdminProvider(db_pool),
+                stuck_threshold_seconds=settings.pipeline_stuck_threshold_seconds,
+                alert_cooldown_seconds=settings.pipeline_stuck_alert_cooldown_seconds,
+            )
+            set_pipeline_stuck_alert_service(pipeline_stuck_service)
+
+            async def _pipeline_stuck_alert_loop() -> None:
+                while True:
+                    await asyncio.sleep(settings.pipeline_stuck_scan_interval_seconds)
+                    try:
+                        await pipeline_stuck_service.scan_and_alert()
+                    except Exception as exc:
+                        logger.warning("Pipeline stuck-batch scan iteration failed: %s", exc)
+
+            pipeline_stuck_task = asyncio.create_task(
+                _pipeline_stuck_alert_loop(), name="pipeline-stuck-alert-scan"
+            )
+            logger.info(
+                "Pipeline stuck-batch alert service configured (threshold=%ds, scan every %ds).",
+                settings.pipeline_stuck_threshold_seconds,
+                settings.pipeline_stuck_scan_interval_seconds,
+            )
+        except Exception as exc:
+            logger.warning("Pipeline stuck-batch alert service not configured (non-fatal): %s", exc)
 
         # --- Warm Key Pool Redis cache ---
         logger.info(
@@ -280,6 +324,15 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # --- Shutdown: cleanup resources ---
+    if pipeline_stuck_task is not None:
+        pipeline_stuck_task.cancel()
+        try:
+            await pipeline_stuck_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning("Error stopping pipeline stuck-alert task: %s", exc)
+
     if redis_conn is not None:
         try:
             await redis_conn.aclose()

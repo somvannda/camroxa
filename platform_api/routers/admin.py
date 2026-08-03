@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from platform_api.config import get_settings
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.utils.datetime_utils import format_utc_iso
 from platform_api.models.enums import UserRole
@@ -304,6 +305,20 @@ class AdminBatchSummaryResponse(BaseModel):
     created_at: str | None = None
     updated_at: str | None = None
     songs: list[AdminBatchSongSummary] = Field(default_factory=list)
+
+
+class AdminStuckBatchItem(BaseModel):
+    batch_id: str
+    user_id: str | None = None
+    user_email: str | None = None
+    status: str
+    last_activity_at: str | None = None
+    age_seconds: int
+
+
+class AdminStuckBatchesResponse(BaseModel):
+    items: list[AdminStuckBatchItem] = Field(default_factory=list)
+    threshold_seconds: int
 
 
 class AdminSongSummaryResponse(BaseModel):
@@ -1027,6 +1042,47 @@ async def get_usage(
         page_size=page_size,
         total_pages=total_pages,
         summary=summary,
+    )
+
+
+@router.get(
+    "/pipeline/stuck",
+    response_model=AdminStuckBatchesResponse,
+    summary="List batches with no pipeline activity past the stuck threshold",
+)
+async def get_admin_stuck_batches(
+    ctx: AdminDep,
+    batch_repo: BatchRepoDep,
+    min_age_seconds: int | None = Query(
+        default=None,
+        ge=60,
+        description="Override the configured stuck-batch age threshold, in seconds.",
+    ),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> AdminStuckBatchesResponse:
+    """On-demand view of the same detection the stuck-batch housekeeping scan uses.
+
+    Complements the scheduled `admin:pipeline_stuck_alert` push (which only fires
+    once per batch per cooldown window) with a live, pollable list — useful for an
+    admin dashboard widget, or for checking "what's stuck right now" without
+    waiting for the next scan cycle or alert.
+    """
+    del ctx
+    threshold = min_age_seconds if min_age_seconds is not None else get_settings().pipeline_stuck_threshold_seconds
+    rows = await batch_repo.list_stuck_batches(min_age_seconds=threshold, limit=limit)
+    return AdminStuckBatchesResponse(
+        items=[
+            AdminStuckBatchItem(
+                batch_id=str(row["batch_id"]),
+                user_id=str(row["user_id"]) if row.get("user_id") else None,
+                user_email=row.get("user_email"),
+                status=str(row.get("status") or ""),
+                last_activity_at=row["last_activity_at"].isoformat() if row.get("last_activity_at") else None,
+                age_seconds=int(row.get("age_seconds") or 0),
+            )
+            for row in rows
+        ],
+        threshold_seconds=threshold,
     )
 
 

@@ -168,6 +168,15 @@ class Settings(BaseSettings):
     abuse_redeem_burst_threshold: int = 5
     abuse_redeem_burst_window_seconds: int = 300
 
+    # --- Pipeline stuck-batch housekeeping alert (PLATFORM_WORKERS_REQUIREMENTS.md §8) ---
+    # A batch/channel with no draft/Suno/image/asset activity for this long, and not
+    # yet fully complete on every configured channel role, is considered "stuck".
+    pipeline_stuck_threshold_seconds: int = 900
+    # How often the in-process housekeeping loop re-scans for stuck batches.
+    pipeline_stuck_scan_interval_seconds: int = 120
+    # Per-batch cooldown before the same still-stuck batch alerts admins again.
+    pipeline_stuck_alert_cooldown_seconds: int = 1800
+
     # --- Music streaming (Backblaze B2) ---
     streaming_b2_key_id: str = ""
     streaming_b2_application_key: str = ""

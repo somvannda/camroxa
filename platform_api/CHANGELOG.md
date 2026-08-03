@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Pipeline stuck-batch housekeeping: scheduled in-process scan (PipelineStuckAlertService) detects batches with no draft/Suno/image/asset activity for 15+ min (configurable) that aren't fully complete on every configured channel role, and pushes a throttled dmin:pipeline_stuck_alert WebSocket alert to every admin (same fan-out as dmin:abuse_alert). New GET /admin/pipeline/stuck for an on-demand view of the same detection. See docs/changelog/2026-08-01-pipeline-stuck-batch-alerting.md.
 - Restored admin Pipeline Ops API (`/admin/pipeline/board`, batch detail, owner-charged retries via job_queue). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Pipeline Ops board no longer requires desktop filesystem paths for stage/status; promotes Image → Converter/Streaming/Done from image jobs + stream uploads.
 - Admin `GET /admin/provider-key-balances`: remaining credits/money per key-pool label (Suno/DeepSeek/Fal live; OpenAI/SLAI marked when unsupported). See `docs/changelog/2026-08-02-admin-provider-key-balances.md`.
@@ -24,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Production ran a single uvicorn worker**, confirmed live (--workers 1 on a 6 vCPU/11GB box sitting almost entirely idle), while all heavy background work (image job orchestration, Suno streaming uploads, YouTube uploads, batch orchestration) runs in-process on that same one process via syncio.create_task()/BackgroundTasks — the planned separate platform_worker queue process doesn't exist yet. A busy batch could starve unrelated simple requests (/auth/refresh, /users/me) sharing the same event loop, matching desktop-client timeout reports across several releases. Bumped to --workers 2 (systemd unit edited + restarted, verified healthy) and persisted via .deploy/secrets.production.env / deploy-script fallback default so it survives future redeploys. See docs/changelog/2026-08-01-production-api-single-worker-bottleneck.md.
 - Dual-channel Suno submit no longer crashes on Secondary daily attribution (`increment_usage` now accepts `count` / `include_monthly`). That mismatch was failing after plan deduct and inflating fail/retry absorb on Retry batch. See `docs/changelog/2026-08-03-usage-tracking-count-kwargs.md`.
 - Streaming karaoke LRC: retry Suno `get-timestamped-lyrics` after generation (alignments often empty immediately), and fetch LRC on admin MP3 upload retry. See `docs/changelog/2026-08-03-streaming-karaoke-lrc-retry.md`.
 - Admin streaming upload-jobs list returns joined user/song/album/batch/publish detail (UI was showing dashes). See `docs/changelog/2026-08-02-admin-streaming-upload-job-details.md`.
