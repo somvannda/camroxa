@@ -1,3 +1,5 @@
-secrets.env
+﻿secrets.env
+secrets.sandbox.env
+secrets.production.env
 camxora_deploy_ed25519
 camxora_deploy_ed25519.pub
