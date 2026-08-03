@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Restored **Pipeline Ops** sidebar page (`/pipeline`): live multi-user board for monitoring active pipelines (stage, stuck, failures, admin retries). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
+- Dashboard **Provider key balances** panel: remaining credits/money by key name for SLAI, Suno, DeepSeek, OpenAI, Fal (refresh / window focus). See `docs/changelog/2026-08-02-admin-provider-key-balances.md`.
+- Job Queue page (`/job-queue`): live depth, busy workers, `/progress` p95, and threshold alerts from `GET /api/v1/admin/job-queue/metrics` (15s poll)
 - Users: change password from list (key icon) and user detail Actions — admin reset with session revoke
 - Streaming catalog: Plays column on tracks and albums (sum of track plays)
 - Streaming catalog: server-side pagination (50/page) with API search + status filters
@@ -19,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Streaming Upload Jobs: API now returns user/song/album/batch/publish fields so cards are not empty dashes. See `docs/changelog/2026-08-02-admin-streaming-upload-job-details.md`.
 - Software Updates: parse `CamxoraSetup-*.exe` (Inno) filenames so Publish no longer 400s; pass explicit version on publish.
 
 ## [2026-07-25]

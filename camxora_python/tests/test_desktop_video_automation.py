@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from features.video.lib.desktop_video_automation import select_next_auto_video_candidate
+from features.video.lib.desktop_video_automation import (
+    build_merge_candidate_from_row,
+    select_next_auto_video_candidate,
+)
 from shared.lib.video_runtime_inspection import VideoRunInspection
 from shared.models.auth import ProfileResponse
 from shared.models.desktop import (
@@ -189,3 +192,34 @@ def test_select_next_auto_video_candidate_accepts_export_pending_stage(tmp_path)
         workspace=_workspace(),
     )
     assert candidate is not None
+
+
+def test_build_merge_candidate_does_not_require_background(tmp_path) -> None:
+    """Merge Continue must work even when BG uses non-canonical names (export-only)."""
+    run_dir = tmp_path / "alt"
+    run_dir.mkdir(parents=True)
+    (run_dir / "background-1-left.jpg").write_bytes(b"bg")
+    (run_dir / "1. Track_Alt.mp3").write_bytes(b"mp3")
+    (run_dir / "1. Track_Alt.mp4").write_bytes(b"0" * 60_000)
+    row = _row(run_dir=str(run_dir)).model_copy(
+        update={
+            "meta": ProgressRowMeta(
+                batch_id="batch-1",
+                profile_id="profile-1",
+                role="ALT",
+                run_dir=str(run_dir),
+                source_mode="ai",
+                long_ready=False,
+                reel_ready=False,
+                expected=1,
+                saved=1,
+                download_ready=1,
+                download_pending=0,
+            )
+        }
+    )
+    candidate, reason = build_merge_candidate_from_row(row, _profile(), "long")
+    assert reason is None
+    assert candidate is not None
+    assert candidate.run_dir == str(run_dir)
+    assert candidate.role == "ALT"

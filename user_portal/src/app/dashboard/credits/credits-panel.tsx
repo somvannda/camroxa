@@ -484,7 +484,11 @@ export function CreditsPanel({
                 className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300/80"
               >
                 <div className="font-medium text-white">{channel.profile_name}</div>
-                <div className="mt-2 grid gap-1 md:grid-cols-2">
+                <div className="mt-2 grid gap-1 md:grid-cols-3">
+                  <div>
+                    Drafts today: {channel.daily_drafts_remaining ?? 0} /{" "}
+                    {channel.daily_drafts_limit ?? 0} remaining
+                  </div>
                   <div>
                     Songs today: {channel.daily_songs_remaining} / {channel.daily_songs_limit}{" "}
                     remaining

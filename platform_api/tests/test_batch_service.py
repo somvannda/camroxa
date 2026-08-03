@@ -674,11 +674,14 @@ async def test_orchestrate_drafts_charges_via_enforcement_not_wallet(
             lyrics="Generated Lyrics",
         )
     )
+    batch_id = uuid4()
+    ok_profile_id = uuid4()
+    alt_profile_id = uuid4()
     batch_repo.get_songs_by_batch = AsyncMock(
         return_value=[
             SimpleNamespace(
                 id=uuid4(),
-                batch_id=uuid4(),
+                batch_id=batch_id,
                 batch_index=0,
                 user_id=UUID("00000000-0000-0000-0000-000000000001"),
                 title=None,
@@ -690,6 +693,13 @@ async def test_orchestrate_drafts_charges_via_enforcement_not_wallet(
             ),
         ]
     )
+    batch_repo.get_batch_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            id=batch_id,
+            ok_profile_id=ok_profile_id,
+            alt_profile_id=alt_profile_id,
+        )
+    )
     batch_repo.update_batch_status = AsyncMock()
     batch_repo.update_batch_channel_albums = AsyncMock()
     batch_repo.update_song_draft = AsyncMock()
@@ -697,6 +707,7 @@ async def test_orchestrate_drafts_charges_via_enforcement_not_wallet(
     credit_service.get_balance = AsyncMock(return_value=0)
     enforcement_service = AsyncMock()
     enforcement_service.deduct_for_operation = AsyncMock(return_value=0)
+    enforcement_service.attribute_secondary_daily_usage = AsyncMock()
 
     service = make_service(
         batch_repo,
@@ -710,9 +721,8 @@ async def test_orchestrate_drafts_charges_via_enforcement_not_wallet(
         enforcement_service=enforcement_service,
     )
 
-    profile_id = uuid4()
     await service.orchestrate_drafts(
-        batch_id=uuid4(),
+        batch_id=batch_id,
         user_id="00000000-0000-0000-0000-000000000001",
         draft_requests=[
             DraftRequest(
@@ -722,11 +732,17 @@ async def test_orchestrate_drafts_charges_via_enforcement_not_wallet(
                 structure="[Verse]\n[Chorus]",
             )
         ],
-        channel_profile_id=profile_id,
+        channel_profile_id=ok_profile_id,
     )
 
     assert enforcement_service.deduct_for_operation.await_count == 3
     assert generation_service.submit_draft.await_args.kwargs.get("skip_pricing") is True
+    enforcement_service.attribute_secondary_daily_usage.assert_awaited_once_with(
+        UUID("00000000-0000-0000-0000-000000000001"),
+        alt_profile_id,
+        "draft",
+        count=3,
+    )
 
 
 @pytest.mark.asyncio
@@ -1612,6 +1628,7 @@ async def test_execute_batch_completes_after_drafts_when_auto_gsuno_is_disabled(
 
 @pytest.mark.asyncio
 async def test_execute_batch_submits_suno_for_successful_drafts_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
     batch_repo: AsyncMock,
     credit_service: AsyncMock,
     pricing_service: AsyncMock,
@@ -1621,6 +1638,13 @@ async def test_execute_batch_submits_suno_for_successful_drafts_when_enabled(
     prompt_service: AsyncMock,
     settings_service: AsyncMock,
 ) -> None:
+    from platform_api.services.suno_blocklist_service import SunoBlocklistService
+    from platform_api.tests.test_suno_blocklist_service import FakeSunoBlocklistRepo
+
+    monkeypatch.setattr(
+        "platform_api.dependencies.get_suno_blocklist_service",
+        lambda: SunoBlocklistService(FakeSunoBlocklistRepo()),
+    )
     batch_id = uuid4()
     song_id = uuid4()
     task_id = uuid4()
@@ -1629,6 +1653,7 @@ async def test_execute_batch_submits_suno_for_successful_drafts_when_enabled(
         id=batch_id,
         user_id=user_id,
         ok_profile_id=UUID("00000000-0000-0000-0000-000000000002"),
+        alt_profile_id=UUID("00000000-0000-0000-0000-000000000003"),
         song_count=1,
         language="en",
         creativity_level=55,

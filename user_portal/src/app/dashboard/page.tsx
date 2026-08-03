@@ -130,7 +130,9 @@ export default function DashboardOverviewPage() {
                 >
                   <span className="font-medium text-white">{channel.profile_name}</span>
                   <span className="text-slate-400">
-                    Songs {channel.daily_songs_remaining}/{channel.daily_songs_limit} · Images{" "}
+                    Drafts {channel.daily_drafts_remaining ?? "—"}/
+                    {channel.daily_drafts_limit ?? "—"} · Songs{" "}
+                    {channel.daily_songs_remaining}/{channel.daily_songs_limit} · Images{" "}
                     {channel.daily_images_remaining}/{channel.daily_images_limit}
                   </span>
                 </div>

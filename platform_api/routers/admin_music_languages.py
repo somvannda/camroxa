@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
 from platform_api.dependencies import get_db_pool
@@ -183,8 +183,8 @@ async def update_music_language(
     return _row_to_admin_item(dict(row))
 
 
-@router.delete("/{code}", status_code=204)
-async def delete_music_language(code: str, _ctx: AdminDep) -> None:
+@router.delete("/{code}", status_code=204, response_class=Response)
+async def delete_music_language(code: str, _ctx: AdminDep) -> Response:
     normalized_code = code.strip().lower()
     pool = get_db_pool()
     existing = await pool.fetchrow(
@@ -208,3 +208,4 @@ async def delete_music_language(code: str, _ctx: AdminDep) -> None:
     )
     if result.endswith("0"):
         raise HTTPException(status_code=404, detail="Language not found.")
+    return Response(status_code=204)

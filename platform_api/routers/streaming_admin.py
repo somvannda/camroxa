@@ -110,7 +110,23 @@ class UploadJobResponse(BaseModel):
     source_url: str | None = None
     storage_key: str | None = None
     error: str | None = None
+    attempt_count: int | None = None
+    user_id: str | None = None
+    user_email: str | None = None
+    user_display_name: str | None = None
+    song_id: str | None = None
+    song_title: str | None = None
+    song_album: str | None = None
+    song_batch_index: int | None = None
+    batch_id: str | None = None
+    album_id: str | None = None
+    stream_album_name: str | None = None
+    stream_channel_role: str | None = None
+    stream_album_publish_status: str | None = None
+    stream_track_publish_status: str | None = None
+    stream_track_variant: str | None = None
     created_at: str | None = None
+    updated_at: str | None = None
 
 
 class UploadJobListResponse(BaseModel):
@@ -314,6 +330,12 @@ async def list_streaming_upload_jobs(
         limit=max(1, min(limit, 200)),
         status=status,
     )
+    def _id(value: Any) -> str | None:
+        return str(value) if value is not None else None
+
+    def _ts(value: Any) -> str | None:
+        return value.isoformat() if value is not None else None
+
     items = [
         UploadJobResponse(
             id=str(row["id"]),
@@ -322,7 +344,25 @@ async def list_streaming_upload_jobs(
             source_url=row.get("source_url"),
             storage_key=row.get("storage_key"),
             error=row.get("error"),
-            created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+            attempt_count=int(row["attempt_count"]) if row.get("attempt_count") is not None else None,
+            user_id=_id(row.get("user_id")),
+            user_email=row.get("user_email"),
+            user_display_name=row.get("user_display_name"),
+            song_id=_id(row.get("song_id")),
+            song_title=row.get("song_title"),
+            song_album=row.get("song_album"),
+            song_batch_index=(
+                int(row["song_batch_index"]) if row.get("song_batch_index") is not None else None
+            ),
+            batch_id=_id(row.get("batch_id")),
+            album_id=_id(row.get("album_id")),
+            stream_album_name=row.get("stream_album_name"),
+            stream_channel_role=row.get("stream_channel_role"),
+            stream_album_publish_status=row.get("stream_album_publish_status"),
+            stream_track_publish_status=row.get("stream_track_publish_status"),
+            stream_track_variant=row.get("stream_track_variant"),
+            created_at=_ts(row.get("created_at")),
+            updated_at=_ts(row.get("updated_at")),
         )
         for row in rows
     ]

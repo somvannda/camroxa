@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import httpClient from '@/lib/http-client';
 import type { HealthStatus } from '@/types/models';
+import type { ProviderKeyBalancesResponse } from '@/types/provider-balances';
 
 export function useHealthStatus() {
   return useQuery({
@@ -15,6 +16,17 @@ export function useSunoBalance() {
     queryKey: ['suno-balance'],
     queryFn: () =>
       httpClient.get<{ credits: number | null; status: string }>('/api/v1/admin/suno-balance'),
+  });
+}
+
+export function useProviderKeyBalances() {
+  return useQuery({
+    queryKey: ['provider-key-balances'],
+    queryFn: () =>
+      httpClient.get<ProviderKeyBalancesResponse>(
+        '/api/v1/admin/provider-key-balances?refresh=true',
+      ),
+    refetchOnWindowFocus: true,
   });
 }
 

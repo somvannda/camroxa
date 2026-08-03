@@ -66,6 +66,8 @@ const SettingsPage = React.lazy(() => import('@/pages/settings/index'));
 const DesktopNotificationsPage = React.lazy(() => import('@/pages/desktop-notifications/index'));
 const SoftwareUpdatesPage = React.lazy(() => import('@/pages/software-updates/index'));
 const KeyPoolPage = React.lazy(() => import('@/pages/key-pool/index'));
+const JobQueuePage = React.lazy(() => import('@/pages/job-queue/index'));
+const PipelineOpsPage = React.lazy(() => import('@/pages/pipeline/index'));
 const ContentPoolsPage = React.lazy(() => import('@/pages/content-pools/index'));
 const ImageSamplePacksPage = React.lazy(() => import('@/pages/image-sample-packs/index'));
 const MarketplacePage = React.lazy(() => import('@/pages/marketplace/index'));
@@ -123,6 +125,8 @@ function App() {
                     <Route path="/software-updates" element={<SoftwareUpdatesPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/key-pool" element={<KeyPoolPage />} />
+                    <Route path="/job-queue" element={<JobQueuePage />} />
+                    <Route path="/pipeline" element={<PipelineOpsPage />} />
                     <Route path="/content-pools" element={<ContentPoolsPage />} />
                     <Route path="/image-sample-packs" element={<ImageSamplePacksPage />} />
                     <Route path="/marketplace" element={<MarketplacePage />} />

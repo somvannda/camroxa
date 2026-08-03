@@ -86,21 +86,29 @@ class FakeAsyncPGPool:
         # INSERT INTO usage_tracking ... ON CONFLICT ...
         if "insert into usage_tracking" in q and "on conflict" in q:
             # args: new_id, user_id, channel_profile_id, operation_type,
-            #        usage_date, period_start
+            #        usage_date, daily_delta, monthly_delta, period_start
+            # Legacy fake accepted (…, period_start) with implicit +1/+1.
             _new_id = args[0]
             user_id = args[1]
             channel_profile_id = args[2]
             operation_type = args[3]
             usage_date = args[4]
-            period_start = args[5]
+            if len(args) >= 8:
+                daily_delta = int(args[5])
+                monthly_delta = int(args[6])
+                period_start = args[7]
+            else:
+                daily_delta = 1
+                monthly_delta = 1
+                period_start = args[5]
             key = (user_id, channel_profile_id, operation_type, usage_date)
             if key in self._rows:
-                self._rows[key]["daily_count"] += 1
-                self._rows[key]["monthly_count"] += 1
+                self._rows[key]["daily_count"] += daily_delta
+                self._rows[key]["monthly_count"] += monthly_delta
             else:
                 self._rows[key] = {
-                    "daily_count": 1,
-                    "monthly_count": 1,
+                    "daily_count": daily_delta,
+                    "monthly_count": monthly_delta,
                     "period_start_date": period_start,
                 }
             return "INSERT 0 1"
@@ -377,3 +385,37 @@ async def test_increment_usage_isolates_partitions(
     key_b = (user_id, channel_b, "music_generation", usage_date)
     assert pool._rows[key_a]["daily_count"] == 2
     assert pool._rows[key_b]["daily_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_increment_usage_daily_only_skips_monthly(
+    repo: UsageTrackingRepository,
+    pool: FakeAsyncPGPool,
+) -> None:
+    """Secondary-channel song attribution bumps daily without monthly packages."""
+    user_id = uuid4()
+    channel_id = uuid4()
+    usage_date = date(2024, 6, 15)
+    period_start = date(2024, 6, 1)
+
+    await repo.increment_usage(
+        user_id,
+        channel_id,
+        "music",
+        usage_date,
+        period_start,
+        include_monthly=False,
+    )
+    await repo.increment_usage(
+        user_id,
+        channel_id,
+        "music",
+        usage_date,
+        period_start,
+        include_monthly=False,
+    )
+
+    key = (user_id, channel_id, "music", usage_date)
+    assert pool._rows[key]["daily_count"] == 2
+    assert pool._rows[key]["monthly_count"] == 0
+    assert await repo.get_monthly_count(user_id, "music", period_start) == 0

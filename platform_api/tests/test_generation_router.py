@@ -37,11 +37,13 @@ from platform_api.routers.generation import (
     _get_batch_service,
     _get_enforcement_service,
     _get_generation_service,
+    _get_job_queue_repo,
     _get_task_lookup,
     _get_ai_routing_service,
     _get_prompt_service,
     _get_profile_service,
 )
+from platform_api.services.job_types import JOB_RETRY_SONG_SUNO
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +191,13 @@ def mock_batch_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_job_queue() -> AsyncMock:
+    queue = AsyncMock()
+    queue.enqueue = AsyncMock(return_value=None)
+    return queue
+
+
+@pytest.fixture
 def app(
     mock_generation_service: AsyncMock,
     mock_enforcement_service: AsyncMock,
@@ -201,6 +210,7 @@ def app(
     mock_prompt_service: AsyncMock,
     mock_profile_service: AsyncMock,
     mock_batch_service: AsyncMock,
+    mock_job_queue: AsyncMock,
 ):
     """Create a test app with all dependencies overridden."""
     application = create_app()
@@ -211,6 +221,7 @@ def app(
     application.dependency_overrides[_get_prompt_service] = lambda: mock_prompt_service
     application.dependency_overrides[_get_profile_service] = lambda: mock_profile_service
     application.dependency_overrides[_get_batch_service] = lambda: mock_batch_service
+    application.dependency_overrides[_get_job_queue_repo] = lambda: mock_job_queue
     application.dependency_overrides[_get_task_lookup] = lambda: mock_task_lookup
     application.dependency_overrides[_get_suno_task_repo] = lambda: mock_suno_task_repo
     application.dependency_overrides[_get_notification_port] = lambda: mock_notification
@@ -461,6 +472,7 @@ class TestPolishLyrics:
         client: AsyncClient,
         mock_generation_service: AsyncMock,
         mock_batch_service: AsyncMock,
+        mock_job_queue: AsyncMock,
     ) -> None:
         batch_id = str(uuid4())
         song_id = str(uuid4())
@@ -484,6 +496,10 @@ class TestPolishLyrics:
         assert validate_call.kwargs["song_id"] == UUID(song_id)
         assert validate_call.kwargs["lyrics_override"] == "[Verse]\nPolished lyrics here"
         assert validate_call.kwargs["title_override"] == "Retry Title"
+        mock_job_queue.enqueue.assert_awaited_once()
+        enqueue_kwargs = mock_job_queue.enqueue.await_args.kwargs
+        assert enqueue_kwargs["job_type"] == JOB_RETRY_SONG_SUNO
+        assert enqueue_kwargs["payload"]["lyrics"] == "[Verse]\nPolished lyrics here"
 
 
 # ---------------------------------------------------------------------------

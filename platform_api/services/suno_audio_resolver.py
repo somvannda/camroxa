@@ -205,47 +205,85 @@ async def fetch_timestamped_lrc_with_pool(
     *,
     external_task_id: str,
     audio_id: str,
+    attempts: int = 4,
+    delay_seconds: float = 2.0,
 ) -> str:
-    """Fetch Suno aligned words and convert to LRC. Empty string on failure."""
+    """Fetch Suno aligned words and convert to LRC. Empty string on failure.
+
+    Suno often returns empty/unusable alignments for a short window right after
+    generation completes, so we retry a few times before giving up.
+    """
+    import asyncio
+
     from platform_api.services.suno_lrc import aligned_words_to_lrc, parse_aligned_words_payload
 
     task_id = str(external_task_id or "").strip()
     clip_id = str(audio_id or "").strip()
     if not task_id or not clip_id:
         return ""
-    try:
-        client, api_key = await _suno_client_with_pool_key(pool)
-        payload = await client.get_timestamped_lyrics(
-            task_id=task_id,
-            audio_id=clip_id,
-            api_key=api_key,
-        )
-        code = int(payload.get("code", 0) or 0)
-        if code != 200:
+
+    tries = max(1, int(attempts or 1))
+    delay = max(0.0, float(delay_seconds or 0.0))
+    last_error = ""
+    for attempt in range(1, tries + 1):
+        try:
+            client, api_key = await _suno_client_with_pool_key(pool)
+            payload = await client.get_timestamped_lyrics(
+                task_id=task_id,
+                audio_id=clip_id,
+                api_key=api_key,
+            )
+            code = int(payload.get("code", 0) or 0)
+            if code != 200:
+                last_error = f"code={code} msg={str(payload.get('msg') or '')[:160]}"
+                logger.warning(
+                    "Suno timestamped lyrics failed task=%s audio=%s attempt=%s/%s %s",
+                    task_id,
+                    clip_id[:12],
+                    attempt,
+                    tries,
+                    last_error,
+                )
+            else:
+                lrc = aligned_words_to_lrc(parse_aligned_words_payload(payload))
+                if lrc:
+                    if attempt > 1:
+                        logger.info(
+                            "Suno timestamped lyrics ready task=%s audio=%s attempt=%s",
+                            task_id,
+                            clip_id[:12],
+                            attempt,
+                        )
+                    return lrc
+                last_error = "empty/unusable alignedWords"
+                logger.info(
+                    "Suno timestamped lyrics empty/unusable for task=%s audio=%s attempt=%s/%s",
+                    task_id,
+                    clip_id[:12],
+                    attempt,
+                    tries,
+                )
+        except Exception as exc:
+            last_error = str(exc)[:200]
             logger.warning(
-                "Suno timestamped lyrics failed task=%s audio=%s code=%s msg=%s",
+                "Suno timestamped lyrics error task=%s audio=%s attempt=%s/%s: %s",
                 task_id,
                 clip_id[:12],
-                code,
-                str(payload.get("msg") or "")[:160],
+                attempt,
+                tries,
+                last_error,
             )
-            return ""
-        lrc = aligned_words_to_lrc(parse_aligned_words_payload(payload))
-        if not lrc:
-            logger.info(
-                "Suno timestamped lyrics empty/unusable for task=%s audio=%s",
-                task_id,
-                clip_id[:12],
-            )
-        return lrc
-    except Exception as exc:
+        if attempt < tries and delay > 0:
+            await asyncio.sleep(delay)
+
+    if last_error:
         logger.warning(
-            "Suno timestamped lyrics error task=%s audio=%s: %s",
+            "Suno timestamped lyrics exhausted retries task=%s audio=%s last=%s",
             task_id,
             clip_id[:12],
-            str(exc)[:200],
+            last_error,
         )
-        return ""
+    return ""
 
 
 async def download_suno_mp3_bytes(url: str, *, fallback_urls: list[str] | None = None) -> bytes:

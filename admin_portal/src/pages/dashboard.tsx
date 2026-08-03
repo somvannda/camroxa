@@ -16,8 +16,9 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
 import { ErrorState } from '@/components/shared/error-state';
 import { HealthSummary } from '@/components/key-pool/health-summary';
+import { ProviderKeyBalancesPanel } from '@/components/dashboard/provider-key-balances-panel';
 import { PageHeader } from '@/components/shared/page-header';
-import { useHealthStatus, useSunoBalance, useAdminOverview } from '@/hooks/use-dashboard';
+import { useHealthStatus, useSunoBalance, useAdminOverview, useProviderKeyBalances } from '@/hooks/use-dashboard';
 import { cn } from '@/lib/utils';
 import type { HealthStatus, ServiceHealth } from '@/types/models';
 
@@ -69,6 +70,7 @@ export default function DashboardPage() {
   const healthQuery = useHealthStatus();
   const balanceQuery = useSunoBalance();
   const overviewQuery = useAdminOverview();
+  const providerBalancesQuery = useProviderKeyBalances();
 
   const isLoading = healthQuery.isLoading || balanceQuery.isLoading || overviewQuery.isLoading;
   const isError = healthQuery.isError || balanceQuery.isError || overviewQuery.isError;
@@ -87,6 +89,7 @@ export default function DashboardPage() {
           healthQuery.refetch();
           balanceQuery.refetch();
           overviewQuery.refetch();
+          providerBalancesQuery.refetch();
         }}
       />
     );
@@ -188,6 +191,8 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Monitor system health, provider readiness, platform usage, and your current operating posture from one place."
       />
+
+      <ProviderKeyBalancesPanel />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

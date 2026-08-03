@@ -35,7 +35,7 @@ class ProgressLocalSyncCoordinator(QObject):
 
     def start(self) -> None:
         self._active = True
-        self._timer.start(20_000)
+        self._timer.start(30_000)
         self._poll()
 
     def stop(self) -> None:

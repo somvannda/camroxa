@@ -28,6 +28,8 @@ import {
   Bell,
   Download,
   LogOut,
+  ListOrdered,
+  Activity,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -62,6 +64,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Streaming Jobs', path: '/streaming/upload-jobs', icon: UploadCloud },
   { label: 'Rate Limits', path: '/rate-limits', icon: Gauge },
   { label: 'Key Pool', path: '/key-pool', icon: KeySquare },
+  { label: 'Job Queue', path: '/job-queue', icon: ListOrdered },
+  { label: 'Pipeline Ops', path: '/pipeline', icon: Activity },
   { label: 'Content Pools', path: '/content-pools', icon: Library },
   { label: 'Image Packs', path: '/image-sample-packs', icon: Image },
   { label: 'Marketplace', path: '/marketplace', icon: Store },

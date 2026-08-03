@@ -230,10 +230,21 @@ class SunoBalanceService:
     def _normalize_balance(raw: dict[str, Any]) -> dict[str, Any]:
         """Normalize raw Suno balance response into a consistent format.
 
-        Attempts to extract a numeric credit value from the response.
+        APIBox returns ``{"code":200,"msg":"success","data":100}`` where data is the credit count.
         """
-        # The Suno API may return the balance under various keys
-        credits = raw.get("credits") or raw.get("balance") or raw.get("credit_balance")
+        data = raw.get("data")
+        credits = None
+        if isinstance(data, (int, float, str)) and not isinstance(data, bool):
+            credits = data
+        elif isinstance(data, dict):
+            credits = (
+                data.get("credits")
+                or data.get("balance")
+                or data.get("credit_balance")
+                or data.get("credit")
+            )
+        if credits is None:
+            credits = raw.get("credits") or raw.get("balance") or raw.get("credit_balance")
 
         if credits is not None:
             try:

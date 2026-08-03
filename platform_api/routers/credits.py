@@ -684,6 +684,9 @@ async def get_quota_status(
                 daily_images_used=item.daily_images_used,
                 daily_images_limit=item.daily_images_limit,
                 daily_images_remaining=item.daily_images_remaining,
+                daily_drafts_used=item.daily_drafts_used,
+                daily_drafts_limit=item.daily_drafts_limit,
+                daily_drafts_remaining=item.daily_drafts_remaining,
             )
             for item in channels
         ],

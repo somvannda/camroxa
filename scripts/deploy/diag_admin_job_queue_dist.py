@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Confirm Job Queue assets in production admin dist."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+DEPLOY = ROOT / "scripts" / "deploy"
+sys.path.insert(0, str(DEPLOY / ".venv" / "Lib" / "site-packages"))
+sys.path.insert(0, str(DEPLOY))
+
+from deploy import ensure_deploy_key, ssh_connect  # noqa: E402
+
+PRODUCTION_HOST = "82.197.71.248"
+CMD = r"""
+set +e
+cd /opt/camxora/repo/admin_portal
+echo === DIST AGE ===
+ls -la dist/index.html
+echo === JOB QUEUE IN DIST ===
+grep -R -l 'job-queue' dist/assets 2>/dev/null | head -5
+grep -R -o 'Job Queue\|job-queue/metrics\|/job-queue' dist/assets 2>/dev/null | sort | uniq -c | head -20
+echo === PROVIDER BALANCES IN DIST ===
+grep -R -o 'provider-key-balances\|Provider Key\|Key Balances' dist/assets 2>/dev/null | sort | uniq -c | head -20
+echo === WORKERS ===
+systemctl is-active camxora-worker-draft@{1..4} camxora-worker-suno@{1..2} camxora-worker-images@{1..2} | paste -sd' '
+echo === QUEUE DEPTH ===
+sudo -u postgres psql -d camxora_platform -Atc "SELECT count(1) FROM job_queue WHERE status IN ('queued','leased','running');"
+echo DONE
+"""
+
+
+def load_production() -> dict[str, str]:
+    data: dict[str, str] = {}
+    for line in (ROOT / ".deploy" / "secrets.production.env").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        data[key.strip()] = value.strip()
+    return data
+
+
+def main() -> int:
+    secrets = load_production()
+    host = secrets.get("PRODUCTION_VPS_HOST") or secrets["VPS_HOST"]
+    user = secrets.get("PRODUCTION_VPS_USER") or secrets["VPS_USER"]
+    password = secrets.get("PRODUCTION_VPS_PASSWORD") or secrets.get("VPS_PASSWORD")
+    if host != PRODUCTION_HOST:
+        raise SystemExit(f"Refusing non-production host: {host}")
+    client = ssh_connect(host, user, ensure_deploy_key(), password)
+    try:
+        chan = client.get_transport().open_session()
+        chan.settimeout(90)
+        chan.exec_command(CMD)
+        out = b""
+        while True:
+            if chan.recv_ready():
+                chunk = chan.recv(65535)
+                if not chunk:
+                    break
+                out += chunk
+            if chan.exit_status_ready():
+                while chan.recv_ready():
+                    out += chan.recv(65535)
+                break
+        print(out.decode(errors="replace"))
+    finally:
+        client.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

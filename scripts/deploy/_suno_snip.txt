@@ -1,0 +1,41 @@
+120 /tmp/suno_fail_snip.txt
+Aug 03 08:11:45 vmi3465860 python[10165]: 2026-08-03 08:11:45,277 | WARNING  | platform_api.music | [music] [batch 8fcf1575] suno_failure_metric song_id=1acb8c9b failure_type=other is_retry=true blocked_terms=-
+Aug 03 08:11:45 vmi3465860 python[10165]: 2026-08-03 08:11:45,277 | WARNING  | platform_api.services.batch_service | Suno retry failed for song 1acb8c9b-0999-4c14-bef7-22f01f0f2b4f in batch 8fcf1575-c831-41c3-a62e-42f08d1c7381: UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'
+Aug 03 08:11:45 vmi3465860 python[10165]: 2026-08-03 08:11:45,282 | ERROR    | platform_api.worker | Job 73fafe8f-d327-45d3-bca6-2a0651a42c04 failed  failed
+Aug 03 08:11:45 vmi3465860 python[10165]:     await _handle_suno(job, payload)
+Aug 03 08:11:45 vmi3465860 python[10165]:   File "/opt/camxora/repo/platform_api/worker.py", line 145, in _handle_suno
+Aug 03 08:11:45 vmi3465860 python[10165]:     await get_batch_service().retry_song_suno(
+Aug 03 08:11:45 vmi3465860 python[10165]:   File "/opt/camxora/repo/platform_api/services/batch_service.py", line 2268, in retry_song_suno
+Aug 03 08:11:45 vmi3465860 python[10165]:     task_id = await self._submit_song_to_suno(
+Aug 03 08:11:45 vmi3465860 python[10165]:   File "/opt/camxora/repo/platform_api/services/batch_service.py", line 4108, in _submit_song_to_suno
+Aug 03 08:11:45 vmi3465860 python[10165]: TypeError: UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,282 | INFO     | platform_api.worker | Running job 4b2dcfa4-c0be-45b5-9918-620f7f3ac4ad type=retry_song_suno attempt=5/5 batch=8fcf1575-c831-41c3-a62e-42f08d1c7381
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,438 | INFO     | platform_api.music | [music] [batch 8fcf1575] [song #9] Suno submit started  title='River Echoes Beyond Stars', model=V5_5
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,496 | INFO     | platform_api.credits | [credits] Subscription quota used for user 2baeaae8 (music via suno)
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,499 | WARNING  | platform_api.music | [music] [batch 8fcf1575] suno_failure_metric song_id=60bb4a21 failure_type=other is_retry=true blocked_terms=-
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,537 | WARNING  | platform_api.music | [music] [batch 8fcf1575] [song #9] Suno submit failed  title='River Echoes Beyond Stars' (song_id=60bb4a21): UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,537 | WARNING  | platform_api.music | [music] [batch 8fcf1575] suno_failure_metric song_id=60bb4a21 failure_type=other is_retry=true blocked_terms=-
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,537 | WARNING  | platform_api.services.batch_service | Suno retry failed for song 60bb4a21-a437-4125-ad68-8a585309c32c in batch 8fcf1575-c831-41c3-a62e-42f08d1c7381: UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'
+Aug 03 08:11:47 vmi3465860 python[10164]: 2026-08-03 08:11:47,541 | ERROR    | platform_api.worker | Job 4b2dcfa4-c0be-45b5-9918-620f7f3ac4ad failed  failed
+Aug 03 08:11:47 vmi3465860 python[10164]:     await _handle_suno(job, payload)
+Aug 03 08:11:47 vmi3465860 python[10164]:   File "/opt/camxora/repo/platform_api/worker.py", line 145, in _handle_suno
+Aug 03 08:11:47 vmi3465860 python[10164]:     await get_batch_service().retry_song_suno(
+Aug 03 08:11:47 vmi3465860 python[10164]:   File "/opt/camxora/repo/platform_api/services/batch_service.py", line 2268, in retry_song_suno
+Aug 03 08:11:47 vmi3465860 python[10164]:     task_id = await self._submit_song_to_suno(
+Aug 03 08:11:47 vmi3465860 python[10164]:   File "/opt/camxora/repo/platform_api/services/batch_service.py", line 4108, in _submit_song_to_suno
+Aug 03 08:11:47 vmi3465860 python[10164]: TypeError: UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,306 | INFO     | platform_api.worker | Running job 9a07a90e-87a6-4240-895b-fc0e36a56f2e type=retry_song_suno attempt=5/5 batch=8fcf1575-c831-41c3-a62e-42f08d1c7381
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,461 | INFO     | platform_api.music | [music] [batch 8fcf1575] [song #10] Suno submit started  title='After Static Holds Fire', model=V5_5
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,512 | INFO     | platform_api.credits | [credits] Subscription quota used for user 2baeaae8 (music via suno)
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,516 | WARNING  | platform_api.music | [music] [batch 8fcf1575] suno_failure_metric song_id=afffce92 failure_type=other is_retry=true blocked_terms=-
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,550 | WARNING  | platform_api.music | [music] [batch 8fcf1575] [song #10] Suno submit failed  title='After Static Holds Fire' (song_id=afffce92): UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,551 | WARNING  | platform_api.music | [music] [batch 8fcf1575] suno_failure_metric song_id=afffce92 failure_type=other is_retry=true blocked_terms=-
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,551 | WARNING  | platform_api.services.batch_service | Suno retry failed for song afffce92-abb3-4222-82e6-455093c094bd in batch 8fcf1575-c831-41c3-a62e-42f08d1c7381: UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'
+Aug 03 08:11:48 vmi3465860 python[10165]: 2026-08-03 08:11:48,556 | ERROR    | platform_api.worker | Job 9a07a90e-87a6-4240-895b-fc0e36a56f2e failed  failed
+Aug 03 08:11:48 vmi3465860 python[10165]:     await _handle_suno(job, payload)
+Aug 03 08:11:48 vmi3465860 python[10165]:   File "/opt/camxora/repo/platform_api/worker.py", line 145, in _handle_suno
+Aug 03 08:11:48 vmi3465860 python[10165]:     await get_batch_service().retry_song_suno(
+Aug 03 08:11:48 vmi3465860 python[10165]:   File "/opt/camxora/repo/platform_api/services/batch_service.py", line 2268, in retry_song_suno
+Aug 03 08:11:48 vmi3465860 python[10165]:     task_id = await self._submit_song_to_suno(
+Aug 03 08:11:48 vmi3465860 python[10165]:   File "/opt/camxora/repo/platform_api/services/batch_service.py", line 4108, in _submit_song_to_suno
+Aug 03 08:11:48 vmi3465860 python[10165]: TypeError: UsageTrackingRepository.increment_usage() got an unexpected keyword argument 'count'

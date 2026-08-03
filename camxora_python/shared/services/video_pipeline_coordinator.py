@@ -8,7 +8,6 @@ from typing import Literal
 from PySide6.QtCore import QObject, QTimer
 
 from features.video.lib.desktop_video_automation import (
-    build_auto_video_candidate_from_row,
     select_next_auto_video_candidate,
 )
 from features.video.services.pipeline_automation_service import PipelineAutomationService
@@ -54,7 +53,7 @@ class VideoPipelineCoordinator(QObject):
 
     def start(self) -> None:
         self._active = True
-        self._timer.start(6_000)
+        self._timer.start(12_000)
         self._poll()
 
     def stop(self) -> None:
@@ -85,7 +84,7 @@ class VideoPipelineCoordinator(QObject):
             self._timer.stop()
             return
         if not self._timer.isActive():
-            self._timer.start(6_000)
+            self._timer.start(12_000)
 
     def kick(self) -> None:
         """Force an immediate orchestration poll (e.g. after API recovery or Continue)."""
@@ -138,19 +137,19 @@ class VideoPipelineCoordinator(QObject):
             self._api_outage = False
             self._automation.recover_stale_state()
             self._cooldown_until.clear()
-            from shared.services.shell_status import emit_shell_status
-
-            emit_shell_status(
-                "API recovered — resuming auto-video pipeline…",
-                tone="success",
-            )
 
         if time.time() < float(self._user_cancel_until or 0.0):
             return
 
         from shared.services.auto_pipeline_pause import is_auto_pipeline_paused
+        from shared.services.shell_status import emit_shell_status
 
         if is_auto_pipeline_paused():
+            if recovered_from_outage:
+                emit_shell_status(
+                    "API recovered — auto-video is paused (Stop Exporting). Resume from Progress when ready.",
+                    tone="neutral",
+                )
             return
 
         self._automation.recover_stale_state()
@@ -168,7 +167,17 @@ class VideoPipelineCoordinator(QObject):
             workspace=workspace,
         )
         if candidate is None:
+            if recovered_from_outage:
+                emit_shell_status(
+                    "API recovered — no export-ready run yet (waiting for BG/MP3s/template or outputs).",
+                    tone="neutral",
+                )
             return
+        if recovered_from_outage:
+            emit_shell_status(
+                "API recovered — resuming auto-video pipeline…",
+                tone="success",
+            )
 
         cooldown_key = f"{candidate.key}:{candidate.branch}"
         if (self._cooldown_until.get(cooldown_key) or 0) > time.time():
@@ -268,31 +277,46 @@ class VideoPipelineCoordinator(QObject):
             ),
             row,
         )
-        candidate = build_auto_video_candidate_from_row(
+        from features.video.lib.desktop_video_automation import (
+            build_auto_video_candidate_from_row_with_reason,
+            build_merge_candidate_from_row,
+        )
+        from shared.services.shell_status import emit_shell_status
+
+        self._automation.recover_stale_state()
+        if action == "merge":
+            # Merge only needs valid exported MP4s — do not re-gate on BG/template.
+            candidate, merge_reason = build_merge_candidate_from_row(
+                overlay_row,
+                profile,
+                normalized_branch,
+            )
+            if candidate is None:
+                emit_shell_status(
+                    f"Unable to start merge: {merge_reason or 'run folder is not ready'}.",
+                    tone="warning",
+                )
+                return
+            started = self._automation.start_manual_merge(candidate, settings=payload.settings)
+            if not started:
+                emit_shell_status(
+                    "Merge did not start — need valid exported MP4s "
+                    "(>50KB per track; 0KB stubs like video-main-1080p.mp4 do not count).",
+                    tone="warning",
+                )
+            return
+
+        candidate, ready_reason = build_auto_video_candidate_from_row_with_reason(
             overlay_row,
             profile,
             normalized_branch,
             workspace=payload.workspace if isinstance(payload.workspace, VideoWorkspaceState) else None,
         )
         if candidate is None:
-            from shared.services.shell_status import emit_shell_status
-
             emit_shell_status(
-                "Unable to start video action: local run folder is missing MP3s, image assets, or a catalog template.",
+                f"Unable to start video action: {ready_reason or 'local assets are not ready'}.",
                 tone="warning",
             )
-            return
-
-        self._automation.recover_stale_state()
-        if action == "merge":
-            started = self._automation.start_manual_merge(candidate, settings=payload.settings)
-            if not started:
-                from shared.services.shell_status import emit_shell_status
-
-                emit_shell_status(
-                    "Merge did not start — check the run folder for exported MP4s.",
-                    tone="warning",
-                )
             return
 
         force_regenerate = action == "force_export"

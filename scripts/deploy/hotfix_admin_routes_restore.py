@@ -36,6 +36,7 @@ FILES = [
     "platform_api/services/admin_pipeline_service.py",
     "platform_api/services/admin_pipeline_retry_costs.py",
     "platform_api/services/provider_key_balance_service.py",
+    "platform_api/services/key_pool_service.py",
     "platform_api/services/request_latency.py",
     "platform_api/repositories/job_queue_repo.py",
     "platform_api/services/pipeline_board_notifications.py",

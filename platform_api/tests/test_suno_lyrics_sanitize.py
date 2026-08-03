@@ -30,6 +30,26 @@ def test_sanitize_lyrics_replaces_lowlight_word() -> None:
     assert "afterglow" in cleaned.lower()
 
 
+def test_sanitize_lyrics_replaces_hyphenated_lowlight_variant() -> None:
+    """Suno flags producer tag 'lowlight' even when lyrics write 'low-light'."""
+    lyrics = (
+        "[Intro]\n"
+        "you runaway driver, the low-light endless bassline room feels too close"
+    )
+    cleaned, replacements = sanitize_text_for_suno_with_changes(lyrics, field="lyrics")
+    assert "low-light" not in cleaned.lower()
+    assert "lowlight" not in cleaned.lower()
+    assert "afterglow" in cleaned.lower()
+    assert any(item.source.lower() == "low-light" for item in replacements)
+
+
+def test_sanitize_lyrics_replaces_spaced_lowlight_variant() -> None:
+    lyrics = "Glow in the low light after rain"
+    cleaned = sanitize_lyrics_for_suno(lyrics)
+    assert "low light" not in cleaned.lower()
+    assert "afterglow" in cleaned.lower()
+
+
 def test_sanitize_lyrics_uses_extra_blocked_terms() -> None:
     lyrics = "We ride the midnight skyline"
     cleaned = sanitize_lyrics_for_suno(lyrics, blocked_terms=["skyline"], replacements={"skyline": "horizon"})
@@ -41,6 +61,11 @@ def test_find_suno_risk_terms_flags_lowlight_as_block() -> None:
     lyrics = "Pressure in the bleeding lowlight tonight"
     hits = find_suno_risk_terms_in_lyrics(lyrics)
     assert any(hit.severity == "block" and hit.term.lower() == "lowlight" for hit in hits)
+
+
+def test_find_suno_risk_terms_flags_hyphenated_lowlight() -> None:
+    hits = find_suno_risk_terms_in_lyrics("the low-light endless bassline")
+    assert any(hit.severity == "block" and "low" in hit.term.lower() for hit in hits)
 
 
 def test_find_suno_risk_terms_flags_feat_as_warn() -> None:

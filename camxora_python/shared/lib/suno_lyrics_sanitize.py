@@ -122,6 +122,26 @@ def _block_suggestion(term: str, replacements: dict[str, str]) -> str:
     return "Remove or rephrase this token before submitting to Suno."
 
 
+def _alnum_core(term: str) -> str:
+    """Letters/digits only — used so ``low-light`` / ``low light`` map to ``lowlight``."""
+    return "".join(ch for ch in str(term or "").lower() if ch.isalnum())
+
+
+def blocked_term_pattern(term: str) -> str:
+    """Regex that matches a block term plus spaced/hyphenated variants.
+
+    Keep in sync with platform_api.services.suno_lyrics_sanitize.blocked_term_pattern.
+    """
+    core = _alnum_core(term)
+    if not core:
+        escaped = re.escape(str(term or "").strip())
+        return rf"\b{escaped}\b" if escaped else r"(?!)"
+    if len(core) <= 2:
+        return rf"(?<![A-Za-z0-9]){re.escape(core)}(?![A-Za-z0-9])"
+    body = r"[\s\-_]*".join(re.escape(ch) for ch in core)
+    return rf"(?<![A-Za-z0-9]){body}(?![A-Za-z0-9])"
+
+
 def _merge_platform_blocklist(
     *,
     replacements: dict[str, str] | None = None,
@@ -229,7 +249,8 @@ def find_suno_risk_terms_in_text(
     seen_spans: set[tuple[int, int]] = set()
 
     for term in sorted(block_terms, key=len, reverse=True):
-        for match in re.finditer(rf"\b{re.escape(term)}\b", normalized_text, flags=re.IGNORECASE):
+        pattern = blocked_term_pattern(term)
+        for match in re.finditer(pattern, normalized_text, flags=re.IGNORECASE):
             span = (match.start(), match.end())
             if span in seen_spans:
                 continue
@@ -247,7 +268,8 @@ def find_suno_risk_terms_in_text(
     for term in sorted(warn_terms, key=len, reverse=True):
         if term in block_terms:
             continue
-        for match in re.finditer(rf"\b{re.escape(term)}\b", normalized_text, flags=re.IGNORECASE):
+        pattern = blocked_term_pattern(term)
+        for match in re.finditer(pattern, normalized_text, flags=re.IGNORECASE):
             span = (match.start(), match.end())
             if span in seen_spans:
                 continue
@@ -344,7 +366,7 @@ def sanitize_text_for_suno_with_changes(
             return replacement_value
 
         result = re.sub(
-            rf"\b{re.escape(term)}\b",
+            blocked_term_pattern(term),
             _replacer,
             result,
             flags=re.IGNORECASE,
@@ -439,9 +461,9 @@ def infer_suno_replacements_from_learned_terms(
 
     inferred: list[SunoSanitizeReplacement] = []
     for term, target in mapping.items():
-        if re.search(rf"\b{re.escape(term)}\b", combined, flags=re.IGNORECASE):
+        if re.search(blocked_term_pattern(term), combined, flags=re.IGNORECASE):
             continue
-        if re.search(rf"\b{re.escape(target)}\b", combined, flags=re.IGNORECASE):
+        if re.search(blocked_term_pattern(target), combined, flags=re.IGNORECASE):
             inferred.append(
                 SunoSanitizeReplacement(
                     field="text",

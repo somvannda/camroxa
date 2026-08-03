@@ -201,10 +201,11 @@ def _build_row(
     youtube_status = str(youtube.get("latest_status", "") or "").upper()
     youtube_url = youtube.get("youtube_url")
 
+    # Export can start once the background is ready. Thumbnail is for YouTube upload
+    # and may still be rendering while the row is already in Converter/Export.
     image_complete = (
         (bg_total <= 0 or bg_ready >= bg_total)
-        and (th_total <= 0 or th_ready >= th_total)
-        and (bg_total > 0 or th_total > 0)
+        and (bg_total > 0 or long_ready or reel_ready)
         and (long_ready or reel_ready)
     )
 
@@ -260,7 +261,7 @@ def _build_row(
     elif not image_complete:
         stage = "Image"
         status = "Rendering" if (bg_total > 0 or th_total > 0) else "Queued"
-        notes = "Background and thumbnail generation are still in progress."
+        notes = "Background generation is still in progress (needed before video export)."
     else:
         stage = "Converter"
         status = "Queued"
@@ -490,20 +491,34 @@ async def list_progress_rows(
 
     batch_ids = [row["id"] for row in batch_rows]
 
-    from platform_api.dependencies import get_batch_service
+    # Only heal missing image-job rows — do not re-run ensure on every poll.
+    # Previously this looped ensure_batch_image_jobs for every returned batch and
+    # pegged uvicorn workers under desktop/coordinator polling.
+    missing_image_job_batches = await pool.fetch(
+        """
+        SELECT b.id
+        FROM UNNEST($1::uuid[]) AS b(id)
+        WHERE NOT EXISTS (
+            SELECT 1 FROM image_jobs ij WHERE ij.batch_id = b.id LIMIT 1
+        )
+        """,
+        batch_ids,
+    )
+    if missing_image_job_batches:
+        from platform_api.dependencies import get_batch_service
 
-    batch_service = get_batch_service()
-    for batch_id in batch_ids:
-        try:
-            await batch_service.ensure_batch_image_jobs(
-                user_id=ctx.user_id,
-                batch_id=batch_id,
-            )
-        except Exception:
-            logger.exception(
-                "Failed to ensure image jobs while loading progress for batch %s",
-                batch_id,
-            )
+        batch_service = get_batch_service()
+        for row in missing_image_job_batches:
+            try:
+                await batch_service.ensure_batch_image_jobs(
+                    user_id=ctx.user_id,
+                    batch_id=row["id"],
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to ensure image jobs while loading progress for batch %s",
+                    row["id"],
+                )
 
     song_stats_rows = await pool.fetch(
         """

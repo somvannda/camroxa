@@ -9,7 +9,6 @@ Requirements: 11.2, 11.3, 11.6, 11.8
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import logging
@@ -22,7 +21,6 @@ from platform_api.config import get_settings
 from platform_api.models.enums import TaskStatus
 from platform_api.services.batch_service import BatchService
 from platform_api.services.image_job_service import ImageJobService
-from platform_api.services.image_job_runner import run_image_jobs_until_empty
 from platform_api.services.suno_status_messages import (
     is_suno_failure_status,
     is_suno_success_status,
@@ -641,13 +639,22 @@ async def suno_callback(
             )
 
     if auto_run_images and parsed_batch_id is not None and persist_status == TaskStatus.SUCCESS:
-        asyncio.create_task(
-            run_image_jobs_until_empty(
-                image_job_service,
-                user_id=user_id,
-                batch_id=str(parsed_batch_id),
+        try:
+            from platform_api.dependencies import get_job_queue_repo
+            from platform_api.services.job_types import JOB_RUN_IMAGE_JOBS, PRI_RUN_IMAGE_JOBS
+
+            await get_job_queue_repo().enqueue_if_absent(
+                user_id=UUID(user_id),
+                batch_id=parsed_batch_id,
+                job_type=JOB_RUN_IMAGE_JOBS,
+                payload={"user_id": user_id, "batch_id": str(parsed_batch_id)},
+                priority=PRI_RUN_IMAGE_JOBS,
             )
-        )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue image jobs after Suno success batch=%s",
+                parsed_batch_id,
+            )
 
     logger.info(
         "Suno callback processed: task_id=%s, external_id=%s, status=%s",

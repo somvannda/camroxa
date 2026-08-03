@@ -168,6 +168,9 @@ class FakeUsageRepo:
         operation_type: str,
         usage_date: date,
         period_start: date,
+        *,
+        count: int = 1,
+        include_monthly: bool = True,
     ) -> None:
         self.increment_calls.append(
             {
@@ -176,12 +179,15 @@ class FakeUsageRepo:
                 "operation_type": operation_type,
                 "usage_date": usage_date,
                 "period_start": period_start,
+                "count": count,
+                "include_monthly": include_monthly,
             }
         )
         key_d = (user_id, channel_profile_id, operation_type, usage_date)
-        self._daily[key_d] = self._daily.get(key_d, 0) + 1
-        key_m = (user_id, operation_type, period_start)
-        self._monthly[key_m] = self._monthly.get(key_m, 0) + 1
+        self._daily[key_d] = self._daily.get(key_d, 0) + count
+        if include_monthly:
+            key_m = (user_id, operation_type, period_start)
+            self._monthly[key_m] = self._monthly.get(key_m, 0) + count
 
     async def decrement_usage(
         self,
@@ -991,6 +997,33 @@ async def test_draft_daily_enforced_against_draft_pool(
     assert exc_info.value.details["error_code"] == "DAILY_QUOTA_EXCEEDED"
     assert usage_repo.increment_calls == []
     assert credit_repo.ledger_calls == []
+
+
+@pytest.mark.asyncio
+async def test_attribute_secondary_daily_usage_drafts_without_monthly(
+    service: UsageEnforcementService,
+    usage_repo: FakeUsageRepo,
+) -> None:
+    """Secondary draft attribution mirrors Primary slot count on daily only."""
+    user_id = uuid4()
+    alt_channel_id = uuid4()
+    today = billing_today()
+
+    await service.attribute_secondary_daily_usage(
+        user_id,
+        alt_channel_id,
+        "draft",
+        count=21,
+    )
+
+    assert len(usage_repo.increment_calls) == 1
+    call = usage_repo.increment_calls[0]
+    assert call["channel_profile_id"] == alt_channel_id
+    assert call["operation_type"] == "draft"
+    assert call["count"] == 21
+    assert call["include_monthly"] is False
+    assert await usage_repo.get_daily_count(user_id, alt_channel_id, "draft", today) == 21
+    assert await usage_repo.get_monthly_count(user_id, "draft", call["period_start"]) == 0
 
 
 @pytest.mark.asyncio

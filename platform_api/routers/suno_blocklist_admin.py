@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_suno_blocklist_service
@@ -136,18 +136,19 @@ async def update_suno_blocklist_term(
     return _row_to_response(row)
 
 
-@router.delete("/{term_id}", status_code=204)
+@router.delete("/{term_id}", status_code=204, response_class=Response)
 async def delete_suno_blocklist_term(
     term_id: UUID,
     _ctx: AdminDep,
     service: BlocklistServiceDep,
-) -> None:
+) -> Response:
     try:
         deleted = await service.delete_term(term_id)
     except PlatformAPIError as exc:
         _raise_http(exc)
     if not deleted:
         raise HTTPException(status_code=404, detail="Blocklist term not found.")
+    return Response(status_code=204)
 
 
 @router.post("/promote", response_model=SunoBlocklistTermResponse, status_code=201)

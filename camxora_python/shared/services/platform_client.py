@@ -171,6 +171,19 @@ class PlatformClient:
             _log_api_error(method, path, err)
             raise err from exc
         except httpx.TimeoutException as exc:
+            # One retry for idempotent GETs — covers brief API saturation / restarts.
+            if method == "GET" and _retry:
+                time.sleep(0.75)
+                return self._send(
+                    path,
+                    method=method,
+                    body=body,
+                    params=params,
+                    auth=auth,
+                    _retry=False,
+                    accept=accept,
+                    timeout=effective_timeout,
+                )
             err = PlatformApiError(0, f"Request timed out contacting {self.base_url()}.")
             _log_api_error(method, path, err)
             raise err from exc

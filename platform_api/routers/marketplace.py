@@ -24,7 +24,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
@@ -214,17 +214,18 @@ async def disable_item(
     return _item_to_response(item)
 
 
-@router.delete("/items/{item_id}", status_code=204)
+@router.delete("/items/{item_id}", status_code=204, response_class=Response)
 async def delete_item(
     item_id: UUID,
     _ctx: AdminDep,
     service: ServiceDep,
-) -> None:
+) -> Response:
     """Delete a marketplace item and its associated files.
 
     Requirements: 2.4, 2.6
     """
     await service.delete_item(item_id)
+    return Response(status_code=204)
 
 
 @router.post("/items/{item_id}/preview")

@@ -538,7 +538,7 @@ class VideoPipelineOrchestrationWorker(QThread):
             with ThreadPoolExecutor(max_workers=3) as pool:
                 future_progress = pool.submit(
                     self._api.list_progress,
-                    ProgressFilters(limit=80, active_only=True),
+                    ProgressFilters(limit=40, active_only=True),
                 )
                 future_profiles = pool.submit(self._api.list_profiles)
                 future_settings = pool.submit(self._api.get_settings)
@@ -1776,7 +1776,7 @@ class ProgressLocalSyncWorker(QThread):
         from shared.models.platform import ProgressFilters, ProgressLocalSyncItem
 
         try:
-            response = self._api.list_progress(ProgressFilters(limit=80, active_only=True))
+            response = self._api.list_progress(ProgressFilters(limit=40, active_only=True))
             rows = apply_local_progress_overlays(list(response.rows))
             local_items = build_local_progress_sync_items(rows)
             if not local_items:

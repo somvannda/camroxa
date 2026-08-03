@@ -8,8 +8,8 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from platform_api.models.domain import Plan
+from platform_api.services.billing_calendar import billing_today
 from platform_api.services.billing_mode_service import (
-    quota_operation_type,
     song_packages_to_tracks,
 )
 from platform_api.services.billing_period_service import (
@@ -17,6 +17,7 @@ from platform_api.services.billing_period_service import (
     period_start_for_subscription,
 )
 from platform_api.services.subscription_entitlement_service import (
+    effective_daily_limit_for_operation,
     effective_monthly_limit_for_operation,
 )
 
@@ -61,6 +62,9 @@ class ChannelDailyQuota:
     daily_images_used: int
     daily_images_limit: int
     daily_images_remaining: int
+    daily_drafts_used: int = 0
+    daily_drafts_limit: int = 0
+    daily_drafts_remaining: int = 0
 
 
 async def resolve_subscription_context(
@@ -207,15 +211,20 @@ async def get_channel_daily_quotas(
     profile_repo: ProfileRepoProtocol,
     usage_date: date | None = None,
 ) -> list[ChannelDailyQuota]:
-    """Per-channel daily song/image usage and remaining capacity."""
+    """Per-channel daily song/image/draft usage and remaining capacity."""
     ctx = await resolve_subscription_context(plan_repo, user_id)
     if ctx is None:
         return []
 
     plan = ctx.plan
-    today = usage_date or date.today()
+    today = usage_date or billing_today()
     profiles = await profile_repo.list_for_user(user_id)
     channels: list[ChannelDailyQuota] = []
+    songs_limit = int(plan.daily_song_limit_per_channel or 0)
+    images_limit = int(plan.daily_image_limit_per_channel or 0)
+    drafts_limit = int(
+        effective_daily_limit_for_operation(plan, 0, "draft") or 0
+    )
     for profile in profiles:
         profile_id = getattr(profile, "id", None)
         if profile_id is None:
@@ -229,8 +238,9 @@ async def get_channel_daily_quotas(
         images_used += await usage_repo.get_daily_count(
             user_id, profile_id, "thumbnail_image", today
         )
-        songs_limit = int(plan.daily_song_limit_per_channel or 0)
-        images_limit = int(plan.daily_image_limit_per_channel or 0)
+        drafts_used = await usage_repo.get_daily_count(
+            user_id, profile_id, "draft", today
+        )
         channels.append(
             ChannelDailyQuota(
                 profile_id=str(profile_id),
@@ -241,6 +251,9 @@ async def get_channel_daily_quotas(
                 daily_images_used=images_used,
                 daily_images_limit=images_limit,
                 daily_images_remaining=max(0, images_limit - images_used),
+                daily_drafts_used=drafts_used,
+                daily_drafts_limit=drafts_limit,
+                daily_drafts_remaining=max(0, drafts_limit - drafts_used),
             )
         )
     return channels

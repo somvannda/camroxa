@@ -80,6 +80,7 @@ class StreamingRepository:
         status: str,
         error: str | None = None,
         storage_key: str | None = None,
+        album_id: UUID | None = None,
     ) -> None:
         await self._pool.execute(
             """
@@ -87,6 +88,7 @@ class StreamingRepository:
             SET status = $2,
                 error = $3,
                 storage_key = COALESCE($4, storage_key),
+                album_id = COALESCE($5, album_id),
                 attempt_count = attempt_count + 1,
                 updated_at = NOW()
             WHERE id = $1
@@ -95,6 +97,7 @@ class StreamingRepository:
             status,
             error,
             storage_key,
+            album_id,
         )
 
     async def get_upload_job(self, job_id: UUID) -> dict[str, Any] | None:
@@ -102,26 +105,70 @@ class StreamingRepository:
         return dict(row) if row else None
 
     async def list_upload_jobs(self, *, limit: int = 50, status: str | None = None) -> list[dict[str, Any]]:
+        """List upload jobs with user / song / album / track context for admin UI."""
+        where = ""
+        params: list[Any] = []
         if status:
-            rows = await self._pool.fetch(
-                """
-                SELECT * FROM stream_upload_jobs
-                WHERE status = $1
-                ORDER BY created_at DESC
-                LIMIT $2
-                """,
-                status,
-                limit,
-            )
-        else:
-            rows = await self._pool.fetch(
-                """
-                SELECT * FROM stream_upload_jobs
-                ORDER BY created_at DESC
-                LIMIT $1
-                """,
-                limit,
-            )
+            params.append(status)
+            where = f"WHERE j.status = ${len(params)}"
+        params.append(limit)
+        limit_placeholder = f"${len(params)}"
+
+        rows = await self._pool.fetch(
+            f"""
+            SELECT
+                j.id,
+                j.kind,
+                j.status,
+                j.source_url,
+                j.storage_key,
+                j.error,
+                j.attempt_count,
+                j.user_id,
+                j.song_id,
+                j.batch_id,
+                COALESCE(j.album_id, sa_cover.id, st.album_id) AS album_id,
+                j.created_at,
+                j.updated_at,
+                u.email AS user_email,
+                u.display_name AS user_display_name,
+                s.title AS song_title,
+                s.album AS song_album,
+                s.batch_index AS song_batch_index,
+                COALESCE(sa_direct.album_name, sa_cover.album_name, sa_track.album_name) AS stream_album_name,
+                COALESCE(sa_direct.channel_role, sa_cover.channel_role, sa_track.channel_role)
+                    AS stream_channel_role,
+                COALESCE(
+                    sa_direct.publish_status,
+                    sa_cover.publish_status,
+                    sa_track.publish_status
+                ) AS stream_album_publish_status,
+                st.publish_status AS stream_track_publish_status,
+                st.variant AS stream_track_variant
+            FROM stream_upload_jobs j
+            LEFT JOIN users u ON u.id = j.user_id
+            LEFT JOIN songs s ON s.id = j.song_id
+            LEFT JOIN stream_albums sa_direct ON sa_direct.id = j.album_id
+            LEFT JOIN stream_albums sa_cover
+                ON j.album_id IS NULL
+               AND j.kind = 'cover'
+               AND sa_cover.user_id = j.user_id
+               AND sa_cover.batch_id = j.batch_id
+               AND sa_cover.cover_storage_key IS NOT DISTINCT FROM j.storage_key
+            LEFT JOIN stream_tracks st
+                ON j.song_id IS NOT NULL
+               AND st.song_id = j.song_id
+               AND (
+                    (j.kind = 'mp3_ok' AND lower(st.variant) = 'ok')
+                 OR (j.kind = 'mp3_alt' AND lower(st.variant) = 'alt')
+               )
+            LEFT JOIN stream_albums sa_track ON sa_track.id = st.album_id
+            {where}
+            ORDER BY j.created_at DESC
+            LIMIT {limit_placeholder}
+            """,
+            *params,
+        )
         return [dict(row) for row in rows]
 
     async def get_or_create_album(

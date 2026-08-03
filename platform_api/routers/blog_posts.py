@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
@@ -351,12 +351,13 @@ async def update_blog_post(
     return _serialize_admin_post(row)
 
 
-@router.delete("/admin/blog-posts/{post_id}", status_code=204)
-async def delete_blog_post(post_id: UUID, _: Any = require_admin) -> None:
+@router.delete("/admin/blog-posts/{post_id}", status_code=204, response_class=Response)
+async def delete_blog_post(post_id: UUID, _: Any = require_admin) -> Response:
     pool = get_db_pool()
     result = await pool.execute("DELETE FROM blog_posts WHERE id = $1", post_id)
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Blog post not found.")
+    return Response(status_code=204)
 
 
 @router.get("/blog-posts/public", response_model=list[PublicBlogPostSummaryResponse], status_code=200)

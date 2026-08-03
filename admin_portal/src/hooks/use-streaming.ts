@@ -54,7 +54,23 @@ export type StreamingUploadJob = {
   source_url?: string | null;
   storage_key?: string | null;
   error?: string | null;
+  attempt_count?: number;
+  user_id?: string | null;
+  user_email?: string | null;
+  user_display_name?: string | null;
+  song_id?: string | null;
+  song_title?: string | null;
+  song_album?: string | null;
+  song_batch_index?: number | null;
+  batch_id?: string | null;
+  album_id?: string | null;
+  stream_album_name?: string | null;
+  stream_channel_role?: string | null;
+  stream_album_publish_status?: string | null;
+  stream_track_publish_status?: string | null;
+  stream_track_variant?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
 };
 
 function invalidateCatalog(queryClient: ReturnType<typeof useQueryClient>) {
@@ -161,7 +177,7 @@ export function useStreamingUploadJobs(status?: string) {
     queryFn: async () => {
       const data = await httpClient.get<{ items: StreamingUploadJob[] }>(
         '/api/v1/admin/streaming/upload-jobs',
-        { limit: 100, ...(status ? { status } : {}) },
+        { limit: 200, ...(status ? { status } : {}) },
       );
       return data.items ?? [];
     },
@@ -180,8 +196,10 @@ export function useUnpublishTrack() {
 export function useRepublishTrack() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (trackId: string) =>
-      httpClient.post(`/api/v1/admin/streaming/tracks/${trackId}/republish`),
+    mutationFn: ({ trackId, force = false }: { trackId: string; force?: boolean }) =>
+      httpClient.post(
+        `/api/v1/admin/streaming/tracks/${trackId}/republish${force ? '?force=true' : ''}`,
+      ),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }
@@ -207,8 +225,10 @@ export function useUnpublishAlbum() {
 export function useRepublishAlbum() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (albumId: string) =>
-      httpClient.post(`/api/v1/admin/streaming/albums/${albumId}/republish`),
+    mutationFn: ({ albumId, force = false }: { albumId: string; force?: boolean }) =>
+      httpClient.post(
+        `/api/v1/admin/streaming/albums/${albumId}/republish${force ? '?force=true' : ''}`,
+      ),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }

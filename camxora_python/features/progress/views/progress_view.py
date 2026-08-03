@@ -52,8 +52,8 @@ from shared.workers.data_workers import (
     WorkflowLoadWorker,
 )
 
-DEFAULT_POLL_MS = 30_000
-ACTIVE_POLL_MS = 8_000
+DEFAULT_POLL_MS = 45_000
+ACTIVE_POLL_MS = 15_000
 
 HELPER_TEXT = (
     "Operational pipeline view for monitoring failures, waiting rows, and recovery actions."

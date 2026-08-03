@@ -153,6 +153,9 @@ class UsageTrackingRepository:
         operation_type: str,
         usage_date: date,
         period_start: date,
+        *,
+        count: int = 1,
+        include_monthly: bool = True,
     ) -> None:
         """Atomically increment daily and monthly usage counters.
 
@@ -161,6 +164,10 @@ class UsageTrackingRepository:
         is safe under concurrent access due to PostgreSQL's row-level
         locking on conflict resolution.
 
+        When ``include_monthly`` is False, only the per-channel daily
+        counter moves (used for Secondary-channel song/draft attribution so a
+        dual-channel batch does not double-count the monthly meter).
+
         Args:
             user_id: The UUID of the user.
             channel_profile_id: The UUID of the channel profile, or None
@@ -168,6 +175,8 @@ class UsageTrackingRepository:
             operation_type: The type of operation (e.g. "music_generation").
             usage_date: The date of the usage event.
             period_start: The start date of the current billing period.
+            count: How many units to add.
+            include_monthly: When False, leave monthly_count unchanged.
         """
         await self._increment_usage_count(
             user_id=user_id,
@@ -175,7 +184,8 @@ class UsageTrackingRepository:
             operation_type=operation_type,
             usage_date=usage_date,
             period_start=period_start,
-            count=1,
+            count=count,
+            include_monthly=include_monthly,
         )
 
     async def _increment_usage_count(
@@ -187,8 +197,10 @@ class UsageTrackingRepository:
         usage_date: date,
         period_start: date,
         count: int,
+        include_monthly: bool = True,
     ) -> None:
         new_id = uuid4()
+        monthly_delta = count if include_monthly else 0
         await self._pool.execute(
             """
             INSERT INTO usage_tracking (
@@ -196,7 +208,7 @@ class UsageTrackingRepository:
                 usage_date, daily_count, monthly_count,
                 period_start_date, created_at, updated_at
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $6, $7, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()
             )
             ON CONFLICT (user_id, channel_profile_id, operation_type, usage_date)
             DO UPDATE SET
@@ -210,6 +222,7 @@ class UsageTrackingRepository:
             operation_type,
             usage_date,
             count,
+            monthly_delta,
             period_start,
         )
 

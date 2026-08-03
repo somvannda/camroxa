@@ -39,8 +39,8 @@ from shared.widgets.shell_date_edit import make_shell_date_edit
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import WorkflowLoadResult, WorkflowLoadWorker, WorkflowRuntimeWorker
 
-DEFAULT_POLL_MS = 30_000
-ACTIVE_POLL_MS = 8_000
+DEFAULT_POLL_MS = 45_000
+ACTIVE_POLL_MS = 15_000
 EXPORT_RUNTIME_POLL_MS = 1_500
 LANE_COLUMN_WIDTH = 320
 
@@ -233,7 +233,7 @@ class WorkflowView(PollablePageMixin, QScrollArea):
 
     def _current_filters(self) -> ProgressFilters:
         return ProgressFilters(
-            limit=80,
+            limit=40,
             active_only=self._active_only.isChecked(),
             from_date=self._from_date.date().toString("yyyy-MM-dd"),
             to_date=self._to_date.date().toString("yyyy-MM-dd"),

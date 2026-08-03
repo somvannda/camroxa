@@ -11,6 +11,9 @@ export type ChannelDailyQuota = {
   daily_images_used: number;
   daily_images_limit: number;
   daily_images_remaining: number;
+  daily_drafts_used?: number;
+  daily_drafts_limit?: number;
+  daily_drafts_remaining?: number;
 };
 
 export type QuotaStatus = {

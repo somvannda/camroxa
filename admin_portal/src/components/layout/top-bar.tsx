@@ -19,6 +19,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/prompts': 'Music Prompts',
   '/rate-limits': 'Rate Limits',
   '/key-pool': 'Key Pool',
+  '/job-queue': 'Job Queue',
+  '/pipeline': 'Pipeline Ops',
   '/content-pools': 'Content Pools',
   '/image-sample-packs': 'Image Packs',
   '/audit-log': 'Audit Log',

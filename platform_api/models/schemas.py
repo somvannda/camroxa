@@ -198,6 +198,9 @@ class ChannelDailyQuotaResponse(BaseModel):
     daily_images_used: int
     daily_images_limit: int
     daily_images_remaining: int
+    daily_drafts_used: int = 0
+    daily_drafts_limit: int = 0
+    daily_drafts_remaining: int = 0
 
 
 class QuotaStatusResponse(BaseModel):

@@ -11,7 +11,7 @@ need_root
 : "${ADMIN_EMAIL:?ADMIN_EMAIL required}"
 : "${CERTBOT_EMAIL:=${ADMIN_EMAIL}}"
 
-API_WORKERS="${API_WORKERS:-1}"
+API_WORKERS="${API_WORKERS:-4}"
 DEPLOY_ROOT="/opt/camxora"
 REPO_DIR="${DEPLOY_ROOT}/repo"
 SECRETS_FILE="${DEPLOY_ROOT}/.deploy-secrets"
@@ -36,7 +36,7 @@ mkdir -p "${DEPLOY_ROOT}/backups"
 chmod 755 "${DEPLOY_ROOT}"
 
 cat >"${SECRETS_FILE}" <<EOF
-# Generated $(date -u +%Y-%m-%dT%H:%M:%SZ) â€” keep private
+# Generated $(date -u +%Y-%m-%dT%H:%M:%SZ) ? keep private
 DB_PASSWORD=${DB_PASSWORD}
 PLATFORM_JWT_SECRET=${PLATFORM_JWT_SECRET}
 PLATFORM_ENCRYPTION_MASTER_KEY=${PLATFORM_ENCRYPTION_MASTER_KEY}
@@ -222,6 +222,98 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 UNIT
 
+tee /etc/systemd/system/camxora-worker-draft@.service >/dev/null <<UNIT
+[Unit]
+Description=CamXora Job Worker (%i / draft stage)
+After=network.target postgresql.service redis-server.service camxora-api.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+User=camxora
+Group=camxora
+WorkingDirectory=${REPO_DIR}
+Environment=PYTHONPATH=${REPO_DIR}
+Environment=PYTHONUNBUFFERED=1
+Environment=CAMXORA_WORKER_JOB_TYPES=draft
+EnvironmentFile=${REPO_DIR}/platform_api/.env
+ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+tee /etc/systemd/system/camxora-worker-suno@.service >/dev/null <<UNIT
+[Unit]
+Description=CamXora Job Worker (%i / suno stage)
+After=network.target postgresql.service redis-server.service camxora-api.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+User=camxora
+Group=camxora
+WorkingDirectory=${REPO_DIR}
+Environment=PYTHONPATH=${REPO_DIR}
+Environment=PYTHONUNBUFFERED=1
+Environment=CAMXORA_WORKER_JOB_TYPES=suno
+EnvironmentFile=${REPO_DIR}/platform_api/.env
+ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+tee /etc/systemd/system/camxora-worker-images@.service >/dev/null <<UNIT
+[Unit]
+Description=CamXora Job Worker (%i / images stage)
+After=network.target postgresql.service redis-server.service camxora-api.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+User=camxora
+Group=camxora
+WorkingDirectory=${REPO_DIR}
+Environment=PYTHONPATH=${REPO_DIR}
+Environment=PYTHONUNBUFFERED=1
+Environment=CAMXORA_WORKER_JOB_TYPES=images
+EnvironmentFile=${REPO_DIR}/platform_api/.env
+ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# Legacy single worker (kept for rollback; prefer stage templates)
+tee /etc/systemd/system/camxora-worker.service >/dev/null <<UNIT
+[Unit]
+Description=CamXora Platform Job Worker (all types)
+After=network.target postgresql.service redis-server.service camxora-api.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+User=camxora
+Group=camxora
+WorkingDirectory=${REPO_DIR}
+Environment=PYTHONPATH=${REPO_DIR}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${REPO_DIR}/platform_api/.env
+ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
 tee /etc/systemd/system/camxora-website.service >/dev/null <<UNIT
 [Unit]
 Description=CamXora Marketing Website
@@ -282,7 +374,12 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable camxora-api camxora-website camxora-portal camxora-music
+systemctl enable camxora-api \
+  camxora-worker-draft@{1..4} \
+  camxora-worker-suno@{1..2} \
+  camxora-worker-images@{1..2} \
+  camxora-website camxora-portal camxora-music
+systemctl disable camxora-worker 2>/dev/null || true
 systemctl restart camxora-api camxora-website camxora-portal camxora-music
 
 log "Configuring nginx HTTP bootstrap..."
@@ -390,7 +487,7 @@ else
     -d app.camxora.com \
     -d admin.camxora.com \
     --non-interactive --agree-tos -m "${CERTBOT_EMAIL}" --redirect || {
-      log "WARN: certbot failed — check production DNS. HTTP remains available on port 80."
+      log "WARN: certbot failed ? check production DNS. HTTP remains available on port 80."
     }
 fi
 # After adding music.camxora.com DNS A record, run:

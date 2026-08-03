@@ -118,7 +118,7 @@ class PlatformApi:
         return UserMeResponse.model_validate(data)
 
     def list_profiles(self) -> list[ProfileResponse]:
-        data = self._client.request("/profiles", auth=True)
+        data = self._client.request("/profiles", auth=True, timeout=60.0)
         if not isinstance(data, list):
             return []
         profiles: list[ProfileResponse] = []
@@ -232,7 +232,7 @@ class PlatformApi:
             params["from_date"] = resolved.from_date
         if resolved.to_date:
             params["to_date"] = resolved.to_date
-        data = self._client.request("/progress", auth=True, params=params)
+        data = self._client.request("/progress", auth=True, params=params, timeout=90.0)
         return ProgressListResponse.model_validate(data)
 
     def sync_local_progress(self, items: list[ProgressLocalSyncItem]) -> ProgressLocalSyncResponse:
@@ -245,7 +245,7 @@ class PlatformApi:
         return ProgressLocalSyncResponse.model_validate(data)
 
     def get_settings(self) -> UserSettingsResponse:
-        data = self._client.request("/settings", auth=True)
+        data = self._client.request("/settings", auth=True, timeout=60.0)
         return UserSettingsResponse.model_validate(data)
 
     def patch_settings(self, patch: dict[str, object]) -> UserSettingsResponse:

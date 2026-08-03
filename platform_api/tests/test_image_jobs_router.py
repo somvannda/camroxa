@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -10,7 +9,12 @@ from httpx import ASGITransport, AsyncClient
 
 from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, get_current_user
-from platform_api.routers.image_jobs import _get_batch_service, _get_image_job_service
+from platform_api.routers.image_jobs import (
+    _get_batch_service,
+    _get_image_job_service,
+    _get_job_queue_repo,
+)
+from platform_api.services.job_types import JOB_RUN_IMAGE_JOBS
 
 USER_CONTEXT = AuthContext(user_id=str(uuid4()), email="user@example.com", role="user")
 
@@ -35,11 +39,23 @@ def mock_batch_service() -> AsyncMock:
 
 
 @pytest.fixture
-def app(mock_image_job_service: AsyncMock, mock_batch_service: AsyncMock):
+def mock_job_queue() -> AsyncMock:
+    queue = AsyncMock()
+    queue.enqueue_if_absent = AsyncMock(return_value=(SimpleNamespace(id=uuid4()), True))
+    return queue
+
+
+@pytest.fixture
+def app(
+    mock_image_job_service: AsyncMock,
+    mock_batch_service: AsyncMock,
+    mock_job_queue: AsyncMock,
+):
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: USER_CONTEXT
     application.dependency_overrides[_get_image_job_service] = lambda: mock_image_job_service
     application.dependency_overrides[_get_batch_service] = lambda: mock_batch_service
+    application.dependency_overrides[_get_job_queue_repo] = lambda: mock_job_queue
     yield application
     application.dependency_overrides.clear()
 
@@ -70,20 +86,19 @@ async def test_enqueue_image_jobs(client: AsyncClient, mock_batch_service: Async
 
 
 @pytest.mark.asyncio
-async def test_run_image_jobs_schedules_background_task(
+async def test_run_image_jobs_enqueues_worker_job(
     client: AsyncClient,
+    mock_job_queue: AsyncMock,
 ) -> None:
-    with patch(
-        "platform_api.routers.image_jobs._run_image_jobs_with_logging",
-        new_callable=AsyncMock,
-    ) as runner:
-        response = await client.post(
-            "/api/v1/image-jobs/run",
-            json={"batch_id": "00000000-0000-0000-0000-000000000123", "limit": 2},
-        )
-        assert response.status_code == 202
-        await asyncio.sleep(0)
-        runner.assert_awaited_once()
+    response = await client.post(
+        "/api/v1/image-jobs/run",
+        json={"batch_id": "00000000-0000-0000-0000-000000000123", "limit": 2},
+    )
+    assert response.status_code == 202
+    mock_job_queue.enqueue_if_absent.assert_awaited_once()
+    kwargs = mock_job_queue.enqueue_if_absent.await_args.kwargs
+    assert kwargs["job_type"] == JOB_RUN_IMAGE_JOBS
+    assert kwargs["payload"]["batch_id"] == "00000000-0000-0000-0000-000000000123"
 
 
 @pytest.mark.asyncio
@@ -102,22 +117,18 @@ async def test_retry_image_jobs_by_batch(
     client: AsyncClient,
     mock_image_job_service: AsyncMock,
     mock_batch_service: AsyncMock,
+    mock_job_queue: AsyncMock,
 ) -> None:
     mock_image_job_service.retry_jobs = AsyncMock(return_value=2)
-    with patch(
-        "platform_api.routers.image_jobs._run_image_jobs_with_logging",
-        new_callable=AsyncMock,
-    ) as runner:
-        response = await client.post(
-            "/api/v1/image-jobs/retry",
-            json={"batch_id": "00000000-0000-0000-0000-000000000123"},
-        )
-        assert response.status_code == 200
-        assert response.json()["updated"] == 2
-        mock_batch_service.refresh_image_job_prompts_for_retry.assert_awaited_once()
-        mock_image_job_service.retry_jobs.assert_awaited_once()
-        await asyncio.sleep(0)
-        runner.assert_awaited_once()
+    response = await client.post(
+        "/api/v1/image-jobs/retry",
+        json={"batch_id": "00000000-0000-0000-0000-000000000123"},
+    )
+    assert response.status_code == 200
+    assert response.json()["updated"] == 2
+    mock_batch_service.refresh_image_job_prompts_for_retry.assert_awaited_once()
+    mock_image_job_service.retry_jobs.assert_awaited_once()
+    mock_job_queue.enqueue_if_absent.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -125,6 +136,7 @@ async def test_retry_image_jobs_by_job_ids(
     client: AsyncClient,
     mock_image_job_service: AsyncMock,
     mock_batch_service: AsyncMock,
+    mock_job_queue: AsyncMock,
 ) -> None:
     mock_image_job_service.retry_jobs = AsyncMock(return_value=1)
     mock_image_job_service.list_jobs = AsyncMock(
@@ -135,17 +147,12 @@ async def test_retry_image_jobs_by_job_ids(
             )
         ]
     )
-    with patch(
-        "platform_api.routers.image_jobs._run_image_jobs_with_logging",
-        new_callable=AsyncMock,
-    ) as runner:
-        response = await client.post(
-            "/api/v1/image-jobs/retry",
-            json={"job_ids": ["00000000-0000-0000-0000-000000000456"]},
-        )
-        assert response.status_code == 200
-        assert response.json()["updated"] == 1
-        mock_batch_service.refresh_image_job_prompts_for_retry.assert_awaited_once()
-        mock_image_job_service.retry_jobs.assert_awaited_once()
-        await asyncio.sleep(0)
-        runner.assert_awaited_once()
+    response = await client.post(
+        "/api/v1/image-jobs/retry",
+        json={"job_ids": ["00000000-0000-0000-0000-000000000456"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["updated"] == 1
+    mock_batch_service.refresh_image_job_prompts_for_retry.assert_awaited_once()
+    mock_image_job_service.retry_jobs.assert_awaited_once()
+    mock_job_queue.enqueue_if_absent.assert_awaited_once()

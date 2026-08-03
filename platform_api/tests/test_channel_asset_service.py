@@ -84,4 +84,15 @@ def test_merge_channel_asset_paths_ignores_missing_persisted_paths(tmp_path) -> 
 
     assert merged["background_16x9_path"] == str((run_dir / "background-16x9.png").resolve())
     assert merged["thumbnail_16x9_path"] is None
-    assert compute_long_ready(merged) is False
+    # Background alone is enough for export / long_ready.
+    assert compute_long_ready(merged) is True
+    from platform_api.services.channel_asset_service import compute_youtube_long_ready
+
+    assert compute_youtube_long_ready(merged) is False
+
+
+def test_compute_long_ready_is_background_only() -> None:
+    assert compute_long_ready({"background_16x9_path": "/bg.png", "thumbnail_16x9_path": None}) is True
+    assert compute_long_ready({"background_16x9_path": None, "thumbnail_16x9_path": "/th.png"}) is False
+    assert compute_reel_ready({"background_9x16_path": "/bg.png", "thumbnail_9x16_path": None}) is True
+    assert compute_reel_ready({"background_9x16_path": None, "thumbnail_9x16_path": "/th.png"}) is False

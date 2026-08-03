@@ -10,7 +10,10 @@ from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 
 
 class DailyChannelQuotaCard(QFrame):
-    SUBTITLE = "Per-channel song and image capacity today. Account track-export / merge daily caps are on Remaining This Month."
+    SUBTITLE = (
+        "Per-channel draft · song · image capacity today. "
+        "Account track-export / merge daily caps are on Remaining This Month."
+    )
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -61,8 +64,11 @@ class DailyChannelQuotaCard(QFrame):
         images_limit = (
             license_info.daily_image_limit_per_channel if license_info is not None else None
         ) or 0
+        drafts_limit = int(
+            getattr(license_info, "daily_draft_limit_per_channel", 0) or 0
+        ) if license_info is not None else 0
         profiles = list(data.profiles)
-        if not profiles or (songs_limit <= 0 and images_limit <= 0):
+        if not profiles or (songs_limit <= 0 and images_limit <= 0 and drafts_limit <= 0):
             self.apply_quota(None)
             return
 
@@ -75,6 +81,8 @@ class DailyChannelQuotaCard(QFrame):
                     daily_songs_remaining=songs_limit,
                     daily_images_limit=images_limit,
                     daily_images_remaining=images_limit,
+                    daily_drafts_limit=drafts_limit,
+                    daily_drafts_remaining=drafts_limit,
                 )
                 for profile in profiles
             ]
@@ -98,16 +106,22 @@ class DailyChannelQuotaCard(QFrame):
         grid = QGridLayout()
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(4)
-        grid.addWidget(self._metric_label("Songs today"), 0, 0)
+        grid.addWidget(self._metric_label("Drafts today"), 0, 0)
         grid.addWidget(
-            self._value_label(channel.daily_songs_remaining, channel.daily_songs_limit),
+            self._value_label(channel.daily_drafts_remaining, channel.daily_drafts_limit),
             0,
             1,
         )
-        grid.addWidget(self._metric_label("Images today"), 1, 0)
+        grid.addWidget(self._metric_label("Songs today"), 1, 0)
+        grid.addWidget(
+            self._value_label(channel.daily_songs_remaining, channel.daily_songs_limit),
+            1,
+            1,
+        )
+        grid.addWidget(self._metric_label("Images today"), 2, 0)
         grid.addWidget(
             self._value_label(channel.daily_images_remaining, channel.daily_images_limit),
-            1,
+            2,
             1,
             alignment=Qt.AlignmentFlag.AlignLeft,
         )

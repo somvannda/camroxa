@@ -10,6 +10,7 @@ import pytest
 from platform_api.models.domain import Plan
 from platform_api.services.billing_period_service import ActiveSubscriptionContext
 from platform_api.services.quota_display_service import (
+    get_channel_daily_quotas,
     get_monthly_quota_status,
     period_start_for_context,
     resolve_subscription_context,
@@ -40,13 +41,77 @@ def _plan(*, billing_cycle_days: int | None = 30) -> Plan:
 
 
 class FakeUsageRepo:
-    def __init__(self, monthly: int = 0) -> None:
+    def __init__(
+        self,
+        monthly: int = 0,
+        *,
+        daily_by_op: dict[str, int] | None = None,
+    ) -> None:
         self._monthly = monthly
+        self._daily_by_op = daily_by_op or {}
 
     async def get_monthly_count(
         self, user_id, operation_type: str, period_start: date
     ) -> int:
         return self._monthly
+
+    async def get_daily_count(
+        self, user_id, channel_profile_id, operation_type: str, usage_date: date
+    ) -> int:
+        return int(self._daily_by_op.get(operation_type, 0))
+
+
+class FakeProfile:
+    def __init__(self, *, profile_id, name: str) -> None:
+        self.id = profile_id
+        self.name = name
+
+
+class FakeProfileRepo:
+    def __init__(self, profiles: list[FakeProfile]) -> None:
+        self._profiles = profiles
+
+    async def list_for_user(self, user_id):
+        return self._profiles
+
+
+@pytest.mark.asyncio
+async def test_get_channel_daily_quotas_includes_drafts() -> None:
+    plan = _plan()
+    ctx = ActiveSubscriptionContext(
+        plan=plan,
+        license_id=uuid4(),
+        activated_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+    )
+    profile_id = uuid4()
+    channels = await get_channel_daily_quotas(
+        user_id=uuid4(),
+        plan_repo=FakePlanRepo(ctx),
+        usage_repo=FakeUsageRepo(
+            daily_by_op={
+                "music": 10,
+                "background_image": 1,
+                "thumbnail_image": 1,
+                "draft": 21,
+            }
+        ),
+        profile_repo=FakeProfileRepo(
+            [FakeProfile(profile_id=profile_id, name="Bass Drive")]
+        ),
+        usage_date=date(2026, 8, 1),
+    )
+
+    assert len(channels) == 1
+    channel = channels[0]
+    assert channel.profile_name == "Bass Drive"
+    assert channel.daily_songs_used == 10
+    assert channel.daily_songs_limit == 7
+    assert channel.daily_songs_remaining == 0
+    assert channel.daily_images_used == 2
+    assert channel.daily_images_limit == 2
+    assert channel.daily_drafts_used == 21
+    assert channel.daily_drafts_limit == 300
+    assert channel.daily_drafts_remaining == 279
 
 
 class FakePlanRepo:

@@ -288,6 +288,11 @@ class KeyPoolService:
         """
         return await self._repo.list_by_provider(provider)
 
+    async def get_decrypted_key_value(self, key_id: UUID) -> str:
+        """Decrypt and return the raw API key for an entry (admin/ops only)."""
+        entry = await self.get_key_entry(key_id)
+        return self._encryption.decrypt(entry.encrypted_key_value)
+
     async def get_key_entry(self, key_id: UUID) -> ApiKeyEntry:
         """Get a single key entry by ID.
 

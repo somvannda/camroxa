@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, get_current_user
-from platform_api.routers.batch import _get_batch_service
+from platform_api.routers.batch import _get_batch_service, _get_job_queue_repo
 
 USER_CONTEXT = AuthContext(user_id=str(uuid4()), email="user@example.com", role="user")
 
@@ -48,10 +48,18 @@ def mock_batch_service() -> AsyncMock:
 
 
 @pytest.fixture
-def app(mock_batch_service: AsyncMock):
+def mock_job_queue() -> AsyncMock:
+    queue = AsyncMock()
+    queue.enqueue = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
+    return queue
+
+
+@pytest.fixture
+def app(mock_batch_service: AsyncMock, mock_job_queue: AsyncMock):
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: USER_CONTEXT
     application.dependency_overrides[_get_batch_service] = lambda: mock_batch_service
+    application.dependency_overrides[_get_job_queue_repo] = lambda: mock_job_queue
     yield application
     application.dependency_overrides.clear()
 
@@ -64,9 +72,10 @@ async def client(app) -> AsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_create_batch_schedules_background_execution(
+async def test_create_batch_enqueues_execute_job(
     client: AsyncClient,
     mock_batch_service: AsyncMock,
+    mock_job_queue: AsyncMock,
 ) -> None:
     response = await client.post(
         "/api/v1/batches",
@@ -90,4 +99,7 @@ async def test_create_batch_schedules_background_execution(
     assert response.json()["ok_run_dir"] == r"D:\Music\Primary\2026-06-25"
     assert response.json()["alt_run_dir"] == r"D:\Music\Secondary\2026-06-25"
     mock_batch_service.create_batch.assert_awaited_once()
-    mock_batch_service.execute_batch.assert_awaited_once()
+    mock_batch_service.execute_batch.assert_not_awaited()
+    mock_job_queue.enqueue.assert_awaited_once()
+    call_kwargs = mock_job_queue.enqueue.await_args.kwargs
+    assert call_kwargs["job_type"] == "execute_batch"

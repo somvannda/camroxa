@@ -260,7 +260,9 @@ class StreamingUploadService:
                 genres=catalog_genres or None,
                 suno_audio_id=suno_audio_id or None,
             )
-            await self._repo.mark_upload_job(job_id, status="success", storage_key=storage_key)
+            await self._repo.mark_upload_job(
+                job_id, status="success", storage_key=storage_key, album_id=album_id
+            )
         except Exception as exc:
             await self._repo.mark_upload_job(job_id, status="failed", error=str(exc)[:500])
             logger.warning("MP3 streaming upload failed job=%s: %s", job_id, exc)
@@ -358,7 +360,9 @@ class StreamingUploadService:
                 channel_role=role,
             )
             await self._repo.update_album_cover(album_id, storage_key)
-            await self._repo.mark_upload_job(job_id, status="success", storage_key=storage_key)
+            await self._repo.mark_upload_job(
+                job_id, status="success", storage_key=storage_key, album_id=album_id
+            )
         except Exception as exc:
             await self._repo.mark_upload_job(job_id, status="failed", error=str(exc)[:500])
             logger.warning("Cover streaming upload failed job=%s: %s", job_id, exc)
@@ -474,10 +478,28 @@ class StreamingUploadService:
             song_id = UUID(str(context["song_id"])) if context.get("song_id") else None
             batch_id = UUID(str(context["batch_id"])) if context.get("batch_id") else None
             title = str(context.get("song_title") or "Untitled").strip() or "Untitled"
-            lyrics = str(context.get("song_lyrics") or "").strip() or None
+            plain_lyrics = str(context.get("song_lyrics") or "").strip() or None
             album_slug = slugify(album_name, fallback="album")
             song_slug = slugify(title, fallback="track")
             storage_key = str(job.get("storage_key") or f"{user_id}/{album_slug}/{song_slug}-{variant}.mp3")
+
+            suno_audio_id = ""
+            if refreshed is not None:
+                suno_audio_id = refreshed.audio_id_alt if variant == "alt" else refreshed.audio_id_ok
+            if not suno_audio_id:
+                suno_audio_id = str(
+                    context.get("audio_id_alt" if variant == "alt" else "audio_id_ok") or ""
+                ).strip()
+            external_task_id = str(context.get("external_task_id") or "").strip()
+            lyrics = plain_lyrics
+            if suno_audio_id and external_task_id:
+                lrc = await fetch_timestamped_lrc_with_pool(
+                    self._pool,
+                    external_task_id=external_task_id,
+                    audio_id=suno_audio_id,
+                )
+                if looks_like_lrc(lrc):
+                    lyrics = lrc
 
             candidates = variant_url_candidates(
                 variant=variant,
@@ -512,8 +534,11 @@ class StreamingUploadService:
                 variant=variant,
                 storage_key=storage_key,
                 size_bytes=len(data),
+                suno_audio_id=suno_audio_id or None,
             )
-            await self._repo.mark_upload_job(job_id, status="success", storage_key=storage_key)
+            await self._repo.mark_upload_job(
+                job_id, status="success", storage_key=storage_key, album_id=album_id
+            )
             return {"ok": True, "job_id": str(job_id), "storage_key": storage_key}
         except Exception as exc:
             await self._repo.mark_upload_job(job_id, status="failed", error=str(exc)[:500])
