@@ -15,6 +15,7 @@ import moderngl
 from ._spectrum_fast import (
     normalize_spectrum_gravity,
     resolve_bar_pixel_width,
+    scroll_spectrum_heights,
 )
 
 def _audio_bar_height_mult(template: dict) -> float:
@@ -121,9 +122,7 @@ class GpuOptions:
 
 
 def _send(payload: dict) -> None:
-    # ensure_ascii=True: frozen Windows consoles are often cp1252 and crash on
-    # Unicode progress text (e.g. "48000→22050"), which aborted soundfile decode.
-    print("MG_EVENT " + json.dumps(payload, ensure_ascii=True), flush=True)
+    print("MG_EVENT " + json.dumps(payload, ensure_ascii=False), flush=True)
 
 
 def _load_template(opts: GpuOptions) -> dict:
@@ -911,12 +910,28 @@ def _render_particle_styled_quads(
             prog_particle_quads["atlas_cols"].value = int(cols)
     ctx.enable(moderngl.BLEND)
     # Neon bloom reads better with additive when glow is on.
+    # Keep framebuffer alpha opaque (preview QOpenGLWidget compositing).
     if glow > 0.08:
-        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+        ctx.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE,
+            moderngl.ZERO,
+            moderngl.ONE,
+        )
     else:
-        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+        ctx.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE_MINUS_SRC_ALPHA,
+            moderngl.ZERO,
+            moderngl.ONE,
+        )
     vao_particle_quads.render(mode=moderngl.TRIANGLES, vertices=int(pts.shape[0] * 6))
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE_MINUS_SRC_ALPHA,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
 
 def _as_rgb(v: any) -> tuple[int, int, int]:
     if isinstance(v, (list, tuple)) and len(v) == 3:
@@ -1047,9 +1062,19 @@ def _render_panel_rgba(
     label_size_px: float = 0.0,
     label_font_family: str = "montserrat",
     label_bold: bool = True,
+    backdrop_rgba: any = None,
+    fill_mode: str = "solid",
+    gradient_colors: list | None = None,
+    border_alpha: float = 1.0,
+    outer_glow: float = 0.0,
+    outer_glow_color: str = "#ffb4da",
 ) -> tuple[np.ndarray, int, int]:
-    """Rasterize a rounded glass plate (optional centered label for NOW PLAYING pills)."""
-    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+    """Rasterize a rounded glass plate (optional centered label for NOW PLAYING pills).
+
+    Supports frosted backdrop sampling, horizontal gradient fills (active row),
+    soft white hairline borders, and outer bloom glow for selected rows.
+    """
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageChops
 
     from features.video.lib.system_fonts import resolve_font_file
 
@@ -1060,85 +1085,161 @@ def _render_panel_rgba(
     frost_amt = float(max(0.0, min(1.0, float(frost))))
     spec_amt = float(max(0.0, min(1.0, float(specular))))
     bw = float(max(0.0, min(24.0, float(border_width))))
-    pad = int(max(2, round(bw + 4.0 + frost_amt * 6.0)))
+    ba = float(max(0.0, min(1.0, float(border_alpha))))
+    og = float(max(0.0, min(1.0, float(outer_glow))))
+    mode = str(fill_mode or "solid").strip().lower()
+    stops = [str(c) for c in (gradient_colors or []) if str(c or "").strip()][:4]
+    glow_pad = int(round(22 * og)) if og > 0.02 else 0
+    pad = int(max(2, round(bw + 4.0 + frost_amt * 6.0))) + glow_pad
     img_w = w + pad * 2
     img_h = h + pad * 2
     img = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     box = (pad, pad, pad + w - 1, pad + h - 1)
-    # Keep plate readable on dark video backgrounds (floor alpha).
-    fill_a = int(round(255 * max(0.35, op * (0.65 + frost_amt * 0.3))))
+    fill_a = int(round(255 * max(0.08, min(1.0, op))))
     fill_rgba = _hex_to_rgba(fill, fill_a)
-    border_rgba = _hex_to_rgba(border_color, 255)
-    # Soft outer neon glow for the frame edge.
-    if bw > 0.05:
+    border_rgba = _hex_to_rgba(border_color, int(round(255 * ba)))
+    og_rgba = _hex_to_rgba(outer_glow_color, 255)
+    backdrop_img = None
+    try:
+        if backdrop_rgba is not None:
+            arr_bd = np.asarray(backdrop_rgba)
+            if arr_bd.ndim == 3 and arr_bd.shape[2] >= 3 and arr_bd.shape[0] >= 4 and arr_bd.shape[1] >= 4:
+                bd = Image.fromarray(arr_bd[:, :, :4].astype(np.uint8), "RGBA")
+                if bd.size != (w, h):
+                    bd = bd.resize((w, h), Image.Resampling.LANCZOS)
+                backdrop_img = bd
+    except Exception:
+        backdrop_img = None
+
+    if og > 0.02:
+        bloom = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+        bd = ImageDraw.Draw(bloom)
+        bloom_box = (pad - 4, pad - 4, pad + w + 3, pad + h + 3)
+        bd.rounded_rectangle(
+            bloom_box,
+            radius=rad + 4,
+            fill=(og_rgba[0], og_rgba[1], og_rgba[2], int(round(165 * og))),
+        )
+        bloom = bloom.filter(ImageFilter.GaussianBlur(radius=max(8, int(round(18 + og * 22)))))
+        img = Image.alpha_composite(img, bloom)
+        draw = ImageDraw.Draw(img)
+
+    if bw > 0.05 and ba > 0.05:
         glow = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
         gd = ImageDraw.Draw(glow)
-        glow_box = (pad - 2, pad - 2, pad + w + 1, pad + h + 1)
+        glow_box = (pad - 1, pad - 1, pad + w, pad + h)
         gd.rounded_rectangle(
             glow_box,
-            radius=rad + 2,
-            outline=(border_rgba[0], border_rgba[1], border_rgba[2], 180),
-            width=max(2, int(round(bw + 2))),
+            radius=rad + 1,
+            outline=(border_rgba[0], border_rgba[1], border_rgba[2], int(round(140 * ba))),
+            width=max(1, int(round(bw + 1))),
         )
-        glow = glow.filter(ImageFilter.GaussianBlur(radius=max(2, int(round(2 + frost_amt * 3)))))
+        glow = glow.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(1 + frost_amt * 2)))))
         img = Image.alpha_composite(img, glow)
         draw = ImageDraw.Draw(img)
-    # Soft drop shadow.
+
     shadow = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
     sd = ImageDraw.Draw(shadow)
-    sd.rounded_rectangle(box, radius=rad, fill=(0, 0, 0, int(110 * (0.4 + frost_amt * 0.5))))
-    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(3 + frost_amt * 5)))))
+    sd.rounded_rectangle(box, radius=rad, fill=(0, 0, 0, int(90 * (0.35 + frost_amt * 0.4))))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(3 + frost_amt * 4)))))
     img = Image.alpha_composite(img, shadow)
     draw = ImageDraw.Draw(img)
-    # Reliable border ring: outer accent fill, then punch inner plate fill.
-    # (Pillow outline width is inconsistent across versions.)
-    inset = max(1, int(round(max(bw, 1.5))))
+
+    inset = max(1, int(round(max(bw, 1.0)))) if bw > 0.05 else 0
     if bw > 0.05:
         draw.rounded_rectangle(box, radius=rad, fill=border_rgba)
         inner = (pad + inset, pad + inset, pad + w - 1 - inset, pad + h - 1 - inset)
         inner_rad = max(0.0, rad - float(inset))
-        draw.rounded_rectangle(inner, radius=inner_rad, fill=fill_rgba)
         plate_box = inner
         plate_rad = inner_rad
     else:
-        draw.rounded_rectangle(box, radius=rad, fill=fill_rgba)
+        inner = box
+        inner_rad = rad
         plate_box = box
         plate_rad = rad
-    # Frost veil: soft white wash stronger at the top (fake glass, no scene blur).
-    if frost_amt > 0.04:
+
+    if mode == "gradient" and len(stops) >= 2:
+        under_rgba = (40, 16, 64, int(round(255 * max(0.5, op))))
+    else:
+        under_a = int(round(255 * max(0.55, min(1.0, op * 0.85 + 0.12))))
+        under_rgba = (55, 40, 90, under_a)
+    draw.rounded_rectangle(inner, radius=inner_rad, fill=under_rgba)
+
+    if backdrop_img is not None and mode != "gradient":
+        frost_layer = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+        bd_a = int(round(255 * max(0.35, min(0.75, 0.28 + frost_amt * 0.55))))
+        bd = backdrop_img.copy()
+        bd.putalpha(bd_a)
+        frost_layer.paste(bd, (pad + inset, pad + inset))
+        mask = Image.new("L", (img_w, img_h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(plate_box, radius=plate_rad, fill=255)
+        r, g, b, a_ch = frost_layer.split()
+        frost_layer = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a_ch, mask)))
+        img = Image.alpha_composite(img, frost_layer)
+        draw = ImageDraw.Draw(img)
+
+    if mode == "gradient" and len(stops) >= 2:
+        gw = max(1, int(inner[2] - inner[0] + 1))
+        gh = max(1, int(inner[3] - inner[1] + 1))
+        grad = Image.new("RGBA", (gw, gh), (0, 0, 0, 0))
+        c0 = _hex_to_rgba(stops[0], fill_a)
+        c1 = _hex_to_rgba(stops[-1], fill_a)
+        gd = ImageDraw.Draw(grad)
+        for x in range(gw):
+            t = x / max(1, gw - 1)
+            col = (
+                int(c0[0] + (c1[0] - c0[0]) * t),
+                int(c0[1] + (c1[1] - c0[1]) * t),
+                int(c0[2] + (c1[2] - c0[2]) * t),
+                int(c0[3] + (c1[3] - c0[3]) * t),
+            )
+            gd.line([(x, 0), (x, gh)], fill=col)
+        plate = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+        plate.paste(grad, (int(inner[0]), int(inner[1])))
+        mask = Image.new("L", (img_w, img_h), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(plate_box, radius=plate_rad, fill=255)
+        r, g, b, a_ch = plate.split()
+        plate = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a_ch, mask)))
+        img = Image.alpha_composite(img, plate)
+        draw = ImageDraw.Draw(img)
+    else:
+        tint_a = int(round(fill_a * (0.62 if backdrop_img is not None else 1.0)))
+        draw.rounded_rectangle(
+            inner,
+            radius=inner_rad,
+            fill=(fill_rgba[0], fill_rgba[1], fill_rgba[2], max(40, tint_a)),
+        )
+
+    if frost_amt > 0.04 and mode != "gradient":
         veil = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
         vd = ImageDraw.Draw(veil)
-        bands = max(4, min(24, int(round(8 + frost_amt * 10))))
+        bands = max(4, min(18, int(round(6 + frost_amt * 8))))
         px0, py0, px1, py1 = plate_box
         ph = max(1, py1 - py0)
         for i in range(bands):
             t0 = i / bands
-            t1 = (i + 1) / bands
             y0 = py0 + int(round(ph * t0))
-            y1 = py0 + int(round(ph * t1))
-            a = int(round(150 * frost_amt * (1.0 - t0 * 0.9)))
+            y1 = py0 + int(round(ph * ((i + 1) / bands)))
+            a = int(round(55 * frost_amt * (1.0 - t0 * 0.88)))
             if a <= 0 or y1 <= y0:
                 continue
-            vd.rectangle((px0, y0, px1, y1), fill=(220, 235, 255, a))
+            vd.rectangle((px0, y0, px1, y1), fill=(235, 230, 255, a))
         mask = Image.new("L", (img_w, img_h), 0)
         ImageDraw.Draw(mask).rounded_rectangle(plate_box, radius=plate_rad, fill=255)
         r, g, b, a_ch = veil.split()
-        from PIL import ImageChops
-
         veil = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a_ch, mask)))
-        veil = veil.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(1 + frost_amt * 2.5)))))
+        veil = veil.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(1 + frost_amt * 2)))))
         img = Image.alpha_composite(img, veil)
         draw = ImageDraw.Draw(img)
     if spec_amt > 0.05:
-        # Specular edge along the top of the plate.
         highlight = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
         hd = ImageDraw.Draw(highlight)
-        hy1 = pad + max(1, int(round(h * 0.08)))
+        hy1 = pad + max(1, int(round(h * 0.07)))
         hd.rounded_rectangle(
             (pad + 2, pad + 1, pad + w - 3, hy1),
             radius=max(2.0, rad * 0.35),
-            fill=(255, 255, 255, int(round(160 * spec_amt))),
+            fill=(255, 255, 255, int(round(120 * spec_amt))),
         )
         highlight = highlight.filter(ImageFilter.GaussianBlur(radius=max(1, int(round(1.5 + spec_amt * 2)))))
         img = Image.alpha_composite(img, highlight)
@@ -1153,7 +1254,6 @@ def _render_panel_rgba(
                 font = ImageFont.truetype("arial.ttf", size)
             except Exception:
                 font = ImageFont.load_default()
-        # Dark text on bright pill, light text on dark plate.
         r, g, b, _a = fill_rgba
         luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
         ink = (15, 23, 42, 255) if luminance > 0.55 else (248, 250, 252, 255)
@@ -1245,7 +1345,12 @@ def _render_stage_art_rgba(
     return arr, int(img.width), int(img.height)
 
 
-def _render_overlay_rgba(overlay: dict, scale: float) -> tuple[np.ndarray, int, int]:
+def _render_overlay_rgba(
+    overlay: dict,
+    scale: float,
+    *,
+    backdrop_rgba: any = None,
+) -> tuple[np.ndarray, int, int]:
     """Dispatch text vs panel/pill/stage-art rasters for preview + export."""
     kind = str((overlay or {}).get("overlayKind") or "text").strip().lower()
     scale = float(max(0.05, min(16.0, float(scale or 1.0))))
@@ -1260,6 +1365,7 @@ def _render_overlay_rgba(overlay: dict, scale: float) -> tuple[np.ndarray, int, 
             fill=str((overlay or {}).get("color") or "#12041c"),
         )
     if kind in {"panel", "pill"}:
+        grads = (overlay or {}).get("panelGradientColors")
         return _render_panel_rgba(
             float((overlay or {}).get("panelWidth") or 120.0) * scale,
             float((overlay or {}).get("panelHeight") or 40.0) * scale,
@@ -1274,6 +1380,12 @@ def _render_overlay_rgba(overlay: dict, scale: float) -> tuple[np.ndarray, int, 
             label_size_px=float((overlay or {}).get("sizePx") or 0.0) * scale,
             label_font_family=str((overlay or {}).get("fontFamily") or "montserrat"),
             label_bold=bool((overlay or {}).get("bold", True)),
+            backdrop_rgba=backdrop_rgba if kind == "panel" else None,
+            fill_mode=str((overlay or {}).get("panelFillMode") or "solid"),
+            gradient_colors=list(grads) if isinstance(grads, list) else [],
+            border_alpha=float((overlay or {}).get("panelBorderAlpha") if "panelBorderAlpha" in (overlay or {}) else 1.0),
+            outer_glow=float((overlay or {}).get("panelOuterGlow") or 0.0),
+            outer_glow_color=str((overlay or {}).get("panelOuterGlowColor") or "#ffb4da"),
         )
     text = str((overlay or {}).get("text", "") or "").strip()
     size_px = float((overlay or {}).get("sizePx", 46.0) if "sizePx" in (overlay or {}) else 46.0)
@@ -1841,6 +1953,8 @@ def _draw_text_overlays(
     h: int,
     sf: float,
     cache: dict,
+    *,
+    background_path: str = "",
 ) -> None:
     if not overlays:
         return
@@ -1926,7 +2040,11 @@ def _draw_text_overlays(
                 f"|{o.get('color')}|{opacity_mul:.3f}|{o.get('strokeColor')}|{float(o.get('strokeWidth') or 0):.2f}"
                 f"|{float(o.get('panelRadius') or 0):.2f}|{float(o.get('panelFrost') or 0):.2f}"
                 f"|{float(o.get('panelSpecular') or 0):.2f}|{text}|{float(o.get('sizePx') or 0):.2f}"
-                f"|{o.get('fontFamily')}|{o.get('logoPath')}|sf:{scale:.4f}"
+                f"|{o.get('fontFamily')}|{o.get('logoPath')}|{o.get('panelFillMode')}"
+                f"|{','.join(str(c) for c in (o.get('panelGradientColors') or []))}"
+                f"|{float(o.get('panelBorderAlpha') if 'panelBorderAlpha' in o else 1):.2f}"
+                f"|{float(o.get('panelOuterGlow') or 0):.2f}|{o.get('panelOuterGlowColor')}"
+                f"|bg:{background_path}|sf:{scale:.4f}"
             )
         else:
             size_px = float(o.get("sizePx", 46.0) if "sizePx" in o else 46.0)
@@ -1962,7 +2080,29 @@ def _draw_text_overlays(
                 f"|{shadow_blur:.2f}|{extrude_depth:.2f}|{extrude_color}|sf:{scale:.4f}"
             )
         if key_list[idx] != key or tex_list[idx] is None:
-            arr, tw, th = _render_overlay_rgba(o, scale)
+            backdrop = None
+            if kind == "panel" and str(background_path or "").strip():
+                try:
+                    from features.video.lib.playlist_glass_backdrop import (
+                        panel_rel_from_overlay,
+                        sample_panel_backdrop_rgba,
+                    )
+
+                    pw = int(max(4, round(float(o.get("panelWidth") or 120.0) * scale)))
+                    ph = int(max(4, round(float(o.get("panelHeight") or 40.0) * scale)))
+                    rel_x, rel_y = panel_rel_from_overlay(o)
+                    blur = 10.0 + float(o.get("panelFrost") or 0.0) * 18.0
+                    backdrop = sample_panel_backdrop_rgba(
+                        str(background_path),
+                        panel_w=pw,
+                        panel_h=ph,
+                        rel_x=rel_x,
+                        rel_y=rel_y,
+                        blur_radius=blur,
+                    )
+                except Exception:
+                    backdrop = None
+            arr, tw, th = _render_overlay_rgba(o, scale, backdrop_rgba=backdrop)
             if tex_list[idx] is not None:
                 try:
                     tex_list[idx].release()
@@ -2452,9 +2592,9 @@ def run_gpu_render(
     fps = int(max(1, min(60, int(opts.fps))))
     if fps <= 0:
         fps = 30
-    # Export analysis rate: 30 keeps spectrum reactive enough and avoids multi-minute
-    # librosa.stft stalls on long tracks in frozen builds (fps=60 hop is far denser).
-    ANALYSIS_FPS = 30
+    # Keep encode FPS (24/30/…) for speed, but analyze audio at preview rate so
+    # spectrum/particles react identically to paintGL (frame_idx = time * 60).
+    ANALYSIS_FPS = 60
     export_speed_mode = normalize_export_speed_mode(getattr(opts, "speed_mode", "balanced"))
     glow_pass_limit = export_glow_pass_limit(export_speed_mode)
 
@@ -2472,78 +2612,6 @@ def run_gpu_render(
     base_h = float(template.get("renderBaseHeight", 450.0))
     base_h = float(max(1.0, min(4000.0, base_h)))
     sf = float(h) / base_h
-
-    # Analyze audio BEFORE creating an OpenGL context. Frozen installs were hanging
-    # forever on librosa.stft when OpenBLAS ran after pygame/moderngl init.
-    spectrum_container = template
-    point_count = 1024
-    bg_scale = 1.0
-    bg_offset = (0.0, 0.0)
-
-    from shared.services.audio_analysis_cache import get_audio_analysis_cache, set_audio_analysis_cache
-    from .audio import AudioAnalyzer
-
-    _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
-    if existing_analyzer is not None:
-        analyzer = existing_analyzer
-        _emit_event(
-            {
-                "status": "running",
-                "message": "Reusing preview audio analysis",
-                "progress": 0.09,
-                "cacheHit": True,
-            }
-        )
-    else:
-        cached_analyzer = get_audio_analysis_cache(
-            opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count
-        )
-        if cached_analyzer is not None:
-            analyzer = cached_analyzer
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Audio analysis loaded from cache",
-                    "progress": 0.09,
-                    "cacheHit": True,
-                }
-            )
-        else:
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Analyzing audio (first track can take a minute)...",
-                    "progress": 0.08,
-                }
-            )
-
-            def _analysis_progress(message: str) -> None:
-                _emit_event(
-                    {
-                        "status": "running",
-                        "message": str(message or "Analyzing audio..."),
-                        "progress": 0.08,
-                    }
-                )
-
-            analyzer = AudioAnalyzer(
-                opts.mp3_path,
-                fps=ANALYSIS_FPS,
-                point_count=point_count,
-                on_progress=_analysis_progress,
-            )
-            set_audio_analysis_cache(analyzer, opts.mp3_path)
-            _emit_event(
-                {
-                    "status": "running",
-                    "message": "Audio analysis complete, preparing encoder...",
-                    "progress": 0.09,
-                    "cacheHit": False,
-                }
-            )
-
-    duration_sec = float(analyzer.info.duration_sec)
-    total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
 
     _emit_event({"status": "running", "message": "Initializing GPU renderer...", "progress": 0.0})
     if ctx_factory is not None:
@@ -2638,6 +2706,80 @@ def run_gpu_render(
         [(particle_quad_vbo, "2f 2f 4f 2f", "in_pos", "in_uv", "in_col", "in_meta")],
     )
     music_icon_tex_holder: dict = {}
+
+    _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
+
+    # In the new format, the root template IS the spectrum container
+    spectrum_container = template
+    point_count = 1024 # Fixed to 1024 for high-res FFT
+    
+    # We no longer have spec_style or spec_tex for background scale/offset in the spectrum layer.
+    # Background scale/offset is now handled via backgroundSettings (if added) or just defaults to 1.0/0.0
+    bg_scale = 1.0
+    bg_offset = (0.0, 0.0)
+
+    from shared.services.audio_analysis_cache import get_audio_analysis_cache, set_audio_analysis_cache
+
+    if existing_analyzer is not None:
+        analyzer = existing_analyzer
+        _emit_event(
+            {
+                "status": "running",
+                "message": "Reusing preview audio analysis",
+                "progress": 0.09,
+                "cacheHit": True,
+            }
+        )
+    else:
+        cached_analyzer = get_audio_analysis_cache(
+            opts.mp3_path, fps=ANALYSIS_FPS, point_count=point_count
+        )
+        if cached_analyzer is not None:
+            analyzer = cached_analyzer
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis loaded from cache",
+                    "progress": 0.09,
+                    "cacheHit": True,
+                }
+            )
+        else:
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Analyzing audio (first track can take a minute)…",
+                    "progress": 0.08,
+                }
+            )
+
+            def _analysis_progress(message: str) -> None:
+                _emit_event(
+                    {
+                        "status": "running",
+                        "message": str(message or "Analyzing audio…"),
+                        "progress": 0.08,
+                    }
+                )
+
+            analyzer = AudioAnalyzer(
+                opts.mp3_path,
+                fps=ANALYSIS_FPS,
+                point_count=point_count,
+                on_progress=_analysis_progress,
+            )
+            set_audio_analysis_cache(analyzer, opts.mp3_path)
+            _emit_event(
+                {
+                    "status": "running",
+                    "message": "Audio analysis complete, preparing encoder...",
+                    "progress": 0.09,
+                    "cacheHit": False,
+                }
+            )
+    duration_sec = float(analyzer.info.duration_sec)
+    # Encode at export fps, but sample audio analysis at preview fps (60).
+    total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
 
     particles_cfg_raw = template.get("particlesSettings", {}) if isinstance(template.get("particlesSettings"), dict) else {}
     if not particles_cfg_raw and isinstance(template.get("particles"), dict):
@@ -2960,6 +3102,7 @@ def run_gpu_render(
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
         clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
         normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
+        scroll_spectrum_heights,
     )
     from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
@@ -3054,6 +3197,7 @@ def run_gpu_render(
                 logo_shape=_tpl_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl_pre.get("linearSpan", 1.0) or 1.0),
             )
             pass_specs_pre: list[dict] = []
             if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
@@ -3431,8 +3575,6 @@ def run_gpu_render(
 
             sampled_fft = resample_fft_bins(render_fft, bar_count)
 
-            sampled_fft = resample_fft_bins(render_fft, bar_count)
-
             # 3) Generate Points (vectorized)
             n = int(sampled_fft.shape[0])
             px_arr, py_arr, dx_arr, dy_arr, total_length = generate_spectrum_layer_geometry(
@@ -3448,6 +3590,7 @@ def run_gpu_render(
                 logo_shape=_tpl_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
             )
             reflection_enabled = bool(sl.get("reflectionEnabled", False))
             try:
@@ -3951,6 +4094,7 @@ def run_gpu_render(
             h,
             sf,
             text_cache,
+            background_path=str(opts.background_path or ""),
         )
 
         _t_gl = time.perf_counter() if frame_profiler is not None else 0.0
@@ -4718,6 +4862,7 @@ def render_preview_png(
                 logo_shape=_legacy_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
             )
             val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
@@ -4991,6 +5136,7 @@ def render_preview_png(
             h,
             sf,
             text_cache,
+            background_path=str(opts.background_path or ""),
         )
 
         _blit_readback_oriented(
@@ -5838,6 +5984,7 @@ def run_live_preview(opts: GpuOptions) -> int:
                 logo_shape=_legacy_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
             )
             val_arr = (render_fft[:n] * thickness).astype(np.float32)
 
@@ -6135,7 +6282,18 @@ def run_live_preview(opts: GpuOptions) -> int:
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
 
         text_overlays = template.get("textOverlays") if isinstance(template.get("textOverlays"), list) else []
-        _draw_text_overlays(ctx, prog_text, vao_quad_text, text_overlays, float(c_time), w, h, sf, text_cache)
+        _draw_text_overlays(
+            ctx,
+            prog_text,
+            vao_quad_text,
+            text_overlays,
+            float(c_time),
+            w,
+            h,
+            sf,
+            text_cache,
+            background_path=str(bg_path or ""),
+        )
 
         ctx.viewport = (0, 0, w, h)
         glfw.swap_buffers(win)

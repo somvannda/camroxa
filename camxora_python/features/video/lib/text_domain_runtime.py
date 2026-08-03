@@ -254,6 +254,7 @@ TITLE_DOMAIN_DRAG_SOURCES: frozenset[str] = frozenset(
         "titleTextHeader",
         "titleTextHeaderLine",
         "titleTextActivePlate",
+        "titleTextDivider",
         "titleTextStage",
         "titleTextStageOuter",
         "titleTextStagePill",

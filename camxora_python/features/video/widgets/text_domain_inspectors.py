@@ -96,6 +96,7 @@ class _TextDomainInspectorBase(QWidget):
         self._number_indent: QComboBox | None = None
         self._layout_combo: QComboBox | None = None
         self._playlist_look: QComboBox | None = None
+        self._preset_host: QWidget | None = None
         self._toggle_fields: dict[str, QCheckBox] = {}
         self._effect_pack_host: QVBoxLayout | None = None
 
@@ -120,7 +121,8 @@ class _TextDomainInspectorBase(QWidget):
         for value, label in TEXT_DOMAIN_PRESET_OPTIONS:
             self._preset_combo.addItem(label, value)
         self._preset_combo.currentIndexChanged.connect(self._on_preset_changed)
-        section.add_widget(_stacked_field("Style Preset", self._preset_combo))
+        self._preset_host = _stacked_field("Style Preset", self._preset_combo)
+        section.add_widget(self._preset_host)
 
         restore_row = QHBoxLayout()
         restore_row.addStretch()
@@ -416,6 +418,11 @@ class _TextDomainInspectorBase(QWidget):
     def _on_preset_changed(self, _index: int) -> None:
         if self._binding or self._preset_combo is None:
             return
+        # Playlist Look owns list-card styling — ignore Style Preset while a Look is on.
+        if self._DOMAIN == "title" and self._playlist_look is not None:
+            look = self._playlist_look.currentData()
+            if isinstance(look, str) and look.strip():
+                return
         key = str(self._preset_combo.currentData() or "")
         if not key or key == self._selected_preset_key:
             return
@@ -561,9 +568,24 @@ class TitleInspector(_TextDomainInspectorBase):
     _ENABLE_LABEL = "Enable Playlist"
     _TITLE = "Playlist"
     _SUBTITLE = (
-        "Long-play track list. Auto-loads from the pipeline track list. "
-        "Pick a Playlist Look, layout, and glass panel."
+        "Long-play track list. Use Glass card & colors below to change text and panel — "
+        "Typography Fill / Glow also drive the list."
     )
+
+    def _emit_patch(self, patch: dict) -> None:
+        """Keep Typography Fill/Glow and List/Active colors in sync for list cards."""
+        if self._binding or not patch:
+            return
+        out = dict(patch)
+        if "titleColor" in out and "titleListColor" not in out:
+            out["titleListColor"] = out["titleColor"]
+        if "titleListColor" in out and "titleColor" not in out:
+            out["titleColor"] = out["titleListColor"]
+        if "titleGlowColor" in out and "titleListActiveColor" not in out:
+            out["titleListActiveColor"] = out["titleGlowColor"]
+        if "titleListActiveColor" in out and "titleGlowColor" not in out:
+            out["titleGlowColor"] = out["titleListActiveColor"]
+        self.draft_patch_requested.emit(out)
 
     def _build_content_fields(self, section: InspectorSection) -> None:
         self._playlist_look = QComboBox()
@@ -596,28 +618,20 @@ class TitleInspector(_TextDomainInspectorBase):
         self._layout_combo.currentIndexChanged.connect(self._on_playlist_layout_changed)
         section.add_widget(_stacked_field("Layout", self._layout_combo))
 
-        for field, label in (
-            ("titleShowDurations", "Show durations"),
-            ("titleNowPlayingEnabled", "Now Playing highlight"),
-            ("titleNowPlayingPill", "NOW PLAYING pill"),
-            ("titleTracklistHeader", "TRACKLIST header"),
-            ("titleActiveRowPlate", "Active row neon plate"),
-            ("titleTrackCountBadge", "Track count badge"),
-        ):
-            box = QCheckBox(label)
-            box.toggled.connect(
-                lambda checked, key=field: (
-                    None if self._binding else self._emit_patch({key: bool(checked)})
-                )
-            )
-            self._toggle_fields[field] = box
-            section.add_widget(box)
+        # Crystal-clear card controls — opacity first (most common fix for readability).
+        glass_note = QLabel(
+            "Neon Glass Pro owns this card (Style Preset is hidden while a Look is selected). "
+            "Card opacity near 1.0 = solid readable plate with frosted scene color."
+        )
+        glass_note.setObjectName(SUBTITLE_LABEL_ID)
+        glass_note.setWordWrap(True)
+        section.add_widget(glass_note)
 
         for field, label, minimum, maximum, step in (
-            ("titlePanelOpacity", "Panel Opacity", 0.05, 1.0, 0.01),
-            ("titlePanelFrost", "Panel Frost", 0.0, 1.0, 0.01),
-            ("titlePanelBorderWidth", "Panel Border", 0.0, 8.0, 0.25),
-            ("titlePanelSpecular", "Panel Specular", 0.0, 1.0, 0.01),
+            ("titlePanelOpacity", "Card opacity (solid ← → clear)", 0.05, 1.0, 0.01),
+            ("titlePanelFrost", "Card frost / veil", 0.0, 1.0, 0.01),
+            ("titlePanelBorderWidth", "Card border width", 0.0, 8.0, 0.25),
+            ("titlePanelSpecular", "Card top shine", 0.0, 1.0, 0.01),
         ):
             widget, setter = build_float_slider(
                 label,
@@ -630,10 +644,17 @@ class TitleInspector(_TextDomainInspectorBase):
             self._float_setters[field] = setter
             section.add_widget(widget)
 
-        for field, label, default in (
-            ("titlePanelBorderColor", "Panel Border Color", "#94a3b8"),
-            ("titlePanelFill", "Panel Fill", "#0f172a"),
+        for field, label in (
+            ("titleListColor", "Track text color"),
+            ("titleListActiveColor", "Active track color"),
+            ("titlePanelFill", "Card background"),
+            ("titlePanelBorderColor", "Card border / neon"),
         ):
+            default = "#ffffff" if field == "titleListColor" else (
+                "#f5d0fe" if field == "titleListActiveColor" else (
+                    "#07010f" if field == "titlePanelFill" else "#e879f9"
+                )
+            )
             widget, setter = build_color_field(
                 label,
                 value=default,
@@ -643,6 +664,23 @@ class TitleInspector(_TextDomainInspectorBase):
             )
             self._color_setters[field] = setter
             section.add_widget(_stacked_field(label, widget))
+
+        for field, label in (
+            ("titleShowDurations", "Show durations"),
+            ("titleNowPlayingEnabled", "Now Playing highlight"),
+            ("titleNowPlayingPill", "NOW PLAYING pill"),
+            ("titleTracklistHeader", "PLAYLIST header"),
+            ("titleActiveRowPlate", "Active row neon plate"),
+            ("titleTrackCountBadge", "Track count badge"),
+        ):
+            box = QCheckBox(label)
+            box.toggled.connect(
+                lambda checked, key=field: (
+                    None if self._binding else self._emit_patch({key: bool(checked)})
+                )
+            )
+            self._toggle_fields[field] = box
+            section.add_widget(box)
 
         self._manual_titles = QPlainTextEdit()
         self._manual_titles.setPlaceholderText("One title per line (manual mode)")
@@ -671,19 +709,14 @@ class TitleInspector(_TextDomainInspectorBase):
             self._emit_patch(patch)
 
     def _build_list_color_fields(self, style: InspectorSection) -> None:
-        for field, label in (
-            ("titleListColor", "List Color"),
-            ("titleListActiveColor", "Active Color"),
-        ):
-            widget, setter = build_color_field(
-                label,
-                value="#ffffff",
-                on_change=lambda value, key=field: self._emit_patch({key: value}),
-                parent=self,
-                show_label=False,
-            )
-            self._color_setters[field] = setter
-            style.add_widget(_stacked_field(label, widget))
+        # Colors live in the Playlist section above so they are not buried.
+        tip = QLabel(
+            "Track / active colors are under Playlist (Glass card). "
+            "Fill and Glow Color here stay synced with those."
+        )
+        tip.setObjectName(SUBTITLE_LABEL_ID)
+        tip.setWordWrap(True)
+        style.add_widget(tip)
         widget, setter = build_float_slider(
             "Active Index",
             minimum=-1,
@@ -694,7 +727,6 @@ class TitleInspector(_TextDomainInspectorBase):
         )
         self._float_setters["titleListActiveIndex"] = setter
         style.add_widget(widget)
-        # Preview/export override this from the selected / playing / exporting track.
         note = QLabel("Auto: follows selected / playing / exporting track.")
         note.setObjectName(SUBTITLE_LABEL_ID)
         note.setWordWrap(True)
@@ -708,6 +740,11 @@ class TitleInspector(_TextDomainInspectorBase):
 
     def _bind_domain_fields(self, draft: dict) -> None:
         self._set_combo(self._playlist_look, str(draft.get("titlePlaylistLook") or ""))
+        look_on = bool(str(draft.get("titlePlaylistLook") or "").strip())
+        if self._preset_host is not None:
+            self._preset_host.setVisible(not look_on)
+        if self._preset_combo is not None:
+            self._preset_combo.setEnabled(not look_on)
         self._set_combo(self._list_style, str(draft.get("titleListStyle") or "number"))
         self._set_combo(self._number_indent, str(draft.get("titleNumberIndent") or "aligned"))
         self._set_combo(self._layout_combo, str(draft.get("titleLayout") or "column"))
