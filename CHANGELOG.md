@@ -15,6 +15,20 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.16] - 2026-08-03
+
+### Fixed
+
+- **Force update looked finished when Setup was still installing.** After
+  download, Camxora claimed “Install ready” and quit while Inno could still
+  take minutes. Reopening the desktop icon mid-install showed the old
+  version (e.g. 1.0.14). Force update now launches Setup with a **visible
+  progress window** (`/SILENT`, not `/VERYSILENT`), tells users to wait for
+  that window, verifies `app-version.txt` before relaunch, and persists a
+  mandatory update so a mid-Setup reopen shows “Finishing update…” / Try
+  again instead of a silent old build. See
+  `docs/changelog/2026-08-03-force-update-visible-install.md`.
+
 ## [1.0.15] - 2026-08-03
 
 ### Fixed

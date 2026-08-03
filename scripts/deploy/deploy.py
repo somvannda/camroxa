@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
-"""Deploy CamXora sandbox to VPS via SSH. Reads .deploy/secrets.env (never commit it)."""
+"""Deploy CamXora via SSH.
+
+Secrets are split by environment (never commit either file):
+  .deploy/secrets.sandbox.env      — sandbox only (default for load_secrets)
+  .deploy/secrets.production.env — production only (explicit load)
+
+Legacy .deploy/secrets.env is still read as a fallback for sandbox until migrated.
+"""
 
 from __future__ import annotations
 
-import os
 import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path
+from typing import Literal
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SECRETS_PATH = REPO_ROOT / ".deploy" / "secrets.env"
-EXAMPLE_PATH = REPO_ROOT / ".deploy" / "secrets.env.example"
+DEPLOY_DIR = REPO_ROOT / ".deploy"
+SECRETS_SANDBOX_PATH = DEPLOY_DIR / "secrets.sandbox.env"
+SECRETS_PRODUCTION_PATH = DEPLOY_DIR / "secrets.production.env"
+SECRETS_LEGACY_PATH = DEPLOY_DIR / "secrets.env"
+SECRETS_PATH = SECRETS_LEGACY_PATH  # backward-compat alias
+EXAMPLE_SANDBOX_PATH = DEPLOY_DIR / "secrets.sandbox.env.example"
+EXAMPLE_PRODUCTION_PATH = DEPLOY_DIR / "secrets.production.env.example"
+EXAMPLE_PATH = DEPLOY_DIR / "secrets.env.example"
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-sandbox-remote.sh"
-DEPLOY_KEY = REPO_ROOT / ".deploy" / "camxora_deploy_ed25519"
+DEPLOY_KEY = DEPLOY_DIR / "camxora_deploy_ed25519"
 VENV_DIR = Path(__file__).resolve().parent / ".venv"
 DEPLOY_DIRS = ("platform_api", "admin_portal", "website", "user_portal", "music_web", "shared")
 SKIP_NAMES = {
@@ -33,20 +47,154 @@ SKIP_NAMES = {
     ".env",
 }
 
+DeployEnv = Literal["sandbox", "production"]
 
-def load_secrets() -> dict[str, str]:
-    if not SECRETS_PATH.is_file():
-        print(f"Missing {SECRETS_PATH}")
-        print(f"Copy {EXAMPLE_PATH} -> {SECRETS_PATH} and fill in VPS credentials.")
-        sys.exit(1)
+CANONICAL_SANDBOX_HOST = "46.250.235.83"
+CANONICAL_PRODUCTION_HOST = "82.197.71.248"
+
+_ENV_META_KEY = "_CAMXORA_DEPLOY_ENV"
+
+
+def parse_env_file(path: Path) -> dict[str, str]:
     data: dict[str, str] = {}
-    for line in SECRETS_PATH.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
         data[key.strip()] = value.strip()
     return data
+
+
+def secrets_path_for(env: DeployEnv) -> Path:
+    return SECRETS_SANDBOX_PATH if env == "sandbox" else SECRETS_PRODUCTION_PATH
+
+
+def example_path_for(env: DeployEnv) -> Path:
+    return EXAMPLE_SANDBOX_PATH if env == "sandbox" else EXAMPLE_PRODUCTION_PATH
+
+
+def _peer_host(env: DeployEnv) -> str:
+    peer_env: DeployEnv = "production" if env == "sandbox" else "sandbox"
+    peer_path = secrets_path_for(peer_env)
+    if not peer_path.is_file():
+        return CANONICAL_PRODUCTION_HOST if env == "sandbox" else CANONICAL_SANDBOX_HOST
+    peer = parse_env_file(peer_path)
+    if peer_env == "sandbox":
+        return (
+            peer.get("SANDBOX_VPS_HOST")
+            or peer.get("VPS_HOST")
+            or CANONICAL_SANDBOX_HOST
+        ).strip()
+    return (
+        peer.get("PRODUCTION_VPS_HOST")
+        or peer.get("VPS_HOST")
+        or CANONICAL_PRODUCTION_HOST
+    ).strip()
+
+
+def load_secrets(env: DeployEnv = "sandbox") -> dict[str, str]:
+    """Load secrets for one environment. Default is sandbox (safe for most scripts)."""
+    path = secrets_path_for(env)
+    if path.is_file():
+        data = parse_env_file(path)
+        data[_ENV_META_KEY] = env
+        return data
+
+    if env == "sandbox" and SECRETS_LEGACY_PATH.is_file():
+        print(
+            f"WARN: {path.name} missing; falling back to legacy {SECRETS_LEGACY_PATH.name}. "
+            f"Run: python scripts/deploy/split_secrets_env.py",
+            file=sys.stderr,
+        )
+        data = parse_env_file(SECRETS_LEGACY_PATH)
+        data[_ENV_META_KEY] = env
+        return data
+
+    print(f"Missing {path}")
+    print(f"Copy {example_path_for(env)} -> {path} and fill in credentials.")
+    sys.exit(1)
+
+
+def load_sandbox_secrets() -> dict[str, str]:
+    return load_secrets("sandbox")
+
+
+def load_production_secrets() -> dict[str, str]:
+    return load_secrets("production")
+
+
+def resolve_sandbox_ssh(secrets: dict[str, str] | None = None) -> tuple[str, str, str | None]:
+    """Return (host, user, password) for the sandbox VPS only."""
+    secrets = secrets if secrets is not None else load_sandbox_secrets()
+    host = (
+        secrets.get("SANDBOX_VPS_HOST")
+        or secrets.get("VPS_HOST")
+        or ""
+    ).strip()
+    user = (
+        secrets.get("SANDBOX_VPS_USER")
+        or secrets.get("VPS_USER")
+        or "root"
+    ).strip()
+    password = (
+        secrets.get("SANDBOX_VPS_PASSWORD")
+        or secrets.get("VPS_PASSWORD")
+        or None
+    )
+    if not host:
+        raise RuntimeError(
+            f"VPS_HOST required in {SECRETS_SANDBOX_PATH} (sandbox host {CANONICAL_SANDBOX_HOST})"
+        )
+    forbidden = {
+        CANONICAL_PRODUCTION_HOST,
+        _peer_host("sandbox"),
+        (secrets.get("PRODUCTION_VPS_HOST") or "").strip(),
+    }
+    forbidden.discard("")
+    if host in forbidden:
+        raise RuntimeError(
+            f"Refusing sandbox SSH to {host}: that looks like production. "
+            f"Use {SECRETS_SANDBOX_PATH} with VPS_HOST={CANONICAL_SANDBOX_HOST}"
+        )
+    return host, user, password
+
+
+def resolve_production_ssh(secrets: dict[str, str] | None = None) -> tuple[str, str, str | None]:
+    """Return (host, user, password) for the production VPS only."""
+    secrets = secrets if secrets is not None else load_production_secrets()
+    host = (
+        secrets.get("PRODUCTION_VPS_HOST")
+        or secrets.get("VPS_HOST")
+        or ""
+    ).strip()
+    user = (
+        secrets.get("PRODUCTION_VPS_USER")
+        or secrets.get("VPS_USER")
+        or "root"
+    ).strip()
+    password = (
+        secrets.get("PRODUCTION_VPS_PASSWORD")
+        or secrets.get("VPS_PASSWORD")
+        or None
+    )
+    if not host:
+        raise RuntimeError(
+            f"VPS_HOST required in {SECRETS_PRODUCTION_PATH} "
+            f"(production host {CANONICAL_PRODUCTION_HOST})"
+        )
+    forbidden = {
+        CANONICAL_SANDBOX_HOST,
+        _peer_host("production"),
+        (secrets.get("SANDBOX_VPS_HOST") or "").strip(),
+    }
+    forbidden.discard("")
+    if host in forbidden:
+        raise RuntimeError(
+            f"Refusing production SSH to {host}: that looks like sandbox. "
+            f"Use {SECRETS_PRODUCTION_PATH} with VPS_HOST={CANONICAL_PRODUCTION_HOST}"
+        )
+    return host, user, password
 
 
 def ensure_paramiko():

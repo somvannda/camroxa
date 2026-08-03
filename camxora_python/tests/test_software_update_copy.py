@@ -7,7 +7,7 @@ def test_format_update_summary() -> None:
     text = format_update_summary(required_version="0.2.5", current_version="0.2.4")
     assert "0.2.5" in text
     assert "0.2.4" in text
-    assert "background" in text.lower()
+    assert "setup" in text.lower()
 
 
 def test_format_whats_new_keeps_user_bullets() -> None:

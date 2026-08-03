@@ -87,6 +87,8 @@ class RootWindow(QMainWindow):
         self._window_surface = surface
         self._software_update_gate = SoftwareUpdateGateOverlay(surface)
         self._software_update_gate.update_requested.connect(self._start_software_update_install)
+        # Restore a mandatory update left over if Setup was still running / failed.
+        SoftwareUpdateService.instance().restore_from_disk()
         self._sync_software_update_gate_geometry()
 
     def _connect_signals(self) -> None:

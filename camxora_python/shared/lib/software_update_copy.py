@@ -19,7 +19,7 @@ def format_update_summary(*, required_version: str, current_version: str) -> str
     current = str(current_version or "").strip() or "an older build"
     return (
         f"Camxora {required} is required to continue.\n"
-        f"You’re on {current}. The update installs in the background, then Camxora restarts."
+        f"You’re on {current}. Camxora will close, then a Setup progress window finishes the install."
     )
 
 

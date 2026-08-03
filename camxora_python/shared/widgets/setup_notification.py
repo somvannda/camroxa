@@ -499,7 +499,7 @@ class SetupNotificationButton(QWidget):
             return
         self._dropdown.set_install_status(
             notification_id,
-            "Preparing silent update…",
+            "Preparing update…",
             in_progress=True,
         )
 

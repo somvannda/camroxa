@@ -1,20 +1,17 @@
-﻿Camxora 1.0.15 - Multi-machine paths, spectrum flush drag, startup retry (+ 1.0.14 merge)
+﻿Camxora 1.0.16 - Force update shows Setup progress + honest completion
 Date: 2026-08-03
 
 What's new
 ----------
-- Same Camxora account on two PCs: ignore the other Windows user's
-  C:\Users\... paths (no more PermissionError spam); use this PC's folders
-- Spectrum / logo / lightning can drag flush to the top and bottom of preview
-- Stronger startup retry when Windows Defender briefly blocks pydantic import
-- Continue / Start Merging no longer requires export background PNG or catalog template
-- Clearer export readiness errors when Start Export is blocked
-- Honest API-recovery toasts (only "resuming" when a run actually starts)
+- Force update shows the Setup progress window (no more fully silent install)
+- Clearer message: Camxora closes so Setup can update files; wait for Setup
+- Mid-Setup reopen no longer looks like a failed update (Finishing / Try again)
+- Setup must leave the installed version matching the published version before relaunch
+- Includes 1.0.15 fixes (multi-machine paths, spectrum flush drag, startup retry,
+  merge without export background/template gate)
 
 Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.0.15.exe
-- Force auto-update publish of CamxoraSetup-*.exe needs the matching
-  platform_api + admin portal hotfix (filename parse) deployed separately
+- Installer file: CamxoraSetup-1.0.16.exe

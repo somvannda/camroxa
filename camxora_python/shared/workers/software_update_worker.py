@@ -1,4 +1,4 @@
-"""Download and silently apply a desktop software update."""
+"""Download and launch a desktop software update installer."""
 
 from __future__ import annotations
 
@@ -19,22 +19,31 @@ _CHUNK_SIZE = 256 * 1024
 # Leave headroom on the progress bar for install + restart phases.
 _DOWNLOAD_PROGRESS_CAP = 85
 
+_CLOSING_MESSAGE = (
+    "Closing Camxora so Setup can update files. "
+    "Wait for the Setup progress window to finish — this can take a few minutes."
+)
+
 
 class SoftwareUpdateInstallWorker(QThread):
-    """Background download + silent install.
+    """Background download + launch visible-progress installer.
 
     ``progress`` emits ``(message, percent)`` where percent is ``0–100`` for
     determinate download/install phases, or ``-1`` for indeterminate work.
+
+    ``succeeded`` means the Setup helper was launched successfully — not that
+    the new version is already installed.
     """
 
     progress = Signal(str, int)
     succeeded = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, download_url: str, parent=None) -> None:
+    def __init__(self, download_url: str, *, target_version: str = "", parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("SoftwareUpdateInstallWorker")
         self._download_url = download_url
+        self._target_version = str(target_version or "").strip()
 
     def run(self) -> None:
         suffix = self._guess_suffix(self._download_url)
@@ -44,8 +53,8 @@ class SoftwareUpdateInstallWorker(QThread):
             self._download(package_path)
             kind = detect_package_kind(package_path, self._download_url)
             self.progress.emit("Preparing installer…", 88)
-            if kind == "zip":
-                self.progress.emit("Installing update…", 92)
+            if kind == "exe":
+                self.progress.emit("Starting Setup…", 92)
             else:
                 self.progress.emit("Installing update…", 92)
 
@@ -53,13 +62,9 @@ class SoftwareUpdateInstallWorker(QThread):
                 package_path,
                 download_url=self._download_url,
                 parent_pid=os.getpid(),
+                target_version=self._target_version,
             )
-            # Helper script waits for this process to exit, then finishes install
-            # and relaunches Camxora. The gate shows this message before quit.
-            self.progress.emit(
-                "Install ready — Camxora will restart to finish updating…",
-                100,
-            )
+            self.progress.emit(_CLOSING_MESSAGE, 100)
             self.succeeded.emit(package_path)
         except SoftwareUpdateInstallError as exc:
             self.failed.emit(str(exc))
@@ -94,10 +99,7 @@ class SoftwareUpdateInstallWorker(QThread):
                     else:
                         mb = downloaded / (1024 * 1024)
                         self.progress.emit(f"Downloading update… {mb:.1f} MB", -1)
-        if total > 0:
-            self.progress.emit("Download complete — starting install…", _DOWNLOAD_PROGRESS_CAP)
-        else:
-            self.progress.emit("Download complete — starting install…", _DOWNLOAD_PROGRESS_CAP)
+        self.progress.emit("Download complete — starting Setup…", _DOWNLOAD_PROGRESS_CAP)
 
     @staticmethod
     def _guess_suffix(url: str) -> str:

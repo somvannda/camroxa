@@ -150,9 +150,12 @@ class SoftwareUpdateGateOverlay(QFrame):
         service.update_changed.connect(self._on_update_changed)
         service.install_started.connect(self._on_install_started)
         service.install_progress.connect(self._on_install_progress)
-        service.install_succeeded.connect(self._on_install_succeeded)
+        service.install_succeeded.connect(self._on_installer_launched)
+        service.install_finishing.connect(self._on_install_finishing)
         service.install_failed.connect(self._on_install_failed)
         self._on_update_changed(service.pending)
+        if service.install_in_progress:
+            self._on_install_finishing()
 
     def _on_update_changed(self, offer: object) -> None:
         service = SoftwareUpdateService.instance()
@@ -206,10 +209,12 @@ class SoftwareUpdateGateOverlay(QFrame):
             lower = text.lower()
             if "download" in lower:
                 self._title.setText("Downloading update")
+            elif "closing" in lower or "setup" in lower:
+                self._title.setText("Starting Setup")
             elif "install" in lower or "preparing installer" in lower:
                 self._title.setText("Installing update")
             elif "restart" in lower:
-                self._title.setText("Restarting Camxora")
+                self._title.setText("Starting Setup")
         if percent is None or int(percent) < 0:
             # Indeterminate install / unknown download size
             if self._progress.maximum() != 0:
@@ -219,14 +224,33 @@ class SoftwareUpdateGateOverlay(QFrame):
             self._progress.setRange(0, 100)
         self._progress.setValue(max(0, min(100, int(percent))))
 
-    def _on_install_succeeded(self) -> None:
+    def _on_installer_launched(self) -> None:
         self._progress_wrap.show()
         self._update_button.hide()
         if self._progress.maximum() == 0:
             self._progress.setRange(0, 100)
         self._progress.setValue(100)
-        self._title.setText("Restarting Camxora")
-        self._status.setText("Install ready — Camxora will restart to finish updating…")
+        self._title.setText("Starting Setup")
+        self._status.setText(
+            "Closing Camxora so Setup can update files. "
+            "Wait for the Setup progress window to finish — this can take a few minutes."
+        )
+
+    def _on_install_finishing(self) -> None:
+        if not self.isVisible():
+            # Ensure mandatory gate is visible while Setup may still be running.
+            service = SoftwareUpdateService.instance()
+            if service.should_block_app():
+                self.show()
+                self.raise_()
+        self._progress_wrap.show()
+        self._update_button.hide()
+        self._progress.setRange(0, 0)
+        self._title.setText("Finishing update")
+        self._status.setText(
+            "Setup is still installing. Keep waiting for the Setup window to finish, "
+            "or leave Camxora closed until it relaunches."
+        )
 
     def _on_install_failed(self, message: str) -> None:
         self._progress_wrap.show()
