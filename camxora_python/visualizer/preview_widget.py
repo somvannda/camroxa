@@ -123,11 +123,12 @@ def clamp_template_offset_to_preview(
     w: int,
     h: int,
     sf: float,
-    margin_frac: float = 0.06,
+    margin_frac: float = 0.0,
 ) -> tuple[float, float]:
     """Keep an anchored object center inside the preview frame.
 
     Offsets are template units (renderBaseHeight space); ``sf`` converts to pixels.
+    Default margin is 0 so logo/spectrum can sit flush on an edge (e.g. bottom).
     """
     width = max(1, int(w))
     height = max(1, int(h))

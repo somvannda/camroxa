@@ -14,7 +14,15 @@ _ALLOWED_EXTENSIONS = {".zip", ".exe", ".msi"}
 _DEFAULT_MAX_BYTES = 500 * 1024 * 1024
 _VERSION_PATTERN = re.compile(r"^(\d+(?:\.\d+){0,2})$")
 _UNSAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
-_INSTALLER_VERSION_FILENAME = re.compile(r"^Camxora-(\d+(?:\.\d+){0,2})\.[^.]+$", re.IGNORECASE)
+# Accept Inno Setup names (CamxoraSetup-1.0.15.exe) and optional env suffixes
+# (-production / -sandbox), plus the older Camxora-1.0.15.zip shape.
+_INSTALLER_VERSION_FILENAME = re.compile(
+    r"^(?:CamxoraSetup-|Camxora-Setup-|Camxora-)"
+    r"(\d+(?:\.\d+){0,2})"
+    r"(?:-(?:production|sandbox))?"
+    r"\.[^.]+$",
+    re.IGNORECASE,
+)
 
 
 def extract_version_from_installer_filename(filename: str) -> str | None:

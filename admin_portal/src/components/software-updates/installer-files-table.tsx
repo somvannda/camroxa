@@ -65,7 +65,10 @@ function formatTimestamp(value: string) {
 
 function extractVersionFromFilename(filename: string) {
 
-  const match = /^Camxora-(\d+(?:\.\d+){0,2})\./i.exec(filename);
+  const match =
+    /^(?:CamxoraSetup-|Camxora-Setup-|Camxora-)(\d+(?:\.\d+){0,2})(?:-(?:production|sandbox))?\./i.exec(
+      filename,
+    );
 
   return match?.[1] ?? null;
 

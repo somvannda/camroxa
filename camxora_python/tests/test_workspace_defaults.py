@@ -109,6 +109,48 @@ def test_apply_workspace_path_defaults_heals_stale_cross_machine_path(tmp_path: 
     assert patch["downloadsDir"] == defaults["downloadsDir"]
 
 
+def test_apply_workspace_path_defaults_rejects_foreign_windows_profile_without_mkdir(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Account-synced C:\\Users\\Alice\\... must not mkdir on Bob's machine.
+
+    Regression for the PC-machine log flood: every startup tried
+    Path.mkdir(parents=True) under Kong Somvannda's profile, walking into
+    Access Denied and writing a multi-level PermissionError traceback per
+    path key — even though self-heal already replaced the value afterward.
+    """
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(
+        "shared.lib.workspace_defaults.is_foreign_windows_profile_path",
+        lambda path: "Kong Somvannda" in str(path),
+    )
+
+    mkdir_targets: list[str] = []
+    original_mkdir = Path.mkdir
+
+    def _tracking_mkdir(self, *args, **kwargs):
+        mkdir_targets.append(str(self))
+        return original_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", _tracking_mkdir)
+
+    foreign = r"C:\Users\Kong Somvannda\AppData\Local\Camxora\Media\Downloads"
+    settings, patch = apply_workspace_path_defaults({"downloadsDir": foreign})
+
+    defaults = default_workspace_paths()
+    assert settings["downloadsDir"] == defaults["downloadsDir"]
+    assert patch["downloadsDir"] == defaults["downloadsDir"]
+    # Never mkdir the foreign synced path itself (tmp_path may also live under
+    # this developer's real Users\\ profile — that's fine and expected).
+    assert foreign not in mkdir_targets
+    assert all(
+        not target.replace("/", "\\").lower().startswith(
+            r"C:\Users\Kong Somvannda\AppData\Local\Camxora".lower()
+        )
+        for target in mkdir_targets
+    )
+    assert any(str(tmp_path) in target for target in mkdir_targets)
+
 def test_apply_workspace_path_defaults_heals_low_disk_space_path(tmp_path: Path, monkeypatch) -> None:
     # Reproduces the "E:\Suno lands on a near-full USB stick" report: the
     # synced path is a perfectly valid, creatable directory (mkdir/is_dir

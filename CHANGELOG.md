@@ -15,6 +15,41 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.15] - 2026-08-03
+
+### Fixed
+
+- **Same account on two Windows machines no longer floods
+  `PermissionError` for the other PC's profile paths.** Account-synced
+  folders like `C:\Users\<other>\AppData\Local\Camxora\...` are rejected
+  *before* any `mkdir` (workspace defaults, filesystem helpers, pending
+  music downloads), replaced with this machine's local defaults, and logged
+  once as a quiet warning. Shared drives (`D:\`, `E:\SUNO`, etc.) stay as-is
+  when usable. See `docs/changelog/2026-08-03-cross-machine-path-locality.md`.
+- **Flaky pydantic import crash on startup could exhaust a single retry.**
+  Launcher now retries up to 4 times with growing backoff, clears partial
+  imports between attempts, writes a recovery line when a later attempt
+  succeeds, and falls back to extra crash-log locations if `%LOCALAPPDATA%`
+  is unwritable.
+- **Spectrum / logo / lightning preview drag left a ~6% gap at the top and
+  bottom.** Drag clamp `margin_frac` was still `0.06` on the release line;
+  the flush-edge fix (`0.0`) from `feat/lightning-layers` never landed here.
+  Centers can now sit flush on the preview edges. See
+  `docs/changelog/2026-08-03-preview-drag-flush-edges.md`.
+- Includes everything from **1.0.14** (Continue → Merge no longer re-gated
+  on export background PNG / catalog template).
+
+## [1.0.14] - 2026-08-02
+
+### Fixed
+
+- **Continue → Merge re-gated on export readiness** (background PNG + catalog
+  template), so merge failed with a vague “missing MP4s, image assets, or a
+  catalog template” even when MP4s were ready. Merge now uses a merge-only
+  candidate (run folder + branch). Export still reports the specific readiness
+  failure; API-recovery toasts no longer claim “resuming” when nothing starts.
+  See `docs/changelog/2026-08-02-merge-skip-export-readiness.md`.
+
 ## [1.0.13] - 2026-08-01
 
 ### Fixed

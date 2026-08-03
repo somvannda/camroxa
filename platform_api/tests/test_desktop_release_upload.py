@@ -62,6 +62,12 @@ def test_store_installer_falls_back_to_api_download_url(tmp_path: Path) -> None:
 def test_extract_version_from_installer_filename() -> None:
     assert extract_version_from_installer_filename("Camxora-2.5.0.zip") == "2.5.0"
     assert extract_version_from_installer_filename("Camxora-0.3.0.exe") == "0.3.0"
+    assert extract_version_from_installer_filename("CamxoraSetup-1.0.15.exe") == "1.0.15"
+    assert (
+        extract_version_from_installer_filename("CamxoraSetup-1.0.15-production.exe") == "1.0.15"
+    )
+    assert extract_version_from_installer_filename("CamxoraSetup-1.0.14-sandbox.exe") == "1.0.14"
+    assert extract_version_from_installer_filename("Camxora-Setup-1.0.9.exe") == "1.0.9"
     assert extract_version_from_installer_filename("custom-name.zip") is None
 
 
