@@ -1839,6 +1839,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     scale_factor=sf,
                 ),
                 dt=self.dt,
+                wall_time=float(self.current_time),
             )
             self.prog_scene['tex_bg'].value = 0
             if hasattr(self, 'tex_bg'):
@@ -1987,6 +1988,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 ),
                 CameraShakeConfig(enabled=shake_enabled, smoothing=shake_smoothing),
                 dt=self.dt,
+                wall_time=float(self.current_time),
             )
             ls = self.template.get('logoSettings', {}) if isinstance(self.template.get('logoSettings'), dict) else {}
             logo_enabled = bool(ls.get('enabled', True))

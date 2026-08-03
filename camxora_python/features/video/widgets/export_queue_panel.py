@@ -182,10 +182,9 @@ class ExportQueuePanel(QWidget):
         self._tier_combo.addItem("Standard (1080p)", "standard")
         self._tier_combo.addItem("Master (custom)", "master")
         self._tier_combo.setToolTip(
-            "Draft is fastest for pipeline-style batch exports.\n"
-            "Standard uses Preferences resolution plus your FPS and speed.\n"
-            "Draft is fixed 720p / 24 FPS / Very Fast.\n"
-            "Master uses Preferences resolution plus your FPS and speed."
+            "Draft is fastest for pipeline-style batch exports (fixed 720p / 24 FPS).\n"
+            "Standard / Master use Preferences resolution + your FPS and speed.\n"
+            "For preview-rate export: Standard or Master, Preferences 1920×1080, FPS 60."
         )
         self._tier_combo.currentIndexChanged.connect(self._on_tier_changed)
 
@@ -199,8 +198,8 @@ class ExportQueuePanel(QWidget):
         for fps_value in (24, 30, 48, 60):
             self._fps_combo.addItem(f"{fps_value} FPS", fps_value)
         self._fps_combo.setToolTip(
-            "Export frame rate. Higher = smoother motion (closer to preview), slower encode.\n"
-            "Default 24 is fastest."
+            "Export frame rate. 60 FPS matches live preview motion (spectrum / lightning / particles).\n"
+            "Default 24 is fastest; Draft tier always forces 24."
         )
         self._fps_combo.currentIndexChanged.connect(self._on_fps_changed)
 
@@ -214,9 +213,18 @@ class ExportQueuePanel(QWidget):
         self._place_export_field(fields_grid, 1, 0, "FPS", self._fps_combo)
         self._place_export_field(fields_grid, 1, 2, "Workers", self._workers_spin)
 
-        actions_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self._effective_output = QLabel("Output: 1920×1080 · 24 FPS")
+        self._effective_output.setObjectName(SUBTITLE_LABEL_ID)
+        self._effective_output.setWordWrap(True)
+        self._effective_output.setToolTip(
+            "Resolved from Tier + Preferences resolution + FPS.\n"
+            "Draft ignores Preferences/FPS (always 720p @ 24).\n"
+            "Standard/Master: set Preferences to 1920×1080 and FPS to 60 for preview-rate export."
+        )
         actions_layout.addWidget(fields_host)
+        actions_layout.addWidget(self._effective_output)
         actions_layout.addStretch(1)
+        actions_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         right_column.addWidget(actions_card, 1)
 
         status_card = QFrame()
@@ -400,6 +408,8 @@ class ExportQueuePanel(QWidget):
         stop_export_pending: bool = False,
         speed_mode: str = "fast",
         export_tier: str = "standard",
+        effective_resolution: str | None = None,
+        effective_fps: int | None = None,
     ) -> None:
         selected_mp3 = ""
         export = VideoExportState()
@@ -470,6 +480,14 @@ class ExportQueuePanel(QWidget):
             self._workers_spin.setEnabled(not running)
         finally:
             self._binding_options = False
+
+        res = str(effective_resolution or "").strip() or "1920x1080"
+        try:
+            fps_eff = int(effective_fps if effective_fps is not None else (export.fps or 24))
+        except (TypeError, ValueError):
+            fps_eff = 24
+        res_label = res.replace("x", "×")
+        self._effective_output.setText(f"Output: {res_label} · {fps_eff} FPS")
 
         completed = max(0, int(export.completed_jobs))
         total = max(0, int(export.total_jobs))

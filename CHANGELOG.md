@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Export WYSIWYG:** all Spectrum instances export (not only the first); Lightning flash peaks over the 60 Hz analysis interval so 24 FPS still catches strikes; manual/pipeline export use live Spectrum/Lightning state; shake/bg vibrate use media clock; Export panel shows resolved `WxH · FPS` (Standard/Master + Preferences 1920×1080 + FPS 60 = preview-rate). See `docs/changelog/2026-08-03-export-wysiwyg-spectrum-lightning.md`.
+
 ### Added
 
 - DistroKid sidebar page + Music DistroKid checkbox (gated by $5/mo add-on entitlement).

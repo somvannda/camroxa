@@ -230,3 +230,72 @@ def test_magma_ridge_style_syncs_onto_instance() -> None:
     synced["layers"] = list(patched["layers"])
     assert synced["style"] == "magma-ridge"
     assert _resolve_export_spectrum_style(synced["style"], synced["layers"][0]) == "magma-ridge"
+
+
+def test_spectrum_draw_jobs_returns_all_enabled_instances() -> None:
+    from visualizer.gpu_render import _spectrum_draw_jobs
+
+    tpl = {
+        "spectrumEnabled": True,
+        "layers": [{"id": "legacy", "thickness": 10}],
+        "spectrumInstances": [
+            {
+                "id": "spectrum-1",
+                "enabled": True,
+                "style": "orbit-spikes",
+                "x": 0.0,
+                "y": 0.0,
+                "layers": [{"id": "a", "thickness": 40}],
+            },
+            {
+                "id": "spectrum-2",
+                "enabled": True,
+                "style": "magma-ridge",
+                "x": 120.0,
+                "y": -40.0,
+                "layers": [{"id": "b", "thickness": 55}],
+            },
+            {
+                "id": "spectrum-3",
+                "enabled": False,
+                "style": "orbit-spikes",
+                "layers": [{"id": "c", "thickness": 20}],
+            },
+        ],
+    }
+    jobs = _spectrum_draw_jobs(tpl)
+    assert len(jobs) == 2
+    assert jobs[0]["layers"][0]["id"] == "a"
+    assert jobs[1]["style"] == "magma-ridge"
+    assert jobs[1]["x"] == 120.0
+
+
+def test_save_patch_keeps_multiple_spectrum_instances_for_export() -> None:
+    """Export template builder must receive full spectrumInstances, not only layers."""
+    layers_a = [{"id": "ring-a", "thickness": 40, "barWidth": 4, "curved": True, "mirrored": True}]
+    layers_b = [{"id": "ring-b", "thickness": 60, "barWidth": 6, "curved": True, "mirrored": True}]
+    tpl = normalize_renderer_template(default_renderer_template())
+    draft = build_video_template_draft(tpl, logo_path="")
+    instances = [
+        {**default_spectrum_instance(index=1, layers=layers_a), "style": "orbit-spikes"},
+        {
+            **default_spectrum_instance(index=2, layers=layers_b),
+            "style": "magma-ridge",
+            "x": 80.0,
+            "y": 20.0,
+            "spectrumAttachToLogo": False,
+        },
+    ]
+    patch = build_video_workspace_template_save_patch(
+        template=tpl,
+        draft=draft,
+        template_name="multi",
+        layers=layers_a,
+        spectrum_instances=instances,
+    )
+    out_instances = patch.get("spectrumInstances") or []
+    assert len(out_instances) == 2
+    assert out_instances[1]["style"] == "magma-ridge"
+    assert len(out_instances[1]["layers"]) == 1
+    jobs = iter_render_spectrum_instances({**tpl, **patch})
+    assert len(jobs) == 2

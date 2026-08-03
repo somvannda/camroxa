@@ -1238,12 +1238,15 @@ class VideoView(QWidget):
                     }
                 )
                 get_video_workspace_service().set_workspace_state(self._workspace)
+        tier = resolve_export_tier_settings(self._settings, pipeline=False)
         self._export_panel.bind_workspace(
             self._workspace,
             busy=export_busy,
             stop_export_pending=self._stop_export_pending,
             speed_mode=normalize_export_speed_mode(self._settings.get("videoExportSpeedMode")),
             export_tier=normalize_export_tier(self._settings.get("videoExportTier"), default="standard"),
+            effective_resolution=tier.resolution,
+            effective_fps=tier.fps,
         )
 
     def _selected_pipeline_row(self) -> ProgressRow | None:
@@ -1257,15 +1260,19 @@ class VideoView(QWidget):
             return None
         template = dict(self._workspace.template)
         saved_draft = build_video_template_draft(template, logo_path=self._workspace.logo_path, background_path=self._workspace.background_path)
-        layers = clone_layer_records(template.get("layers") or [])
-        lightning_layers = clone_layer_records(template.get("lightningLayers") or [])
+        # Prefer live draft + spectrum/lightning so unsaved preview edits export (WYSIWYG).
+        draft = dict(self._template_draft) if isinstance(self._template_draft, dict) and self._template_draft else saved_draft
+        self._flush_active_spectrum_instance_layers()
+        layers = clone_layer_records(self._spectrum_layers or template.get("layers") or [])
+        lightning_layers = clone_layer_records(self._lightning_layers or template.get("lightningLayers") or [])
         paths = [str(p) for p in (track_paths or self._current_track_paths()) if str(p or "").strip()]
         # Per-track active highlight is applied again in the export worker.
         return self._template_normalizer.to_renderer_dict(
             base=template,
-            draft=saved_draft,
+            draft=draft,
             layers=layers,
             lightning_layers=lightning_layers,
+            spectrum_instances=self._spectrum_instances,
             workspace={
                 "logoPath": self._workspace.logo_path,
                 "trackPaths": paths,
@@ -1854,11 +1861,13 @@ class VideoView(QWidget):
             return None
         selected_mp3 = str(audio_path or self._workspace.selected_mp3_path or "")
         track_paths = self._current_track_paths()
+        self._flush_active_spectrum_instance_layers()
         renderer_template = self._template_normalizer.to_renderer_dict(
             base=dict(self._workspace.template),
             draft=self._template_draft,
             layers=self._spectrum_layers,
             lightning_layers=self._lightning_layers,
+            spectrum_instances=self._spectrum_instances,
             workspace={
                 "logoPath": self._workspace.logo_path,
                 "trackPaths": track_paths,
