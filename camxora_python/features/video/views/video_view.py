@@ -4454,10 +4454,14 @@ class VideoView(QWidget):
             draft = dict(self._template_draft)
             layers = list(self._spectrum_layers)
             lightning = list(self._lightning_layers)
+            instances = list(self._spectrum_instances)
+            selected_instance = int(self._selected_spectrum_instance_index)
             self._workspace = self._store.create_blank_template(name=name, settings=self._settings)
             self._template_draft = draft
             self._spectrum_layers = layers
             self._lightning_layers = lightning
+            self._spectrum_instances = instances
+            self._selected_spectrum_instance_index = selected_instance
             self._template_name_draft = name
         self._flush_active_spectrum_instance_layers()
         patch = build_video_workspace_template_save_patch(
@@ -4466,6 +4470,7 @@ class VideoView(QWidget):
             template_name=name,
             layers=self._spectrum_layers,
             lightning_layers=self._lightning_layers,
+            spectrum_instances=self._spectrum_instances,
         )
         self._saving = True
         self._update_dirty_state()
@@ -4502,6 +4507,7 @@ class VideoView(QWidget):
             template_name=self._template_name_draft.strip(),
             layers=self._spectrum_layers,
             lightning_layers=self._lightning_layers,
+            spectrum_instances=self._spectrum_instances,
         )
         profiles: list = []
         if self._cache is not None:

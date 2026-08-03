@@ -105,6 +105,39 @@ def smooth_and_mirror(fft_s: np.ndarray, mirrored: bool) -> np.ndarray:
     return smoothed
 
 
+def clamp_frequency_scroll(value: float | int | None, default: float = 0.0) -> float:
+    """Normalize Raise Scroll to [0, 1). 0 = default bass-left mapping."""
+    try:
+        scroll = float(default if value is None else value)
+    except (TypeError, ValueError):
+        scroll = float(default)
+    if not np.isfinite(scroll):
+        scroll = float(default)
+    return float(scroll % 1.0)
+
+
+def scroll_spectrum_heights(render_fft: np.ndarray, scroll: float | int | None) -> np.ndarray:
+    """Circularly shift spectrum heights along the bar path.
+
+    ``scroll`` in ``[0, 1)`` moves energy continuously left↔right (or around a ring).
+    0 keeps the default low→high mapping (bass on the left for a linear Top row).
+    """
+    src = np.asarray(render_fft, dtype=np.float32).reshape(-1)
+    n = int(src.shape[0])
+    if n <= 1:
+        return src.astype(np.float32, copy=False)
+    amount = clamp_frequency_scroll(scroll, 0.0)
+    if amount <= 1e-9 or abs(amount - 1.0) <= 1e-9:
+        return src.astype(np.float32, copy=False)
+    # Fractional roll: positive scroll moves bass/energy toward the right / path end.
+    shift = amount * float(n)
+    idx = (np.arange(n, dtype=np.float32) - shift) % float(n)
+    i0 = np.floor(idx).astype(np.int32)
+    i1 = (i0 + 1) % n
+    frac = (idx - i0.astype(np.float32)).astype(np.float32)
+    return (src[i0] * (1.0 - frac) + src[i1] * frac).astype(np.float32)
+
+
 def clamp_spectrum_bar_count(value: float | int | None, default: int = _BINS) -> int:
     try:
         n = int(round(float(value if value is not None else default)))
@@ -379,6 +412,15 @@ def generate_points_rect(
     return px, py, dx, dy
 
 
+def clamp_linear_span(value: float | int | None, default: float = 1.0) -> float:
+    """Fraction of preview width/height used by a linear (non-circle) spectrum row."""
+    try:
+        span = float(default if value is None else value)
+    except (TypeError, ValueError):
+        span = float(default)
+    return float(max(0.1, min(1.0, span)))
+
+
 def generate_spectrum_layer_geometry(
     n: int,
     *,
@@ -393,6 +435,7 @@ def generate_spectrum_layer_geometry(
     logo_shape: str | None = None,
     frame_w: int = 1920,
     frame_h: int = 1080,
+    linear_span: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     """Build bar bases for a layer.
 
@@ -409,7 +452,8 @@ def generate_spectrum_layer_geometry(
     hw = float(half_w if half_w is not None else radius)
     hh = float(half_h if half_h is not None else radius)
     if path == "linear":
-        total = float(frame_h * 0.8) if g in ("left", "right") else float(frame_w * 0.8)
+        span = clamp_linear_span(linear_span, 1.0)
+        total = float(frame_h * span) if g in ("left", "right") else float(frame_w * span)
         px, py, dx, dy = generate_points_linear(n, total, g)
         return px, py, dx, dy, float(total)
     if path == "rect":

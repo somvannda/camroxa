@@ -25,6 +25,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Spectrum Save overwrite no longer reloads the stale Orbit Spikes / original look; live `spectrumInstances` are flushed into the save patch (existing + new templates).
+- Linear spectrum **Row Width** restored (full preview span at 1.0); geometry no longer hard-capped at 80% frame width.
+- Spectrum **Raise Scroll** helpers/UI restored (`frequencyScroll`) so preview/export imports stay consistent.
+
 ## [1.0.16] - 2026-08-03
 
 ### Fixed

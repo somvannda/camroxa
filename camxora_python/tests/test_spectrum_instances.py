@@ -126,6 +126,87 @@ def test_normalize_renderer_includes_spectrum_instances() -> None:
     assert len(out["spectrumInstances"]) >= 1
 
 
+def test_save_prefers_live_instances_over_stale_catalog_snapshot() -> None:
+    """Regression: save without live instances reloads Orbit Spikes from disk.
+
+    When ``spectrumInstances`` already exist on the saved template, omitting the
+    live working instances from the save patch rebuilds from that stale snapshot
+    and ``mirror_spectrum_instance0_to_legacy`` overwrites draft edits.
+    """
+    stale_layers = [
+        {
+            "id": "stale",
+            "thickness": 30,
+            "barWidth": 5,
+            "curved": True,
+            "mirrored": True,
+            "color": {"mode": "solid", "solidColor": "#111111"},
+        }
+    ]
+    live_layers = [
+        {
+            "id": "edited",
+            "thickness": 88,
+            "barWidth": 18,
+            "curved": False,
+            "mirrored": False,
+            "color": {"mode": "solid", "solidColor": "#ff00aa"},
+        }
+    ]
+    tpl = normalize_renderer_template(
+        {
+            **default_renderer_template(),
+            "style": "orbit-spikes",
+            "layers": stale_layers,
+            "spectrumInstances": [
+                {
+                    **default_spectrum_instance(index=1, layers=stale_layers),
+                    "style": "orbit-spikes",
+                    "x": 0.0,
+                    "y": 0.0,
+                }
+            ],
+        }
+    )
+    draft = build_video_template_draft(tpl, logo_path="")
+    draft["style"] = "magma-ridge"
+    draft["positionX"] = 42.0
+    draft["positionY"] = -18.0
+    live_inst = {
+        **default_spectrum_instance(index=1, layers=live_layers),
+        "style": "magma-ridge",
+        "x": 42.0,
+        "y": -18.0,
+        "audioSettings": {"inputGain": 2.4, "barHeight": 1.5},
+    }
+
+    # Without live instances: stale catalog wins (the bug).
+    broken = build_video_workspace_template_save_patch(
+        template=tpl,
+        draft=draft,
+        template_name="t",
+        layers=live_layers,
+    )
+    assert broken["style"] == "orbit-spikes"
+    assert broken["layers"][0]["id"] == "stale"
+
+    # With live instances: edits persist.
+    fixed = build_video_workspace_template_save_patch(
+        template=tpl,
+        draft=draft,
+        template_name="t",
+        layers=live_layers,
+        spectrum_instances=[live_inst],
+    )
+    assert fixed["style"] == "magma-ridge"
+    assert fixed["layers"][0]["id"] == "edited"
+    assert fixed["layers"][0]["thickness"] == 88
+    assert fixed["position"]["x"] == 42.0
+    assert fixed["position"]["y"] == -18.0
+    assert (fixed.get("spectrumInstances") or [{}])[0]["style"] == "magma-ridge"
+    assert (fixed.get("spectrumInstances") or [{}])[0]["layers"][0]["barWidth"] == 18
+
+
 def test_magma_ridge_style_syncs_onto_instance() -> None:
     """Preset apply must push style into the instance or preview keeps drawing bars."""
     from features.video.lib.spectrum_style_registry import build_spectrum_preset_template

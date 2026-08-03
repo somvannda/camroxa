@@ -254,6 +254,24 @@ class SpectrumLayerEditor(InspectorSection):
                 "very wide bars may touch neighbors at high Density.",
             ),
             (
+                "linearSpan",
+                "Row Width (preview span)",
+                0.1,
+                1.0,
+                0.01,
+                "How wide a linear (non-circle) spectrum is across the preview. "
+                "1.0 = full preview width (or height for Left/Right growth).",
+            ),
+            (
+                "frequencyScroll",
+                "Raise Scroll (along path)",
+                0.0,
+                0.99,
+                0.01,
+                "Slides where bass/spikes raise along the row or ring. "
+                "0 = default (bass on the left). Drag freely — not locked to left/center/right.",
+            ),
+            (
                 "thickness",
                 "Bar Length (this layer)",
                 1,
@@ -625,6 +643,8 @@ class SpectrumLayerEditor(InspectorSection):
             layer_defaults = {
                 "barCount": 64.0,
                 "barWidth": 5.0,
+                "linearSpan": 1.0,
+                "frequencyScroll": 0.0,
                 "thickness": 36.0,
                 "radiusOffset": 0.0,
                 "opacity": 1.0,
