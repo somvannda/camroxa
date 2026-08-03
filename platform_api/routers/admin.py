@@ -51,6 +51,7 @@ from platform_api.services.billing_config_service import (
 from platform_api.services.credit_units import units_to_credits
 from platform_api.services.key_encryption import KeyEncryption
 from platform_api.services.reset_service import ResetService
+from platform_api.services.provider_key_balance_service import ProviderKeyBalanceService
 from platform_api.services.suno_balance_service import SunoBalanceService
 from platform_api.services.usage_transaction_labels import enrich_transaction_for_api
 from platform_api.repositories.youtube_oauth_app_repo import YouTubeOAuthAppRepository
@@ -78,6 +79,13 @@ async def _get_suno_balance_service() -> SunoBalanceService:
     """Placeholder dependency for SunoBalanceService — override in tests or dependencies.py."""
     raise NotImplementedError(
         "SunoBalanceService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_provider_key_balance_service() -> ProviderKeyBalanceService:
+    """Placeholder dependency for ProviderKeyBalanceService — override in wire_dependencies."""
+    raise NotImplementedError(
+        "ProviderKeyBalanceService dependency not configured. Wire via app.dependency_overrides."
     )
 
 
@@ -144,6 +152,9 @@ async def _get_reset_service() -> ResetService:
 AdminDep = Annotated[AuthContext, Depends(require_admin)]
 AuditServiceDep = Annotated[AuditService, Depends(_get_audit_service)]
 SunoBalanceDep = Annotated[SunoBalanceService, Depends(_get_suno_balance_service)]
+ProviderKeyBalanceDep = Annotated[
+    ProviderKeyBalanceService, Depends(_get_provider_key_balance_service)
+]
 RateLimitRepoDep = Annotated[RateLimitConfigRepository, Depends(_get_rate_limit_repo)]
 SettingsRepoDep = Annotated[Any, Depends(_get_settings_repo)]
 YouTubeOAuthAppRepoDep = Annotated[
@@ -315,6 +326,33 @@ class SunoBalanceResponse(BaseModel):
     credits: int | None = None
     status: str  # "ok", "cached", or "unknown"
     raw: dict[str, Any] | None = None
+
+
+class ProviderKeyBalanceItem(BaseModel):
+    """Balance for one key-pool entry."""
+
+    key_id: str
+    label: str
+    key_status: str
+    priority: int = 50
+    balance: float | None = None
+    currency: str | None = None
+    unit: str = "credits"
+    display: str | None = None
+    fetch_status: str
+    error: str | None = None
+    checked_at: str | None = None
+
+
+class ProviderKeyBalanceGroup(BaseModel):
+    provider: str
+    keys: list[ProviderKeyBalanceItem] = Field(default_factory=list)
+    error: str | None = None
+
+
+class ProviderKeyBalancesResponse(BaseModel):
+    providers: list[ProviderKeyBalanceGroup]
+    checked_at: str
 
 
 class RateLimitConfigEntry(BaseModel):
@@ -580,6 +618,48 @@ async def get_suno_balance(
         credits=balance_data.get("credits"),
         status=balance_data.get("status", "unknown"),
         raw=balance_data.get("raw"),
+    )
+
+
+@router.get(
+    "/provider-key-balances",
+    response_model=ProviderKeyBalancesResponse,
+    summary="Get remaining credits/money for each key-pool entry",
+)
+async def get_provider_key_balances(
+    ctx: AdminDep,
+    balance_service: ProviderKeyBalanceDep,
+    refresh: bool = Query(default=False, description="Bypass Redis cache"),
+) -> ProviderKeyBalancesResponse:
+    """List remaining provider balances by key label for dashboard top-up monitoring."""
+    data = await balance_service.get_all_balances(force_refresh=refresh)
+    providers = []
+    for group in data.get("providers") or []:
+        providers.append(
+            ProviderKeyBalanceGroup(
+                provider=str(group.get("provider") or ""),
+                error=group.get("error"),
+                keys=[
+                    ProviderKeyBalanceItem(
+                        key_id=str(item.get("key_id") or ""),
+                        label=str(item.get("label") or ""),
+                        key_status=str(item.get("key_status") or ""),
+                        priority=int(item.get("priority") or 50),
+                        balance=item.get("balance"),
+                        currency=item.get("currency"),
+                        unit=str(item.get("unit") or "credits"),
+                        display=item.get("display"),
+                        fetch_status=str(item.get("fetch_status") or "unknown"),
+                        error=item.get("error"),
+                        checked_at=item.get("checked_at"),
+                    )
+                    for item in (group.get("keys") or [])
+                ],
+            )
+        )
+    return ProviderKeyBalancesResponse(
+        providers=providers,
+        checked_at=str(data.get("checked_at") or ""),
     )
 
 
@@ -1244,6 +1324,43 @@ async def get_system_settings(ctx: AdminDep) -> SystemSettingsResponse:
         for row in rows
     ]
     return SystemSettingsResponse(settings=settings)
+
+
+@router.get(
+    "/job-queue/metrics",
+    summary="Job queue + /progress latency metrics (Admin)",
+)
+async def get_job_queue_metrics(ctx: AdminDep) -> dict[str, Any]:
+    """Basic ops snapshot: queue depth, busy workers, /progress p95, threshold alerts."""
+    _ = ctx
+    from platform_api.dependencies import get_job_queue_repo
+    from platform_api.services.request_latency import latency_summary
+
+    queue_metrics = await get_job_queue_repo().get_metrics()
+    progress = latency_summary("/progress")
+    alerts: list[str] = []
+    queued_depth = int(queue_metrics.get("queued_depth") or 0)
+    running = int(queue_metrics.get("running") or 0)
+    oldest = queue_metrics.get("oldest_claimable") or {}
+    oldest_age = float(oldest.get("age_seconds") or 0.0) if isinstance(oldest, dict) else 0.0
+    progress_p95 = progress.get("p95_ms")
+    if queued_depth >= 50:
+        alerts.append("queue_depth_high")
+    if oldest_age >= 300:
+        alerts.append("oldest_job_stale")
+    if running == 0 and queued_depth > 0:
+        alerts.append("worker_idle_with_backlog")
+    if progress_p95 is not None and float(progress_p95) >= 5000:
+        alerts.append("progress_p95_high")
+    return {
+        "queue": queue_metrics,
+        "progress_latency": progress,
+        "alerts": alerts,
+        "note": (
+            "progress_latency is per-uvicorn-worker in-memory samples; "
+            "aggregate across workers separately if needed."
+        ),
+    }
 
 
 @router.get(

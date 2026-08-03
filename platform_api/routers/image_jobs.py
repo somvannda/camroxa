@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Annotated
 from uuid import UUID
@@ -12,9 +11,11 @@ from pydantic import BaseModel, Field
 from platform_api.exceptions import NotFoundError
 
 from platform_api.middleware.auth import AuthContext, get_current_user
+from platform_api.repositories.job_queue_repo import JobQueueRepository
 from platform_api.services.batch_service import BatchService
 from platform_api.services.image_job_service import ImageJobService
 from platform_api.services import image_progress_log as image_log
+from platform_api.services.job_types import JOB_RUN_IMAGE_JOBS, PRI_RUN_IMAGE_JOBS
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,15 @@ async def _get_batch_service() -> BatchService:
     )
 
 
+async def _get_job_queue_repo() -> JobQueueRepository:
+    raise NotImplementedError(
+        "JobQueueRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 ImageJobServiceDep = Annotated[ImageJobService, Depends(_get_image_job_service)]
 BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
+JobQueueRepoDep = Annotated[JobQueueRepository, Depends(_get_job_queue_repo)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -164,21 +172,25 @@ async def get_image_job_output(
 async def run_image_jobs(
     request: ImageJobsRunRequest,
     ctx: CurrentUserDep,
-    service: ImageJobServiceDep,
+    job_queue: JobQueueRepoDep,
 ) -> ImageJobsRunResponse:
     image_log.log_run_scheduled(
         user_id=ctx.user_id,
         batch_id=request.batch_id,
         limit=request.limit,
     )
-    asyncio.create_task(
-        _run_image_jobs_with_logging(
-            service,
-            ctx.user_id,
-            request.batch_id,
-            request.limit,
+    if request.batch_id:
+        await job_queue.enqueue_if_absent(
+            user_id=UUID(ctx.user_id),
+            batch_id=UUID(str(request.batch_id)),
+            job_type=JOB_RUN_IMAGE_JOBS,
+            payload={
+                "user_id": ctx.user_id,
+                "batch_id": str(request.batch_id),
+                "limit": request.limit,
+            },
+            priority=PRI_RUN_IMAGE_JOBS,
         )
-    )
     return ImageJobsRunResponse(scheduled=request.limit)
 
 @router.post("/enqueue", response_model=ImageJobsEnqueueResponse, status_code=200)
@@ -207,37 +219,13 @@ async def sync_manual_image_jobs(
     return ImageJobsSyncManualResponse(updated=updated)
 
 
-async def _run_image_jobs_with_logging(
-    service: ImageJobService,
-    user_id: str,
-    batch_id: str | None,
-    limit: int,
-) -> None:
-    from platform_api.services.image_job_runner import run_image_jobs_until_empty
-
-    _ = limit
-    if not batch_id:
-        return
-    try:
-        await run_image_jobs_until_empty(
-            service,
-            user_id=user_id,
-            batch_id=batch_id,
-        )
-    except Exception:
-        logger.exception(
-            "Image job runner crashed for user %s batch=%s",
-            user_id,
-            batch_id,
-        )
-
-
 @router.post("/retry", response_model=ImageJobsRetryResponse, status_code=200)
 async def retry_image_jobs(
     request: ImageJobsRetryRequest,
     ctx: CurrentUserDep,
     service: ImageJobServiceDep,
     batch_service: BatchServiceDep,
+    job_queue: JobQueueRepoDep,
 ) -> ImageJobsRetryResponse:
     image_log.log_retry_requested(
         user_id=ctx.user_id,
@@ -264,13 +252,16 @@ async def retry_image_jobs(
                 resolved_batch_id = str(job.batch_id)
                 break
     if updated > 0 and resolved_batch_id:
-        asyncio.create_task(
-            _run_image_jobs_with_logging(
-                service,
-                ctx.user_id,
-                resolved_batch_id,
-                50,
-            )
+        await job_queue.enqueue_if_absent(
+            user_id=UUID(ctx.user_id),
+            batch_id=UUID(str(resolved_batch_id)),
+            job_type=JOB_RUN_IMAGE_JOBS,
+            payload={
+                "user_id": ctx.user_id,
+                "batch_id": str(resolved_batch_id),
+                "limit": 50,
+            },
+            priority=PRI_RUN_IMAGE_JOBS,
         )
     return ImageJobsRetryResponse(updated=updated)
 

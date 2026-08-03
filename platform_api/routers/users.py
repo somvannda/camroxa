@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -842,6 +842,79 @@ async def get_user_full_details(
             for row in custom_structure_rows
         ],
     )
+
+
+class FailAbsorbStatusResponse(BaseModel):
+    """Admin payload for today's platform fail/retry absorb counter."""
+
+    user_id: str
+    usage_date: str
+    fail_absorb_used: int
+    fail_absorb_budget: int
+    remaining: int | None = None
+    blocked: bool = False
+    redis_key: str
+    fail_absorb_used_before: int | None = None
+
+
+async def _get_usage_enforcement_service():
+    """Placeholder — wired in wire_dependencies / dependencies."""
+    raise NotImplementedError(
+        "UsageEnforcementService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+UsageEnforcementDep = Annotated[Any, Depends(_get_usage_enforcement_service)]
+
+
+@router.get(
+    "/{user_id}/fail-absorb",
+    response_model=FailAbsorbStatusResponse,
+    status_code=200,
+    summary="Get today's fail/retry absorb status (Admin)",
+)
+async def get_user_fail_absorb(
+    user_id: UUID,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+    enforcement: UsageEnforcementDep,
+) -> FailAbsorbStatusResponse:
+    """Return Redis fail-absorb used/budget for the billing day."""
+    _ = ctx
+    user = await user_service.get_user(str(user_id))
+    if user is None:
+        from platform_api.exceptions import NotFoundError
+
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+    used = await enforcement.get_fail_absorb_count(user_id)
+    payload = enforcement.fail_absorb_status(user_id, used=used)
+    return FailAbsorbStatusResponse(**payload)
+
+
+@router.post(
+    "/{user_id}/fail-absorb/reset",
+    response_model=FailAbsorbStatusResponse,
+    status_code=200,
+    summary="Reset today's fail/retry absorb counter (Admin)",
+)
+async def reset_user_fail_absorb(
+    user_id: UUID,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+    enforcement: UsageEnforcementDep,
+) -> FailAbsorbStatusResponse:
+    """Clear today's absorb counter so the user can generate again."""
+    _ = ctx
+    user = await user_service.get_user(str(user_id))
+    if user is None:
+        from platform_api.exceptions import NotFoundError
+
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+    previous = await enforcement.reset_fail_absorb(user_id)
+    used = await enforcement.get_fail_absorb_count(user_id)
+    payload = enforcement.fail_absorb_status(user_id, used=used)
+    payload["fail_absorb_used_before"] = previous
+    return FailAbsorbStatusResponse(**payload)
 
 
 @router.get(

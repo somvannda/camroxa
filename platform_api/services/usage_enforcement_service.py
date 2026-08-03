@@ -563,6 +563,38 @@ class UsageEnforcementService:
         except (TypeError, ValueError):
             return 0
 
+    async def reset_fail_absorb(self, user_id: UUID) -> int:
+        """Clear today's fail-absorb counter; return previous used count."""
+        key = _absorb_budget_key(user_id)
+        previous = await self.get_fail_absorb_count(user_id)
+        delete = getattr(self._redis, "delete", None)
+        if delete is not None:
+            await delete(key)
+        else:
+            await self._redis.set(key, "0", ex=1)
+        return previous
+
+    def fail_absorb_status(self, user_id: UUID, *, used: int | None = None) -> dict[str, Any]:
+        """Build admin UI payload for today's fail/retry absorb counter."""
+        budget = _daily_fail_absorb_budget()
+        count = int(used) if used is not None else None
+        # Caller may pass used after async fetch; None means unknown here.
+        day = billing_today()
+        key = _absorb_budget_key(user_id, day)
+        if count is None:
+            count = 0
+        remaining = None if budget <= 0 else max(0, budget - count)
+        blocked = bool(budget > 0 and count >= budget)
+        return {
+            "user_id": str(user_id),
+            "usage_date": day.isoformat(),
+            "fail_absorb_used": count,
+            "fail_absorb_budget": budget,
+            "remaining": remaining,
+            "blocked": blocked,
+            "redis_key": key,
+        }
+
     async def record_fail_absorb(self, user_id: UUID) -> int:
         """Increment today's platform_absorb counter; return new count."""
         key = _absorb_budget_key(user_id)

@@ -6,11 +6,13 @@ import logging
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user
+from platform_api.repositories.job_queue_repo import JobQueueRepository
+from platform_api.services.job_types import JOB_RUN_YOUTUBE_UPLOADS, PRI_YOUTUBE_UPLOADS
 from platform_api.services.public_url_service import (
     build_youtube_oauth_callback_url,
     resolve_public_api_base_url,
@@ -29,10 +31,17 @@ async def _get_youtube_connection_service() -> YouTubeConnectionService:
     )
 
 
+async def _get_job_queue_repo() -> JobQueueRepository:
+    raise NotImplementedError(
+        "JobQueueRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 YouTubeConnectionServiceDep = Annotated[
     YouTubeConnectionService, Depends(_get_youtube_connection_service)
 ]
+JobQueueRepoDep = Annotated[JobQueueRepository, Depends(_get_job_queue_repo)]
 
 
 class YouTubeChannelOption(BaseModel):
@@ -348,34 +357,19 @@ async def enqueue_youtube_merge_upload(
 async def run_youtube_uploads(
     request: RunYouTubeUploadsRequest,
     ctx: CurrentUserDep,
-    service: YouTubeConnectionServiceDep,
-    background_tasks: BackgroundTasks,
+    job_queue: JobQueueRepoDep,
 ) -> RunYouTubeUploadsResponse:
-    background_tasks.add_task(
-        _run_youtube_uploads_with_logging,
-        service,
-        ctx.user_id,
-        request.batch_id,
-        max(1, min(50, int(request.limit or 4))),
+    limit = max(1, min(50, int(request.limit or 4)))
+    batch_uuid = UUID(str(request.batch_id)) if request.batch_id else None
+    await job_queue.enqueue_if_absent(
+        user_id=UUID(ctx.user_id),
+        batch_id=batch_uuid,
+        job_type=JOB_RUN_YOUTUBE_UPLOADS,
+        payload={
+            "user_id": ctx.user_id,
+            "batch_id": str(request.batch_id) if request.batch_id else None,
+            "limit": limit,
+        },
+        priority=PRI_YOUTUBE_UPLOADS,
     )
-    return RunYouTubeUploadsResponse(scheduled=max(1, min(50, int(request.limit or 4))))
-
-
-async def _run_youtube_uploads_with_logging(
-    service: YouTubeConnectionService,
-    user_id: str,
-    batch_id: str | None,
-    limit: int,
-) -> None:
-    try:
-        await service.run_pending_upload_jobs(
-            user_id=user_id,
-            batch_id=batch_id,
-            limit=limit,
-        )
-    except Exception:
-        logger.exception(
-            "YouTube upload runner crashed for user %s batch=%s",
-            user_id,
-            batch_id,
-        )
+    return RunYouTubeUploadsResponse(scheduled=limit)

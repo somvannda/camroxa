@@ -14,7 +14,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from platform_api.exceptions import ValidationError
@@ -22,9 +22,11 @@ from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
 from platform_api.models.enums import TaskStatus
 from platform_api.ports.generation_port import DraftRequest, ImageRequest, SunoRequest
+from platform_api.repositories.job_queue_repo import JobQueueRepository
 from platform_api.services.ai_routing_service import AIRoutingService
 from platform_api.services.batch_service import BatchService
 from platform_api.services.generation_service import GenerationService
+from platform_api.services.job_types import JOB_RETRY_SONG_SUNO, PRI_RETRY
 from platform_api.services.prompt_service import PromptService
 from platform_api.services.usage_enforcement_service import UsageEnforcementService
 
@@ -223,6 +225,12 @@ async def _get_batch_service() -> BatchService:
     )
 
 
+async def _get_job_queue_repo() -> JobQueueRepository:
+    raise NotImplementedError(
+        "JobQueueRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 class TaskLookupPort:
     """Protocol for looking up Suno task status."""
 
@@ -245,6 +253,7 @@ AIRoutingServiceDep = Annotated[AIRoutingService, Depends(_get_ai_routing_servic
 PromptServiceDep = Annotated[PromptService, Depends(_get_prompt_service)]
 ProfileServiceDep = Annotated[object, Depends(_get_profile_service)]
 BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
+JobQueueRepoDep = Annotated[JobQueueRepository, Depends(_get_job_queue_repo)]
 TaskLookupDep = Annotated[TaskLookupPort, Depends(_get_task_lookup)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
@@ -467,7 +476,7 @@ async def polish_lyrics(
     profile_service: ProfileServiceDep,
     batch_service: BatchServiceDep,
     prompt_service: PromptServiceDep,
-    background_tasks: BackgroundTasks,
+    job_queue: JobQueueRepoDep,
 ) -> LyricsPolishResponse:
     """Rewrite existing lyrics via LLM (1 rewrite = 1 draft/lyric quota)."""
     await enforce_rate_limit(http_request, ctx.user_id)
@@ -569,14 +578,20 @@ async def polish_lyrics(
                 lyrics_override=polished,
                 title_override=request.title,
             )
-            background_tasks.add_task(
-                batch_service.retry_song_suno,
+            await job_queue.enqueue(
+                user_id=UUID(ctx.user_id),
                 batch_id=request.batch_id,
                 song_id=request.song_id,
-                user_id=ctx.user_id,
-                title=request.title,
-                album=request.album,
-                lyrics=polished,
+                job_type=JOB_RETRY_SONG_SUNO,
+                payload={
+                    "batch_id": str(request.batch_id),
+                    "song_id": str(request.song_id),
+                    "user_id": ctx.user_id,
+                    "title": request.title,
+                    "album": request.album,
+                    "lyrics": polished,
+                },
+                priority=PRI_RETRY,
             )
             suno_queued = True
         except Exception:

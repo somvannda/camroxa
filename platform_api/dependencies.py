@@ -387,6 +387,13 @@ def get_generation_service():
     )
 
 
+def get_job_queue_repo():
+    """Dependency that returns the JobQueueRepository instance."""
+    from platform_api.repositories.job_queue_repo import JobQueueRepository
+
+    return JobQueueRepository(pool=get_db_pool())
+
+
 def get_batch_service():
     """Dependency that returns the BatchService instance."""
     from platform_api.services.batch_service import BatchService
@@ -538,6 +545,23 @@ def get_suno_balance_service():
         suno_client=get_suno_client(),
         reserve_threshold=get_settings().suno_reserve_threshold,
         cache_ttl_seconds=get_settings().suno_balance_cache_ttl_seconds,
+    )
+
+
+def get_provider_key_balance_service():
+    """Dependency that returns the ProviderKeyBalanceService instance."""
+    from platform_api.services.provider_key_balance_service import ProviderKeyBalanceService
+
+    redis = None
+    try:
+        redis = get_redis()
+    except Exception:
+        redis = None
+    return ProviderKeyBalanceService(
+        redis=redis,
+        key_pool=get_key_pool_service(),
+        settings=get_settings(),
+        cache_ttl_seconds=max(15, int(get_settings().suno_balance_cache_ttl_seconds or 30)),
     )
 
 

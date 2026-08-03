@@ -139,7 +139,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if dsn.startswith("postgresql+asyncpg://"):
             dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
 
-        db_pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
+        db_pool = await asyncpg.create_pool(dsn, min_size=4, max_size=8)
         set_db_pool(db_pool)
         logger.info("Database connection pool created.")
 
@@ -360,6 +360,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from platform_api.routers import (
         admin,
         admin_invitations,
+        admin_pipeline,
         blog_posts,
         admin_content_pools,
         admin_image_sample_packs,
@@ -421,6 +422,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(progress.router, prefix=settings.api_v1_prefix)
     app.include_router(youtube.router, prefix=settings.api_v1_prefix)
     app.include_router(admin.router, prefix=settings.api_v1_prefix)
+    app.include_router(admin_pipeline.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_invitations.router, prefix=settings.api_v1_prefix)
     app.include_router(blog_posts.router, prefix=settings.api_v1_prefix)
     app.include_router(admin_content_pools.router, prefix=settings.api_v1_prefix)

@@ -11,7 +11,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, Depends, Request
 
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
@@ -28,7 +28,15 @@ from platform_api.models.schemas import (
     SongSunoRetryRequest,
     TitleRewriteResponse,
 )
+from platform_api.repositories.job_queue_repo import JobQueueRepository
 from platform_api.services.batch_service import BatchService
+from platform_api.services.job_types import (
+    JOB_EXECUTE_BATCH,
+    JOB_RETRY_SONG_DRAFT,
+    JOB_RETRY_SONG_SUNO,
+    PRI_EXECUTE_BATCH,
+    PRI_RETRY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +59,16 @@ async def _get_batch_service() -> BatchService:
     )
 
 
+async def _get_job_queue_repo() -> JobQueueRepository:
+    """Placeholder dependency for JobQueueRepository — override via wire_dependencies."""
+    raise NotImplementedError(
+        "JobQueueRepository dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 # Type aliases for dependency injection
 BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
+JobQueueRepoDep = Annotated[JobQueueRepository, Depends(_get_job_queue_repo)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -97,12 +113,13 @@ async def create_batch(
     http_request: Request,
     ctx: CurrentUserDep,
     batch_service: BatchServiceDep,
-    background_tasks: BackgroundTasks,
+    job_queue: JobQueueRepoDep,
 ) -> BatchCreateResponse:
     """Create a new batch generation run for the authenticated user.
 
     Pre-checks total cost for the enabled automation path and creates
-    batch + song records.
+    batch + song records. Execution is enqueued on ``job_queue`` for
+    ``platform_api.worker`` (not in-process BackgroundTasks).
 
     Requirement 13.1: Pre-check total batch cost before starting.
     """
@@ -131,11 +148,12 @@ async def create_batch(
         alt_run_dir=request.alt_run_dir,
         album=request.album,
     )
-    background_tasks.add_task(
-        _execute_batch_with_logging,
-        batch_service,
-        str(batch.id),
-        ctx.user_id,
+    await job_queue.enqueue(
+        user_id=UUID(ctx.user_id),
+        batch_id=batch.id,
+        job_type=JOB_EXECUTE_BATCH,
+        payload={"batch_id": str(batch.id), "user_id": ctx.user_id},
+        priority=PRI_EXECUTE_BATCH,
     )
     return BatchCreateResponse(
         batch_id=str(batch.id),
@@ -147,71 +165,6 @@ async def create_batch(
         ok_run_dir=batch.ok_run_dir,
         alt_run_dir=batch.alt_run_dir,
     )
-
-
-async def _execute_batch_with_logging(
-    batch_service: BatchService,
-    batch_id: str,
-    user_id: str,
-) -> None:
-    """Run background batch execution and keep failures visible in logs."""
-    try:
-        await batch_service.execute_batch(batch_id=batch_id, user_id=user_id)
-    except Exception:
-        logger.exception(
-            "Background batch execution crashed for batch %s and user %s.",
-            batch_id,
-            user_id,
-        )
-
-
-async def _retry_song_draft_with_logging(
-    batch_service: BatchService,
-    batch_id: str,
-    song_id: str,
-    user_id: str,
-) -> None:
-    try:
-        await batch_service.retry_song_draft(
-            batch_id=UUID(batch_id),
-            song_id=UUID(song_id),
-            user_id=user_id,
-        )
-    except Exception:
-        logger.exception(
-            "Background draft retry crashed for song %s in batch %s and user %s.",
-            song_id,
-            batch_id,
-            user_id,
-        )
-
-
-async def _retry_song_suno_with_logging(
-    batch_service: BatchService,
-    batch_id: str,
-    song_id: str,
-    user_id: str,
-    *,
-    title: str | None = None,
-    album: str | None = None,
-    lyrics: str | None = None,
-) -> None:
-    try:
-        await batch_service.retry_song_suno(
-            batch_id=UUID(batch_id),
-            song_id=UUID(song_id),
-            user_id=user_id,
-            title=title,
-            album=album,
-            lyrics=lyrics,
-        )
-    except Exception:
-        logger.exception(
-            "Background Suno retry crashed for song %s in batch %s and user %s.",
-            song_id,
-            batch_id,
-            user_id,
-        )
 
 
 @router.get(
@@ -286,7 +239,7 @@ async def retry_song_draft(
     http_request: Request,
     ctx: CurrentUserDep,
     batch_service: BatchServiceDep,
-    background_tasks: BackgroundTasks,
+    job_queue: JobQueueRepoDep,
 ) -> SongRetryResponse:
     """Queue draft regeneration for one song marked pending or draft_failed."""
     await enforce_rate_limit(http_request, ctx.user_id)
@@ -296,12 +249,17 @@ async def retry_song_draft(
         song_id=UUID(song_id),
         user_id=ctx.user_id,
     )
-    background_tasks.add_task(
-        _retry_song_draft_with_logging,
-        batch_service,
-        batch_id,
-        song_id,
-        ctx.user_id,
+    await job_queue.enqueue(
+        user_id=UUID(ctx.user_id),
+        batch_id=UUID(batch_id),
+        song_id=UUID(song_id),
+        job_type=JOB_RETRY_SONG_DRAFT,
+        payload={
+            "batch_id": batch_id,
+            "song_id": song_id,
+            "user_id": ctx.user_id,
+        },
+        priority=PRI_RETRY,
     )
     return SongRetryResponse(
         batch_id=batch_id,
@@ -367,7 +325,7 @@ async def retry_song_suno(
     http_request: Request,
     ctx: CurrentUserDep,
     batch_service: BatchServiceDep,
-    background_tasks: BackgroundTasks,
+    job_queue: JobQueueRepoDep,
     request: SongSunoRetryRequest | None = None,
 ) -> SongRetryResponse:
     """Queue Suno submission for draft_ready or suno_failed songs."""
@@ -381,15 +339,20 @@ async def retry_song_suno(
         lyrics_override=payload.lyrics,
         title_override=payload.title,
     )
-    background_tasks.add_task(
-        _retry_song_suno_with_logging,
-        batch_service,
-        batch_id,
-        song_id,
-        ctx.user_id,
-        title=payload.title,
-        album=payload.album,
-        lyrics=payload.lyrics,
+    await job_queue.enqueue(
+        user_id=UUID(ctx.user_id),
+        batch_id=UUID(batch_id),
+        song_id=UUID(song_id),
+        job_type=JOB_RETRY_SONG_SUNO,
+        payload={
+            "batch_id": batch_id,
+            "song_id": song_id,
+            "user_id": ctx.user_id,
+            "title": payload.title,
+            "album": payload.album,
+            "lyrics": payload.lyrics,
+        },
+        priority=PRI_RETRY,
     )
     return SongRetryResponse(
         batch_id=batch_id,

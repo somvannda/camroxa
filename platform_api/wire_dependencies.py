@@ -18,6 +18,7 @@ from platform_api.dependencies import (
     get_credit_repo,
     get_generation_service,
     get_image_job_service,
+    get_job_queue_repo,
     get_key_pool_service,
     get_license_repo,
     get_invitation_code_service,
@@ -31,6 +32,7 @@ from platform_api.dependencies import (
     get_settings_service,
     get_image_sample_pack_repo,
     get_suno_balance_service,
+    get_provider_key_balance_service,
     get_usage_enforcement_service,
     get_usage_tracking_repo,
     get_user_repo,
@@ -81,17 +83,25 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[auth_get_current_user_id] = real_current_user_id
 
     # --- users.py ---
-    from platform_api.routers.users import _get_user_service as users_get_user_service
+    from platform_api.routers.users import (
+        _get_user_service as users_get_user_service,
+        _get_usage_enforcement_service as users_get_enforcement,
+    )
 
     async def real_user_service():
         return get_user_service()
 
+    async def real_users_enforcement():
+        return get_usage_enforcement_service()
+
     app.dependency_overrides[users_get_user_service] = real_user_service
+    app.dependency_overrides[users_get_enforcement] = real_users_enforcement
 
     # --- admin.py ---
     from platform_api.routers.admin import (
         _get_audit_service as admin_get_audit,
         _get_suno_balance_service as admin_get_suno,
+        _get_provider_key_balance_service as admin_get_provider_balances,
         _get_rate_limit_repo as admin_get_rate_limit,
         _get_settings_repo as admin_get_settings_repo,
         _get_credit_repo as admin_get_credit_repo,
@@ -107,6 +117,9 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     async def real_admin_suno():
         return get_suno_balance_service()
+
+    async def real_admin_provider_balances():
+        return get_provider_key_balance_service()
 
     async def real_admin_rate_limit():
         return get_rate_limit_config_repo()
@@ -137,6 +150,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[admin_get_audit] = real_admin_audit
     app.dependency_overrides[admin_get_suno] = real_admin_suno
+    app.dependency_overrides[admin_get_provider_balances] = real_admin_provider_balances
     app.dependency_overrides[admin_get_rate_limit] = real_admin_rate_limit
     app.dependency_overrides[admin_get_settings_repo] = real_admin_settings_repo
     app.dependency_overrides[admin_get_credit_repo] = real_admin_credit_repo
@@ -151,6 +165,31 @@ def wire_all_dependencies(app: FastAPI) -> None:
         return get_reset_service()
 
     app.dependency_overrides[admin_get_reset_service] = real_admin_reset_service
+
+    # --- admin_pipeline.py ---
+    from platform_api.routers.admin_pipeline import (
+        _get_audit_service as admin_pipeline_get_audit,
+        _get_batch_service as admin_pipeline_get_batch,
+        _get_image_job_service as admin_pipeline_get_image,
+        _get_job_queue_repo as admin_pipeline_get_job_queue,
+    )
+
+    async def real_admin_pipeline_batch():
+        return get_batch_service()
+
+    async def real_admin_pipeline_image():
+        return get_image_job_service()
+
+    async def real_admin_pipeline_audit():
+        return get_audit_service()
+
+    async def real_admin_pipeline_job_queue():
+        return get_job_queue_repo()
+
+    app.dependency_overrides[admin_pipeline_get_batch] = real_admin_pipeline_batch
+    app.dependency_overrides[admin_pipeline_get_image] = real_admin_pipeline_image
+    app.dependency_overrides[admin_pipeline_get_audit] = real_admin_pipeline_audit
+    app.dependency_overrides[admin_pipeline_get_job_queue] = real_admin_pipeline_job_queue
 
     # --- admin_invitations.py ---
     from platform_api.routers.admin_invitations import (
@@ -178,6 +217,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
     # --- youtube.py ---
     from platform_api.routers.youtube import (
         _get_youtube_connection_service as youtube_get_service,
+        _get_job_queue_repo as youtube_get_job_queue,
     )
 
     async def real_youtube_connection_service():
@@ -188,17 +228,26 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[youtube_get_service] = real_youtube_connection_service
 
     # --- batch.py ---
-    from platform_api.routers.batch import _get_batch_service as batch_get_svc
+    from platform_api.routers.batch import (
+        _get_batch_service as batch_get_svc,
+        _get_job_queue_repo as batch_get_job_queue,
+    )
 
     async def real_batch_service():
         return get_batch_service()
 
+    async def real_job_queue_repo():
+        return get_job_queue_repo()
+
     app.dependency_overrides[batch_get_svc] = real_batch_service
+    app.dependency_overrides[batch_get_job_queue] = real_job_queue_repo
+    app.dependency_overrides[youtube_get_job_queue] = real_job_queue_repo
 
     # --- image_jobs.py ---
     from platform_api.routers.image_jobs import (
         _get_batch_service as image_jobs_get_batch_svc,
         _get_image_job_service as image_jobs_get_svc,
+        _get_job_queue_repo as image_jobs_get_job_queue,
     )
     from platform_api.routers.music_downloads import (
         _get_batch_service as music_downloads_get_batch_svc,
@@ -209,6 +258,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[image_jobs_get_svc] = real_image_job_service
     app.dependency_overrides[image_jobs_get_batch_svc] = real_batch_service
+    app.dependency_overrides[image_jobs_get_job_queue] = real_job_queue_repo
     app.dependency_overrides[music_downloads_get_batch_svc] = real_batch_service
 
     from platform_api.routers.progress import _get_batch_service as progress_get_batch_svc
@@ -331,6 +381,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
         _get_generation_service as gen_get_svc,
         _get_enforcement_service as gen_get_enforcement,
         _get_batch_service as gen_get_batch_svc,
+        _get_job_queue_repo as gen_get_job_queue,
         _get_task_lookup as gen_get_task,
         _get_ai_routing_service as gen_get_ai_routing,
         _get_prompt_service as gen_get_prompt_svc,
@@ -369,6 +420,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[gen_get_svc] = real_generation_service
     app.dependency_overrides[gen_get_enforcement] = real_enforcement_service
     app.dependency_overrides[gen_get_batch_svc] = real_gen_batch_service
+    app.dependency_overrides[gen_get_job_queue] = real_job_queue_repo
     app.dependency_overrides[gen_get_task] = real_task_lookup
     app.dependency_overrides[gen_get_ai_routing] = real_gen_ai_routing_service
     app.dependency_overrides[gen_get_prompt_svc] = real_gen_prompt_service
