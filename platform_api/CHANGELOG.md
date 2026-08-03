@@ -90,6 +90,7 @@ See `docs/changelog/2026-08-01-v109-unified-branch-and-migration-merge.md`.
 
 ### Fixed
 
+- Album image race: thumbnail no longer keeps a discarded background `source_job_id` after `ON CONFLICT DO NOTHING` (orphan → “source background job was not found”). See `docs/changelog/2026-07-27-thumbnail-orphan-source-job.md`.
 - ~~Desktop installer publish CamxoraSetup filename parse~~ — changelog-only claim;
   the code never landed. Real fix: 2026-08-03 Unreleased +
   `docs/changelog/2026-08-03-software-update-setup-filename.md`.

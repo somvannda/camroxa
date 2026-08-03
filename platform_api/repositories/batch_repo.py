@@ -1280,6 +1280,10 @@ class BatchRepository:
     async def create_image_jobs(self, jobs: list[ImageJob]) -> list[ImageJob]:
         """Bulk-insert image job records.
 
+        When a background insert loses a race (``ON CONFLICT DO NOTHING``), later
+        thumbnails in the same payload that pointed at the discarded background id
+        are remapped onto the existing album-slot background before insert.
+
         Args:
             jobs: List of ImageJob domain objects to persist.
 
@@ -1287,10 +1291,49 @@ class BatchRepository:
             The persisted image jobs (skips album-slot conflicts).
         """
         created: list[ImageJob] = []
+        background_id_remap: dict[UUID, UUID] = {}
         for job in jobs:
+            if job.kind == ImageKind.THUMBNAIL and job.source_job_id is not None:
+                remapped = background_id_remap.get(job.source_job_id)
+                if remapped is not None:
+                    job.source_job_id = remapped
+                else:
+                    source = await self.get_image_job_by_id(job.source_job_id, job.user_id)
+                    if source is None and job.profile_id is not None and job.batch_id is not None:
+                        existing_bg = await self.get_image_job_for_album_slot(
+                            batch_id=job.batch_id,
+                            profile_id=job.profile_id,
+                            kind=ImageKind.BACKGROUND,
+                            channel_role=job.channel_role,
+                        )
+                        if existing_bg is not None:
+                            background_id_remap[job.source_job_id] = existing_bg.id
+                            job.source_job_id = existing_bg.id
+
             persisted = await self.create_image_job(job)
             if persisted is not None:
                 created.append(persisted)
+                if job.kind == ImageKind.BACKGROUND:
+                    background_id_remap[job.id] = job.id
+            elif (
+                job.kind == ImageKind.BACKGROUND
+                and job.profile_id is not None
+                and job.batch_id is not None
+            ):
+                existing_bg = await self.get_image_job_for_album_slot(
+                    batch_id=job.batch_id,
+                    profile_id=job.profile_id,
+                    kind=ImageKind.BACKGROUND,
+                    channel_role=job.channel_role,
+                )
+                if existing_bg is not None:
+                    background_id_remap[job.id] = existing_bg.id
+                    logger.info(
+                        "Remapped raced background %s -> existing %s for batch %s",
+                        job.id,
+                        existing_bg.id,
+                        job.batch_id,
+                    )
         if created:
             logger.info(
                 "Created %d image jobs for batch %s", len(created), created[0].batch_id
@@ -1303,6 +1346,41 @@ class BatchRepository:
                 jobs[0].batch_id,
             )
         return created
+
+    async def get_image_job_for_album_slot(
+        self,
+        *,
+        batch_id: UUID,
+        profile_id: UUID,
+        kind: ImageKind | str,
+        channel_role: ChannelRole | str,
+    ) -> ImageJob | None:
+        """Return the image job for one album slot, if present."""
+        kind_value = kind.value if isinstance(kind, ImageKind) else str(kind)
+        role_value = (
+            channel_role.value if isinstance(channel_role, ChannelRole) else str(channel_role)
+        )
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, song_id, user_id, batch_id, profile_id, kind,
+                   channel_role, prompt, provider, resolution, style_strength,
+                   input_image_path, style_reference_path, source_job_id,
+                   status, attempt_count, output_image_path, error,
+                   created_at, updated_at
+            FROM image_jobs
+            WHERE batch_id = $1
+              AND profile_id = $2
+              AND kind = $3
+              AND channel_role = $4
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            batch_id,
+            profile_id,
+            kind_value,
+            role_value,
+        )
+        return self._row_to_image_job(row) if row is not None else None
 
     async def get_image_jobs_by_batch(self, batch_id: UUID) -> list[ImageJob]:
         """Retrieve all image jobs for a batch.
