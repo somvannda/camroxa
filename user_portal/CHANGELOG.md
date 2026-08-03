@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Guides** presentation (`/dashboard/guides`): full walkthrough (intro → monetization → onboarding → YouTube → using CAMXORA → growth → coming soon → thank you); nav pinned above Sign out separator; slide footer callouts. See `docs/changelog/2026-08-03-user-portal-guides-deck.md`.
 - Dashboard Overview **Your limits** panel: monthly and daily remaining as `X / Y` for Suno, images, drafts, track exports, and merges; per-channel daily preview.
 - 7-day trend chart series for studio exports, manual exports, and YouTube uploads.
 

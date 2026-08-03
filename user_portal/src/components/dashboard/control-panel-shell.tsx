@@ -17,6 +17,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Presentation,
   UserRound,
   X,
   ShieldCheck,
@@ -50,8 +51,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Account", href: "/dashboard/security", icon: ShieldCheck },
 ];
 
+/** Pinned at sidebar bottom, above the Sign out separator. */
+const FOOTER_NAV_ITEMS: NavItem[] = [
+  { label: "Guides", href: "/dashboard/guides", icon: Presentation },
+];
+
+const ALL_NAV_ITEMS: NavItem[] = [...NAV_ITEMS, ...FOOTER_NAV_ITEMS];
+
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Overview",
+  "/dashboard/guides": "Guides",
   "/dashboard/profiles/": "Profile",
   "/dashboard/profiles": "Profiles",
   "/dashboard/activity": "Usage",
@@ -99,8 +108,9 @@ export function UserControlPanelShell(props: { children: React.ReactNode }) {
   const profileLimit = state.user.effective_profile_allowance ?? profileAllowance;
   const walletBalance = state.wallet?.balance ?? state.user.credit_balance ?? 0;
   const activeNavItem =
-    NAV_ITEMS.find((item) => (item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href))) ??
-    NAV_ITEMS[0];
+    ALL_NAV_ITEMS.find((item) =>
+      item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href),
+    ) ?? ALL_NAV_ITEMS[0];
   const currentPageTitle =
     Object.entries(PAGE_TITLES).find(([route]) => pathname === route)?.[1] ??
     Object.entries(PAGE_TITLES).find(([route]) => pathname.startsWith(route) && route !== "/dashboard")?.[1] ??
@@ -251,6 +261,36 @@ export function UserControlPanelShell(props: { children: React.ReactNode }) {
           </Card>
         </div>
 
+        <div className="shrink-0 space-y-3 px-4 pb-3 pt-1">
+          {FOOTER_NAV_ITEMS.map((item) => {
+            const active =
+              item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex rounded-2xl border text-sm transition",
+                  sidebarCollapsed
+                    ? "items-center justify-center px-3 py-3"
+                    : "items-center justify-between px-4 py-3",
+                  active
+                    ? "border-violet-400/25 bg-violet-500/[0.12] text-white"
+                    : "border-white/8 bg-white/[0.03] text-slate-200/78 hover:border-violet-400/25 hover:bg-violet-500/[0.08] hover:text-white",
+                )}
+                title={item.label}
+                onClick={() => setMobileNavOpen(false)}
+              >
+                <span className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "gap-3")}>
+                  <item.icon className="h-4 w-4 text-violet-200" />
+                  {!sidebarCollapsed ? item.label : null}
+                </span>
+                {!sidebarCollapsed ? <ArrowRight className="h-4 w-4 text-slate-500" /> : null}
+              </Link>
+            );
+          })}
+        </div>
+
         <div className="shrink-0 border-t border-white/8 bg-white/[0.02] p-4">
           <Button
             type="button"
@@ -320,7 +360,7 @@ export function UserControlPanelShell(props: { children: React.ReactNode }) {
           </div>
 
           <nav className="flex gap-2 overflow-x-auto px-5 pb-4 lg:hidden">
-            {NAV_ITEMS.map((item) => {
+            {ALL_NAV_ITEMS.map((item) => {
               const active =
                 item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
               return (
