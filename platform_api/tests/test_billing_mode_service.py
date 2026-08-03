@@ -136,6 +136,65 @@ async def test_subscription_covers_batch_within_limits() -> None:
 
 
 @pytest.mark.asyncio
+async def test_subscription_covers_batch_scales_image_limit_with_addons() -> None:
+    """Add-on slots must scale monthly image coverage (prod Generate preflight bug)."""
+    user_id = uuid4()
+    repo = FakeUsageRepo()
+    # Base plan: 120 images; with 6 addon slots on 2-channel plan → 480.
+    plan = _plan(monthly_image_limit=120, monthly_song_limit=300)
+    period = date.today().replace(day=1)
+    repo.set_monthly(user_id, "background_image", period, 111)
+
+    # Unscaled base limit would reject 111+16 > 120.
+    assert not await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=40,
+        usage_repo=repo,
+        period_start=period,
+        image_jobs=16,
+        draft_ops=81,
+        addon_slots=0,
+    )
+    assert await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=40,
+        usage_repo=repo,
+        period_start=period,
+        image_jobs=16,
+        draft_ops=81,
+        addon_slots=6,
+    )
+
+
+@pytest.mark.asyncio
+async def test_subscription_covers_operation_scales_with_addons() -> None:
+    user_id = uuid4()
+    repo = FakeUsageRepo()
+    plan = _plan(monthly_image_limit=120)
+    period = date.today().replace(day=1)
+    repo.set_monthly(user_id, "background_image", period, 200)
+
+    assert not await subscription_covers_operation(
+        plan=plan,
+        user_id=user_id,
+        operation_type="background_image",
+        usage_repo=repo,
+        period_start=period,
+        addon_slots=0,
+    )
+    assert await subscription_covers_operation(
+        plan=plan,
+        user_id=user_id,
+        operation_type="background_image",
+        usage_repo=repo,
+        period_start=period,
+        addon_slots=6,
+    )
+
+
+@pytest.mark.asyncio
 async def test_subscription_covers_draft_meter() -> None:
     user_id = uuid4()
     repo = FakeUsageRepo()

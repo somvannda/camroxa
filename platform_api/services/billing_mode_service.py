@@ -146,21 +146,35 @@ def uses_account_daily_quota(operation_type: str) -> bool:
     )
 
 
-def monthly_limit_for_operation(plan: Plan, operation_type: str) -> int | None:
+def monthly_limit_for_operation(
+    plan: Plan,
+    operation_type: str,
+    *,
+    addon_slots: int = 0,
+) -> int | None:
+    """Base plan monthly limit, scaled by active profile add-on slots."""
+    from platform_api.services.plan_tier_pricing_service import scaled_monthly_limit
+
     quota_op = quota_operation_type(operation_type)
     if quota_op == "text_generation":
         return None
     if quota_op == "background_image":
-        return plan.monthly_image_limit
-    if quota_op == "draft":
-        return getattr(plan, "monthly_draft_limit", None)
-    if quota_op == "video":
-        return getattr(plan, "monthly_video_limit", None)
-    if quota_op == "video_merge":
-        return getattr(plan, "monthly_merge_limit", None)
-    if quota_op == "music":
-        return plan.monthly_song_limit
-    return plan.monthly_song_limit
+        base = plan.monthly_image_limit
+    elif quota_op == "draft":
+        base = getattr(plan, "monthly_draft_limit", None)
+    elif quota_op == "video":
+        base = getattr(plan, "monthly_video_limit", None)
+    elif quota_op == "video_merge":
+        base = getattr(plan, "monthly_merge_limit", None)
+    elif quota_op == "music":
+        base = plan.monthly_song_limit
+    else:
+        base = plan.monthly_song_limit
+
+    plan_channels = max(1, int(plan.profile_allowance or 1))
+    return scaled_monthly_limit(
+        base, plan_channels=plan_channels, addon_slots=max(0, int(addon_slots or 0))
+    )
 
 
 async def subscription_covers_operation(
@@ -171,6 +185,7 @@ async def subscription_covers_operation(
     usage_repo: UsageCountRepoProtocol,
     period_start: date,
     after_reservation: bool = False,
+    addon_slots: int = 0,
 ) -> bool:
     """Return True when an active subscriber should not be charged from wallet.
 
@@ -178,12 +193,17 @@ async def subscription_covers_operation(
     unit (reserve-then-deduct image path). Coverage uses ``<=`` so the last
     in-quota unit still settles as plan_allowance instead of a false wallet charge.
     Soft monthly overage (count past limit) still returns False → wallet.
+
+    ``addon_slots`` scales monthly limits the same way as quota enforcement /
+    entitlement display (profile add-ons).
     """
     if not is_subscription_plan(plan):
         return False
 
     quota_op = quota_operation_type(operation_type)
-    monthly_limit = monthly_limit_for_operation(plan, operation_type)
+    monthly_limit = monthly_limit_for_operation(
+        plan, operation_type, addon_slots=addon_slots
+    )
     if monthly_limit is None:
         return True
 
@@ -229,19 +249,26 @@ async def subscription_covers_batch(
     period_start: date,
     image_jobs: int = 0,
     draft_ops: int | None = None,
+    addon_slots: int = 0,
 ) -> bool:
     """Return True when a batch fits entirely within subscription quotas.
 
     ``draft_ops`` defaults to lyric+title per song + one album (~2N+1).
     Song meter is checked only when Auto-GSuno will burn songs; callers that
     draft-only may pass song_count=0 for the song check by using draft_ops.
+
+    Monthly limits are scaled by ``addon_slots`` (same multiplier as
+    entitlement / ``_enforce_plan_quotas``). Without this, add-on accounts
+    falsely fall through to wallet when base-plan meters look full.
     """
     if not is_subscription_plan(plan):
         return False
 
     estimated_drafts = draft_ops if draft_ops is not None else max(0, song_count * 2 + 1)
     if estimated_drafts > 0:
-        draft_limit = getattr(plan, "monthly_draft_limit", None)
+        draft_limit = monthly_limit_for_operation(
+            plan, "draft", addon_slots=addon_slots
+        )
         if draft_limit is not None:
             draft_count = await usage_repo.get_monthly_count(
                 user_id, "draft", period_start
@@ -249,20 +276,30 @@ async def subscription_covers_batch(
             if draft_count + estimated_drafts > draft_limit:
                 return False
 
-    if song_count > 0 and plan.monthly_song_limit is not None:
-        music_count = await usage_repo.get_monthly_count(user_id, "music", period_start)
-        if music_count + song_count > plan.monthly_song_limit:
-            return False
+    if song_count > 0:
+        song_limit = monthly_limit_for_operation(
+            plan, "music", addon_slots=addon_slots
+        )
+        if song_limit is not None:
+            music_count = await usage_repo.get_monthly_count(
+                user_id, "music", period_start
+            )
+            if music_count + song_count > song_limit:
+                return False
 
-    if image_jobs > 0 and plan.monthly_image_limit is not None:
-        image_count = await usage_repo.get_monthly_count(
-            user_id, "background_image", period_start
+    if image_jobs > 0:
+        image_limit = monthly_limit_for_operation(
+            plan, "background_image", addon_slots=addon_slots
         )
-        image_count += await usage_repo.get_monthly_count(
-            user_id, "thumbnail_image", period_start
-        )
-        if image_count + image_jobs > plan.monthly_image_limit:
-            return False
+        if image_limit is not None:
+            image_count = await usage_repo.get_monthly_count(
+                user_id, "background_image", period_start
+            )
+            image_count += await usage_repo.get_monthly_count(
+                user_id, "thumbnail_image", period_start
+            )
+            if image_count + image_jobs > image_limit:
+                return False
 
     return True
 

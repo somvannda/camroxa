@@ -9,7 +9,6 @@ Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from dataclasses import dataclass, replace
@@ -416,8 +415,10 @@ class BatchService:
             for run_date in run_dates:
                 for ok_profile_id, alt_profile_id in profile_pairs:
                     if run_date == today:
-                        # Draft billing uses Primary (ok) profile only.
+                        # Draft slots bill Primary (monthly+daily); Secondary gets
+                        # the same daily draft amount attributed (like songs).
                         daily_drafts[(ok_profile_id, run_date)] += draft_ops_per_batch
+                        daily_drafts[(alt_profile_id, run_date)] += draft_ops_per_batch
                         if auto_gsuno:
                             daily_songs[(ok_profile_id, run_date)] += song_count
                             daily_songs[(alt_profile_id, run_date)] += song_count
@@ -473,18 +474,21 @@ class BatchService:
                         period_start=period_start,
                         image_jobs=total_image_jobs,
                         draft_ops=total_draft_ops,
+                        addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
                     )
                 if not covered_by_subscription and wallet_balance < total_wallet_cost:
+                    required_credits = units_to_credits(total_wallet_cost)
+                    available_credits = units_to_credits(wallet_balance)
                     return {
                         "can_generate": False,
                         "reason": (
                             f"Insufficient credits for this plan. "
-                            f"Required {total_wallet_cost}, available {wallet_balance}."
+                            f"Required {required_credits}, available {available_credits}."
                         ),
                         "batch_count": batch_count,
                         "total_songs": total_songs,
                         "total_wallet_cost": total_wallet_cost,
-                        "wallet_balance": units_to_credits(wallet_balance),
+                        "wallet_balance": available_credits,
                         "covered_by_subscription": False,
                         "credit_shortfall": total_wallet_cost - wallet_balance,
                     }
@@ -513,16 +517,18 @@ class BatchService:
                     ),
                 }
         elif wallet_balance < total_wallet_cost:
+            required_credits = units_to_credits(total_wallet_cost)
+            available_credits = units_to_credits(wallet_balance)
             return {
                 "can_generate": False,
                 "reason": (
                     f"Insufficient credits for this plan. "
-                    f"Required {total_wallet_cost}, available {wallet_balance}."
+                    f"Required {required_credits}, available {available_credits}."
                 ),
                 "batch_count": batch_count,
                 "total_songs": total_songs,
                 "total_wallet_cost": total_wallet_cost,
-                "wallet_balance": units_to_credits(wallet_balance),
+                "wallet_balance": available_credits,
                 "credit_shortfall": total_wallet_cost - wallet_balance,
             }
 
@@ -977,6 +983,7 @@ class BatchService:
         unique_opening: bool,
         batch_album: str | None,
         batch_titles: list[str],
+        secondary_channel_profile_id: UUID | None = None,
     ) -> tuple[Song, str | None, list[str]]:
         """Generate a draft for one song and return updated batch album/title context."""
         claimed_items: list[ClaimedPoolItem] = []
@@ -984,6 +991,7 @@ class BatchService:
         draft_list_units = 0
         draft_billed_slots = 0
         draft_billing_applied = False
+        secondary_draft_attributed = False
         try:
             prepared_request = await self._resolve_song_prompt_content(song, draft_request)
             if batch_album:
@@ -1055,6 +1063,24 @@ class BatchService:
                     draft_request=prepared_request,
                 )
                 draft_billing_applied = True
+                if (
+                    draft_billed_slots > 0
+                    and secondary_channel_profile_id is not None
+                    and secondary_channel_profile_id != channel_profile_id
+                ):
+                    attribute = getattr(
+                        self._enforcement_service,
+                        "attribute_secondary_daily_usage",
+                        None,
+                    )
+                    if attribute is not None:
+                        await attribute(
+                            UUID(user_id),
+                            secondary_channel_profile_id,
+                            "draft",
+                            count=int(draft_billed_slots),
+                        )
+                        secondary_draft_attributed = True
 
             draft = await self._generation_service.submit_draft(
                 user_id,
@@ -1123,6 +1149,19 @@ class BatchService:
                         prior_ledger_recorded=True,
                         count=max(1, int(draft_billed_slots or 1)),
                     )
+                    if secondary_draft_attributed and secondary_channel_profile_id is not None:
+                        release = getattr(
+                            self._enforcement_service,
+                            "release_operation_quota",
+                            None,
+                        )
+                        if release is not None:
+                            await release(
+                                user_id=UUID(user_id),
+                                channel_profile_id=secondary_channel_profile_id,
+                                operation_type="draft",
+                                count=max(1, int(draft_billed_slots or 1)),
+                            )
                 except Exception:
                     logger.exception(
                         "Failed to refund draft billing for song %s after draft failure.",
@@ -1384,6 +1423,12 @@ class BatchService:
             raise NoAvailableKeysError("deepseek", {})
 
         draft_routing = await self._resolve_draft_routing()
+        batch = await self._batch_repo.get_batch_by_id(batch_id)
+        secondary_channel_profile_id: UUID | None = None
+        if batch is not None:
+            alt_id = getattr(batch, "alt_profile_id", None)
+            if isinstance(alt_id, UUID) and alt_id != channel_profile_id:
+                secondary_channel_profile_id = alt_id
 
         batch_album: str | None = None
         batch_titles: list[str] = []
@@ -1401,6 +1446,7 @@ class BatchService:
                     unique_opening=unique_opening,
                     batch_album=batch_album,
                     batch_titles=batch_titles,
+                    secondary_channel_profile_id=secondary_channel_profile_id,
                 )
                 successful_songs.append(song)
             except Exception:
@@ -1978,12 +2024,64 @@ class BatchService:
         message = str(latest.error_message or "").strip()
         return message or None
 
+    async def fanout_draft_jobs(
+        self,
+        *,
+        job_queue: Any,
+        batch_id: UUID,
+        user_id: str,
+    ) -> int:
+        """Mark batch processing and enqueue one ``draft`` job per pending song.
+
+        Fair multi-tenant scheduling: worker drains per-song jobs interleaved with
+        other users instead of holding one ``execute_batch`` for the whole album.
+        """
+        from platform_api.services.job_types import JOB_DRAFT, draft_priority_for_index
+
+        batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
+        if batch is None:
+            logger.warning(
+                "Skipping draft fan-out because batch %s was not found for user %s.",
+                batch_id,
+                user_id,
+            )
+            return 0
+
+        songs = await self._batch_repo.get_songs_by_batch(batch.id)
+        await self._batch_repo.update_batch_status(batch.id, BATCH_STATUS_PROCESSING)
+        draft_log.log_batch_execution_started(
+            batch_id=str(batch.id),
+            song_count=len(songs),
+        )
+        enqueued = 0
+        for song in sorted(songs, key=lambda item: int(item.batch_index or 0)):
+            if song.status not in {SONG_STATUS_PENDING, SONG_STATUS_DRAFT_FAILED}:
+                continue
+            priority = draft_priority_for_index(int(song.batch_index or 0))
+            await job_queue.enqueue(
+                user_id=UUID(user_id),
+                batch_id=batch.id,
+                song_id=song.id,
+                job_type=JOB_DRAFT,
+                payload={
+                    "batch_id": str(batch.id),
+                    "song_id": str(song.id),
+                    "user_id": user_id,
+                },
+                priority=priority,
+            )
+            enqueued += 1
+        if enqueued == 0:
+            await self.refresh_batch_status(batch.id)
+        return enqueued
+
     async def retry_song_draft(
         self,
         *,
         batch_id: UUID,
         song_id: UUID,
         user_id: str,
+        submit_suno: bool = True,
     ) -> Song:
         """Retry draft generation for a single failed song in a batch."""
         batch = await self._batch_repo.get_batch_for_user(batch_id, UUID(user_id))
@@ -2063,7 +2161,7 @@ class BatchService:
                 alt_album=alt_album,
             )
 
-        if batch.auto_gsuno:
+        if submit_suno and batch.auto_gsuno:
             title = str(song.title or "").strip() or "Untitled"
             try:
                 suno_model = await self._resolve_suno_model(batch.user_id)
@@ -2421,7 +2519,7 @@ class BatchService:
                 len(created),
                 batch_id,
             )
-            self._schedule_image_jobs_run(user_id=user_id, batch_id=batch_id)
+            await self._schedule_image_jobs_run(user_id=user_id, batch_id=batch_id)
         return len(created)
 
     async def sync_manual_assets_for_batch(
@@ -2699,7 +2797,7 @@ class BatchService:
                 )
             reconciled += 1
         for batch_id in batches_to_run_images:
-            self._schedule_image_jobs_run(user_id=user_id, batch_id=batch_id)
+            await self._schedule_image_jobs_run(user_id=user_id, batch_id=batch_id)
         return reconciled
 
     async def _reconcile_stuck_suno_pending_songs(
@@ -2729,18 +2827,25 @@ class BatchService:
             await self.refresh_batch_status(batch_id)
         return fixed
 
-    def _schedule_image_jobs_run(self, *, user_id: str, batch_id: UUID) -> None:
-        if self._image_job_service is None:
-            return
-        from platform_api.services.image_job_runner import run_image_jobs_until_empty
+    async def _schedule_image_jobs_run(self, *, user_id: str, batch_id: UUID) -> None:
+        """Enqueue durable image drain (deduped) for the platform worker."""
+        try:
+            from platform_api.dependencies import get_job_queue_repo
+            from platform_api.services.job_types import JOB_RUN_IMAGE_JOBS, PRI_RUN_IMAGE_JOBS
 
-        asyncio.create_task(
-            run_image_jobs_until_empty(
-                self._image_job_service,
-                user_id=user_id,
-                batch_id=str(batch_id),
+            await get_job_queue_repo().enqueue_if_absent(
+                user_id=UUID(user_id),
+                batch_id=batch_id,
+                job_type=JOB_RUN_IMAGE_JOBS,
+                payload={"user_id": user_id, "batch_id": str(batch_id)},
+                priority=PRI_RUN_IMAGE_JOBS,
             )
-        )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue run_image_jobs for user %s batch %s",
+                user_id,
+                batch_id,
+            )
 
     async def refresh_image_job_prompts_for_retry(
         self,
@@ -3194,6 +3299,9 @@ class BatchService:
                         charged_credit_units=None,
                         song_id=song_id,
                         reason="suno_generation_failed",
+                        secondary_channel_profile_id=(
+                            batch.alt_profile_id if batch is not None else None
+                        ),
                     )
             await self.refresh_batch_status(batch_id)
         else:
@@ -3986,6 +4094,22 @@ class BatchService:
                     sub_model=music_sub_model,
                 )
                 billing_applied = True
+                alt_profile_id = getattr(batch, "alt_profile_id", None)
+                if (
+                    isinstance(alt_profile_id, UUID)
+                    and alt_profile_id != batch.ok_profile_id
+                ):
+                    attribute = getattr(
+                        self._enforcement_service,
+                        "attribute_secondary_daily_usage",
+                        None,
+                    )
+                    if attribute is not None:
+                        await attribute(
+                            UUID(user_id),
+                            alt_profile_id,
+                            "music",
+                        )
             task_id = await self._generation_service.submit_suno(
                 user_id,
                 SunoRequest(
@@ -4022,6 +4146,7 @@ class BatchService:
                 blocked_terms=list(payload.blocked_terms),
             )
             if billing_applied:
+                alt_for_refund = getattr(batch, "alt_profile_id", None)
                 await self._refund_suno_billing(
                     user_id=user_id,
                     channel_profile_id=batch.ok_profile_id,
@@ -4030,6 +4155,9 @@ class BatchService:
                     charged_credit_units=int(charged or 0),
                     song_id=song.id,
                     reason="suno_generation_failed",
+                    secondary_channel_profile_id=(
+                        alt_for_refund if isinstance(alt_for_refund, UUID) else None
+                    ),
                 )
             raise
 
@@ -4043,6 +4171,7 @@ class BatchService:
         charged_credit_units: int | None = None,
         song_id: UUID,
         reason: str = "suno_generation_failed",
+        secondary_channel_profile_id: UUID | None = None,
     ) -> None:
         """Release song quota and refund wallet after a Suno failure."""
         if self._enforcement_service is None:
@@ -4067,6 +4196,20 @@ class BatchService:
                 ref_id=str(song_id),
                 prior_ledger_recorded=True,
             )
+            if (
+                secondary_channel_profile_id is not None
+                and secondary_channel_profile_id != channel_profile_id
+            ):
+                release = getattr(
+                    self._enforcement_service, "release_operation_quota", None
+                )
+                if release is not None:
+                    await release(
+                        user_id=UUID(user_id),
+                        channel_profile_id=secondary_channel_profile_id,
+                        operation_type="music",
+                        count=1,
+                    )
         except Exception:
             logger.exception(
                 "Failed to refund Suno billing for song %s (reason=%s).",
@@ -4432,13 +4575,22 @@ class BatchService:
         )
         outputs: dict[ImageKind, str] = {}
         if ImageKind.BACKGROUND in kinds:
+            # Export/manual BG sync needs background only (thumbnail is YouTube-only).
             if not compute_long_ready(asset_paths) and not compute_reel_ready(asset_paths):
                 return None
-            outputs[ImageKind.BACKGROUND] = str(asset_paths.get("background_16x9_path") or "")
+            outputs[ImageKind.BACKGROUND] = str(
+                asset_paths.get("background_16x9_path")
+                or asset_paths.get("background_9x16_path")
+                or ""
+            )
         if ImageKind.THUMBNAIL in kinds:
-            if not compute_long_ready(asset_paths) and not compute_reel_ready(asset_paths):
+            thumb_path = (
+                asset_paths.get("thumbnail_16x9_path")
+                or asset_paths.get("thumbnail_9x16_path")
+            )
+            if not thumb_path:
                 return None
-            outputs[ImageKind.THUMBNAIL] = str(asset_paths.get("thumbnail_16x9_path") or "")
+            outputs[ImageKind.THUMBNAIL] = str(thumb_path)
         if any(not value for value in outputs.values()):
             return None
         return outputs

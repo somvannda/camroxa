@@ -372,6 +372,7 @@ class UsageEnforcementService:
                 operation_type=operation_type,
                 usage_repo=self._usage_repo,
                 period_start=period_start,
+                addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
             )
         ):
             await self._increment_usage_counters(
@@ -521,6 +522,7 @@ class UsageEnforcementService:
                 operation_type=operation_type,
                 usage_repo=self._usage_repo,
                 period_start=period_start,
+                addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
             )
         ):
             return
@@ -617,7 +619,6 @@ class UsageEnforcementService:
                 song_count=song_count,
                 image_jobs=image_jobs,
                 draft_ops=estimated_drafts,
-                draft_profile_id=ok_profile_id,
                 subscription_context=ctx,
             )
 
@@ -629,6 +630,7 @@ class UsageEnforcementService:
             period_start=period_start,
             image_jobs=image_jobs,
             draft_ops=estimated_drafts,
+            addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
         ):
             credit_log.log_subscription_quota(
                 user_id=user_id,
@@ -785,6 +787,43 @@ class UsageEnforcementService:
             operation_type=quota_op,
             period_start=period_start,
         )
+
+    async def attribute_secondary_daily_usage(
+        self,
+        user_id: UUID,
+        channel_profile_id: UUID,
+        operation_type: str,
+        *,
+        count: int = 1,
+    ) -> None:
+        """Attribute per-channel daily usage without burning monthly packages.
+
+        Dual-channel batches bill Primary for the shared package/slots (monthly +
+        daily) but deliver to Secondary as well. Preflight reserves Secondary
+        daily capacity; this records that daily use so both channels show usage
+        for songs and draft slots.
+        """
+        if count <= 0 or not counts_toward_product_quota(operation_type):
+            return
+        today = billing_today()
+        ctx = await self._resolve_subscription_context(user_id)
+        period_start = self._period_start(ctx, today)
+        quota_op = self._pool_operation_type(operation_type)
+        await self._usage_repo.increment_usage(
+            user_id=user_id,
+            channel_profile_id=channel_profile_id,
+            operation_type=quota_op,
+            usage_date=today,
+            period_start=period_start,
+            count=count,
+            include_monthly=False,
+        )
+        cache_key = self._daily_cache_key(
+            user_id, channel_profile_id, quota_op, today
+        )
+        for _ in range(count):
+            await self._redis.incr(cache_key)
+        await self._redis.expire(cache_key, DAILY_CACHE_TTL_SECONDS)
 
     async def release_operation_quota(
         self,
@@ -1037,6 +1076,7 @@ class UsageEnforcementService:
             usage_repo=self._usage_repo,
             period_start=period_start,
             after_reservation=True,
+            addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
         ):
             await self._record_plan_allowance_ledger(
                 user_id=user_id,
@@ -1126,6 +1166,7 @@ class UsageEnforcementService:
             usage_repo=self._usage_repo,
             period_start=period_start,
             after_reservation=True,
+            addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
         ):
             return OperationHold(held_units=0, plan_covered=True)
 
@@ -1303,6 +1344,7 @@ class UsageEnforcementService:
                 operation_type=operation_type,
                 usage_repo=self._usage_repo,
                 period_start=period_start,
+                addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
             )
         ):
             await self._increment_usage_counters(
@@ -1780,17 +1822,12 @@ class UsageEnforcementService:
         image_jobs: int,
         subscription_context: ActiveSubscriptionContext | None,
         draft_ops: int = 0,
-        draft_profile_id: UUID | None = None,
     ) -> None:
+        # Drafts and songs: reserve the same daily amount on every channel in the
+        # batch (Primary + Secondary). Monthly package burn stays Primary-only
+        # at deduct time; Secondary daily is attributed separately.
         if draft_ops > 0:
-            draft_profiles = (
-                [draft_profile_id]
-                if draft_profile_id is not None
-                else profile_ids[:1]
-            )
-            for profile_id in draft_profiles:
-                if profile_id is None:
-                    continue
+            for profile_id in profile_ids:
                 await self._enforce_plan_quotas(
                     user_id=user_id,
                     channel_profile_id=profile_id,
