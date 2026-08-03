@@ -231,6 +231,233 @@ def _layout_columns(layout: str) -> int:
     return 1
 
 
+def _playlist_panel_active(title: dict[str, Any]) -> bool:
+    """True when glass plate should rasterize (not just glyph chrome)."""
+    opacity = float(title.get("panelOpacity") or 0.0)
+    frost = float(title.get("panelFrost") or 0.0)
+    border = float(title.get("panelBorderWidth") or 0.0)
+    return opacity > 0.02 and (frost > 0.04 or border > 0.05)
+
+
+def _playlist_panel_padding(title: dict[str, Any], *, font_size: float) -> float:
+    frost = float(title.get("panelFrost") or 0.0)
+    border = float(title.get("panelBorderWidth") or 0.0)
+    return float(max(10.0, font_size * 0.55 + frost * 10.0 + border * 2.0))
+
+
+TITLE_DOMAIN_DRAG_SOURCES: frozenset[str] = frozenset(
+    {
+        "titleText",
+        "titleTextPanel",
+        "titleTextPill",
+        "titleTextBadge",
+        "titleTextHeader",
+        "titleTextHeaderLine",
+        "titleTextActivePlate",
+        "titleTextStage",
+        "titleTextStageOuter",
+        "titleTextStagePill",
+        "titleTextStageTitle",
+        "titleTextStageArtist",
+        "titleTextStageArt",
+        "titleTextStageBadge",
+        "titleTextStageWatermark",
+        "titleTextStageBottom",
+        "titleTextStageNowPlaying",
+        "titleTextStageTransport",
+        "titleTextStageTag",
+    }
+)
+
+
+def build_playlist_panel_overlay(
+    *,
+    style: dict[str, Any],
+    title: dict[str, Any],
+    bounds: dict[str, float],
+    header_extra: float = 0.0,
+) -> dict[str, Any] | None:
+    """Rounded glass plate behind the playlist list (drawn before row glyphs)."""
+    if not _playlist_panel_active(title):
+        return None
+    font_size = float(max(5.0, _style_num(style, "fontSize", 10.0)))
+    pad = _playlist_panel_padding(title, font_size=font_size)
+    content_w = float(bounds.get("contentWidth") or 160.0)
+    content_h = float(bounds.get("contentHeight") or 40.0) + float(max(0.0, header_extra))
+    base_x = float(_style_num(style, "x", 0.0))
+    base_y = float(_style_num(style, "y", 0.0)) - float(max(0.0, header_extra))
+    frost = float(title.get("panelFrost") or 0.0)
+    specular = float(title.get("panelSpecular") or 0.0)
+    border_w = float(title.get("panelBorderWidth") or 0.0)
+    fill = str(title.get("panelFill") or "#0f172a")
+    border_color = str(title.get("panelBorderColor") or "#94a3b8")
+    opacity = float(max(0.08, min(0.92, float(title.get("panelOpacity") or 0.45))))
+    return {
+        "enabled": True,
+        "overlayKind": "panel",
+        "text": " ",
+        "source": "titleTextPanel",
+        "anchor": "top-left",
+        "x": base_x - pad,
+        "y": base_y - pad,
+        "panelWidth": content_w + pad * 2.0,
+        "panelHeight": content_h + pad * 2.0,
+        "panelRadius": float(max(8.0, min(28.0, 12.0 + frost * 8.0))),
+        "panelFrost": frost,
+        "panelSpecular": specular,
+        "color": fill,
+        "opacity": opacity,
+        "strokeColor": border_color,
+        "strokeWidth": border_w,
+        "glow": float(min(0.85, specular * 0.55 + frost * 0.2)),
+        "glowColor": border_color,
+        "shadow": float(min(0.7, 0.2 + frost * 0.45)),
+        "animation": "none",
+        "startSec": 0.0,
+        "durationSec": 1e9,
+    }
+
+
+def build_playlist_tracklist_header_overlay(
+    *,
+    style: dict[str, Any],
+    title: dict[str, Any],
+    header_extra: float,
+) -> dict[str, Any] | None:
+    """TRACKLIST label above the list (Pulse Rail–style)."""
+    if not bool(title.get("tracklistHeader")):
+        return None
+    font_size = float(max(5.0, _style_num(style, "fontSize", 10.0)))
+    base_x = float(_style_num(style, "x", 0.0))
+    base_y = float(_style_num(style, "y", 0.0))
+    accent = str(title.get("panelBorderColor") or title.get("listColor") or "#e879f9")
+    return {
+        **_style_to_overlay_fields(style),
+        "enabled": True,
+        "text": "TRACKLIST",
+        "source": "titleTextHeader",
+        "anchor": "top-left",
+        "x": base_x,
+        "y": base_y - float(max(12.0, header_extra * 0.85)),
+        "sizePx": float(max(7.0, font_size * 0.72)),
+        "fontFamily": "montserrat",
+        "bold": True,
+        "letterSpacing": 2.2,
+        "color": accent,
+        "glow": 0.4,
+        "glowColor": accent,
+        "glowBlur": 8.0,
+        "strokeWidth": 0.0,
+        "opacity": 0.95,
+        "animation": "none",
+        "startSec": 0.0,
+        "durationSec": 1e9,
+    }
+
+
+def build_playlist_active_row_plate_overlay(
+    *,
+    style: dict[str, Any],
+    title: dict[str, Any],
+    active_index: int,
+    row_overlays: list[dict[str, Any]],
+    bounds: dict[str, float],
+) -> dict[str, Any] | None:
+    """Magenta neon bar behind the active track row."""
+    if not bool(title.get("activeRowPlate")):
+        return None
+    if active_index < 0 or active_index >= len(row_overlays):
+        return None
+    active = row_overlays[active_index]
+    font_size = float(max(5.0, _style_num(style, "fontSize", 10.0)))
+    line_spacing = float(max(0.8, _style_num(style, "lineSpacing", 1.2)))
+    row_h = float(max(font_size * max(1.2, line_spacing), font_size + 6.0))
+    pad_x = float(max(6.0, font_size * 0.45))
+    pad_y = float(max(2.0, font_size * 0.2))
+    width = float(bounds.get("contentWidth") or _style_num(style, "boxWidth", 280.0) or 280.0)
+    accent = str(title.get("panelBorderColor") or "#e879f9")
+    fill = accent
+    ax = float(active.get("x") or _style_num(style, "x", 0.0))
+    ay = float(active.get("y") or _style_num(style, "y", 0.0))
+    return {
+        "enabled": True,
+        "overlayKind": "panel",
+        "text": " ",
+        "source": "titleTextActivePlate",
+        "anchor": "top-left",
+        "x": ax - pad_x,
+        "y": ay - pad_y,
+        "panelWidth": width + pad_x * 2.0,
+        "panelHeight": row_h + pad_y * 2.0,
+        "panelRadius": float(max(6.0, min(16.0, row_h * 0.45))),
+        "panelFrost": 0.25,
+        "panelSpecular": 0.7,
+        "color": fill,
+        "opacity": 0.88,
+        "strokeColor": accent,
+        "strokeWidth": 1.25,
+        "glow": 0.55,
+        "glowColor": accent,
+        "shadow": 0.25,
+        "animation": "none",
+        "startSec": 0.0,
+        "durationSec": 1e9,
+    }
+
+
+def build_playlist_now_playing_pill_overlay(
+    *,
+    style: dict[str, Any],
+    title: dict[str, Any],
+    active_index: int,
+    row_overlays: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Compact NOW PLAYING pill above the active row."""
+    if not bool(title.get("nowPlayingPill")):
+        return None
+    if active_index < 0 or active_index >= len(row_overlays):
+        return None
+    active = row_overlays[active_index]
+    font_size = float(max(5.0, _style_num(style, "fontSize", 10.0)))
+    pill_h = float(max(14.0, font_size * 1.15))
+    pill_w = float(max(88.0, font_size * 7.2))
+    accent = str(title.get("listActiveColor") or active.get("color") or "#67e8f9")
+    border = str(title.get("panelBorderColor") or accent)
+    ax = float(active.get("x") or _style_num(style, "x", 0.0))
+    ay = float(active.get("y") or _style_num(style, "y", 0.0))
+    return {
+        "enabled": True,
+        "overlayKind": "pill",
+        "text": "NOW PLAYING",
+        "source": "titleTextPill",
+        "anchor": "top-left",
+        "x": ax,
+        "y": ay - pill_h - max(4.0, font_size * 0.35),
+        "panelWidth": pill_w,
+        "panelHeight": pill_h,
+        "panelRadius": pill_h * 0.5,
+        "panelFrost": 0.35,
+        "panelSpecular": 0.65,
+        "color": accent,
+        "opacity": 0.92,
+        "strokeColor": border,
+        "strokeWidth": 1.0,
+        "sizePx": float(max(7.0, font_size * 0.72)),
+        "fontFamily": "montserrat",
+        "bold": True,
+        "animation": "none",
+        "startSec": 0.0,
+        "durationSec": 1e9,
+    }
+
+
+def playlist_panel_frame_pad(title: dict[str, Any], style: dict[str, Any]) -> float:
+    """Extra CapCut frame padding when a glass plate is active."""
+    if not _playlist_panel_active(title):
+        return 0.0
+    font_size = float(max(5.0, _style_num(style, "fontSize", 10.0)))
+    return _playlist_panel_padding(title, font_size=font_size)
+
 def _layout_fill_order(layout: str) -> str:
     """Return ``td`` (column-major / top-down per column) or ``lr`` (row-major)."""
     key = str(layout or "column").lower()
@@ -533,7 +760,12 @@ def expand_text_domains_to_overlays(
     overlays: list[dict[str, Any]] = []
 
     album = normalize_album_text_settings(template.get("albumText"))
-    if album["enabled"]:
+    title = normalize_title_text_settings(template.get("titleText"))
+    layout_key = str(title.get("layout") or "").lower()
+    list_card_on = bool(title.get("enabled")) and layout_key == "list_card"
+
+    # Album freeform still draws unless list-card owns the artist subtitle.
+    if album["enabled"] and not list_card_on:
         text = resolve_album_display_text(album, pipeline_album=pipeline_album)
         if text:
             style = album["style"]
@@ -555,28 +787,132 @@ def expand_text_domains_to_overlays(
                 }
             )
 
-    title = normalize_title_text_settings(template.get("titleText"))
     if title["enabled"]:
         titles = resolve_title_display_list(title, track_paths=track_paths)
-        style = title["style"]
+        style = dict(title["style"])
         saved_active = int(title.get("listActiveIndex", -1))
         active_index = resolve_title_active_index(
             track_paths,
             active_track_path,
             fallback=saved_active,
         )
-        overlays.extend(
-            build_title_overlay_cells(
-                titles,
-                list_style=str(title["listStyle"]),
-                layout=str(title["layout"]),
-                style=style,
-                number_indent=str(title.get("numberIndent") or "aligned"),
-                list_color=str(title.get("listColor") or ""),
-                list_active_color=str(title.get("listActiveColor") or ""),
-                list_active_index=active_index,
+        if not bool(title.get("nowPlayingEnabled", True)):
+            active_index = -1
+
+        # Glass Playlist Card — track list in a framed panel only (no full stage).
+        if list_card_on and titles:
+            from features.video.lib.playlist_list_card import build_playlist_list_card_overlays
+
+            album_name = ""
+            if album.get("enabled"):
+                album_name = resolve_album_display_text(album, pipeline_album=pipeline_album)
+            if not album_name:
+                album_name = str(pipeline_album or "").strip()
+            overlays.extend(
+                build_playlist_list_card_overlays(
+                    title=title,
+                    titles=titles,
+                    active_index=active_index if active_index >= 0 else 0,
+                    album_name=album_name,
+                    track_paths=track_paths,
+                )
             )
+            return overlays
+
+        panel_on = _playlist_panel_active(title)
+        # When a real glass plate is drawn, keep glyphs clean (no fake stroke chrome).
+        if not panel_on:
+            border_w = float(title.get("panelBorderWidth") or 0.0)
+            specular = float(title.get("panelSpecular") or 0.0)
+            frost = float(title.get("panelFrost") or 0.0)
+            if border_w > 0.05 or frost > 0.05:
+                style["strokeWidth"] = max(float(style.get("strokeWidth") or 0.0), border_w * (0.6 + frost * 0.5))
+                style["strokeColor"] = str(title.get("panelBorderColor") or style.get("strokeColor") or "#94a3b8")
+                style["glow"] = max(float(style.get("glow") or 0.0), min(0.85, specular * 0.55 + frost * 0.25))
+                style["glowColor"] = str(title.get("panelBorderColor") or style.get("glowColor") or "#ffffff")
+                style["shadow"] = max(float(style.get("shadow") or 0.0), frost * 0.35)
+                style["opacity"] = float(
+                    max(
+                        0.15,
+                        min(
+                            1.0,
+                            float(style.get("opacity") or 1.0)
+                            * (0.75 + float(title.get("panelOpacity") or 0.45) * 0.25),
+                        ),
+                    )
+                )
+        display_titles = list(titles)
+        # Real pill overlay replaces the old ▶ text prefix.
+        row_overlays = build_title_overlay_cells(
+            display_titles,
+            list_style=str(title["listStyle"]),
+            layout=str(title["layout"]),
+            style=style,
+            number_indent=str(title.get("numberIndent") or "aligned"),
+            list_color=str(title.get("listColor") or ""),
+            list_active_color=str(title.get("listActiveColor") or ""),
+            list_active_index=active_index,
         )
+        bounds = measure_title_layout_bounds(
+            display_titles,
+            list_style=str(title["listStyle"]),
+            layout=str(title["layout"]),
+            style=style,
+            number_indent=str(title.get("numberIndent") or "aligned"),
+        )
+        font_size = float(max(5.0, _style_num(style, "fontSize", 10.0)))
+        header_extra = float(max(16.0, font_size * 1.75)) if bool(title.get("tracklistHeader")) else 0.0
+        panel = build_playlist_panel_overlay(
+            style=style,
+            title=title,
+            bounds=bounds,
+            header_extra=header_extra,
+        )
+        if panel is not None:
+            overlays.append(panel)
+        active_plate = build_playlist_active_row_plate_overlay(
+            style=style,
+            title=title,
+            active_index=active_index,
+            row_overlays=row_overlays,
+            bounds=bounds,
+        )
+        if active_plate is not None:
+            overlays.append(active_plate)
+        header = build_playlist_tracklist_header_overlay(
+            style=style,
+            title=title,
+            header_extra=header_extra,
+        )
+        if header is not None:
+            overlays.append(header)
+        overlays.extend(row_overlays)
+        pill = build_playlist_now_playing_pill_overlay(
+            style=style,
+            title=title,
+            active_index=active_index,
+            row_overlays=row_overlays,
+        )
+        if pill is not None:
+            overlays.append(pill)
+        if bool(title.get("trackCountBadge")) and titles:
+            badge_style = dict(style)
+            badge_style["fontFamily"] = "bebasneue"
+            badge_style["fontSize"] = max(28.0, float(style.get("fontSize") or 12.0) * 2.4)
+            badge_style["bold"] = False
+            badge_style["x"] = float(style.get("x") or 0.0) + float(style.get("boxWidth") or 280.0) * 0.55
+            badge_style["y"] = float(style.get("y") or 0.0) + 48.0
+            badge_style["align"] = "right"
+            badge_style["anchor"] = "top-right"
+            badge_style["opacity"] = min(1.0, float(style.get("opacity") or 1.0) * 0.85)
+            overlays.append(
+                {
+                    **_style_to_overlay_fields(badge_style),
+                    "enabled": True,
+                    "text": str(len(titles)),
+                    "source": "titleTextBadge",
+                }
+            )
     return overlays
 
 

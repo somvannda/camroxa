@@ -230,8 +230,8 @@ EFFECT_PACK_DOMAIN_LABELS: dict[str, tuple[str, str]] = {
         "Install and apply album text packs to the local draft.",
     ),
     "title": (
-        "Title Pack",
-        "Install and apply title-list packs to the local draft.",
+        "Playlist Pack",
+        "Install and apply playlist-list packs to the local draft.",
     ),
 }
 
@@ -1102,7 +1102,7 @@ class VideoView(QWidget):
             preview_lines=title_lines,
         )
         if bool(self._template_draft.get("titleEnabled")) and title_lines:
-            self._right_rail.set_selection_label(f"{len(title_lines)} title(s)")
+            self._right_rail.set_selection_label(f"{len(title_lines)} track(s)")
         elif bool(self._template_draft.get("albumEnabled")) and album_text:
             self._right_rail.set_selection_label("Album ready")
         else:
@@ -2808,6 +2808,30 @@ class VideoView(QWidget):
         for index, title in enumerate(titles[:24]):
             marker = format_title_marker(index, list_style, total=len(titles), indent=indent)
             lines.append(f"{marker}{title}".strip() if not marker else f"{marker}{title}")
+        if str(settings.get("layout") or "").lower() == "list_card":
+            from features.video.lib.playlist_list_card import playlist_list_card_bounds
+
+            card = playlist_list_card_bounds(settings, titles)
+            self._stage.bind_text_drag_overlay(
+                domain="title",
+                enabled=bool(settings.get("enabled")) and bool(titles),
+                lines=lines or ["Playlist"],
+                anchor="top-left",
+                x=float(card["x"]),
+                y=float(card["y"]),
+                font_family=str(style.get("fontFamily") or "Arial"),
+                font_size=float(style.get("fontSize", 10) or 10),
+                bold=bool(style.get("bold", False)),
+                italic=bool(style.get("italic", False)),
+                color=str(style.get("color") or "#ffffff"),
+                render_base_height=float(self._template_draft.get("renderBaseHeight") or 450.0),
+                box_width=float(card["contentWidth"]),
+                line_spacing=float(style.get("lineSpacing", 1.2) or 1.2),
+                letter_spacing=float(style.get("letterSpacing", 0) or 0),
+                content_width=float(card["contentWidth"]),
+                content_height=float(card["contentHeight"]),
+            )
+            return
         bounds = (
             measure_title_layout_bounds(
                 titles,
@@ -2819,6 +2843,13 @@ class VideoView(QWidget):
             if titles
             else {"contentWidth": 0.0, "contentHeight": 0.0}
         )
+        from features.video.lib.text_domain_runtime import playlist_panel_frame_pad
+
+        pad = playlist_panel_frame_pad(settings, style)
+        pill_extra = 0.0
+        if bool(settings.get("nowPlayingPill")) and titles:
+            font_size = float(style.get("fontSize", 10) or 10)
+            pill_extra = float(max(14.0, font_size * 1.15) + max(4.0, font_size * 0.35))
         self._stage.bind_text_drag_overlay(
             domain="title",
             enabled=bool(settings.get("enabled")) and bool(lines),
@@ -2835,8 +2866,8 @@ class VideoView(QWidget):
             box_width=float(style.get("boxWidth", 0) or 0),
             line_spacing=float(style.get("lineSpacing", 1.2) or 1.2),
             letter_spacing=float(style.get("letterSpacing", 0) or 0),
-            content_width=float(bounds.get("contentWidth", 0) or 0),
-            content_height=float(bounds.get("contentHeight", 0) or 0),
+            content_width=float(bounds.get("contentWidth", 0) or 0) + pad * 2.0,
+            content_height=float(bounds.get("contentHeight", 0) or 0) + pad * 2.0 + pill_extra,
         )
 
     def _update_stage_summary(self) -> None:
@@ -4428,6 +4459,7 @@ class VideoView(QWidget):
             self._spectrum_layers = layers
             self._lightning_layers = lightning
             self._template_name_draft = name
+        self._flush_active_spectrum_instance_layers()
         patch = build_video_workspace_template_save_patch(
             template=dict(self._workspace.template),
             draft=self._template_draft,
@@ -4463,6 +4495,7 @@ class VideoView(QWidget):
     def _schedule_template_server_sync(self) -> None:
         if not self._workspace or self._template_sync_worker is not None:
             return
+        self._flush_active_spectrum_instance_layers()
         patch = build_video_workspace_template_save_patch(
             template=dict(self._workspace.template),
             draft=self._template_draft or {},

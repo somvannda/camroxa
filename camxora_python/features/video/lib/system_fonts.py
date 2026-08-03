@@ -1,7 +1,8 @@
-"""System font discovery for Album/Title typography.
+"""System font discovery for Album/Playlist typography.
 
 Uses Qt's font database for the UI list, and resolves a file path for PIL
-rasterization (GPU text textures).
+rasterization (GPU text textures). Prefers bundled OFL fonts under
+``camxora_python/assets/fonts/`` when registered as Camxora builtin ids.
 """
 
 from __future__ import annotations
@@ -10,7 +11,10 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
-# Built-in Camxora ids → Windows TTF filenames (always listed first).
+# Repo assets root: .../camxora_python/assets/fonts
+_ASSETS_FONTS_DIR = Path(__file__).resolve().parents[3] / "assets" / "fonts"
+
+# Built-in Camxora ids → Windows TTF filenames OR relative paths under assets/fonts.
 BUILTIN_FONT_FILES: dict[str, str] = {
     "arial": "arial.ttf",
     "arialbd": "arialbd.ttf",
@@ -21,9 +25,24 @@ BUILTIN_FONT_FILES: dict[str, str] = {
     "georgiab": "georgiab.ttf",
     "consola": "consola.ttf",
     "comic": "comic.ttf",
+    # Playlist Phase 1 OFL pack (bundled)
+    "inter": "Inter/Inter-Variable.ttf",
+    "montserrat": "Montserrat/Montserrat-Variable.ttf",
+    "rajdhani": "Rajdhani/Rajdhani-Medium.ttf",
+    "rajdhanib": "Rajdhani/Rajdhani-Bold.ttf",
+    "playfair": "PlayfairDisplay/PlayfairDisplay-Variable.ttf",
+    "bebasneue": "BebasNeue/BebasNeue-Regular.ttf",
+    "sourceserif": "SourceSerif4/SourceSerif4-Variable.ttf",
 }
 
 BUILTIN_FONT_OPTIONS: tuple[tuple[str, str], ...] = (
+    ("inter", "Inter"),
+    ("montserrat", "Montserrat"),
+    ("rajdhani", "Rajdhani"),
+    ("rajdhanib", "Rajdhani Bold"),
+    ("playfair", "Playfair Display"),
+    ("bebasneue", "Bebas Neue"),
+    ("sourceserif", "Source Serif 4"),
     ("arial", "Arial"),
     ("arialbd", "Arial Bold"),
     ("segoeui", "Segoe UI"),
@@ -34,6 +53,15 @@ BUILTIN_FONT_OPTIONS: tuple[tuple[str, str], ...] = (
     ("consola", "Consolas"),
     ("comic", "Comic Sans"),
 )
+
+_BUNDLED_BOLD_ALIASES: dict[str, str] = {
+    "rajdhani": "rajdhanib",
+    "inter": "inter",
+    "montserrat": "montserrat",
+    "playfair": "playfair",
+    "sourceserif": "sourceserif",
+    "bebasneue": "bebasneue",
+}
 
 # Allowed filename suffixes after the family stem (not script names like Cham/Khmer).
 _STYLE_SUFFIXES = frozenset(
@@ -436,9 +464,32 @@ def list_font_options() -> tuple[tuple[str, str], ...]:
     return tuple(out)
 
 
+def _bundled_font_path(relative: str) -> Path | None:
+    rel = str(relative or "").replace("\\", "/").strip().lstrip("/")
+    if not rel:
+        return None
+    # Bundled assets use Family/File.ttf; bare Windows names are not under assets.
+    if "/" not in rel:
+        return None
+    candidate = _ASSETS_FONTS_DIR / rel
+    if candidate.is_file():
+        return candidate
+    return None
+
+
 def _builtin_path(family_key: str, *, bold: bool, italic: bool) -> str | None:
     key = str(family_key or "").strip().lower()
-    # Map common builtin ids / labels to a concrete file.
+    # Bundled OFL pack first (Playlist Phase 1).
+    bundled_key = key
+    if bold and key in _BUNDLED_BOLD_ALIASES:
+        bundled_key = _BUNDLED_BOLD_ALIASES[key]
+    bundled_rel = BUILTIN_FONT_FILES.get(bundled_key) or BUILTIN_FONT_FILES.get(key)
+    if bundled_rel and ("/" in bundled_rel or "\\" in bundled_rel):
+        found = _bundled_font_path(bundled_rel)
+        if found is not None:
+            return str(found)
+
+    # Map common builtin ids / labels to a concrete Windows file.
     if key in {"arial", "arialbd", "arialbi", "ariali"}:
         return _arial_fallback(bold=bold or key.endswith("bd") or key.endswith("bi"), italic=italic or key.endswith("i"))
     mapping = {

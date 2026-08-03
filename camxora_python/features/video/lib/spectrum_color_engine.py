@@ -8,7 +8,7 @@ import numpy as np
 
 from features.video.lib.template_value_utils import normalize_color, to_record, to_string_value
 
-MAX_GRADIENT_COLOR_STOPS = 5
+MAX_GRADIENT_COLOR_STOPS = 12
 GRADIENT_FALLBACK_COLOR = "#22d3ee"
 
 VALID_GRADIENT_DIRECTIONS = frozenset(

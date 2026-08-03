@@ -877,8 +877,16 @@ class VideoSpectrumPreview(QOpenGLWidget):
             delta_x = float(nx) - old_x
             delta_y = float(ny) - old_y
             if abs(delta_x) > 1e-09 or abs(delta_y) > 1e-09:
+                from features.video.lib.text_domain_runtime import TITLE_DOMAIN_DRAG_SOURCES
+
                 for o in overlays:
-                    if isinstance(o, dict) and str(o.get("source") or "") == source:
+                    if not isinstance(o, dict):
+                        continue
+                    src = str(o.get("source") or "")
+                    if key == "title" and src in TITLE_DOMAIN_DRAG_SOURCES:
+                        o["x"] = float(o.get("x", 0) or 0) + delta_x
+                        o["y"] = float(o.get("y", 0) or 0) + delta_y
+                    elif src == source:
                         o["x"] = float(o.get("x", 0) or 0) + delta_x
                         o["y"] = float(o.get("y", 0) or 0) + delta_y
         self._text_drag_dx = 0.0
@@ -1536,8 +1544,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
     def _ensure_text_texture(self, idx: int, overlay: dict, sf: float) -> tuple[any, tuple[int, int]]:
         if not self.ctx:
             return (None, (0, 0))
+        kind = str((overlay or {}).get("overlayKind") or "text").strip().lower()
         text = str((overlay or {}).get("text", "") or "").strip()
-        if not text:
+        if kind not in {"panel", "pill", "stage_art"} and not text:
             return (None, (0, 0))
         while len(self._text_cache_keys) <= idx:
             self._text_cache_keys.append(None)
@@ -1545,77 +1554,65 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self._text_sizes.append((0, 0))
         # Template units are authored against renderBaseHeight; scale 1:1 with preview height.
         scale = float(max(0.05, min(16.0, float(sf or 1.0))))
-        size_px = float((overlay or {}).get("sizePx", 46.0) if "sizePx" in (overlay or {}) else 46.0)
-        size_px = float(max(5.0, min(200.0, size_px)))
-        col = str((overlay or {}).get("color", "#ffffff") or "#ffffff").strip()
-        scol = str((overlay or {}).get("strokeColor", "#000000") or "#000000").strip()
-        sw = float((overlay or {}).get("strokeWidth", 2.0) if "strokeWidth" in (overlay or {}) else 2.0)
-        sh = float((overlay or {}).get("shadow", 0.4) if "shadow" in (overlay or {}) else 0.4)
-        font_family = str((overlay or {}).get("fontFamily", "arial") or "arial").strip().lower()
-        bold = bool((overlay or {}).get("bold", False))
-        italic = bool((overlay or {}).get("italic", False))
-        letter_spacing = float((overlay or {}).get("letterSpacing", 0.0) if "letterSpacing" in (overlay or {}) else 0.0)
-        line_spacing = float((overlay or {}).get("lineSpacing", 1.15) if "lineSpacing" in (overlay or {}) else 1.15)
-        align = str((overlay or {}).get("align", "left") or "left")
-        box_width = float((overlay or {}).get("boxWidth", 0.0) if "boxWidth" in (overlay or {}) else 0.0)
-        fill_mode = str((overlay or {}).get("fillMode", "solid") or "solid")
-        gradient_colors = (overlay or {}).get("gradientColors") if isinstance((overlay or {}).get("gradientColors"), list) else []
-        gradient_direction = str((overlay or {}).get("gradientDirection", "vertical") or "vertical")
-        glow_amt = float((overlay or {}).get("glow", 0.0) if "glow" in (overlay or {}) else 0.0)
-        glow_color = str((overlay or {}).get("glowColor", "#ff4fd8") or "#ff4fd8")
-        glow_blur = float((overlay or {}).get("glowBlur", 8.0) if "glowBlur" in (overlay or {}) else 8.0)
-        glow_mode = str((overlay or {}).get("glowMode", "solid") or "solid")
-        glow_gradient_colors = (
-            (overlay or {}).get("glowGradientColors")
-            if isinstance((overlay or {}).get("glowGradientColors"), list)
-            else []
-        )
-        glow_gradient_direction = str(
-            (overlay or {}).get("glowGradientDirection", "horizontal") or "horizontal"
-        )
-        shadow_blur = float((overlay or {}).get("shadowBlur", 0.0) if "shadowBlur" in (overlay or {}) else 0.0)
-        extrude_depth = float((overlay or {}).get("extrudeDepth", 0.0) if "extrudeDepth" in (overlay or {}) else 0.0)
-        extrude_color = str((overlay or {}).get("extrudeColor", "#1a1a1a") or "#1a1a1a")
-        grad_key = ",".join(str(c) for c in gradient_colors)
-        glow_grad_key = ",".join(str(c) for c in glow_gradient_colors)
-        # Include scale so maximize / resize rebuilds the raster (same look at any size).
-        key = (
-            f"{text}|{size_px:.2f}|{col}|{scol}|{sw:.2f}|{sh:.2f}|{font_family}|{int(bold)}|{int(italic)}"
-            f"|{letter_spacing:.2f}|{line_spacing:.2f}|{align}|{box_width:.1f}|{fill_mode}|{grad_key}|{gradient_direction}"
-            f"|{glow_amt:.2f}|{glow_color}|{glow_blur:.2f}|{glow_mode}|{glow_grad_key}|{glow_gradient_direction}"
-            f"|{shadow_blur:.2f}|{extrude_depth:.2f}|{extrude_color}|sf:{scale:.4f}"
-        )
+        if kind in {"panel", "pill", "stage_art"}:
+            opacity_mul = float((overlay or {}).get("opacity", 1.0) if "opacity" in (overlay or {}) else 1.0)
+            key = (
+                f"shape:{kind}|{float((overlay or {}).get('panelWidth') or 0):.1f}"
+                f"|{float((overlay or {}).get('panelHeight') or 0):.1f}"
+                f"|{(overlay or {}).get('color')}|{opacity_mul:.3f}|{(overlay or {}).get('strokeColor')}"
+                f"|{float((overlay or {}).get('strokeWidth') or 0):.2f}"
+                f"|{float((overlay or {}).get('panelRadius') or 0):.2f}"
+                f"|{float((overlay or {}).get('panelFrost') or 0):.2f}"
+                f"|{float((overlay or {}).get('panelSpecular') or 0):.2f}|{text}"
+                f"|{float((overlay or {}).get('sizePx') or 0):.2f}|{(overlay or {}).get('fontFamily')}"
+                f"|{(overlay or {}).get('logoPath')}|sf:{scale:.4f}"
+            )
+        else:
+            size_px = float((overlay or {}).get("sizePx", 46.0) if "sizePx" in (overlay or {}) else 46.0)
+            size_px = float(max(5.0, min(200.0, size_px)))
+            col = str((overlay or {}).get("color", "#ffffff") or "#ffffff").strip()
+            scol = str((overlay or {}).get("strokeColor", "#000000") or "#000000").strip()
+            sw = float((overlay or {}).get("strokeWidth", 2.0) if "strokeWidth" in (overlay or {}) else 2.0)
+            sh = float((overlay or {}).get("shadow", 0.4) if "shadow" in (overlay or {}) else 0.4)
+            font_family = str((overlay or {}).get("fontFamily", "arial") or "arial").strip().lower()
+            bold = bool((overlay or {}).get("bold", False))
+            italic = bool((overlay or {}).get("italic", False))
+            letter_spacing = float((overlay or {}).get("letterSpacing", 0.0) if "letterSpacing" in (overlay or {}) else 0.0)
+            line_spacing = float((overlay or {}).get("lineSpacing", 1.15) if "lineSpacing" in (overlay or {}) else 1.15)
+            align = str((overlay or {}).get("align", "left") or "left")
+            box_width = float((overlay or {}).get("boxWidth", 0.0) if "boxWidth" in (overlay or {}) else 0.0)
+            fill_mode = str((overlay or {}).get("fillMode", "solid") or "solid")
+            gradient_colors = (overlay or {}).get("gradientColors") if isinstance((overlay or {}).get("gradientColors"), list) else []
+            gradient_direction = str((overlay or {}).get("gradientDirection", "vertical") or "vertical")
+            glow_amt = float((overlay or {}).get("glow", 0.0) if "glow" in (overlay or {}) else 0.0)
+            glow_color = str((overlay or {}).get("glowColor", "#ff4fd8") or "#ff4fd8")
+            glow_blur = float((overlay or {}).get("glowBlur", 8.0) if "glowBlur" in (overlay or {}) else 8.0)
+            glow_mode = str((overlay or {}).get("glowMode", "solid") or "solid")
+            glow_gradient_colors = (
+                (overlay or {}).get("glowGradientColors")
+                if isinstance((overlay or {}).get("glowGradientColors"), list)
+                else []
+            )
+            glow_gradient_direction = str(
+                (overlay or {}).get("glowGradientDirection", "horizontal") or "horizontal"
+            )
+            shadow_blur = float((overlay or {}).get("shadowBlur", 0.0) if "shadowBlur" in (overlay or {}) else 0.0)
+            extrude_depth = float((overlay or {}).get("extrudeDepth", 0.0) if "extrudeDepth" in (overlay or {}) else 0.0)
+            extrude_color = str((overlay or {}).get("extrudeColor", "#1a1a1a") or "#1a1a1a")
+            grad_key = ",".join(str(c) for c in gradient_colors)
+            glow_grad_key = ",".join(str(c) for c in glow_gradient_colors)
+            # Include scale so maximize / resize rebuilds the raster (same look at any size).
+            key = (
+                f"{text}|{size_px:.2f}|{col}|{scol}|{sw:.2f}|{sh:.2f}|{font_family}|{int(bold)}|{int(italic)}"
+                f"|{letter_spacing:.2f}|{line_spacing:.2f}|{align}|{box_width:.1f}|{fill_mode}|{grad_key}|{gradient_direction}"
+                f"|{glow_amt:.2f}|{glow_color}|{glow_blur:.2f}|{glow_mode}|{glow_grad_key}|{glow_gradient_direction}"
+                f"|{shadow_blur:.2f}|{extrude_depth:.2f}|{extrude_color}|sf:{scale:.4f}"
+            )
         if self._text_cache_keys[idx] == key and self._text_textures[idx] is not None:
             return (self._text_textures[idx], self._text_sizes[idx])
-        from visualizer.gpu_render import _render_text_rgba
+        from visualizer.gpu_render import _render_overlay_rgba
 
-        arr, tw, th = _render_text_rgba(
-            text,
-            size_px * scale,
-            col,
-            scol,
-            sw * scale,
-            sh,
-            font_family=font_family,
-            bold=bold,
-            italic=italic,
-            letter_spacing=letter_spacing * scale,
-            line_spacing=line_spacing,
-            align=align,
-            box_width=box_width * scale,
-            fill_mode=fill_mode,
-            gradient_colors=gradient_colors,
-            gradient_direction=gradient_direction,
-            glow=glow_amt,
-            glow_color=glow_color,
-            glow_blur=glow_blur * scale,
-            glow_mode=glow_mode,
-            glow_gradient_colors=glow_gradient_colors,
-            glow_gradient_direction=glow_gradient_direction,
-            shadow_blur=shadow_blur * scale,
-            extrude_depth=extrude_depth * scale,
-            extrude_color=extrude_color,
-        )
+        arr, tw, th = _render_overlay_rgba(overlay, scale)
         self.makeCurrent()
         if self._text_textures[idx] is not None:
             try:
@@ -1674,7 +1671,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self._particles_wh = (w, h)
             self.ctx.enable(moderngl.BLEND)
             self.ctx.enable(moderngl.PROGRAM_POINT_SIZE)
-            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            self._blend_normal()
             self._gl_ready = True
             self._log(f"[{time.strftime('%H:%M:%S')}] initializeGL ok (qt_fbo={int(self.defaultFramebufferObject())})")
         except Exception as e:
@@ -1683,6 +1680,35 @@ class VideoSpectrumPreview(QOpenGLWidget):
             traceback.print_exc()
             self._gl_ready = False
             self.ctx = None
+
+    def _blend_normal(self) -> None:
+        """Standard alpha for RGB; keep framebuffer alpha opaque.
+
+        Soft glow / glass textures write a < 1. With the default
+        ``SRC_ALPHA, ONE_MINUS_SRC_ALPHA`` on *all* channels, that punches
+        holes in the QOpenGLWidget alpha and Qt composites the app chrome
+        through the preview. Lock alpha with ``ZERO, ONE`` so clear(…, 1)
+        stays fully opaque.
+        """
+        if not self.ctx:
+            return
+        self.ctx.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE_MINUS_SRC_ALPHA,
+            moderngl.ZERO,
+            moderngl.ONE,
+        )
+
+    def _blend_additive(self) -> None:
+        """Additive RGB bloom without lowering framebuffer opacity."""
+        if not self.ctx:
+            return
+        self.ctx.blend_func = (
+            moderngl.SRC_ALPHA,
+            moderngl.ONE,
+            moderngl.ZERO,
+            moderngl.ONE,
+        )
 
     def resizeEvent(self, ev):
         self._sync_export_overlay_geometry()
@@ -1705,7 +1731,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self.ctx.clear(0.02, 0.02, 0.02, 1.0)
             self.ctx.enable(moderngl.BLEND)
             self.ctx.enable(moderngl.PROGRAM_POINT_SIZE)
-            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            self._blend_normal()
             import pygame
             if getattr(self, 'audio_playing', False):
                 if pygame.mixer.music.get_busy():
@@ -2471,7 +2497,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 feats=feats,
                 logo_enabled=logo_enabled,
             )
-            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            self._blend_normal()
             if logo_enabled:
                 self.prog_logo['tex_logo'].value = 1
                 if hasattr(self, 'tex_logo'):
@@ -2499,13 +2525,14 @@ class VideoSpectrumPreview(QOpenGLWidget):
             overlays = self.template.get("textOverlays") if isinstance(self.template.get("textOverlays"), list) else []
             if overlays:
                 import math
-                self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+                self._blend_normal()
                 drag_source = self._text_drag_source()
                 for idx, o in enumerate(overlays[:64]):
                     if not isinstance(o, dict) or not bool(o.get("enabled", False)):
                         continue
+                    kind = str(o.get("overlayKind") or "text").strip().lower()
                     text = str(o.get("text", "") or "").strip()
-                    if not text:
+                    if kind not in {"panel", "pill", "stage_art"} and not text:
                         continue
                     start = float(o.get("startSec", 0.0) or 0.0)
                     dur = float(o.get("durationSec", 3.0) or 3.0)
@@ -2553,8 +2580,15 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     anchor_t = str(o.get("anchor", "top-left") or "top-left")
                     ox = float(o.get("x", 24.0) if "x" in o else 24.0) * sf
                     oy = float(o.get("y", 24.0) if "y" in o else 24.0) * sf
-                    # GPU real-time drag: add live widget-pixel offset (no template mutate).
-                    if drag_source and str(o.get("source") or "") == drag_source:
+                    # GPU real-time drag: move title rows + panel/pill/badge together.
+                    src = str(o.get("source") or "")
+                    if drag_source == "titleText":
+                        from features.video.lib.text_domain_runtime import TITLE_DOMAIN_DRAG_SOURCES
+
+                        if src in TITLE_DOMAIN_DRAG_SOURCES:
+                            ox += float(self._text_drag_dx)
+                            oy += float(self._text_drag_dy)
+                    elif drag_source and src == drag_source:
                         ox += float(self._text_drag_dx)
                         oy += float(self._text_drag_dy)
                     ax, ay = _get_anchor_coords(anchor_t, ox, oy, w, h)
@@ -2569,9 +2603,12 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         float(ay) - float(h) * 0.5 + dy + qy,
                     )
                     self.prog_text["text_size_px"].value = (draw_w, draw_h)
-                    self.prog_text["text_opacity"].value = float(
-                        max(0.0, min(1.0, opacity * float(o.get("opacity", 1.0) or 1.0)))
+                    draw_opacity = float(
+                        opacity
+                        if kind in {"panel", "pill", "stage_art"}
+                        else opacity * float(o.get("opacity", 1.0) or 1.0)
                     )
+                    self.prog_text["text_opacity"].value = float(max(0.0, min(1.0, draw_opacity)))
                     self.prog_text["reveal"].value = float(max(0.0, min(1.0, reveal)))
                     self.vao_quad_text.render(mode=moderngl.TRIANGLE_STRIP)
         except Exception as e:

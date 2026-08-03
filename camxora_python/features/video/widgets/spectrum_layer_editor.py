@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from features.video.lib.spectrum_color_engine import (
+    MAX_GRADIENT_COLOR_STOPS,
     SPECTRUM_GRADIENT_PRESET_OPTIONS,
     apply_spectrum_layer_color_patch,
     build_spectrum_gradient_preset_value,
@@ -505,7 +506,7 @@ class SpectrumLayerEditor(InspectorSection):
 
     def _add_gradient_stop(self) -> None:
         colors = list(self._color_model.get("gradientColors") or [])
-        if len(colors) >= 5:
+        if len(colors) >= MAX_GRADIENT_COLOR_STOPS:
             return
         colors.append(colors[-1] if colors else str(self._color_model.get("solidColor") or "#ffffff"))
         self.layer_color_patch_requested.emit(

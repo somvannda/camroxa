@@ -1,4 +1,4 @@
-"""Video workspace right rail — Album and Title text domains."""
+"""Video workspace right rail — Album and Playlist text domains."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ class VideoRightRail(SettingsPanel):
 
     _SIDE_TABS = (
         ("album", "Album"),
-        ("title", "Title"),
+        ("title", "Playlist"),
     )
 
     def __init__(
@@ -26,7 +26,7 @@ class VideoRightRail(SettingsPanel):
     ) -> None:
         super().__init__(
             "Inspector",
-            subtitle="Album and Title text domains",
+            subtitle="Album and Playlist text domains",
             fill_available_height=True,
             parent=parent,
         )
@@ -66,7 +66,7 @@ class VideoRightRail(SettingsPanel):
             self.side_tab_changed.emit(self._SIDE_TABS[index][0])
 
     def _on_tab_bar_clicked(self, index: int) -> None:
-        # Re-clicking the active Album/Title tab still enables preview drag focus.
+        # Re-clicking the active Album/Playlist tab still enables preview drag focus.
         if 0 <= index < len(self._SIDE_TABS):
             self.side_tab_changed.emit(self._SIDE_TABS[index][0])
 

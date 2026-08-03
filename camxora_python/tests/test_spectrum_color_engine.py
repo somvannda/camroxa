@@ -16,6 +16,29 @@ def test_normalize_spectrum_gradient_colors_requires_two_stops() -> None:
     assert colors[0] == "#ff0000"
 
 
+def test_normalize_allows_up_to_twelve_gradient_stops() -> None:
+    from features.video.lib.spectrum_color_engine import MAX_GRADIENT_COLOR_STOPS
+
+    many = [f"#{i:02x}80ff" for i in range(16)]
+    colors = normalize_spectrum_gradient_colors(many, "#ffffff")
+    assert MAX_GRADIENT_COLOR_STOPS == 12
+    assert len(colors) == 12
+
+
+def test_vivid_palette_catalog_has_multi_stop_presets() -> None:
+    from features.video.lib.spectrum_color_engine import (
+        SPECTRUM_GRADIENT_PRESET_OPTIONS,
+        spectrum_gradient_preset_colors,
+    )
+
+    assert len(SPECTRUM_GRADIENT_PRESET_OPTIONS) >= 20
+    labels = {label for _value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS}
+    assert "Rainbow Rush" in labels
+    assert "Carnival Riot" in labels
+    rainbow = next(v for v, label in SPECTRUM_GRADIENT_PRESET_OPTIONS if label == "Rainbow Rush")
+    assert len(spectrum_gradient_preset_colors(rainbow)) >= 6
+
+
 def test_extract_spectrum_layer_color_model_reads_nested_color() -> None:
     layer = {
         "color": {
