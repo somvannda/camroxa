@@ -23,7 +23,10 @@ import {
 import { toast } from '@/hooks/use-toast';
 
 function extractVersionFromFilename(filename: string) {
-  const match = /^Camxora-(\d+(?:\.\d+){0,2})\./i.exec(filename);
+  const match =
+    /^(?:CamxoraSetup-|Camxora-Setup-|Camxora-)(\d+(?:\.\d+){0,2})(?:-(?:production|sandbox))?\./i.exec(
+      filename,
+    );
   return match?.[1] ?? null;
 }
 
@@ -168,6 +171,7 @@ export function ReleaseEditorDialog({
             {
               filename: prefilledInstaller.filename,
               body: {
+                version: payload.version,
                 release_notes: payload.release_notes,
                 mandatory: payload.mandatory,
                 create_changelog: createChangelogOnPublish,
@@ -296,7 +300,7 @@ export function ReleaseEditorDialog({
               id="release-download-url"
               value={downloadUrl}
               onChange={(e) => setDownloadUrl(e.target.value)}
-              placeholder="https://downloads.camxora.com/desktop/Camxora-2.5.0.zip"
+              placeholder="https://api.camxora.com/api/v1/public/desktop-release/files/CamxoraSetup-1.0.15.exe"
               disabled={isBusy}
             />
             <p className="text-xs text-slate-500">
@@ -310,8 +314,8 @@ export function ReleaseEditorDialog({
             <div>
               <p className="text-sm font-medium text-slate-200">Upload installer</p>
               <p className="mt-1 text-xs text-slate-500">
-                Upload a hosted package to auto-generate an absolute download URL. Uses the version field
-                above for the stored filename when provided.
+                Upload any .zip / .exe / .msi — the filename does not need a special pattern.
+                Version and Force update come from the fields above; publish uses those.
               </p>
             </div>
             <Input

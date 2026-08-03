@@ -1834,6 +1834,7 @@ class PublishSoftwareUpdateResponse(BaseModel):
 
 
 class PublishInstallerRequest(BaseModel):
+    version: str | None = Field(default=None, max_length=64)
     mandatory: bool | None = None
     release_notes: str | None = Field(default=None, max_length=4000)
     notify_desktop_users: bool = True
@@ -2089,7 +2090,6 @@ async def publish_desktop_installer(
     http_request: Request,
 ) -> PublishSoftwareUpdateResponse:
     from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
-    from platform_api.exceptions import ValidationError
     from platform_api.services.desktop_notification_admin_service import (
         get_software_update_config,
         publish_software_update,
@@ -2103,11 +2103,22 @@ async def publish_desktop_installer(
     if record is None:
         raise HTTPException(status_code=404, detail="Installer file not found.")
 
-    version = extract_version_from_installer_filename(record.filename) or ""
-    if not version.strip():
-        raise HTTPException(status_code=400, detail="Could not determine version from installer filename.")
-
+    # Version comes from the Software Update form / draft — not from the
+    # installer filename. Filename parse is a last-resort convenience only
+    # (e.g. older Camxora-1.0.0.zip uploads). Force-update must work for any
+    # uploaded .exe as long as Version + Force update are set in the form.
     current = await get_software_update_config(pool)
+    version = (
+        str(request.version or "").strip()
+        or str(current.version or "").strip()
+        or (extract_version_from_installer_filename(record.filename) or "")
+    )
+    if not version:
+        raise HTTPException(
+            status_code=400,
+            detail="Version is required. Set it in the Software Update form, then publish.",
+        )
+
     release_notes = (
         request.release_notes.strip()
         if request.release_notes is not None

@@ -17,6 +17,7 @@ from shared.lib.app_paths import get_user_data_dir
 from shared.lib.disk_space import has_sufficient_free_space
 from shared.lib.export_codec import DEFAULT_EXPORT_SPEED_MODE
 from shared.lib.ffmpeg_paths import get_bundled_ffmpeg_path, resolve_ffmpeg_path
+from shared.lib.path_locality import is_foreign_windows_profile_path
 
 
 _PATH_KEYS = (
@@ -30,6 +31,7 @@ _PATH_KEYS = (
 )
 
 _known_uncreatable_paths: set[str] = set()
+_logged_foreign_paths: set[str] = set()
 
 
 def default_media_root() -> Path:
@@ -48,10 +50,46 @@ def default_workspace_paths() -> dict[str, str]:
     }
 
 
+def is_usable_workspace_path(path: str) -> bool:
+    """True when ``path`` is safe to mkdir / use as a workspace folder here.
+
+    Rejects empty values and paths under a *different* Windows user profile
+    (account-synced leftovers from another machine) without touching the
+    filesystem — those always fail with Access Denied and used to spam the
+    log on every settings/startup pass.
+    """
+    normalized = str(path or "").strip()
+    if not normalized:
+        return False
+    if is_foreign_windows_profile_path(normalized):
+        return False
+    return True
+
+
+def _log_foreign_path_once(path: str) -> None:
+    if path in _logged_foreign_paths:
+        return
+    _logged_foreign_paths.add(path)
+    from shared.services.app_logger import log_warn
+
+    log_warn(
+        f"Ignoring workspace path from another Windows user profile "
+        f"(will use this machine's default instead): {path}",
+        category="workspace",
+    )
+
+
 def ensure_directory(path: str) -> str:
     normalized = str(path or "").strip()
     if not normalized:
         return ""
+    if is_foreign_windows_profile_path(normalized):
+        # Never attempt mkdir under someone else's profile — Windows denies
+        # creating anything under C:\\Users\\<other>, and pathlib walks the
+        # whole parent chain producing a multi-level PermissionError cascade.
+        _known_uncreatable_paths.add(normalized)
+        _log_foreign_path_once(normalized)
+        return normalized
     if normalized in _known_uncreatable_paths:
         # Already proven uncreatable this session — skip the syscall
         # entirely. apply_workspace_path_defaults() re-derives settings on
@@ -92,7 +130,7 @@ def apply_workspace_path_defaults(settings: dict[str, Any] | None) -> tuple[dict
 
     for key, default_path in defaults.items():
         existing = str(current.get(key) or "").strip()
-        if existing:
+        if existing and is_usable_workspace_path(existing):
             ensure_directory(existing)
             if Path(existing).is_dir():
                 if has_sufficient_free_space(existing):
@@ -111,14 +149,15 @@ def apply_workspace_path_defaults(settings: dict[str, Any] | None) -> tuple[dict
                     f"Workspace path has too little free space, switching to local default: {existing}",
                     category="workspace",
                 )
-            # These path settings are persisted account-wide (server-side),
-            # but a local Windows folder is inherently machine-specific: a
-            # value saved from one machine (e.g. "C:\Users\Alice\...") is
-            # meaningless — and uncreatable — on a second machine logged
-            # into the same account under a different Windows profile.
-            # Fall through and self-heal to this machine's own default
-            # instead of retrying (and crashing every caller on) a dead
-            # cross-machine path forever.
+            # Path was creatable in principle but isn't a usable directory
+            # here (missing parents, permission, etc.) — fall through and
+            # self-heal to this machine's own default.
+        elif existing:
+            # Account-synced leftover from another Windows profile / machine.
+            # Do not call ensure_directory — that would mkdir-walk into
+            # Access Denied and spam the log. Heal quietly below.
+            _log_foreign_path_once(existing)
+        # Empty, foreign, uncreatable, or low-disk: use this machine's default.
         ensure_directory(default_path)
         current[key] = default_path
         patch[key] = default_path

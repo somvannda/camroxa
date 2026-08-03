@@ -71,6 +71,19 @@ def ensure_directory(directory_path: str) -> None:
     normalized = str(directory_path or "").strip()
     if not normalized:
         return
+    from shared.lib.path_locality import is_foreign_windows_profile_path
+
+    if is_foreign_windows_profile_path(normalized):
+        # Skip mkdir entirely — Windows denies creating under another user's
+        # profile, and pathlib's parent-walk produces a multi-level
+        # PermissionError cascade that used to flood the music-download log.
+        from shared.services.app_logger import log_warn
+
+        log_warn(
+            f"Skipping directory under another Windows user profile: {normalized}",
+            category="filesystem",
+        )
+        return
     try:
         Path(normalized).mkdir(parents=True, exist_ok=True)
     except OSError as exc:

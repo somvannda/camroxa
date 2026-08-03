@@ -31,6 +31,7 @@ export type PublishSoftwareUpdateResponse = {
 };
 
 export type PublishInstallerInput = {
+  version?: string;
   release_notes?: string;
   mandatory?: boolean;
   notify_desktop_users?: boolean;

@@ -1,19 +1,20 @@
-﻿Camxora 1.0.1 — Progress + export stability
-Date: 2026-07-28
+﻿Camxora 1.0.15 - Multi-machine paths, spectrum flush drag, startup retry (+ 1.0.14 merge)
+Date: 2026-08-03
 
 What's new
 ----------
-• Frozen export hang / beat crash / multi-worker beats hang fixes
-• Export console flashes hidden (nvidia-smi / taskkill)
-• Progress Limit: 10 / 25 / 50 / 100 (default 10)
-• Progress Active only uses effective stage (hides Done + Completed)
-• Update column freezes when Done / Error / Completed
-• Moved/archived run folders no longer reopen Music/Export
-• New stage: Completed (desktop pipeline finished); Done = YouTube
-• Video export starts when background is ready (thumbnail is YouTube-only)
+- Same Camxora account on two PCs: ignore the other Windows user's
+  C:\Users\... paths (no more PermissionError spam); use this PC's folders
+- Spectrum / logo / lightning can drag flush to the top and bottom of preview
+- Stronger startup retry when Windows Defender briefly blocks pydantic import
+- Continue / Start Merging no longer requires export background PNG or catalog template
+- Clearer export readiness errors when Start Export is blocked
+- Honest API-recovery toasts (only "resuming" when a run actually starts)
 
 Notes
 -----
-• Production API only
-• API: https://api.camxora.com/api/v1
-• Installer file: CamxoraSetup-1.0.1.exe
+- Production API only
+- API: https://api.camxora.com/api/v1
+- Installer file: CamxoraSetup-1.0.15.exe
+- Force auto-update publish of CamxoraSetup-*.exe needs the matching
+  platform_api + admin portal hotfix (filename parse) deployed separately

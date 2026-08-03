@@ -23,7 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Streaming Upload Jobs: API now returns user/song/album/batch/publish fields so cards are not empty dashes. See `docs/changelog/2026-08-02-admin-streaming-upload-job-details.md`.
-- Software Updates: parse `CamxoraSetup-*.exe` (Inno) filenames so Publish no longer 400s; pass explicit version on publish.
+- Software Updates: Force update publish no longer depends on installer
+  filename shape — Version + Force update come from the form; filename parse
+  is auto-fill only (`CamxoraSetup-*.exe` still helped when present). See
+  `docs/changelog/2026-08-03-software-update-setup-filename.md`.
 
 ## [2026-07-25]
 

@@ -208,6 +208,22 @@ class MusicDownloadSyncWorker(QThread):
                         continue
                     try:
                         output_dir = str(target.output_dir or "").strip()
+                        from shared.lib.path_locality import is_foreign_windows_profile_path
+
+                        if output_dir and is_foreign_windows_profile_path(output_dir):
+                            # Account-synced leftover from another Windows
+                            # profile — never mkdir/download into it. Skip
+                            # this item until Change Run Folder / a local
+                            # heal repoints output_dir.
+                            from shared.services.app_logger import log_warn
+
+                            log_warn(
+                                f"Skipping pending download for task {item.task_id} "
+                                f"({channel}): output_dir is under another "
+                                f"Windows user profile ({output_dir})",
+                                category="music",
+                            )
+                            continue
                         if output_dir and output_dir not in ensured_dirs:
                             from shared.services.file_service import ensure_directory
 

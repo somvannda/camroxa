@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-02  
 **Status:** implemented  
-**Branch:** `fix/merge-skip-export-readiness`
+**Branch:** `fix/merge-skip-export-readiness` / also on `release/desktop-1.0.15` (installer `CamxoraSetup-1.0.14.exe`)
 
 ## Problem
 

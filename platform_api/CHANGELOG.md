@@ -59,6 +59,10 @@ See `docs/changelog/2026-08-01-v109-unified-branch-and-migration-merge.md`.
 
 ### Fixed
 
+- Desktop installer publish: version comes from the Software Update form /
+  draft (Force update checkbox), not from the installer filename. Filename
+  parse is auto-fill only; `CamxoraSetup-*.exe` still parses when present.
+  See `docs/changelog/2026-08-03-software-update-setup-filename.md`.
 - Startup `alembic upgrade heads` now serializes across worker processes via a Postgres advisory lock — with `API_WORKERS` > 1, every worker previously ran migrations independently and concurrently, which raced DDL against other workers' open connection pools and caused a ~30 minute burst of 500s across nearly every endpoint after today's v1.0.9 production deploy. See `docs/changelog/2026-08-01-migration-worker-race-incident.md`.
 - Production/sandbox systemd unit templates now set `PYTHONUNBUFFERED=1` — stdout was block-buffered, so error tracebacks (including this incident's) were invisible in `journalctl` until a restart. Same incident doc.
 
@@ -86,7 +90,9 @@ See `docs/changelog/2026-08-01-v109-unified-branch-and-migration-merge.md`.
 
 ### Fixed
 
-- Desktop installer publish: accept `CamxoraSetup-*.exe` / `Camxora-Setup-*.exe` in version filename parse; optional `version` on publish body. See `docs/changelog/2026-07-26-software-update-setup-filename.md`.
+- ~~Desktop installer publish CamxoraSetup filename parse~~ — changelog-only claim;
+  the code never landed. Real fix: 2026-08-03 Unreleased +
+  `docs/changelog/2026-08-03-software-update-setup-filename.md`.
 
 ## [2026-07-25]
 
