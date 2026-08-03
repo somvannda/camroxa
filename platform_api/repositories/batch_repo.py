@@ -490,6 +490,34 @@ class BatchRepository:
             str(alt_run_dir or "").strip() or None,
         )
 
+    async def claim_batch_run_directories(
+        self,
+        batch_id: UUID,
+        *,
+        ok_run_dir: str | None,
+        alt_run_dir: str | None,
+    ) -> tuple[str | None, str | None]:
+        """First writer wins for run dirs; later drafts keep the locked paths."""
+        row = await self._pool.fetchrow(
+            """
+            UPDATE batches
+            SET ok_run_dir = COALESCE(ok_run_dir, $2),
+                alt_run_dir = COALESCE(alt_run_dir, $3),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING ok_run_dir, alt_run_dir
+            """,
+            batch_id,
+            str(ok_run_dir or "").strip() or None,
+            str(alt_run_dir or "").strip() or None,
+        )
+        if row is None:
+            return None, None
+        return (
+            str(row["ok_run_dir"] or "").strip() or None,
+            str(row["alt_run_dir"] or "").strip() or None,
+        )
+
     async def update_batch_channel_albums(
         self,
         batch_id: UUID,
@@ -515,6 +543,43 @@ class BatchRepository:
                 logger.warning("Skipping batch channel album update because columns are missing.")
                 return
             raise
+
+    async def claim_batch_channel_albums(
+        self,
+        batch_id: UUID,
+        *,
+        ok_album: str | None,
+        alt_album: str | None,
+    ) -> tuple[str | None, str | None]:
+        """First writer wins for Album 1 / Album 2; parallel drafts cannot overwrite."""
+        try:
+            row = await self._pool.fetchrow(
+                """
+                UPDATE batches
+                SET ok_album = COALESCE(ok_album, $2),
+                    alt_album = COALESCE(alt_album, $3),
+                    updated_at = NOW()
+                WHERE id = $1
+                RETURNING ok_album, alt_album
+                """,
+                batch_id,
+                str(ok_album or "").strip() or None,
+                str(alt_album or "").strip() or None,
+            )
+        except Exception as error:
+            if "ok_album" in str(error).lower() or "alt_album" in str(error).lower():
+                logger.warning("Skipping batch channel album claim because columns are missing.")
+                return (
+                    str(ok_album or "").strip() or None,
+                    str(alt_album or "").strip() or None,
+                )
+            raise
+        if row is None:
+            return None, None
+        return (
+            str(row["ok_album"] or "").strip() or None,
+            str(row["alt_album"] or "").strip() or None,
+        )
 
     # ------------------------------------------------------------------
     # Song Record Management

@@ -1356,20 +1356,29 @@ class BatchService:
         if batch is None:
             return None
 
-        ok_album = str(getattr(batch, "ok_album", None) or successful_songs[0].album or "").strip()
-        if not ok_album:
+        locked_ok = str(getattr(batch, "ok_album", None) or "").strip()
+        locked_alt = str(getattr(batch, "alt_album", None) or "").strip()
+        has_alt_profile = bool(getattr(batch, "alt_profile_id", None))
+        # Albums already locked — reuse without regenerating.
+        if locked_ok and (locked_alt or not has_alt_profile):
+            batch.ok_album = locked_ok
+            batch.alt_album = locked_alt or None
             return batch
 
-        alt_album = str(getattr(batch, "alt_album", None) or "").strip()
-        if getattr(batch, "alt_profile_id", None) and (
-            not alt_album or self._album_names_equal(alt_album, ok_album)
+        candidate_ok = locked_ok or str(successful_songs[0].album or "").strip()
+        if not candidate_ok:
+            return batch
+
+        candidate_alt = locked_alt
+        if has_alt_profile and (
+            not candidate_alt or self._album_names_equal(candidate_alt, candidate_ok)
         ):
             draft_request = draft_requests[getattr(successful_songs[0], "batch_index", 0)]
             try:
-                alt_album = await self._resolve_alt_channel_album(
+                candidate_alt = await self._resolve_alt_channel_album(
                     batch=batch,
                     user_id=user_id,
-                    ok_album=ok_album,
+                    ok_album=candidate_ok,
                     use_content_pools=use_content_pools,
                     draft_request=draft_request,
                     draft_routing=draft_routing,
@@ -1380,18 +1389,19 @@ class BatchService:
                     batch_id,
                     exc,
                 )
-                alt_album = self._fallback_distinct_album(ok_album)
+                candidate_alt = self._fallback_distinct_album(candidate_ok)
 
-        if alt_album and self._album_names_equal(alt_album, ok_album):
-            alt_album = self._fallback_distinct_album(ok_album)
+        if candidate_alt and self._album_names_equal(candidate_alt, candidate_ok):
+            candidate_alt = self._fallback_distinct_album(candidate_ok)
 
-        await self._batch_repo.update_batch_channel_albums(
+        ok_album, alt_album = await self._batch_repo.claim_batch_channel_albums(
             batch_id,
-            ok_album=ok_album,
-            alt_album=alt_album or None,
+            ok_album=candidate_ok,
+            alt_album=candidate_alt or None,
         )
-        batch.ok_album = ok_album
-        batch.alt_album = alt_album or None
+
+        batch.ok_album = str(ok_album or candidate_ok).strip() or None
+        batch.alt_album = str(alt_album or "").strip() or None
         return batch
 
     async def orchestrate_drafts(
@@ -2114,14 +2124,15 @@ class BatchService:
         draft_routing = await self._resolve_draft_routing()
         use_content_pools, unique_opening = await self._load_music_pool_settings(user_id)
 
-        batch_album: str | None = None
+        # Parallel drafts may invent titles/lyrics, but Album 1 is batch-locked.
+        batch_album = str(batch.ok_album or "").strip() or None
         batch_titles: list[str] = []
         for sibling in songs:
             if sibling.id == song_id:
                 continue
             if sibling.title:
                 batch_titles.append(str(sibling.title))
-            if sibling.album and batch_album is None:
+            if batch_album is None and sibling.album:
                 batch_album = str(sibling.album)
 
         draft_requests = self._build_draft_requests(batch)
@@ -2159,11 +2170,24 @@ class BatchService:
             )
             ok_album = str(batch.ok_album or album).strip()
             alt_album = str(batch.alt_album or "").strip() or None
+            # Stick every song to the locked Primary album even if this draft raced.
+            if ok_album and not self._album_names_equal(str(song.album or ""), ok_album):
+                await self._batch_repo.update_song_draft(
+                    song.id,
+                    str(song.title or "").strip() or "Untitled",
+                    ok_album,
+                    str(song.lyrics or ""),
+                )
+                song.album = ok_album
             batch = await self._assign_batch_run_directories_if_needed(
                 batch,
                 ok_album=ok_album,
                 alt_album=alt_album,
             )
+            # Always re-read dirs so Suno stamps the locked batch folders, not a race loser.
+            refreshed = await self._batch_repo.get_batch_by_id(batch.id)
+            if refreshed is not None:
+                batch = refreshed
 
         if submit_suno and batch.auto_gsuno:
             title = str(song.title or "").strip() or "Untitled"
@@ -2646,11 +2670,12 @@ class BatchService:
             alt_output_dir = resolve_channel_run_dir(
                 role="ALT",
                 ok_run_dir=str(row.get("ok_run_dir") or row.get("output_dir_ok") or ""),
-                alt_run_dir=str(row.get("output_dir_alt") or row.get("alt_run_dir") or ""),
+                alt_run_dir=str(row.get("alt_run_dir") or row.get("output_dir_alt") or ""),
                 alt_profile_folder=str(row.get("alt_profile_folder") or ""),
                 alt_profile_name=str(row.get("alt_profile_name") or ""),
             )
-            ok_output_dir = str(row.get("output_dir_ok") or row.get("ok_run_dir") or "").strip() or None
+            # Prefer locked batch run dirs over any stale per-task race paths.
+            ok_output_dir = str(row.get("ok_run_dir") or row.get("output_dir_ok") or "").strip() or None
             alt_output_dir = str(alt_output_dir or "").strip() or None
             title = str(row.get("title") or "").strip()
             items.append(
@@ -4126,6 +4151,9 @@ class BatchService:
                 skip_pricing=self._enforcement_service is not None,
             )
             await self._batch_repo.link_suno_task(UUID(task_id), song.id, batch.id)
+            fresh_batch = await self._batch_repo.get_batch_by_id(batch.id)
+            if fresh_batch is not None:
+                batch = fresh_batch
             ok_output_dir = self._resolve_batch_run_dir(batch, ChannelRole.OK)
             alt_output_dir = self._resolve_batch_run_dir(batch, ChannelRole.ALT)
             if ok_output_dir or alt_output_dir:
@@ -4459,7 +4487,10 @@ class BatchService:
         ok_album: str,
         alt_album: str | None = None,
     ) -> Batch:
-        if str(batch.ok_run_dir or "").strip():
+        fresh = await self._batch_repo.get_batch_by_id(batch.id)
+        if fresh is not None:
+            batch = fresh
+        if str(batch.ok_run_dir or "").strip() and str(batch.alt_run_dir or "").strip():
             return batch
         ok_album_text = str(ok_album or batch.ok_album or "").strip()
         if not ok_album_text:
@@ -4488,13 +4519,13 @@ class BatchService:
         )
         if not ok_run_dir and not alt_run_dir:
             return batch
-        await self._batch_repo.update_batch_run_directories(
+        locked_ok, locked_alt = await self._batch_repo.claim_batch_run_directories(
             batch.id,
             ok_run_dir=ok_run_dir,
             alt_run_dir=alt_run_dir,
         )
-        batch.ok_run_dir = ok_run_dir
-        batch.alt_run_dir = alt_run_dir
+        batch.ok_run_dir = locked_ok or ok_run_dir
+        batch.alt_run_dir = locked_alt or alt_run_dir
         return batch
 
     async def _resolve_batch_run_directories(
