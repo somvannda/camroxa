@@ -1,7 +1,7 @@
 # User portal Guides — slide presentation (feature)
 
 **Date:** 2026-08-03  
-**Status:** implemented (sandbox shipped); production pending explicit request  
+**Status:** implemented — sandbox + production (file-scoped)  
 **Branch:** `feat/user-portal-guides-deck`
 
 ## Summary
@@ -44,4 +44,4 @@ Quota multi-channel UI, admin pipeline/job-queue, DistroKid product code, stream
 ## Deploy
 
 - Sandbox: `python scripts/deploy/deploy_user_portal_guides_sandbox.py`
-- Production: only on explicit request (file-scoped hotfix or merge-to-main then portal rebuild)
+- Production: `python scripts/deploy/deploy_user_portal_guides_production.py` (allowlisted paths only)
