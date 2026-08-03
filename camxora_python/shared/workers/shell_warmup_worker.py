@@ -82,6 +82,16 @@ class ShellWarmupWorker(QThread):
                 from shared.services.workspace_prefs_sync import pull_workspace_prefs_from_settings
 
                 pull_workspace_prefs_from_settings(str(me.id), settings_raw)
+                from shared.services.workspace_defaults_sync import ensure_workspace_defaults
+
+                # Overlay/persist this PC's media roots and push them so server
+                # run-dir planning matches the active desktop.
+                settings_raw = ensure_workspace_defaults(
+                    settings_raw=settings_raw,
+                    api=self._api,
+                    cache=self._cache,
+                    persist=True,
+                )
             # Prefetch Home/Profile data before the shell appears.
             if not self._cache.is_dashboard_fresh() and isinstance(me, UserMeResponse):
                 try:

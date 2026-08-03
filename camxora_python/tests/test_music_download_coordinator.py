@@ -32,6 +32,77 @@ def _pump() -> None:
     QCoreApplication.processEvents()
 
 
+def test_sync_worker_remaps_foreign_output_dir_then_downloads(
+    qapp: QApplication, tmp_path, monkeypatch
+) -> None:
+    """Pending items planned under another PC's path must still land locally."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr("shared.lib.app_paths.get_user_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("shared.services.local_user_scope.get_user_data_dir", lambda: tmp_path)
+
+    from shared.services.local_user_scope import activate_local_user_scope, deactivate_local_user_scope
+    from shared.services.secure_storage import SecureStorage
+
+    class _MemoryStorage(SecureStorage):
+        def __init__(self) -> None:
+            super().__init__(store_path=Path("memory-only") / "store.json")
+            self._data = {}
+
+        def _load(self) -> None:
+            return
+
+        def _save(self) -> None:
+            return
+
+    activate_local_user_scope("user-a", _MemoryStorage())
+    local_suno = tmp_path / "Suno"
+    local_suno.mkdir()
+    from shared.lib.device_workspace_paths import persist_device_paths_from_settings
+
+    persist_device_paths_from_settings({"sunoOutputDir": str(local_suno)})
+
+    foreign_dir = r"C:\Users\OtherPC\AppData\Local\Camxora\Media\Suno\ch\2026-08-03_album"
+    api = MagicMock()
+    api.list_pending_music_downloads.return_value = PendingMusicDownloadsResponse(
+        items=[
+            PendingMusicDownloadItem(
+                task_id="task-1",
+                primary=PendingMusicDownloadTarget(
+                    download_url="https://example.test/a.mp3",
+                    downloaded=False,
+                    output_dir=foreign_dir,
+                    target_path=foreign_dir + r"\track_OK.mp3",
+                ),
+            )
+        ]
+    )
+
+    def fake_download(_url: str, path: str) -> bool:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_bytes(b"mp3")
+        return True
+
+    monkeypatch.setattr(MusicDownloadSyncWorker, "_download_file", staticmethod(fake_download))
+    monkeypatch.setattr(
+        "shared.lib.path_locality.is_foreign_windows_profile_path",
+        lambda path: "OtherPC" in str(path),
+    )
+
+    results: list[MusicDownloadSyncResult] = []
+    worker = MusicDownloadSyncWorker(api, limit=24)
+    worker.succeeded.connect(results.append)
+    worker.start()
+    assert worker.wait(5_000)
+    _pump()
+
+    assert results == [MusicDownloadSyncResult(pending_count=1, synced_count=1)]
+    synced = api.sync_music_downloads.call_args.args[0]
+    assert synced[0].downloaded_primary is True
+    assert synced[0].output_dir_primary == str(local_suno / "ch" / "2026-08-03_album")
+    assert (local_suno / "ch" / "2026-08-03_album" / "track_OK.mp3").is_file()
+    deactivate_local_user_scope()
+
+
 def test_sync_worker_empty_pending(qapp: QApplication) -> None:
     api = MagicMock()
     api.list_pending_music_downloads.return_value = PendingMusicDownloadsResponse(items=[])

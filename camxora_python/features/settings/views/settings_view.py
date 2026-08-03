@@ -3459,6 +3459,11 @@ class SettingsView(QWidget):
     def _after_settings_saved(self, settings: object, label: str) -> None:
         if hasattr(settings, "model_dump"):
             self._settings_raw = settings.model_dump(by_alias=True)
+        from shared.lib.device_workspace_paths import persist_device_paths_from_settings
+
+        # Keep this machine's media roots local even though Preferences also
+        # PATCHes account settings (active desktop owns planning paths).
+        persist_device_paths_from_settings(self._settings_raw)
         self._system_draft = build_system_settings_draft(self._settings_raw)
         self._baseline_system_draft = build_system_settings_draft(self._settings_raw)
         self._suno_draft = build_suno_settings_draft(self._settings_raw)

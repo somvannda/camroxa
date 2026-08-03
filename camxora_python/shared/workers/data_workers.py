@@ -197,6 +197,10 @@ class MusicDownloadSyncWorker(QThread):
 
             sync_map: dict[str, MusicDownloadSyncItem] = {}
             ensured_dirs: set[str] = set()
+            from shared.lib.device_workspace_paths import resolve_local_suno_output_dir
+            from shared.lib.music_download_utils import remap_pending_download_target
+
+            local_suno_base = resolve_local_suno_output_dir()
             for item in items:
                 for channel, target in (("primary", item.primary), ("secondary", item.secondary)):
                     if (
@@ -207,14 +211,17 @@ class MusicDownloadSyncWorker(QThread):
                     ):
                         continue
                     try:
+                        # Cloud may have planned under another PC's suno root —
+                        # rebase onto this machine before mkdir/download.
+                        target = remap_pending_download_target(
+                            target, local_suno_base=local_suno_base
+                        )
                         output_dir = str(target.output_dir or "").strip()
                         from shared.lib.path_locality import is_foreign_windows_profile_path
 
                         if output_dir and is_foreign_windows_profile_path(output_dir):
-                            # Account-synced leftover from another Windows
-                            # profile — never mkdir/download into it. Skip
-                            # this item until Change Run Folder / a local
-                            # heal repoints output_dir.
+                            # Still foreign after remap (should be rare) —
+                            # never mkdir/download into another profile.
                             from shared.services.app_logger import log_warn
 
                             log_warn(

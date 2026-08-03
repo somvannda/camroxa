@@ -1,11 +1,14 @@
 """First-run defaults for local media folders and FFmpeg path.
 
 Users can still change any path in Settings. Empty values are filled once and
-directories are created automatically. These path settings are persisted
-account-wide (server-side), so a value saved from one machine can be replayed
-on another machine under the same account; if that saved path can't be
-created here (different Windows profile, drive letter, etc.) it is treated
-as unusable and self-healed back to this machine's own default.
+directories are created automatically.
+
+Media folder roots are stored per-machine in
+``device_workspace_paths`` (under the local user workspace) and overlaid onto
+cloud settings before heal/defaults run. Account ``user_settings`` still
+receives the *active* machine's paths so server run-dir planning matches the
+desktop currently generating. Foreign / unusable cloud leftovers self-heal to
+this machine's defaults.
 """
 
 from __future__ import annotations
@@ -124,7 +127,10 @@ def apply_workspace_path_defaults(settings: dict[str, Any] | None) -> tuple[dict
     Returns (merged_settings, patch_for_api) where patch only contains newly
     applied keys so callers can persist without overwriting user choices.
     """
-    current = dict(settings or {})
+    from shared.lib.device_workspace_paths import overlay_device_paths
+
+    # This machine's stored roots win over account-cloud leftovers.
+    current = overlay_device_paths(settings)
     defaults = default_workspace_paths()
     patch: dict[str, object] = {}
 

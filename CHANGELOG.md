@@ -25,9 +25,24 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.17] - 2026-08-03
+
+### Fixed
+
+- **Same account on two PCs keeps separate media folder roots.**
+  `sunoOutputDir`, `downloadsDir`, `mergedDir`, and image sample/output dirs are
+  stored per-machine under
+  `%LOCALAPPDATA%\Camxora\users\{userId}\device-workspace-paths.json` and win
+  over stale cloud paths on login. The active desktop still pushes its roots so
+  server run-dir planning matches this PC. Pending Suno MP3 downloads planned
+  under another machine's path are remapped onto the local Suno root
+  (`channel/date_album` preserved). See
+  `docs/changelog/2026-08-03-per-device-workspace-paths.md`.
 - Spectrum Save overwrite no longer reloads the stale Orbit Spikes / original look; live `spectrumInstances` are flushed into the save patch (existing + new templates).
 - Linear spectrum **Row Width** restored (full preview span at 1.0); geometry no longer hard-capped at 80% frame width.
 - Spectrum **Raise Scroll** helpers/UI restored (`frequencyScroll`) so preview/export imports stay consistent.
+- Includes everything from **1.0.16** (force-update visible Setup progress +
+  mid-install reopen handling).
 
 ## [1.0.16] - 2026-08-03
 

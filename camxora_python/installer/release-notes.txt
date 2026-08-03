@@ -1,17 +1,26 @@
-﻿Camxora 1.0.16 - Force update shows Setup progress + honest completion
+﻿Camxora 1.0.17 - Per-device media folders
 Date: 2026-08-03
 
 What's new
 ----------
-- Force update shows the Setup progress window (no more fully silent install)
-- Clearer message: Camxora closes so Setup can update files; wait for Setup
-- Mid-Setup reopen no longer looks like a failed update (Finishing / Try again)
-- Setup must leave the installed version matching the published version before relaunch
-- Includes 1.0.15 fixes (multi-machine paths, spectrum flush drag, startup retry,
-  merge without export background/template gate)
+- Same Camxora account on two PCs keeps separate media folders on each machine
+  (Suno output, downloads, merged, image folders)
+- Each PC remembers its own paths under local app data — no more one machine
+  overwriting the other's drive/folder settings in the cloud
+- Pending Suno MP3 downloads that were planned for another PC's path now save
+  into this PC's Suno folder (channel/date album layout preserved)
+- While you generate on a PC, that PC's folders are used for new batch planning
+- Spectrum Save keeps your edits (no snap-back to Orbit Spikes / original)
+- Linear spectrum Row Width can span the full preview (1.0 = full width)
+- Raise Scroll restored for shifting bass/spikes along the path
+- Includes everything from 1.0.16:
+  - Force update shows Setup progress (no fully silent install)
+  - Mid-Setup reopen shows Finishing / Try again instead of looking broken
+  - Includes 1.0.15 fixes (multi-machine path heal, spectrum flush drag,
+    startup retry, merge without export background/template gate)
 
 Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.0.16.exe
+- Installer file: CamxoraSetup-1.0.17.exe
