@@ -11,6 +11,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **HDR bloom design (preview/export).** Planned float intermediate + bloom +
+  tonemap pipeline documented; implementation gated to P4.2+. See
+  `docs/PREVIEW_HDR_BLOOM_DESIGN.md`.
+
 ### Changed
 
 ### Fixed

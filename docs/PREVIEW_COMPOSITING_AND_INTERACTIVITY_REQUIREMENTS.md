@@ -14,6 +14,8 @@
 > - [`docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`](changelog/2026-08-04-preview-p1-diag-failure-ux.md) (**P1 implementation**)  
 > - [`docs/changelog/2026-08-04-preview-p2-interactive-perf.md`](changelog/2026-08-04-preview-p2-interactive-perf.md) (**P2 implementation**)  
 > - [`docs/changelog/2026-08-04-preview-p3-chrome-audit.md`](changelog/2026-08-04-preview-p3-chrome-audit.md) (**P3 audit**)  
+> - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) (**P4.1 design**)  
+> - [`docs/changelog/2026-08-04-preview-p4-hdr-bloom-design.md`](changelog/2026-08-04-preview-p4-hdr-bloom-design.md)  
 > - [`docs/GPU_EXPORT_PERFORMANCE_REQUIREMENTS.md`](GPU_EXPORT_PERFORMANCE_REQUIREMENTS.md)  
 > **Last updated:** 2026-08-04
 
