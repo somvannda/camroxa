@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Sidebar navigation grouped into labeled sections (Overview, Accounts, Billing, Content, Operations, System), including **User Spent**. See `docs/changelog/2026-08-04-admin-sidebar-nav-groups.md`.
+
 ### Fixed
 
 - User detail channel logos/covers: do not retry blob fetches on 404; availability
