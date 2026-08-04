@@ -15,6 +15,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Preview see-through on some GPUs.** Soft glow / additive spectrum, particle,
+  and lightning draws no longer punch alpha holes in the Qt OpenGL framebuffer
+  under the frameless translucent window. Standalone Alpha_Lock hotfix — playlist
+  glass is **not** included. See
+  `docs/changelog/2026-08-04-preview-opaque-alpha-p0.md`.
+
 ## [1.0.19] - 2026-08-04
 
 ### Fixed

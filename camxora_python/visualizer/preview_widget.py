@@ -1710,6 +1710,40 @@ class VideoSpectrumPreview(QOpenGLWidget):
             moderngl.ONE,
         )
 
+    def _force_framebuffer_opaque_alpha(self) -> None:
+        """REQ-P0.4: keep Qt FBO alpha at 1 so translucent windows stay opaque.
+
+        Soft-glow draws can still leak alpha if a future pass forgets Alpha_Lock.
+        Clear alpha only (RGB untouched) without grabFramebuffer.
+        Skipped when export overlay short-circuits paintGL before drawing.
+        """
+        if not self.ctx or not getattr(self, "_gl_ready", False):
+            return
+        try:
+            self._use_qt_framebuffer()
+            # moderngl: (r, g, b, a) write enables
+            self.ctx.color_mask = (False, False, False, True)
+            self.ctx.clear(0.0, 0.0, 0.0, 1.0)
+        except Exception:
+            try:
+                from OpenGL import GL
+
+                GL.glColorMask(GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE, GL.GL_TRUE)
+                GL.glClearColor(0.0, 0.0, 0.0, 1.0)
+                GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+            except Exception:
+                pass
+        finally:
+            try:
+                self.ctx.color_mask = (True, True, True, True)
+            except Exception:
+                try:
+                    from OpenGL import GL
+
+                    GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
+                except Exception:
+                    pass
+
     def resizeEvent(self, ev):
         self._sync_export_overlay_geometry()
         super().resizeEvent(ev)
@@ -2243,11 +2277,11 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         pass_alpha = float(max(0.0, min(1.0, float(pass_cfg['alpha']) * float(v_alpha_mul))))
                         fill_circle_pass = bool(pass_cfg['fill_circle'])
                         if pass_cfg['is_glow']:
-                            self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                            self._blend_additive()
                         elif blend_mode in ('screen', 'add', 'lighten'):
-                            self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                            self._blend_additive()
                         else:
-                            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+                            self._blend_normal()
                         val_arr = (sampled_fft * pass_spike_height_px).astype(np.float32)
                         if curved and mirrored and ring_close_style:
                             val_arr = np.concatenate([val_arr, val_arr[:1]])
@@ -2617,6 +2651,12 @@ class VideoSpectrumPreview(QOpenGLWidget):
             traceback.print_exc()
         finally:
             # Never grabFramebuffer here — it stalls GPU every few seconds.
+            if (
+                not self._export_overlay_active
+                and self.ctx is not None
+                and getattr(self, "_gl_ready", False)
+            ):
+                self._force_framebuffer_opaque_alpha()
             elapsed_ms = max(0.0, (time.perf_counter() - paint_started) * 1000.0)
             if elapsed_ms > 0:
                 self._perf_frame_ms = elapsed_ms
