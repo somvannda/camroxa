@@ -712,6 +712,223 @@ class CreditRepository:
         }
         return items, int(total or 0), summary
 
+    async def list_user_spend_cog_rows(
+        self,
+        *,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
+        q: str | None = None,
+        provider: str | None = None,
+        operation: str | None = None,
+        plan_id: UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """Aggregate ledger spend by user × provider × operation × model.
+
+        Used by the admin User Spent page. Includes soft-overage event counts
+        (wallet debits that still carry plan coverage metadata).
+        """
+        filters: list[str] = ["t.direction = 'debit'"]
+        args: list[Any] = []
+        arg_idx = 1
+
+        def _add_filter(clause: str, value: Any) -> None:
+            nonlocal arg_idx
+            filters.append(clause.format(idx=arg_idx))
+            args.append(value)
+            arg_idx += 1
+
+        if from_date is not None:
+            _add_filter("t.created_at >= ${idx}", from_date)
+        if to_date is not None:
+            _add_filter("t.created_at <= ${idx}", to_date)
+        if q:
+            q_stripped = q.strip()
+            try:
+                q_uuid = UUID(q_stripped)
+                _add_filter("t.user_id = ${idx}", q_uuid)
+            except ValueError:
+                _add_filter("u.email ILIKE '%' || ${idx} || '%'", q_stripped)
+        if provider:
+            _add_filter(
+                "(t.metadata->>'provider' = ${idx} OR t.reason ILIKE '% via ' || ${idx})",
+                provider,
+            )
+        if operation:
+            if operation in {"song_draft", "llm_draft"}:
+                filters.append(
+                    "(t.metadata->>'operation' IN ('song_draft', 'llm_draft') "
+                    "OR t.reason = 'llm_draft' "
+                    "OR t.reason IN ('draft_generation_failed', 'draft_generation_error'))"
+                )
+            else:
+                _add_filter(
+                    "(t.metadata->>'operation' = ${idx} OR t.reason = ${idx} "
+                    "OR t.reason ILIKE ${idx} || ' via %')",
+                    operation,
+                )
+        if plan_id is not None:
+            filters.append(
+                f"""EXISTS (
+                    SELECT 1 FROM licenses l
+                    WHERE l.user_id = t.user_id
+                      AND l.plan_id = ${arg_idx}
+                      AND l.status = 'active'
+                      AND (l.expires_at IS NULL OR l.expires_at > NOW())
+                )"""
+            )
+            args.append(plan_id)
+            arg_idx += 1
+
+        where_sql = f"WHERE {' AND '.join(filters)}"
+
+        rows = await self._pool.fetch(
+            f"""
+            SELECT
+                t.user_id,
+                u.email AS user_email,
+                u.display_name AS user_display_name,
+                COALESCE(
+                    NULLIF(t.metadata->>'operation', ''),
+                    NULLIF(split_part(t.reason, ' via ', 1), ''),
+                    t.reason,
+                    'unknown'
+                ) AS operation,
+                COALESCE(
+                    NULLIF(t.metadata->>'provider', ''),
+                    NULLIF(split_part(t.reason, ' via ', 2), ''),
+                    ''
+                ) AS provider,
+                COALESCE(
+                    NULLIF(t.metadata->>'sub_model', ''),
+                    NULLIF(t.metadata->>'model', ''),
+                    ''
+                ) AS model,
+                COUNT(*)::bigint AS events,
+                COALESCE(SUM(t.amount) FILTER (
+                    WHERE t.metadata->>'billing' = 'wallet'
+                       OR (
+                         COALESCE(t.metadata->>'billing', '') = ''
+                         AND t.amount > 0
+                       )
+                ), 0)::bigint AS wallet_charged_units,
+                COALESCE(SUM(
+                    CASE
+                        WHEN t.metadata->>'billing' = 'plan_allowance'
+                        THEN COALESCE((t.metadata->>'list_credit_units')::bigint, 0)
+                        ELSE 0
+                    END
+                ), 0)::bigint AS plan_included_list_units,
+                COUNT(*) FILTER (
+                    WHERE t.metadata->>'billing' = 'wallet'
+                      AND t.amount > 0
+                      AND COALESCE(t.metadata->>'coverage', '') IN (
+                        'song_package',
+                        'draft_allowance',
+                        'image_allowance',
+                        'video_allowance',
+                        'merge_allowance'
+                      )
+                )::bigint AS soft_overage_events
+            FROM credit_transactions t
+            JOIN users u ON u.id = t.user_id
+            {where_sql}
+            GROUP BY 1, 2, 3, 4, 5, 6
+            ORDER BY t.user_id, events DESC
+            """,
+            *args,
+        )
+        return [
+            {
+                "user_id": row["user_id"],
+                "user_email": row["user_email"],
+                "user_display_name": row["user_display_name"],
+                "operation": str(row["operation"] or "unknown"),
+                "provider": str(row["provider"] or ""),
+                "model": str(row["model"] or ""),
+                "events": int(row["events"] or 0),
+                "wallet_charged_units": int(row["wallet_charged_units"] or 0),
+                "plan_included_list_units": int(row["plan_included_list_units"] or 0),
+                "soft_overage_events": int(row["soft_overage_events"] or 0),
+            }
+            for row in rows
+        ]
+
+    async def list_active_plans_for_users(
+        self,
+        user_ids: list[UUID],
+    ) -> dict[UUID, dict[str, Any]]:
+        """Return active plan + addon slots keyed by user_id."""
+        if not user_ids:
+            return {}
+        rows = await self._pool.fetch(
+            """
+            SELECT DISTINCT ON (l.user_id)
+                l.user_id,
+                p.id AS plan_id,
+                p.name AS plan_name,
+                p.price_cents,
+                p.billing_cycle_days,
+                p.monthly_song_limit,
+                p.monthly_draft_limit,
+                p.monthly_image_limit,
+                p.monthly_video_limit,
+                p.monthly_merge_limit,
+                p.profile_allowance,
+                COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
+                l.activated_at
+            FROM licenses l
+            INNER JOIN plans p ON p.id = l.plan_id
+            WHERE l.user_id = ANY($1::uuid[])
+              AND l.status = 'active'
+              AND (l.expires_at IS NULL OR l.expires_at > NOW())
+            ORDER BY l.user_id, l.activated_at DESC
+            """,
+            user_ids,
+        )
+        out: dict[UUID, dict[str, Any]] = {}
+        for row in rows:
+            out[row["user_id"]] = dict(row)
+        return out
+
+    async def list_monthly_meters_for_users(
+        self,
+        user_ids: list[UUID],
+        *,
+        period_start: Any,
+    ) -> dict[UUID, dict[str, int]]:
+        """Sum monthly_count per user for music/draft/image/video/merge meters."""
+        if not user_ids:
+            return {}
+        rows = await self._pool.fetch(
+            """
+            SELECT
+                user_id,
+                operation_type,
+                COALESCE(SUM(monthly_count), 0)::bigint AS used
+            FROM usage_tracking
+            WHERE user_id = ANY($1::uuid[])
+              AND period_start_date = $2
+              AND operation_type = ANY($3::text[])
+            GROUP BY user_id, operation_type
+            """,
+            user_ids,
+            period_start,
+            ["music", "draft", "background_image", "thumbnail_image", "video", "video_merge"],
+        )
+        out: dict[UUID, dict[str, int]] = {uid: {} for uid in user_ids}
+        for row in rows:
+            uid = row["user_id"]
+            op = str(row["operation_type"])
+            used = int(row["used"] or 0)
+            bucket = out.setdefault(uid, {})
+            if op == "background_image" or op == "thumbnail_image":
+                bucket["image"] = int(bucket.get("image") or 0) + used
+            elif op == "video_merge":
+                bucket["merge"] = used
+            else:
+                bucket[op] = used
+        return out
+
     async def sum_fulfilled_subscription_revenue(
         self,
         *,

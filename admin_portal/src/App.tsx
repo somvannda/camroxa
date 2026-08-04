@@ -58,6 +58,7 @@ const PromptsPage = React.lazy(() => import('@/pages/prompts/index'));
 const RateLimitsPage = React.lazy(() => import('@/pages/rate-limits/index'));
 const AuditLogPage = React.lazy(() => import('@/pages/audit-log/index'));
 const UsagePage = React.lazy(() => import('@/pages/usage/index'));
+const UserSpentPage = React.lazy(() => import('@/pages/user-spent/index'));
 const FinancePage = React.lazy(() => import('@/pages/finance/index'));
 const BatchDetailPage = React.lazy(() => import('@/pages/batches/detail'));
 const SongDetailPage = React.lazy(() => import('@/pages/songs/detail'));
@@ -117,6 +118,7 @@ function App() {
                     <Route path="/rate-limits" element={<RateLimitsPage />} />
                     <Route path="/audit-log" element={<AuditLogPage />} />
                     <Route path="/usage" element={<UsagePage />} />
+                    <Route path="/user-spent" element={<UserSpentPage />} />
                     <Route path="/finance" element={<FinancePage />} />
                     <Route path="/batches/:batchId" element={<BatchDetailPage />} />
                     <Route path="/songs/:songId" element={<SongDetailPage />} />

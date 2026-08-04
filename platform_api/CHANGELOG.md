@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Admin `GET /admin/user-spend`: multi-user est. COGS rollup (wallet + plan-included list value), plan meters, soft-overage / margin-risk alerts, and per-COG breakdown for the User Spent page. See `docs/changelog/2026-08-04-admin-user-spent.md`.
 - DistroKid $5/mo add-on entitlement (`distrokid_enabled` / expires), CutLuy checkout, `suno/wav` pricing seed (600 WAV/mo product intent). See `docs/changelog/2026-07-27-distrokid-addon-scaffold.md`.
 - DistroKid Phase 4 API: Suno WAV convert/poll client, add-on-gated `/distrokid/wav` jobs with 600/month metering and `suno/wav` charging, plus fingerprinted DistroKid upload history and duplicate checks (`076_distrokid_wav`).
 - DistroKid `GET /distrokid/wav/sources?batch_id=` for desktop WAV download pairing. See `docs/changelog/2026-07-27-distrokid-automation-phases.md`.

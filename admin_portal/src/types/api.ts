@@ -38,6 +38,19 @@ export interface UsageListParams {
   to_date?: string;
 }
 
+export interface UserSpendListParams {
+  page?: number;
+  page_size?: number;
+  q?: string;
+  plan_id?: string;
+  provider?: string;
+  operation?: string;
+  alert?: 'all' | 'over_allowance' | 'margin_risk' | 'healthy';
+  sort?: 'cogs_desc' | 'wallet_desc' | 'overage_first';
+  from_date?: string;
+  to_date?: string;
+}
+
 export interface CreditAdjustmentRequest {
   user_id: string;
   amount: number;

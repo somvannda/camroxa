@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **User Spent** page (`/user-spent`): per-user estimated COGS roster with expandable provider × operation breakdown, plan-meter chips, and Over allowance / Margin risk alerts. See `docs/changelog/2026-08-04-admin-user-spent.md`.
+- Streaming catalog Publish buttons: pass `{ trackId }` / `{ albumId }` to republish mutations (fixes TS build break).
 - Restored **Pipeline Ops** sidebar page (`/pipeline`): live multi-user board for monitoring active pipelines (stage, stuck, failures, admin retries). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Dashboard **Provider key balances** panel: remaining credits/money by key name for SLAI, Suno, DeepSeek, OpenAI, Fal (refresh / window focus). See `docs/changelog/2026-08-02-admin-provider-key-balances.md`.
 - Job Queue page (`/job-queue`): live depth, busy workers, `/progress` p95, and threshold alerts from `GET /api/v1/admin/job-queue/metrics` (15s poll)

@@ -30,6 +30,7 @@ import {
   LogOut,
   ListOrdered,
   Activity,
+  Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Blog Posts', path: '/blog-posts', icon: Newspaper },
   { label: 'Credits', path: '/credits', icon: Coins },
   { label: 'Usage', path: '/usage', icon: BarChart3 },
+  { label: 'User Spent', path: '/user-spent', icon: Wallet },
   { label: 'Finance', path: '/finance', icon: DollarSign },
   { label: 'Music Prompts', path: '/prompts', icon: Music },
   { label: 'Music Streaming', path: '/streaming', icon: Radio },

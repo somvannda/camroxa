@@ -125,6 +125,13 @@ async def _get_credit_repo() -> CreditRepository:
     )
 
 
+async def _get_user_spend_service() -> Any:
+    """Placeholder dependency for UserSpendService — override in wire_dependencies."""
+    raise NotImplementedError(
+        "UserSpendService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
 async def _get_user_repo() -> UserRepository:
     """Placeholder dependency for UserRepository — override in tests or dependencies.py."""
     raise NotImplementedError(
@@ -165,6 +172,7 @@ YouTubeOAuthEncryptionDep = Annotated[
     KeyEncryption | None, Depends(_get_youtube_oauth_encryption)
 ]
 CreditRepoDep = Annotated[CreditRepository, Depends(_get_credit_repo)]
+UserSpendServiceDep = Annotated[Any, Depends(_get_user_spend_service)]
 UserRepoDep = Annotated[UserRepository, Depends(_get_user_repo)]
 BatchRepoDep = Annotated[Any, Depends(_get_batch_repo)]
 ResetServiceDep = Annotated[ResetService, Depends(_get_reset_service)]
@@ -284,6 +292,65 @@ class UsageListResponse(BaseModel):
     page_size: int
     total_pages: int
     summary: UsageSummaryResponse
+
+
+class UserSpendMeterResponse(BaseModel):
+    used: int = 0
+    limit: int | None = None
+    pct: float | None = None
+    hot: bool = False
+
+
+class UserSpendCogResponse(BaseModel):
+    provider: str = ""
+    operation: str
+    model: str = ""
+    events: int = 0
+    plan_included_usd: float = 0
+    wallet_usd: float = 0
+    est_cogs_usd: float | None = None
+    coverage: str = "none"
+
+
+class UserSpendAlertsResponse(BaseModel):
+    over_allowance: bool = False
+    margin_risk: bool = False
+    meters_hot: list[str] = Field(default_factory=list)
+
+
+class UserSpendItemResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str | None = None
+    plan_id: str | None = None
+    plan_name: str = "Free"
+    plan_price_cents: int = 0
+    billing_cycle_days: int | None = None
+    plan_revenue_usd: float = 0
+    est_cogs_usd: float = 0
+    wallet_charged_usd: float = 0
+    plan_included_usd: float = 0
+    soft_overage_events: int = 0
+    meters: dict[str, UserSpendMeterResponse] = Field(default_factory=dict)
+    alerts: UserSpendAlertsResponse = Field(default_factory=UserSpendAlertsResponse)
+    by_cog: list[UserSpendCogResponse] = Field(default_factory=list)
+
+
+class UserSpendSummaryResponse(BaseModel):
+    users_over_allowance: int = 0
+    users_margin_risk: int = 0
+    total_est_cogs_usd: float = 0
+    total_wallet_usd: float = 0
+    gcv: float = 0.01
+
+
+class UserSpendListResponse(BaseModel):
+    items: list[UserSpendItemResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    summary: UserSpendSummaryResponse
 
 
 class AdminBatchSongSummary(BaseModel):
@@ -1042,6 +1109,112 @@ async def get_usage(
         page_size=page_size,
         total_pages=total_pages,
         summary=summary,
+    )
+
+
+@router.get(
+    "/user-spend",
+    response_model=UserSpendListResponse,
+    summary="Per-user estimated COGS spend with plan-allowance alerts",
+)
+async def get_user_spend(
+    ctx: AdminDep,
+    user_spend_service: UserSpendServiceDep,
+    from_date: datetime | None = Query(default=None, description="Filter from date (ISO 8601)"),
+    to_date: datetime | None = Query(default=None, description="Filter to date (ISO 8601)"),
+    q: str | None = Query(default=None, description="Search email or user UUID"),
+    plan_id: str | None = Query(default=None, description="Filter by active plan UUID"),
+    provider: str | None = Query(default=None, description="Filter by provider"),
+    operation: str | None = Query(default=None, description="Filter by operation type"),
+    alert: str = Query(
+        default="all",
+        description="all | over_allowance | margin_risk | healthy",
+    ),
+    sort: str = Query(
+        default="cogs_desc",
+        description="cogs_desc | wallet_desc | overage_first",
+    ),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+) -> UserSpendListResponse:
+    """Roster of users with est. USD COGS, wallet spend, meters, and alerts."""
+    del ctx
+    parsed_plan_id = UUID(plan_id) if plan_id else None
+    result = await user_spend_service.list_user_spend(
+        page=page,
+        page_size=page_size,
+        from_date=from_date,
+        to_date=to_date,
+        q=q,
+        plan_id=parsed_plan_id,
+        provider=provider,
+        operation=operation,
+        alert=alert,
+        sort=sort,
+    )
+
+    items: list[UserSpendItemResponse] = []
+    for row in result.items:
+        meters = {
+            key: UserSpendMeterResponse(
+                used=m.used,
+                limit=m.limit,
+                pct=m.pct,
+                hot=m.hot,
+            )
+            for key, m in row.meters.items()
+        }
+        items.append(
+            UserSpendItemResponse(
+                user_id=str(row.user_id),
+                email=row.email,
+                display_name=row.display_name,
+                plan_id=str(row.plan_id) if row.plan_id else None,
+                plan_name=row.plan_name,
+                plan_price_cents=row.plan_price_cents,
+                billing_cycle_days=row.billing_cycle_days,
+                plan_revenue_usd=row.plan_revenue_usd,
+                est_cogs_usd=row.est_cogs_usd,
+                wallet_charged_usd=row.wallet_charged_usd,
+                plan_included_usd=row.plan_included_usd,
+                soft_overage_events=row.soft_overage_events,
+                meters=meters,
+                alerts=UserSpendAlertsResponse(
+                    over_allowance=row.over_allowance,
+                    margin_risk=row.margin_risk,
+                    meters_hot=list(row.meters_hot),
+                ),
+                by_cog=[
+                    UserSpendCogResponse(
+                        provider=c.provider,
+                        operation=c.operation,
+                        model=c.model,
+                        events=c.events,
+                        plan_included_usd=c.plan_included_usd,
+                        wallet_usd=c.wallet_usd,
+                        est_cogs_usd=c.est_cogs_usd,
+                        coverage=c.coverage,
+                    )
+                    for c in row.by_cog
+                ],
+            )
+        )
+
+    total_pages = max(1, (result.total + page_size - 1) // page_size) if result.total else 1
+    summary_raw = result.summary
+    return UserSpendListResponse(
+        items=items,
+        total=result.total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        summary=UserSpendSummaryResponse(
+            users_over_allowance=int(summary_raw.get("users_over_allowance") or 0),
+            users_margin_risk=int(summary_raw.get("users_margin_risk") or 0),
+            total_est_cogs_usd=float(summary_raw.get("total_est_cogs_usd") or 0),
+            total_wallet_usd=float(summary_raw.get("total_wallet_usd") or 0),
+            gcv=float(summary_raw.get("gcv") or 0.01),
+        ),
     )
 
 

@@ -23,6 +23,7 @@ from platform_api.dependencies import (
     get_license_repo,
     get_invitation_code_service,
     get_lockout,
+    get_model_cost_repo,
     get_notification_service,
     get_plan_repo,
     get_profile_service,
@@ -105,6 +106,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
         _get_rate_limit_repo as admin_get_rate_limit,
         _get_settings_repo as admin_get_settings_repo,
         _get_credit_repo as admin_get_credit_repo,
+        _get_user_spend_service as admin_get_user_spend_service,
         _get_user_repo as admin_get_user_repo,
         _get_batch_repo as admin_get_batch_repo,
         _get_youtube_oauth_app_repo as admin_get_youtube_oauth_repo,
@@ -132,6 +134,15 @@ def wire_all_dependencies(app: FastAPI) -> None:
     async def real_admin_credit_repo():
         return get_credit_repo()
 
+    async def real_admin_user_spend_service():
+        from platform_api.services.user_spend_service import UserSpendService
+
+        return UserSpendService(
+            credit_repo=get_credit_repo(),
+            model_cost_repo=get_model_cost_repo(),
+            settings_service=get_settings_service(),
+        )
+
     async def real_admin_user_repo():
         return get_user_repo()
 
@@ -154,6 +165,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[admin_get_rate_limit] = real_admin_rate_limit
     app.dependency_overrides[admin_get_settings_repo] = real_admin_settings_repo
     app.dependency_overrides[admin_get_credit_repo] = real_admin_credit_repo
+    app.dependency_overrides[admin_get_user_spend_service] = real_admin_user_spend_service
     app.dependency_overrides[admin_get_user_repo] = real_admin_user_repo
     app.dependency_overrides[admin_get_batch_repo] = real_admin_batch_repo
     app.dependency_overrides[admin_get_youtube_oauth_repo] = real_admin_youtube_oauth_repo

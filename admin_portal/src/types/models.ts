@@ -517,6 +517,65 @@ export interface UsageListResponse {
   summary: UsageSummary;
 }
 
+export interface UserSpendMeter {
+  used: number;
+  limit: number | null;
+  pct: number | null;
+  hot: boolean;
+}
+
+export interface UserSpendCog {
+  provider: string;
+  operation: string;
+  model: string;
+  events: number;
+  plan_included_usd: number;
+  wallet_usd: number;
+  est_cogs_usd: number | null;
+  coverage: string;
+}
+
+export interface UserSpendAlerts {
+  over_allowance: boolean;
+  margin_risk: boolean;
+  meters_hot: string[];
+}
+
+export interface UserSpendItem {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  plan_id: string | null;
+  plan_name: string;
+  plan_price_cents: number;
+  billing_cycle_days: number | null;
+  plan_revenue_usd: number;
+  est_cogs_usd: number;
+  wallet_charged_usd: number;
+  plan_included_usd: number;
+  soft_overage_events: number;
+  meters: Record<string, UserSpendMeter>;
+  alerts: UserSpendAlerts;
+  by_cog: UserSpendCog[];
+}
+
+export interface UserSpendSummary {
+  users_over_allowance: number;
+  users_margin_risk: number;
+  total_est_cogs_usd: number;
+  total_wallet_usd: number;
+  gcv: number;
+}
+
+export interface UserSpendListResponse {
+  items: UserSpendItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  summary: UserSpendSummary;
+}
+
 export interface AdminBatchSongSummary {
   id: string;
   batch_index: number;
