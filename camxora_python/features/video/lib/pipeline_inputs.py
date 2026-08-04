@@ -63,6 +63,11 @@ def resolve_local_video_pipeline_inputs(
     meta = row.meta if row is not None else None
     is_long = branch == "long"
     run_dir = str(meta.run_dir or "").strip() if meta is not None else ""
+    if run_dir:
+        from shared.lib.device_workspace_paths import local_run_dir_for_disk
+        from shared.services.file_service import sanitize_local_path
+
+        run_dir = local_run_dir_for_disk(sanitize_local_path(run_dir))
     recommended_template_id = (
         (profile.video_template_id if is_long else profile.reel_template_id) if profile is not None else None
     )
@@ -105,6 +110,11 @@ def local_audio_downloads_ready(row: ProgressRow) -> bool:
     meta = row.meta
     expected = max(1, int(meta.expected or 0))
     run_dir = str(meta.run_dir or "").strip()
+    if run_dir:
+        from shared.lib.device_workspace_paths import local_run_dir_for_disk
+        from shared.services.file_service import sanitize_local_path
+
+        run_dir = local_run_dir_for_disk(sanitize_local_path(run_dir))
     if run_dir and local_mp3_files_ready(row):
         return True
 

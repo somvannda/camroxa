@@ -197,10 +197,12 @@ class MusicDownloadSyncWorker(QThread):
 
             sync_map: dict[str, MusicDownloadSyncItem] = {}
             ensured_dirs: set[str] = set()
-            from shared.lib.device_workspace_paths import resolve_local_suno_output_dir
+            from shared.lib.device_workspace_paths import hydrate_local_suno_output_dir
             from shared.lib.music_download_utils import remap_pending_download_target
 
-            local_suno_base = resolve_local_suno_output_dir()
+            # Hydrate device-store + push active suno root so mid-session batches
+            # stop planning under a stale cloud path until the next restart.
+            local_suno_base = hydrate_local_suno_output_dir(api=self._api, persist_cloud=True)
             for item in items:
                 for channel, target in (("primary", item.primary), ("secondary", item.secondary)):
                     if (
@@ -213,6 +215,7 @@ class MusicDownloadSyncWorker(QThread):
                     try:
                         # Cloud may have planned under another PC's suno root —
                         # rebase onto this machine before mkdir/download.
+                        original_output = str(target.output_dir or "").strip()
                         target = remap_pending_download_target(
                             target, local_suno_base=local_suno_base
                         )
@@ -231,6 +234,14 @@ class MusicDownloadSyncWorker(QThread):
                                 category="music",
                             )
                             continue
+                        if output_dir and original_output and output_dir != original_output:
+                            from shared.services.app_logger import log_info
+
+                            log_info(
+                                f"Remapped pending download {item.task_id} ({channel}) "
+                                f"onto local Suno root: {output_dir}",
+                                category="music",
+                            )
                         if output_dir and output_dir not in ensured_dirs:
                             from shared.services.file_service import ensure_directory
 
@@ -561,7 +572,7 @@ class VideoPipelineOrchestrationWorker(QThread):
             with ThreadPoolExecutor(max_workers=3) as pool:
                 future_progress = pool.submit(
                     self._api.list_progress,
-                    ProgressFilters(limit=40, active_only=True),
+                    ProgressFilters(limit=80, active_only=True),
                 )
                 future_profiles = pool.submit(self._api.list_profiles)
                 future_settings = pool.submit(self._api.get_settings)
@@ -1799,7 +1810,7 @@ class ProgressLocalSyncWorker(QThread):
         from shared.models.platform import ProgressFilters, ProgressLocalSyncItem
 
         try:
-            response = self._api.list_progress(ProgressFilters(limit=40, active_only=True))
+            response = self._api.list_progress(ProgressFilters(limit=80, active_only=True))
             rows = apply_local_progress_overlays(list(response.rows))
             local_items = build_local_progress_sync_items(rows)
             if not local_items:

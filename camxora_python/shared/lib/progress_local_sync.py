@@ -76,6 +76,12 @@ def build_local_progress_sync_items(rows: list[ProgressRow]) -> list[LocalProgre
 
         from pathlib import Path
 
+        from shared.lib.device_workspace_paths import local_run_dir_for_disk
+
+        # Server may still advertise an AppData/other-PC base while MP3s were
+        # remapped onto this machine's sunoOutputDir — prefer the local root.
+        run_dir = local_run_dir_for_disk(run_dir)
+
         if not Path(run_dir).is_dir():
             # Folder moved/archived — never sync empty state over API readiness.
             continue
@@ -115,8 +121,10 @@ def build_local_progress_sync_items(rows: list[ProgressRow]) -> list[LocalProgre
 
 def local_mp3_files_ready(row: ProgressRow) -> bool:
     """True when the run folder contains enough role-scoped MP3 files."""
+    from shared.lib.device_workspace_paths import local_run_dir_for_disk
+
     meta = row.meta
-    run_dir = sanitize_local_path(str(meta.run_dir or "").strip())
+    run_dir = local_run_dir_for_disk(sanitize_local_path(str(meta.run_dir or "").strip()))
     if not run_dir:
         return False
     expected = max(1, int(meta.expected or 0))

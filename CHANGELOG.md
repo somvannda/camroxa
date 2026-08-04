@@ -25,6 +25,18 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.18] - 2026-08-04
+
+### Fixed
+
+- **MP3 downloads / Progress / Auto-Video no longer need an app restart** after
+  per-device Suno path setup. Download polls hydrate and push this PC's Suno
+  root mid-session; Progress and Auto-Video disk checks use the remapped local
+  run folder instead of a stale cloud AppData path. See
+  `docs/changelog/2026-08-03-per-device-workspace-paths.md`.
+- Includes everything from **1.0.17** (per-device media folder roots + Spectrum
+  Save / Row Width / Raise Scroll + 1.0.16 force-update).
+
 ## [1.0.17] - 2026-08-03
 
 ### Fixed

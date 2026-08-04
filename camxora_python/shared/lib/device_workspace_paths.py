@@ -22,6 +22,8 @@ from shared.lib.path_locality import is_foreign_windows_profile_path
 from shared.lib.workspace_defaults import default_workspace_paths, is_usable_workspace_path
 from shared.services.local_user_scope import get_user_workspace_dir
 
+# Imported lazily in hydrate to avoid cycles with workspace_defaults_sync.
+
 # Folder roots only — ffmpeg is resolved separately via bundled/hint logic.
 DEVICE_MEDIA_PATH_KEYS = (
     "downloadsDir",
@@ -33,6 +35,19 @@ DEVICE_MEDIA_PATH_KEYS = (
 )
 
 _STORE_NAME = "device-workspace-paths.json"
+
+
+def _normalize_stored_path(value: str) -> str:
+    """Normalize path text for Windows storage (keep drive letters consistent)."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        import os
+
+        return os.path.normpath(text)
+    except OSError:
+        return text.replace("/", "\\")
 
 
 def get_device_workspace_paths_path(user_id: str | None = None) -> Path:
@@ -66,11 +81,11 @@ def save_device_workspace_paths(
     source = dict(paths or {})
     existing = load_device_workspace_paths(user_id)
     for key in DEVICE_MEDIA_PATH_KEYS:
-        value = str(source.get(key) or "").strip()
+        value = _normalize_stored_path(str(source.get(key) or ""))
         if value:
             payload[key] = value
         elif key in existing:
-            payload[key] = existing[key]
+            payload[key] = _normalize_stored_path(existing[key]) or existing[key]
     if not payload:
         return {}
     target = get_device_workspace_paths_path(user_id)
@@ -122,17 +137,77 @@ def device_path_patch_against_cloud(
     return patch
 
 
-def resolve_local_suno_output_dir(user_id: str | None = None) -> str:
-    """Best Suno root for this machine (device store → usable default)."""
+def resolve_local_suno_output_dir(
+    user_id: str | None = None,
+    settings: dict[str, Any] | None = None,
+) -> str:
+    """Best Suno root for this machine (device store → settings → default)."""
     local = load_device_workspace_paths(user_id)
-    candidate = str(local.get("sunoOutputDir") or "").strip()
+    candidate = _normalize_stored_path(str(local.get("sunoOutputDir") or ""))
     if candidate and is_usable_workspace_path(candidate):
         return candidate
-    return default_workspace_paths()["sunoOutputDir"]
+
+    for source in (settings,):
+        if not isinstance(source, dict):
+            continue
+        cloud_val = _normalize_stored_path(str(source.get("sunoOutputDir") or ""))
+        if cloud_val and is_usable_workspace_path(cloud_val):
+            persist_device_paths_from_settings({**source, "sunoOutputDir": cloud_val}, user_id)
+            return cloud_val
+
+    default = default_workspace_paths()["sunoOutputDir"]
+    persist_device_paths_from_settings({"sunoOutputDir": default}, user_id)
+    return default
+
+
+def hydrate_local_suno_output_dir(
+    *,
+    api: Any | None = None,
+    settings: dict[str, Any] | None = None,
+    user_id: str | None = None,
+    persist_cloud: bool = True,
+) -> str:
+    """Ensure device-store Suno root is ready and optionally push it to cloud.
+
+    Called from the download worker so mid-session generates do not keep planning
+    under a stale AppData path until the next app restart.
+    """
+    cloud = dict(settings or {})
+    if not cloud and api is not None:
+        try:
+            response = api.get_settings()
+            if hasattr(response, "model_dump"):
+                cloud = response.model_dump(by_alias=True)
+            elif isinstance(response, dict):
+                cloud = dict(response)
+        except Exception:
+            cloud = {}
+
+    from shared.lib.workspace_defaults import apply_workspace_path_defaults
+
+    merged, heal_patch = apply_workspace_path_defaults(cloud)
+    persist_device_paths_from_settings(merged, user_id)
+    patch = {**heal_patch, **device_path_patch_against_cloud(merged, cloud)}
+    if persist_cloud and patch and api is not None:
+        try:
+            api.patch_settings(patch)
+        except Exception:
+            pass
+    return resolve_local_suno_output_dir(user_id, merged)
+
+
+def local_run_dir_for_disk(run_dir: str, *, local_suno_base: str | None = None) -> str:
+    """Map a server/batch run_dir onto this machine's Suno root for disk checks."""
+    text = _normalize_stored_path(str(run_dir or ""))
+    if not text:
+        return ""
+    base = str(local_suno_base or "").strip() or resolve_local_suno_output_dir()
+    remapped, _ = remap_suno_download_paths(text, "", base)
+    return remapped or text
 
 
 def _normalize_path_text(path: str) -> str:
-    return str(path or "").strip().replace("/", "\\")
+    return _normalize_stored_path(path)
 
 
 def path_is_under_base(path: str, base: str) -> bool:
