@@ -12,6 +12,7 @@
 > - [`docs/changelog/2026-08-04-desktop-1.0.19-ship-cut.md`](changelog/2026-08-04-desktop-1.0.19-ship-cut.md) (why blend call-site fix was lost)  
 > - [`docs/changelog/2026-08-04-preview-opaque-alpha-p0.md`](changelog/2026-08-04-preview-opaque-alpha-p0.md) (**P0 implementation**)  
 > - [`docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`](changelog/2026-08-04-preview-p1-diag-failure-ux.md) (**P1 implementation**)  
+> - [`docs/changelog/2026-08-04-preview-p2-interactive-perf.md`](changelog/2026-08-04-preview-p2-interactive-perf.md) (**P2 implementation**)  
 > - [`docs/GPU_EXPORT_PERFORMANCE_REQUIREMENTS.md`](GPU_EXPORT_PERFORMANCE_REQUIREMENTS.md)  
 > **Last updated:** 2026-08-04
 

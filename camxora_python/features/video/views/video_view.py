@@ -323,6 +323,11 @@ class VideoView(QWidget):
         self._preview_update_timer.setSingleShot(True)
         self._preview_update_timer.setInterval(48)
         self._preview_update_timer.timeout.connect(self._flush_preview_update)
+        self._preview_scrub_end_timer = QTimer(self)
+        self._preview_scrub_end_timer.setSingleShot(True)
+        self._preview_scrub_end_timer.setInterval(180)
+        self._preview_scrub_end_timer.timeout.connect(self._end_preview_scrub)
+        self._preview_scrubbing = False
         self._dirty_state_timer = QTimer(self)
         self._dirty_state_timer.setSingleShot(True)
         self._dirty_state_timer.setInterval(120)
@@ -1160,14 +1165,15 @@ class VideoView(QWidget):
             }
         )
 
-    def _update_inspectors(self, *, defer_rebind: bool = False) -> None:
+    def _update_inspectors(self, *, defer_rebind: bool = False, schedule_preview: bool = True) -> None:
         if defer_rebind:
             self._inspector_rebind_timer.start()
         else:
             self._inspector_rebind_timer.stop()
             self._bind_inspectors()
             self._update_effect_pack_selectors()
-        self._schedule_preview_update()
+        if schedule_preview:
+            self._schedule_preview_update()
         self._schedule_dirty_state_update()
 
     def _flush_inspector_rebind(self) -> None:
@@ -1179,6 +1185,37 @@ class VideoView(QWidget):
 
     def _flush_preview_update(self) -> None:
         self._update_preview()
+
+    def _mark_preview_scrubbing(self) -> None:
+        """REQ-P2.5: enter reduced paint rate; schedule full flush when idle."""
+        if not self._preview_scrubbing:
+            self._preview_scrubbing = True
+            try:
+                self._stage.set_interactive_scrub(True)
+            except Exception:
+                pass
+        self._preview_scrub_end_timer.start()
+
+    def _end_preview_scrub(self) -> None:
+        was = bool(self._preview_scrubbing)
+        self._preview_scrubbing = False
+        try:
+            self._stage.set_interactive_scrub(False)
+        except Exception:
+            pass
+        if was:
+            # Canonical Full_Template_Push after scrub (REQ-P2.2).
+            self._flush_preview_update()
+
+    def _apply_live_scrub_patch(self, patch: dict) -> bool:
+        """Apply allowlisted live patch; returns False when caller must full-push."""
+        try:
+            ok = bool(self._stage.apply_preview_patch(patch))
+        except Exception:
+            ok = False
+        if ok:
+            self._mark_preview_scrubbing()
+        return ok
 
     def _schedule_dirty_state_update(self, *, delay_ms: int = 120) -> None:
         self._dirty_state_timer.start(max(0, int(delay_ms)))
@@ -3458,14 +3495,16 @@ class VideoView(QWidget):
         *,
         selected_index: int,
         defer_rebind: bool = False,
+        schedule_preview: bool = True,
     ) -> None:
         self._spectrum_layers = clone_layer_records(layers)
         self._selected_spectrum_layer_index = selected_index
         self._flush_active_spectrum_instance_layers()
         self._remember_active_spectrum_preset_session()
-        self._update_inspectors(defer_rebind=defer_rebind)
+        self._update_inspectors(defer_rebind=defer_rebind, schedule_preview=schedule_preview)
         self._schedule_dirty_state_update()
-        self._schedule_preview_update()
+        if schedule_preview:
+            self._schedule_preview_update()
 
     def _set_lightning_layers(
         self,
@@ -3568,6 +3607,11 @@ class VideoView(QWidget):
         self._update_inspectors()
 
     def _patch_selected_spectrum_layer(self, patch: dict) -> None:
+        from features.video.lib.preview_scrub_patch import (
+            layer_patch_is_scrub_allowlisted,
+            layer_scrub_values,
+        )
+
         layers = clone_layer_records(self._spectrum_layers)
         if not layers:
             layers = [{}]
@@ -3600,7 +3644,21 @@ class VideoView(QWidget):
             "fillCircle", "solidBand", "reflectionEnabled", "peakCapsEnabled",
         }
         defer = not any(key in next_patch for key in structural)
-        self._set_spectrum_layers(layers, selected_index=index, defer_rebind=defer)
+        scrub_ok = False
+        if layer_patch_is_scrub_allowlisted(next_patch):
+            scrub_ok = self._apply_live_scrub_patch(
+                {
+                    "layerIndex": index,
+                    "instanceIndex": int(self._selected_spectrum_instance_index),
+                    "layer": layer_scrub_values(next_patch),
+                }
+            )
+        self._set_spectrum_layers(
+            layers,
+            selected_index=index,
+            defer_rebind=defer,
+            schedule_preview=not scrub_ok,
+        )
 
     def _patch_selected_spectrum_layer_color(self, patch: dict) -> None:
         layers = clone_layer_records(self._spectrum_layers)
@@ -3697,6 +3755,11 @@ class VideoView(QWidget):
     def _patch_template_draft(self, patch: dict) -> None:
         if not self._template_draft:
             return
+        from features.video.lib.preview_scrub_patch import (
+            draft_patch_is_scrub_allowlisted,
+            particle_draft_to_settings_patch,
+        )
+
         self._template_draft = {**self._template_draft, **patch}
         from features.video.lib.spectrum_instance_registry import apply_draft_fields_to_instance
         spectrum_keys = {
@@ -3721,10 +3784,19 @@ class VideoView(QWidget):
             self._remember_active_background_preset_session()
         if logo_patch_touches_preset_fields(patch):
             self._remember_active_logo_preset_session()
+
+        scrub_ok = False
+        if draft_patch_is_scrub_allowlisted(patch):
+            settings_patch = particle_draft_to_settings_patch(patch)
+            if settings_patch:
+                scrub_ok = self._apply_live_scrub_patch({"particlesSettings": settings_patch})
+
         # The control that emitted the patch already shows the new value;
         # rebind the rest once the user pauses instead of on every tick.
-        self._update_inspectors(defer_rebind=True)
+        self._update_inspectors(defer_rebind=True, schedule_preview=not scrub_ok)
         self._schedule_dirty_state_update()
+        if scrub_ok:
+            return
         if {"particlesEnabled", "spectrumEnabled", "backgroundEnabled", "logoEnabled"} & set(patch.keys()):
             self._flush_preview_update()
         elif spectrum_keys & set(patch.keys()):

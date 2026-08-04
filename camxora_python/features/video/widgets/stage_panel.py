@@ -215,6 +215,15 @@ class VideoStagePanel(SettingsPanel):
     def preview_widget(self):
         return self._preview
 
+    def apply_preview_patch(self, patch: dict) -> bool:
+        if self._preview is None:
+            return False
+        return bool(self._preview.apply_preview_patch(patch))
+
+    def set_interactive_scrub(self, active: bool) -> None:
+        if self._preview is not None:
+            self._preview.set_interactive_scrub(bool(active))
+
     def preview_runtime_nonce(self) -> int:
         return int(self._preview_runtime_nonce)
 
