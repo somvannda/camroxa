@@ -1,10 +1,23 @@
-"""Rounded frameless window chrome — outer shell only; inner cards stay unchanged."""
+"""Rounded frameless window chrome — outer shell only; inner cards stay unchanged.
+
+Windowed rounding uses Windows DWM corner preference + QSS border-radius on the
+opaque ``#window_surface``. We deliberately do **not** use ``setMask()`` or
+``WA_TranslucentBackground`` on the main shell: that combo breaks mouse
+hit-testing on some Windows DPI setups (clicks land offset from painted
+controls). Maximized mode already cleared the mask historically; windowed mode
+now matches that hit-test-safe path.
+
+Note: older builds kept translucency for rounded corner compositing and relied
+on preview Alpha_Lock (REQ-P0) so ``QOpenGLWidget`` FBO alpha would not show
+the desktop. 1.2.0 switches to an opaque HWND (REQ-P3.2) which also removes
+that transparency side effect for the shell.
+"""
 
 from __future__ import annotations
 
 import sys
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QPainterPath, QRegion
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QWidget
 
 # Subtle outer radius — matches studio cards (4–6px) without looking bubbly.
@@ -34,34 +47,26 @@ def center_window_on_screen(window: QWidget) -> None:
 
 
 def configure_rounded_window(window: QWidget, *, radius: int = WINDOW_CORNER_RADIUS) -> None:
-    """Enable rounded corners on the top-level frameless window.
-
-    ``WA_TranslucentBackground`` is required so the OS composites the area
-    outside the rounded mask as clear (otherwise square corners show a black
-    or theme-colored box). The opaque studio fill is painted by
-    ``QWidget#window_surface`` (see ``deep_blue.py``), not by QMainWindow.
-
-    Side effect: ``QOpenGLWidget`` FBO alpha becomes real window transparency.
-    Preview must keep destination alpha at 1 (REQ-P0 Alpha_Lock). Do not clear
-    this attribute without an alternate rounded-chrome strategy (REQ-P3.2).
-    """
-    window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+    """Enable rounded corners on the top-level frameless window (hit-test safe)."""
+    # Opaque HWND: avoid layered/translucent hit-test bugs under fractional DPI.
+    window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+    window.clearMask()
     sync_rounded_window_shape(window, radius=radius)
 
 
 def sync_rounded_window_shape(window: QWidget, *, radius: int = WINDOW_CORNER_RADIUS) -> None:
-    """Update window mask and outer surface styling for the current window state."""
+    """Update DWM rounding + outer surface styling for the current window state."""
+    # Always clear any legacy region mask so clicks match painted controls.
+    window.clearMask()
+    window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+
     surface = window.centralWidget()
     if window.isMaximized() or window.isFullScreen():
-        window.clearMask()
         if sys.platform == "win32":
             _set_windows_corner_preference(window, round_corners=False)
         _set_surface_rounded(surface, rounded=False, radius=radius)
         return
 
-    path = QPainterPath()
-    path.addRoundedRect(QRectF(window.rect()), radius, radius)
-    window.setMask(QRegion(path.toFillPolygon().toPolygon()))
     if sys.platform == "win32":
         _set_windows_corner_preference(window, round_corners=True)
     _set_surface_rounded(surface, rounded=True, radius=radius)
@@ -83,6 +88,7 @@ def _set_windows_corner_preference(window: QWidget, *, round_corners: bool) -> N
         hwnd = int(window.winId())
         if hwnd == 0:
             return
+        # DWMWA_WINDOW_CORNER_PREFERENCE (33): DONOTROUND=1, ROUND=2 (Windows 11+).
         preference = 2 if round_corners else 1
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
             hwnd,

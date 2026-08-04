@@ -59,9 +59,9 @@ QFrame#startup_progress_fill {
     max-height: 8px;
 }
 
-/* Main Window — transparent so only window_surface paints the opaque shell */
+/* Main Window — opaque shell (no translucent HWND; keeps mouse hit-testing aligned) */
 QMainWindow {
-    background: transparent;
+    background-color: #0f1923;
 }
 
 QWidget#window_surface {
