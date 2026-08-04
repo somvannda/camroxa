@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import mimetypes
-import os
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -11,30 +9,9 @@ from fastapi.responses import FileResponse
 
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user
+from platform_api.utils.upload_paths import resolve_upload_path
 
 router = APIRouter(prefix="/media", tags=["media"])
-
-
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
-def _uploads_root() -> Path:
-    return (_project_root() / "uploads").resolve()
-
-
-def _resolve_upload_path(value: str | None) -> Path | None:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    p = Path(raw)
-    candidate = (p if p.is_absolute() else (_project_root() / p)).resolve()
-    root = _uploads_root()
-    root_str = str(root)
-    cand_str = str(candidate)
-    if cand_str == root_str or not cand_str.startswith(root_str + os.sep):
-        return None
-    return candidate
 
 
 async def _get_profile_media_row(*, profile_id: UUID) -> dict:
@@ -78,7 +55,7 @@ async def get_channel_profile_logo(
     row = await _get_profile_media_row(profile_id=profile_id)
     if not _is_admin(ctx) and str(row.get("user_id")) != str(ctx.user_id):
         raise NotFoundError("Profile not found.")
-    path = _resolve_upload_path(row.get("logo_path"))
+    path = resolve_upload_path(row.get("logo_path"))
     if path is None or not path.exists() or not path.is_file():
         raise NotFoundError("Logo not found.")
     media_type, _ = mimetypes.guess_type(str(path))
@@ -108,7 +85,7 @@ async def get_channel_profile_cover(
     if idx >= len(cover_list):
         raise NotFoundError("Cover not found.")
 
-    path = _resolve_upload_path(cover_list[idx])
+    path = resolve_upload_path(cover_list[idx])
     if path is None or not path.exists() or not path.is_file():
         raise NotFoundError("Cover not found.")
     media_type, _ = mimetypes.guess_type(str(path))

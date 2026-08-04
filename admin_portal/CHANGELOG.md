@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- User detail channel logos/covers: do not retry blob fetches on 404; availability
+  now comes from API file-existence checks so missing uploads no longer spam
+  console 404s. See docs/changelog/2026-08-04-admin-channel-profile-media-404.md.
+
 - Streaming Upload Jobs: API now returns user/song/album/batch/publish fields so cards are not empty dashes. See `docs/changelog/2026-08-02-admin-streaming-upload-job-details.md`.
 - Software Updates: Force update publish no longer depends on installer
   filename shape — Version + Force update come from the form; filename parse

@@ -21,6 +21,7 @@ from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.user_service import UserService
 from platform_api.services.credit_units import units_to_credits
+from platform_api.utils.upload_paths import upload_path_exists
 
 # ---------------------------------------------------------------------------
 # Router
@@ -711,8 +712,8 @@ async def get_user_full_details(
                 folder_name=row.get("folder_name"),
                 run_prefix=str(row.get("run_prefix") or "").strip() or None,
                 created_at=row["created_at"],
-                logo_available=bool(str(row.get("logo_path") or "").strip()),
-                cover_count=len([x for x in cover_paths if str(x or "").strip()]),
+                logo_available=upload_path_exists(row.get("logo_path")),
+                cover_count=len([x for x in cover_paths if upload_path_exists(x)]),
                 output_resolution=str(row.get("output_resolution") or "").strip() or None,
                 video_template_id=video_template_id,
                 reel_template_id=reel_template_id,

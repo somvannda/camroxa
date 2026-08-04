@@ -46,7 +46,7 @@ class FakeUserDetailDbPool:
         sql = " ".join(str(query).split()).lower()
         if "from credit_wallets" in sql:
             return {"balance": 450}
-        if "sum(abs(amount))" in sql:
+        if "from credit_transactions" in sql and "sum(" in sql:
             return {"total": 120}
         if "from licenses l" in sql and "join plans p" in sql:
             return {
@@ -65,6 +65,8 @@ class FakeUserDetailDbPool:
     async def fetch(self, query: str, *args):
         sql = " ".join(str(query).split()).lower()
         if "from credit_transactions" in sql:
+            return []
+        if "from music_descriptions" in sql or "from music_structures" in sql:
             return []
         if "from channel_profiles" in sql:
             return [
@@ -211,6 +213,11 @@ class TestGetUserFullDetails:
     ) -> None:
         app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
         monkeypatch.setattr(users_router, "get_db_pool", lambda: FakeUserDetailDbPool())
+        monkeypatch.setattr(
+            users_router,
+            "upload_path_exists",
+            lambda value: bool(str(value or "").strip()),
+        )
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:

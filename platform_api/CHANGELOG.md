@@ -25,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Admin user detail no longer reports logos/covers as available when the
+  stored upload path is missing on disk, which stopped the admin portal from
+  requesting those media URLs and logging 404s. See
+  docs/changelog/2026-08-04-admin-channel-profile-media-404.md.
+
 - Desktop installer publish: version comes from the Software Update form /
   draft (Force update checkbox), not from the installer filename. Filename
   parse is auto-fill only; `CamxoraSetup-*.exe` still parses when present.

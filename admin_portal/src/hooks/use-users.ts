@@ -96,6 +96,7 @@ export function useChannelProfileLogoBlob(profileId: string) {
       return resp.data as Blob;
     },
     enabled: !!profileId,
+    retry: false,
   });
 }
 
@@ -110,5 +111,6 @@ export function useChannelProfileCoverBlob(profileId: string, index: number) {
       return resp.data as Blob;
     },
     enabled: !!profileId && index >= 0,
+    retry: false,
   });
 }
