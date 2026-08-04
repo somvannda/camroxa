@@ -38,6 +38,24 @@ def _layer_float(layer: dict[str, Any], key: str, default: float) -> float:
         return float(default)
 
 
+def _blend_rgb_normal_opaque_alpha(ctx: moderngl.Context) -> None:
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE_MINUS_SRC_ALPHA,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
+
+
+def _blend_rgb_additive_opaque_alpha(ctx: moderngl.Context) -> None:
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
+
+
 def peak_lightning_flash(
     template: dict,
     *,
@@ -118,8 +136,14 @@ def render_lightning_layers_gl(
     beat: float = 0.0,
     onset: float = 0.0,
     audio_env: float | None = None,
+    opaque_framebuffer_alpha: bool = True,
 ) -> None:
-    """Draw lightning over background / under spectrum+logo. No-op when disabled."""
+    """Draw lightning over background / under spectrum+logo. No-op when disabled.
+
+    When ``opaque_framebuffer_alpha`` is True (preview default), RGB blends
+    normally/additively while destination alpha stays 1 so Qt translucent
+    windows do not show the desktop through soft glow coronae.
+    """
     if not bool(template.get("lightningEnabled", False)):
         return
     raw_layers = template.get("lightningLayers")
@@ -215,7 +239,12 @@ def render_lightning_layers_gl(
         glow = float(max(0.0, min(1.0, _layer_float(layer, "glow", 0.5))))
         taper = float(max(0.0, min(1.0, _layer_float(layer, "taper", 0.65))))
         blend = str(layer.get("blend") or "add").lower().strip()
-        if blend in {"add", "screen", "lighten"}:
+        if opaque_framebuffer_alpha:
+            if blend in {"add", "screen", "lighten"}:
+                _blend_rgb_additive_opaque_alpha(ctx)
+            else:
+                _blend_rgb_normal_opaque_alpha(ctx)
+        elif blend in {"add", "screen", "lighten"}:
             ctx.blend_func = moderngl.ADDITIVE_BLENDING
         else:
             ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
@@ -288,4 +317,7 @@ def render_lightning_layers_gl(
                 line_vbo.write(np.ascontiguousarray(verts, dtype=np.float32))
                 vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=nn)
 
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    if opaque_framebuffer_alpha:
+        _blend_rgb_normal_opaque_alpha(ctx)
+    else:
+        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)

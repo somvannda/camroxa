@@ -34,7 +34,17 @@ def center_window_on_screen(window: QWidget) -> None:
 
 
 def configure_rounded_window(window: QWidget, *, radius: int = WINDOW_CORNER_RADIUS) -> None:
-    """Enable rounded corners on the top-level frameless window."""
+    """Enable rounded corners on the top-level frameless window.
+
+    ``WA_TranslucentBackground`` is required so the OS composites the area
+    outside the rounded mask as clear (otherwise square corners show a black
+    or theme-colored box). The opaque studio fill is painted by
+    ``QWidget#window_surface`` (see ``deep_blue.py``), not by QMainWindow.
+
+    Side effect: ``QOpenGLWidget`` FBO alpha becomes real window transparency.
+    Preview must keep destination alpha at 1 (REQ-P0 Alpha_Lock). Do not clear
+    this attribute without an alternate rounded-chrome strategy (REQ-P3.2).
+    """
     window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
     sync_rounded_window_shape(window, radius=radius)
 

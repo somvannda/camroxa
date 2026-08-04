@@ -11,9 +11,44 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Export HDR bloom parity.** Same flagged bloom/tonemap path as live preview
+  (`CAMXORA_PREVIEW_HDR_BLOOM=1`); flag off keeps legacy export post. See
+  `docs/changelog/2026-08-04-preview-p4-export-parity.md`.
+- **Preview HDR bloom path (flagged).** Offscreen threshold / blur pyramid /
+  tonemap into the Qt preview FBO with opaque alpha. Default off
+  (`CAMXORA_PREVIEW_HDR_BLOOM=0`). See
+  `docs/changelog/2026-08-04-preview-p4-hdr-bloom.md`.
+- **HDR bloom design (preview/export).** Planned float intermediate + bloom +
+  tonemap pipeline documented; P4.2 implements preview behind the flag. See
+  `docs/PREVIEW_HDR_BLOOM_DESIGN.md`.
+
 ### Changed
 
 ### Fixed
+
+- **Preview see-through on some GPUs.** Soft glow / additive spectrum, particle,
+  and lightning draws no longer punch alpha holes in the Qt OpenGL framebuffer
+  under the frameless translucent window. Standalone Alpha_Lock hotfix — playlist
+  glass is **not** included. See
+  `docs/changelog/2026-08-04-preview-opaque-alpha-p0.md`.
+- **Preview GL diagnostics were invisible on user machines.** OpenGL init /
+  background / logo upload breadcrumbs now write to
+  `%LOCALAPPDATA%\Camxora\logs\preview-gl-diag.log` and important lines also
+  appear in the daily `camxora-*.log` as `[preview-gl]`. Copy Diagnostics
+  includes `glReady` / `lastGlError` / GPU info. Init/FBO failures show an
+  opaque error panel (no desktop hole). See
+  `docs/changelog/2026-08-03-preview-gl-diag-logging.md` and
+  `docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`.
+- **Video inspector scrub felt laggy with live preview.** Allowlisted glow /
+  opacity / barWidth / particle size-opacity updates patch the live preview
+  template without a full normalize each tick; scrub runs at 20 FPS and
+  canonical-flushes when idle. See
+  `docs/changelog/2026-08-04-preview-p2-interactive-perf.md`.
+- **Frameless rounded chrome keeps `WA_TranslucentBackground` by design.**
+  Audit confirms `#window_surface` is the opaque backplate; preview
+  see-through is handled by P0 Alpha_Lock, not by removing window
+  translucency. Safer DWM-only corners deferred. See
+  `docs/changelog/2026-08-04-preview-p3-chrome-audit.md`.
 
 ## [1.0.19] - 2026-08-04
 
