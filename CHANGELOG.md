@@ -15,6 +15,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.19] - 2026-08-04
+
+### Changed
+
+- Ship cut: **DistroKid / WAV automation** and **playlist glass polish** are
+  excluded from this installer (not ready). Same per-device path + spectrum
+  fixes as 1.0.18. See `docs/changelog/2026-08-04-desktop-1.0.19-ship-cut.md`.
+
 ## [1.0.18] - 2026-08-04
 
 ### Fixed
