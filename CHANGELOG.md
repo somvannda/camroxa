@@ -28,6 +28,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
   opaque error panel (no desktop hole). See
   `docs/changelog/2026-08-03-preview-gl-diag-logging.md` and
   `docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`.
+- **Video inspector scrub felt laggy with live preview.** Allowlisted glow /
+  opacity / barWidth / particle size-opacity updates patch the live preview
+  template without a full normalize each tick; scrub runs at 20 FPS and
+  canonical-flushes when idle. See
+  `docs/changelog/2026-08-04-preview-p2-interactive-perf.md`.
 
 ## [1.0.19] - 2026-08-04
 

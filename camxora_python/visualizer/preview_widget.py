@@ -380,6 +380,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._perf_fps = 0.0
         self._last_gl_error = ""
         self._gl_info: dict[str, str] = {}
+        self._template_fingerprint = None
+        self._template_generation = 0
+        self._interactive_scrub = False
         self._log("SpectrumPreview init")
 
     def _frame_metrics(self) -> tuple[int, int, int, int]:
@@ -842,7 +845,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         except Exception:
             return str(path or '').strip()
 
-    def set_template(self, tpl: dict):
+    def set_template(self, tpl: dict, *, generation: int | None = None, clear_peak_cache: bool | None = None):
         # Don't clobber live GPU drag offset with a full rebuild mid-drag.
         if self._text_drag_domain in {"album", "title"} and (
             abs(self._text_drag_dx) > 1e-06 or abs(self._text_drag_dy) > 1e-06
@@ -852,18 +855,124 @@ class VideoSpectrumPreview(QOpenGLWidget):
         # clearing the peak cache caused periodic hitch after every draft push.
         if tpl is self.template:
             return
-        try:
-            import json as _json
-
-            key = _json.dumps(tpl, sort_keys=True, default=str)
-        except Exception:
-            key = None
-        if key is not None and key == getattr(self, "_template_fingerprint", None):
+        if generation is not None and generation == getattr(self, "_template_generation", None):
             return
+        if generation is None:
+            try:
+                import json as _json
+
+                key = _json.dumps(tpl, sort_keys=True, default=str)
+            except Exception:
+                key = None
+            if key is not None and key == getattr(self, "_template_fingerprint", None):
+                return
+            self._template_fingerprint = key
+            self._template_generation = int(getattr(self, "_template_generation", 0) or 0) + 1
+        else:
+            self._template_generation = int(generation)
+            self._template_fingerprint = None
         self.template = normalize_renderer_template(tpl)
-        self._template_fingerprint = key
-        self._spectrum_peak_cache.clear()
+        should_clear = True if clear_peak_cache is None else bool(clear_peak_cache)
+        if should_clear:
+            self._spectrum_peak_cache.clear()
         self.update()
+
+    def apply_preview_patch(self, patch: dict) -> bool:
+        """REQ-P2.2: mutate live normalized template without re-normalize.
+
+        Supported shapes:
+          ``{"particlesSettings": {"opacity": …, "size": …}}``
+          ``{"layerIndex": int, "layer": {"glow"|"opacity"|"barWidth": …}}``
+          ``{"instanceIndex": int, "layerIndex": int, "layer": {...}}``
+
+        Returns True when the patch was applied (allowlisted). False → caller
+        must full-push.
+        """
+        if not isinstance(patch, dict) or not patch:
+            return False
+        applied = False
+        clear_peaks = False
+
+        ps_patch = patch.get("particlesSettings")
+        if isinstance(ps_patch, dict) and ps_patch:
+            allowed = {"opacity", "size"}
+            if set(ps_patch.keys()) - allowed:
+                return False
+            ps = self.template.get("particlesSettings")
+            if not isinstance(ps, dict):
+                ps = {}
+                self.template["particlesSettings"] = ps
+            if "opacity" in ps_patch:
+                from features.video.lib.preview_scrub_patch import clamp_particle_scrub_value
+
+                ps["opacity"] = clamp_particle_scrub_value("particlesOpacity", ps_patch["opacity"])
+                applied = True
+            if "size" in ps_patch:
+                from features.video.lib.preview_scrub_patch import clamp_particle_scrub_value
+
+                ps["size"] = clamp_particle_scrub_value("particlesSize", ps_patch["size"])
+                applied = True
+
+        layer_patch = patch.get("layer")
+        if isinstance(layer_patch, dict) and layer_patch:
+            from features.video.lib.preview_scrub_patch import (
+                PREVIEW_SCRUB_LAYER_KEYS,
+                clamp_layer_scrub_value,
+            )
+
+            if set(layer_patch.keys()) - PREVIEW_SCRUB_LAYER_KEYS:
+                return False
+            layer_index = int(patch.get("layerIndex", 0) or 0)
+            instance_index = patch.get("instanceIndex", None)
+
+            def _apply_into(layers_obj: object) -> bool:
+                if not isinstance(layers_obj, list) or not layers_obj:
+                    return False
+                idx = max(0, min(layer_index, len(layers_obj) - 1))
+                current = layers_obj[idx] if isinstance(layers_obj[idx], dict) else {}
+                updated = dict(current)
+                for key, raw in layer_patch.items():
+                    updated[key] = clamp_layer_scrub_value(key, raw)
+                layers_obj[idx] = updated
+                return True
+
+            layers = self.template.get("layers")
+            if isinstance(layers, list):
+                applied = _apply_into(layers) or applied
+            instances = self.template.get("spectrumInstances")
+            if isinstance(instances, list) and instances:
+                inst_i = (
+                    int(instance_index)
+                    if instance_index is not None
+                    else int(getattr(self, "_selected_spectrum_instance_index", 0) or 0)
+                )
+                inst_i = max(0, min(inst_i, len(instances) - 1))
+                inst = instances[inst_i] if isinstance(instances[inst_i], dict) else None
+                if isinstance(inst, dict):
+                    inst_layers = inst.get("layers")
+                    if isinstance(inst_layers, list):
+                        applied = _apply_into(inst_layers) or applied
+
+        if not applied:
+            return False
+        # Opacity/glow/size patches do not invalidate peak geometry (REQ-P2.4).
+        if clear_peaks:
+            self._spectrum_peak_cache.clear()
+        self._template_generation = int(getattr(self, "_template_generation", 0) or 0) + 1
+        self._template_fingerprint = None
+        self.update()
+        return True
+
+    def set_interactive_scrub(self, active: bool) -> None:
+        """REQ-P2.5: lower paint rate while dragging inspector sliders."""
+        want = bool(active)
+        if want == bool(getattr(self, "_interactive_scrub", False)):
+            return
+        self._interactive_scrub = want
+        try:
+            self.timer.setInterval(1000 // 20 if want else 1000 // 60)
+        except Exception:
+            pass
 
     def configure(self, config: PreviewConfig) -> None:
         """Apply a PreviewConfig DTO to set up the preview widget.
