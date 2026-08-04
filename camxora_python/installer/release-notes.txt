@@ -1,26 +1,21 @@
-﻿Camxora 1.2.0 - Windowed UI click fix
-Date: 2026-08-04
+﻿Camxora 1.1.0 - Ship-safe preview (HDR bloom off)
+Date: 2026-08-05
 
 What's new
 ----------
-- Windowed mode: dropdowns, calendars, scrollbars, and buttons click where they
-  look again (hit-testing no longer offset from painted controls)
-- Keep the custom rounded header; rounding now uses Windows DWM + QSS on an
-  opaque shell instead of a translucent window mask
-- Maximized mode was already fine; windowed mode now matches that behavior
-
-Also included (from 1.1.0)
---------------------------
-- Real HDR bloom on by default for preview and export (set
-  CAMXORA_PREVIEW_HDR_BLOOM=0 to force the legacy glow path)
-- Export matches the live Video preview (spectrum instances, live draft
+- Preview HDR bloom is **off by default** (legacy glow path). Particles, stage
+  logo, spectrum, and lightning behave correctly out of the box
+- Optional: set CAMXORA_PREVIEW_HDR_BLOOM=1 to try CapCut-style bloom
+  (experimental until composite order is fixed)
+- Windowed UI click hit-test fix: dropdowns, calendars, scrollbars click where
+  they look (opaque shell + DWM/QSS rounding)
+- Export matches live Video preview (spectrum instances, live draft
   style/position, lightning flash undersampling)
 - Logo inspector: Reset Center restored
-- Fixes black live preview after Alpha_Lock (ModernGL alpha clear wipe)
-- Fixes GPU export crash on some drivers (GLSL smoke_hash_noise2)
+- Fixes black live preview after Alpha_Lock; GLSL smoke_hash_noise2 export crash
 - Failed-export refunds clamp reason to 500 chars; music preflight skips
   inverted From/To dates
-- Includes 1.0.20 Raise Scroll import fix and the P0–P4.3 preview stack
+- Includes 1.0.20 Raise Scroll import fix and the P0–P4 preview stack
 - Per-device media folders, Spectrum Save / Row Width, NVENC→x264 fallback
 
 Not included in this build
@@ -32,6 +27,6 @@ Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.2.0.exe
+- Installer file: CamxoraSetup-1.1.0.exe
 - Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
   Camxora to use NVENC again

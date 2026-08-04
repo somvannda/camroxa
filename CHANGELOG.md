@@ -30,12 +30,20 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Desktop app version stamp **1.2.0** / CamxoraSetup-1.2.0.exe. Includes
   everything from **1.1.0** (HDR bloom, export WYSIWYG, preview P0–P4.3 stack).
 
-## [1.1.0] - 2026-08-04
+## [1.1.0] - 2026-08-05
+
+### Changed
+
+- **Ship-safe installer:** Preview HDR bloom is **off by default** (legacy glow).
+  Set `CAMXORA_PREVIEW_HDR_BLOOM=1` to opt in. Default-on bloom wiped particles/
+  logo and stacked spectrum/lightning haze. See
+  `docs/changelog/2026-08-05-desktop-1.1.0-hdr-off-ship.md`.
+- Installer: `CamxoraSetup-1.1.0.exe` (includes windowed click hit-test fix).
 
 ### Added
 
-- **HDR bloom on by default.** Preview and export use the HDR bloom/tonemap path
-  unless `CAMXORA_PREVIEW_HDR_BLOOM=0`. See
+- **HDR bloom path (opt-in).** Preview and export can use HDR bloom/tonemap when
+  `CAMXORA_PREVIEW_HDR_BLOOM=1`. See
   `docs/changelog/2026-08-04-desktop-1.1.0.md`.
 - **Export HDR bloom parity.** Same bloom/tonemap path as live preview. See
   `docs/changelog/2026-08-04-preview-p4-export-parity.md`.

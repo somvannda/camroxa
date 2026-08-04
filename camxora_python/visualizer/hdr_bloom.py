@@ -1,12 +1,15 @@
 """Preview HDR bloom post-process (REQ-P4.2 / desktop 1.1.0).
 
-Flag (default on for 1.1.0+; set to 0 to force legacy glow):
-  CAMXORA_PREVIEW_HDR_BLOOM=0
+Flag (default **off** for the 1.1.0 ship-safe installer; set to 1 to enable):
+  CAMXORA_PREVIEW_HDR_BLOOM=1
 
 Pipeline: scene (offscreen) → threshold → blur pyramid → upsample composite
 → tonemap → Qt Preview_FBO with alpha = 1.0 (translucent frameless window safe).
 
 Interactive scrub (REQ-P2) should skip this path and draw directly to the Qt FBO.
+
+Ship note: CapCut-style bloom stays opt-in until composite order is fixed
+(particles/logo/spectrum haze when bloom was default-on).
 """
 
 from __future__ import annotations
@@ -21,7 +24,8 @@ ENV_FLAG = "CAMXORA_PREVIEW_HDR_BLOOM"
 
 
 def preview_hdr_bloom_enabled() -> bool:
-    raw = str(os.environ.get(ENV_FLAG, "1") or "1").strip().lower()
+    # Default off (empty / unset → legacy glow). Explicit 1/true/on enables HDR.
+    raw = str(os.environ.get(ENV_FLAG, "0") or "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
