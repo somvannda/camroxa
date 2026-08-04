@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/card";
 import { listBillingProviders, type BillingProviderConfig } from "@/lib/billing";
 import { ProfileAddonPanel } from "@/components/dashboard/profile-addon-panel";
-import { DistroKidPanel } from "@/components/dashboard/distrokid-panel";
 
 export default function DashboardBillingPage() {
   const router = useRouter();
@@ -124,9 +123,6 @@ export default function DashboardBillingPage() {
       </div>
 
       <ProfileAddonPanel user={state.user} profileCount={state.profiles.length} />
-      <div className="mt-6">
-        <DistroKidPanel user={state.user} />
-      </div>
 
       <div className="grid gap-3 md:grid-cols-3">
         <StatTile label="Paid checkouts" value={String(paidPayments.length)} hint="Successful payments on this account." />

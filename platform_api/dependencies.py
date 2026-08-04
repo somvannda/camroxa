@@ -176,22 +176,6 @@ def get_suno_client():
     return SunoClient(settings=get_settings())
 
 
-def get_distrokid_service():
-    """Dependency provider for DistroKid WAV and upload history operations."""
-    from platform_api.services.distrokid_service import DistroKidService
-
-    key_pool = get_key_pool_service()
-    if key_pool is None:
-        raise RuntimeError("Key pool service is unavailable.")
-    return DistroKidService(
-        pool=get_db_pool(),
-        license_repo=get_license_repo(),
-        credit_service=get_credit_operation_service(),
-        suno_client=get_suno_client(),
-        key_pool_service=key_pool,
-    )
-
-
 def get_fal_client():
     """Dependency that returns the FalClient instance."""
     from platform_api.clients.fal_client import FalClient

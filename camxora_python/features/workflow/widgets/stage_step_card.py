@@ -19,7 +19,6 @@ STEP_ICON_KEYS = {
     "image": "image",
     "converter": "video",
     "merger": "merge",
-    "distrokid": "music",
     "youtube": "youtube",
 }
 

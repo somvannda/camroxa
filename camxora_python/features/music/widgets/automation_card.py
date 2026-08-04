@@ -93,41 +93,22 @@ class AutomationCard(QFrame):
         root.addLayout(grid)
 
         toggles = QGridLayout()
-        self._auto_image = QCheckBox("Gen Image (off by default)")
-        self._auto_gsuno = QCheckBox("GSuno (off by default)")
+        self._auto_image = QCheckBox("Auto-Gen Image (off by default)")
+        self._auto_gsuno = QCheckBox("Auto-GSuno (off by default)")
         self._auto_image.setToolTip(
             "When off, use History right-click → Image after drafts/Suno complete."
         )
         self._auto_gsuno.setToolTip(
             "When off, use History right-click → Suno after drafts are ready."
         )
-        self._auto_video = QCheckBox("Video")
-        self._auto_merge = QCheckBox("Merge")
-        self._auto_reel = QCheckBox("Short")
-        self._auto_reel.setToolTip(
-            "After long video export, also render a 9:16 short using the reel template."
-        )
-        self._auto_upload = QCheckBox("Upload")
+        self._auto_video = QCheckBox("Auto-Video")
+        self._auto_merge = QCheckBox("Auto Merge")
+        self._auto_reel = QCheckBox("Auto Reel")
+        self._auto_upload = QCheckBox("Auto-Upload")
         self._auto_upload.setEnabled(False)
         self._auto_upload_enabled = False
-        self._auto_distrokid = QCheckBox("DistroKid")
-        self._auto_distrokid.setEnabled(False)
-        self._auto_distrokid_enabled = False
-        self._auto_distrokid.setToolTip(
-            "Requires DistroKid add-on ($5/mo). After long Video/Merge "
-            "(and Short if enabled), downloads Suno WAVs (wallet suno/wav + 600/mo meter) "
-            "and uploads via DistroKid browser automation."
-        )
         for index, checkbox in enumerate(
-            (
-                self._auto_image,
-                self._auto_gsuno,
-                self._auto_video,
-                self._auto_merge,
-                self._auto_reel,
-                self._auto_upload,
-                self._auto_distrokid,
-            )
+            (self._auto_image, self._auto_gsuno, self._auto_video, self._auto_merge, self._auto_reel, self._auto_upload)
         ):
             toggles.addWidget(checkbox, index // 2, index % 2)
         root.addLayout(toggles)
@@ -172,15 +153,7 @@ class AutomationCard(QFrame):
         self._mood.currentIndexChanged.connect(lambda *_: self._emit_mood())
         self._shuffle_structure.stateChanged.connect(lambda *_: self.shuffle_changed.emit())
         self._shuffle_mood.stateChanged.connect(lambda *_: self.mood_shuffle_changed.emit())
-        for checkbox in (
-            self._auto_image,
-            self._auto_gsuno,
-            self._auto_video,
-            self._auto_merge,
-            self._auto_reel,
-            self._auto_upload,
-            self._auto_distrokid,
-        ):
+        for checkbox in (self._auto_image, self._auto_gsuno, self._auto_video, self._auto_merge, self._auto_reel, self._auto_upload):
             checkbox.stateChanged.connect(lambda *_: self.automation_changed.emit())
 
     def _emit_description(self) -> None:
@@ -305,7 +278,6 @@ class AutomationCard(QFrame):
         auto_merge_after_video: bool,
         auto_reel_after_video: bool,
         auto_upload_youtube: bool = False,
-        auto_distrokid: bool = False,
     ) -> None:
         self._auto_image.setChecked(auto_gen_image)
         self._auto_gsuno.setChecked(auto_gsuno)
@@ -314,20 +286,12 @@ class AutomationCard(QFrame):
         self._auto_reel.setChecked(auto_reel_after_video)
         if self._auto_upload_enabled:
             self._auto_upload.setChecked(auto_upload_youtube)
-        if self._auto_distrokid_enabled:
-            self._auto_distrokid.setChecked(auto_distrokid)
 
     def set_auto_upload_enabled(self, enabled: bool) -> None:
         self._auto_upload_enabled = enabled
         self._auto_upload.setEnabled(enabled)
         if not enabled:
             self._auto_upload.setChecked(False)
-
-    def set_distrokid_enabled(self, enabled: bool) -> None:
-        self._auto_distrokid_enabled = enabled
-        self._auto_distrokid.setEnabled(enabled)
-        if not enabled:
-            self._auto_distrokid.setChecked(False)
 
     def automation_values(self) -> dict[str, bool]:
         return {
@@ -337,7 +301,6 @@ class AutomationCard(QFrame):
             "auto_merge_after_video": self._auto_merge.isChecked(),
             "auto_reel_after_video": self._auto_reel.isChecked(),
             "auto_upload_youtube": self._auto_upload.isChecked() if self._auto_upload_enabled else False,
-            "auto_distrokid": self._auto_distrokid.isChecked() if self._auto_distrokid_enabled else False,
         }
 
     def set_cost_lines(self, text: str) -> None:

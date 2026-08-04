@@ -11,11 +11,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- DistroKid $5/mo add-on entitlement (`distrokid_enabled` / expires), CutLuy checkout, `suno/wav` pricing seed (600 WAV/mo product intent). See `docs/changelog/2026-07-27-distrokid-addon-scaffold.md`.
-- DistroKid Phase 4 API: Suno WAV convert/poll client, add-on-gated `/distrokid/wav` jobs with 600/month metering and `suno/wav` charging, plus fingerprinted DistroKid upload history and duplicate checks (`076_distrokid_wav`).
-- DistroKid `GET /distrokid/wav/sources?batch_id=` for desktop WAV download pairing. See `docs/changelog/2026-07-27-distrokid-automation-phases.md`.
-- DistroKid batch snapshot columns + `GET /distrokid/batch-context/{batch_id}` (`077_batch_auto_distrokid`).
-- DistroKid batch-context includes `ok_profile_id` / `alt_profile_id` for per-channel artist resolution.
 - Pipeline stuck-batch housekeeping: scheduled in-process scan (PipelineStuckAlertService) detects batches with no draft/Suno/image/asset activity for 15+ min (configurable) that aren't fully complete on every configured channel role, and pushes a throttled admin:pipeline_stuck_alert WebSocket alert to every admin (same fan-out as admin:abuse_alert). New GET /admin/pipeline/stuck for an on-demand view of the same detection. See docs/changelog/2026-08-01-pipeline-stuck-batch-alerting.md.
 - Restored admin Pipeline Ops API (`/admin/pipeline/board`, batch detail, owner-charged retries via job_queue). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Pipeline Ops board no longer requires desktop filesystem paths for stage/status; promotes Image → Converter/Streaming/Done from image jobs + stream uploads.

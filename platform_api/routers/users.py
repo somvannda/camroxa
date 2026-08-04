@@ -57,11 +57,6 @@ class UserProfileResponse(BaseModel):
     effective_quota_channels: int | None = None
     channel_profile_count: int = 0
     onboarding_paid: bool = False
-    distrokid_enabled: bool = False
-    distrokid_active: bool = False
-    distrokid_expires_at: datetime | None = None
-    distrokid_monthly_wav_limit: int = 600
-    distrokid_price_cents: int = 500
     pending_verification_code: str | None = None
     verification_code_expires_at: datetime | None = None
     created_at: datetime
@@ -187,7 +182,7 @@ class AdminSetPasswordRequest(BaseModel):
 
 
 async def _get_user_service() -> UserService:
-    """Placeholder dependency for UserService — override in tests or dependencies.py."""
+    """Placeholder dependency for UserService â€” override in tests or dependencies.py."""
     raise NotImplementedError(
         "UserService dependency not configured. Wire via app.dependency_overrides."
     )
@@ -215,11 +210,6 @@ def _user_to_response(
     effective_quota_channels: int | None = None,
     channel_profile_count: int = 0,
     onboarding_paid: bool = False,
-    distrokid_enabled: bool = False,
-    distrokid_active: bool = False,
-    distrokid_expires_at: datetime | None = None,
-    distrokid_monthly_wav_limit: int = 600,
-    distrokid_price_cents: int = 500,
     pending_verification_code: str | None = None,
     verification_code_expires_at: datetime | None = None,
 ) -> UserProfileResponse:
@@ -246,11 +236,6 @@ def _user_to_response(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
-        distrokid_enabled=distrokid_enabled,
-        distrokid_active=distrokid_active,
-        distrokid_expires_at=distrokid_expires_at,
-        distrokid_monthly_wav_limit=distrokid_monthly_wav_limit,
-        distrokid_price_cents=distrokid_price_cents,
         pending_verification_code=pending_verification_code,
         verification_code_expires_at=verification_code_expires_at,
         created_at=user.created_at,
@@ -292,9 +277,7 @@ async def get_me(
         SELECT p.name AS plan_name,
                p.profile_allowance,
                COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
-               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending,
-               COALESCE(l.distrokid_enabled, false) AS distrokid_enabled,
-               l.distrokid_expires_at
+               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
         FROM licenses l
         JOIN plans p ON l.plan_id = p.id
         WHERE l.user_id = $1 AND l.status = 'active'
@@ -307,19 +290,6 @@ async def get_me(
     profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
     profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
     profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
-    from platform_api.services.distrokid_entitlement_service import (
-        DISTROKID_ADDON_PRICE_CENTS,
-        DISTROKID_MONTHLY_WAV_LIMIT,
-        license_has_active_distrokid,
-    )
-    class _DkProxy:
-        distrokid_enabled = bool(license_row["distrokid_enabled"]) if license_row else False
-        distrokid_expires_at = license_row["distrokid_expires_at"] if license_row else None
-    distrokid_enabled = _DkProxy.distrokid_enabled
-    distrokid_expires_at = _DkProxy.distrokid_expires_at
-    distrokid_active = license_has_active_distrokid(_DkProxy) if license_row else False
-    distrokid_monthly_wav_limit = DISTROKID_MONTHLY_WAV_LIMIT
-    distrokid_price_cents = DISTROKID_ADDON_PRICE_CENTS
     effective_quota_channels = (
         int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
     )
@@ -350,11 +320,6 @@ async def get_me(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
-        distrokid_enabled=distrokid_enabled,
-        distrokid_active=distrokid_active,
-        distrokid_expires_at=distrokid_expires_at,
-        distrokid_monthly_wav_limit=distrokid_monthly_wav_limit,
-        distrokid_price_cents=distrokid_price_cents,
     )
 
 
@@ -418,9 +383,7 @@ async def update_me(
         SELECT p.name AS plan_name,
                p.profile_allowance,
                COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
-               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending,
-               COALESCE(l.distrokid_enabled, false) AS distrokid_enabled,
-               l.distrokid_expires_at
+               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
         FROM licenses l
         JOIN plans p ON l.plan_id = p.id
         WHERE l.user_id = $1 AND l.status = 'active'
@@ -433,19 +396,6 @@ async def update_me(
     profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
     profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
     profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
-    from platform_api.services.distrokid_entitlement_service import (
-        DISTROKID_ADDON_PRICE_CENTS,
-        DISTROKID_MONTHLY_WAV_LIMIT,
-        license_has_active_distrokid,
-    )
-    class _DkProxy:
-        distrokid_enabled = bool(license_row["distrokid_enabled"]) if license_row else False
-        distrokid_expires_at = license_row["distrokid_expires_at"] if license_row else None
-    distrokid_enabled = _DkProxy.distrokid_enabled
-    distrokid_expires_at = _DkProxy.distrokid_expires_at
-    distrokid_active = license_has_active_distrokid(_DkProxy) if license_row else False
-    distrokid_monthly_wav_limit = DISTROKID_MONTHLY_WAV_LIMIT
-    distrokid_price_cents = DISTROKID_ADDON_PRICE_CENTS
     effective_quota_channels = (
         int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
     )
@@ -475,11 +425,6 @@ async def update_me(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
-        distrokid_enabled=distrokid_enabled,
-        distrokid_active=distrokid_active,
-        distrokid_expires_at=distrokid_expires_at,
-        distrokid_monthly_wav_limit=distrokid_monthly_wav_limit,
-        distrokid_price_cents=distrokid_price_cents,
     )
 
 
@@ -597,7 +542,7 @@ async def list_users(
     response_model=UserFullDetailResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Get full user details (Admin)",
@@ -797,14 +742,14 @@ async def get_user_full_details(
             )
         )
 
-    # Usage stats — songs generated
+    # Usage stats â€” songs generated
     songs_row = await pool.fetchrow(
         "SELECT COUNT(*)::int as cnt FROM suno_tasks WHERE user_id = $1",
         user_id,
     )
     total_songs_generated = songs_row["cnt"] if songs_row else 0
 
-    # Usage stats — images generated
+    # Usage stats â€” images generated
     images_row = await pool.fetchrow(
         "SELECT COUNT(*)::int as cnt FROM image_jobs WHERE user_id = $1",
         user_id,
@@ -977,7 +922,7 @@ async def reset_user_fail_absorb(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Get a user by ID (Admin)",
@@ -1000,7 +945,7 @@ async def get_user_by_id(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Update a user (Admin)",
@@ -1086,7 +1031,7 @@ async def admin_set_user_password(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Suspend a user (Admin)",
@@ -1111,7 +1056,7 @@ async def suspend_user(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Reactivate a suspended user (Admin)",
@@ -1133,7 +1078,7 @@ async def reactivate_user(
     "/{user_id}",
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Soft-delete a user (Admin)",
@@ -1156,7 +1101,7 @@ async def delete_user(
     "/{user_id}/permanent",
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Permanently delete a user (Admin)",

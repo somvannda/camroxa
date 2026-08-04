@@ -31,8 +31,7 @@ def test_normalize_merge_role() -> None:
 def test_is_auto_merge_enabled_for_branch() -> None:
     settings = {"autoMergeAfterVideo": True, "autoReelAfterVideo": True}
     assert is_auto_merge_enabled_for_branch(settings, "long") is True
-    # Short/Reel files stay individual — never auto-merge.
-    assert is_auto_merge_enabled_for_branch(settings, "reel") is False
+    assert is_auto_merge_enabled_for_branch(settings, "reel") is True
     assert is_auto_merge_enabled_for_branch({"autoMergeAfterVideo": True}, "reel") is False
     assert is_auto_merge_enabled_for_branch({}, "long") is False
 
@@ -41,7 +40,7 @@ def test_is_auto_merge_reads_truthy_string_settings() -> None:
     """Live API settings may stringify booleans; must still enable long merge."""
     settings = {"autoMergeAfterVideo": "true", "autoReelAfterVideo": "true"}
     assert is_auto_merge_enabled_for_branch(settings, "long") is True
-    assert is_auto_merge_enabled_for_branch(settings, "reel") is False
+    assert is_auto_merge_enabled_for_branch(settings, "reel") is True
 
 
 def test_build_merged_output_path() -> None:

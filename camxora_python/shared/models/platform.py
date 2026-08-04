@@ -99,11 +99,6 @@ class ValidateLicenseResponse(BaseModel):
     daily_image_limit_per_channel: int | None = None
     wallet_balance: float | None = None
     expiration_date: datetime | str | None = None
-    distrokid_enabled: bool = False
-    distrokid_active: bool = False
-    distrokid_expires_at: datetime | str | None = None
-    distrokid_monthly_wav_limit: int = 600
-    distrokid_price_cents: int = 500
 
     @field_validator("expiration_date", mode="before")
     @classmethod
@@ -477,8 +472,6 @@ class BatchCreateRequest(BaseModel):
     shuffle_mood: bool = False
     auto_gen_image: bool = False
     auto_gsuno: bool = False
-    auto_distrokid: bool = False
-    auto_reel_after_video: bool = False
     song_count: int = 4
     language: str = "en"
     secondary_language: str | None = None
