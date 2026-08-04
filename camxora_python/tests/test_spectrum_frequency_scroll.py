@@ -36,3 +36,18 @@ def test_normalize_keeps_frequency_scroll() -> None:
     tpl["layers"][0]["frequencyScroll"] = 0.37
     out = normalize_renderer_template(tpl)
     assert abs(float(out["layers"][0]["frequencyScroll"]) - 0.37) < 1e-6
+
+
+def test_gpu_render_binds_scroll_spectrum_heights() -> None:
+    """Ship-cut reverts must not drop the import while leaving call sites (1.0.19 NameError)."""
+    import visualizer.gpu_render as gpu_render
+
+    assert hasattr(gpu_render, "scroll_spectrum_heights")
+    assert callable(gpu_render.scroll_spectrum_heights)
+
+    src = (gpu_render.__file__ or "")
+    assert src, "gpu_render.__file__ missing"
+    text = open(src, encoding="utf-8").read()
+    # Local import inside run_gpu_render is what the frame loop resolves first.
+    assert "scroll_spectrum_heights," in text or "scroll_spectrum_heights\n" in text
+    assert "scroll_spectrum_heights(render_fft" in text

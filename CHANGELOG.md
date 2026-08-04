@@ -15,6 +15,16 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.0.20] - 2026-08-04
+
+### Fixed
+
+- **GPU export crashed with `NameError: scroll_spectrum_heights is not defined`.**
+  The 1.0.19 ship-cut dropped the Raise Scroll import while leaving call sites.
+  Import restored; regression test + P5 ship-safety gate added so P0–P4 merges
+  cannot lose it again. See
+  `docs/changelog/2026-08-04-scroll-spectrum-heights-import.md`.
+
 ## [1.0.19] - 2026-08-04
 
 ### Fixed
