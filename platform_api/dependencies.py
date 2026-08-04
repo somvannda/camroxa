@@ -337,6 +337,24 @@ def get_daily_quota_bank_service():
     )
 
 
+def get_quota_topup_repo():
+    """Dependency that returns the QuotaTopupRepository instance."""
+    from platform_api.repositories.quota_topup_repo import QuotaTopupRepository
+
+    return QuotaTopupRepository(pool=get_db_pool())
+
+
+def get_quota_topup_service():
+    """Dependency that returns the QuotaTopupService instance."""
+    from platform_api.services.quota_topup_service import QuotaTopupService
+
+    return QuotaTopupService(
+        topup_repo=get_quota_topup_repo(),
+        plan_repo=get_plan_repo(),
+        usage_repo=get_usage_tracking_repo(),
+    )
+
+
 def get_usage_enforcement_service():
     """Dependency that returns the UsageEnforcementService instance."""
     from platform_api.services.usage_enforcement_service import UsageEnforcementService
@@ -349,6 +367,7 @@ def get_usage_enforcement_service():
         redis=get_redis(),
         license_repo=get_license_repo(),
         daily_quota_bank_service=get_daily_quota_bank_service(),
+        quota_topup_service=get_quota_topup_service(),
     )
 
 

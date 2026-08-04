@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- User detail **Plan Quota** card: top up period quotas (draft / Suno / images / export / merge) and wallet credits. Period top-ups expire at billing period end. See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.
 - Restored **Pipeline Ops** sidebar page (`/pipeline`): live multi-user board for monitoring active pipelines (stage, stuck, failures, admin retries). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Dashboard **Provider key balances** panel: remaining credits/money by key name for SLAI, Suno, DeepSeek, OpenAI, Fal (refresh / window focus). See `docs/changelog/2026-08-02-admin-provider-key-balances.md`.
 - Job Queue page (`/job-queue`): live depth, busy workers, `/progress` p95, and threshold alerts from `GET /api/v1/admin/job-queue/metrics` (15s poll)

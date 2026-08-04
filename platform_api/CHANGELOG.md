@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Admin period quota top-ups: `user_period_quota_topups` migration `081`, `POST /users/{id}/quota-topups`, details `quota_period` snapshot; dual-control credit adjust default off (`PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=0`). See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.
 - Pipeline stuck-batch housekeeping: scheduled in-process scan (PipelineStuckAlertService) detects batches with no draft/Suno/image/asset activity for 15+ min (configurable) that aren't fully complete on every configured channel role, and pushes a throttled admin:pipeline_stuck_alert WebSocket alert to every admin (same fan-out as admin:abuse_alert). New GET /admin/pipeline/stuck for an on-demand view of the same detection. See docs/changelog/2026-08-01-pipeline-stuck-batch-alerting.md.
 - Restored admin Pipeline Ops API (`/admin/pipeline/board`, batch detail, owner-charged retries via job_queue). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Pipeline Ops board no longer requires desktop filesystem paths for stage/status; promotes Image → Converter/Streaming/Done from image jobs + stream uploads.

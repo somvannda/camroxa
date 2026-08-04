@@ -90,8 +90,27 @@ export interface UserFullDetail {
   total_songs_generated: number;
   total_images_generated: number;
 
+  /** Current billing-period quotas including admin top-ups. */
+  quota_period?: QuotaPeriodSnapshot | null;
+
   custom_descriptions: UserOwnedPromptSummary[];
   custom_structures: UserOwnedPromptSummary[];
+}
+
+export interface QuotaKindStatus {
+  quota_kind: string;
+  base_limit: number | null;
+  topup_extra: number;
+  effective_limit: number | null;
+  used: number;
+  remaining: number | null;
+}
+
+export interface QuotaPeriodSnapshot {
+  period_start: string | null;
+  period_end: string | null;
+  plan_name: string | null;
+  kinds: Record<string, QuotaKindStatus>;
 }
 
 export interface UserOwnedPromptSummary {

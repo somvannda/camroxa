@@ -1,7 +1,8 @@
 """Admin dual-control for sensitive credit adjustments (Phase 3 / H6).
 
-Large wallet adjusts require a second distinct admin to approve before money moves.
-Small adjusts still apply immediately.
+When PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS > 0, large wallet adjusts
+require a second distinct admin to approve before money moves.
+Default threshold 0 disables dual-control so single-admin ops apply immediately.
 """
 
 from __future__ import annotations

@@ -130,6 +130,7 @@ DELETION_ORDER: list[str] = [
     "user_settings",
     "refresh_tokens",
     "usage_tracking",
+    "user_period_quota_topups",
     "plan_usage",
     "onboarding_ai_usage",
     "onboarding_drafts",

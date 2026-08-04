@@ -162,6 +162,10 @@ def _determine_action_type(method: str, path: str) -> str:
         return "user.suspend"
     elif normalized.startswith("users") and "reactivate" in normalized:
         return "user.reactivate"
+    elif normalized.startswith("users") and "quota-topups" in normalized:
+        return "quota.topup"
+    elif normalized.startswith("users") and "quota-status" in normalized:
+        return "quota.status"
     elif normalized.startswith("users"):
         if method_upper == "DELETE":
             return "user.delete"

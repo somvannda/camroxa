@@ -85,6 +85,21 @@ export function useUserDetails(id: string) {
   });
 }
 
+export function useQuotaTopup(userId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      quota_kind: 'draft' | 'music' | 'image' | 'video' | 'merge';
+      amount: number;
+      reason: string;
+    }) => httpClient.post(`/api/v1/users/${userId}/quota-topups`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users', userId, 'details'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+}
+
 export function useChannelProfileLogoBlob(profileId: string) {
   return useQuery({
     queryKey: ['channel-profiles', profileId, 'logo-blob'],

@@ -159,8 +159,9 @@ class Settings(BaseSettings):
 
     # --- Admin dual-control (Phase 3 / H6) ---
     # Absolute display credits; adjusts at/above this need a second admin.
-    # Set to 0 to disable dual-control (not recommended for production).
-    admin_adjust_dual_control_credits: float = 1000.0
+    # Default 0 = disabled (single-admin ops apply credit adjusts immediately).
+    # Set >0 (e.g. 1000) when multiple admins should co-approve large wallets.
+    admin_adjust_dual_control_credits: float = 0.0
 
     # --- Abuse alert thresholds (Phase 3) ---
     abuse_absorb_alert_threshold: int = 20

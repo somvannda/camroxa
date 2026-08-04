@@ -556,6 +556,7 @@ async def get_quota_status(
         get_license_repo,
         get_plan_repo,
         get_profile_repo,
+        get_quota_topup_service,
         get_usage_tracking_repo,
     )
     from platform_api.services.quota_display_service import (
@@ -568,36 +569,42 @@ async def get_quota_status(
     plan_repo = get_plan_repo()
     usage_repo = get_usage_tracking_repo()
     profile_repo = get_profile_repo()
+    topup_service = get_quota_topup_service()
 
     songs_quota, songs_remaining = await get_monthly_quota_status(
         user_id=user_id,
         plan_repo=plan_repo,
         usage_repo=usage_repo,
         quota_field="songs",
+        topup_service=topup_service,
     )
     images_quota, images_remaining = await get_monthly_quota_status(
         user_id=user_id,
         plan_repo=plan_repo,
         usage_repo=usage_repo,
         quota_field="images",
+        topup_service=topup_service,
     )
     drafts_quota, drafts_remaining = await get_monthly_quota_status(
         user_id=user_id,
         plan_repo=plan_repo,
         usage_repo=usage_repo,
         quota_field="drafts",
+        topup_service=topup_service,
     )
     videos_quota, videos_remaining = await get_monthly_quota_status(
         user_id=user_id,
         plan_repo=plan_repo,
         usage_repo=usage_repo,
         quota_field="videos",
+        topup_service=topup_service,
     )
     merges_quota, merges_remaining = await get_monthly_quota_status(
         user_id=user_id,
         plan_repo=plan_repo,
         usage_repo=usage_repo,
         quota_field="merges",
+        topup_service=topup_service,
     )
     if images_quota is None:
         plan = await plan_repo.get_user_active_plan(user_id)
@@ -1396,8 +1403,8 @@ async def adjust_balance(
 ) -> AdjustBalanceResponse:
     """Manually adjust a user's wallet balance (add or subtract credits).
 
-    Large adjusts (see PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS) are queued
-    for a second admin to approve before applying.
+    When PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS is > 0, adjusts at/above
+    that threshold are queued for a second admin. Default 0 applies immediately.
     """
     from platform_api.services.dual_control_service import DualControlService
 

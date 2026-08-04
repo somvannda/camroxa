@@ -106,6 +106,7 @@ async def get_monthly_quota_status(
     plan_repo: PlanRepoProtocol,
     usage_repo: UsageCountRepoProtocol,
     quota_field: str,
+    topup_service: Any | None = None,
 ) -> tuple[int | None, int | None]:
     """Return (quota_limit, remaining) for songs (Suno packages), drafts, or images."""
     ctx = await resolve_subscription_context(plan_repo, user_id)
@@ -125,6 +126,7 @@ async def get_monthly_quota_status(
             plan_repo=plan_repo,
             usage_repo=usage_repo,
             quota_field="songs",
+            topup_service=topup_service,
         )
         return song_packages_to_tracks(pkg_limit), song_packages_to_tracks(pkg_remaining)
     elif quota_field == "drafts":
@@ -146,6 +148,17 @@ async def get_monthly_quota_status(
         return None, None
 
     period_start = period_start_for_context(ctx)
+    if topup_service is not None:
+        limit = await topup_service.effective_monthly_limit_with_topup(
+            user_id=user_id,
+            plan=plan,
+            addon_slots=addon_slots,
+            operation_type=operation_type,
+            period_start=period_start,
+        )
+        if limit is None:
+            return None, None
+
     used = await usage_repo.get_monthly_count(user_id, operation_type, period_start)
     if quota_field == "images":
         used += await usage_repo.get_monthly_count(

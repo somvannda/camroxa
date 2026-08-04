@@ -44,6 +44,12 @@ export interface CreditAdjustmentRequest {
   reason: string;
 }
 
+export interface QuotaTopupRequest {
+  quota_kind: 'draft' | 'music' | 'image' | 'video' | 'merge';
+  amount: number;
+  reason: string;
+}
+
 export interface CreateLicenseRequest {
   plan_id: string;
 }

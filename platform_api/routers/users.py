@@ -137,9 +137,59 @@ class UserFullDetailResponse(BaseModel):
     total_songs_generated: int = 0
     total_images_generated: int = 0
 
+    # Current billing-period quota snapshot (admin top-up surface)
+    quota_period: dict[str, Any] | None = None
+
     # User-owned prompts
     custom_descriptions: list[UserOwnedPromptSummary] = []
     custom_structures: list[UserOwnedPromptSummary] = []
+
+
+class QuotaTopupRequest(BaseModel):
+    """Admin request to bump a user's period quota limit."""
+
+    quota_kind: str = Field(
+        ...,
+        description="draft | music | image | video | merge (aliases: drafts, songs, images, videos, merges)",
+    )
+    amount: int = Field(..., gt=0, description="Extra period units to add")
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class QuotaKindStatusResponse(BaseModel):
+    quota_kind: str
+    base_limit: int | None = None
+    topup_extra: int = 0
+    effective_limit: int | None = None
+    used: int = 0
+    remaining: int | None = None
+
+
+class AdminQuotaPeriodResponse(BaseModel):
+    """Admin view of current billing-period quotas + top-ups."""
+
+    user_id: str
+    period_start: str | None = None
+    period_end: str | None = None
+    plan_name: str | None = None
+    wallet_balance: float = 0
+    kinds: dict[str, QuotaKindStatusResponse] = {}
+
+
+class QuotaTopupResponse(BaseModel):
+    id: str
+    user_id: str
+    quota_kind: str
+    amount: int
+    reason: str
+    period_start: str
+    period_end: str
+    base_limit: int
+    topup_extra: int
+    effective_limit: int
+    used: int
+    remaining: int
+    quota_period: AdminQuotaPeriodResponse | None = None
 
 
 class PaginatedUsersResponse(BaseModel):
@@ -800,6 +850,12 @@ async def get_user_full_details(
         user_id,
     )
 
+    from platform_api.dependencies import get_quota_topup_service
+    from platform_api.services.quota_topup_service import snapshot_to_dict
+
+    topup_service = get_quota_topup_service()
+    quota_snapshot = snapshot_to_dict(await topup_service.build_period_snapshot(user_id))
+
     return UserFullDetailResponse(
         id=str(user.id),
         email=user.email,
@@ -820,6 +876,7 @@ async def get_user_full_details(
         channel_profiles=channel_profiles,
         total_songs_generated=total_songs_generated,
         total_images_generated=total_images_generated,
+        quota_period=quota_snapshot,
         custom_descriptions=[
             UserOwnedPromptSummary(
                 id=str(row["id"]),
@@ -842,6 +899,137 @@ async def get_user_full_details(
             )
             for row in custom_structure_rows
         ],
+    )
+
+
+async def _admin_quota_period_response(
+    user_id: UUID,
+    *,
+    wallet_balance: float | None = None,
+) -> AdminQuotaPeriodResponse:
+    from platform_api.dependencies import get_quota_topup_service
+    from platform_api.services.quota_topup_service import snapshot_to_dict
+
+    topup_service = get_quota_topup_service()
+    snapshot = await topup_service.build_period_snapshot(user_id)
+    payload = snapshot_to_dict(snapshot)
+    if wallet_balance is None:
+        pool = get_db_pool()
+        balance_row = await pool.fetchrow(
+            "SELECT balance FROM credit_wallets WHERE user_id = $1", user_id
+        )
+        credit_balance_units = int(balance_row["balance"] or 0) if balance_row else 0
+        wallet_balance = units_to_credits(credit_balance_units)
+    kinds = {
+        kind: QuotaKindStatusResponse(**status)
+        for kind, status in (payload.get("kinds") or {}).items()
+    }
+    return AdminQuotaPeriodResponse(
+        user_id=str(user_id),
+        period_start=payload.get("period_start"),
+        period_end=payload.get("period_end"),
+        plan_name=payload.get("plan_name"),
+        wallet_balance=float(wallet_balance or 0),
+        kinds=kinds,
+    )
+
+
+@router.get(
+    "/{user_id}/quota-status",
+    response_model=AdminQuotaPeriodResponse,
+    status_code=200,
+    responses={
+        403: {"description": "Forbidden — non-admin access"},
+        404: {"description": "User not found"},
+    },
+    summary="Get period quota status for a user (Admin)",
+)
+async def get_user_quota_status(
+    user_id: UUID,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> AdminQuotaPeriodResponse:
+    """Return current billing-period quotas including admin top-up extras."""
+    del ctx
+    user = await user_service.get_user(str(user_id))
+    if user is None:
+        from platform_api.exceptions import NotFoundError
+
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+    return await _admin_quota_period_response(user_id)
+
+
+@router.post(
+    "/{user_id}/quota-topups",
+    response_model=QuotaTopupResponse,
+    status_code=200,
+    responses={
+        403: {"description": "Forbidden — non-admin access"},
+        404: {"description": "User not found"},
+        422: {"description": "Validation error"},
+    },
+    summary="Top up period plan quota for a user (Admin)",
+)
+async def create_user_quota_topup(
+    user_id: UUID,
+    body: QuotaTopupRequest,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> QuotaTopupResponse:
+    """Add a period-scoped limit bump (expires at next billing period)."""
+    user = await user_service.get_user(str(user_id))
+    if user is None:
+        from platform_api.exceptions import NotFoundError
+
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+
+    from platform_api.dependencies import get_audit_service, get_quota_topup_service
+
+    topup_service = get_quota_topup_service()
+    result = await topup_service.grant(
+        user_id=user_id,
+        quota_kind=body.quota_kind,
+        amount=body.amount,
+        reason=body.reason,
+        admin_id=UUID(str(ctx.user_id)),
+    )
+    try:
+        audit_service = get_audit_service()
+        await audit_service.log_event(
+            actor_id=str(ctx.user_id),
+            action_type="quota.topup",
+            target_resource=f"user:{user_id}",
+            credit_impact=0,
+            outcome="success",
+            metadata={
+                "user_id": str(user_id),
+                "quota_kind": result["quota_kind"],
+                "amount": result["amount"],
+                "period_start": result["period_start"],
+                "period_end": result["period_end"],
+                "reason": result["reason"],
+                "topup_id": result["id"],
+                "effective_limit": result["effective_limit"],
+            },
+        )
+    except Exception:
+        pass
+
+    period = await _admin_quota_period_response(user_id)
+    return QuotaTopupResponse(
+        id=result["id"],
+        user_id=result["user_id"],
+        quota_kind=result["quota_kind"],
+        amount=result["amount"],
+        reason=result["reason"],
+        period_start=result["period_start"],
+        period_end=result["period_end"],
+        base_limit=result["base_limit"],
+        topup_extra=result["topup_extra"],
+        effective_limit=result["effective_limit"],
+        used=result["used"],
+        remaining=result["remaining"],
+        quota_period=period,
     )
 
 
