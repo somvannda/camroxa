@@ -1076,7 +1076,7 @@ async def get_user_fail_absorb(
 
         raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
     used = await enforcement.get_fail_absorb_count(user_id)
-    payload = enforcement.fail_absorb_status(user_id, used=used)
+    payload = await enforcement.fail_absorb_status(user_id, used=used)
     return FailAbsorbStatusResponse(**payload)
 
 
@@ -1101,7 +1101,7 @@ async def reset_user_fail_absorb(
         raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
     previous = await enforcement.reset_fail_absorb(user_id)
     used = await enforcement.get_fail_absorb_count(user_id)
-    payload = enforcement.fail_absorb_status(user_id, used=used)
+    payload = await enforcement.fail_absorb_status(user_id, used=used)
     payload["fail_absorb_used_before"] = previous
     return FailAbsorbStatusResponse(**payload)
 

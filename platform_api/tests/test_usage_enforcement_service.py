@@ -1193,6 +1193,45 @@ async def test_fail_absorb_budget_blocks_after_daily_limit(
 
 
 @pytest.mark.asyncio
+async def test_fail_absorb_budget_uses_admin_system_setting(
+    credit_repo: FakeCreditRepo,
+    usage_repo: FakeUsageRepo,
+    plan_repo: FakePlanRepo,
+    pricing_repo: FakePricingRepo,
+    redis: FakeRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Admin Settings daily_fail_absorb_budget overrides env default."""
+    from platform_api.exceptions import QuotaExceededError
+
+    class _FakeSettingsRepo:
+        async def get_system_setting(self, key: str) -> Any:
+            assert key == "daily_fail_absorb_budget"
+            return "1"
+
+    monkeypatch.setattr(
+        "platform_api.services.usage_enforcement_service._daily_fail_absorb_budget",
+        lambda: 99,
+    )
+    service = UsageEnforcementService(
+        credit_repo=credit_repo,
+        usage_repo=usage_repo,
+        plan_repo=plan_repo,
+        pricing_repo=pricing_repo,
+        redis=redis,
+        settings_repo=_FakeSettingsRepo(),
+    )
+    user_id = uuid4()
+    await service.record_fail_absorb(user_id)
+    with pytest.raises(QuotaExceededError) as exc_info:
+        await service.enforce_fail_absorb_budget(user_id)
+    assert exc_info.value.details["fail_absorb_budget"] == 1
+    status = await service.fail_absorb_status(user_id, used=1)
+    assert status["fail_absorb_budget"] == 1
+    assert status["blocked"] is True
+
+
+@pytest.mark.asyncio
 async def test_refund_records_fail_absorb_counter(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
