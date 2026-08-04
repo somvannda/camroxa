@@ -12,8 +12,6 @@ What's new
 - Progress / Auto-Video see remapped local folders immediately (no app restart)
 - While you generate on a PC, that PC's folders are used for new batch planning
 - Includes Spectrum Save / Row Width / Raise Scroll and 1.0.15–1.0.16 force-update
-- Video export: if NVIDIA driver is too old for hardware encode (NVENC), Camxora
-  automatically falls back to software encode (x264) instead of failing
 
 Not included in this build
 --------------------------
@@ -25,5 +23,3 @@ Notes
 - Production API only
 - API: https://api.camxora.com/api/v1
 - Installer file: CamxoraSetup-1.0.19.exe
-- Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
-  Camxora to use NVENC again

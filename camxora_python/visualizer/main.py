@@ -280,20 +280,12 @@ def _main_impl() -> int:
         return enc
 
     _send({"status": "running", "message": "Starting encoder...", "progress": 0.0})
-    from visualizer.nvenc_capability import nvenc_error_indicates_unavailable, probe_h264_nvenc
-
-    codec = "h264_nvenc" if probe_h264_nvenc(ffmpeg_path) else "libx264"
-    enc = start_ffmpeg(codec)
+    enc = start_ffmpeg("h264_nvenc")
     time.sleep(0.2)
     if enc.poll() is not None:
         enc._err_file.seek(0)
         err_txt = enc._err_file.read()
-        if codec == "h264_nvenc" and (
-            "Unknown encoder" in err_txt
-            or "h264_nvenc" in err_txt
-            or "nvenc" in err_txt
-            or nvenc_error_indicates_unavailable(err_txt)
-        ):
+        if "Unknown encoder" in err_txt or "h264_nvenc" in err_txt or "nvenc" in err_txt:
             enc._err_file.close()
             enc = start_ffmpeg("libx264")
         else:
