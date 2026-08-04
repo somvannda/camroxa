@@ -46,6 +46,21 @@ def consume_video_operation(
     )
 
 
+# platform_api LocalVideoRefundRequest.reason max_length=500
+_REFUND_REASON_MAX_LEN = 500
+
+
+def _clamp_refund_reason(reason: str) -> str:
+    """Keep refund reason within API max_length so failed exports still refund."""
+    text = str(reason or "").strip() or "Local video operation failed"
+    # Prefer a single-line summary when callers pass a full traceback dump.
+    first_line = text.splitlines()[0].strip() if text else ""
+    candidate = first_line if first_line and len(text) > _REFUND_REASON_MAX_LEN else text
+    if len(candidate) > _REFUND_REASON_MAX_LEN:
+        return candidate[: _REFUND_REASON_MAX_LEN - 1] + "…"
+    return candidate
+
+
 def refund_video_operation(
     api: Any,
     *,
@@ -60,7 +75,7 @@ def refund_video_operation(
         "operation_type": str(operation_type).strip().lower(),
         "charged_credit_units": max(0, int(charged_credit_units)),
         "count": max(1, int(count)),
-        "reason": reason,
+        "reason": _clamp_refund_reason(reason),
     }
     if channel_profile_id is not None and str(channel_profile_id).strip():
         payload["channel_profile_id"] = str(channel_profile_id)

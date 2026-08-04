@@ -17,7 +17,7 @@ from visualizer.hdr_bloom import (
     ("value", "expected"),
     [
         ("0", False),
-        ("", False),
+        ("", True),
         ("1", True),
         ("true", True),
         ("YES", True),
@@ -30,9 +30,9 @@ def test_preview_hdr_bloom_enabled_flag(value: str, expected: bool, monkeypatch:
     assert preview_hdr_bloom_enabled() is expected
 
 
-def test_preview_hdr_bloom_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_preview_hdr_bloom_default_on(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ENV_FLAG, raising=False)
-    assert preview_hdr_bloom_enabled() is False
+    assert preview_hdr_bloom_enabled() is True
 
 
 def test_bloom_params_from_template_defaults() -> None:

@@ -124,7 +124,9 @@ def _compile(ctx: moderngl.Context):
     float hash(vec2 p) {
         return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
     }
-    float noise2(vec2 p) {
+    // Named smoke_hash_noise2 (not noise2): some drivers reserve noise2 with a
+    // different return type and fail compile with overload return-type errors.
+    float smoke_hash_noise2(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
         float a = hash(i);
@@ -178,7 +180,7 @@ def _compile(ctx: moderngl.Context):
         if (smoke_enabled == 1) {
             float scale = mix(2.0, 12.0, clamp(smoke_blur, 0.0, 1.0));
             vec2 p = v_uv * scale + vec2(time_sec * smoke_speed * 0.35, time_sec * smoke_speed * 0.25);
-            float n = noise2(p) * 0.65 + noise2(p * 2.1) * 0.35;
+            float n = smoke_hash_noise2(p) * 0.65 + smoke_hash_noise2(p * 2.1) * 0.35;
             float m = clamp((n - 0.35) * 2.0, 0.0, 1.0);
             float s = clamp(corner * smoke_strength * (0.35 + m * smoke_noise), 0.0, 1.0) * smoke_opacity;
             bg.rgb = mix(bg.rgb, smoke_color, s);

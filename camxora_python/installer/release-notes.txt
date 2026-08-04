@@ -1,15 +1,18 @@
-﻿Camxora 1.0.20 - Export Raise Scroll crash fix
+﻿Camxora 1.1.0 - HDR bloom + export WYSIWYG
 Date: 2026-08-04
 
 What's new
 ----------
-- Fixes GPU video export crash: NameError scroll_spectrum_heights is not defined
-  (spectrum-enabled exports aborted on first frame in 1.0.19)
-- Includes everything from 1.0.19 (per-device paths, NVENC driver fallback,
-  Spectrum Save / Row Width / Raise Scroll, force-update Setup progress)
-- Also includes preview P0–P4.3 stack already on main (opaque Alpha_Lock,
-  GL diagnostics, interactive scrub, chrome audit, flagged HDR bloom +
-  export parity) — see desktop CHANGELOG Unreleased / related changelogs
+- Real HDR bloom on by default for preview and export (set
+  CAMXORA_PREVIEW_HDR_BLOOM=0 to force the legacy glow path)
+- Export matches the live Video preview (spectrum instances, live draft
+  style/position, lightning flash undersampling)
+- Logo inspector: Reset Center restored
+- Fixes black live preview after Alpha_Lock (ModernGL alpha clear wipe)
+- Fixes GPU export crash on some drivers (GLSL smoke_hash_noise2)
+- Failed-export refunds clamp reason to 500 chars; music preflight skips
+  inverted From/To dates
+- Includes 1.0.20 Raise Scroll import fix and the P0–P4.3 preview stack
 
 Not included in this build
 --------------------------
@@ -20,6 +23,6 @@ Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.0.20.exe
+- Installer file: CamxoraSetup-1.1.0.exe
 - Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
   Camxora to use NVENC again

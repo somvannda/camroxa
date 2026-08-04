@@ -136,9 +136,14 @@ def render_lightning_layers_gl(
     beat: float = 0.0,
     onset: float = 0.0,
     audio_env: float | None = None,
+    flash_override: float | None = None,
     opaque_framebuffer_alpha: bool = True,
 ) -> None:
     """Draw lightning over background / under spectrum+logo. No-op when disabled.
+
+    ``flash_override`` (0..1) is the peak flash sampled over an encode interval
+    (export at <60 fps). When set, each layer's envelope is raised to at least
+    that peak so short strikes are not missed between encode frames.
 
     When ``opaque_framebuffer_alpha`` is True (preview default), RGB blends
     normally/additively while destination alpha stays 1 so Qt translucent
@@ -152,6 +157,12 @@ def render_lightning_layers_gl(
 
     layers = normalize_lightning_layers(raw_layers)
     env = float(audio_env) if audio_env is not None else float(max(bass, kick, 0.0))
+    peak_floor = 0.0
+    if flash_override is not None:
+        try:
+            peak_floor = float(max(0.0, min(1.0, float(flash_override))))
+        except (TypeError, ValueError):
+            peak_floor = 0.0
 
     for layer_idx, layer in enumerate(layers):
         if not bool(layer.get("enabled", True)):
@@ -181,6 +192,10 @@ def render_lightning_layers_gl(
         )
         intensity = _layer_float(layer, "intensity", 0.72)
         flash = float(max(0.0, min(1.0, flash * (0.35 + 0.65 * intensity))))
+        if peak_floor > flash:
+            # Keep strike visible when export undersamples the 60 Hz envelope.
+            flash = float(max(flash, peak_floor * (0.35 + 0.65 * intensity) * opacity_base))
+            flash = float(max(0.0, min(1.0, flash)))
         if flash <= 0.02:
             continue
 

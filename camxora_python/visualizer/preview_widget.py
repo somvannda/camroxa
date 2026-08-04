@@ -1961,7 +1961,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self._gl_ready = True
             self._hide_gl_failure_overlay()
             if preview_hdr_bloom_enabled():
-                self._log("HDR bloom path available (CAMXORA_PREVIEW_HDR_BLOOM=1)")
+                self._log("HDR bloom path enabled (default; set CAMXORA_PREVIEW_HDR_BLOOM=0 to disable)")
             self._log(f"initializeGL ok (qt_fbo={int(self.defaultFramebufferObject())})")
         except Exception as e:
             self._gl_info = format_gl_context_info(getattr(self, "ctx", None))
@@ -2024,31 +2024,30 @@ class VideoSpectrumPreview(QOpenGLWidget):
         Soft-glow draws can still leak alpha if a future pass forgets Alpha_Lock.
         Clear alpha only (RGB untouched) without grabFramebuffer.
         Skipped when export overlay short-circuits paintGL before drawing.
+
+        Important: do **not** use ``moderngl.Context.clear`` with a color mask.
+        ModernGL's clear path ignores the mask and wipes RGB to the clear color
+        (black preview with textures still uploading). Use raw GL colorMask+clear.
         """
         if not self.ctx or not getattr(self, "_gl_ready", False):
             return
         try:
             self._use_qt_framebuffer()
-            # moderngl: (r, g, b, a) write enables
-            self.ctx.color_mask = (False, False, False, True)
-            self.ctx.clear(0.0, 0.0, 0.0, 1.0)
+            from OpenGL import GL
+
+            GL.glColorMask(GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE, GL.GL_TRUE)
+            GL.glClearColor(0.0, 0.0, 0.0, 1.0)
+            GL.glClear(GL.GL_COLOR_BUFFER_BIT)
         except Exception:
+            pass
+        finally:
             try:
                 from OpenGL import GL
 
-                GL.glColorMask(GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE, GL.GL_TRUE)
-                GL.glClearColor(0.0, 0.0, 0.0, 1.0)
-                GL.glClear(GL.GL_COLOR_BUFFER_BIT)
-            except Exception:
-                pass
-        finally:
-            try:
-                self.ctx.color_mask = (True, True, True, True)
+                GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
             except Exception:
                 try:
-                    from OpenGL import GL
-
-                    GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
+                    self.ctx.color_mask = (True, True, True, True)
                 except Exception:
                     pass
 

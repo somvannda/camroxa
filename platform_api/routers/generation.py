@@ -15,7 +15,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from platform_api.exceptions import ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user
@@ -934,6 +934,17 @@ class LocalVideoRefundRequest(BaseModel):
     count: int = Field(default=1, ge=1, le=50)
     ref_id: str | None = Field(default=None, max_length=200)
     reason: str = Field(default="Local video operation failed", max_length=500)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def _clamp_reason(cls, value: object) -> str:
+        """Old desktops sent full GLSL/traceback dumps and got 422; clamp instead."""
+        text = str(value or "").strip() or "Local video operation failed"
+        first_line = text.splitlines()[0].strip() if text else ""
+        candidate = first_line if first_line and len(text) > 500 else text
+        if len(candidate) > 500:
+            return candidate[:499] + "…"
+        return candidate
 
 
 @router.post(
