@@ -11,6 +11,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Export HDR bloom parity.** Same flagged bloom/tonemap path as live preview
+  (`CAMXORA_PREVIEW_HDR_BLOOM=1`); flag off keeps legacy export post. See
+  `docs/changelog/2026-08-04-preview-p4-export-parity.md`.
 - **Preview HDR bloom path (flagged).** Offscreen threshold / blur pyramid /
   tonemap into the Qt preview FBO with opaque alpha. Default off
   (`CAMXORA_PREVIEW_HDR_BLOOM=0`). See

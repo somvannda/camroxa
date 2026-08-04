@@ -46,6 +46,63 @@ def blend_rgb_additive_opaque_alpha(ctx: moderngl.Context) -> None:
     )
 
 
+def _compose_scene_post_to_out(
+    *,
+    ctx: moderngl.Context,
+    fbo_out: moderngl.Framebuffer,
+    tex_scene: moderngl.Texture,
+    prog_post: moderngl.Program,
+    vao_quad_post: moderngl.VertexArray,
+    w: int,
+    h: int,
+    rgb_cfg: RgbSplitConfig,
+    bloom_cfg: BloomConfig,
+    state: dict,
+    bass: float,
+    feats: dict,
+    template: dict,
+    hdr_pass: PreviewHdrBloomPass | None,
+) -> None:
+    """Scene → out: legacy prog_post, or HDR bloom/tonemap when flag is on (REQ-P4.3)."""
+    fbo_out.use()
+    ctx.clear(0.0, 0.0, 0.0, 1.0)
+    if hdr_pass is not None:
+        strength, threshold, exposure = bloom_params_from_template(template)
+        strength = float(strength) * (1.0 + float(bass) * 0.9)
+        hdr_pass.resolve(
+            screen_fbo=fbo_out,
+            viewport=(0, 0, int(w), int(h)),
+            bloom_strength=strength,
+            threshold=threshold,
+            exposure=exposure,
+            scene_tex=tex_scene,
+        )
+        try:
+            ctx.enable(moderngl.BLEND)
+        except Exception:
+            pass
+        return
+    tex_scene.use(location=0)
+    rgb_opacity = float(state.get("effects.rgb_split.opacity", rgb_cfg.opacity))
+    bloom_strength = float(state.get("effects.bloom.strength", bloom_cfg.strength))
+    onset = float(feats.get("onset", 0.0))
+    rgb_opacity = rgb_opacity * (1.0 + onset * 0.9)
+    bloom_strength = bloom_strength * (1.0 + bass * 0.9)
+    if not rgb_cfg.enabled:
+        rgb_opacity = 0.0
+    if not bloom_cfg.enabled:
+        bloom_strength = 0.0
+    prog_post["rgb_opacity"].value = float(max(0.0, min(1.0, rgb_opacity)))
+    prog_post["rgb_r"].value = (float(rgb_cfg.red_offset[0]), float(rgb_cfg.red_offset[1]))
+    prog_post["rgb_g"].value = (float(rgb_cfg.green_offset[0]), float(rgb_cfg.green_offset[1]))
+    prog_post["rgb_b"].value = (float(rgb_cfg.blue_offset[0]), float(rgb_cfg.blue_offset[1]))
+    prog_post["bloom_strength"].value = float(max(0.0, bloom_strength)) * float(
+        max(0.0, min(1.0, bloom_cfg.opacity))
+    )
+    prog_post["bloom_threshold"].value = float(max(0.0, min(1.0, bloom_cfg.threshold)))
+    vao_quad_post.render(mode=moderngl.TRIANGLE_STRIP)
+
+
 import numpy as np
 from PIL import Image
 
@@ -72,6 +129,11 @@ from .frame_integrator import (
     smooth_env,
 )
 from .effects import BloomConfig, RgbSplitConfig
+from .hdr_bloom import (
+    PreviewHdrBloomPass,
+    bloom_params_from_template,
+    preview_hdr_bloom_enabled,
+)
 from .particles import ParticleConfig, ParticleSystem
 
 try:
@@ -2653,6 +2715,13 @@ def run_gpu_render(
 
     line_vbo = ctx.buffer(reserve=4 * 6 * 512)
     vao_lines = ctx.vertex_array(prog_lines, [(line_vbo, "2f 4f", "in_pos", "in_col")])
+    hdr_bloom_pass: PreviewHdrBloomPass | None = None
+    if preview_hdr_bloom_enabled():
+        try:
+            hdr_bloom_pass = PreviewHdrBloomPass(ctx)
+            _emit_event({"status": "running", "message": "HDR bloom export path enabled", "progress": 0.05})
+        except Exception:
+            hdr_bloom_pass = None
     prog_lines["clip_enabled"].value = 0
     prog_lines["clip_center_px"].value = (0.0, 0.0)
     prog_lines["clip_radius_px"].value = 0.0
@@ -3978,25 +4047,22 @@ def run_gpu_render(
             tex_logo.use(location=1)
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
 
-        fbo_out.use()
-        ctx.clear(0.0, 0.0, 0.0, 1.0)
-        tex_scene.use(location=0)
-        rgb_opacity = float(state.get("effects.rgb_split.opacity", rgb_cfg.opacity))
-        bloom_strength = float(state.get("effects.bloom.strength", bloom_cfg.strength))
-        onset = float(feats.get("onset", 0.0))
-        rgb_opacity = rgb_opacity * (1.0 + onset * 0.9)
-        bloom_strength = bloom_strength * (1.0 + bass * 0.9)
-        if not rgb_cfg.enabled:
-            rgb_opacity = 0.0
-        if not bloom_cfg.enabled:
-            bloom_strength = 0.0
-        prog_post["rgb_opacity"].value = float(max(0.0, min(1.0, rgb_opacity)))
-        prog_post["rgb_r"].value = (float(rgb_cfg.red_offset[0]), float(rgb_cfg.red_offset[1]))
-        prog_post["rgb_g"].value = (float(rgb_cfg.green_offset[0]), float(rgb_cfg.green_offset[1]))
-        prog_post["rgb_b"].value = (float(rgb_cfg.blue_offset[0]), float(rgb_cfg.blue_offset[1]))
-        prog_post["bloom_strength"].value = float(max(0.0, bloom_strength)) * float(max(0.0, min(1.0, bloom_cfg.opacity)))
-        prog_post["bloom_threshold"].value = float(max(0.0, min(1.0, bloom_cfg.threshold)))
-        vao_quad_post.render(mode=moderngl.TRIANGLE_STRIP)
+        _compose_scene_post_to_out(
+            ctx=ctx,
+            fbo_out=fbo_out,
+            tex_scene=tex_scene,
+            prog_post=prog_post,
+            vao_quad_post=vao_quad_post,
+            w=w,
+            h=h,
+            rgb_cfg=rgb_cfg,
+            bloom_cfg=bloom_cfg,
+            state=state,
+            bass=bass,
+            feats=feats,
+            template=template,
+            hdr_pass=hdr_bloom_pass,
+        )
 
         _draw_text_overlays(
             ctx,
@@ -4230,6 +4296,12 @@ def render_preview_png(
 
     line_vbo = ctx.buffer(reserve=4 * 6 * 1024)
     vao_lines = ctx.vertex_array(prog_lines, [(line_vbo, "2f 4f", "in_pos", "in_col")])
+    hdr_bloom_pass: PreviewHdrBloomPass | None = None
+    if preview_hdr_bloom_enabled():
+        try:
+            hdr_bloom_pass = PreviewHdrBloomPass(ctx)
+        except Exception:
+            hdr_bloom_pass = None
     prog_lines["clip_enabled"].value = 0
     prog_lines["clip_center_px"].value = (0.0, 0.0)
     prog_lines["clip_radius_px"].value = 0.0
@@ -5018,25 +5090,22 @@ def render_preview_png(
             tex_logo.use(location=1)
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
 
-        fbo_out.use()
-        ctx.clear(0.0, 0.0, 0.0, 1.0)
-        tex_scene.use(location=0)
-        rgb_opacity = float(state.get("effects.rgb_split.opacity", rgb_cfg.opacity))
-        bloom_strength = float(state.get("effects.bloom.strength", bloom_cfg.strength))
-        onset = float(feats.get("onset", 0.0))
-        rgb_opacity = rgb_opacity * (1.0 + onset * 0.9)
-        bloom_strength = bloom_strength * (1.0 + bass * 0.9)
-        if not rgb_cfg.enabled:
-            rgb_opacity = 0.0
-        if not bloom_cfg.enabled:
-            bloom_strength = 0.0
-        prog_post["rgb_opacity"].value = float(max(0.0, min(1.0, rgb_opacity)))
-        prog_post["rgb_r"].value = (float(rgb_cfg.red_offset[0]), float(rgb_cfg.red_offset[1]))
-        prog_post["rgb_g"].value = (float(rgb_cfg.green_offset[0]), float(rgb_cfg.green_offset[1]))
-        prog_post["rgb_b"].value = (float(rgb_cfg.blue_offset[0]), float(rgb_cfg.blue_offset[1]))
-        prog_post["bloom_strength"].value = float(max(0.0, bloom_strength)) * float(max(0.0, min(1.0, bloom_cfg.opacity)))
-        prog_post["bloom_threshold"].value = float(max(0.0, min(1.0, bloom_cfg.threshold)))
-        vao_quad_post.render(mode=moderngl.TRIANGLE_STRIP)
+        _compose_scene_post_to_out(
+            ctx=ctx,
+            fbo_out=fbo_out,
+            tex_scene=tex_scene,
+            prog_post=prog_post,
+            vao_quad_post=vao_quad_post,
+            w=w,
+            h=h,
+            rgb_cfg=rgb_cfg,
+            bloom_cfg=bloom_cfg,
+            state=state,
+            bass=bass,
+            feats=feats,
+            template=template,
+            hdr_pass=hdr_bloom_pass,
+        )
 
         _draw_text_overlays(
             ctx,

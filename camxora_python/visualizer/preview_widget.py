@@ -27,7 +27,11 @@ from visualizer.gpu_render import (
     ParticleSystem,
     ParticleConfig,
 )
-from visualizer.hdr_bloom import PreviewHdrBloomPass, preview_hdr_bloom_enabled
+from visualizer.hdr_bloom import (
+    PreviewHdrBloomPass,
+    bloom_params_from_template,
+    preview_hdr_bloom_enabled,
+)
 from visualizer._spectrum_fast import (
     build_contour_wave_strips,
     build_solid_band_strip_vertices,
@@ -1983,17 +1987,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
 
     def _hdr_bloom_params(self) -> tuple[float, float, float]:
         """Return (strength, threshold, exposure) for the preview bloom path."""
-        effects = self.template.get("effects") if isinstance(self.template.get("effects"), dict) else {}
-        bloom = effects.get("bloom") if isinstance(effects.get("bloom"), dict) else {}
-        strength = float(bloom.get("strength", 0.85) or 0.85)
-        opacity = float(bloom.get("opacity", 0.9) or 0.9)
-        threshold = float(bloom.get("threshold", 0.65) or 0.65)
-        strength = max(0.0, min(3.0, strength * max(0.0, min(1.0, opacity))))
-        # Flag on with template bloom disabled still gets a gentle post for shine.
-        if bloom.get("enabled") is False:
-            strength = min(strength, 0.45)
-        exposure = 1.05
-        return strength, max(0.0, min(1.0, threshold)), exposure
+        return bloom_params_from_template(self.template if isinstance(self.template, dict) else {})
 
     def _blend_normal(self) -> None:
         """Standard alpha for RGB; keep framebuffer alpha opaque.

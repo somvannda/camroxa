@@ -243,8 +243,15 @@ class PreviewHdrBloomPass:
         bloom_strength: float = 0.85,
         threshold: float = 0.65,
         exposure: float = 1.05,
+        scene_tex: moderngl.Texture | None = None,
     ) -> None:
-        if self.tex_scene is None or not self._levels:
+        scene = scene_tex if scene_tex is not None else self.tex_scene
+        if scene is None:
+            return
+        # Bloom pyramid sized to the scene texture.
+        sw, sh = int(scene.width), int(scene.height)
+        self.ensure(sw, sh)
+        if not self._levels:
             return
         ctx = self.ctx
         prev_blend = None
@@ -261,7 +268,7 @@ class PreviewHdrBloomPass:
         level0 = self._levels[0]
         level0["fbo"].use()
         ctx.viewport = (0, 0, level0["size"][0], level0["size"][1])
-        self.tex_scene.use(location=0)
+        scene.use(location=0)
         self.prog_threshold["tex_in"].value = 0
         self.prog_threshold["threshold"].value = float(max(0.0, min(1.0, threshold)))
         self.prog_threshold["knee"].value = 0.12
@@ -286,7 +293,6 @@ class PreviewHdrBloomPass:
             self.prog_add["tex_b"].value = 1
             self.prog_add["mix_b"].value = 1.0
             self.vao_add.render(mode=moderngl.TRIANGLE_STRIP)
-            # Copy accumulate back into fine.tex
             fine["fbo"].use()
             ctx.viewport = (0, 0, fw, fh)
             fine["tex_b"].use(location=0)
@@ -297,11 +303,11 @@ class PreviewHdrBloomPass:
 
         bloom_tex = self._levels[0]["tex"]
 
-        # 4) Tonemap to Qt screen FBO — alpha always 1
+        # 4) Tonemap to display FBO — alpha always 1
         screen_fbo.use()
         x, y, vw, vh = viewport
         ctx.viewport = (int(x), int(y), int(vw), int(vh))
-        self.tex_scene.use(location=0)
+        scene.use(location=0)
         bloom_tex.use(location=1)
         self.prog_tonemap["tex_scene"].value = 0
         self.prog_tonemap["tex_bloom"].value = 1
@@ -315,3 +321,17 @@ class PreviewHdrBloomPass:
                 ctx.blend_func = prev_blend
         except Exception:
             pass
+
+
+def bloom_params_from_template(template: dict | None) -> tuple[float, float, float]:
+    """Return (strength, threshold, exposure) matching preview HDR knobs."""
+    tpl = template if isinstance(template, dict) else {}
+    effects = tpl.get("effects") if isinstance(tpl.get("effects"), dict) else {}
+    bloom = effects.get("bloom") if isinstance(effects.get("bloom"), dict) else {}
+    strength = float(bloom.get("strength", 0.85) or 0.85)
+    opacity = float(bloom.get("opacity", 0.9) or 0.9)
+    threshold = float(bloom.get("threshold", 0.65) or 0.65)
+    strength = max(0.0, min(3.0, strength * max(0.0, min(1.0, opacity))))
+    if bloom.get("enabled") is False:
+        strength = min(strength, 0.45)
+    return strength, max(0.0, min(1.0, threshold)), 1.05
