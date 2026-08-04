@@ -206,6 +206,16 @@ class PipelinedEncodeWriter:
                     stdin.write(payload)
                 except (BrokenPipeError, OSError) as exc:
                     err_txt = _ffmpeg_err_text(self._enc, self._err_file)
+                    try:
+                        from visualizer.nvenc_capability import (
+                            mark_nvenc_unavailable,
+                            nvenc_error_indicates_unavailable,
+                        )
+
+                        if nvenc_error_indicates_unavailable(err_txt):
+                            mark_nvenc_unavailable()
+                    except Exception:
+                        pass
                     raise RuntimeError(
                         f"FFmpeg pipe closed unexpectedly: {err_txt} (OS Error: {exc})"
                     ) from exc
