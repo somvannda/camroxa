@@ -46,11 +46,6 @@ class UserMeResponse(BaseModel):
     effective_profile_allowance: int | None = None
     effective_quota_channels: int | None = None
     channel_profile_count: int = 0
-    distrokid_enabled: bool = False
-    distrokid_active: bool = False
-    distrokid_expires_at: str | None = None
-    distrokid_monthly_wav_limit: int = 600
-    distrokid_price_cents: int = 500
 
     model_config = {"extra": "ignore"}
 

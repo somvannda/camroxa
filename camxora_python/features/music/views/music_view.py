@@ -720,7 +720,6 @@ class MusicView(QWidget):
             return False
         self._loading = False
         self._is_error = False
-        self._me = _me
         self._profiles = list(profiles)
         self._bootstrap_youtube_connections_from_cache()
         self._settings_raw = settings_raw
@@ -771,7 +770,6 @@ class MusicView(QWidget):
             auto_merge_after_video=self._music_settings.auto_merge_after_video,
             auto_reel_after_video=self._music_settings.auto_reel_after_video,
             auto_upload_youtube=self._music_settings.auto_upload_youtube,
-            auto_distrokid=self._music_settings.auto_distrokid,
         )
         self._song_card.set_fields(
             title=self._composer.title,
@@ -834,7 +832,6 @@ class MusicView(QWidget):
         self._music_settings.auto_merge_after_video = values["auto_merge_after_video"]
         self._music_settings.auto_reel_after_video = values["auto_reel_after_video"]
         self._music_settings.auto_upload_youtube = values["auto_upload_youtube"]
-        self._music_settings.auto_distrokid = values.get("auto_distrokid", False)
         self._schedule_settings_save()
         self._refresh_presentation()
 
@@ -1066,9 +1063,6 @@ class MusicView(QWidget):
         setup_ready = readiness.generate_ready if base_ready else False
         can_generate = base_ready and setup_ready and (preflight.can_generate if preflight is not None else False)
         self._automation_card.set_auto_upload_enabled(bool(base_ready and readiness.upload_ready))
-        me = getattr(self, "_me", None)
-        distrokid_active = bool(getattr(me, "distrokid_active", False)) if me is not None else False
-        self._automation_card.set_distrokid_enabled(distrokid_active)
         self._automation_card.set_generate_enabled(can_generate)
         warnings = []
         if pair_mismatch:
@@ -1975,8 +1969,6 @@ class MusicView(QWidget):
                         shuffle_mood=self._automation_card.shuffle_mood(),
                         auto_gen_image=self._music_settings.auto_gen_image,
                         auto_gsuno=self._music_settings.auto_gsuno,
-                        auto_distrokid=self._music_settings.auto_distrokid,
-                        auto_reel_after_video=self._music_settings.auto_reel_after_video,
                         song_count=self._music_settings.song_count,
                         language=self._music_settings.language,
                         secondary_language=self._music_settings.secondary_language or None,
@@ -2089,12 +2081,13 @@ class MusicView(QWidget):
             self.refresh_data()
 
     def _ensure_batch_run_directories(self, payload: object) -> None:
+        from shared.lib.device_workspace_paths import local_run_dir_for_disk
         from shared.models.platform import BatchStatusResponse
 
         if not isinstance(payload, BatchStatusResponse):
             return
         for directory in (payload.ok_run_dir, payload.alt_run_dir):
-            path = str(directory or "").strip()
+            path = local_run_dir_for_disk(str(directory or "").strip())
             if not path or path in self._ensured_run_dirs:
                 continue
             ensure_directory(path)

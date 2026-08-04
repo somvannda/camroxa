@@ -53,7 +53,7 @@ def _num(style: dict[str, Any], key: str, default: float) -> float:
 
 def format_track_duration(seconds: float) -> str:
     sec = max(0, int(round(float(seconds or 0.0))))
-    return f"{sec // 60:02d}:{sec % 60:02d}"
+    return f"{sec // 60}:{sec % 60:02d}"
 
 
 def probe_track_durations(track_paths: list[str] | None) -> list[float]:

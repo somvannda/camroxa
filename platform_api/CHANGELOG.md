@@ -12,11 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Admin `GET /admin/user-spend`: multi-user est. COGS rollup (wallet + plan-included list value), plan meters, soft-overage / margin-risk alerts, and per-COG breakdown for the User Spent page. See `docs/changelog/2026-08-04-admin-user-spent.md`.
-- DistroKid $5/mo add-on entitlement (`distrokid_enabled` / expires), CutLuy checkout, `suno/wav` pricing seed (600 WAV/mo product intent). See `docs/changelog/2026-07-27-distrokid-addon-scaffold.md`.
-- DistroKid Phase 4 API: Suno WAV convert/poll client, add-on-gated `/distrokid/wav` jobs with 600/month metering and `suno/wav` charging, plus fingerprinted DistroKid upload history and duplicate checks (`076_distrokid_wav`).
-- DistroKid `GET /distrokid/wav/sources?batch_id=` for desktop WAV download pairing. See `docs/changelog/2026-07-27-distrokid-automation-phases.md`.
-- DistroKid batch snapshot columns + `GET /distrokid/batch-context/{batch_id}` (`077_batch_auto_distrokid`).
-- DistroKid batch-context includes `ok_profile_id` / `alt_profile_id` for per-channel artist resolution.
+- Admin period quota top-ups: `user_period_quota_topups` migration `081`, `POST /users/{id}/quota-topups`, details `quota_period` snapshot; dual-control credit adjust default off (`PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=0`). See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.
 - Pipeline stuck-batch housekeeping: scheduled in-process scan (PipelineStuckAlertService) detects batches with no draft/Suno/image/asset activity for 15+ min (configurable) that aren't fully complete on every configured channel role, and pushes a throttled admin:pipeline_stuck_alert WebSocket alert to every admin (same fan-out as admin:abuse_alert). New GET /admin/pipeline/stuck for an on-demand view of the same detection. See docs/changelog/2026-08-01-pipeline-stuck-batch-alerting.md.
 - Restored admin Pipeline Ops API (`/admin/pipeline/board`, batch detail, owner-charged retries via job_queue). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Pipeline Ops board no longer requires desktop filesystem paths for stage/status; promotes Image → Converter/Streaming/Done from image jobs + stream uploads.
@@ -30,6 +26,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Phase 0 API capacity: DB pool `min_size=4` / `max_size=8`; `/progress` only ensures image jobs for batches missing rows (skips the previous every-poll heal loop). Pair with uvicorn `--workers 4` on the host. See `docs/changelog/2026-08-02-api-phase0-capacity.md`.
 
 ### Fixed
+
+- Admin user detail no longer reports logos/covers as available when the
+  stored upload path is missing on disk, which stopped the admin portal from
+  requesting those media URLs and logging 404s. See
+  docs/changelog/2026-08-04-admin-channel-profile-media-404.md.
 
 - Desktop installer publish: version comes from the Software Update form /
   draft (Force update checkbox), not from the installer filename. Filename

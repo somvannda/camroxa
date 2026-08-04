@@ -15,7 +15,6 @@ ShellRouteKey = Literal[
     "image",
     "video",
     "marketplace",
-    "distrokid",
     "merger",
     "settings",
     "log",
@@ -117,18 +116,6 @@ SHELL_ROUTES: tuple[ShellRouteMeta, ...] = (
         description=(
             "Browse and install curated video templates from the marketplace catalog."
         ),
-    ),
-    ShellRouteMeta(
-        key="distrokid",
-        path="/app/distrokid",
-        label="DistroKid",
-        title="DistroKid",
-        eyebrow="Distribution",
-        description=(
-            "DistroKid add-on: WAV conversion for Primary + Secondary tracks and "
-            "automated DistroKid delivery. Requires the $5/mo DistroKid plan."
-        ),
-        is_placeholder=True,
     ),
     ShellRouteMeta(
         key="merger",

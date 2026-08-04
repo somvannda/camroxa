@@ -137,8 +137,6 @@ async def create_batch(
         shuffle_mood=request.shuffle_mood,
         auto_gen_image=request.auto_gen_image,
         auto_gsuno=request.auto_gsuno,
-        auto_distrokid=request.auto_distrokid,
-        auto_reel_after_video=request.auto_reel_after_video,
         song_count=request.song_count,
         language=request.language,
         secondary_language=request.secondary_language,

@@ -11,19 +11,37 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- DistroKid sidebar page + Music DistroKid checkbox (gated by $5/mo add-on entitlement).
-- DistroKid automation (phases 1–5): Playwright upload library, soft post-merge coordinator, Suno WAV download path, Connect/settings/history UI, Workflow DistroKid node. See `docs/changelog/2026-07-27-distrokid-automation-phases.md`.
-- DistroKid gap hardening: queued multi-role jobs, Short gate, submit-only history, job-store Workflow status, Connect worker thread, clearer billing tooltip.
-- DistroKid batch snapshot (`auto_distrokid` / `auto_reel_after_video`) + channel-profile artist mapping via `/distrokid/batch-context/{batch_id}`.
-- Progress DistroKid soft column + detail overlay from local job store (`wav_downloading` / `uploading` / skips); does not fail the whole run.
-- DistroKid artist delivery modes: per-channel mapping (reuse one DistroKid artist across channels), plus one-artist / Primary-Secondary shortcuts.
+### Changed
+
+### Fixed
+
+## [1.0.19] - 2026-08-04
+
+### Fixed
+
+- **Export crashed on older NVIDIA drivers.** Bundled FFmpeg NVENC needs driver
+  570+ (API 13.0). When the installed driver is older, export now probes NVENC
+  first and falls back to software encode (libx264) instead of failing with
+  `BrokenPipeError` / “nvenc API version”. See
+  `docs/changelog/2026-08-04-export-nvenc-driver-fallback.md`.
 
 ### Changed
 
-- Music automation labels: dropped “Auto” prefix; Reel → Short.
-- Short/Reel outputs never auto-merge (individual files only).
+- Ship cut: **DistroKid / WAV automation** and **playlist glass polish** are
+  excluded from this installer (not ready). Same per-device path + spectrum
+  fixes as 1.0.18. See `docs/changelog/2026-08-04-desktop-1.0.19-ship-cut.md`.
+
+## [1.0.18] - 2026-08-04
 
 ### Fixed
+
+- **MP3 downloads / Progress / Auto-Video no longer need an app restart** after
+  per-device Suno path setup. Download polls hydrate and push this PC's Suno
+  root mid-session; Progress and Auto-Video disk checks use the remapped local
+  run folder instead of a stale cloud AppData path. See
+  `docs/changelog/2026-08-03-per-device-workspace-paths.md`.
+- Includes everything from **1.0.17** (per-device media folder roots + Spectrum
+  Save / Row Width / Raise Scroll + 1.0.16 force-update).
 
 ## [1.0.17] - 2026-08-03
 
@@ -190,33 +208,17 @@ repo). Desktop version bumped for release tracking/support purposes only.
 
 First official production release of the Camxora desktop studio.
 
-### Feature log
+### Added
 
-#### Music studio
-- Batch automation for drafts, Suno audio, and album images
-- Music Mood picker + shuffle; History filters and rewrite tools (album / title / lyrics)
-- Delete failed batches; Progress export/merge with cancel and recover
-- Background helper agent to recover failed drafts/Suno
-
-#### Video studio
-- GPU visualizer export for long-form and reel outputs
-- Spectrum / particle styles, session presets, and encode pipeline
-- Manual export billing with refunds on technical failure
-- Low-VRAM / dual-Xeon export hardening (see `docs/FOLLOWUPS_DESKTOP_GPU_EXPORT.md`)
-
-#### Account & platform
-- Production API (`https://api.camxora.com/api/v1`) and portal (`https://app.camxora.com`)
-- Plans, credits, quotas, and channel allowances
-- Preferences, diagnostics sync, and in-app software updates
-
-#### Streaming
-- Catalog support aligned with `music.camxora.com`
+- Music workspace: batch automation (drafts, Suno, album images), History, and Progress export/merge pipeline
+- Video studio with GPU visualizer export for long and reel outputs
+- Preferences, diagnostics sync, and software-update support
+- Production API endpoint (`https://api.camxora.com/api/v1`) and portal (`https://app.camxora.com`)
 
 ### Notes
 
 - Sandbox builds remain separate; this installer does not talk to sandbox
-- Installer: `CamxoraSetup-1.0.0.exe`
-- User-facing release notes: `camxora_python/installer/release-notes.txt`
+- GPU export audio-analysis hardening for low-VRAM / dual-Xeon PCs is documented under `docs/FOLLOWUPS_DESKTOP_GPU_EXPORT.md` (validation held)
 
 ## [0.4.3] - 2026-07-25
 

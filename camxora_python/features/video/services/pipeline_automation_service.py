@@ -457,7 +457,6 @@ class PipelineAutomationService(QObject):
         )
         emit_shell_status(message)
         self._schedule_progress_local_sync()
-        self._maybe_start_distrokid_after_merge()
 
     def _schedule_progress_local_sync(self) -> None:
         if is_app_quitting():
@@ -676,35 +675,6 @@ class PipelineAutomationService(QObject):
         )
         emit_shell_status(message)
         self._schedule_progress_local_sync()
-        self._maybe_start_distrokid_after_merge()
-
-    def _maybe_start_distrokid_after_merge(self) -> None:
-        context = dict(self._merge_context or {})
-        branch = str(context.get("branch") or "long").strip().lower() or "long"
-        run_dir = str(context.get("run_dir") or "").strip()
-        try:
-            from shared.services.distrokid_pipeline_coordinator import get_distrokid_pipeline_coordinator
-
-            coordinator = get_distrokid_pipeline_coordinator()
-            if coordinator is None:
-                return
-            if branch == "reel":
-                coordinator.kick()
-                return
-            if not run_dir:
-                return
-            coordinator.maybe_start_after_long_merge(
-                settings=self._settings,
-                run_dir=run_dir,
-                batch_id=str(context.get("batch_id") or ""),
-                role=str(context.get("role") or "primary"),
-                album_name=str(context.get("album_name") or context.get("album") or ""),
-                branch=branch,
-                profile_id=str(context.get("profile_id") or ""),
-            )
-        except Exception:
-            # Soft stage — never fail merge/export success path.
-            pass
 
     def _on_merge_failed(self, message: str) -> None:
         if self._is_user_initiated_stop(message):

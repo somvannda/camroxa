@@ -1,8 +1,8 @@
 # Per-device workspace media paths (desktop 1.0.17)
 
-**Date:** 2026-08-03  
-**Status:** included in desktop **v1.0.17**  
-**Base:** spectrum/force-update **v1.0.16** (`b9b2f9a`)
+**Date:** 2026-08-03 (updated 2026-08-04)  
+**Status:** included in desktop **v1.0.18** (1.0.17 + no-restart follow-up)  
+**Base:** `origin/main` @ `67a6d71` (1.0.17) + hydrate/remap disk-check follow-up
 
 ## Summary
 
@@ -23,7 +23,8 @@ skipped foreign pending downloads or wrote to the wrong drive.
 
 **After:** Each machine remembers its own folders. Login overlays local roots,
 pushes them while that desktop is active, and remaps stuck pending MP3s into
-the local Suno tree.
+the local Suno tree. Progress/auto-video disk checks also use the remapped
+local run folder, so downloads are visible without restarting the app.
 
 ## Technical impact
 

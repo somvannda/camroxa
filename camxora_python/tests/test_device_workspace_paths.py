@@ -151,6 +151,58 @@ def test_remap_pending_download_target(tmp_path: Path, monkeypatch) -> None:
     deactivate_local_user_scope()
 
 
+def test_local_run_dir_for_disk_rebases_server_path(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    local = tmp_path / "Suno"
+    local.mkdir()
+    persist_device_paths_from_settings({"sunoOutputDir": str(local)})
+    from shared.lib.device_workspace_paths import local_run_dir_for_disk
+
+    remapped = local_run_dir_for_disk(
+        r"C:\Users\Other\AppData\Local\Camxora\Media\Suno\ch\2026-08-03_album"
+    )
+    assert remapped == str(local / "ch" / "2026-08-03_album")
+    deactivate_local_user_scope()
+
+
+def test_local_mp3_files_ready_uses_remapped_run_dir(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    local = tmp_path / "Suno"
+    album = local / "ch" / "2026-08-03_album"
+    album.mkdir(parents=True)
+    (album / "1. Track_OK.mp3").write_bytes(b"mp3")
+    persist_device_paths_from_settings({"sunoOutputDir": str(local)})
+
+    from shared.lib.progress_local_sync import local_mp3_files_ready
+    from shared.models.platform import ProgressRow, ProgressRowMeta
+
+    row = ProgressRow(
+        batch="b1",
+        run_date="2026-08-03",
+        channel="ch",
+        status="running",
+        music="ready",
+        image="pending",
+        converter="pending",
+        merge="pending",
+        youtube="pending",
+        stage="video",
+        notes="",
+        updated="",
+        meta=ProgressRowMeta(
+            batch_id="b1",
+            profile_id="p1",
+            role="OK",
+            expected=1,
+            run_dir=r"C:\Users\Other\AppData\Local\Camxora\Media\Suno\ch\2026-08-03_album",
+        ),
+    )
+    assert local_mp3_files_ready(row) is True
+    deactivate_local_user_scope()
+
+
 def test_empty_device_store_still_seeds_defaults(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     _scope_user(tmp_path, monkeypatch)

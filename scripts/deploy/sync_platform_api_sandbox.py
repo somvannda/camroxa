@@ -38,6 +38,13 @@ chown -R camxora:camxora $REPO/platform_api
 grep -q '^PLATFORM_SAMPLE_PACK_URL_IMPORT_MAX_MB=' $REPO/platform_api/.env || \
   echo 'PLATFORM_SAMPLE_PACK_URL_IMPORT_MAX_MB=1024' >> $REPO/platform_api/.env
 grep '^PLATFORM_SAMPLE_PACK_URL_IMPORT_MAX_MB=' $REPO/platform_api/.env
+# Single-admin: credit adjusts apply immediately (0 disables dual-control queue).
+if grep -q '^PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=' $REPO/platform_api/.env; then
+  sed -i 's/^PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=.*/PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=0/' $REPO/platform_api/.env
+else
+  echo 'PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=0' >> $REPO/platform_api/.env
+fi
+grep '^PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=' $REPO/platform_api/.env
 systemctl restart camxora-api
 sleep 2
 systemctl is-active camxora-api

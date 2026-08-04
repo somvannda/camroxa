@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **User Spent** page (`/user-spent`): per-user estimated COGS roster with expandable provider × operation breakdown, plan-meter chips, and Over allowance / Margin risk alerts. See `docs/changelog/2026-08-04-admin-user-spent.md`.
-- Streaming catalog Publish buttons: pass `{ trackId }` / `{ albumId }` to republish mutations (fixes TS build break).
+- User detail **Plan Quota** card: top up period quotas (draft / Suno / images / export / merge) and wallet credits. Period top-ups expire at billing period end. See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.
 - Restored **Pipeline Ops** sidebar page (`/pipeline`): live multi-user board for monitoring active pipelines (stage, stuck, failures, admin retries). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Dashboard **Provider key balances** panel: remaining credits/money by key name for SLAI, Suno, DeepSeek, OpenAI, Fal (refresh / window focus). See `docs/changelog/2026-08-02-admin-provider-key-balances.md`.
 - Job Queue page (`/job-queue`): live depth, busy workers, `/progress` p95, and threshold alerts from `GET /api/v1/admin/job-queue/metrics` (15s poll)
@@ -23,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 ### Fixed
+
+- User detail channel logos/covers: do not retry blob fetches on 404; availability
+  now comes from API file-existence checks so missing uploads no longer spam
+  console 404s. See docs/changelog/2026-08-04-admin-channel-profile-media-404.md.
 
 - Streaming Upload Jobs: API now returns user/song/album/batch/publish fields so cards are not empty dashes. See `docs/changelog/2026-08-02-admin-streaming-upload-job-details.md`.
 - Software Updates: Force update publish no longer depends on installer

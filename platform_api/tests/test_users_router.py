@@ -38,6 +38,8 @@ class FakeDbPool:
             return self._license_row
         if "from channel_profiles" in sql:
             return self._profile_row
+        if "from billing_payments" in sql:
+            return None
         raise AssertionError(f"Unexpected query: {query}")
 
 
@@ -46,7 +48,7 @@ class FakeUserDetailDbPool:
         sql = " ".join(str(query).split()).lower()
         if "from credit_wallets" in sql:
             return {"balance": 450}
-        if "sum(abs(amount))" in sql:
+        if "from credit_transactions" in sql and "sum(" in sql:
             return {"total": 120}
         if "from licenses l" in sql and "join plans p" in sql:
             return {
@@ -65,6 +67,8 @@ class FakeUserDetailDbPool:
     async def fetch(self, query: str, *args):
         sql = " ".join(str(query).split()).lower()
         if "from credit_transactions" in sql:
+            return []
+        if "from music_descriptions" in sql or "from music_structures" in sql:
             return []
         if "from channel_profiles" in sql:
             return [
@@ -111,6 +115,8 @@ class FakeUserDetailDbPool:
                     "updated_at": datetime(2026, 7, 2, 8, 0, tzinfo=timezone.utc),
                 },
             ]
+        if "from music_descriptions" in sql or "from music_structures" in sql:
+            return []
         raise AssertionError(f"Unexpected fetch query: {query}")
 
 
@@ -164,7 +170,14 @@ class TestGetMe:
             "get_db_pool",
             lambda: FakeDbPool(
                 balance={"balance": 275},
-                license_row={"plan_name": "Pro", "profile_allowance": 4},
+                license_row={
+                    "plan_name": "Pro",
+                    "profile_allowance": 4,
+                    "profile_addon_slots": 0,
+                    "profile_addon_pending": 0,
+                    "distrokid_enabled": False,
+                    "distrokid_expires_at": None,
+                },
                 profile_row={"cnt": 2},
             ),
         )
@@ -177,7 +190,7 @@ class TestGetMe:
         assert data["display_name"] == "Boss User"
         assert data["plan_name"] == "Pro"
         assert data["profile_allowance"] == 4
-        assert data["credit_balance"] == 275
+        assert data["credit_balance"] == 0.0275
         assert data["channel_profile_count"] == 2
         mock_user_service.get_user.assert_awaited_once_with(USER_ID)
 
@@ -211,6 +224,38 @@ class TestGetUserFullDetails:
     ) -> None:
         app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
         monkeypatch.setattr(users_router, "get_db_pool", lambda: FakeUserDetailDbPool())
+        monkeypatch.setattr(
+            users_router,
+            "upload_path_exists",
+            lambda value: bool(str(value or "").strip()),
+        )
+
+        fake_topup = AsyncMock()
+        fake_topup.build_period_snapshot = AsyncMock(
+            return_value=type(
+                "Snap",
+                (),
+                {
+                    "period_start": None,
+                    "period_end": None,
+                    "plan_name": "Pro",
+                    "kinds": {},
+                },
+            )()
+        )
+        monkeypatch.setattr(
+            "platform_api.dependencies.get_quota_topup_service",
+            lambda: fake_topup,
+        )
+        monkeypatch.setattr(
+            "platform_api.services.quota_topup_service.snapshot_to_dict",
+            lambda snap: {
+                "period_start": None,
+                "period_end": None,
+                "plan_name": "Pro",
+                "kinds": {},
+            },
+        )
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -219,6 +264,7 @@ class TestGetUserFullDetails:
         assert response.status_code == 200
         data = response.json()
         assert data["plan_name"] == "Pro"
+        assert data["quota_period"] is not None
         assert data["total_songs_generated"] == 7
         assert data["total_images_generated"] == 11
         assert len(data["channel_profiles"]) == 1
@@ -244,6 +290,85 @@ class TestGetUserFullDetails:
         assert profile["playlist"] == "playlist-123"
         assert profile["title_template"] == "Title {n}"
         assert profile["description_template"] == "Description template"
+
+    async def test_quota_topup_endpoint_grants_and_returns_status(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
+        mock_user_service.get_user = AsyncMock(return_value=_make_user())
+
+        grant_result = {
+            "id": str(uuid4()),
+            "user_id": str(USER_ID),
+            "quota_kind": "music",
+            "amount": 10,
+            "reason": "support",
+            "period_start": "2026-07-10",
+            "period_end": "2026-08-09",
+            "base_limit": 100,
+            "topup_extra": 10,
+            "effective_limit": 110,
+            "used": 5,
+            "remaining": 105,
+        }
+        fake_topup = AsyncMock()
+        fake_topup.grant = AsyncMock(return_value=grant_result)
+        fake_topup.build_period_snapshot = AsyncMock(
+            return_value=type("Snap", (), {})()
+        )
+        monkeypatch.setattr(
+            "platform_api.dependencies.get_quota_topup_service",
+            lambda: fake_topup,
+        )
+        monkeypatch.setattr(
+            "platform_api.services.quota_topup_service.snapshot_to_dict",
+            lambda snap: {
+                "period_start": "2026-07-10",
+                "period_end": "2026-08-09",
+                "plan_name": "Pro",
+                "kinds": {
+                    "music": {
+                        "quota_kind": "music",
+                        "base_limit": 100,
+                        "topup_extra": 10,
+                        "effective_limit": 110,
+                        "used": 5,
+                        "remaining": 105,
+                    }
+                },
+            },
+        )
+        monkeypatch.setattr(
+            users_router,
+            "get_db_pool",
+            lambda: FakeDbPool(balance={"balance": 0}),
+        )
+        fake_audit = AsyncMock()
+        fake_audit.log_event = AsyncMock()
+        monkeypatch.setattr(
+            "platform_api.dependencies.get_audit_service",
+            lambda: fake_audit,
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                f"/api/v1/users/{USER_ID}/quota-topups",
+                json={"quota_kind": "music", "amount": 10, "reason": "support"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["quota_kind"] == "music"
+        assert data["amount"] == 10
+        assert data["effective_limit"] == 110
+        assert data["quota_period"]["kinds"]["music"]["topup_extra"] == 10
+        fake_topup.grant.assert_awaited_once()
+        fake_audit.log_event.assert_awaited_once()
+
 
 class TestAdminSetPassword:
     async def test_sets_password_and_revokes_tokens(

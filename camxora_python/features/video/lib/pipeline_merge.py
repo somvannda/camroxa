@@ -36,9 +36,8 @@ from shared.lib.music_settings import read_boolean_setting
 def is_auto_merge_enabled_for_branch(settings: dict, branch: str) -> bool:
     if not read_boolean_setting(settings, "autoMergeAfterVideo", False):
         return False
-    # Short/Reel outputs stay as individual files — never auto-merge.
-    if str(branch or "").strip().lower() == "reel":
-        return False
+    if branch == "reel":
+        return read_boolean_setting(settings, "autoReelAfterVideo", False)
     return True
 
 

@@ -36,7 +36,6 @@ from visualizer._spectrum_fast import (
     normalize_spectrum_gravity,
     resample_fft_bins,
     resolve_bar_pixel_width,
-    scroll_spectrum_heights,
     smooth_fft_envelope,
 )
 from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
@@ -1557,7 +1556,6 @@ class VideoSpectrumPreview(QOpenGLWidget):
         scale = float(max(0.05, min(16.0, float(sf or 1.0))))
         if kind in {"panel", "pill", "stage_art"}:
             opacity_mul = float((overlay or {}).get("opacity", 1.0) if "opacity" in (overlay or {}) else 1.0)
-            bg_key = str(getattr(self, "bg_path", "") or "")
             key = (
                 f"shape:{kind}|{float((overlay or {}).get('panelWidth') or 0):.1f}"
                 f"|{float((overlay or {}).get('panelHeight') or 0):.1f}"
@@ -1566,11 +1564,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 f"|{float((overlay or {}).get('panelRadius') or 0):.2f}"
                 f"|{float((overlay or {}).get('panelFrost') or 0):.2f}"
                 f"|{float((overlay or {}).get('panelSpecular') or 0):.2f}|{text}"
-                f"|{(overlay or {}).get('panelFillMode')}|{','.join(str(c) for c in ((overlay or {}).get('panelGradientColors') or []))}"
-                f"|{float((overlay or {}).get('panelBorderAlpha') if 'panelBorderAlpha' in (overlay or {}) else 1):.2f}"
-                f"|{float((overlay or {}).get('panelOuterGlow') or 0):.2f}|{(overlay or {}).get('panelOuterGlowColor')}"
                 f"|{float((overlay or {}).get('sizePx') or 0):.2f}|{(overlay or {}).get('fontFamily')}"
-                f"|{(overlay or {}).get('logoPath')}|bg:{bg_key}|sf:{scale:.4f}"
+                f"|{(overlay or {}).get('logoPath')}|sf:{scale:.4f}"
             )
         else:
             size_px = float((overlay or {}).get("sizePx", 46.0) if "sizePx" in (overlay or {}) else 46.0)
@@ -1617,29 +1612,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             return (self._text_textures[idx], self._text_sizes[idx])
         from visualizer.gpu_render import _render_overlay_rgba
 
-        backdrop = None
-        if kind == "panel" and str(getattr(self, "bg_path", "") or "").strip():
-            try:
-                from features.video.lib.playlist_glass_backdrop import (
-                    panel_rel_from_overlay,
-                    sample_panel_backdrop_rgba,
-                )
-
-                pw = int(max(4, round(float((overlay or {}).get("panelWidth") or 120.0) * scale)))
-                ph = int(max(4, round(float((overlay or {}).get("panelHeight") or 40.0) * scale)))
-                rel_x, rel_y = panel_rel_from_overlay(overlay or {})
-                blur = 10.0 + float((overlay or {}).get("panelFrost") or 0.0) * 18.0
-                backdrop = sample_panel_backdrop_rgba(
-                    str(self.bg_path),
-                    panel_w=pw,
-                    panel_h=ph,
-                    rel_x=rel_x,
-                    rel_y=rel_y,
-                    blur_radius=blur,
-                )
-            except Exception:
-                backdrop = None
-        arr, tw, th = _render_overlay_rgba(overlay, scale, backdrop_rgba=backdrop)
+        arr, tw, th = _render_overlay_rgba(overlay, scale)
         self.makeCurrent()
         if self._text_textures[idx] is not None:
             try:
@@ -2208,10 +2181,6 @@ class VideoSpectrumPreview(QOpenGLWidget):
                             if 1 < i < BINS - 2:
                                 smoothed = fft_s[i - 2] * 0.1 + fft_s[i - 1] * 0.2 + fft_s[i] * 0.4 + fft_s[i + 1] * 0.2 + fft_s[i + 2] * 0.1
                             render_fft[i] = smoothed
-                    render_fft = scroll_spectrum_heights(
-                        render_fft,
-                        sl.get("frequencyScroll", 0.0),
-                    )
                     # Match export attach-to-logo radius (previewBindings + visible logo ratio).
                     radius = _resolve_spectrum_layer_radius(
                         attached_to_logo=attached_to_logo,
@@ -2236,7 +2205,6 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         logo_shape=logo_shape,
                         frame_w=w,
                         frame_h=h,
-                        linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
                     )
                     contour_style = style_preset == 'contour-waves'
                     waveform_style = style_preset in ('aurora-ribbon', 'magma-ridge', 'plasma-bloom', 'soft-waveform', 'mountain', 'liquid', 'continuous-waveform')
@@ -2275,11 +2243,11 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         pass_alpha = float(max(0.0, min(1.0, float(pass_cfg['alpha']) * float(v_alpha_mul))))
                         fill_circle_pass = bool(pass_cfg['fill_circle'])
                         if pass_cfg['is_glow']:
-                            self._blend_additive()
+                            self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
                         elif blend_mode in ('screen', 'add', 'lighten'):
-                            self._blend_additive()
+                            self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
                         else:
-                            self._blend_normal()
+                            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
                         val_arr = (sampled_fft * pass_spike_height_px).astype(np.float32)
                         if curved and mirrored and ring_close_style:
                             val_arr = np.concatenate([val_arr, val_arr[:1]])
@@ -2559,7 +2527,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 import math
                 self._blend_normal()
                 drag_source = self._text_drag_source()
-                for idx, o in enumerate(overlays[:256]):
+                for idx, o in enumerate(overlays[:64]):
                     if not isinstance(o, dict) or not bool(o.get("enabled", False)):
                         continue
                     kind = str(o.get("overlayKind") or "text").strip().lower()

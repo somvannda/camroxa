@@ -50,6 +50,13 @@ class MusicDownloadCoordinator(QObject):
         self._timer.start(_IDLE_POLL_MS)
         self._poll()
 
+    def request_poll(self) -> None:
+        """Kick an immediate sync after path/settings changes (no restart needed)."""
+        if not self._active:
+            return
+        self._apply_interval(_PENDING_POLL_MS)
+        self._poll()
+
     def set_preview_playing(self, playing: bool) -> None:
         """Pause download polls entirely while Video preview is playing."""
         playing = bool(playing)

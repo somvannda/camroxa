@@ -70,8 +70,6 @@ class BatchRepository:
                 or "planned_to_date" in message
                 or "auto_gen_image" in message
                 or "auto_gsuno" in message
-                or "auto_distrokid" in message
-                or "auto_reel_after_video" in message
             )
         )
 
@@ -100,10 +98,9 @@ class BatchRepository:
                 """
                 INSERT INTO batches
                     (id, user_id, ok_profile_id, alt_profile_id, song_count,
-                     language, secondary_language, creativity_level, pairing_mode, status,
-                     auto_gen_image, auto_gsuno, auto_distrokid, auto_reel_after_video,
+                     language, secondary_language, creativity_level, pairing_mode, status, auto_gen_image, auto_gsuno,
                      planned_from_date, planned_to_date, ok_run_dir, alt_run_dir, structure_mode, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
                 """,
                 batch.id,
                 batch.user_id,
@@ -117,8 +114,6 @@ class BatchRepository:
                 batch.status,
                 batch.auto_gen_image,
                 batch.auto_gsuno,
-                bool(getattr(batch, "auto_distrokid", False)),
-                bool(getattr(batch, "auto_reel_after_video", False)),
                 batch.planned_from_date,
                 batch.planned_to_date,
                 batch.ok_run_dir,
@@ -1963,8 +1958,6 @@ class BatchRepository:
             status=row["status"],
             auto_gen_image=bool(BatchRepository._row_value(row, "auto_gen_image", False)),
             auto_gsuno=bool(BatchRepository._row_value(row, "auto_gsuno", False)),
-            auto_distrokid=bool(BatchRepository._row_value(row, "auto_distrokid", False)),
-            auto_reel_after_video=bool(BatchRepository._row_value(row, "auto_reel_after_video", False)),
             planned_from_date=BatchRepository._row_value(row, "planned_from_date"),
             planned_to_date=BatchRepository._row_value(row, "planned_to_date"),
             ok_run_dir=row["ok_run_dir"],

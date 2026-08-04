@@ -276,6 +276,7 @@ class UsageEnforcementService:
         redis: RedisProtocol,
         license_repo: Any | None = None,
         daily_quota_bank_service: Any | None = None,
+        quota_topup_service: Any | None = None,
     ) -> None:
         """Build the enforcement service."""
         self._credit_repo = credit_repo
@@ -285,6 +286,7 @@ class UsageEnforcementService:
         self._redis = redis
         self._license_repo = license_repo
         self._daily_quota_bank_service = daily_quota_bank_service
+        self._quota_topup_service = quota_topup_service
 
     async def check_and_deduct(
         self,
@@ -747,7 +749,14 @@ class UsageEnforcementService:
         account_daily = uses_account_daily_quota(quota_op)
         bank_profile_id = None if account_daily else channel_profile_id
         addon_slots = int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0
-        monthly_limit = effective_monthly_limit_for_operation(plan, addon_slots, quota_op)
+        monthly_limit = await self._monthly_limit_with_topup(
+            user_id=user_id,
+            plan=plan,
+            addon_slots=addon_slots,
+            quota_op=quota_op,
+            period_start=period_start,
+            subscription_context=ctx,
+        )
         allow_monthly_overage = is_subscription_plan(plan)
         try_increment = getattr(self._usage_repo, "try_increment_usage", None)
         if try_increment is None:
@@ -1799,7 +1808,15 @@ class UsageEnforcementService:
             )
 
         addon_slots = int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0
-        monthly_limit = effective_monthly_limit_for_operation(plan, addon_slots, quota_op)
+        period_start = self._period_start(ctx, today)
+        monthly_limit = await self._monthly_limit_with_topup(
+            user_id=user_id,
+            plan=plan,
+            addon_slots=addon_slots,
+            quota_op=quota_op,
+            period_start=period_start,
+            subscription_context=ctx,
+        )
         if monthly_limit is not None:
             if monthly_limit == 0:
                 raise QuotaExceededError(
@@ -1810,7 +1827,6 @@ class UsageEnforcementService:
                         "plan_name": plan.name,
                     },
                 )
-            period_start = self._period_start(ctx, today)
             if counts_toward_video_quota(operation_type):
                 monthly_count = await self._sum_usage_counters(
                     user_id=user_id,
@@ -1921,6 +1937,28 @@ class UsageEnforcementService:
         Per-channel song/image/draft limits are unchanged (capacity grows via channels).
         """
         return effective_daily_limit_for_operation(plan, addon_slots, operation_type)
+
+    async def _monthly_limit_with_topup(
+        self,
+        *,
+        user_id: UUID,
+        plan: Plan,
+        addon_slots: int,
+        quota_op: str,
+        period_start: date,
+        subscription_context: ActiveSubscriptionContext | None,
+    ) -> int | None:
+        """Plan monthly limit plus any admin period top-up for this billing period."""
+        del subscription_context
+        if self._quota_topup_service is not None:
+            return await self._quota_topup_service.effective_monthly_limit_with_topup(
+                user_id=user_id,
+                plan=plan,
+                addon_slots=addon_slots,
+                operation_type=quota_op,
+                period_start=period_start,
+            )
+        return effective_monthly_limit_for_operation(plan, addon_slots, quota_op)
 
     @staticmethod
     def _get_monthly_limit(plan: Plan, operation_type: str) -> int | None:

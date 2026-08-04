@@ -14,17 +14,11 @@ Follow-up: glass **card border was too faint / Pillow outline unreliable** — p
 
 Follow-up: **preview see-through** — soft glow / translucent overlays were writing framebuffer alpha &lt; 1, so Qt composited the app chrome through the preview. Preview (and lightning/particle passes that share the preview GL context) now use `blend_func_separate` so RGB blends normally while alpha stays opaque.
 
-Follow-up: **list-card colors looked “broken” / unreadable** — Typography Fill/Glow wrote `titleColor`/`titleGlowColor`, but the glass list card only read buried `titleListColor` / panel fields (and panel opacity was not an honest alpha). Controls are now top-of-Playlist with clear labels; Fill↔List and Glow↔Active stay synced; Purple Neon defaults to near-opaque white text on a solid card.
-
-Follow-up: **glass plate never appeared in preview** — `normalize_renderer_template` stripped `overlayKind` / `panelWidth` / frost fields, so the plate became empty text and was skipped. Preview now keeps panel/pill/stage_art overlays intact.
-
-Follow-up: **Neon Glass Pro reference reconstruction** — list card rebuilt to match the provided UI spec (no album-art tiles): white hairline glass, PLAYLIST + N TRACKS + heart, 72px-class rows, purple→pink selected gradient with outer bloom, equalizer glyph, subtle dividers. Panel renderer gains `panelFillMode=gradient`, `panelOuterGlow`, and border alpha for the glass hairline.
-
 
 ## Product impact
 
-- **Before:** Competing Style Preset vs Playlist Look; hollow neon frame; busy BG bled through; Orange Fire could tint the list.
-- **After:** Pick **Neon Glass Pro** for a frosted playlist card matching the reference layout (header, rows, gradient active pill). Style Preset cannot fight the Look.
+- **Before:** Tab labeled Title; typography presets only; OS fonts. Panel sliders only thickened text stroke; “list right” did not move the list; NOW PLAYING was a tiny `▶`. Soft glow / glass in the preview could show the desktop UI behind the OpenGL widget.
+- **After:** Tab labeled **Playlist**. Pick a **Playlist Look** for layout + glass chrome + fonts/colors. **Glass panel** is a rounded frosted plate behind the list; **NOW PLAYING** is a pill badge above the active row. Layout **snap right/left** recenters the list; free-drag layouts stay free. Preview stays fully opaque over the app chrome.
 
 ## Technical impact
 
@@ -39,8 +33,6 @@ Follow-up: **Neon Glass Pro reference reconstruction** — list card rebuilt to 
 - `docs/playlist-domain-glass-polish.md`
 - `camxora_python/assets/fonts/**`
 - `camxora_python/features/video/lib/system_fonts.py`
-- `camxora_python/features/video/lib/playlist_glass_backdrop.py` (bg crop + blur for frost)
-- `camxora_python/visualizer/template_runtime.py` (preserve panel/pill overlayKind + panel*)
 - `camxora_python/features/video/lib/lightning_render.py` (opaque alpha blend for preview)
 - `camxora_python/visualizer/gpu_render.py` (particle blend alpha lock)
 - `camxora_python/features/video/lib/playlist_stage.py` (unused by Purple Neon Look; list-card is the goal)
@@ -72,7 +64,5 @@ Desktop-only. Restart app. No API migrate. Existing templates keep working; enab
 ## Follow-ups
 
 - Phase 1b: Spectrum glass material (shared plate language)
-- Animate equalizer bars + selected-row glow pulse (spec 2.5s) in preview
-- True scene-sampled frost blur (current frost is bg crop + PIL blur)
+- Phase 2: more looks, true scene-sampled frost blur, durations from track probe, transport chrome
 - Timing (gap/hardcover/opening): plan only — not implemented
-- Standalone ModernGL/moderngl-window demo from the master prompt (not required for Camxora)

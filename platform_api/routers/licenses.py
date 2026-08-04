@@ -135,11 +135,6 @@ class ValidateLicenseResponse(BaseModel):
     daily_image_limit_per_channel: int | None = None
     wallet_balance: float = 0
     expiration_date: datetime | None = None
-    distrokid_enabled: bool = False
-    distrokid_active: bool = False
-    distrokid_expires_at: datetime | None = None
-    distrokid_monthly_wav_limit: int = 600
-    distrokid_price_cents: int = 500
 
 
 # ---------------------------------------------------------------------------
@@ -736,10 +731,6 @@ async def validate_license(
     quota_channels = effective_quota_channels(plan, addon_slots)
     creation_allowance = effective_profile_creation_allowance(plan, addon_slots, addon_pending)
 
-    from platform_api.services.distrokid_entitlement_service import distrokid_status_payload
-
-    dk = distrokid_status_payload(license)
-
     return ValidateLicenseResponse(
         plan_type=plan.name,
         profile_allowance=plan.profile_allowance,
@@ -755,9 +746,4 @@ async def validate_license(
         daily_image_limit_per_channel=plan.daily_image_limit_per_channel,
         wallet_balance=wallet_balance,
         expiration_date=license.expires_at,
-        distrokid_enabled=bool(dk["distrokid_enabled"]),
-        distrokid_active=bool(dk["distrokid_active"]),
-        distrokid_expires_at=dk["distrokid_expires_at"],
-        distrokid_monthly_wav_limit=int(dk["distrokid_monthly_wav_limit"]),
-        distrokid_price_cents=int(dk["distrokid_price_cents"]),
     )

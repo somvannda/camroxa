@@ -80,7 +80,6 @@ STAGE_OPTIONS = (
     ("Image", "image"),
     ("Export", "export"),
     ("Merge", "merge"),
-    ("DistroKid", "distrokid"),
     ("YouTube", "youtube"),
     ("Completed", "completed"),
     ("Done", "done"),
@@ -445,18 +444,10 @@ class ProgressView(PollablePageMixin, QScrollArea):
                 return
 
     def _effective_rows(self) -> list[EffectiveProgressRow]:
-        from features.distrokid.lib.distrokid_job_store import DistroKidJobStore
-
-        store = DistroKidJobStore()
         entries: list[EffectiveProgressRow] = []
         for row in self._rows:
             key = progress_runtime_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
             runtime = self._runtime_by_key.get(key)
-            distrokid_summary = store.summary_for_progress(
-                batch_id=str(row.meta.batch_id or ""),
-                run_dir=str(row.meta.run_dir or ""),
-                role=str(row.meta.role or ""),
-            )
             entries.append(
                 EffectiveProgressRow(
                     row=row,
@@ -467,7 +458,6 @@ class ProgressView(PollablePageMixin, QScrollArea):
                     effective_notes=runtime.notes if runtime else row.notes,
                     effective_converter_percent=runtime.converter_percent if runtime else None,
                     effective_merge_percent=runtime.merge_percent if runtime else None,
-                    distrokid_summary=distrokid_summary,
                 )
             )
         return entries
@@ -482,13 +472,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
                 for entry in entries
                 if str(entry.effective_stage or "").strip().lower() not in {"done", "completed"}
             ]
-        if stage == "distrokid":
-            entries = [
-                entry
-                for entry in entries
-                if bool((entry.distrokid_summary or {}).get("active"))
-            ]
-        elif stage != "all":
+        if stage != "all":
             entries = [
                 entry
                 for entry in entries

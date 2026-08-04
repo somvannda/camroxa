@@ -176,22 +176,6 @@ def get_suno_client():
     return SunoClient(settings=get_settings())
 
 
-def get_distrokid_service():
-    """Dependency provider for DistroKid WAV and upload history operations."""
-    from platform_api.services.distrokid_service import DistroKidService
-
-    key_pool = get_key_pool_service()
-    if key_pool is None:
-        raise RuntimeError("Key pool service is unavailable.")
-    return DistroKidService(
-        pool=get_db_pool(),
-        license_repo=get_license_repo(),
-        credit_service=get_credit_operation_service(),
-        suno_client=get_suno_client(),
-        key_pool_service=key_pool,
-    )
-
-
 def get_fal_client():
     """Dependency that returns the FalClient instance."""
     from platform_api.clients.fal_client import FalClient
@@ -353,6 +337,24 @@ def get_daily_quota_bank_service():
     )
 
 
+def get_quota_topup_repo():
+    """Dependency that returns the QuotaTopupRepository instance."""
+    from platform_api.repositories.quota_topup_repo import QuotaTopupRepository
+
+    return QuotaTopupRepository(pool=get_db_pool())
+
+
+def get_quota_topup_service():
+    """Dependency that returns the QuotaTopupService instance."""
+    from platform_api.services.quota_topup_service import QuotaTopupService
+
+    return QuotaTopupService(
+        topup_repo=get_quota_topup_repo(),
+        plan_repo=get_plan_repo(),
+        usage_repo=get_usage_tracking_repo(),
+    )
+
+
 def get_usage_enforcement_service():
     """Dependency that returns the UsageEnforcementService instance."""
     from platform_api.services.usage_enforcement_service import UsageEnforcementService
@@ -365,6 +367,7 @@ def get_usage_enforcement_service():
         redis=get_redis(),
         license_repo=get_license_repo(),
         daily_quota_bank_service=get_daily_quota_bank_service(),
+        quota_topup_service=get_quota_topup_service(),
     )
 
 

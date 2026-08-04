@@ -20,86 +20,6 @@ from features.video.lib.text_domain_runtime import expand_text_domains_to_overla
 from features.video.widgets.right_rail import VideoRightRail
 
 
-def test_neon_glass_pro_is_first_look_option() -> None:
-    assert PLAYLIST_LOOK_PRESET_OPTIONS[0][0] == "purple_neon_glowing"
-    assert "Neon Glass Pro" in PLAYLIST_LOOK_PRESET_OPTIONS[0][1]
-
-
-def test_sample_panel_backdrop_rgba_smoke(tmp_path) -> None:
-    from PIL import Image
-
-    from features.video.lib.playlist_glass_backdrop import sample_panel_backdrop_rgba
-
-    path = tmp_path / "bg.png"
-    Image.new("RGB", (640, 360), (20, 40, 80)).save(path)
-    crop = sample_panel_backdrop_rgba(str(path), panel_w=120, panel_h=80, blur_radius=8)
-    assert crop is not None
-    assert crop.shape == (80, 120, 4)
-
-
-def test_normalize_renderer_keeps_playlist_panel_overlays() -> None:
-    """Regression: preview normalize used to strip overlayKind/panel* and drop the glass plate."""
-    from features.video.lib.text_domain_registry import build_playlist_look_draft_patch, title_settings_from_draft
-    from features.video.lib.text_domain_runtime import expand_text_domains_to_overlays
-    from visualizer.template_runtime import normalize_renderer_template
-
-    patch = build_playlist_look_draft_patch("purple_neon_glowing")
-    assert patch is not None
-    settings = title_settings_from_draft(
-        {
-            **patch,
-            "titleEnabled": True,
-            "titleContentMode": "manual",
-            "titleManualTitles": ["Steel Fists", "One Heartbeat"],
-            "titleListActiveIndex": 0,
-        }
-    )
-    raw_overlays = expand_text_domains_to_overlays(
-        {"titleText": settings, "albumText": {"enabled": False}},
-        track_paths=[],
-    )
-    assert any(item.get("overlayKind") == "panel" for item in raw_overlays)
-    normalized = normalize_renderer_template({"textOverlays": raw_overlays})
-    out = normalized.get("textOverlays") or []
-    panels = [item for item in out if item.get("overlayKind") == "panel"]
-    assert panels, "glass card panel must survive normalize_renderer_template"
-    assert float(panels[0].get("panelWidth") or 0) > 100
-    assert float(panels[0].get("opacity") or 0) >= 0.75
-    titles = [item for item in out if item.get("text") == "One Heartbeat"]
-    assert titles and str(titles[0].get("color") or "").lower() in {"#ffffff", "#fff"}
-    active = [item for item in out if item.get("text") == "Steel Fists"]
-    assert active and str(active[0].get("color") or "").lower() in {"#ffffff", "#fff"}
-    plate = next(item for item in out if item.get("source") == "titleTextActivePlate")
-    assert str(plate.get("panelFillMode") or "") == "gradient"
-
-
-def test_list_card_honors_list_color_and_panel_opacity() -> None:
-    from features.video.lib.playlist_list_card import build_playlist_list_card_overlays
-
-    overlays = build_playlist_list_card_overlays(
-        title={
-            "listColor": "#ff00aa",
-            "listActiveColor": "#00ffcc",
-            "panelOpacity": 0.95,
-            "panelFrost": 0.2,
-            "panelBorderWidth": 3.0,
-            "panelBorderColor": "#ff00aa",
-            "panelFill": "#110022",
-            "tracklistHeader": True,
-            "activeRowPlate": True,
-            "style": {"x": 10, "y": 10, "boxWidth": 280, "fontSize": 12, "color": "#ffffff", "glow": 0.5},
-        },
-        titles=["Alpha", "Beta"],
-        active_index=0,
-        album_name="Demo",
-    )
-    panel = next(item for item in overlays if item.get("source") == "titleTextPanel")
-    assert abs(float(panel["opacity"]) - 0.95) < 1e-6
-    assert panel["color"] == "#110022"
-    assert any(item.get("text") == "Alpha" and item.get("color") == "#00ffcc" for item in overlays)
-    assert any(item.get("text") == "Beta" and item.get("color") == "#ff00aa" for item in overlays)
-
-
 def test_right_rail_tab_label_is_playlist() -> None:
     labels = [label for _key, label in VideoRightRail._SIDE_TABS]
     assert "Playlist" in labels
@@ -129,12 +49,8 @@ def test_purple_neon_glowing_look_emits_tracklist_chrome() -> None:
     assert patch["titleLayout"] == "list_card"
     assert patch["titleTracklistHeader"] is True
     assert patch["titleActiveRowPlate"] is True
-    assert float(patch["titlePanelBorderWidth"]) >= 0.5
-    assert float(patch["titlePanelFrost"]) >= 0.5
-    assert float(patch["titlePanelOpacity"]) >= 0.75
-    assert str(patch.get("titleStylePreset") or "") == "soft_glow"
-    assert str(patch["titleListColor"]).lower() in {"#ffffff", "#fff"}
-    assert str(patch["titlePanelBorderColor"]).lower() in {"#ffffff", "#fff"}
+    assert float(patch["titlePanelBorderWidth"]) >= 1.5
+    assert float(patch["titlePanelFrost"]) >= 0.4
     settings = title_settings_from_draft(
         {
             **patch,
@@ -155,13 +71,7 @@ def test_purple_neon_glowing_look_emits_tracklist_chrome() -> None:
     assert "titleTextStageOuter" not in sources
     header = next(item for item in overlays if item.get("source") == "titleTextHeader")
     assert header.get("text") == "PLAYLIST"
-    assert any(str(item.get("text") or "").endswith("TRACKS") for item in overlays)
-    assert any(str(item.get("text") or "") == "♡" for item in overlays)
-    active_plate = next(item for item in overlays if item.get("source") == "titleTextActivePlate")
-    assert str(active_plate.get("panelFillMode") or "") == "gradient"
-    assert float(active_plate.get("panelOuterGlow") or 0) > 0.5
-    # Active row uses equalizer glyph; inactive has index numbers.
-    assert any(str(item.get("text") or "") == "▍" for item in overlays)
+    # Active row uses outlined plate + title; inactive has index numbers.
     assert any(str(item.get("text") or "") == "Sweetest Goodbye" for item in overlays)
     assert any("Rocky" in str(item.get("text") or "") for item in overlays)
 

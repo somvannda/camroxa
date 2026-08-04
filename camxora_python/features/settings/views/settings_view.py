@@ -3464,6 +3464,14 @@ class SettingsView(QWidget):
         # Keep this machine's media roots local even though Preferences also
         # PATCHes account settings (active desktop owns planning paths).
         persist_device_paths_from_settings(self._settings_raw)
+        try:
+            from shared.services.music_download_coordinator import get_music_download_coordinator
+
+            coordinator = get_music_download_coordinator()
+            if coordinator is not None:
+                coordinator.request_poll()
+        except Exception:
+            pass
         self._system_draft = build_system_settings_draft(self._settings_raw)
         self._baseline_system_draft = build_system_settings_draft(self._settings_raw)
         self._suno_draft = build_suno_settings_draft(self._settings_raw)

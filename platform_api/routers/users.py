@@ -21,6 +21,7 @@ from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.user_service import UserService
 from platform_api.services.credit_units import units_to_credits
+from platform_api.utils.upload_paths import upload_path_exists
 
 # ---------------------------------------------------------------------------
 # Router
@@ -57,11 +58,6 @@ class UserProfileResponse(BaseModel):
     effective_quota_channels: int | None = None
     channel_profile_count: int = 0
     onboarding_paid: bool = False
-    distrokid_enabled: bool = False
-    distrokid_active: bool = False
-    distrokid_expires_at: datetime | None = None
-    distrokid_monthly_wav_limit: int = 600
-    distrokid_price_cents: int = 500
     pending_verification_code: str | None = None
     verification_code_expires_at: datetime | None = None
     created_at: datetime
@@ -141,9 +137,59 @@ class UserFullDetailResponse(BaseModel):
     total_songs_generated: int = 0
     total_images_generated: int = 0
 
+    # Current billing-period quota snapshot (admin top-up surface)
+    quota_period: dict[str, Any] | None = None
+
     # User-owned prompts
     custom_descriptions: list[UserOwnedPromptSummary] = []
     custom_structures: list[UserOwnedPromptSummary] = []
+
+
+class QuotaTopupRequest(BaseModel):
+    """Admin request to bump a user's period quota limit."""
+
+    quota_kind: str = Field(
+        ...,
+        description="draft | music | image | video | merge (aliases: drafts, songs, images, videos, merges)",
+    )
+    amount: int = Field(..., gt=0, description="Extra period units to add")
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class QuotaKindStatusResponse(BaseModel):
+    quota_kind: str
+    base_limit: int | None = None
+    topup_extra: int = 0
+    effective_limit: int | None = None
+    used: int = 0
+    remaining: int | None = None
+
+
+class AdminQuotaPeriodResponse(BaseModel):
+    """Admin view of current billing-period quotas + top-ups."""
+
+    user_id: str
+    period_start: str | None = None
+    period_end: str | None = None
+    plan_name: str | None = None
+    wallet_balance: float = 0
+    kinds: dict[str, QuotaKindStatusResponse] = {}
+
+
+class QuotaTopupResponse(BaseModel):
+    id: str
+    user_id: str
+    quota_kind: str
+    amount: int
+    reason: str
+    period_start: str
+    period_end: str
+    base_limit: int
+    topup_extra: int
+    effective_limit: int
+    used: int
+    remaining: int
+    quota_period: AdminQuotaPeriodResponse | None = None
 
 
 class PaginatedUsersResponse(BaseModel):
@@ -187,7 +233,7 @@ class AdminSetPasswordRequest(BaseModel):
 
 
 async def _get_user_service() -> UserService:
-    """Placeholder dependency for UserService — override in tests or dependencies.py."""
+    """Placeholder dependency for UserService â€” override in tests or dependencies.py."""
     raise NotImplementedError(
         "UserService dependency not configured. Wire via app.dependency_overrides."
     )
@@ -215,11 +261,6 @@ def _user_to_response(
     effective_quota_channels: int | None = None,
     channel_profile_count: int = 0,
     onboarding_paid: bool = False,
-    distrokid_enabled: bool = False,
-    distrokid_active: bool = False,
-    distrokid_expires_at: datetime | None = None,
-    distrokid_monthly_wav_limit: int = 600,
-    distrokid_price_cents: int = 500,
     pending_verification_code: str | None = None,
     verification_code_expires_at: datetime | None = None,
 ) -> UserProfileResponse:
@@ -246,11 +287,6 @@ def _user_to_response(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
-        distrokid_enabled=distrokid_enabled,
-        distrokid_active=distrokid_active,
-        distrokid_expires_at=distrokid_expires_at,
-        distrokid_monthly_wav_limit=distrokid_monthly_wav_limit,
-        distrokid_price_cents=distrokid_price_cents,
         pending_verification_code=pending_verification_code,
         verification_code_expires_at=verification_code_expires_at,
         created_at=user.created_at,
@@ -292,9 +328,7 @@ async def get_me(
         SELECT p.name AS plan_name,
                p.profile_allowance,
                COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
-               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending,
-               COALESCE(l.distrokid_enabled, false) AS distrokid_enabled,
-               l.distrokid_expires_at
+               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
         FROM licenses l
         JOIN plans p ON l.plan_id = p.id
         WHERE l.user_id = $1 AND l.status = 'active'
@@ -307,19 +341,6 @@ async def get_me(
     profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
     profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
     profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
-    from platform_api.services.distrokid_entitlement_service import (
-        DISTROKID_ADDON_PRICE_CENTS,
-        DISTROKID_MONTHLY_WAV_LIMIT,
-        license_has_active_distrokid,
-    )
-    class _DkProxy:
-        distrokid_enabled = bool(license_row["distrokid_enabled"]) if license_row else False
-        distrokid_expires_at = license_row["distrokid_expires_at"] if license_row else None
-    distrokid_enabled = _DkProxy.distrokid_enabled
-    distrokid_expires_at = _DkProxy.distrokid_expires_at
-    distrokid_active = license_has_active_distrokid(_DkProxy) if license_row else False
-    distrokid_monthly_wav_limit = DISTROKID_MONTHLY_WAV_LIMIT
-    distrokid_price_cents = DISTROKID_ADDON_PRICE_CENTS
     effective_quota_channels = (
         int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
     )
@@ -350,11 +371,6 @@ async def get_me(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
-        distrokid_enabled=distrokid_enabled,
-        distrokid_active=distrokid_active,
-        distrokid_expires_at=distrokid_expires_at,
-        distrokid_monthly_wav_limit=distrokid_monthly_wav_limit,
-        distrokid_price_cents=distrokid_price_cents,
     )
 
 
@@ -418,9 +434,7 @@ async def update_me(
         SELECT p.name AS plan_name,
                p.profile_allowance,
                COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
-               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending,
-               COALESCE(l.distrokid_enabled, false) AS distrokid_enabled,
-               l.distrokid_expires_at
+               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
         FROM licenses l
         JOIN plans p ON l.plan_id = p.id
         WHERE l.user_id = $1 AND l.status = 'active'
@@ -433,19 +447,6 @@ async def update_me(
     profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
     profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
     profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
-    from platform_api.services.distrokid_entitlement_service import (
-        DISTROKID_ADDON_PRICE_CENTS,
-        DISTROKID_MONTHLY_WAV_LIMIT,
-        license_has_active_distrokid,
-    )
-    class _DkProxy:
-        distrokid_enabled = bool(license_row["distrokid_enabled"]) if license_row else False
-        distrokid_expires_at = license_row["distrokid_expires_at"] if license_row else None
-    distrokid_enabled = _DkProxy.distrokid_enabled
-    distrokid_expires_at = _DkProxy.distrokid_expires_at
-    distrokid_active = license_has_active_distrokid(_DkProxy) if license_row else False
-    distrokid_monthly_wav_limit = DISTROKID_MONTHLY_WAV_LIMIT
-    distrokid_price_cents = DISTROKID_ADDON_PRICE_CENTS
     effective_quota_channels = (
         int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
     )
@@ -475,11 +476,6 @@ async def update_me(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
-        distrokid_enabled=distrokid_enabled,
-        distrokid_active=distrokid_active,
-        distrokid_expires_at=distrokid_expires_at,
-        distrokid_monthly_wav_limit=distrokid_monthly_wav_limit,
-        distrokid_price_cents=distrokid_price_cents,
     )
 
 
@@ -597,7 +593,7 @@ async def list_users(
     response_model=UserFullDetailResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Get full user details (Admin)",
@@ -766,8 +762,8 @@ async def get_user_full_details(
                 folder_name=row.get("folder_name"),
                 run_prefix=str(row.get("run_prefix") or "").strip() or None,
                 created_at=row["created_at"],
-                logo_available=bool(str(row.get("logo_path") or "").strip()),
-                cover_count=len([x for x in cover_paths if str(x or "").strip()]),
+                logo_available=upload_path_exists(row.get("logo_path")),
+                cover_count=len([x for x in cover_paths if upload_path_exists(x)]),
                 output_resolution=str(row.get("output_resolution") or "").strip() or None,
                 video_template_id=video_template_id,
                 reel_template_id=reel_template_id,
@@ -797,14 +793,14 @@ async def get_user_full_details(
             )
         )
 
-    # Usage stats — songs generated
+    # Usage stats â€” songs generated
     songs_row = await pool.fetchrow(
         "SELECT COUNT(*)::int as cnt FROM suno_tasks WHERE user_id = $1",
         user_id,
     )
     total_songs_generated = songs_row["cnt"] if songs_row else 0
 
-    # Usage stats — images generated
+    # Usage stats â€” images generated
     images_row = await pool.fetchrow(
         "SELECT COUNT(*)::int as cnt FROM image_jobs WHERE user_id = $1",
         user_id,
@@ -854,6 +850,12 @@ async def get_user_full_details(
         user_id,
     )
 
+    from platform_api.dependencies import get_quota_topup_service
+    from platform_api.services.quota_topup_service import snapshot_to_dict
+
+    topup_service = get_quota_topup_service()
+    quota_snapshot = snapshot_to_dict(await topup_service.build_period_snapshot(user_id))
+
     return UserFullDetailResponse(
         id=str(user.id),
         email=user.email,
@@ -874,6 +876,7 @@ async def get_user_full_details(
         channel_profiles=channel_profiles,
         total_songs_generated=total_songs_generated,
         total_images_generated=total_images_generated,
+        quota_period=quota_snapshot,
         custom_descriptions=[
             UserOwnedPromptSummary(
                 id=str(row["id"]),
@@ -896,6 +899,137 @@ async def get_user_full_details(
             )
             for row in custom_structure_rows
         ],
+    )
+
+
+async def _admin_quota_period_response(
+    user_id: UUID,
+    *,
+    wallet_balance: float | None = None,
+) -> AdminQuotaPeriodResponse:
+    from platform_api.dependencies import get_quota_topup_service
+    from platform_api.services.quota_topup_service import snapshot_to_dict
+
+    topup_service = get_quota_topup_service()
+    snapshot = await topup_service.build_period_snapshot(user_id)
+    payload = snapshot_to_dict(snapshot)
+    if wallet_balance is None:
+        pool = get_db_pool()
+        balance_row = await pool.fetchrow(
+            "SELECT balance FROM credit_wallets WHERE user_id = $1", user_id
+        )
+        credit_balance_units = int(balance_row["balance"] or 0) if balance_row else 0
+        wallet_balance = units_to_credits(credit_balance_units)
+    kinds = {
+        kind: QuotaKindStatusResponse(**status)
+        for kind, status in (payload.get("kinds") or {}).items()
+    }
+    return AdminQuotaPeriodResponse(
+        user_id=str(user_id),
+        period_start=payload.get("period_start"),
+        period_end=payload.get("period_end"),
+        plan_name=payload.get("plan_name"),
+        wallet_balance=float(wallet_balance or 0),
+        kinds=kinds,
+    )
+
+
+@router.get(
+    "/{user_id}/quota-status",
+    response_model=AdminQuotaPeriodResponse,
+    status_code=200,
+    responses={
+        403: {"description": "Forbidden — non-admin access"},
+        404: {"description": "User not found"},
+    },
+    summary="Get period quota status for a user (Admin)",
+)
+async def get_user_quota_status(
+    user_id: UUID,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> AdminQuotaPeriodResponse:
+    """Return current billing-period quotas including admin top-up extras."""
+    del ctx
+    user = await user_service.get_user(str(user_id))
+    if user is None:
+        from platform_api.exceptions import NotFoundError
+
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+    return await _admin_quota_period_response(user_id)
+
+
+@router.post(
+    "/{user_id}/quota-topups",
+    response_model=QuotaTopupResponse,
+    status_code=200,
+    responses={
+        403: {"description": "Forbidden — non-admin access"},
+        404: {"description": "User not found"},
+        422: {"description": "Validation error"},
+    },
+    summary="Top up period plan quota for a user (Admin)",
+)
+async def create_user_quota_topup(
+    user_id: UUID,
+    body: QuotaTopupRequest,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> QuotaTopupResponse:
+    """Add a period-scoped limit bump (expires at next billing period)."""
+    user = await user_service.get_user(str(user_id))
+    if user is None:
+        from platform_api.exceptions import NotFoundError
+
+        raise NotFoundError(message="User not found.", details={"user_id": str(user_id)})
+
+    from platform_api.dependencies import get_audit_service, get_quota_topup_service
+
+    topup_service = get_quota_topup_service()
+    result = await topup_service.grant(
+        user_id=user_id,
+        quota_kind=body.quota_kind,
+        amount=body.amount,
+        reason=body.reason,
+        admin_id=UUID(str(ctx.user_id)),
+    )
+    try:
+        audit_service = get_audit_service()
+        await audit_service.log_event(
+            actor_id=str(ctx.user_id),
+            action_type="quota.topup",
+            target_resource=f"user:{user_id}",
+            credit_impact=0,
+            outcome="success",
+            metadata={
+                "user_id": str(user_id),
+                "quota_kind": result["quota_kind"],
+                "amount": result["amount"],
+                "period_start": result["period_start"],
+                "period_end": result["period_end"],
+                "reason": result["reason"],
+                "topup_id": result["id"],
+                "effective_limit": result["effective_limit"],
+            },
+        )
+    except Exception:
+        pass
+
+    period = await _admin_quota_period_response(user_id)
+    return QuotaTopupResponse(
+        id=result["id"],
+        user_id=result["user_id"],
+        quota_kind=result["quota_kind"],
+        amount=result["amount"],
+        reason=result["reason"],
+        period_start=result["period_start"],
+        period_end=result["period_end"],
+        base_limit=result["base_limit"],
+        topup_extra=result["topup_extra"],
+        effective_limit=result["effective_limit"],
+        used=result["used"],
+        remaining=result["remaining"],
+        quota_period=period,
     )
 
 
@@ -977,7 +1111,7 @@ async def reset_user_fail_absorb(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Get a user by ID (Admin)",
@@ -1000,7 +1134,7 @@ async def get_user_by_id(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Update a user (Admin)",
@@ -1086,7 +1220,7 @@ async def admin_set_user_password(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Suspend a user (Admin)",
@@ -1111,7 +1245,7 @@ async def suspend_user(
     response_model=UserProfileResponse,
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Reactivate a suspended user (Admin)",
@@ -1133,7 +1267,7 @@ async def reactivate_user(
     "/{user_id}",
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Soft-delete a user (Admin)",
@@ -1156,7 +1290,7 @@ async def delete_user(
     "/{user_id}/permanent",
     status_code=200,
     responses={
-        403: {"description": "Forbidden — non-admin access"},
+        403: {"description": "Forbidden â€” non-admin access"},
         404: {"description": "User not found"},
     },
     summary="Permanently delete a user (Admin)",

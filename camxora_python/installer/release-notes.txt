@@ -1,5 +1,5 @@
-﻿Camxora 1.0.17 - Per-device media folders
-Date: 2026-08-03
+﻿Camxora 1.0.19 - Per-device paths (ship-safe cut)
+Date: 2026-08-04
 
 What's new
 ----------
@@ -9,18 +9,21 @@ What's new
   overwriting the other's drive/folder settings in the cloud
 - Pending Suno MP3 downloads that were planned for another PC's path now save
   into this PC's Suno folder (channel/date album layout preserved)
+- Progress / Auto-Video see remapped local folders immediately (no app restart)
 - While you generate on a PC, that PC's folders are used for new batch planning
-- Spectrum Save keeps your edits (no snap-back to Orbit Spikes / original)
-- Linear spectrum Row Width can span the full preview (1.0 = full width)
-- Raise Scroll restored for shifting bass/spikes along the path
-- Includes everything from 1.0.16:
-  - Force update shows Setup progress (no fully silent install)
-  - Mid-Setup reopen shows Finishing / Try again instead of looking broken
-  - Includes 1.0.15 fixes (multi-machine path heal, spectrum flush drag,
-    startup retry, merge without export background/template gate)
+- Includes Spectrum Save / Row Width / Raise Scroll and 1.0.15–1.0.16 force-update
+- Video export: if NVIDIA driver is too old for hardware encode (NVENC), Camxora
+  automatically falls back to software encode (x264) instead of failing
+
+Not included in this build
+--------------------------
+- DistroKid automation / WAV add-on (kept on a separate branch until ready)
+- Playlist glass polish (kept out until ready)
 
 Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.0.17.exe
+- Installer file: CamxoraSetup-1.0.19.exe
+- Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
+  Camxora to use NVENC again
