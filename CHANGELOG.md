@@ -15,6 +15,21 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.2.0] - 2026-08-04
+
+### Fixed
+
+- **Windowed shell clicks land on the painted control again.** Dropped
+  translucent HWND + `setMask()` rounding that offset hit-testing on some
+  Windows DPI setups (maximized already worked). Rounded look kept via DWM +
+  QSS on the opaque surface. See
+  `docs/changelog/2026-08-04-window-chrome-click-hit-test.md`.
+
+### Changed
+
+- Desktop app version stamp **1.2.0** / `CamxoraSetup-1.2.0.exe`. Includes the
+  1.0.19 ship-safe cut (per-device paths, spectrum fixes, NVENC fallback).
+
 ## [1.0.19] - 2026-08-04
 
 ### Fixed

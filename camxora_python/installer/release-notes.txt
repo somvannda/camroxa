@@ -1,19 +1,21 @@
-﻿Camxora 1.0.19 - Per-device paths (ship-safe cut)
+﻿Camxora 1.2.0 - Windowed UI click fix
 Date: 2026-08-04
 
 What's new
 ----------
-- Same Camxora account on two PCs keeps separate media folders on each machine
-  (Suno output, downloads, merged, image folders)
-- Each PC remembers its own paths under local app data — no more one machine
-  overwriting the other's drive/folder settings in the cloud
-- Pending Suno MP3 downloads that were planned for another PC's path now save
-  into this PC's Suno folder (channel/date album layout preserved)
-- Progress / Auto-Video see remapped local folders immediately (no app restart)
-- While you generate on a PC, that PC's folders are used for new batch planning
-- Includes Spectrum Save / Row Width / Raise Scroll and 1.0.15–1.0.16 force-update
-- Video export: if NVIDIA driver is too old for hardware encode (NVENC), Camxora
-  automatically falls back to software encode (x264) instead of failing
+- Windowed mode: dropdowns, calendars, scrollbars, and buttons click where they
+  look again (hit-testing no longer offset from painted controls)
+- Keep the custom rounded header; rounding now uses Windows DWM + QSS on an
+  opaque shell instead of a translucent window mask
+- Maximized mode was already fine; windowed mode now matches that behavior
+
+Also included (from 1.0.19 line)
+--------------------------------
+- Per-device media folders for the same Camxora account on multiple PCs
+- Progress / Auto-Video see remapped local folders without restart
+- Spectrum Save / Row Width / Raise Scroll fixes
+- Video export: older NVIDIA drivers fall back to software encode (x264)
+  instead of failing when NVENC is too old
 
 Not included in this build
 --------------------------
@@ -24,6 +26,6 @@ Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.0.19.exe
+- Installer file: CamxoraSetup-1.2.0.exe
 - Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
   Camxora to use NVENC again
