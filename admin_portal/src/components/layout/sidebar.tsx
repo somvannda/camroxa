@@ -49,34 +49,76 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Users', path: '/users', icon: Users },
-  { label: 'Subscriptions', path: '/licenses', icon: KeyRound },
-  { label: 'Plans', path: '/plans', icon: CreditCard },
-  { label: 'Redeem Codes', path: '/redeem-codes', icon: TicketPercent },
-  { label: 'Invitations', path: '/invitations', icon: UserPlus },
-  { label: 'Blog Posts', path: '/blog-posts', icon: Newspaper },
-  { label: 'Credits', path: '/credits', icon: Coins },
-  { label: 'Usage', path: '/usage', icon: BarChart3 },
-  { label: 'User Spent', path: '/user-spent', icon: Wallet },
-  { label: 'Finance', path: '/finance', icon: DollarSign },
-  { label: 'Music Prompts', path: '/prompts', icon: Music },
-  { label: 'Music Streaming', path: '/streaming', icon: Radio },
-  { label: 'Streaming Jobs', path: '/streaming/upload-jobs', icon: UploadCloud },
-  { label: 'Rate Limits', path: '/rate-limits', icon: Gauge },
-  { label: 'Key Pool', path: '/key-pool', icon: KeySquare },
-  { label: 'Job Queue', path: '/job-queue', icon: ListOrdered },
-  { label: 'Pipeline Ops', path: '/pipeline', icon: Activity },
-  { label: 'Content Pools', path: '/content-pools', icon: Library },
-  { label: 'Image Packs', path: '/image-sample-packs', icon: Image },
-  { label: 'Marketplace', path: '/marketplace', icon: Store },
-  { label: 'Audit Log', path: '/audit-log', icon: ScrollText },
-  { label: 'Client Logs', path: '/client-logs', icon: FileText },
-  { label: 'Desktop Notifications', path: '/desktop-notifications', icon: Bell },
-  { label: 'Software Updates', path: '/software-updates', icon: Download },
-  { label: 'Settings', path: '/settings', icon: Settings },
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Overview',
+    items: [
+      { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Accounts',
+    items: [
+      { label: 'Users', path: '/users', icon: Users },
+      { label: 'Subscriptions', path: '/licenses', icon: KeyRound },
+      { label: 'Plans', path: '/plans', icon: CreditCard },
+      { label: 'Redeem Codes', path: '/redeem-codes', icon: TicketPercent },
+      { label: 'Invitations', path: '/invitations', icon: UserPlus },
+    ],
+  },
+  {
+    label: 'Billing',
+    items: [
+      { label: 'Credits', path: '/credits', icon: Coins },
+      { label: 'Usage', path: '/usage', icon: BarChart3 },
+      { label: 'User Spent', path: '/user-spent', icon: Wallet },
+      { label: 'Finance', path: '/finance', icon: DollarSign },
+    ],
+  },
+  {
+    label: 'Content',
+    items: [
+      { label: 'Blog Posts', path: '/blog-posts', icon: Newspaper },
+      { label: 'Music Prompts', path: '/prompts', icon: Music },
+      { label: 'Content Pools', path: '/content-pools', icon: Library },
+      { label: 'Image Packs', path: '/image-sample-packs', icon: Image },
+      { label: 'Marketplace', path: '/marketplace', icon: Store },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { label: 'Music Streaming', path: '/streaming', icon: Radio },
+      { label: 'Streaming Jobs', path: '/streaming/upload-jobs', icon: UploadCloud },
+      { label: 'Rate Limits', path: '/rate-limits', icon: Gauge },
+      { label: 'Key Pool', path: '/key-pool', icon: KeySquare },
+      { label: 'Job Queue', path: '/job-queue', icon: ListOrdered },
+      { label: 'Pipeline Ops', path: '/pipeline', icon: Activity },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { label: 'Audit Log', path: '/audit-log', icon: ScrollText },
+      { label: 'Client Logs', path: '/client-logs', icon: FileText },
+      { label: 'Desktop Notifications', path: '/desktop-notifications', icon: Bell },
+      { label: 'Software Updates', path: '/software-updates', icon: Download },
+      { label: 'Settings', path: '/settings', icon: Settings },
+    ],
+  },
 ];
+
+function isNavItemActive(pathname: string, path: string): boolean {
+  if (path === '/streaming') {
+    return pathname === '/streaming';
+  }
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
 
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
@@ -126,53 +168,62 @@ export function Sidebar() {
 
       <Separator className="bg-white/8" />
 
-      <nav className="flex flex-1 flex-col gap-0.5 p-2 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
-          const isActive =
-            item.path === '/streaming'
-              ? location.pathname === '/streaming'
-              : location.pathname === item.path ||
-                location.pathname.startsWith(`${item.path}/`);
-          const Icon = item.icon;
-
-          const linkContent = (
-            <Link
-              to={item.path}
-              className={cn(
-                'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-150',
-                isActive
-                  ? 'bg-gradient-to-r from-fuchsia-600/18 via-violet-500/16 to-indigo-500/16 text-white shadow-[inset_0_0_0_1px_rgba(167,139,250,0.24)]'
-                  : 'text-slate-400 hover:bg-slate-900/90 hover:text-slate-100',
-                collapsed && 'justify-center px-0'
-              )}
-            >
-              <div
-                className={cn(
-                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
-                  isActive
-                    ? 'text-violet-200'
-                    : 'text-slate-500'
-                )}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" />
+      <nav className="flex flex-1 flex-col gap-3 p-2 overflow-y-auto">
+        {NAV_GROUPS.map((group, groupIndex) => (
+          <div key={group.label} className="flex flex-col gap-0.5">
+            {collapsed ? (
+              groupIndex > 0 && (
+                <Separator className="my-1 bg-white/8" />
+              )
+            ) : (
+              <div className="px-2.5 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {group.label}
               </div>
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </Link>
-          );
+            )}
+            {group.items.map((item) => {
+              const isActive = isNavItemActive(location.pathname, item.path);
+              const Icon = item.icon;
 
-          if (collapsed) {
-            return (
-              <Tooltip key={item.path} delayDuration={0}>
-                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                <TooltipContent side="right">
-                  <p>{item.label}</p>
-                </TooltipContent>
-              </Tooltip>
-            );
-          }
+              const linkContent = (
+                <Link
+                  to={item.path}
+                  className={cn(
+                    'flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-150',
+                    isActive
+                      ? 'bg-gradient-to-r from-fuchsia-600/18 via-violet-500/16 to-indigo-500/16 text-white shadow-[inset_0_0_0_1px_rgba(167,139,250,0.24)]'
+                      : 'text-slate-400 hover:bg-slate-900/90 hover:text-slate-100',
+                    collapsed && 'justify-center px-0'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
+                      isActive
+                        ? 'text-violet-200'
+                        : 'text-slate-500'
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                  </div>
+                  {!collapsed && <span className="truncate">{item.label}</span>}
+                </Link>
+              );
 
-          return <div key={item.path}>{linkContent}</div>;
-        })}
+              if (collapsed) {
+                return (
+                  <Tooltip key={item.path} delayDuration={0}>
+                    <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>{item.label}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return <div key={item.path}>{linkContent}</div>;
+            })}
+          </div>
+        ))}
       </nav>
 
       <Separator className="bg-white/8" />

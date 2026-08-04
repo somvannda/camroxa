@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Admin Settings **Fail / Retry Absorb** tab: set max platform-absorbed failed gens per user per day (`daily_fail_absorb_budget`). User detail shows today's counter with reset. See `docs/changelog/2026-08-04-admin-fail-absorb-ui.md`.
 - **User Spent** page (`/user-spent`): per-user estimated COGS roster with expandable provider × operation breakdown, plan-meter chips, and Over allowance / Margin risk alerts. See `docs/changelog/2026-08-04-admin-user-spent.md`.
 - User detail **Plan Quota** card: top up period quotas (draft / Suno / images / export / merge) and wallet credits. Period top-ups expire at billing period end. See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.
 - Restored **Pipeline Ops** sidebar page (`/pipeline`): live multi-user board for monitoring active pipelines (stage, stuck, failures, admin retries). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
@@ -21,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Streaming catalog: server-side pagination (50/page) with API search + status filters
 
 ### Changed
+
+- Sidebar navigation grouped into labeled sections (Overview, Accounts, Billing, Content, Operations, System), including **User Spent**. See `docs/changelog/2026-08-04-admin-sidebar-nav-groups.md`.
 
 ### Fixed
 

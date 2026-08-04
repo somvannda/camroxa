@@ -15,15 +15,102 @@ import moderngl
 from ._spectrum_fast import (
     normalize_spectrum_gravity,
     resolve_bar_pixel_width,
+    scroll_spectrum_heights,
 )
 
-def _audio_bar_height_mult(template: dict) -> float:
-    audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
+def _audio_bar_height_mult_from_audio(audio: dict | None) -> float:
+    src = audio if isinstance(audio, dict) else {}
     try:
-        value = float(audio.get("barHeight", 1.0) or 1.0)
+        value = float(src.get("barHeight", 1.0) or 1.0)
     except Exception:
         value = 1.0
     return float(max(0.25, min(12.0, value)))
+
+
+def _audio_bar_height_mult(template: dict) -> float:
+    audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
+    return _audio_bar_height_mult_from_audio(audio)
+
+
+def _gpu_spectrum_layer_key(inst_idx: int, layer_idx: int) -> int:
+    return int(inst_idx) * 256 + int(layer_idx)
+
+def blend_rgb_normal_opaque_alpha(ctx: moderngl.Context) -> None:
+    """RGB alpha blend; keep framebuffer alpha opaque (Qt translucent window)."""
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE_MINUS_SRC_ALPHA,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
+
+
+def blend_rgb_additive_opaque_alpha(ctx: moderngl.Context) -> None:
+    """RGB additive bloom; keep framebuffer alpha opaque (Qt translucent window)."""
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
+
+
+def _compose_scene_post_to_out(
+    *,
+    ctx: moderngl.Context,
+    fbo_out: moderngl.Framebuffer,
+    tex_scene: moderngl.Texture,
+    prog_post: moderngl.Program,
+    vao_quad_post: moderngl.VertexArray,
+    w: int,
+    h: int,
+    rgb_cfg: RgbSplitConfig,
+    bloom_cfg: BloomConfig,
+    state: dict,
+    bass: float,
+    feats: dict,
+    template: dict,
+    hdr_pass: PreviewHdrBloomPass | None,
+) -> None:
+    """Scene → out: legacy prog_post, or HDR bloom/tonemap when flag is on (REQ-P4.3)."""
+    fbo_out.use()
+    ctx.clear(0.0, 0.0, 0.0, 1.0)
+    if hdr_pass is not None:
+        strength, threshold, exposure = bloom_params_from_template(template)
+        strength = float(strength) * (1.0 + float(bass) * 0.9)
+        hdr_pass.resolve(
+            screen_fbo=fbo_out,
+            viewport=(0, 0, int(w), int(h)),
+            bloom_strength=strength,
+            threshold=threshold,
+            exposure=exposure,
+            scene_tex=tex_scene,
+        )
+        try:
+            ctx.enable(moderngl.BLEND)
+        except Exception:
+            pass
+        return
+    tex_scene.use(location=0)
+    rgb_opacity = float(state.get("effects.rgb_split.opacity", rgb_cfg.opacity))
+    bloom_strength = float(state.get("effects.bloom.strength", bloom_cfg.strength))
+    onset = float(feats.get("onset", 0.0))
+    rgb_opacity = rgb_opacity * (1.0 + onset * 0.9)
+    bloom_strength = bloom_strength * (1.0 + bass * 0.9)
+    if not rgb_cfg.enabled:
+        rgb_opacity = 0.0
+    if not bloom_cfg.enabled:
+        bloom_strength = 0.0
+    prog_post["rgb_opacity"].value = float(max(0.0, min(1.0, rgb_opacity)))
+    prog_post["rgb_r"].value = (float(rgb_cfg.red_offset[0]), float(rgb_cfg.red_offset[1]))
+    prog_post["rgb_g"].value = (float(rgb_cfg.green_offset[0]), float(rgb_cfg.green_offset[1]))
+    prog_post["rgb_b"].value = (float(rgb_cfg.blue_offset[0]), float(rgb_cfg.blue_offset[1]))
+    prog_post["bloom_strength"].value = float(max(0.0, bloom_strength)) * float(
+        max(0.0, min(1.0, bloom_cfg.opacity))
+    )
+    prog_post["bloom_threshold"].value = float(max(0.0, min(1.0, bloom_cfg.threshold)))
+    vao_quad_post.render(mode=moderngl.TRIANGLE_STRIP)
+
 
 import numpy as np
 from PIL import Image
@@ -51,6 +138,11 @@ from .frame_integrator import (
     smooth_env,
 )
 from .effects import BloomConfig, RgbSplitConfig
+from .hdr_bloom import (
+    PreviewHdrBloomPass,
+    bloom_params_from_template,
+    preview_hdr_bloom_enabled,
+)
 from .particles import ParticleConfig, ParticleSystem
 
 try:
@@ -301,7 +393,9 @@ def _compile(ctx: moderngl.Context):
     float hash(vec2 p) {
         return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
     }
-    float noise2(vec2 p) {
+    // Named smoke_hash_noise2 (not noise2): some drivers reserve noise2 with a
+    // different return type and fail compile with overload return-type errors.
+    float smoke_hash_noise2(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
         float a = hash(i);
@@ -377,7 +471,7 @@ def _compile(ctx: moderngl.Context):
         if (smoke_enabled == 1) {
             float scale = mix(2.0, 12.0, clamp(smoke_blur, 0.0, 1.0));
             vec2 p = v_uv * scale + vec2(time_sec * smoke_speed * 0.35, time_sec * smoke_speed * 0.25);
-            float n = noise2(p) * 0.65 + noise2(p * 2.1) * 0.35;
+            float n = smoke_hash_noise2(p) * 0.65 + smoke_hash_noise2(p * 2.1) * 0.35;
             float m = clamp((n - 0.35) * 2.0, 0.0, 1.0);
             float s = clamp(corner * smoke_strength * (0.35 + m * smoke_noise), 0.0, 1.0) * smoke_opacity;
             bg.rgb = mix(bg.rgb, smoke_color, s);
@@ -911,12 +1005,13 @@ def _render_particle_styled_quads(
             prog_particle_quads["atlas_cols"].value = int(cols)
     ctx.enable(moderngl.BLEND)
     # Neon bloom reads better with additive when glow is on.
+    # Alpha_Lock: do not lower Qt FBO alpha (preview see-through on translucent windows).
     if glow > 0.08:
-        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+        blend_rgb_additive_opaque_alpha(ctx)
     else:
-        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+        blend_rgb_normal_opaque_alpha(ctx)
     vao_particle_quads.render(mode=moderngl.TRIANGLES, vertices=int(pts.shape[0] * 6))
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    blend_rgb_normal_opaque_alpha(ctx)
 
 def _as_rgb(v: any) -> tuple[int, int, int]:
     if isinstance(v, (list, tuple)) and len(v) == 3:
@@ -2631,6 +2726,13 @@ def run_gpu_render(
 
     line_vbo = ctx.buffer(reserve=4 * 6 * 512)
     vao_lines = ctx.vertex_array(prog_lines, [(line_vbo, "2f 4f", "in_pos", "in_col")])
+    hdr_bloom_pass: PreviewHdrBloomPass | None = None
+    if preview_hdr_bloom_enabled():
+        try:
+            hdr_bloom_pass = PreviewHdrBloomPass(ctx)
+            _emit_event({"status": "running", "message": "HDR bloom export path enabled", "progress": 0.05})
+        except Exception:
+            hdr_bloom_pass = None
     prog_lines["clip_enabled"].value = 0
     prog_lines["clip_center_px"].value = (0.0, 0.0)
     prog_lines["clip_radius_px"].value = 0.0
@@ -2995,6 +3097,7 @@ def run_gpu_render(
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
         clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
         normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
+        scroll_spectrum_heights,
     )
     from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
@@ -3006,143 +3109,140 @@ def run_gpu_render(
     _tpl_off_x = float(_tpl_position.get("x", 0.0)) * sf
     _tpl_off_y = float(_tpl_position.get("y", 0.0)) * sf
     _tpl_spectrum_enabled = bool(template.get("spectrumEnabled", True))
-    _tpl_raw_layers = spectrum_container.get("layers", [])
-    _tpl_spectrum_layers = [x for x in _tpl_raw_layers if isinstance(x, dict)]
-    if not _tpl_spectrum_enabled:
-        _tpl_spectrum_layers = []
-    _tpl_attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
+    _tpl_spectrum_jobs = _spectrum_draw_jobs(template) if _tpl_spectrum_enabled else []
     _tpl_logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)
-    _tpl_attached_base_radius = float(max(0.0, (logo_base_radius * logo_scale_base * logo_visible_radius_ratio) + spectrum_logo_gap))
-    _tpl_attached_layer_base_offset = _resolve_attached_layer_base_offset(_tpl_spectrum_layers, sf)
+    from features.video.lib.spectrum_instance_registry import instance_position_dict
     last_analysis_idx = -1
 
-    if gpu_spectrum is not None and _tpl_spectrum_enabled:
-        _gpu_preregister_layers = _tpl_spectrum_layers
-        if not _gpu_preregister_layers:
-            try:
-                from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
-
-                fallback = normalize_renderer_template(default_renderer_template()).get("layers") or []
-                _gpu_preregister_layers = [dict(x) for x in fallback if isinstance(x, dict)]
-            except Exception:
-                _gpu_preregister_layers = []
-    else:
-        _gpu_preregister_layers = []
-
-    if gpu_spectrum is not None and _tpl_spectrum_enabled and _gpu_preregister_layers:
-        bar_height_mult_pre = _audio_bar_height_mult(template)
+    if gpu_spectrum is not None and _tpl_spectrum_jobs:
         logo_base_radius_pre = float(logo_raw.get("size", 192.0)) * 0.5 * sf if isinstance(logo_raw, dict) else 96.0 * sf
         logo_visual_radius_pre = logo_base_radius_pre * logo_scale_base
-        for layer_idx, sl_pre in enumerate(_gpu_preregister_layers):
-            style_pre = _resolve_export_spectrum_style(_tpl_style_preset, sl_pre)
-            color_cfg_pre = sl_pre.get("color", {}) if isinstance(sl_pre.get("color"), dict) else {}
-            dir_pre = str(color_cfg_pre.get("gradientDirection", "left-to-right") or "left-to-right").lower().strip()
-            if (
-                is_waveform_spectrum_style(style_pre)
-                or not is_gpu_bar_style_slice1(style_pre)
-                or bool(sl_pre.get("solidBand", False))
-                or bool(sl_pre.get("peakCapsEnabled", False))
-                or dir_pre == "top-to-bottom"
-            ):
+        for inst_idx_pre, job_pre in enumerate(_tpl_spectrum_jobs):
+            job_layers_pre = [x for x in (job_pre.get("layers") or []) if isinstance(x, dict)]
+            if not job_layers_pre:
                 continue
-            curved_pre = bool(sl_pre.get("curved", False))
-            mirrored_pre = bool(sl_pre.get("mirrored", False))
-            bar_width_pre = float(sl_pre.get("barWidth", 4.0)) * sf
-            thickness_pre = float(sl_pre.get("thickness", 30.0)) * sf * bar_height_mult_pre
-            gravity_pre = normalize_spectrum_gravity(sl_pre.get("gravity", "top"))
-            radius_offset_pre = float(sl_pre.get("radiusOffset", 0.0)) * sf
-            radius_pre = _resolve_spectrum_layer_radius(
-                attached_to_logo=_tpl_attached_to_logo,
-                attached_base_radius=_tpl_attached_base_radius,
-                attached_layer_base_offset=_tpl_attached_layer_base_offset,
-                logo_visual_radius=logo_visual_radius_pre,
-                bar_width=bar_width_pre,
-                radius_offset=radius_offset_pre,
+            job_audio_pre = job_pre.get("audioSettings") if isinstance(job_pre.get("audioSettings"), dict) else {}
+            bar_height_mult_pre = _audio_bar_height_mult_from_audio(job_audio_pre)
+            job_style_pre = str(job_pre.get("style") or _tpl_style_preset or "orbit-spikes")
+            job_attach_pre = bool(job_pre.get("spectrumAttachToLogo", True))
+            job_gap_pre = float(max(0.0, float(job_pre.get("spectrumLogoGap", 0.0) or 0.0))) * sf
+            attached_to_logo_pre = bool(job_attach_pre and logo_rgba is not None)
+            attached_base_radius_pre = float(
+                max(0.0, (logo_base_radius * logo_scale_base * logo_visible_radius_ratio) + job_gap_pre)
             )
-            c_pre = color_cfg_pre.get("solidColor", "#ffffff")
-            if isinstance(c_pre, str) and c_pre.startswith("#"):
-                c_pre = c_pre.lstrip("#")
-                c_pre = tuple(int(c_pre[i : i + 2], 16) for i in (0, 2, 4))
-            op_pre = float(sl_pre.get("opacity", 1.0))
-            try:
-                spec_col_pre = (
-                    float(c_pre[0]) / 255.0,
-                    float(c_pre[1]) / 255.0,
-                    float(c_pre[2]) / 255.0,
-                    float(max(0.0, min(1.0, op_pre))),
+            attached_layer_base_offset_pre = _resolve_attached_layer_base_offset(job_layers_pre, sf)
+            for layer_idx, sl_pre in enumerate(job_layers_pre):
+                style_pre = _resolve_export_spectrum_style(job_style_pre, sl_pre)
+                color_cfg_pre = sl_pre.get("color", {}) if isinstance(sl_pre.get("color"), dict) else {}
+                dir_pre = str(color_cfg_pre.get("gradientDirection", "left-to-right") or "left-to-right").lower().strip()
+                if (
+                    is_waveform_spectrum_style(style_pre)
+                    or not is_gpu_bar_style_slice1(style_pre)
+                    or bool(sl_pre.get("solidBand", False))
+                    or bool(sl_pre.get("peakCapsEnabled", False))
+                    or dir_pre == "top-to-bottom"
+                ):
+                    continue
+                curved_pre = bool(sl_pre.get("curved", False))
+                mirrored_pre = bool(sl_pre.get("mirrored", False))
+                bar_width_pre = float(sl_pre.get("barWidth", 4.0)) * sf
+                thickness_pre = float(sl_pre.get("thickness", 30.0)) * sf * bar_height_mult_pre
+                gravity_pre = normalize_spectrum_gravity(sl_pre.get("gravity", "top"))
+                radius_offset_pre = float(sl_pre.get("radiusOffset", 0.0)) * sf
+                radius_pre = _resolve_spectrum_layer_radius(
+                    attached_to_logo=attached_to_logo_pre,
+                    attached_base_radius=attached_base_radius_pre,
+                    attached_layer_base_offset=attached_layer_base_offset_pre,
+                    logo_visual_radius=logo_visual_radius_pre,
+                    bar_width=bar_width_pre,
+                    radius_offset=radius_offset_pre,
                 )
-            except Exception:
-                spec_col_pre = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op_pre))))
-            glow_strength_pre = float(max(0.0, min(100.0, float(sl_pre.get("glow", 0.0))))) / 100.0
-            glow_softness_pre = float(max(0.0, min(30.0, float(sl_pre.get("blur", 0.0)))))
-            n_pre = clamp_spectrum_bar_count(sl_pre.get("barCount", 64))
-            px_pre, py_pre, dx_pre, dy_pre, base_total_length_pre = generate_spectrum_layer_geometry(
-                n_pre,
-                curved=curved_pre,
-                mirrored=mirrored_pre,
-                gravity=gravity_pre,
-                path_mode=sl_pre.get("pathMode", "auto"),
-                radius=radius_pre,
-                half_w=radius_pre,
-                half_h=radius_pre,
-                attached_to_logo=_tpl_attached_to_logo,
-                logo_shape=_tpl_logo_shape,
-                frame_w=w,
-                frame_h=h,
-            )
-            pass_specs_pre: list[dict] = []
-            if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
-                pass_specs_pre.append(
-                    {
-                        "alpha": op_pre * (0.14 + glow_strength_pre * 0.22),
-                        "bar_width": bar_width_pre + ((glow_softness_pre * 1.8) + (glow_strength_pre * 18.0)) * sf,
-                        "thickness": thickness_pre + ((glow_softness_pre * 2.2) + (glow_strength_pre * 22.0)) * sf,
-                    }
+                c_pre = color_cfg_pre.get("solidColor", "#ffffff")
+                if isinstance(c_pre, str) and c_pre.startswith("#"):
+                    c_pre = c_pre.lstrip("#")
+                    c_pre = tuple(int(c_pre[i : i + 2], 16) for i in (0, 2, 4))
+                op_pre = float(sl_pre.get("opacity", 1.0))
+                try:
+                    spec_col_pre = (
+                        float(c_pre[0]) / 255.0,
+                        float(c_pre[1]) / 255.0,
+                        float(c_pre[2]) / 255.0,
+                        float(max(0.0, min(1.0, op_pre))),
+                    )
+                except Exception:
+                    spec_col_pre = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op_pre))))
+                glow_strength_pre = float(max(0.0, min(100.0, float(sl_pre.get("glow", 0.0))))) / 100.0
+                glow_softness_pre = float(max(0.0, min(30.0, float(sl_pre.get("blur", 0.0)))))
+                n_pre = clamp_spectrum_bar_count(sl_pre.get("barCount", 64))
+                px_pre, py_pre, dx_pre, dy_pre, base_total_length_pre = generate_spectrum_layer_geometry(
+                    n_pre,
+                    curved=curved_pre,
+                    mirrored=mirrored_pre,
+                    gravity=gravity_pre,
+                    path_mode=sl_pre.get("pathMode", "auto"),
+                    radius=radius_pre,
+                    half_w=radius_pre,
+                    half_h=radius_pre,
+                    attached_to_logo=attached_to_logo_pre,
+                    logo_shape=_tpl_logo_shape,
+                    frame_w=w,
+                    frame_h=h,
+                    linear_span=float(sl_pre.get("linearSpan", 1.0) or 1.0),
                 )
-                if glow_pass_limit >= 2:
+                pass_specs_pre: list[dict] = []
+                if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
                     pass_specs_pre.append(
                         {
-                            "alpha": op_pre * (0.08 + glow_strength_pre * 0.15),
-                            "bar_width": bar_width_pre + ((glow_softness_pre * 3.0) + (glow_strength_pre * 32.0)) * sf,
-                            "thickness": thickness_pre + ((glow_softness_pre * 3.4) + (glow_strength_pre * 34.0)) * sf,
+                            "alpha": op_pre * (0.14 + glow_strength_pre * 0.22),
+                            "bar_width": bar_width_pre + ((glow_softness_pre * 1.8) + (glow_strength_pre * 18.0)) * sf,
+                            "thickness": thickness_pre + ((glow_softness_pre * 2.2) + (glow_strength_pre * 22.0)) * sf,
                         }
                     )
-            pass_specs_pre.append(
-                {
-                    "alpha": op_pre,
-                    "bar_width": bar_width_pre,
-                    "thickness": thickness_pre,
-                }
-            )
-            pass_colors_pre: list[np.ndarray] = []
-            for pass_i_pre, pass_cfg_pre in enumerate(pass_specs_pre):
-                pass_alpha_pre = float(max(0.0, min(1.0, float(pass_cfg_pre["alpha"]))))
-                is_glow_pre = pass_i_pre < (len(pass_specs_pre) - 1)
-                pass_colors_pre.append(
-                    _build_spectrum_vertex_colors(
-                        color_cfg_pre,
-                        spec_col_pre,
-                        n_pre,
-                        pass_alpha_pre,
-                        glow=is_glow_pre,
+                    if glow_pass_limit >= 2:
+                        pass_specs_pre.append(
+                            {
+                                "alpha": op_pre * (0.08 + glow_strength_pre * 0.15),
+                                "bar_width": bar_width_pre + ((glow_softness_pre * 3.0) + (glow_strength_pre * 32.0)) * sf,
+                                "thickness": thickness_pre + ((glow_softness_pre * 3.4) + (glow_strength_pre * 34.0)) * sf,
+                            }
+                        )
+                pass_specs_pre.append(
+                    {
+                        "alpha": op_pre,
+                        "bar_width": bar_width_pre,
+                        "thickness": thickness_pre,
+                    }
+                )
+                pass_colors_pre: list[np.ndarray] = []
+                for pass_i_pre, pass_cfg_pre in enumerate(pass_specs_pre):
+                    pass_alpha_pre = float(max(0.0, min(1.0, float(pass_cfg_pre["alpha"]))))
+                    is_glow_pre = pass_i_pre < (len(pass_specs_pre) - 1)
+                    pass_colors_pre.append(
+                        _build_spectrum_vertex_colors(
+                            color_cfg_pre,
+                            spec_col_pre,
+                            n_pre,
+                            pass_alpha_pre,
+                            glow=is_glow_pre,
+                        )
                     )
-                )
-                bw_pre = resolve_bar_pixel_width(
-                    float(pass_cfg_pre["bar_width"]),
-                    base_total_length_pre / max(1, n_pre),
-                )
-                bw_pre = float(bw_pre) * float(gpu_bar_half_width_scale(style_pre))
-                pass_cfg_pre["bar_half_width"] = float(bw_pre) * 0.5
-            if gpu_spectrum.register_layer(
-                layer_idx,
-                px=px_pre,
-                py=py_pre,
-                dx=dx_pre,
-                dy=dy_pre,
-                pass_specs=pass_specs_pre,
-                pass_colors=pass_colors_pre,
-            ):
-                gpu_layer_keys[layer_idx] = layer_idx
+                    bw_pre = resolve_bar_pixel_width(
+                        float(pass_cfg_pre["bar_width"]),
+                        base_total_length_pre / max(1, n_pre),
+                    )
+                    bw_pre = float(bw_pre) * float(gpu_bar_half_width_scale(style_pre))
+                    pass_cfg_pre["bar_half_width"] = float(bw_pre) * 0.5
+                gpu_key_pre = _gpu_spectrum_layer_key(inst_idx_pre, layer_idx)
+                if gpu_spectrum.register_layer(
+                    gpu_key_pre,
+                    px=px_pre,
+                    py=py_pre,
+                    dx=dx_pre,
+                    dy=dy_pre,
+                    pass_specs=pass_specs_pre,
+                    pass_colors=pass_colors_pre,
+                ):
+                    gpu_layer_keys[gpu_key_pre] = gpu_key_pre
 
     frame_profiler: _ExportFrameProfiler | None = None
     if _export_profile_enabled() and not golden_mode:
@@ -3349,26 +3449,9 @@ def run_gpu_render(
 
         scale = float(state.get("spectrum.scale", 1.0))
         rotation_deg = float(spectrum_container.get("rotation_deg", 0.0)) if isinstance(spectrum_container, dict) else 0.0
-        
-        spectrum_layers = _tpl_spectrum_layers
-        if _tpl_spectrum_enabled and not spectrum_layers:
-            try:
-                from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
 
-                fallback = normalize_renderer_template(default_renderer_template()).get("layers") or []
-                spectrum_layers = [dict(x) for x in fallback if isinstance(x, dict)]
-            except Exception:
-                spectrum_layers = []
-
-        template_style_preset = _tpl_style_preset
-        react_gain = _tpl_react_gain
-        
-        # 1) Logarithmic Mapping already applied via analysis-frame catch-up above.
-        BINS = 64
-        rg = float(max(0.1, min(8.0, react_gain)))
-        fft_s = np.clip(fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
-        
-        c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+        # Lightning uses the legacy/primary spectrum center (same as preview).
+        c_pos_lightning, _logo_unused = _resolve_spectrum_logo_centers(
             w=w,
             h=h,
             sf=sf,
@@ -3376,9 +3459,8 @@ def run_gpu_render(
             spectrum_attach_to_logo=spectrum_attach_to_logo,
             template=template,
         )
-        cx = c_pos[0] + float(shake_out.x)
-        cy = c_pos[1] + float(shake_out.y)
-
+        lightning_cx = c_pos_lightning[0] + float(shake_out.x)
+        lightning_cy = c_pos_lightning[1] + float(shake_out.y)
         try:
             from features.video.lib.lightning_render import render_lightning_layers_gl
 
@@ -3390,414 +3472,472 @@ def run_gpu_render(
                 w=w,
                 h=h,
                 sf=sf,
-                cx=cx,
-                cy=cy,
+                cx=lightning_cx,
+                cy=lightning_cy,
                 time_sec=float(time_sec),
                 bass=float(bass),
                 kick=float(kick_pow),
                 beat=float(feats.get("beat", 0.0) or 0.0),
                 onset=float(feats.get("onset", 0.0) or 0.0),
                 audio_env=float(max(bass, kick_pow, bg_audio_env)),
+                flash_override=float(lightning_flash) if lightning_flash > 0.0 else None,
             )
-        except Exception:
-            pass
-        
-        for layer_idx, sl in enumerate(spectrum_layers):
-            style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
-            curved = bool(sl.get("curved", False))
-            mirrored = bool(sl.get("mirrored", False))
-            bar_width = float(sl.get("barWidth", 4.0)) * sf
-            bar_count = clamp_spectrum_bar_count(sl.get("barCount", 64))
-            bar_height_mult = _audio_bar_height_mult(template)
-            # Match preview default thickness (30), not the old export fallback (150).
-            thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
-            gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
-            
-            logo_visual_radius = logo_base_radius * logo_scale_base
-            radius_offset = float(sl.get("radiusOffset", 0.0)) * sf
-            radius = _resolve_spectrum_layer_radius(
-                attached_to_logo=_tpl_attached_to_logo,
-                attached_base_radius=_tpl_attached_base_radius,
-                attached_layer_base_offset=_tpl_attached_layer_base_offset,
-                logo_visual_radius=logo_visual_radius,
-                bar_width=bar_width,
-                radius_offset=radius_offset,
-            )
-            
-            color_cfg = sl.get("color", {})
-            mode = color_cfg.get("mode", "solid")
-            c = color_cfg.get("solidColor", "#ffffff")
-            if isinstance(c, str) and c.startswith("#"):
-                c = c.lstrip("#")
-                c = tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
-            
-            op = float(sl.get("opacity", 1.0))
-            try:
-                spec_col = (
-                    float(c[0]) / 255.0,
-                    float(c[1]) / 255.0,
-                    float(c[2]) / 255.0,
-                    float(max(0.0, min(1.0, op))),
-                )
-            except Exception:
-                spec_col = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op))))
-
-            blend_mode = str(sl.get("blend_mode", "normal")).lower().strip()
-            glow_strength = float(max(0.0, min(100.0, float(sl.get("glow", 0.0))))) / 100.0
-            glow_softness = float(max(0.0, min(30.0, float(sl.get("blur", 0.0)))))
-            peak_hold_blend = float(
-                max(0.0, min(1.0, float(audio_settings.get("peakHoldBlend", 0.0) or 0.0)))
-            )
-            peak_caps_wanted = bool(sl.get("peakCapsEnabled", False))
-            effective_peak_hold = float(peak_hold_blend)
-            if peak_caps_wanted and effective_peak_hold <= 0.001:
-                effective_peak_hold = 0.45
-            peak_caps_enabled = peak_caps_wanted
-            peak_hold_blend = effective_peak_hold
-            peak_cap_gap = float(max(0.0, min(24.0, float(sl.get("peakCapGap", 4.0) or 0.0)))) * sf
-            peak_cap_thickness = float(max(1.0, min(16.0, float(sl.get("peakCapThickness", 3.0) or 1.0)))) * sf
-            peak_cap_decay = float(max(0.7, min(0.995, float(sl.get("peakCapDecay", 0.92) or 0.92))))
-            peak_cap_color = str(sl.get("peakCapColor", "#ffffff") or "#ffffff")
-            solid_band = bool(sl.get("solidBand", False))
-
-            # 2) 5-Tap Moving Average Smoothing & Mirroring (vectorized)
-            render_fft = smooth_and_mirror(fft_s, mirrored)
-            render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
-
-            sampled_fft = resample_fft_bins(render_fft, bar_count)
-
-            sampled_fft = resample_fft_bins(render_fft, bar_count)
-
-            # 3) Generate Points (vectorized)
-            n = int(sampled_fft.shape[0])
-            px_arr, py_arr, dx_arr, dy_arr, total_length = generate_spectrum_layer_geometry(
-                n,
-                curved=curved,
-                mirrored=mirrored,
-                gravity=gravity,
-                path_mode=sl.get("pathMode", "auto"),
-                radius=radius,
-                half_w=radius,
-                half_h=radius,
-                attached_to_logo=_tpl_attached_to_logo,
-                logo_shape=_tpl_logo_shape,
-                frame_w=w,
-                frame_h=h,
-            )
-            reflection_enabled = bool(sl.get("reflectionEnabled", False))
-            try:
-                reflection_opacity = float(sl.get("reflectionOpacity", 0.32) or 0.32)
-            except (TypeError, ValueError):
-                reflection_opacity = 0.32
-            reflection_opacity = float(max(0.05, min(0.85, reflection_opacity)))
-            draw_variants = [(px_arr, py_arr, dx_arr, dy_arr, 1.0)]
-            if reflection_enabled:
-                r_px, r_py, r_dx, r_dy = mirror_spectrum_points_vertical(px_arr, py_arr, dx_arr, dy_arr)
-                draw_variants.append((r_px, r_py, r_dx, r_dy, reflection_opacity))
-            main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
-            base_total_length = total_length
-            prog_lines["clip_enabled"].value = 0
-            pass_specs: list[dict] = []
-            if glow_strength > 0.0 and glow_pass_limit >= 1:
-                pass_specs.append(
+        except Exception as _lightning_exc:
+            if not getattr(run_gpu_render, "_lightning_err_logged", False):
+                run_gpu_render._lightning_err_logged = True  # type: ignore[attr-defined]
+                _emit_event(
                     {
-                        "is_glow": True,
-                        "alpha": op * (0.14 + glow_strength * 0.22),
-                        "bar_width": bar_width + ((glow_softness * 1.8) + (glow_strength * 18.0)) * sf,
-                        "thickness": thickness + ((glow_softness * 2.2) + (glow_strength * 22.0)) * sf,
-                        "fill_circle": False,
+                        "status": "running",
+                        "message": f"Lightning draw skipped: {_lightning_exc}",
+                        "progress": _encode_frame_progress(i, total_frames),
                     }
                 )
-                if glow_pass_limit >= 2:
+
+        BINS = 64
+        spectrum_jobs = list(_tpl_spectrum_jobs)
+        for inst_idx, spectrum_job in enumerate(spectrum_jobs):
+            spectrum_layers = [sl for sl in (spectrum_job.get("layers") or []) if isinstance(sl, dict)]
+            if not spectrum_layers:
+                try:
+                    from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+
+                    fallback = normalize_renderer_template(default_renderer_template()).get("layers") or []
+                    spectrum_layers = [dict(x) for x in fallback if isinstance(x, dict)]
+                except Exception:
+                    spectrum_layers = []
+            if not spectrum_layers:
+                continue
+
+            template_style_preset = str(spectrum_job.get("style") or _tpl_style_preset or "orbit-spikes")
+            job_audio = spectrum_job.get("audioSettings") if isinstance(spectrum_job.get("audioSettings"), dict) else {}
+            try:
+                raw_gain = job_audio.get("inputGain", job_audio.get("sensitivity", _tpl_react_gain))
+                react_gain = float(_tpl_react_gain if raw_gain is None else raw_gain)
+            except (TypeError, ValueError):
+                react_gain = float(_tpl_react_gain)
+            if not react_gain:
+                react_gain = float(_tpl_react_gain) if _tpl_react_gain else 1.0
+            rg = float(max(0.1, min(8.0, react_gain)))
+            fft_s = np.clip(fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
+            bar_height_mult = _audio_bar_height_mult_from_audio(job_audio)
+            try:
+                raw_peak = job_audio.get("peakHoldBlend", audio_settings.get("peakHoldBlend", 0.0))
+                job_peak_hold = float(0.0 if raw_peak is None else raw_peak)
+            except (TypeError, ValueError):
+                job_peak_hold = 0.0
+            job_peak_hold = float(max(0.0, min(1.0, job_peak_hold)))
+
+            job_attach = bool(spectrum_job.get("spectrumAttachToLogo", True))
+            job_gap = float(max(0.0, float(spectrum_job.get("spectrumLogoGap", 0.0) or 0.0))) * sf
+            job_pos = instance_position_dict(spectrum_job)
+            attached_to_logo = bool(job_attach and logo_rgba is not None)
+            attached_base_radius = float(
+                max(0.0, (logo_base_radius * logo_scale_base * logo_visible_radius_ratio) + job_gap)
+            )
+            attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
+            c_pos, _logo_unused = _resolve_spectrum_logo_centers(
+                w=w,
+                h=h,
+                sf=sf,
+                position=job_pos,
+                spectrum_attach_to_logo=job_attach,
+                template=template,
+            )
+            cx = c_pos[0] + float(shake_out.x)
+            cy = c_pos[1] + float(shake_out.y)
+
+            for layer_idx, sl in enumerate(spectrum_layers):
+                style_preset = _resolve_export_spectrum_style(template_style_preset, sl)
+                curved = bool(sl.get("curved", False))
+                mirrored = bool(sl.get("mirrored", False))
+                bar_width = float(sl.get("barWidth", 4.0)) * sf
+                bar_count = clamp_spectrum_bar_count(sl.get("barCount", 64))
+                # Match preview default thickness (30), not the old export fallback (150).
+                thickness = float(sl.get("thickness", 30.0)) * sf * bar_height_mult
+                gravity = normalize_spectrum_gravity(sl.get("gravity", "top"))
+            
+                logo_visual_radius = logo_base_radius * logo_scale_base
+                radius_offset = float(sl.get("radiusOffset", 0.0)) * sf
+                radius = _resolve_spectrum_layer_radius(
+                    attached_to_logo=attached_to_logo,
+                    attached_base_radius=attached_base_radius,
+                    attached_layer_base_offset=attached_layer_base_offset,
+                    logo_visual_radius=logo_visual_radius,
+                    bar_width=bar_width,
+                    radius_offset=radius_offset,
+                )
+            
+                color_cfg = sl.get("color", {})
+                mode = color_cfg.get("mode", "solid")
+                c = color_cfg.get("solidColor", "#ffffff")
+                if isinstance(c, str) and c.startswith("#"):
+                    c = c.lstrip("#")
+                    c = tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
+            
+                op = float(sl.get("opacity", 1.0))
+                try:
+                    spec_col = (
+                        float(c[0]) / 255.0,
+                        float(c[1]) / 255.0,
+                        float(c[2]) / 255.0,
+                        float(max(0.0, min(1.0, op))),
+                    )
+                except Exception:
+                    spec_col = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op))))
+
+                blend_mode = str(sl.get("blend_mode", "normal")).lower().strip()
+                glow_strength = float(max(0.0, min(100.0, float(sl.get("glow", 0.0))))) / 100.0
+                glow_softness = float(max(0.0, min(30.0, float(sl.get("blur", 0.0)))))
+                peak_hold_blend = float(job_peak_hold)
+                peak_caps_wanted = bool(sl.get("peakCapsEnabled", False))
+                effective_peak_hold = float(peak_hold_blend)
+                if peak_caps_wanted and effective_peak_hold <= 0.001:
+                    effective_peak_hold = 0.45
+                peak_caps_enabled = peak_caps_wanted
+                peak_hold_blend = effective_peak_hold
+                peak_cap_gap = float(max(0.0, min(24.0, float(sl.get("peakCapGap", 4.0) or 0.0)))) * sf
+                peak_cap_thickness = float(max(1.0, min(16.0, float(sl.get("peakCapThickness", 3.0) or 1.0)))) * sf
+                peak_cap_decay = float(max(0.7, min(0.995, float(sl.get("peakCapDecay", 0.92) or 0.92))))
+                peak_cap_color = str(sl.get("peakCapColor", "#ffffff") or "#ffffff")
+                solid_band = bool(sl.get("solidBand", False))
+
+                # 2) 5-Tap Moving Average Smoothing & Mirroring (vectorized)
+                render_fft = smooth_and_mirror(fft_s, mirrored)
+                render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
+
+                sampled_fft = resample_fft_bins(render_fft, bar_count)
+
+                # 3) Generate Points (vectorized)
+                n = int(sampled_fft.shape[0])
+                px_arr, py_arr, dx_arr, dy_arr, total_length = generate_spectrum_layer_geometry(
+                    n,
+                    curved=curved,
+                    mirrored=mirrored,
+                    gravity=gravity,
+                    path_mode=sl.get("pathMode", "auto"),
+                    radius=radius,
+                    half_w=radius,
+                    half_h=radius,
+                    attached_to_logo=attached_to_logo,
+                    logo_shape=_tpl_logo_shape,
+                    frame_w=w,
+                    frame_h=h,
+                    linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
+                )
+                reflection_enabled = bool(sl.get("reflectionEnabled", False))
+                try:
+                    reflection_opacity = float(sl.get("reflectionOpacity", 0.32) or 0.32)
+                except (TypeError, ValueError):
+                    reflection_opacity = 0.32
+                reflection_opacity = float(max(0.05, min(0.85, reflection_opacity)))
+                draw_variants = [(px_arr, py_arr, dx_arr, dy_arr, 1.0)]
+                if reflection_enabled:
+                    r_px, r_py, r_dx, r_dy = mirror_spectrum_points_vertical(px_arr, py_arr, dx_arr, dy_arr)
+                    draw_variants.append((r_px, r_py, r_dx, r_dy, reflection_opacity))
+                main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
+                base_total_length = total_length
+                prog_lines["clip_enabled"].value = 0
+                pass_specs: list[dict] = []
+                if glow_strength > 0.0 and glow_pass_limit >= 1:
                     pass_specs.append(
                         {
                             "is_glow": True,
-                            "alpha": op * (0.08 + glow_strength * 0.15),
-                            "bar_width": bar_width + ((glow_softness * 3.0) + (glow_strength * 32.0)) * sf,
-                            "thickness": thickness + ((glow_softness * 3.4) + (glow_strength * 34.0)) * sf,
+                            "alpha": op * (0.14 + glow_strength * 0.22),
+                            "bar_width": bar_width + ((glow_softness * 1.8) + (glow_strength * 18.0)) * sf,
+                            "thickness": thickness + ((glow_softness * 2.2) + (glow_strength * 22.0)) * sf,
                             "fill_circle": False,
                         }
                     )
-            allow_fill_circle = bool(sl.get("fillCircle", False))
-            pass_specs.append(
-                {
-                    "is_glow": False,
-                    "alpha": op,
-                    "bar_width": bar_width,
-                    "thickness": thickness,
-                    "fill_circle": allow_fill_circle,
-                }
-            )
-
-            for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
-              px_arr, py_arr, dx_arr, dy_arr = v_px, v_py, v_dx, v_dy
-              for pass_i, pass_cfg in enumerate(pass_specs):
-                if pass_cfg["is_glow"] and v_alpha_mul < 0.999:
-                    continue
-                if pass_cfg["is_glow"]:
-                    ctx.blend_func = moderngl.ADDITIVE_BLENDING
-                elif blend_mode in ("screen", "add", "lighten"):
-                    ctx.blend_func = moderngl.ADDITIVE_BLENDING
-                else:
-                    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
-
-                pass_alpha = float(max(0.0, min(1.0, float(pass_cfg["alpha"]) * float(v_alpha_mul))))
-                pass_bar_width = float(pass_cfg["bar_width"])
-                pass_thickness = float(pass_cfg["thickness"])
-                fill_circle_pass = bool(pass_cfg["fill_circle"])
-
-                val_arr = (sampled_fft * pass_thickness).astype(np.float32)
-
-                cols = _build_spectrum_vertex_colors(
-                    color_cfg,
-                    spec_col,
-                    n,
-                    pass_alpha,
-                    glow=bool(pass_cfg["is_glow"]),
+                    if glow_pass_limit >= 2:
+                        pass_specs.append(
+                            {
+                                "is_glow": True,
+                                "alpha": op * (0.08 + glow_strength * 0.15),
+                                "bar_width": bar_width + ((glow_softness * 3.0) + (glow_strength * 32.0)) * sf,
+                                "thickness": thickness + ((glow_softness * 3.4) + (glow_strength * 34.0)) * sf,
+                                "fill_circle": False,
+                            }
+                        )
+                allow_fill_circle = bool(sl.get("fillCircle", False))
+                pass_specs.append(
+                    {
+                        "is_glow": False,
+                        "alpha": op,
+                        "bar_width": bar_width,
+                        "thickness": thickness,
+                        "fill_circle": allow_fill_circle,
+                    }
                 )
 
-                bw = resolve_bar_pixel_width(pass_bar_width, base_total_length / max(1, n))
+                for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
+                  px_arr, py_arr, dx_arr, dy_arr = v_px, v_py, v_dx, v_dy
+                  for pass_i, pass_cfg in enumerate(pass_specs):
+                    if pass_cfg["is_glow"] and v_alpha_mul < 0.999:
+                        continue
+                    if pass_cfg["is_glow"]:
+                        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                    elif blend_mode in ("screen", "add", "lighten"):
+                        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                    else:
+                        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
 
-                if style_preset == "contour-waves":
-                    nn = n
-                    px2, py2, dx2, dy2 = px_arr, py_arr, dx_arr, dy_arr
-                    val2 = val_arr
-                    if curved and mirrored:
-                        px2 = np.concatenate([px_arr, px_arr[:1]])
-                        py2 = np.concatenate([py_arr, py_arr[:1]])
-                        dx2 = np.concatenate([dx_arr, dx_arr[:1]])
-                        dy2 = np.concatenate([dy_arr, dy_arr[:1]])
-                        val2 = np.concatenate([val_arr, val_arr[:1]])
-                        nn += 1
-                    strips = build_contour_wave_strips(
-                        px2, py2, dx2, dy2, val2, cx, cy, w, h,
-                        line_count=5,
-                        line_half_px=float(max(0.7, pass_bar_width * 0.45)),
+                    pass_alpha = float(max(0.0, min(1.0, float(pass_cfg["alpha"]) * float(v_alpha_mul))))
+                    pass_bar_width = float(pass_cfg["bar_width"])
+                    pass_thickness = float(pass_cfg["thickness"])
+                    fill_circle_pass = bool(pass_cfg["fill_circle"])
+
+                    val_arr = (sampled_fft * pass_thickness).astype(np.float32)
+
+                    cols = _build_spectrum_vertex_colors(
+                        color_cfg,
+                        spec_col,
+                        n,
+                        pass_alpha,
+                        glow=bool(pass_cfg["is_glow"]),
                     )
-                    for strip_i, strip_pos in enumerate(strips):
-                        strip_nn = int(strip_pos.shape[0] // 2)
-                        strip_alpha = float(
-                            max(0.0, min(1.0, pass_alpha * (0.45 + 0.55 * ((strip_i + 1) / max(1, len(strips))))))
+
+                    bw = resolve_bar_pixel_width(pass_bar_width, base_total_length / max(1, n))
+
+                    if style_preset == "contour-waves":
+                        nn = n
+                        px2, py2, dx2, dy2 = px_arr, py_arr, dx_arr, dy_arr
+                        val2 = val_arr
+                        if curved and mirrored:
+                            px2 = np.concatenate([px_arr, px_arr[:1]])
+                            py2 = np.concatenate([py_arr, py_arr[:1]])
+                            dx2 = np.concatenate([dx_arr, dx_arr[:1]])
+                            dy2 = np.concatenate([dy_arr, dy_arr[:1]])
+                            val2 = np.concatenate([val_arr, val_arr[:1]])
+                            nn += 1
+                        strips = build_contour_wave_strips(
+                            px2, py2, dx2, dy2, val2, cx, cy, w, h,
+                            line_count=5,
+                            line_half_px=float(max(0.7, pass_bar_width * 0.45)),
                         )
-                        strip_cols = np.repeat(
+                        for strip_i, strip_pos in enumerate(strips):
+                            strip_nn = int(strip_pos.shape[0] // 2)
+                            strip_alpha = float(
+                                max(0.0, min(1.0, pass_alpha * (0.45 + 0.55 * ((strip_i + 1) / max(1, len(strips))))))
+                            )
+                            strip_cols = np.repeat(
+                                _build_spectrum_vertex_colors(
+                                    color_cfg,
+                                    spec_col,
+                                    strip_nn,
+                                    strip_alpha,
+                                    glow=bool(pass_cfg["is_glow"]),
+                                ),
+                                2,
+                                axis=0,
+                            )
+                            strip_verts = np.column_stack([strip_pos, strip_cols]).astype(np.float32)
+                            if strip_verts.nbytes > line_vbo.size:
+                                line_vbo.orphan(size=strip_verts.nbytes)
+                            line_vbo.write(strip_verts.tobytes())
+                            vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(strip_pos.shape[0]))
+                    elif style_preset in ("aurora-ribbon", "magma-ridge", "plasma-bloom", "soft-waveform", "mountain", "liquid", "continuous-waveform"):
+                        nn = n
+                        val_arr2 = val_arr
+                        cols2 = cols
+                        px2 = px_arr
+                        py2 = py_arr
+                        dx2 = dx_arr
+                        dy2 = dy_arr
+                        if curved and mirrored:
+                            px2 = np.concatenate([px_arr, px_arr[:1]])
+                            py2 = np.concatenate([py_arr, py_arr[:1]])
+                            dx2 = np.concatenate([dx_arr, dx_arr[:1]])
+                            dy2 = np.concatenate([dy_arr, dy_arr[:1]])
+                            val_arr2 = np.concatenate([val_arr, val_arr[:1]])
+                            cols2 = np.concatenate([cols, cols[:1]], axis=0)
+                            nn += 1
+
+                        xs_o, ys_o, xs_i, ys_i = build_waveform_vertices(
+                            px2, py2, dx2, dy2, val_arr2, cx, cy, w, h, style_preset, pass_bar_width,
+                        )
+
+                        if curved and fill_circle_pass:
+                            cx_ndc = float(cx) / float(w) * 2.0 - 1.0
+                            cy_ndc = float(cy) / float(h) * 2.0 - 1.0
+                            pos_fill = np.empty((nn + 1, 2), dtype=np.float32)
+                            pos_fill[0, 0] = cx_ndc
+                            pos_fill[0, 1] = cy_ndc
+                            pos_fill[1:, 0] = xs_o
+                            pos_fill[1:, 1] = ys_o
+                            cols_edge = cols2[:nn].copy()
+                            cols_center = cols_edge[:1].copy()
+                            cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                            verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
+                            if verts_fill.nbytes > line_vbo.size:
+                                line_vbo.orphan(size=verts_fill.nbytes)
+                            line_vbo.write(verts_fill.tobytes())
+                            vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(nn + 1))
+
+                        pos = np.empty((2 * nn, 2), dtype=np.float32)
+                        pos[0::2, 0] = xs_o
+                        pos[0::2, 1] = ys_o
+                        pos[1::2, 0] = xs_i
+                        pos[1::2, 1] = ys_i
+                        colsi = np.repeat(cols2, 2, axis=0)
+                        verts = np.column_stack([pos, colsi]).astype(np.float32)
+                        if verts.nbytes > line_vbo.size:
+                            line_vbo.orphan(size=verts.nbytes)
+                        line_vbo.write(verts.tobytes())
+                        vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(2 * nn))
+                    elif gpu_spectrum is not None and _gpu_spectrum_layer_key(inst_idx, layer_idx) in gpu_layer_keys:
+                        gpu_fft = quantize_fft_for_gpu_bar_style(
+                            style_preset,
+                            render_fft,
+                            thickness=pass_thickness,
+                            sf=sf,
+                        )
+                        half_w = float(bw) * 0.5 * float(gpu_bar_half_width_scale(style_preset))
+                        gpu_spectrum.draw_pass(
+                            gpu_layer_keys[_gpu_spectrum_layer_key(inst_idx, layer_idx)],
+                            pass_i,
+                            gpu_fft,
+                            cx=cx,
+                            cy=cy,
+                            w=w,
+                            h=h,
+                            pass_thickness=pass_thickness,
+                            bar_half_width=half_w,
+                            style_mode=int(gpu_bar_style_mode(style_preset)),
+                            style_sf=float(sf),
+                        )
+                    else:
+                        bar_out = build_bar_vertices(
+                            px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
+                            bw, style_preset, sf, logo_audio_env, particle_audio_env,
+                            colors=cols,
+                        )
+                        if isinstance(bar_out, tuple):
+                            pos, colsi = bar_out
+                        else:
+                            pos = bar_out
+                            colsi = np.repeat(cols, 6, axis=0)
+                        if colsi.shape[0] == n * 6:
+                            colsi = _build_spectrum_bar_quad_colors(color_cfg, spec_col, n, pass_alpha)
+
+                        verts = np.column_stack([pos, colsi]).astype(np.float32)
+                        if verts.nbytes > line_vbo.size:
+                            line_vbo.orphan(size=verts.nbytes)
+                        line_vbo.write(verts.tobytes())
+                        vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
+                        if curved and fill_circle_pass and n > 0:
+                            tip_h = np.maximum(2.0, val_arr[:n]).astype(np.float32)
+                            xs_o = ((cx + px_arr[:n] + dx_arr[:n] * tip_h) / float(w) * 2.0 - 1.0).astype(np.float32)
+                            ys_o = ((cy + py_arr[:n] + dy_arr[:n] * tip_h) / float(h) * 2.0 - 1.0).astype(np.float32)
+                            if curved and mirrored:
+                                xs_o = np.concatenate([xs_o, xs_o[:1]])
+                                ys_o = np.concatenate([ys_o, ys_o[:1]])
+                            tip_n = int(xs_o.shape[0])
+                            cx_ndc = float(cx) / float(w) * 2.0 - 1.0
+                            cy_ndc = float(cy) / float(h) * 2.0 - 1.0
+                            pos_fill = np.empty((tip_n + 1, 2), dtype=np.float32)
+                            pos_fill[0, 0] = cx_ndc
+                            pos_fill[0, 1] = cy_ndc
+                            pos_fill[1:, 0] = xs_o
+                            pos_fill[1:, 1] = ys_o
+                            cols_edge = _build_spectrum_vertex_colors(color_cfg, spec_col, tip_n, pass_alpha)
+                            cols_center = cols_edge[:1].copy()
+                            cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                            verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
+                            if verts_fill.nbytes > line_vbo.size:
+                                line_vbo.orphan(size=verts_fill.nbytes)
+                            line_vbo.write(verts_fill.tobytes())
+                            vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(tip_n + 1))
+                px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
+                if solid_band:
+                    band_pos = build_solid_band_strip_vertices(
+                        px_arr,
+                        py_arr,
+                        dx_arr,
+                        dy_arr,
+                        cx=float(cx),
+                        cy=float(cy),
+                        w=int(w),
+                        h=int(h),
+                        band_width_px=float(max(1.0, bar_width * 0.45)),
+                    )
+                    if band_pos.shape[0]:
+                        # Keep color rows aligned with strip rows when geometry adds
+                        # a closing point for mirrored curved waveform layers.
+                        band_bar_count = int(max(1, band_pos.shape[0] // 2))
+                        band_cols = np.repeat(
                             _build_spectrum_vertex_colors(
                                 color_cfg,
                                 spec_col,
-                                strip_nn,
-                                strip_alpha,
-                                glow=bool(pass_cfg["is_glow"]),
+                                band_bar_count,
+                                float(max(0.0, min(1.0, op * 0.6))),
                             ),
                             2,
                             axis=0,
                         )
-                        strip_verts = np.column_stack([strip_pos, strip_cols]).astype(np.float32)
-                        if strip_verts.nbytes > line_vbo.size:
-                            line_vbo.orphan(size=strip_verts.nbytes)
-                        line_vbo.write(strip_verts.tobytes())
-                        vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(strip_pos.shape[0]))
-                elif style_preset in ("aurora-ribbon", "magma-ridge", "plasma-bloom", "soft-waveform", "mountain", "liquid", "continuous-waveform"):
-                    nn = n
-                    val_arr2 = val_arr
-                    cols2 = cols
-                    px2 = px_arr
-                    py2 = py_arr
-                    dx2 = dx_arr
-                    dy2 = dy_arr
-                    if curved and mirrored:
-                        px2 = np.concatenate([px_arr, px_arr[:1]])
-                        py2 = np.concatenate([py_arr, py_arr[:1]])
-                        dx2 = np.concatenate([dx_arr, dx_arr[:1]])
-                        dy2 = np.concatenate([dy_arr, dy_arr[:1]])
-                        val_arr2 = np.concatenate([val_arr, val_arr[:1]])
-                        cols2 = np.concatenate([cols, cols[:1]], axis=0)
-                        nn += 1
-
-                    xs_o, ys_o, xs_i, ys_i = build_waveform_vertices(
-                        px2, py2, dx2, dy2, val_arr2, cx, cy, w, h, style_preset, pass_bar_width,
+                        band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
+                        if band_verts.nbytes > line_vbo.size:
+                            line_vbo.orphan(size=band_verts.nbytes)
+                        line_vbo.write(band_verts.tobytes())
+                        vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
+                if peak_caps_enabled and n > 0:
+                    # Mirrored curved waveform styles may append a closing point;
+                    # peak caps must use the original bar-count geometry only.
+                    cap_px = px_arr[:n]
+                    cap_py = py_arr[:n]
+                    cap_dx = dx_arr[:n]
+                    cap_dy = dy_arr[:n]
+                    peak_key = f"{inst_idx}:{layer_idx}:{'c' if curved else 'l'}:{'m' if mirrored else 's'}:{gravity}:{n}"
+                    prev = spectrum_peak_cache.get(peak_key)
+                    if prev is None or prev.shape[0] != n:
+                        prev = np.zeros((n,), dtype=np.float32)
+                    peak_vals = np.maximum(sampled_fft, prev * peak_cap_decay).astype(np.float32)
+                    spectrum_peak_cache[peak_key] = peak_vals
+                    cap_vals = (peak_vals * thickness).astype(np.float32)
+                    cap_base = cap_vals + peak_cap_gap
+                    wx = -cap_dy * (bw * 0.5)
+                    wy = cap_dx * (bw * 0.5)
+                    p0x = cap_px + cap_dx * cap_base - wx
+                    p0y = cap_py + cap_dy * cap_base - wy
+                    p1x = cap_px + cap_dx * cap_base + wx
+                    p1y = cap_py + cap_dy * cap_base + wy
+                    p2x = cap_px + cap_dx * (cap_base + peak_cap_thickness) + wx
+                    p2y = cap_py + cap_dy * (cap_base + peak_cap_thickness) + wy
+                    p3x = cap_px + cap_dx * (cap_base + peak_cap_thickness) - wx
+                    p3y = cap_py + cap_dy * (cap_base + peak_cap_thickness) - wy
+                    inv_w = 2.0 / float(w)
+                    inv_h = 2.0 / float(h)
+                    cap_pos = np.empty((n * 6, 2), dtype=np.float32)
+                    ndc_p0x = (cx + p0x) * inv_w - 1.0
+                    ndc_p0y = (cy + p0y) * inv_h - 1.0
+                    ndc_p1x = (cx + p1x) * inv_w - 1.0
+                    ndc_p1y = (cy + p1y) * inv_h - 1.0
+                    ndc_p2x = (cx + p2x) * inv_w - 1.0
+                    ndc_p2y = (cy + p2y) * inv_h - 1.0
+                    ndc_p3x = (cx + p3x) * inv_w - 1.0
+                    ndc_p3y = (cy + p3y) * inv_h - 1.0
+                    cap_pos[0::6, 0] = ndc_p0x
+                    cap_pos[0::6, 1] = ndc_p0y
+                    cap_pos[1::6, 0] = ndc_p1x
+                    cap_pos[1::6, 1] = ndc_p1y
+                    cap_pos[2::6, 0] = ndc_p2x
+                    cap_pos[2::6, 1] = ndc_p2y
+                    cap_pos[3::6, 0] = ndc_p0x
+                    cap_pos[3::6, 1] = ndc_p0y
+                    cap_pos[4::6, 0] = ndc_p2x
+                    cap_pos[4::6, 1] = ndc_p2y
+                    cap_pos[5::6, 0] = ndc_p3x
+                    cap_pos[5::6, 1] = ndc_p3y
+                    cap_cols = _build_spectrum_bar_quad_colors(
+                        {"mode": "solid", "solidColor": peak_cap_color},
+                        spec_col,
+                        n,
+                        float(max(0.0, min(1.0, op * peak_hold_blend))),
                     )
-
-                    if curved and fill_circle_pass:
-                        cx_ndc = float(cx) / float(w) * 2.0 - 1.0
-                        cy_ndc = float(cy) / float(h) * 2.0 - 1.0
-                        pos_fill = np.empty((nn + 1, 2), dtype=np.float32)
-                        pos_fill[0, 0] = cx_ndc
-                        pos_fill[0, 1] = cy_ndc
-                        pos_fill[1:, 0] = xs_o
-                        pos_fill[1:, 1] = ys_o
-                        cols_edge = cols2[:nn].copy()
-                        cols_center = cols_edge[:1].copy()
-                        cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
-                        verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
-                        if verts_fill.nbytes > line_vbo.size:
-                            line_vbo.orphan(size=verts_fill.nbytes)
-                        line_vbo.write(verts_fill.tobytes())
-                        vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(nn + 1))
-
-                    pos = np.empty((2 * nn, 2), dtype=np.float32)
-                    pos[0::2, 0] = xs_o
-                    pos[0::2, 1] = ys_o
-                    pos[1::2, 0] = xs_i
-                    pos[1::2, 1] = ys_i
-                    colsi = np.repeat(cols2, 2, axis=0)
-                    verts = np.column_stack([pos, colsi]).astype(np.float32)
-                    if verts.nbytes > line_vbo.size:
-                        line_vbo.orphan(size=verts.nbytes)
-                    line_vbo.write(verts.tobytes())
-                    vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(2 * nn))
-                elif gpu_spectrum is not None and layer_idx in gpu_layer_keys:
-                    gpu_fft = quantize_fft_for_gpu_bar_style(
-                        style_preset,
-                        render_fft,
-                        thickness=pass_thickness,
-                        sf=sf,
-                    )
-                    half_w = float(bw) * 0.5 * float(gpu_bar_half_width_scale(style_preset))
-                    gpu_spectrum.draw_pass(
-                        gpu_layer_keys[layer_idx],
-                        pass_i,
-                        gpu_fft,
-                        cx=cx,
-                        cy=cy,
-                        w=w,
-                        h=h,
-                        pass_thickness=pass_thickness,
-                        bar_half_width=half_w,
-                        style_mode=int(gpu_bar_style_mode(style_preset)),
-                        style_sf=float(sf),
-                    )
-                else:
-                    bar_out = build_bar_vertices(
-                        px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
-                        bw, style_preset, sf, logo_audio_env, particle_audio_env,
-                        colors=cols,
-                    )
-                    if isinstance(bar_out, tuple):
-                        pos, colsi = bar_out
-                    else:
-                        pos = bar_out
-                        colsi = np.repeat(cols, 6, axis=0)
-                    if colsi.shape[0] == n * 6:
-                        colsi = _build_spectrum_bar_quad_colors(color_cfg, spec_col, n, pass_alpha)
-
-                    verts = np.column_stack([pos, colsi]).astype(np.float32)
-                    if verts.nbytes > line_vbo.size:
-                        line_vbo.orphan(size=verts.nbytes)
-                    line_vbo.write(verts.tobytes())
-                    vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
-                    if curved and fill_circle_pass and n > 0:
-                        tip_h = np.maximum(2.0, val_arr[:n]).astype(np.float32)
-                        xs_o = ((cx + px_arr[:n] + dx_arr[:n] * tip_h) / float(w) * 2.0 - 1.0).astype(np.float32)
-                        ys_o = ((cy + py_arr[:n] + dy_arr[:n] * tip_h) / float(h) * 2.0 - 1.0).astype(np.float32)
-                        if curved and mirrored:
-                            xs_o = np.concatenate([xs_o, xs_o[:1]])
-                            ys_o = np.concatenate([ys_o, ys_o[:1]])
-                        tip_n = int(xs_o.shape[0])
-                        cx_ndc = float(cx) / float(w) * 2.0 - 1.0
-                        cy_ndc = float(cy) / float(h) * 2.0 - 1.0
-                        pos_fill = np.empty((tip_n + 1, 2), dtype=np.float32)
-                        pos_fill[0, 0] = cx_ndc
-                        pos_fill[0, 1] = cy_ndc
-                        pos_fill[1:, 0] = xs_o
-                        pos_fill[1:, 1] = ys_o
-                        cols_edge = _build_spectrum_vertex_colors(color_cfg, spec_col, tip_n, pass_alpha)
-                        cols_center = cols_edge[:1].copy()
-                        cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
-                        verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
-                        if verts_fill.nbytes > line_vbo.size:
-                            line_vbo.orphan(size=verts_fill.nbytes)
-                        line_vbo.write(verts_fill.tobytes())
-                        vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(tip_n + 1))
-            px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
-            if solid_band:
-                band_pos = build_solid_band_strip_vertices(
-                    px_arr,
-                    py_arr,
-                    dx_arr,
-                    dy_arr,
-                    cx=float(cx),
-                    cy=float(cy),
-                    w=int(w),
-                    h=int(h),
-                    band_width_px=float(max(1.0, bar_width * 0.45)),
-                )
-                if band_pos.shape[0]:
-                    # Keep color rows aligned with strip rows when geometry adds
-                    # a closing point for mirrored curved waveform layers.
-                    band_bar_count = int(max(1, band_pos.shape[0] // 2))
-                    band_cols = np.repeat(
-                        _build_spectrum_vertex_colors(
-                            color_cfg,
-                            spec_col,
-                            band_bar_count,
-                            float(max(0.0, min(1.0, op * 0.6))),
-                        ),
-                        2,
-                        axis=0,
-                    )
-                    band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
-                    if band_verts.nbytes > line_vbo.size:
-                        line_vbo.orphan(size=band_verts.nbytes)
-                    line_vbo.write(band_verts.tobytes())
-                    vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
-            if peak_caps_enabled and n > 0:
-                # Mirrored curved waveform styles may append a closing point;
-                # peak caps must use the original bar-count geometry only.
-                cap_px = px_arr[:n]
-                cap_py = py_arr[:n]
-                cap_dx = dx_arr[:n]
-                cap_dy = dy_arr[:n]
-                peak_key = f"{layer_idx}:{'c' if curved else 'l'}:{'m' if mirrored else 's'}:{gravity}:{n}"
-                prev = spectrum_peak_cache.get(peak_key)
-                if prev is None or prev.shape[0] != n:
-                    prev = np.zeros((n,), dtype=np.float32)
-                peak_vals = np.maximum(sampled_fft, prev * peak_cap_decay).astype(np.float32)
-                spectrum_peak_cache[peak_key] = peak_vals
-                cap_vals = (peak_vals * thickness).astype(np.float32)
-                cap_base = cap_vals + peak_cap_gap
-                wx = -cap_dy * (bw * 0.5)
-                wy = cap_dx * (bw * 0.5)
-                p0x = cap_px + cap_dx * cap_base - wx
-                p0y = cap_py + cap_dy * cap_base - wy
-                p1x = cap_px + cap_dx * cap_base + wx
-                p1y = cap_py + cap_dy * cap_base + wy
-                p2x = cap_px + cap_dx * (cap_base + peak_cap_thickness) + wx
-                p2y = cap_py + cap_dy * (cap_base + peak_cap_thickness) + wy
-                p3x = cap_px + cap_dx * (cap_base + peak_cap_thickness) - wx
-                p3y = cap_py + cap_dy * (cap_base + peak_cap_thickness) - wy
-                inv_w = 2.0 / float(w)
-                inv_h = 2.0 / float(h)
-                cap_pos = np.empty((n * 6, 2), dtype=np.float32)
-                ndc_p0x = (cx + p0x) * inv_w - 1.0
-                ndc_p0y = (cy + p0y) * inv_h - 1.0
-                ndc_p1x = (cx + p1x) * inv_w - 1.0
-                ndc_p1y = (cy + p1y) * inv_h - 1.0
-                ndc_p2x = (cx + p2x) * inv_w - 1.0
-                ndc_p2y = (cy + p2y) * inv_h - 1.0
-                ndc_p3x = (cx + p3x) * inv_w - 1.0
-                ndc_p3y = (cy + p3y) * inv_h - 1.0
-                cap_pos[0::6, 0] = ndc_p0x
-                cap_pos[0::6, 1] = ndc_p0y
-                cap_pos[1::6, 0] = ndc_p1x
-                cap_pos[1::6, 1] = ndc_p1y
-                cap_pos[2::6, 0] = ndc_p2x
-                cap_pos[2::6, 1] = ndc_p2y
-                cap_pos[3::6, 0] = ndc_p0x
-                cap_pos[3::6, 1] = ndc_p0y
-                cap_pos[4::6, 0] = ndc_p2x
-                cap_pos[4::6, 1] = ndc_p2y
-                cap_pos[5::6, 0] = ndc_p3x
-                cap_pos[5::6, 1] = ndc_p3y
-                cap_cols = _build_spectrum_bar_quad_colors(
-                    {"mode": "solid", "solidColor": peak_cap_color},
-                    spec_col,
-                    n,
-                    float(max(0.0, min(1.0, op * peak_hold_blend))),
-                )
-                cap_verts = np.column_stack([cap_pos, cap_cols]).astype(np.float32)
-                if cap_verts.nbytes > line_vbo.size:
-                    line_vbo.orphan(size=cap_verts.nbytes)
-                line_vbo.write(cap_verts.tobytes())
-                vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
+                    cap_verts = np.column_stack([cap_pos, cap_cols]).astype(np.float32)
+                    if cap_verts.nbytes > line_vbo.size:
+                        line_vbo.orphan(size=cap_verts.nbytes)
+                    line_vbo.write(cap_verts.tobytes())
+                    vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
 
         ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
         spawn_rate = float(particles_cfg_raw.get("spawnRate", particles_cfg_raw.get("spawn_rate", particles_cfg.spawn_rate)))
@@ -3956,25 +4096,22 @@ def run_gpu_render(
             tex_logo.use(location=1)
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
 
-        fbo_out.use()
-        ctx.clear(0.0, 0.0, 0.0, 1.0)
-        tex_scene.use(location=0)
-        rgb_opacity = float(state.get("effects.rgb_split.opacity", rgb_cfg.opacity))
-        bloom_strength = float(state.get("effects.bloom.strength", bloom_cfg.strength))
-        onset = float(feats.get("onset", 0.0))
-        rgb_opacity = rgb_opacity * (1.0 + onset * 0.9)
-        bloom_strength = bloom_strength * (1.0 + bass * 0.9)
-        if not rgb_cfg.enabled:
-            rgb_opacity = 0.0
-        if not bloom_cfg.enabled:
-            bloom_strength = 0.0
-        prog_post["rgb_opacity"].value = float(max(0.0, min(1.0, rgb_opacity)))
-        prog_post["rgb_r"].value = (float(rgb_cfg.red_offset[0]), float(rgb_cfg.red_offset[1]))
-        prog_post["rgb_g"].value = (float(rgb_cfg.green_offset[0]), float(rgb_cfg.green_offset[1]))
-        prog_post["rgb_b"].value = (float(rgb_cfg.blue_offset[0]), float(rgb_cfg.blue_offset[1]))
-        prog_post["bloom_strength"].value = float(max(0.0, bloom_strength)) * float(max(0.0, min(1.0, bloom_cfg.opacity)))
-        prog_post["bloom_threshold"].value = float(max(0.0, min(1.0, bloom_cfg.threshold)))
-        vao_quad_post.render(mode=moderngl.TRIANGLE_STRIP)
+        _compose_scene_post_to_out(
+            ctx=ctx,
+            fbo_out=fbo_out,
+            tex_scene=tex_scene,
+            prog_post=prog_post,
+            vao_quad_post=vao_quad_post,
+            w=w,
+            h=h,
+            rgb_cfg=rgb_cfg,
+            bloom_cfg=bloom_cfg,
+            state=state,
+            bass=bass,
+            feats=feats,
+            template=template,
+            hdr_pass=hdr_bloom_pass,
+        )
 
         _draw_text_overlays(
             ctx,
@@ -4208,6 +4345,12 @@ def render_preview_png(
 
     line_vbo = ctx.buffer(reserve=4 * 6 * 1024)
     vao_lines = ctx.vertex_array(prog_lines, [(line_vbo, "2f 4f", "in_pos", "in_col")])
+    hdr_bloom_pass: PreviewHdrBloomPass | None = None
+    if preview_hdr_bloom_enabled():
+        try:
+            hdr_bloom_pass = PreviewHdrBloomPass(ctx)
+        except Exception:
+            hdr_bloom_pass = None
     prog_lines["clip_enabled"].value = 0
     prog_lines["clip_center_px"].value = (0.0, 0.0)
     prog_lines["clip_radius_px"].value = 0.0
@@ -4996,25 +5139,22 @@ def render_preview_png(
             tex_logo.use(location=1)
             vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
 
-        fbo_out.use()
-        ctx.clear(0.0, 0.0, 0.0, 1.0)
-        tex_scene.use(location=0)
-        rgb_opacity = float(state.get("effects.rgb_split.opacity", rgb_cfg.opacity))
-        bloom_strength = float(state.get("effects.bloom.strength", bloom_cfg.strength))
-        onset = float(feats.get("onset", 0.0))
-        rgb_opacity = rgb_opacity * (1.0 + onset * 0.9)
-        bloom_strength = bloom_strength * (1.0 + bass * 0.9)
-        if not rgb_cfg.enabled:
-            rgb_opacity = 0.0
-        if not bloom_cfg.enabled:
-            bloom_strength = 0.0
-        prog_post["rgb_opacity"].value = float(max(0.0, min(1.0, rgb_opacity)))
-        prog_post["rgb_r"].value = (float(rgb_cfg.red_offset[0]), float(rgb_cfg.red_offset[1]))
-        prog_post["rgb_g"].value = (float(rgb_cfg.green_offset[0]), float(rgb_cfg.green_offset[1]))
-        prog_post["rgb_b"].value = (float(rgb_cfg.blue_offset[0]), float(rgb_cfg.blue_offset[1]))
-        prog_post["bloom_strength"].value = float(max(0.0, bloom_strength)) * float(max(0.0, min(1.0, bloom_cfg.opacity)))
-        prog_post["bloom_threshold"].value = float(max(0.0, min(1.0, bloom_cfg.threshold)))
-        vao_quad_post.render(mode=moderngl.TRIANGLE_STRIP)
+        _compose_scene_post_to_out(
+            ctx=ctx,
+            fbo_out=fbo_out,
+            tex_scene=tex_scene,
+            prog_post=prog_post,
+            vao_quad_post=vao_quad_post,
+            w=w,
+            h=h,
+            rgb_cfg=rgb_cfg,
+            bloom_cfg=bloom_cfg,
+            state=state,
+            bass=bass,
+            feats=feats,
+            template=template,
+            hdr_pass=hdr_bloom_pass,
+        )
 
         _draw_text_overlays(
             ctx,

@@ -20,15 +20,79 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Windowed shell clicks land on the painted control again.** Dropped
-  translucent HWND + `setMask()` rounding that offset hit-testing on some
+  translucent HWND + setMask() rounding that offset hit-testing on some
   Windows DPI setups (maximized already worked). Rounded look kept via DWM +
-  QSS on the opaque surface. See
-  `docs/changelog/2026-08-04-window-chrome-click-hit-test.md`.
+  QSS on the opaque surface (REQ-P3.2). See
+  docs/changelog/2026-08-04-window-chrome-click-hit-test.md.
 
 ### Changed
 
-- Desktop app version stamp **1.2.0** / `CamxoraSetup-1.2.0.exe`. Includes the
-  1.0.19 ship-safe cut (per-device paths, spectrum fixes, NVENC fallback).
+- Desktop app version stamp **1.2.0** / CamxoraSetup-1.2.0.exe. Includes
+  everything from **1.1.0** (HDR bloom, export WYSIWYG, preview P0–P4.3 stack).
+
+## [1.1.0] - 2026-08-04
+
+### Added
+
+- **HDR bloom on by default.** Preview and export use the HDR bloom/tonemap path
+  unless `CAMXORA_PREVIEW_HDR_BLOOM=0`. See
+  `docs/changelog/2026-08-04-desktop-1.1.0.md`.
+- **Export HDR bloom parity.** Same bloom/tonemap path as live preview. See
+  `docs/changelog/2026-08-04-preview-p4-export-parity.md`.
+- **Preview HDR bloom path.** Offscreen threshold / blur pyramid / tonemap into
+  the Qt preview FBO with opaque alpha. See
+  `docs/changelog/2026-08-04-preview-p4-hdr-bloom.md`.
+
+### Fixed
+
+- **Export not WYSIWYG vs Video preview.** Spectrum instances (style/position/
+  attach), live draft style tweaks, and lightning flash undersampling now flow
+  into export; Logo **Reset Center** restored. See
+  `docs/changelog/2026-08-04-export-wysiwyg-spectrum-logo-parity.md`.
+- **Black live Video preview after P0 Alpha_Lock.** End-of-frame alpha force used
+  `moderngl.Context.clear` with a color mask; ModernGL ignores the mask and wiped
+  RGB to black every frame (textures still uploaded). Now uses raw GL
+  `glColorMask`+`glClear`. See
+  `docs/changelog/2026-08-04-preview-black-moderngl-alpha-clear.md`.
+- **Video export GLSL `noise2` crash on some GPUs.** Smoke shader helper renamed
+  to `smoke_hash_noise2` so driver-reserved `noise2` overloads no longer abort
+  compile. Failed-export refunds clamp `reason` to 500 chars (desktop + API) so
+  traceback dumps no longer block allowance restore. Music preflight skips the
+  API when From/To dates are inverted. See
+  `docs/changelog/2026-08-04-export-glsl-noise2-and-refund-clamp.md`.
+- **Preview see-through on some GPUs.** Soft glow / additive spectrum, particle,
+  and lightning draws no longer punch alpha holes in the Qt OpenGL framebuffer
+  under the frameless translucent window. Standalone Alpha_Lock hotfix — playlist
+  glass is **not** included. See
+  `docs/changelog/2026-08-04-preview-opaque-alpha-p0.md`.
+- **Preview GL diagnostics were invisible on user machines.** OpenGL init /
+  background / logo upload breadcrumbs now write to
+  `%LOCALAPPDATA%\Camxora\logs\preview-gl-diag.log` and important lines also
+  appear in the daily `camxora-*.log` as `[preview-gl]`. Copy Diagnostics
+  includes `glReady` / `lastGlError` / GPU info. Init/FBO failures show an
+  opaque error panel (no desktop hole). See
+  `docs/changelog/2026-08-03-preview-gl-diag-logging.md` and
+  `docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`.
+- **Video inspector scrub felt laggy with live preview.** Allowlisted glow /
+  opacity / barWidth / particle size-opacity updates patch the live preview
+  template without a full normalize each tick; scrub runs at 20 FPS and
+  canonical-flushes when idle. See
+  `docs/changelog/2026-08-04-preview-p2-interactive-perf.md`.
+- **Frameless rounded chrome keeps `WA_TranslucentBackground` by design.**
+  Audit confirms `#window_surface` is the opaque backplate; preview
+  see-through is handled by P0 Alpha_Lock, not by removing window
+  translucency. Safer DWM-only corners deferred. See
+  `docs/changelog/2026-08-04-preview-p3-chrome-audit.md`.
+
+## [1.0.20] - 2026-08-04
+
+### Fixed
+
+- **GPU export crashed with `NameError: scroll_spectrum_heights is not defined`.**
+  The 1.0.19 ship-cut dropped the Raise Scroll import while leaving call sites.
+  Import restored; regression test + P5 ship-safety gate added so P0–P4 merges
+  cannot lose it again. See
+  `docs/changelog/2026-08-04-scroll-spectrum-heights-import.md`.
 
 ## [1.0.19] - 2026-08-04
 

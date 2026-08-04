@@ -9,13 +9,19 @@ What's new
   opaque shell instead of a translucent window mask
 - Maximized mode was already fine; windowed mode now matches that behavior
 
-Also included (from 1.0.19 line)
---------------------------------
-- Per-device media folders for the same Camxora account on multiple PCs
-- Progress / Auto-Video see remapped local folders without restart
-- Spectrum Save / Row Width / Raise Scroll fixes
-- Video export: older NVIDIA drivers fall back to software encode (x264)
-  instead of failing when NVENC is too old
+Also included (from 1.1.0)
+--------------------------
+- Real HDR bloom on by default for preview and export (set
+  CAMXORA_PREVIEW_HDR_BLOOM=0 to force the legacy glow path)
+- Export matches the live Video preview (spectrum instances, live draft
+  style/position, lightning flash undersampling)
+- Logo inspector: Reset Center restored
+- Fixes black live preview after Alpha_Lock (ModernGL alpha clear wipe)
+- Fixes GPU export crash on some drivers (GLSL smoke_hash_noise2)
+- Failed-export refunds clamp reason to 500 chars; music preflight skips
+  inverted From/To dates
+- Includes 1.0.20 Raise Scroll import fix and the P0–P4.3 preview stack
+- Per-device media folders, Spectrum Save / Row Width, NVENC→x264 fallback
 
 Not included in this build
 --------------------------

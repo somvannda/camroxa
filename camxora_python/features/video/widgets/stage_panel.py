@@ -215,6 +215,15 @@ class VideoStagePanel(SettingsPanel):
     def preview_widget(self):
         return self._preview
 
+    def apply_preview_patch(self, patch: dict) -> bool:
+        if self._preview is None:
+            return False
+        return bool(self._preview.apply_preview_patch(patch))
+
+    def set_interactive_scrub(self, active: bool) -> None:
+        if self._preview is not None:
+            self._preview.set_interactive_scrub(bool(active))
+
     def preview_runtime_nonce(self) -> int:
         return int(self._preview_runtime_nonce)
 
@@ -250,6 +259,12 @@ class VideoStagePanel(SettingsPanel):
             self._wire_text_drag_overlay()
         self._aspect_box.set_overlay(self._text_drag_overlay)
         self._wire_preview_signals()
+        self._play_btn.setEnabled(True)
+        self._stop_btn.setEnabled(True)
+        self._back_btn.setEnabled(True)
+        self._fwd_btn.setEnabled(True)
+        self._seek_slider.setEnabled(True)
+        self._preview_title.setText("Preview")
         self._background_path = ""
         self._logo_path = ""
         self._mp3_path = ""
@@ -267,6 +282,19 @@ class VideoStagePanel(SettingsPanel):
         self._preview.background_transform_changed.connect(self.background_transform_changed.emit)
         self._preview.text_domain_position_changed.connect(self.text_domain_position_changed.emit)
         self._preview.playback_state_changed.connect(self._on_preview_playback_state)
+        if hasattr(self._preview, "gl_failed"):
+            self._preview.gl_failed.connect(self._on_preview_gl_failed)
+
+    def _on_preview_gl_failed(self, message: str) -> None:
+        """REQ-P1.2: keep stage usable; disable transport while GPU preview is down."""
+        detail = str(message or "").strip()
+        if detail:
+            self._preview_title.setText("Preview (GPU failed)")
+        self._play_btn.setEnabled(False)
+        self._stop_btn.setEnabled(False)
+        self._back_btn.setEnabled(False)
+        self._fwd_btn.setEnabled(False)
+        self._seek_slider.setEnabled(False)
 
     def _wire_text_drag_overlay(self) -> None:
         if self._text_drag_overlay is None:

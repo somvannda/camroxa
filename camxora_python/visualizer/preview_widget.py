@@ -27,6 +27,11 @@ from visualizer.gpu_render import (
     ParticleSystem,
     ParticleConfig,
 )
+from visualizer.hdr_bloom import (
+    PreviewHdrBloomPass,
+    bloom_params_from_template,
+    preview_hdr_bloom_enabled,
+)
 from visualizer._spectrum_fast import (
     build_contour_wave_strips,
     build_solid_band_strip_vertices,
@@ -70,10 +75,9 @@ from visualizer.frame_integrator import (
     ParticleAudioState,
     ParticleAudioStepInput,
 )
+from visualizer.preview_diag import DiagLevel, format_gl_context_info, write_preview_gl_diag
 from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
 
-
-LOG_PATH = Path(__file__).parent.parent / "debug.log"
 
 def _fmt_time(sec: float) -> str:
     s = max(0.0, float(sec))
@@ -278,6 +282,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
     background_transform_changed = Signal(float, float, float)
     playback_state_changed = Signal(object)
     text_domain_position_changed = Signal(str, float, float)
+    gl_failed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -362,13 +367,30 @@ class VideoSpectrumPreview(QOpenGLWidget):
         )
         self._export_overlay_label.hide()
         self._export_overlay_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._gl_failure_label = QLabel(self)
+        self._gl_failure_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._gl_failure_label.setWordWrap(True)
+        self._gl_failure_label.setStyleSheet(
+            "background-color: #0a0e27; color: #e2e8f0; padding: 20px; font-size: 14px;"
+        )
+        self._gl_failure_label.hide()
+        self._fbo_bind_failures = 0
+        self._FBO_BIND_FAIL_LIMIT = 30
+        self._gl_failure_emitted = False
         self._export_offscreen_surface = None
         self._export_gl_context = None
         self._blocking_export_gl_result = None
         self._blocking_export_gl_error = None
         self._perf_frame_ms = 0.0
         self._perf_fps = 0.0
-        self._log(f"[{time.strftime('%H:%M:%S')}] SpectrumPreview init")
+        self._last_gl_error = ""
+        self._gl_info: dict[str, str] = {}
+        self._template_fingerprint = None
+        self._template_generation = 0
+        self._interactive_scrub = False
+        self._hdr_bloom: PreviewHdrBloomPass | None = None
+        self._hdr_bloom_frame_active = False
+        self._log("SpectrumPreview init")
 
     def _frame_metrics(self) -> tuple[int, int, int, int]:
         lw = max(1, int(self.width()))
@@ -687,36 +709,113 @@ class VideoSpectrumPreview(QOpenGLWidget):
             vbo.orphan(size=nbytes)
         vbo.write(data)
 
-    def _log(self, msg):
-        try:
-            print(msg, flush=True)
-        except Exception:
-            pass
-        try:
-            LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with open(LOG_PATH, 'a', encoding='utf-8') as f:
-                f.write(msg + '\n')
-        except Exception:
-            pass
-
-    def _use_qt_framebuffer(self):
-        if not self.ctx:
+    def _log(self, msg: str, *, level: DiagLevel = "info", mirror_app_log: bool | None = None) -> None:
+        """Preview GL breadcrumb → AppData preview-gl-diag.log (+ AppLogger when useful)."""
+        text = str(msg or "").strip()
+        if not text:
             return
+        # Strip legacy ``[HH:MM:SS]`` prefixes; diag writer stamps wall clock.
+        if text.startswith("[") and "]" in text[:12]:
+            text = text.split("]", 1)[1].strip() or text
+        write_preview_gl_diag(text, level=level, mirror_app_log=mirror_app_log)
+
+    def _set_gl_error(self, message: str) -> None:
+        text = str(message or "").strip()
+        self._last_gl_error = text
+        if text:
+            self._log(text, level="error")
+
+    def _gl_failure_user_message(self, detail: str = "") -> str:
+        detail_text = str(detail or getattr(self, "_last_gl_error", "") or "").strip()
+        lines = [
+            "GPU preview failed to start on this PC.",
+            "The Video page stays usable; try Remount Preview or restart Camxora.",
+            "Send support: %LOCALAPPDATA%\\Camxora\\logs\\preview-gl-diag.log",
+            "and the daily camxora-*.log from the same folder.",
+        ]
+        if detail_text:
+            lines.append(f"Detail: {detail_text}")
+        return "\n\n".join(lines)
+
+    def _show_gl_failure_overlay(self, detail: str = "") -> None:
+        """REQ-P1.2: opaque panel — never leave a transparent GL hole."""
+        message = self._gl_failure_user_message(detail)
+        label = getattr(self, "_gl_failure_label", None)
+        if label is None:
+            return
+        label.setText(message)
+        label.setGeometry(self.rect())
+        label.show()
+        label.raise_()
+        if not getattr(self, "_gl_failure_emitted", False):
+            self._gl_failure_emitted = True
+            try:
+                self.gl_failed.emit(message)
+            except Exception:
+                pass
+
+    def _hide_gl_failure_overlay(self) -> None:
+        label = getattr(self, "_gl_failure_label", None)
+        if label is not None:
+            label.hide()
+        self._gl_failure_emitted = False
+        self._fbo_bind_failures = 0
+
+    def _ensure_gl_current(self, action: str) -> bool:
+        """makeCurrent + validate context before texture upload / draw work."""
+        action_key = str(action or "gl").strip() or "gl"
+        try:
+            self.makeCurrent()
+        except Exception as exc:
+            self._set_gl_error(f"{action_key}: makeCurrent raised: {exc}")
+            return False
+        qt_ctx = self.context()
+        if qt_ctx is None or not bool(qt_ctx.isValid()):
+            self._set_gl_error(f"{action_key}: OpenGL context missing or invalid")
+            return False
+        try:
+            from PySide6.QtGui import QOpenGLContext
+
+            current = QOpenGLContext.currentContext()
+            if current is not None and current is not qt_ctx:
+                self._log(
+                    f"{action_key}: current context mismatch (multi-GPU / wrong surface?)",
+                    level="warn",
+                )
+        except Exception:
+            pass
+        return True
+
+    def _use_qt_framebuffer(self) -> bool:
+        """Bind Qt's FBO. Returns False when bind fails (REQ-P1.3)."""
+        if not self.ctx:
+            return False
         try:
             self.makeCurrent()
             qt_fbo = int(self.defaultFramebufferObject())
             if not self._screen_fbo or int(getattr(self._screen_fbo, "glo", 0) or 0) != qt_fbo:
                 self._screen_fbo = self.ctx.detect_framebuffer(qt_fbo)
             self._screen_fbo.use()
-            return
-        except Exception:
-            pass
+            self._fbo_bind_failures = 0
+            return True
+        except Exception as exc:
+            self._log(f"detect_framebuffer bind failed: {exc}", level="warn", mirror_app_log=False)
         try:
             self.makeCurrent()
             from OpenGL import GL
             GL.glBindFramebuffer(GL.GL_DRAW_FRAMEBUFFER, int(self.defaultFramebufferObject()))
-        except Exception:
-            return
+            self._fbo_bind_failures = 0
+            return True
+        except Exception as exc:
+            self._fbo_bind_failures = int(getattr(self, "_fbo_bind_failures", 0) or 0) + 1
+            self._log(
+                f"Qt FBO bind failed (count={self._fbo_bind_failures}): {exc}",
+                level="warn",
+            )
+            if self._fbo_bind_failures >= int(getattr(self, "_FBO_BIND_FAIL_LIMIT", 30) or 30):
+                self._set_gl_error(f"Qt FBO bind failed repeatedly: {exc}")
+                self._show_gl_failure_overlay(self._last_gl_error)
+            return False
 
     def on_position_changed(self, position):
         self.current_time = position / 1000.0
@@ -753,7 +852,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         except Exception:
             return str(path or '').strip()
 
-    def set_template(self, tpl: dict):
+    def set_template(self, tpl: dict, *, generation: int | None = None, clear_peak_cache: bool | None = None):
         # Don't clobber live GPU drag offset with a full rebuild mid-drag.
         if self._text_drag_domain in {"album", "title"} and (
             abs(self._text_drag_dx) > 1e-06 or abs(self._text_drag_dy) > 1e-06
@@ -763,18 +862,124 @@ class VideoSpectrumPreview(QOpenGLWidget):
         # clearing the peak cache caused periodic hitch after every draft push.
         if tpl is self.template:
             return
-        try:
-            import json as _json
-
-            key = _json.dumps(tpl, sort_keys=True, default=str)
-        except Exception:
-            key = None
-        if key is not None and key == getattr(self, "_template_fingerprint", None):
+        if generation is not None and generation == getattr(self, "_template_generation", None):
             return
+        if generation is None:
+            try:
+                import json as _json
+
+                key = _json.dumps(tpl, sort_keys=True, default=str)
+            except Exception:
+                key = None
+            if key is not None and key == getattr(self, "_template_fingerprint", None):
+                return
+            self._template_fingerprint = key
+            self._template_generation = int(getattr(self, "_template_generation", 0) or 0) + 1
+        else:
+            self._template_generation = int(generation)
+            self._template_fingerprint = None
         self.template = normalize_renderer_template(tpl)
-        self._template_fingerprint = key
-        self._spectrum_peak_cache.clear()
+        should_clear = True if clear_peak_cache is None else bool(clear_peak_cache)
+        if should_clear:
+            self._spectrum_peak_cache.clear()
         self.update()
+
+    def apply_preview_patch(self, patch: dict) -> bool:
+        """REQ-P2.2: mutate live normalized template without re-normalize.
+
+        Supported shapes:
+          ``{"particlesSettings": {"opacity": …, "size": …}}``
+          ``{"layerIndex": int, "layer": {"glow"|"opacity"|"barWidth": …}}``
+          ``{"instanceIndex": int, "layerIndex": int, "layer": {...}}``
+
+        Returns True when the patch was applied (allowlisted). False → caller
+        must full-push.
+        """
+        if not isinstance(patch, dict) or not patch:
+            return False
+        applied = False
+        clear_peaks = False
+
+        ps_patch = patch.get("particlesSettings")
+        if isinstance(ps_patch, dict) and ps_patch:
+            allowed = {"opacity", "size"}
+            if set(ps_patch.keys()) - allowed:
+                return False
+            ps = self.template.get("particlesSettings")
+            if not isinstance(ps, dict):
+                ps = {}
+                self.template["particlesSettings"] = ps
+            if "opacity" in ps_patch:
+                from features.video.lib.preview_scrub_patch import clamp_particle_scrub_value
+
+                ps["opacity"] = clamp_particle_scrub_value("particlesOpacity", ps_patch["opacity"])
+                applied = True
+            if "size" in ps_patch:
+                from features.video.lib.preview_scrub_patch import clamp_particle_scrub_value
+
+                ps["size"] = clamp_particle_scrub_value("particlesSize", ps_patch["size"])
+                applied = True
+
+        layer_patch = patch.get("layer")
+        if isinstance(layer_patch, dict) and layer_patch:
+            from features.video.lib.preview_scrub_patch import (
+                PREVIEW_SCRUB_LAYER_KEYS,
+                clamp_layer_scrub_value,
+            )
+
+            if set(layer_patch.keys()) - PREVIEW_SCRUB_LAYER_KEYS:
+                return False
+            layer_index = int(patch.get("layerIndex", 0) or 0)
+            instance_index = patch.get("instanceIndex", None)
+
+            def _apply_into(layers_obj: object) -> bool:
+                if not isinstance(layers_obj, list) or not layers_obj:
+                    return False
+                idx = max(0, min(layer_index, len(layers_obj) - 1))
+                current = layers_obj[idx] if isinstance(layers_obj[idx], dict) else {}
+                updated = dict(current)
+                for key, raw in layer_patch.items():
+                    updated[key] = clamp_layer_scrub_value(key, raw)
+                layers_obj[idx] = updated
+                return True
+
+            layers = self.template.get("layers")
+            if isinstance(layers, list):
+                applied = _apply_into(layers) or applied
+            instances = self.template.get("spectrumInstances")
+            if isinstance(instances, list) and instances:
+                inst_i = (
+                    int(instance_index)
+                    if instance_index is not None
+                    else int(getattr(self, "_selected_spectrum_instance_index", 0) or 0)
+                )
+                inst_i = max(0, min(inst_i, len(instances) - 1))
+                inst = instances[inst_i] if isinstance(instances[inst_i], dict) else None
+                if isinstance(inst, dict):
+                    inst_layers = inst.get("layers")
+                    if isinstance(inst_layers, list):
+                        applied = _apply_into(inst_layers) or applied
+
+        if not applied:
+            return False
+        # Opacity/glow/size patches do not invalidate peak geometry (REQ-P2.4).
+        if clear_peaks:
+            self._spectrum_peak_cache.clear()
+        self._template_generation = int(getattr(self, "_template_generation", 0) or 0) + 1
+        self._template_fingerprint = None
+        self.update()
+        return True
+
+    def set_interactive_scrub(self, active: bool) -> None:
+        """REQ-P2.5: lower paint rate while dragging inspector sliders."""
+        want = bool(active)
+        if want == bool(getattr(self, "_interactive_scrub", False)):
+            return
+        self._interactive_scrub = want
+        try:
+            self.timer.setInterval(1000 // 20 if want else 1000 // 60)
+        except Exception:
+            pass
 
     def configure(self, config: PreviewConfig) -> None:
         """Apply a PreviewConfig DTO to set up the preview widget.
@@ -900,21 +1105,61 @@ class VideoSpectrumPreview(QOpenGLWidget):
             "fps": float(self._perf_fps),
             "frameCounter": int(self._frame_counter),
             "glReady": bool(getattr(self, "_gl_ready", False)),
+            "lastGlError": str(getattr(self, "_last_gl_error", "") or ""),
+            "bgPathSet": bool(str(getattr(self, "bg_path", "") or "").strip()),
+            "logoPathSet": bool(str(getattr(self, "logo_path", "") or "").strip()),
+            "bgTexSize": [
+                float(getattr(self, "_bg_tex_size", (0.0, 0.0))[0]),
+                float(getattr(self, "_bg_tex_size", (0.0, 0.0))[1]),
+            ],
+            "glInfo": dict(getattr(self, "_gl_info", {}) or {}),
+            "diagLog": "preview-gl-diag.log",
         }
 
     def preview_lifecycle_snapshot(self) -> dict:
+        last_error = str(getattr(self, "_last_gl_error", "") or "").strip()
         if not getattr(self, "_gl_ready", False):
+            if last_error:
+                return {
+                    "status": "error",
+                    "message": last_error,
+                    "lastGlError": last_error,
+                    "glInfo": dict(getattr(self, "_gl_info", {}) or {}),
+                }
             if self.audio_loading or self.analysis_loading:
                 return {"status": "initializing", "message": "Preview is loading audio analysis and GPU resources."}
             return {"status": "initializing", "message": "Preview GPU surface is initializing."}
+        if last_error and any(
+            token in last_error
+            for token in (
+                "initializeGL",
+                "texture upload",
+                "OpenGL context",
+                "makeCurrent",
+                "Background",
+                "Logo",
+            )
+        ):
+            return {
+                "status": "error",
+                "message": last_error,
+                "lastGlError": last_error,
+                "glInfo": dict(getattr(self, "_gl_info", {}) or {}),
+            }
         if str(self.audio_error or "").strip():
             return {"status": "error", "message": str(self.audio_error)}
         if not str(self.bg_path or "").strip() or not str(self.audio_path or "").strip():
             return {
                 "status": "fallback-active",
                 "message": "Attach a background image and preview MP3 for full stage validation.",
+                "lastGlError": last_error,
             }
-        return {"status": "running", "message": "GPU preview compositor is running."}
+        return {
+            "status": "running",
+            "message": "GPU preview compositor is running.",
+            "lastGlError": last_error,
+            "glInfo": dict(getattr(self, "_gl_info", {}) or {}),
+        }
 
     def _sync_export_overlay_geometry(self) -> None:
         rect = (0, 0, max(1, int(self.width())), max(1, int(self.height())))
@@ -1483,31 +1728,48 @@ class VideoSpectrumPreview(QOpenGLWidget):
         p = str(path or "").strip()
         if not p or not Path(p).exists():
             self.bg_path = ""
-            self._log(f"[{time.strftime('%H:%M:%S')}] Background cleared")
+            self._log("Background cleared")
             if self.ctx:
-                self.makeCurrent()
+                if not self._ensure_gl_current("load_background.clear"):
+                    return
                 if hasattr(self, "tex_bg"):
                     try:
                         self.tex_bg.release()
                     except Exception:
                         pass
-                self.tex_bg = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
-                self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
-                self._bg_tex_size = (1.0, 1.0)
+                try:
+                    self.tex_bg = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
+                    self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                    self._bg_tex_size = (1.0, 1.0)
+                except Exception as exc:
+                    self._set_gl_error(f"Background clear texture failed: {exc}")
             return
         self.bg_path = p
-        self._log(f"[{time.strftime('%H:%M:%S')}] Background selected: {p}")
-        if self.ctx:
-            self.makeCurrent()
+        self._log(f"Background selected: {p}")
+        if not self.ctx:
+            self._log("Background path stored; waiting for initializeGL to upload texture", level="warn")
+            return
+        try:
+            if not self._ensure_gl_current("load_background"):
+                return
             from PIL import Image
-            img = Image.open(p).convert('RGBA')
+
+            img = Image.open(p).convert("RGBA")
             arr = np.array(img, dtype=np.uint8)
             arr = np.flipud(arr)
-            if hasattr(self, 'tex_bg'):
-                self.tex_bg.release()
+            if hasattr(self, "tex_bg"):
+                try:
+                    self.tex_bg.release()
+                except Exception:
+                    pass
             self.tex_bg = self.ctx.texture((img.width, img.height), 4, arr.tobytes())
             self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
             self._bg_tex_size = (float(max(1, int(img.width))), float(max(1, int(img.height))))
+            if self._last_gl_error.startswith("Background"):
+                self._last_gl_error = ""
+            self._log(f"Background texture uploaded: {img.width}x{img.height} path={p}")
+        except Exception as exc:
+            self._set_gl_error(f"Background texture upload failed: {exc} path={p}")
 
     def load_logo(self, path):
         p = str(path or "").strip()
@@ -1515,31 +1777,48 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self.logo_path = ""
             self._logo_rgba_cache = None
             self._invalidate_logo_visible_radius_cache()
-            self._log(f"[{time.strftime('%H:%M:%S')}] Logo cleared")
+            self._log("Logo cleared")
             if self.ctx:
-                self.makeCurrent()
+                if not self._ensure_gl_current("load_logo.clear"):
+                    return
                 if hasattr(self, "tex_logo"):
                     try:
                         self.tex_logo.release()
                     except Exception:
                         pass
-                self.tex_logo = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
-                self.tex_logo.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                try:
+                    self.tex_logo = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
+                    self.tex_logo.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                except Exception as exc:
+                    self._set_gl_error(f"Logo clear texture failed: {exc}")
             return
         self.logo_path = p
-        self._log(f"[{time.strftime('%H:%M:%S')}] Logo selected: {p}")
-        if self.ctx:
-            self.makeCurrent()
+        self._log(f"Logo selected: {p}")
+        if not self.ctx:
+            self._log("Logo path stored; waiting for initializeGL to upload texture", level="warn")
+            return
+        try:
+            if not self._ensure_gl_current("load_logo"):
+                return
             from PIL import Image
-            img = Image.open(p).convert('RGBA')
+
+            img = Image.open(p).convert("RGBA")
             arr = np.array(img, dtype=np.uint8)
             arr = np.flipud(arr)
             self._logo_rgba_cache = arr
             self._invalidate_logo_visible_radius_cache()
-            if hasattr(self, 'tex_logo'):
-                self.tex_logo.release()
+            if hasattr(self, "tex_logo"):
+                try:
+                    self.tex_logo.release()
+                except Exception:
+                    pass
             self.tex_logo = self.ctx.texture((img.width, img.height), 4, arr.tobytes())
             self.tex_logo.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            if self._last_gl_error.startswith("Logo"):
+                self._last_gl_error = ""
+            self._log(f"Logo texture uploaded: {img.width}x{img.height} path={p}")
+        except Exception as exc:
+            self._set_gl_error(f"Logo texture upload failed: {exc} path={p}")
 
     def _ensure_text_texture(self, idx: int, overlay: dict, sf: float) -> tuple[any, tuple[int, int]]:
         if not self.ctx:
@@ -1629,11 +1908,18 @@ class VideoSpectrumPreview(QOpenGLWidget):
     def initializeGL(self):
         try:
             self._gl_ready = False
-            self._log(f"[{time.strftime('%H:%M:%S')}] initializeGL start")
-            self.makeCurrent()
+            self._last_gl_error = ""
+            self._log("initializeGL start")
+            if not self._ensure_gl_current("initializeGL"):
+                self._gl_ready = False
+                self.ctx = None
+                self._show_gl_failure_overlay(self._last_gl_error or "OpenGL context missing or invalid")
+                return
             moderngl.init_context(loader=_QtGLContextLoader(self.context()))
             self.ctx = moderngl.get_context()
-            self._log(f"[{time.strftime('%H:%M:%S')}] moderngl ctx: {getattr(self.ctx, 'version_code', None)} {getattr(self.ctx, 'info', None)}")
+            self._gl_info = format_gl_context_info(self.ctx)
+            info_bits = " ".join(f"{k}={v}" for k, v in self._gl_info.items())
+            self._log(f"moderngl ctx ready {info_bits}")
             self.prog_scene, self.prog_logo, self.prog_post, self.prog_lines, self.prog_points, self.prog_text = _compile(self.ctx)
             self.vao_quad_scene = _quad_vao(self.ctx, self.prog_scene)
             self.vao_quad_logo = _quad_vao(self.ctx, self.prog_logo)
@@ -1673,13 +1959,35 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self.ctx.enable(moderngl.PROGRAM_POINT_SIZE)
             self._blend_normal()
             self._gl_ready = True
-            self._log(f"[{time.strftime('%H:%M:%S')}] initializeGL ok (qt_fbo={int(self.defaultFramebufferObject())})")
+            self._hide_gl_failure_overlay()
+            if preview_hdr_bloom_enabled():
+                self._log("HDR bloom path enabled (default; set CAMXORA_PREVIEW_HDR_BLOOM=0 to disable)")
+            self._log(f"initializeGL ok (qt_fbo={int(self.defaultFramebufferObject())})")
         except Exception as e:
-            self._log(f"[{time.strftime('%H:%M:%S')}] Error in initializeGL: {e}")
+            self._gl_info = format_gl_context_info(getattr(self, "ctx", None))
+            self._set_gl_error(f"initializeGL failed: {e}")
             import traceback
             traceback.print_exc()
             self._gl_ready = False
             self.ctx = None
+            self._hdr_bloom = None
+            self._show_gl_failure_overlay(str(e))
+
+    def _ensure_hdr_bloom(self) -> PreviewHdrBloomPass | None:
+        if not self.ctx or not getattr(self, "_gl_ready", False):
+            return None
+        if self._hdr_bloom is None:
+            try:
+                self._hdr_bloom = PreviewHdrBloomPass(self.ctx)
+                self._log("HDR bloom pass compiled")
+            except Exception as exc:
+                self._log(f"HDR bloom init failed: {exc}", level="warn")
+                self._hdr_bloom = None
+        return self._hdr_bloom
+
+    def _hdr_bloom_params(self) -> tuple[float, float, float]:
+        """Return (strength, threshold, exposure) for the preview bloom path."""
+        return bloom_params_from_template(self.template if isinstance(self.template, dict) else {})
 
     def _blend_normal(self) -> None:
         """Standard alpha for RGB; keep framebuffer alpha opaque.
@@ -1710,8 +2018,44 @@ class VideoSpectrumPreview(QOpenGLWidget):
             moderngl.ONE,
         )
 
+    def _force_framebuffer_opaque_alpha(self) -> None:
+        """REQ-P0.4: keep Qt FBO alpha at 1 so translucent windows stay opaque.
+
+        Soft-glow draws can still leak alpha if a future pass forgets Alpha_Lock.
+        Clear alpha only (RGB untouched) without grabFramebuffer.
+        Skipped when export overlay short-circuits paintGL before drawing.
+
+        Important: do **not** use ``moderngl.Context.clear`` with a color mask.
+        ModernGL's clear path ignores the mask and wipes RGB to the clear color
+        (black preview with textures still uploading). Use raw GL colorMask+clear.
+        """
+        if not self.ctx or not getattr(self, "_gl_ready", False):
+            return
+        try:
+            self._use_qt_framebuffer()
+            from OpenGL import GL
+
+            GL.glColorMask(GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE, GL.GL_TRUE)
+            GL.glClearColor(0.0, 0.0, 0.0, 1.0)
+            GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+        except Exception:
+            pass
+        finally:
+            try:
+                from OpenGL import GL
+
+                GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
+            except Exception:
+                try:
+                    self.ctx.color_mask = (True, True, True, True)
+                except Exception:
+                    pass
+
     def resizeEvent(self, ev):
         self._sync_export_overlay_geometry()
+        label = getattr(self, "_gl_failure_label", None)
+        if label is not None and label.isVisible():
+            label.setGeometry(self.rect())
         super().resizeEvent(ev)
 
     def paintGL(self):
@@ -1720,11 +2064,49 @@ class VideoSpectrumPreview(QOpenGLWidget):
             if self._export_overlay_active:
                 return
             if not self.ctx or not getattr(self, "_gl_ready", False):
+                if self._frame_counter == 0:
+                    self._log(
+                        "paintGL skipped (gl not ready) "
+                        f"ctx={bool(self.ctx)} gl_ready={bool(getattr(self, '_gl_ready', False))} "
+                        f"last_error={getattr(self, '_last_gl_error', '') or 'none'}",
+                        level="warn",
+                    )
+                self._frame_counter += 1
+                if str(getattr(self, "_last_gl_error", "") or "").strip():
+                    self._show_gl_failure_overlay(self._last_gl_error)
                 return
-            self._use_qt_framebuffer()
+            if not self._use_qt_framebuffer():
+                # REQ-P1.3: do not draw into an unbound / wrong target.
+                self._frame_counter += 1
+                return
             self._frame_counter += 1
+            # REQ-P4.2: offscreen HDR bloom when flagged; skip during P2 scrub.
+            self._hdr_bloom_frame_active = False
+            use_hdr = (
+                preview_hdr_bloom_enabled()
+                and not bool(getattr(self, "_interactive_scrub", False))
+            )
+            if use_hdr:
+                hdr = self._ensure_hdr_bloom()
+                if hdr is not None:
+                    try:
+                        w0, h0, vw0, vh0 = self._frame_metrics()
+                        scene_fbo = hdr.begin_scene(vw0, vh0)
+                        scene_fbo.use()
+                        self._hdr_bloom_frame_active = True
+                    except Exception as exc:
+                        self._log(f"HDR bloom begin failed: {exc}", level="warn")
+                        self._hdr_bloom_frame_active = False
+                        if not self._use_qt_framebuffer():
+                            return
             if self._frame_counter in (1, 2, 3, 60, 120):
-                self._log(f"[{time.strftime('%H:%M:%S')}] paintGL frame={self._frame_counter} qt_fbo={int(self.defaultFramebufferObject())} size={self.width()}x{self.height()}")
+                self._log(
+                    f"paintGL frame={self._frame_counter} qt_fbo={int(self.defaultFramebufferObject())} "
+                    f"size={self.width()}x{self.height()} bg={bool(str(self.bg_path or '').strip())} "
+                    f"logo={bool(str(self.logo_path or '').strip())} "
+                    f"hdr_bloom={int(bool(self._hdr_bloom_frame_active))}",
+                    mirror_app_log=False,
+                )
             # Ensure viewport matches widget dimensions (device pixels on HiDPI).
             w, h, vw, vh = self._frame_metrics()
             self.ctx.viewport = (0, 0, vw, vh)
@@ -2243,11 +2625,11 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         pass_alpha = float(max(0.0, min(1.0, float(pass_cfg['alpha']) * float(v_alpha_mul))))
                         fill_circle_pass = bool(pass_cfg['fill_circle'])
                         if pass_cfg['is_glow']:
-                            self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                            self._blend_additive()
                         elif blend_mode in ('screen', 'add', 'lighten'):
-                            self.ctx.blend_func = moderngl.ADDITIVE_BLENDING
+                            self._blend_additive()
                         else:
-                            self.ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+                            self._blend_normal()
                         val_arr = (sampled_fft * pass_spike_height_px).astype(np.float32)
                         if curved and mirrored and ring_close_style:
                             val_arr = np.concatenate([val_arr, val_arr[:1]])
@@ -2611,12 +2993,38 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     self.prog_text["text_opacity"].value = float(max(0.0, min(1.0, draw_opacity)))
                     self.prog_text["reveal"].value = float(max(0.0, min(1.0, reveal)))
                     self.vao_quad_text.render(mode=moderngl.TRIANGLE_STRIP)
+            # REQ-P4.2: bloom + tonemap into Qt FBO (opaque alpha in shader).
+            if self._hdr_bloom_frame_active and self._hdr_bloom is not None:
+                if not self._use_qt_framebuffer():
+                    self._hdr_bloom_frame_active = False
+                else:
+                    strength, threshold, exposure = self._hdr_bloom_params()
+                    screen = getattr(self, "_screen_fbo", None)
+                    if screen is None:
+                        screen = self.ctx.detect_framebuffer(int(self.defaultFramebufferObject()))
+                        self._screen_fbo = screen
+                    _, _, vw_r, vh_r = self._frame_metrics()
+                    self._hdr_bloom.resolve(
+                        screen_fbo=screen,
+                        viewport=(0, 0, vw_r, vh_r),
+                        bloom_strength=strength,
+                        threshold=threshold,
+                        exposure=exposure,
+                    )
+                    self._hdr_bloom_frame_active = False
         except Exception as e:
-            self._log(f"[{time.strftime('%H:%M:%S')}] Error in paintGL: {e}")
+            self._hdr_bloom_frame_active = False
+            self._set_gl_error(f"paintGL failed: {e}")
             import traceback
             traceback.print_exc()
         finally:
             # Never grabFramebuffer here — it stalls GPU every few seconds.
+            if (
+                not self._export_overlay_active
+                and self.ctx is not None
+                and getattr(self, "_gl_ready", False)
+            ):
+                self._force_framebuffer_opaque_alpha()
             elapsed_ms = max(0.0, (time.perf_counter() - paint_started) * 1000.0)
             if elapsed_ms > 0:
                 self._perf_frame_ms = elapsed_ms
@@ -2628,8 +3036,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 if (now_h - last_h) >= 1.0:
                     self._last_hitch_log_at = now_h
                     self._log(
-                        f"[{time.strftime('%H:%M:%S')}] preview hitch frame={self._frame_counter} "
-                        f"{elapsed_ms:.1f}ms playing={bool(getattr(self, 'audio_playing', False))}"
+                        f"preview hitch frame={self._frame_counter} "
+                        f"{elapsed_ms:.1f}ms playing={bool(getattr(self, 'audio_playing', False))}",
+                        level="warn",
+                        mirror_app_log=False,
                     )
                 self._perf_last_paint_at = time.perf_counter()
 

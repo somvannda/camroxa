@@ -1902,6 +1902,14 @@ class MusicView(QWidget):
         if not self._composer.from_date or not self._composer.to_date:
             self._generation_preflight = None
             return
+        if get_inclusive_day_span(self._composer.from_date, self._composer.to_date) is None:
+            # Avoid 422 from API when saved/edited dates are inverted.
+            self._generation_preflight = MusicPlanPreflightResponse(
+                can_generate=False,
+                reason="Choose a valid inclusive date range (To must be on or after From).",
+            )
+            self._refresh_presentation()
+            return
         payload = MusicPlanPreflightRequest(
             ok_profile_ids=primary_ids,
             alt_profile_ids=secondary_ids,

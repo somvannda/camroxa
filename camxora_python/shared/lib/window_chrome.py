@@ -6,6 +6,11 @@ opaque ``#window_surface``. We deliberately do **not** use ``setMask()`` or
 hit-testing on some Windows DPI setups (clicks land offset from painted
 controls). Maximized mode already cleared the mask historically; windowed mode
 now matches that hit-test-safe path.
+
+Note: older builds kept translucency for rounded corner compositing and relied
+on preview Alpha_Lock (REQ-P0) so ``QOpenGLWidget`` FBO alpha would not show
+the desktop. 1.2.0 switches to an opaque HWND (REQ-P3.2) which also removes
+that transparency side effect for the shell.
 """
 
 from __future__ import annotations
