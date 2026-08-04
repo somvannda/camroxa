@@ -13,6 +13,7 @@
 > - [`docs/changelog/2026-08-04-preview-opaque-alpha-p0.md`](changelog/2026-08-04-preview-opaque-alpha-p0.md) (**P0 implementation**)  
 > - [`docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`](changelog/2026-08-04-preview-p1-diag-failure-ux.md) (**P1 implementation**)  
 > - [`docs/changelog/2026-08-04-preview-p2-interactive-perf.md`](changelog/2026-08-04-preview-p2-interactive-perf.md) (**P2 implementation**)  
+> - [`docs/changelog/2026-08-04-preview-p3-chrome-audit.md`](changelog/2026-08-04-preview-p3-chrome-audit.md) (**P3 audit**)  
 > - [`docs/GPU_EXPORT_PERFORMANCE_REQUIREMENTS.md`](GPU_EXPORT_PERFORMANCE_REQUIREMENTS.md)  
 > **Last updated:** 2026-08-04
 
@@ -71,10 +72,12 @@ Agents and implementers often deliver “related work” that misses the actual 
 | Root window is frameless + **`WA_TranslucentBackground`** | `camxora_python/shared/lib/window_chrome.py` → `configure_rounded_window` |
 | `QMainWindow` background is transparent; opaque shell is `#window_surface` | `camxora_python/shared/themes/deep_blue.py` |
 | Alpha-preserving helpers exist | `VideoSpectrumPreview._blend_normal` / `_blend_additive` (RGB blend + alpha `ZERO, ONE`) |
-| Spectrum glow still overwrites with 2-arg blends | `preview_widget.py` ~2245–2250: `moderngl.ADDITIVE_BLENDING` / `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` |
-| Particles overwrite blends | `gpu_render.py` → `_render_particle_styled_quads` |
-| Lightning overwrite blends | `features/video/lib/lightning_render.py` |
+| Spectrum glow still overwrites with 2-arg blends | ~~`preview_widget.py` ~2245–2250~~ **fixed in P0** (`_blend_additive` / `_blend_normal`) |
+| Particles overwrite blends | ~~`gpu_render.py`~~ **fixed in P0** (`blend_rgb_*_opaque_alpha`) |
+| Lightning overwrite blends | ~~`lightning_render.py`~~ **fixed in P0** |
 | A correct call-site patch existed inside playlist port `856140e`, then was **lost** in ship-cut revert `1a68a91` | See `docs/changelog/2026-08-04-desktop-1.0.19-ship-cut.md` |
+
+**P3 audit (2026-08-04):** Keep `WA_TranslucentBackground` for rounded frameless chrome. Opaque backplate remains `#window_surface`. See-through is addressed by P0 Alpha_Lock, not by removing translucency. Full write-up: [`docs/changelog/2026-08-04-preview-p3-chrome-audit.md`](changelog/2026-08-04-preview-p3-chrome-audit.md). P3.2 (opaque HWND / DWM-only corners) deferred until a post-P0 GPU reproduction exists.
 
 **Mechanism:** Soft glow / additive / translucent draws write **framebuffer alpha &lt; 1**. On a translucent top-level HWND, Qt/Windows treat that alpha as **real window transparency** → desktop shows through the preview.
 

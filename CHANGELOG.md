@@ -33,6 +33,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
   template without a full normalize each tick; scrub runs at 20 FPS and
   canonical-flushes when idle. See
   `docs/changelog/2026-08-04-preview-p2-interactive-perf.md`.
+- **Frameless rounded chrome keeps `WA_TranslucentBackground` by design.**
+  Audit confirms `#window_surface` is the opaque backplate; preview
+  see-through is handled by P0 Alpha_Lock, not by removing window
+  translucency. Safer DWM-only corners deferred. See
+  `docs/changelog/2026-08-04-preview-p3-chrome-audit.md`.
 
 ## [1.0.19] - 2026-08-04
 
