@@ -120,6 +120,7 @@ def _build_preview_guidance(
                 "Use Remount Preview to retry GPU initialization.",
                 "Refresh Workspace if assets were changed immediately before the failure.",
                 "Copy Diagnostics when the same startup error keeps returning.",
+                "Send %LOCALAPPDATA%\\Camxora\\logs\\preview-gl-diag.log with support reports.",
             ),
             tone="warning",
             visible=True,

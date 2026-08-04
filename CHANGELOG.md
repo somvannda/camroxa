@@ -20,6 +20,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
   under the frameless translucent window. Standalone Alpha_Lock hotfix — playlist
   glass is **not** included. See
   `docs/changelog/2026-08-04-preview-opaque-alpha-p0.md`.
+- **Preview GL diagnostics were invisible on user machines.** OpenGL init /
+  background / logo upload breadcrumbs now write to
+  `%LOCALAPPDATA%\Camxora\logs\preview-gl-diag.log` and important lines also
+  appear in the daily `camxora-*.log` as `[preview-gl]`. Copy Diagnostics
+  includes `glReady` / `lastGlError` / GPU info. Init/FBO failures show an
+  opaque error panel (no desktop hole). See
+  `docs/changelog/2026-08-03-preview-gl-diag-logging.md` and
+  `docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`.
 
 ## [1.0.19] - 2026-08-04
 

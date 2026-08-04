@@ -41,7 +41,26 @@ def test_build_video_workspace_diagnostics_marks_unsaved_template() -> None:
     assert "16.7 ms" in model.performance_label
 
 
-def test_build_video_workspace_diagnostics_warns_when_gpu_unavailable() -> None:
+def test_build_video_workspace_diagnostics_error_points_at_preview_gl_log() -> None:
+    model = build_video_workspace_diagnostics(
+        workspace=VideoWorkspaceState(export=VideoExportState()),
+        template_name_draft="Template",
+        workspace_dirty=False,
+        draft_dirty_map={domain: False for domain in ("spectrum", "background", "logo", "particles", "text")},
+        active_domain_tab="background",
+        saving=False,
+        playback=VideoPlaybackState(),
+        preview_track_path="",
+        pipeline_branch="long",
+        pipeline_inputs=None,
+        preview_lifecycle_status="error",
+        preview_lifecycle_message="initializeGL failed: no context",
+        preview_remount_pending=False,
+        gpu_preview_available=True,
+    )
+    assert model.preview_needs_attention is True
+    assert any("preview-gl-diag.log" in item for item in model.preview_guidance_items)
+
     model = build_video_workspace_diagnostics(
         workspace=VideoWorkspaceState(export=VideoExportState()),
         template_name_draft="Template",
