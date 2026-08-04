@@ -72,3 +72,44 @@ def test_particle_quad_path_uses_opaque_alpha_helpers() -> None:
     assert "blend_rgb_additive_opaque_alpha" in snippet
     assert "blend_rgb_normal_opaque_alpha" in snippet
     assert "moderngl.ADDITIVE_BLENDING" not in snippet
+
+
+def test_force_opaque_alpha_does_not_use_moderngl_masked_clear() -> None:
+    """moderngl Context.clear ignores color_mask and wiped RGB → black preview."""
+    src = Path(__file__).resolve().parents[1] / "visualizer" / "preview_widget.py"
+    text = src.read_text(encoding="utf-8")
+    start = text.find("def _force_framebuffer_opaque_alpha")
+    assert start > 0
+    end = text.find("\n    def ", start + 1)
+    body = text[start:end]
+    assert "glColorMask" in body
+    assert "glClear(GL.GL_COLOR_BUFFER_BIT)" in body or "glClear(GL_COLOR_BUFFER_BIT)" in body
+    assert "self.ctx.clear(" not in body
+
+
+def test_moderngl_masked_clear_wipes_rgb_regression_guard() -> None:
+    """Document driver/library behavior that caused black live preview."""
+    import numpy as np
+    from OpenGL import GL
+
+    ctx = moderngl.create_standalone_context()
+    fbo = ctx.framebuffer(color_attachments=[ctx.texture((2, 2), 4)])
+    fbo.use()
+    ctx.clear(1.0, 0.0, 0.0, 0.25)
+    before = np.frombuffer(fbo.read(components=4), dtype=np.uint8).reshape(2, 2, 4)[0, 0]
+
+    ctx.color_mask = (False, False, False, True)
+    ctx.clear(0.0, 0.0, 0.0, 1.0)
+    ctx.color_mask = (True, True, True, True)
+    after_mgl = np.frombuffer(fbo.read(components=4), dtype=np.uint8).reshape(2, 2, 4)[0, 0]
+    # ModernGL clear does not honor the mask — RGB becomes clear color.
+    assert list(after_mgl[:3]) != list(before[:3])
+
+    ctx.clear(1.0, 0.0, 0.0, 0.25)
+    GL.glColorMask(GL.GL_FALSE, GL.GL_FALSE, GL.GL_FALSE, GL.GL_TRUE)
+    GL.glClearColor(0.0, 0.0, 0.0, 1.0)
+    GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+    GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
+    after_gl = np.frombuffer(fbo.read(components=4), dtype=np.uint8).reshape(2, 2, 4)[0, 0]
+    assert after_gl[0] == 255 and after_gl[1] == 0 and after_gl[2] == 0
+    assert after_gl[3] == 255

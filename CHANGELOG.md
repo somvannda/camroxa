@@ -11,21 +11,40 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Export HDR bloom parity.** Same flagged bloom/tonemap path as live preview
-  (`CAMXORA_PREVIEW_HDR_BLOOM=1`); flag off keeps legacy export post. See
-  `docs/changelog/2026-08-04-preview-p4-export-parity.md`.
-- **Preview HDR bloom path (flagged).** Offscreen threshold / blur pyramid /
-  tonemap into the Qt preview FBO with opaque alpha. Default off
-  (`CAMXORA_PREVIEW_HDR_BLOOM=0`). See
-  `docs/changelog/2026-08-04-preview-p4-hdr-bloom.md`.
-- **HDR bloom design (preview/export).** Planned float intermediate + bloom +
-  tonemap pipeline documented; P4.2 implements preview behind the flag. See
-  `docs/PREVIEW_HDR_BLOOM_DESIGN.md`.
-
 ### Changed
 
 ### Fixed
 
+## [1.1.0] - 2026-08-04
+
+### Added
+
+- **HDR bloom on by default.** Preview and export use the HDR bloom/tonemap path
+  unless `CAMXORA_PREVIEW_HDR_BLOOM=0`. See
+  `docs/changelog/2026-08-04-desktop-1.1.0.md`.
+- **Export HDR bloom parity.** Same bloom/tonemap path as live preview. See
+  `docs/changelog/2026-08-04-preview-p4-export-parity.md`.
+- **Preview HDR bloom path.** Offscreen threshold / blur pyramid / tonemap into
+  the Qt preview FBO with opaque alpha. See
+  `docs/changelog/2026-08-04-preview-p4-hdr-bloom.md`.
+
+### Fixed
+
+- **Export not WYSIWYG vs Video preview.** Spectrum instances (style/position/
+  attach), live draft style tweaks, and lightning flash undersampling now flow
+  into export; Logo **Reset Center** restored. See
+  `docs/changelog/2026-08-04-export-wysiwyg-spectrum-logo-parity.md`.
+- **Black live Video preview after P0 Alpha_Lock.** End-of-frame alpha force used
+  `moderngl.Context.clear` with a color mask; ModernGL ignores the mask and wiped
+  RGB to black every frame (textures still uploaded). Now uses raw GL
+  `glColorMask`+`glClear`. See
+  `docs/changelog/2026-08-04-preview-black-moderngl-alpha-clear.md`.
+- **Video export GLSL `noise2` crash on some GPUs.** Smoke shader helper renamed
+  to `smoke_hash_noise2` so driver-reserved `noise2` overloads no longer abort
+  compile. Failed-export refunds clamp `reason` to 500 chars (desktop + API) so
+  traceback dumps no longer block allowance restore. Music preflight skips the
+  API when From/To dates are inverted. See
+  `docs/changelog/2026-08-04-export-glsl-noise2-and-refund-clamp.md`.
 - **Preview see-through on some GPUs.** Soft glow / additive spectrum, particle,
   and lightning draws no longer punch alpha holes in the Qt OpenGL framebuffer
   under the frameless translucent window. Standalone Alpha_Lock hotfix — playlist

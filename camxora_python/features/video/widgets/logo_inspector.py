@@ -40,6 +40,7 @@ class LogoInspector(QWidget):
     spectrum_attach_toggle_requested = Signal(bool)
     spectrum_logo_gap_requested = Signal(float)
     select_logo_requested = Signal()
+    logo_reset_center_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -147,9 +148,26 @@ class LogoInspector(QWidget):
         )
         self._attach_toggle.toggled.connect(self.spectrum_attach_toggle_requested.emit)
         section.add_widget(self._attach_toggle)
+
+        reset_row = QHBoxLayout()
+        reset_row.setContentsMargins(0, 0, 0, 0)
+        reset_label = QLabel("Logo Position")
+        reset_label.setObjectName(SUBTITLE_LABEL_ID)
+        reset_btn = QPushButton("Reset Center")
+        reset_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        reset_btn.setToolTip("Center the logo in the preview (and spectrum when Attach Spectrum to Logo is on).")
+        reset_btn.clicked.connect(self.logo_reset_center_requested.emit)
+        reset_row.addWidget(reset_label)
+        reset_row.addStretch()
+        reset_row.addWidget(reset_btn)
+        reset_host = QWidget()
+        reset_host.setLayout(reset_row)
+        section.add_widget(reset_host)
+
         section.add_widget(
             note_box(
                 "On the Logo tab, drag the preview to move the logo. "
+                "Reset Center puts the logo back in the middle of the frame. "
                 "Off = free logo + free spectrum. "
                 "On = spectrum follows the logo (shared position)."
             )
