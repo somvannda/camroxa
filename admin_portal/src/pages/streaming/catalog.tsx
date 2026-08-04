@@ -330,11 +330,14 @@ export default function StreamingCatalogPage() {
                               variant="outline"
                               disabled={republishTrack.isPending}
                               onClick={() =>
-                                republishTrack.mutate(track.id, {
+                                republishTrack.mutate(
+                                  { trackId: track.id },
+                                  {
                                   onSuccess: () => toast({ title: 'Track published' }),
                                   onError: () =>
                                     toast({ title: 'Publish failed', variant: 'destructive' }),
-                                })
+                                  },
+                                )
                               }
                             >
                               Publish
@@ -485,14 +488,17 @@ export default function StreamingCatalogPage() {
                                 republishAlbum.isPending || album.published_track_count === 0
                               }
                               onClick={() =>
-                                republishAlbum.mutate(album.id, {
+                                republishAlbum.mutate(
+                                  { albumId: album.id },
+                                  {
                                   onSuccess: () => toast({ title: 'Album published' }),
                                   onError: () =>
                                     toast({
                                       title: 'Publish failed — album needs at least one published track',
                                       variant: 'destructive',
                                     }),
-                                })
+                                  },
+                                )
                               }
                             >
                               Publish

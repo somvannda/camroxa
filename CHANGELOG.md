@@ -17,6 +17,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [1.0.19] - 2026-08-04
 
+### Fixed
+
+- **Export crashed on older NVIDIA drivers.** Bundled FFmpeg NVENC needs driver
+  570+ (API 13.0). When the installed driver is older, export now probes NVENC
+  first and falls back to software encode (libx264) instead of failing with
+  `BrokenPipeError` / “nvenc API version”. See
+  `docs/changelog/2026-08-04-export-nvenc-driver-fallback.md`.
+
 ### Changed
 
 - Ship cut: **DistroKid / WAV automation** and **playlist glass polish** are

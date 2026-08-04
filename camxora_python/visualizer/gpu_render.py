@@ -2237,9 +2237,15 @@ def _start_ffmpeg(
     else:
         x264_preset = "veryfast"
         x264_crf = "20"
+    from visualizer.nvenc_capability import (
+        nvenc_error_indicates_unavailable,
+        probe_h264_nvenc,
+        rewrite_nvenc_cmd_to_x264,
+    )
     from visualizer.readback import pipe_frame_byte_size, pipe_needs_cpu_pack, yuv_pipe_color_range
 
     color_range = yuv_pipe_color_range() if pipe_needs_cpu_pack(pipe_fmt) else "pc"
+    use_nvenc = probe_h264_nvenc(ffmpeg_path)
     # Deeper demux queue reduces stdin back-pressure when pack/write outpaces NVENC briefly.
     cmd: list[str] = [
         ffmpeg_path,
@@ -2271,7 +2277,23 @@ def _start_ffmpeg(
     ]
     if pipe_fmt == "rgba":
         cmd += ["-vf", "scale=in_range=pc:out_range=pc"]
-    cmd += build_nvenc_export_args(mode, pipe_pix_fmt=pipe_fmt, color_range=color_range)
+    if use_nvenc:
+        cmd += build_nvenc_export_args(mode, pipe_pix_fmt=pipe_fmt, color_range=color_range)
+        video_codec = "h264_nvenc"
+    else:
+        cmd += [
+            "-c:v",
+            "libx264",
+            "-preset",
+            x264_preset,
+            "-crf",
+            x264_crf,
+            "-color_range",
+            color_range,
+            "-pix_fmt",
+            "yuv420p",
+        ]
+        video_codec = "libx264"
     cmd += [
         "-c:a",
         "aac",
@@ -2285,32 +2307,32 @@ def _start_ffmpeg(
     _stdin_buf = max(1024 * 1024, pipe_frame_byte_size(w, h, pipe_fmt))
     enc = popen_hidden(cmd, stdin=subprocess.PIPE, stderr=err_file, bufsize=_stdin_buf)
     time.sleep(0.2)
-    video_codec = "h264_nvenc"
-    if enc.poll() is not None:
+    # Delayed NVENC open failures: process may exit after spawn, or leave markers in stderr.
+    if video_codec == "h264_nvenc":
         err_file.seek(0)
         err_txt = err_file.read()
-        cmd2 = cmd[:]
-        cmd2[cmd2.index("h264_nvenc")] = "libx264"
-        for flag in ("-cq", "-rc", "-tune", "-zerolatency", "-bf"):
-            while flag in cmd2:
-                i = cmd2.index(flag)
-                del cmd2[i : i + 2]
-        if "-preset" in cmd2:
-            i = cmd2.index("-preset")
-            cmd2[i + 1] = x264_preset
-        if "-crf" not in cmd2:
-            cmd2.insert(cmd2.index("-pix_fmt"), "-crf")
-            cmd2.insert(cmd2.index("-pix_fmt") + 1, x264_crf)
-        err_file.seek(0)
-        err_file.truncate()
-        enc = popen_hidden(cmd2, stdin=subprocess.PIPE, stderr=err_file, bufsize=_stdin_buf)
-        video_codec = "libx264"
-        time.sleep(0.2)
-        if enc.poll() is not None:
+        need_fallback = enc.poll() is not None or nvenc_error_indicates_unavailable(err_txt)
+        if need_fallback:
+            try:
+                if enc.poll() is None:
+                    enc.kill()
+            except OSError:
+                pass
+            cmd2 = rewrite_nvenc_cmd_to_x264(cmd, x264_preset=x264_preset, x264_crf=x264_crf)
             err_file.seek(0)
-            err_txt2 = err_file.read()
-            raise RuntimeError(err_txt2.strip() or "FFmpeg failed to start")
-    
+            err_file.truncate()
+            enc = popen_hidden(cmd2, stdin=subprocess.PIPE, stderr=err_file, bufsize=_stdin_buf)
+            video_codec = "libx264"
+            time.sleep(0.2)
+            if enc.poll() is not None:
+                err_file.seek(0)
+                err_txt2 = err_file.read()
+                raise RuntimeError(err_txt2.strip() or "FFmpeg failed to start")
+    elif enc.poll() is not None:
+        err_file.seek(0)
+        err_txt2 = err_file.read()
+        raise RuntimeError(err_txt2.strip() or "FFmpeg failed to start")
+
     # attach err_file to enc so we can close/read it later
     enc._err_file = err_file
     enc._pipe_pix_fmt = pipe_fmt
@@ -2865,6 +2887,19 @@ def run_gpu_render(
                         err_txt = enc._err_file.read()
                     else:
                         err_txt = ""
+                    from visualizer.nvenc_capability import (
+                        mark_nvenc_unavailable,
+                        nvenc_error_indicates_unavailable,
+                    )
+
+                    if video_codec == "h264_nvenc" and nvenc_error_indicates_unavailable(err_txt):
+                        mark_nvenc_unavailable(opts.ffmpeg_path)
+                        raise RuntimeError(
+                            "NVIDIA hardware encode (NVENC) is unavailable on this PC "
+                            "(driver too old for the bundled FFmpeg, or NVENC not supported). "
+                            "Camxora will use software encode (x264) on the next try. "
+                            f"Details: {err_txt.strip() or e}"
+                        ) from e
                     raise RuntimeError(f"FFmpeg pipe closed unexpectedly: {err_txt} (OS Error: {e})")
 
             codec_label = export_video_codec_label(video_codec)
