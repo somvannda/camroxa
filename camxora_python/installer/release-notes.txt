@@ -1,37 +1,32 @@
-﻿Camxora 1.2.0 - Windowed UI click fix
-Date: 2026-08-04
+﻿Camxora 1.2.1 - Ship-safe preview (HDR bloom off)
+Date: 2026-08-05
 
 What's new
 ----------
-- Windowed mode: dropdowns, calendars, scrollbars, and buttons click where they
-  look again (hit-testing no longer offset from painted controls)
-- Keep the custom rounded header; rounding now uses Windows DWM + QSS on an
-  opaque shell instead of a translucent window mask
-- Maximized mode was already fine; windowed mode now matches that behavior
+- Preview HDR bloom is **off by default** again (same look as before 1.1.0
+  CapCut bloom). Fixes missing particles, missing stage logo, spectrum white
+  haze, and ugly lightning corona that appeared when bloom was default-on
+- Keep the 1.2.0 windowed click / dropdown hit-test fix
+- Optional: set CAMXORA_PREVIEW_HDR_BLOOM=1 to re-enable CapCut-style bloom
+  (experimental until composite order is fixed)
 
-Also included (from 1.1.0)
---------------------------
-- Real HDR bloom on by default for preview and export (set
-  CAMXORA_PREVIEW_HDR_BLOOM=0 to force the legacy glow path)
-- Export matches the live Video preview (spectrum instances, live draft
-  style/position, lightning flash undersampling)
-- Logo inspector: Reset Center restored
-- Fixes black live preview after Alpha_Lock (ModernGL alpha clear wipe)
-- Fixes GPU export crash on some drivers (GLSL smoke_hash_noise2)
-- Failed-export refunds clamp reason to 500 chars; music preflight skips
-  inverted From/To dates
-- Includes 1.0.20 Raise Scroll import fix and the P0–P4.3 preview stack
+Also included
+-------------
+- 1.2.0 windowed UI click hit-test fix (opaque shell, DWM/QSS rounding)
+- Export WYSIWYG spectrum/logo/lightning parity (from 1.1.0)
+- Preview Alpha_Lock / GL diagnostics / Raise Scroll import fix
 - Per-device media folders, Spectrum Save / Row Width, NVENC→x264 fallback
 
 Not included in this build
 --------------------------
 - DistroKid automation / WAV add-on (kept on a separate branch until ready)
 - Playlist glass polish (kept out until ready)
+- Full HDR bloom composite fix (particles/logo after resolve) — coming next
 
 Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.2.0.exe
+- Installer file: CamxoraSetup-1.2.1.exe
 - Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
   Camxora to use NVENC again

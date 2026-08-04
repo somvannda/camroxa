@@ -1961,7 +1961,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self._gl_ready = True
             self._hide_gl_failure_overlay()
             if preview_hdr_bloom_enabled():
-                self._log("HDR bloom path enabled (default; set CAMXORA_PREVIEW_HDR_BLOOM=0 to disable)")
+                self._log("HDR bloom path enabled (CAMXORA_PREVIEW_HDR_BLOOM=1)")
             self._log(f"initializeGL ok (qt_fbo={int(self.defaultFramebufferObject())})")
         except Exception as e:
             self._gl_info = format_gl_context_info(getattr(self, "ctx", None))

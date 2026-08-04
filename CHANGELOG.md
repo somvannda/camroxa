@@ -15,6 +15,20 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.2.1] - 2026-08-05
+
+### Fixed
+
+- **Preview HDR bloom off by default (ship-safe).** 1.1.0/1.2.0 default-on bloom
+  stacked with template soft-glow and wiped particles/logo; spectrum haze and
+  lightning corona looked wrong. Unset `CAMXORA_PREVIEW_HDR_BLOOM` now uses the
+  legacy glow path; set `=1` to opt in. See
+  `docs/changelog/2026-08-05-desktop-1.2.1-hdr-off.md`.
+
+### Changed
+
+- Desktop app version stamp **1.2.1** / `CamxoraSetup-1.2.1.exe`.
+
 ## [1.2.0] - 2026-08-04
 
 ### Fixed
