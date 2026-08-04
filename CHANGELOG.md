@@ -11,8 +11,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Preview HDR bloom path (flagged).** Offscreen threshold / blur pyramid /
+  tonemap into the Qt preview FBO with opaque alpha. Default off
+  (`CAMXORA_PREVIEW_HDR_BLOOM=0`). See
+  `docs/changelog/2026-08-04-preview-p4-hdr-bloom.md`.
 - **HDR bloom design (preview/export).** Planned float intermediate + bloom +
-  tonemap pipeline documented; implementation gated to P4.2+. See
+  tonemap pipeline documented; P4.2 implements preview behind the flag. See
   `docs/PREVIEW_HDR_BLOOM_DESIGN.md`.
 
 ### Changed

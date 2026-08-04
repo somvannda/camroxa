@@ -27,6 +27,7 @@ from visualizer.gpu_render import (
     ParticleSystem,
     ParticleConfig,
 )
+from visualizer.hdr_bloom import PreviewHdrBloomPass, preview_hdr_bloom_enabled
 from visualizer._spectrum_fast import (
     build_contour_wave_strips,
     build_solid_band_strip_vertices,
@@ -383,6 +384,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._template_fingerprint = None
         self._template_generation = 0
         self._interactive_scrub = False
+        self._hdr_bloom: PreviewHdrBloomPass | None = None
+        self._hdr_bloom_frame_active = False
         self._log("SpectrumPreview init")
 
     def _frame_metrics(self) -> tuple[int, int, int, int]:
@@ -1953,6 +1956,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self._blend_normal()
             self._gl_ready = True
             self._hide_gl_failure_overlay()
+            if preview_hdr_bloom_enabled():
+                self._log("HDR bloom path available (CAMXORA_PREVIEW_HDR_BLOOM=1)")
             self._log(f"initializeGL ok (qt_fbo={int(self.defaultFramebufferObject())})")
         except Exception as e:
             self._gl_info = format_gl_context_info(getattr(self, "ctx", None))
@@ -1961,7 +1966,34 @@ class VideoSpectrumPreview(QOpenGLWidget):
             traceback.print_exc()
             self._gl_ready = False
             self.ctx = None
+            self._hdr_bloom = None
             self._show_gl_failure_overlay(str(e))
+
+    def _ensure_hdr_bloom(self) -> PreviewHdrBloomPass | None:
+        if not self.ctx or not getattr(self, "_gl_ready", False):
+            return None
+        if self._hdr_bloom is None:
+            try:
+                self._hdr_bloom = PreviewHdrBloomPass(self.ctx)
+                self._log("HDR bloom pass compiled")
+            except Exception as exc:
+                self._log(f"HDR bloom init failed: {exc}", level="warn")
+                self._hdr_bloom = None
+        return self._hdr_bloom
+
+    def _hdr_bloom_params(self) -> tuple[float, float, float]:
+        """Return (strength, threshold, exposure) for the preview bloom path."""
+        effects = self.template.get("effects") if isinstance(self.template.get("effects"), dict) else {}
+        bloom = effects.get("bloom") if isinstance(effects.get("bloom"), dict) else {}
+        strength = float(bloom.get("strength", 0.85) or 0.85)
+        opacity = float(bloom.get("opacity", 0.9) or 0.9)
+        threshold = float(bloom.get("threshold", 0.65) or 0.65)
+        strength = max(0.0, min(3.0, strength * max(0.0, min(1.0, opacity))))
+        # Flag on with template bloom disabled still gets a gentle post for shine.
+        if bloom.get("enabled") is False:
+            strength = min(strength, 0.45)
+        exposure = 1.05
+        return strength, max(0.0, min(1.0, threshold)), exposure
 
     def _blend_normal(self) -> None:
         """Standard alpha for RGB; keep framebuffer alpha opaque.
@@ -2055,11 +2087,31 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 self._frame_counter += 1
                 return
             self._frame_counter += 1
+            # REQ-P4.2: offscreen HDR bloom when flagged; skip during P2 scrub.
+            self._hdr_bloom_frame_active = False
+            use_hdr = (
+                preview_hdr_bloom_enabled()
+                and not bool(getattr(self, "_interactive_scrub", False))
+            )
+            if use_hdr:
+                hdr = self._ensure_hdr_bloom()
+                if hdr is not None:
+                    try:
+                        w0, h0, vw0, vh0 = self._frame_metrics()
+                        scene_fbo = hdr.begin_scene(vw0, vh0)
+                        scene_fbo.use()
+                        self._hdr_bloom_frame_active = True
+                    except Exception as exc:
+                        self._log(f"HDR bloom begin failed: {exc}", level="warn")
+                        self._hdr_bloom_frame_active = False
+                        if not self._use_qt_framebuffer():
+                            return
             if self._frame_counter in (1, 2, 3, 60, 120):
                 self._log(
                     f"paintGL frame={self._frame_counter} qt_fbo={int(self.defaultFramebufferObject())} "
                     f"size={self.width()}x{self.height()} bg={bool(str(self.bg_path or '').strip())} "
-                    f"logo={bool(str(self.logo_path or '').strip())}",
+                    f"logo={bool(str(self.logo_path or '').strip())} "
+                    f"hdr_bloom={int(bool(self._hdr_bloom_frame_active))}",
                     mirror_app_log=False,
                 )
             # Ensure viewport matches widget dimensions (device pixels on HiDPI).
@@ -2948,7 +3000,27 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     self.prog_text["text_opacity"].value = float(max(0.0, min(1.0, draw_opacity)))
                     self.prog_text["reveal"].value = float(max(0.0, min(1.0, reveal)))
                     self.vao_quad_text.render(mode=moderngl.TRIANGLE_STRIP)
+            # REQ-P4.2: bloom + tonemap into Qt FBO (opaque alpha in shader).
+            if self._hdr_bloom_frame_active and self._hdr_bloom is not None:
+                if not self._use_qt_framebuffer():
+                    self._hdr_bloom_frame_active = False
+                else:
+                    strength, threshold, exposure = self._hdr_bloom_params()
+                    screen = getattr(self, "_screen_fbo", None)
+                    if screen is None:
+                        screen = self.ctx.detect_framebuffer(int(self.defaultFramebufferObject()))
+                        self._screen_fbo = screen
+                    _, _, vw_r, vh_r = self._frame_metrics()
+                    self._hdr_bloom.resolve(
+                        screen_fbo=screen,
+                        viewport=(0, 0, vw_r, vh_r),
+                        bloom_strength=strength,
+                        threshold=threshold,
+                        exposure=exposure,
+                    )
+                    self._hdr_bloom_frame_active = False
         except Exception as e:
+            self._hdr_bloom_frame_active = False
             self._set_gl_error(f"paintGL failed: {e}")
             import traceback
             traceback.print_exc()

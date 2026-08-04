@@ -1,10 +1,13 @@
 # Preview / export HDR intermediate + bloom (REQ-P4.1 design spike)
 
 **Date:** 2026-08-04  
-**Status:** design only — **no renderer rewrite in this commit**  
-**Branch:** `docs/preview-p4-hdr-bloom-design`  
+**Status:** P4.1 design + **P4.2 preview implementation** (flag default off)  
+**Branch:** `bugfix/preview-p4-hdr-bloom`  
 **Spec:** [`PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](../PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) P4  
 **Depends on:** P0 Alpha_Lock shipped (opaque Qt FBO alpha after display tonemap)
+
+P4.2 code: `camxora_python/visualizer/hdr_bloom.py` + `VideoSpectrumPreview.paintGL`
+wiring. Enable with `CAMXORA_PREVIEW_HDR_BLOOM=1`. Export parity is REQ-P4.3.
 
 ---
 
@@ -106,9 +109,9 @@ Keep ModernGL + `QOpenGLWidget`. Do **not** migrate to Qt RHI/Vulkan under P4.
 
 ---
 
-## 7. Out of scope for this spike
+## 7. Out of scope for the design spike (P4.1)
 
-- Implementing bloom shaders / FBOs (P4.2)
+- ~~Implementing bloom shaders / FBOs (P4.2)~~ — done in `hdr_bloom.py`
 - Export parity wiring (P4.3)
 - Playlist glass / DistroKid
 - Changing frameless translucency (P3 decided keep)
