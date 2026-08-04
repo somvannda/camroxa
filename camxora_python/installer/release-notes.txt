@@ -1,19 +1,15 @@
-﻿Camxora 1.0.19 - Per-device paths (ship-safe cut)
+﻿Camxora 1.0.20 - Export Raise Scroll crash fix
 Date: 2026-08-04
 
 What's new
 ----------
-- Same Camxora account on two PCs keeps separate media folders on each machine
-  (Suno output, downloads, merged, image folders)
-- Each PC remembers its own paths under local app data — no more one machine
-  overwriting the other's drive/folder settings in the cloud
-- Pending Suno MP3 downloads that were planned for another PC's path now save
-  into this PC's Suno folder (channel/date album layout preserved)
-- Progress / Auto-Video see remapped local folders immediately (no app restart)
-- While you generate on a PC, that PC's folders are used for new batch planning
-- Includes Spectrum Save / Row Width / Raise Scroll and 1.0.15–1.0.16 force-update
-- Video export: if NVIDIA driver is too old for hardware encode (NVENC), Camxora
-  automatically falls back to software encode (x264) instead of failing
+- Fixes GPU video export crash: NameError scroll_spectrum_heights is not defined
+  (spectrum-enabled exports aborted on first frame in 1.0.19)
+- Includes everything from 1.0.19 (per-device paths, NVENC driver fallback,
+  Spectrum Save / Row Width / Raise Scroll, force-update Setup progress)
+- Also includes preview P0–P4.3 stack already on main (opaque Alpha_Lock,
+  GL diagnostics, interactive scrub, chrome audit, flagged HDR bloom +
+  export parity) — see desktop CHANGELOG Unreleased / related changelogs
 
 Not included in this build
 --------------------------
@@ -24,6 +20,6 @@ Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.0.19.exe
+- Installer file: CamxoraSetup-1.0.20.exe
 - Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
   Camxora to use NVENC again

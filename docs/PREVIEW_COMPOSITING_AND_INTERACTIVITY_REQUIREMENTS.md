@@ -1,8 +1,8 @@
 # Preview Compositing & Interactivity Requirements
 
 > **Document ID:** CAMXORA-PREVIEW-COMPOSITE-INTERACT  
-> **Version:** 1.0.0  
-> **Status:** Approved for implementation — execute **priority order** (P0 → P4)  
+> **Version:** 1.1.0  
+> **Status:** Approved for implementation — execute **priority order** (P0 → P5)  
 > **Scope:** Desktop `camxora_python` only (Video live preview + window chrome touchpoints)  
 > **Out of scope:** Qt RHI / Vulkan rewrite, playlist glass feature port, DistroKid, production deploy  
 > **Related:**  
@@ -10,6 +10,7 @@
 > - [`camxora_python/.docs/pages/09_VIDEO_ELECTRON_PYTHON_APP_INTEGRATION.md`](../camxora_python/.docs/pages/09_VIDEO_ELECTRON_PYTHON_APP_INTEGRATION.md)  
 > - [`docs/changelog/2026-07-30-playlist-phase1.md`](changelog/2026-07-30-playlist-phase1.md) (see-through note)  
 > - [`docs/changelog/2026-08-04-desktop-1.0.19-ship-cut.md`](changelog/2026-08-04-desktop-1.0.19-ship-cut.md) (why blend call-site fix was lost)  
+> - [`docs/changelog/2026-08-04-scroll-spectrum-heights-import.md`](changelog/2026-08-04-scroll-spectrum-heights-import.md) (**P5** export NameError / import gate)  
 > - [`docs/changelog/2026-08-04-preview-opaque-alpha-p0.md`](changelog/2026-08-04-preview-opaque-alpha-p0.md) (**P0 implementation**)  
 > - [`docs/changelog/2026-08-04-preview-p1-diag-failure-ux.md`](changelog/2026-08-04-preview-p1-diag-failure-ux.md) (**P1 implementation**)  
 > - [`docs/changelog/2026-08-04-preview-p2-interactive-perf.md`](changelog/2026-08-04-preview-p2-interactive-perf.md) (**P2 implementation**)  
@@ -36,8 +37,9 @@ This document defines **what must be delivered** for:
 | **P2** | Interactive settings performance | Sliders feel responsive with live preview |
 | **P3** | Window chrome compositing | Translucent chrome does not amplify alpha holes |
 | **P4** | Visual quality (HDR / bloom) | Glow/shine quality without leaving ModernGL |
+| **P5** | Ship-cut / spectrum export safety | Export never crashes on missing spectrum helpers after reverts |
 
-**There is no P5 in this program.** Qt RHI / Vulkan / offscreen-blit architecture migration is explicitly deferred and must not be started under this document.
+**P5 is ship-safety, not a renderer rewrite.** Qt RHI / Vulkan / offscreen-blit architecture migration remains **explicitly deferred** and must not be started under this document (do not invent a "P6 Vulkan" here).
 
 ---
 
@@ -171,6 +173,8 @@ Glow today is largely **extra soft-alpha / additive geometry** into an SDR-ish R
 | REQ-P4.1 | P4 | HDR intermediate design spike | P0–P2 stable |
 | REQ-P4.2 | P4 | Real bloom + tonemap (preview) | REQ-P4.1 |
 | REQ-P4.3 | P4 | Preview/export parity for bloom path | REQ-P4.2 |
+| REQ-P5.1 | P5 | Spectrum helper import gate | — (run before any preview-program / ship-cut merge) |
+| REQ-P5.2 | P5 | Ship-cut / revert checklist | REQ-P5.1 |
 
 ---
 
@@ -626,6 +630,73 @@ Use a mid-tier machine; document GPU.
 
 ---
 
+# P5 — Ship-cut / spectrum export safety
+
+**Why this exists:** The 1.0.19 ship-cut revert of playlist glass (`1a68a91`) removed the `scroll_spectrum_heights` import from `gpu_render.py` while leaving call sites, so GPU export crashed with:
+
+`NameError: name 'scroll_spectrum_heights' is not defined`
+
+The P0–P4.3 stack historically lacked that import as well. After P0–P4.3 merges to `main`, this gate **SHALL** stay green so a future ship-cut / bulk revert cannot drop the helper again.
+
+**When to run:** Before merging preview-program work or cutting a desktop installer. P5 may run in parallel with P4; it is not blocked on HDR work.
+
+## REQ-P5.1 — Spectrum helper import gate
+
+### Problem
+
+`run_gpu_render` calls `scroll_spectrum_heights(...)` on every spectrum layer. If the symbol is not imported (module top-level **and/or** the local import block inside `run_gpu_render`), export aborts immediately — including when `frequencyScroll` is left at default `0.0`.
+
+### Code anchors
+
+- `camxora_python/visualizer/_spectrum_fast.py` → `scroll_spectrum_heights`, `clamp_frequency_scroll`
+- `camxora_python/visualizer/gpu_render.py` → top-level `from ._spectrum_fast import … scroll_spectrum_heights`
+- `camxora_python/visualizer/gpu_render.py` → local import inside `run_gpu_render` (must list `scroll_spectrum_heights`)
+- Call sites in `run_gpu_render` that invoke `scroll_spectrum_heights(render_fft, …)`
+- `camxora_python/tests/test_spectrum_frequency_scroll.py` (+ import-binding regression)
+
+### Requirements
+
+1. `gpu_render.py` SHALL import `scroll_spectrum_heights` such that NameError cannot occur at the spectrum call sites (prefer both top-level and the `run_gpu_render` local import list, matching the known-good 1.0.18 pattern).
+2. A unit/regression test SHALL fail if `gpu_render` no longer binds `scroll_spectrum_heights` at module import time.
+3. Preview-program / release branches SHALL carry this import before they are squash/merged to a ship line.
+4. SHALL NOT reintroduce playlist glass / DistroKid solely to “bring back” this import.
+
+### Acceptance Criteria
+
+| # | Criterion | Verify |
+|---|-----------|--------|
+| A1 | `scroll_spectrum_heights` appears in both import lists in `gpu_render.py` | `rg` / code review |
+| A2 | `pytest camxora_python/tests/test_spectrum_frequency_scroll.py` passes | CI / local |
+| A3 | Spectrum-enabled GPU export does not raise NameError on first frame | Manual or export smoke |
+
+### Definition of Done
+
+- [ ] Import present on the release line being shipped
+- [ ] Regression test green
+- [ ] Changelog notes the NameError + ship-cut lesson
+- [ ] This REQ remains checked when merging later preview / ship-cut work
+
+---
+
+## REQ-P5.2 — Ship-cut / revert checklist
+
+### Problem
+
+Large reverts (playlist glass, DistroKid, “unrelated polish”) can delete spectrum helper imports while leaving call sites — the exact 1.0.19 failure mode.
+
+### Requirements
+
+1. Any ship-cut or bulk revert that touches `gpu_render.py` or `_spectrum_fast.py` SHALL re-run REQ-P5.1 before tagging an installer.
+2. Checklist item (mandatory in release notes / PR): “Confirm `scroll_spectrum_heights` still imported; export NameError gate green.”
+3. Prefer path-scoped reverts over wholesale file reverts when only playlist/DistroKid must leave.
+
+### Acceptance Criteria
+
+- A1: Release PR / ship-cut doc includes the P5.1 checklist item
+- A2: Installer tag is blocked if A1–A3 from P5.1 fail
+
+---
+
 # 7. Cross-cutting quality gates (every delivery)
 
 Before merging any REQ in this program:
@@ -639,6 +710,7 @@ Before merging any REQ in this program:
 | G5 | Architecture boundaries §4 respected |
 | G6 | If touching blends: Alpha_Lock preserved on preview FBO |
 | G7 | Manual smoke: open Video page, play preview 10s, drag one slider |
+| G8 | If touching `gpu_render.py` / `_spectrum_fast.py` or doing a ship-cut revert: REQ-P5.1 green |
 
 ---
 
@@ -650,7 +722,8 @@ Before merging any REQ in this program:
 | “Cannot reproduce locally” | P1.1, P1.4, P0.5 |
 | “Settings / sliders lag with live preview” | P2.1–P2.6 |
 | “Glow/colors look cheap vs other editors” | P4.1–P4.3 |
-| “Just rewrite in Vulkan/RHI” | **Rejected by this document** (deferred; not P5 here) |
+| “Export / visualizer NameError: scroll_spectrum_heights is not defined” | P5.1–P5.2 |
+| “Just rewrite in Vulkan/RHI” | **Rejected by this document** (deferred; not a program priority) |
 | “Bring back playlist glass with the blend fix” | **Rejected**; blend fix must be standalone (P0.1) |
 
 ---
@@ -658,6 +731,8 @@ Before merging any REQ in this program:
 ## 9. Suggested implementation order (strict)
 
 ```
+P5.1 → P5.2          (may run anytime; MUST be green before ship-cut / installer tag)
+        ↓
 P0.1 → P0.2 → P0.3 → P0.4 → P0.5 → P0.6
         ↓
 P1.1 → P1.2 → P1.3 → P1.4
@@ -667,6 +742,8 @@ P2.1 → P2.2 → P2.3 → P2.4 → P2.5 → (P2.6 optional)
 P3.1 → (P3.2 conditional)
         ↓
 P4.1 → P4.2 → P4.3
+        ↓
+re-check P5.1 before tagging the installer
 ```
 
 ---

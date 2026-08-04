@@ -15,6 +15,7 @@ import moderngl
 from ._spectrum_fast import (
     normalize_spectrum_gravity,
     resolve_bar_pixel_width,
+    scroll_spectrum_heights,
 )
 
 def _audio_bar_height_mult(template: dict) -> float:
@@ -3086,6 +3087,7 @@ def run_gpu_render(
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
         clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
         normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
+        scroll_spectrum_heights,
     )
     from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
