@@ -34,8 +34,6 @@ def default_renderer_template() -> dict:
                 "barWidth": 5,
                 "barCount": 64,
                 "radiusOffset": 0,
-                "linearSpan": 1.0,
-                "frequencyScroll": 0.0,
                 "gravity": "top",
                 "color": {
                     "mode": "gradient",
@@ -394,19 +392,9 @@ def normalize_renderer_template(input_template: Any) -> dict:
             else []
         )[:5]
         glow_grad_raw = raw.get("glowGradientColors")
-        kind = str(raw.get("overlayKind") or "text").strip().lower()
-        if kind not in ("text", "panel", "pill", "stage_art"):
-            kind = "text"
-        # Panels/pills may use a placeholder space; keep a non-empty marker so
-        # downstream code that only checks ``text`` does not drop the plate.
-        raw_text = str(raw.get("text", "") or "")
-        text = raw_text.strip()
-        if kind in ("panel", "pill", "stage_art") and not text:
-            text = " "
         overlay = {
             "enabled": bool(raw.get("enabled", False)),
-            "overlayKind": kind,
-            "text": text,
+            "text": str(raw.get("text", "") or "").strip(),
             "startSec": float(max(0.0, min(36000.0, float(raw.get("startSec", 0.0) or 0.0)))),
             "durationSec": float(max(0.1, min(36000.0, float(raw.get("durationSec", 3.0) or 3.0)))),
             "anchor": anchor,
@@ -442,29 +430,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
             "opacity": float(max(0.0, min(1.0, float(raw.get("opacity", 1.0) if "opacity" in raw else 1.0)))),
             "letterSpacing": float(raw.get("letterSpacing", 0.0) or 0.0),
             "lineSpacing": float(raw.get("lineSpacing", 1.15) or 1.15),
-            "boxWidth": float(max(0.0, min(2000.0, float(raw.get("boxWidth", 0.0) or 0.0)))),
-            "align": str(raw.get("align", "left") or "left"),
         }
-        if kind in ("panel", "pill", "stage_art"):
-            overlay["panelWidth"] = float(max(4.0, min(4096.0, float(raw.get("panelWidth", 120.0) or 120.0))))
-            overlay["panelHeight"] = float(max(4.0, min(4096.0, float(raw.get("panelHeight", 40.0) or 40.0))))
-            overlay["panelRadius"] = float(max(0.0, min(512.0, float(raw.get("panelRadius", 12.0) or 12.0))))
-            overlay["panelFrost"] = float(max(0.0, min(1.0, float(raw.get("panelFrost", 0.0) or 0.0))))
-            overlay["panelSpecular"] = float(max(0.0, min(1.0, float(raw.get("panelSpecular", 0.0) or 0.0))))
-            overlay["panelFillMode"] = str(raw.get("panelFillMode") or "solid")
-            grads = raw.get("panelGradientColors")
-            overlay["panelGradientColors"] = (
-                [str(c) for c in grads if str(c or "").strip()][:4] if isinstance(grads, list) else []
-            )
-            overlay["panelBorderAlpha"] = float(
-                max(0.0, min(1.0, float(raw.get("panelBorderAlpha", 1.0) if "panelBorderAlpha" in raw else 1.0)))
-            )
-            overlay["panelOuterGlow"] = float(max(0.0, min(1.0, float(raw.get("panelOuterGlow", 0.0) or 0.0))))
-            overlay["panelOuterGlowColor"] = str(raw.get("panelOuterGlowColor") or "#ffb4da")
-        if kind == "stage_art":
-            overlay["logoPath"] = str(raw.get("logoPath") or "")
-            overlay["ringColor"] = str(raw.get("ringColor") or raw.get("strokeColor") or "#e879f9")
-            overlay["ringCount"] = int(max(1, min(12, int(raw.get("ringCount") or 4))))
         # Keep domain tag so preview can hide GPU twins while Qt overlay edits.
         source = str(raw.get("source") or "").strip()
         if source:
@@ -554,33 +520,6 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 "barWidth": float(max(0.5, min(240.0, float(bar_width)))),
                 "barCount": int(max(16, min(192, round(float(bar_count))))),
                 "radiusOffset": float(max(0.0, min(800.0, float(layer_in.get("radiusOffset", fallback_layer.get("radiusOffset", 0)) or 0.0)))),
-                "linearSpan": float(
-                    max(
-                        0.1,
-                        min(
-                            1.0,
-                            float(
-                                layer_in.get(
-                                    "linearSpan",
-                                    fallback_layer.get("linearSpan", 1.0),
-                                )
-                                or 1.0
-                            ),
-                        ),
-                    )
-                ),
-                "frequencyScroll": float(
-                    (
-                        float(
-                            layer_in.get(
-                                "frequencyScroll",
-                                fallback_layer.get("frequencyScroll", 0.0),
-                            )
-                            or 0.0
-                        )
-                        % 1.0
-                    )
-                ),
                 "gravity": gravity,
                 "color": color,
                 "glow": float(max(0.0, min(100.0, float(layer_in.get("glow", fallback_layer.get("glow", 0)) or 0.0)))),
