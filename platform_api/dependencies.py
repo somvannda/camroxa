@@ -368,6 +368,7 @@ def get_usage_enforcement_service():
         license_repo=get_license_repo(),
         daily_quota_bank_service=get_daily_quota_bank_service(),
         quota_topup_service=get_quota_topup_service(),
+        settings_repo=get_settings_repo(),
     )
 
 

@@ -60,6 +60,8 @@ logger = logging.getLogger(__name__)
 DAILY_CACHE_TTL_SECONDS = 25 * 60 * 60
 _ABSORB_BUDGET_PREFIX = "fail_absorb:"
 _ABSORB_BUDGET_TTL_SECONDS = 25 * 60 * 60
+# Admin Settings → Fail/Retry Absorb; overrides PLATFORM_DAILY_FAIL_ABSORB_BUDGET.
+DAILY_FAIL_ABSORB_BUDGET_SETTING_KEY = "daily_fail_absorb_budget"
 
 
 @dataclass(frozen=True)
@@ -76,12 +78,30 @@ def _absorb_budget_key(user_id: UUID, usage_date: date | None = None) -> str:
 
 
 def _daily_fail_absorb_budget() -> int:
+    """Env/default budget (used when no admin system_settings override)."""
     try:
         from platform_api.config import get_settings
 
         return max(0, int(get_settings().daily_fail_absorb_budget))
     except Exception:
         return 25
+
+
+def _parse_fail_absorb_budget(raw: Any) -> int | None:
+    """Parse a system_settings value into a non-negative budget, or None if unset/invalid."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return max(0, int(raw))
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        return max(0, int(float(text)))
+    except (TypeError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +297,7 @@ class UsageEnforcementService:
         license_repo: Any | None = None,
         daily_quota_bank_service: Any | None = None,
         quota_topup_service: Any | None = None,
+        settings_repo: Any | None = None,
     ) -> None:
         """Build the enforcement service."""
         self._credit_repo = credit_repo
@@ -287,6 +308,26 @@ class UsageEnforcementService:
         self._license_repo = license_repo
         self._daily_quota_bank_service = daily_quota_bank_service
         self._quota_topup_service = quota_topup_service
+        self._settings_repo = settings_repo
+
+    async def resolve_daily_fail_absorb_budget(self) -> int:
+        """Return per-user daily fail/retry absorb max (admin setting > env)."""
+        repo = self._settings_repo
+        if repo is not None:
+            getter = getattr(repo, "get_system_setting", None)
+            if getter is not None:
+                try:
+                    raw = await getter(DAILY_FAIL_ABSORB_BUDGET_SETTING_KEY)
+                except Exception:
+                    logger.debug(
+                        "fail_absorb budget setting lookup failed; using env default",
+                        exc_info=True,
+                    )
+                else:
+                    parsed = _parse_fail_absorb_budget(raw)
+                    if parsed is not None:
+                        return parsed
+        return _daily_fail_absorb_budget()
 
     async def check_and_deduct(
         self,
@@ -542,7 +583,7 @@ class UsageEnforcementService:
 
     async def enforce_fail_absorb_budget(self, user_id: UUID) -> None:
         """Block further AI work after too many platform-absorbed failures today (H2)."""
-        budget = _daily_fail_absorb_budget()
+        budget = await self.resolve_daily_fail_absorb_budget()
         if budget <= 0:
             return
         used = await self.get_fail_absorb_count(user_id)
@@ -576,9 +617,11 @@ class UsageEnforcementService:
             await self._redis.set(key, "0", ex=1)
         return previous
 
-    def fail_absorb_status(self, user_id: UUID, *, used: int | None = None) -> dict[str, Any]:
+    async def fail_absorb_status(
+        self, user_id: UUID, *, used: int | None = None
+    ) -> dict[str, Any]:
         """Build admin UI payload for today's fail/retry absorb counter."""
-        budget = _daily_fail_absorb_budget()
+        budget = await self.resolve_daily_fail_absorb_budget()
         count = int(used) if used is not None else None
         # Caller may pass used after async fetch; None means unknown here.
         day = billing_today()
@@ -620,7 +663,7 @@ class UsageEnforcementService:
         await maybe_note_absorb(
             user_id=str(user_id),
             count=count,
-            budget=_daily_fail_absorb_budget(),
+            budget=await self.resolve_daily_fail_absorb_budget(),
         )
 
     async def preflight_batch_cost(

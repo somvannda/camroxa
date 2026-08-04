@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Loader2, CreditCard, Crown, Users, Music, KeyRound } from 'lucide-react';
+import { ArrowLeft, Loader2, CreditCard, Crown, Users, Music, KeyRound, RotateCcw } from 'lucide-react';
 
 import {
   useUpdateUser,
@@ -16,6 +16,7 @@ import {
   useChannelProfileLogoBlob,
   useChannelProfileCoverBlob,
 } from '@/hooks/use-users';
+import { useFailAbsorb, useResetFailAbsorb } from '@/hooks/use-fail-absorb';
 import { useAdjustBalance } from '@/hooks/use-credits';
 import { useToast } from '@/hooks/use-toast';
 import { formatCredits } from '@/lib/credit-format';
@@ -234,6 +235,9 @@ export default function UserDetailPage() {
   const setUserPassword = useSetUserPassword();
   const quotaTopup = useQuotaTopup(id!);
   const adjustBalance = useAdjustBalance();
+  const { data: failAbsorb, isLoading: failAbsorbLoading, isError: failAbsorbError, refetch: refetchFailAbsorb } =
+    useFailAbsorb(id!);
+  const resetFailAbsorb = useResetFailAbsorb(id!);
 
   // Dialog states
   const [suspendDialogOpen, setSuspendDialogOpen] = useState(false);
@@ -242,6 +246,7 @@ export default function UserDetailPage() {
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [quotaTopupOpen, setQuotaTopupOpen] = useState(false);
   const [creditTopupOpen, setCreditTopupOpen] = useState(false);
+  const [failAbsorbResetOpen, setFailAbsorbResetOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
 
   // Edit form
@@ -363,6 +368,27 @@ export default function UserDetailPage() {
         description: err instanceof Error ? err.message : 'An error occurred',
       });
     }
+  };
+
+  const handleFailAbsorbReset = () => {
+    if (!id) return;
+    resetFailAbsorb.mutate(undefined, {
+      onSuccess: (result) => {
+        const previous = result.fail_absorb_used_before ?? failAbsorb?.fail_absorb_used ?? 0;
+        toast({
+          title: 'Fail/retry absorb reset',
+          description: `Cleared today's counter (was ${previous}). User can generate again.`,
+        });
+        setFailAbsorbResetOpen(false);
+      },
+      onError: (err) => {
+        toast({
+          variant: 'destructive',
+          title: 'Reset failed',
+          description: err instanceof Error ? err.message : 'An error occurred',
+        });
+      },
+    });
   };
 
   const handleSuspend = () => {
@@ -624,6 +650,80 @@ export default function UserDetailPage() {
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Fail / retry absorb (today) */}
+      <Card className="border-slate-800 bg-slate-900/50">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-slate-100">
+              <RotateCcw className="h-4 w-4 text-slate-500" />
+              Fail / Retry Absorb (today)
+            </CardTitle>
+            <CardDescription className="text-slate-400">
+              Platform-absorbed failed plan generations for {failAbsorb?.usage_date ?? 'today'}.
+              Budget is set under Settings → Fail / Retry Absorb.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="border-slate-700"
+            disabled={
+              failAbsorbLoading ||
+              !failAbsorb ||
+              (failAbsorb.fail_absorb_used ?? 0) <= 0 ||
+              resetFailAbsorb.isPending
+            }
+            onClick={() => setFailAbsorbResetOpen(true)}
+          >
+            Reset today
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {failAbsorbLoading ? (
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading absorb counter…
+            </div>
+          ) : failAbsorbError ? (
+            <div className="space-y-2">
+              <p className="text-sm text-slate-400">Could not load fail/retry absorb status.</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => refetchFailAbsorb()}>
+                Retry
+              </Button>
+            </div>
+          ) : failAbsorb ? (
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <p className="text-xs text-slate-500">Used / budget</p>
+                <p className="text-2xl font-bold text-slate-100">
+                  {failAbsorb.fail_absorb_used}
+                  <span className="text-slate-500 text-lg font-normal">
+                    {' '}
+                    / {failAbsorb.fail_absorb_budget}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Remaining</p>
+                <p className="text-lg font-medium text-slate-200">
+                  {failAbsorb.remaining == null ? '—' : failAbsorb.remaining}
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={
+                  failAbsorb.blocked
+                    ? 'border-red-500/40 text-red-300'
+                    : 'border-emerald-500/40 text-emerald-300'
+                }
+              >
+                {failAbsorb.blocked ? 'Blocked' : 'OK'}
+              </Badge>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -1061,6 +1161,17 @@ export default function UserDetailPage() {
         variant="destructive"
         confirmText="Delete"
         isLoading={deleteUser.isPending}
+      />
+
+      <ConfirmDialog
+        open={failAbsorbResetOpen}
+        onOpenChange={setFailAbsorbResetOpen}
+        title="Reset fail/retry absorb"
+        description={`Clear today's platform absorb counter for "${user.display_name}" (currently ${failAbsorb?.fail_absorb_used ?? 0} / ${failAbsorb?.fail_absorb_budget ?? '—'})? They will be able to generate again immediately.`}
+        onConfirm={handleFailAbsorbReset}
+        variant="default"
+        confirmText="Reset counter"
+        isLoading={resetFailAbsorb.isPending}
       />
 
       <Dialog
