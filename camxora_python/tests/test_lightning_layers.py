@@ -474,3 +474,47 @@ def test_vignette_reactivity_opens_on_flash() -> None:
         audio_env=0.0,
     )
     assert hit > miss
+
+
+def test_peak_lightning_over_analysis_interval_catches_mid_encode_flash() -> None:
+    """At 24 FPS encode, a short flash between frames must still be detected at 60 Hz."""
+    from features.video.lib.lightning_render import peak_lightning_flash
+
+    tpl = {
+        "lightningEnabled": True,
+        "lightningLayers": [
+            {
+                "enabled": True,
+                "trigger": "always",
+                "intensity": 1.0,
+                "reactivity": 0.0,
+                "flashRate": 2.5,
+                "speed": 1.0,
+                "opacity": 1.0,
+                "seed": 3.0,
+            }
+        ],
+    }
+    # Sample one encode step worth of analysis frames (24 fps → ~2–3 analysis ticks).
+    encode_fps = 24
+    analysis_fps = 60
+    encode_i = 5
+    t0 = float(encode_i) / float(encode_fps)
+    t1 = float(encode_i + 1) / float(encode_fps)
+    a0 = int(t0 * analysis_fps)
+    a1 = int(t1 * analysis_fps)
+    peak = 0.0
+    for aidx in range(a0, a1 + 1):
+        flash = peak_lightning_flash(
+            tpl,
+            time_sec=float(aidx) / float(analysis_fps),
+            bass=0.0,
+            kick=0.0,
+            audio_env=0.0,
+        )
+        peak = max(peak, float(flash))
+    # At least one analysis sample in the interval should see a non-trivial flash
+    # for always-trigger with high flashRate (envelope rises regularly).
+    single = peak_lightning_flash(tpl, time_sec=t0, bass=0.0, kick=0.0, audio_env=0.0)
+    assert peak >= single
+    assert peak > 0.02 or single > 0.02
