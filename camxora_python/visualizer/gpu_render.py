@@ -25,6 +25,27 @@ def _audio_bar_height_mult(template: dict) -> float:
         value = 1.0
     return float(max(0.25, min(12.0, value)))
 
+
+def blend_rgb_normal_opaque_alpha(ctx: moderngl.Context) -> None:
+    """RGB alpha blend; keep framebuffer alpha opaque (Qt translucent window)."""
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE_MINUS_SRC_ALPHA,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
+
+
+def blend_rgb_additive_opaque_alpha(ctx: moderngl.Context) -> None:
+    """RGB additive bloom; keep framebuffer alpha opaque (Qt translucent window)."""
+    ctx.blend_func = (
+        moderngl.SRC_ALPHA,
+        moderngl.ONE,
+        moderngl.ZERO,
+        moderngl.ONE,
+    )
+
+
 import numpy as np
 from PIL import Image
 
@@ -911,12 +932,13 @@ def _render_particle_styled_quads(
             prog_particle_quads["atlas_cols"].value = int(cols)
     ctx.enable(moderngl.BLEND)
     # Neon bloom reads better with additive when glow is on.
+    # Alpha_Lock: do not lower Qt FBO alpha (preview see-through on translucent windows).
     if glow > 0.08:
-        ctx.blend_func = moderngl.ADDITIVE_BLENDING
+        blend_rgb_additive_opaque_alpha(ctx)
     else:
-        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+        blend_rgb_normal_opaque_alpha(ctx)
     vao_particle_quads.render(mode=moderngl.TRIANGLES, vertices=int(pts.shape[0] * 6))
-    ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+    blend_rgb_normal_opaque_alpha(ctx)
 
 def _as_rgb(v: any) -> tuple[int, int, int]:
     if isinstance(v, (list, tuple)) and len(v) == 3:
