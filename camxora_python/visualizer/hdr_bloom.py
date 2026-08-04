@@ -1,6 +1,6 @@
-"""Preview HDR bloom post-process (REQ-P4.2).
+"""Preview HDR bloom post-process (REQ-P4.2 / desktop 1.1.0).
 
-Flag (default **off** for 1.2.1 ship-safe cut; set to 1 to enable CapCut-style bloom):
+Flag (default **off** for the 1.1.0 ship-safe installer; set to 1 to enable):
   CAMXORA_PREVIEW_HDR_BLOOM=1
 
 Pipeline: scene (offscreen) → threshold → blur pyramid → upsample composite
@@ -8,9 +8,8 @@ Pipeline: scene (offscreen) → threshold → blur pyramid → upsample composit
 
 Interactive scrub (REQ-P2) should skip this path and draw directly to the Qt FBO.
 
-Note: 1.1.0 briefly defaulted this on; that stacked with Bass Drive soft-glow and
-wiped particles/logo draws. 1.2.1 restores the legacy-glow default until the
-HDR composite order is fixed.
+Ship note: CapCut-style bloom stays opt-in until composite order is fixed
+(particles/logo/spectrum haze when bloom was default-on).
 """
 
 from __future__ import annotations
