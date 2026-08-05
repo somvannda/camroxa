@@ -8,6 +8,7 @@
 
 - [`camxora_python/.docs/pages/09_VIDEO_DOMAIN_SCHEMA_APPENDIX.md`](../camxora_python/.docs/pages/09_VIDEO_DOMAIN_SCHEMA_APPENDIX.md) — saved template / draft / renderer contracts  
 - [`docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md`](COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md) — **P0 frozen composition keys**  
+- [`docs/COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md`](COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md) — **P1 orthogonal axis apply**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  
 - [`docs/PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) — preview compositing constraints  
@@ -742,12 +743,12 @@ Scene
 
 **Exit criteria**
 
-- [ ] Applying shape does not force a material
-- [ ] Applying material does not change geometry id
-- [ ] Preset buttons remain convenience patches over the axes
-- [ ] Old templates still load via aliases
+- [x] Applying shape does not force a material  
+- [x] Applying material does not change geometry id  
+- [x] Preset buttons remain convenience patches over the axes  
+- [x] Old templates still load via aliases  
 
----
+**P1 shipped (2026-08-05):** [`docs/COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md`](COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md) + `composition_axes.py`.
 
 #### Phase 2 — Color Systems → 20 palettes
 

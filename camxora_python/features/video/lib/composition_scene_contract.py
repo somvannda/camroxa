@@ -1,12 +1,15 @@
-"""Composition Engine P0 — scene contract (architecture tree JSON).
+"""Composition Engine P0/P1 — scene contract (architecture tree JSON).
 
 Frozen authoring-layer keys live under template ``composition`` (version 1).
 The GPU renderer continues to read legacy fields
 (``backgroundSettings``, ``style``, ``particlesSettings``, ``effects``, …).
 
-P0 delivers typed stubs + legacy projection only. Catalogs (shapes, materials,
-…) arrive in later phases. Do not invent conflicting key names outside this
-module / ``docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md``.
+P0: typed stubs + legacy projection.
+P1: orthogonal axis apply (see ``composition_axes.py``); preserve material /
+animation / behavior across legacy re-projection.
+
+Do not invent conflicting key names outside this module /
+``docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md``.
 """
 
 from __future__ import annotations
@@ -246,8 +249,19 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
     # Audio mapping stays empty in P0 (façade lands in P11); Layer 1 audio object exists.
     out["audio"]["mapping"] = {}
 
-    if isinstance(src.get("composition"), dict) and src["composition"].get("colorPalette"):
-        out["colorPalette"] = _optional_str(src["composition"].get("colorPalette"))
+    # P1: preserve orthogonal axes that legacy templates cannot express yet.
+    prev = src.get("composition")
+    if isinstance(prev, dict) and prev:
+        prev_n = normalize_composition_scene(prev)
+        out["spectrum"]["material"] = prev_n["spectrum"]["material"]
+        out["spectrum"]["animation"] = prev_n["spectrum"]["animation"]
+        out["particles"]["behavior"] = prev_n["particles"]["behavior"]
+        out["audio"]["mapping"] = deepcopy(prev_n["audio"]["mapping"])
+        if prev_n.get("colorPalette"):
+            out["colorPalette"] = prev_n.get("colorPalette")
+        # Prefer explicit composition shape when legacy style missing.
+        if (not style) and prev_n["spectrum"]["shape"] != NONE:
+            out["spectrum"]["shape"] = prev_n["spectrum"]["shape"]
 
     return normalize_composition_scene(out)
 
@@ -255,16 +269,12 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
 def ensure_composition_on_template(template: dict[str, Any]) -> dict[str, Any]:
     """Attach normalized ``composition`` without removing legacy GPU fields.
 
-    If ``composition`` is missing, derive it from legacy keys. If present, normalize
-    in place. Returns the same dict mutated for convenience.
+    Always re-projects from legacy aliases (``style``, motionMode, …) while
+    preserving orthogonal axes already stored on ``composition`` (P1).
     """
     if not isinstance(template, dict):
         raise TypeError("template must be a dict")
-    existing = template.get("composition")
-    if isinstance(existing, dict) and existing:
-        template["composition"] = normalize_composition_scene(existing)
-    else:
-        template["composition"] = composition_from_legacy_template(template)
+    template["composition"] = composition_from_legacy_template(template)
     return template
 
 

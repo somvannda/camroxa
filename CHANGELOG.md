@@ -11,6 +11,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine P1 — orthogonal axes.** Apply spectrum shape / material /
+  animation (and particles / lighting / background axes) independently; preset
+  buttons only convenience-patch shape without clearing material/animation.
+  See `docs/COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md` and
+  `docs/changelog/2026-08-05-composition-engine-p1-orthogonal-axes.md`.
 - **Composition Engine P0 — scene schema freeze.** Saved templates can carry an
   authoring-layer `composition` object (architecture tree: background /
   spectrum / logo / text / overlay / particles / lighting / camera / post /

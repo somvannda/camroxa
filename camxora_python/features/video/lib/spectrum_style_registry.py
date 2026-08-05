@@ -536,11 +536,15 @@ def build_spectrum_preset_template(
     else:
         layers[idx] = patched_layer
 
-    return {
+    result = {
         **template,
         "style": normalize_spectrum_preset_key(style_key),
         "layers": layers,
     }
+    # P1: preset button is a convenience patch → composition.spectrum.shape only.
+    from features.video.lib.composition_axes import attach_spectrum_preset_to_composition
+
+    return attach_spectrum_preset_to_composition(result, style_key)
 
 
 def normalize_spectrum_preset_template(template: dict[str, Any]) -> dict[str, Any]:
@@ -598,4 +602,7 @@ def build_stacked_spectrum_preset_template(
         "style": style_key,
         "layers": next_layers,
     }
-    return normalize_spectrum_preset_template(result)
+    normalized = normalize_spectrum_preset_template(result)
+    from features.video.lib.composition_axes import attach_spectrum_preset_to_composition
+
+    return attach_spectrum_preset_to_composition(normalized, style_key)
