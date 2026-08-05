@@ -11,6 +11,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Preferences: **Background source** and **Thumbnail source** are each **Category**, **User reference**, or **Prompt only** under AI Generated; overlay UI hidden; User Provided hides those sources. Image queue: **Regenerate Background + Thumbnail**. See `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
+
 ### Changed
 
 ### Fixed

@@ -1581,6 +1581,7 @@ class ImageRetryJobsWorker(QThread):
         *,
         job_ids: list[str] | None = None,
         batch_id: str | None = None,
+        force: bool = False,
         run_after_retry: bool = True,
         parent=None,
     ) -> None:
@@ -1588,6 +1589,7 @@ class ImageRetryJobsWorker(QThread):
         self._api = api
         self._job_ids = list(job_ids or [])
         self._batch_id = batch_id
+        self._force = bool(force)
         self._run_after_retry = run_after_retry
 
     def run(self) -> None:
@@ -1602,11 +1604,13 @@ class ImageRetryJobsWorker(QThread):
                 if self._batch_id and not self._job_ids
                 else f"{len(self._job_ids)} job(s)"
             )
-            log_info(f"Retrying image jobs for {target}…", category="image")
+            action = "Regenerating" if self._force else "Retrying"
+            log_info(f"{action} image jobs for {target}…", category="image")
             response = self._api.retry_image_jobs(
                 ImageJobsRetryRequest(
                     job_ids=self._job_ids or None,
                     batch_id=self._batch_id,
+                    force=self._force,
                 )
             )
             updated = int(getattr(response, "updated", 0) or 0)

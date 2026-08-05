@@ -90,6 +90,7 @@ class ImageJobsRunResponse(BaseModel):
 class ImageJobsRetryRequest(BaseModel):
     job_ids: list[str] | None = None
     batch_id: str | None = None
+    force: bool = False
 
 
 class ImageJobsRetryResponse(BaseModel):
@@ -241,6 +242,7 @@ async def retry_image_jobs(
         ctx.user_id,
         job_ids=request.job_ids,
         batch_id=request.batch_id,
+        force=bool(request.force),
     )
     image_log.log_retry_reset(batch_id=request.batch_id, updated=updated)
     resolved_batch_id = request.batch_id

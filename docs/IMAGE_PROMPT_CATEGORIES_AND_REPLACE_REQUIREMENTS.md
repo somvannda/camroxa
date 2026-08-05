@@ -196,19 +196,24 @@ flowchart LR
 
 **Rendering / Image source panel** (extend current Preferences):
 
-- Replace single “Background source: Samples” with **two** controls:
-  - Background source mode: Prompt only | Category | My references
-  - Thumbnail source mode: Prompt only | Category | My references
-- When mode = Category: show theme dropdown filtered by kind (list from API).
-- When mode = My references:
+- Keep **Image source mode**:
+  - **AI Generated** — AI jobs; use BG/TH source dropdowns below
+  - **User Provided** — no AI; user places finals in the run folder; pipeline continues (hide/disable BG/TH source)
+- Under AI Generated, **two** controls (labels: Category | User reference | Prompt only):
+  - Background source mode: Prompt only | Category | User reference (`personal_reference`)
+  - Thumbnail source mode: Prompt only | Category | User reference (`personal_reference`)
+- **Hide Thumbnail overlay** UI; keep AI/composite behavior behind the scenes (`thumbnail_overlay_mode=ai`).
+- When mode = Category: show theme dropdown filtered by kind (list from API) — P1.
+- When mode = User reference (P2):
   - Toggle: **Rotate** (least-used) on/off for that kind
   - If rotate off: picker to pin one personal image
   - If rotate on: optional “eligible pool” note (all BG- or TH-tagged uploads); no single pin required
   - Empty library → CTA linking to user portal Image References
+  - Until P2 ships: clear error that User reference is not available yet
 - Style strength: still applies when a reference/sample is used; **hidden or disabled** in prompt-only (no reference to weight).
 - Persist via settings sync keys (see §8).
 
-**Image workspace:** surface the same modes read-only or editable for the active prefs; queue rows may show which mode/category was used (optional footer detail). No requirement to add Replace/Export here — Progress is the recovery surface.
+**Image workspace:** surface the same modes read-only or editable for the active prefs; queue rows may show which mode/category was used (optional footer detail). Right-click **Regenerate Background + Thumbnail** force-resets both jobs including success. Progress remains the Replace/Export recovery surface (P3).
 
 ### 6.2 Admin portal — Image Packs
 

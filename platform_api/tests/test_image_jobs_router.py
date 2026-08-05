@@ -156,3 +156,27 @@ async def test_retry_image_jobs_by_job_ids(
     mock_batch_service.refresh_image_job_prompts_for_retry.assert_awaited_once()
     mock_image_job_service.retry_jobs.assert_awaited_once()
     mock_job_queue.enqueue_if_absent.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_image_jobs_force(
+    client: AsyncClient,
+    mock_image_job_service: AsyncMock,
+    mock_batch_service: AsyncMock,
+    mock_job_queue: AsyncMock,
+) -> None:
+    mock_image_job_service.retry_jobs = AsyncMock(return_value=2)
+    response = await client.post(
+        "/api/v1/image-jobs/retry",
+        json={
+            "job_ids": [
+                "00000000-0000-0000-0000-000000000456",
+                "00000000-0000-0000-0000-000000000457",
+            ],
+            "force": True,
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["updated"] == 2
+    kwargs = mock_image_job_service.retry_jobs.await_args.kwargs
+    assert kwargs.get("force") is True

@@ -70,6 +70,7 @@ class ControlsQueueCard(QFrame):
     clear_queue_requested = Signal()
     job_retry_requested = Signal(str, str)
     jobs_retry_requested = Signal(list, str)
+    jobs_regenerate_requested = Signal(list, str)
     job_open_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -395,6 +396,14 @@ class ControlsQueueCard(QFrame):
     ) -> None:
         self.jobs_retry_requested.emit(job_ids, batch_id)
 
+    def _emit_jobs_regenerate_requested(
+        self,
+        job_ids: list[str],
+        batch_id: str,
+        _checked: bool = False,
+    ) -> None:
+        self.jobs_regenerate_requested.emit(job_ids, batch_id)
+
     def _emit_job_open_requested(self, path: str, job_id: str, _checked: bool = False) -> None:
         self.job_open_requested.emit(path, job_id)
 
@@ -440,6 +449,16 @@ class ControlsQueueCard(QFrame):
             action = menu.addAction("Retry Batch Images")
             action.triggered.connect(
                 partial(self._emit_jobs_retry_requested, [], entry.batch_id)
+            )
+        regen_ids: list[str] = []
+        if entry.bg_job is not None:
+            regen_ids.append(entry.bg_job.id)
+        if entry.th_job is not None:
+            regen_ids.append(entry.th_job.id)
+        if len(regen_ids) >= 2:
+            action = menu.addAction("Regenerate Background + Thumbnail")
+            action.triggered.connect(
+                partial(self._emit_jobs_regenerate_requested, list(regen_ids), entry.batch_id)
             )
         if entry.bg_job and self._job_is_success(entry.bg_job):
             bg_path = entry.bg_job.output_image_path or ""

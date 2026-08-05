@@ -250,6 +250,7 @@ class ImageJobsRunResponse(BaseModel):
 class ImageJobsRetryRequest(BaseModel):
     job_ids: list[str] | None = None
     batch_id: str | None = None
+    force: bool = False
 
 
 class ImageJobsRetryResponse(BaseModel):

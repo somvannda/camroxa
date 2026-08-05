@@ -1804,6 +1804,7 @@ class BatchRepository:
         *,
         job_ids: list[UUID] | None = None,
         batch_id: UUID | None = None,
+        include_success: bool = False,
     ) -> int:
         if not job_ids and batch_id is None:
             return 0
@@ -1830,12 +1831,17 @@ class BatchRepository:
             args.append(job_ids)
             param += 1
 
-        query += """
-            AND (
-                status = ANY(ARRAY['failed','cancelled','running']::text[])
-                OR (status = 'pending' AND error IS NOT NULL)
-            )
-        """
+        if include_success:
+            query += """
+                AND status = ANY(ARRAY['failed','cancelled','running','success','pending']::text[])
+            """
+        else:
+            query += """
+                AND (
+                    status = ANY(ARRAY['failed','cancelled','running']::text[])
+                    OR (status = 'pending' AND error IS NOT NULL)
+                )
+            """
         result = await self._pool.execute(query, *args)
         return int(str(result).split()[-1]) if result else 0
 

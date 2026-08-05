@@ -17,6 +17,16 @@ THUMBNAIL_COMPOSITE_STYLE_INSTRUCTION = (
     "centered horizontally and positioned slightly above the vertical middle (center Y ≈ 45% of frame height)."
 )
 
+THUMBNAIL_PROMPT_ONLY_INSTRUCTION = (
+    "Generate ONLY typography/text on a pure black background. Do not add cars, scenes, "
+    "gradients, textures, frames, or extra graphics. "
+    "There is no style reference image — follow the prompt for typography and layout. "
+    "Keep everything except the text pure black. "
+    "Text size rules (16:9): the rendered text block (including any glow/outer pixels) should be "
+    "about 38–42% of the frame width and 18–22% of the frame height, "
+    "centered horizontally and positioned slightly above the vertical middle (center Y ≈ 45% of frame height)."
+)
+
 BACKGROUND_NO_TEXT_INSTRUCTION = (
     "Do not generate any text, letters, numbers, typography, logos, watermarks, dates, titles, "
     "labels, stickers, or signage in the background image. No readable characters anywhere."
@@ -177,13 +187,16 @@ def compose_thumbnail_onto_background(
     return output.getvalue()
 
 
-def enrich_thumbnail_prompt(prompt: str) -> str:
+def enrich_thumbnail_prompt(prompt: str, *, prompt_only: bool = False) -> str:
+    instruction = (
+        THUMBNAIL_PROMPT_ONLY_INSTRUCTION if prompt_only else THUMBNAIL_COMPOSITE_STYLE_INSTRUCTION
+    )
     base = str(prompt or "").strip()
-    if THUMBNAIL_COMPOSITE_STYLE_INSTRUCTION in base:
+    if instruction in base:
         return base
     if not base:
-        return THUMBNAIL_COMPOSITE_STYLE_INSTRUCTION
-    return f"{base}\n\n{THUMBNAIL_COMPOSITE_STYLE_INSTRUCTION}".strip()
+        return instruction
+    return f"{base}\n\n{instruction}".strip()
 
 
 def enrich_background_prompt(prompt: str) -> str:

@@ -20,6 +20,12 @@ from platform_api.services.thumbnail_composite import (
     to_cover_png_bytes,
 )
 from platform_api.services.image_sample_rotation import ImageSampleRotationService
+from platform_api.services.image_source_mode import (
+    empty_prompt_error_message,
+    is_personal_reference_source,
+    is_prompt_only_source,
+    personal_reference_not_ready_message,
+)
 from platform_api.services import image_progress_log as image_log
 from platform_api.services.slai_image_config_service import (
     get_cached_slai_image_provider_config,
@@ -131,6 +137,7 @@ class ImageJobRepositoryProtocol(Protocol):
         *,
         job_ids: list[UUID] | None = None,
         batch_id: UUID | None = None,
+        include_success: bool = False,
     ) -> int: ...
     async def requeue_auto_retry_failed_jobs(
         self,
@@ -266,6 +273,7 @@ class ImageJobService:
         *,
         job_ids: list[str] | None = None,
         batch_id: str | None = None,
+        force: bool = False,
     ) -> int:
         parsed_job_ids = _parse_uuid_list(job_ids, field="job_ids")
         parsed_batch_id = _parse_optional_uuid(batch_id, field="batch_id")
@@ -278,6 +286,7 @@ class ImageJobService:
             UUID(user_id),
             job_ids=parsed_job_ids,
             batch_id=parsed_batch_id,
+            include_success=bool(force),
         )
 
     async def clear_jobs(
@@ -440,10 +449,19 @@ class ImageJobService:
                     charged_credit_units = int(hold.held_units or 0)
                     billing_finalized = bool(hold.held_units > 0)
 
+                kind = getattr(job, "kind", None)
+                if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_personal_reference_source(
+                    settings, kind
+                ):
+                    raise ValidationError(
+                        personal_reference_not_ready_message(kind),
+                        details={"job_id": str(job.id)},
+                    )
+
                 prompt = str(job.prompt or "").strip()
                 if not prompt:
                     raise ValidationError(
-                        "Image job prompt is missing.",
+                        empty_prompt_error_message(kind or ImageKind.BACKGROUND),
                         details={"job_id": str(job.id)},
                     )
 
@@ -461,6 +479,10 @@ class ImageJobService:
 
                 resolved_sub_model: str | None = model_id
                 provider_invoked = True
+                thumb_prompt_only = (
+                    getattr(job, "kind", None) == ImageKind.THUMBNAIL
+                    and is_prompt_only_source(settings, ImageKind.THUMBNAIL)
+                )
                 if (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
                     and reference_mode == "composite"
@@ -470,7 +492,9 @@ class ImageJobService:
                             user_id=user_id,
                             job=job,
                             settings=settings,
-                            prompt=enrich_thumbnail_prompt(prompt),
+                            prompt=enrich_thumbnail_prompt(
+                                prompt, prompt_only=thumb_prompt_only
+                            ),
                             resolved_provider=resolved_provider,
                             model_id=model_id,
                             operation_type=operation_type,
@@ -705,6 +729,17 @@ class ImageJobService:
             except Exception:
                 return None
 
+        kind = getattr(job, "kind", None)
+        if kind == ImageKind.BACKGROUND and is_prompt_only_source(settings, ImageKind.BACKGROUND):
+            return None
+        if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_personal_reference_source(
+            settings, kind
+        ):
+            raise ValidationError(
+                personal_reference_not_ready_message(kind),
+                details={"job_id": str(job.id)},
+            )
+
         sample_path = await self._resolve_runtime_sample_path(
             job=job,
             settings=settings,
@@ -725,6 +760,19 @@ class ImageJobService:
         settings: dict[str, Any],
         user_id: UUID | None = None,
     ) -> str | None:
+        kind = getattr(job, "kind", None)
+        if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_prompt_only_source(
+            settings, kind
+        ):
+            return None
+        if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_personal_reference_source(
+            settings, kind
+        ):
+            raise ValidationError(
+                personal_reference_not_ready_message(kind),
+                details={"job_id": str(job.id)},
+            )
+
         stored_path = str(
             job.input_image_path if job.kind == ImageKind.BACKGROUND else job.style_reference_path
             or ""
@@ -734,7 +782,6 @@ class ImageJobService:
 
         if self._image_sample_rotation is None:
             return str(job.input_image_path or job.style_reference_path or "").strip() or None
-        kind = getattr(job, "kind", None)
         if kind not in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL}:
             return None
 
@@ -781,23 +828,33 @@ class ImageJobService:
         )
         background_path = await self._resolve_source_background_path(user_id, source_job)
 
-        style_path = await self._resolve_runtime_sample_path(
-            job=job,
-            settings=settings,
-            user_id=user_id,
-        )
-        if not style_path:
-            style_path = str(job.style_reference_path or "").strip() or None
-        if not style_path:
+        prompt_only = is_prompt_only_source(settings, ImageKind.THUMBNAIL)
+        if is_personal_reference_source(settings, ImageKind.THUMBNAIL):
             raise ValidationError(
-                "Thumbnail style sample is missing.",
+                personal_reference_not_ready_message(ImageKind.THUMBNAIL),
                 details={"job_id": str(job.id)},
             )
+        style_path: str | None = None
+        if not prompt_only:
+            style_path = await self._resolve_runtime_sample_path(
+                job=job,
+                settings=settings,
+                user_id=user_id,
+            )
+            if not style_path:
+                style_path = str(job.style_reference_path or "").strip() or None
+            if not style_path:
+                raise ValidationError(
+                    "Thumbnail: No style samples available. Pick a Category with assets, "
+                    "switch Thumbnail source to Prompt only, or upload My references.",
+                    details={"job_id": str(job.id)},
+                )
 
         resolution = str(job.resolution or "1920x1080")
         style_strength = float(job.style_strength or 0.6)
+        # Prompt-only: black canvas overlay input (no style corner-box).
         overlay_input = build_thumbnail_overlay_input_png(
-            style_path,
+            style_path or "",
             resolution,
             style_strength,
         )

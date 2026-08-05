@@ -1245,17 +1245,28 @@ class SettingsView(QWidget):
         self._pref_image_source.addItem("AI Generated", "ai")
         self._pref_image_source.addItem("User Provided", "manual")
         self._pref_background_source = QComboBox()
-        self._pref_background_source.addItem("Samples", "samples")
-        self._pref_thumbnail_overlay = QComboBox()
-        self._pref_thumbnail_overlay.addItem("AI", "ai")
+        self._pref_background_source.addItem("Category", "category")
+        self._pref_background_source.addItem("User reference", "personal_reference")
+        self._pref_background_source.addItem("Prompt only", "prompt_only")
+        self._pref_thumbnail_source = QComboBox()
+        self._pref_thumbnail_source.addItem("Category", "category")
+        self._pref_thumbnail_source.addItem("User reference", "personal_reference")
+        self._pref_thumbnail_source.addItem("Prompt only", "prompt_only")
+        # Thumbnail overlay stays AI/composite behind the scenes (no UI — locked product decision).
+        self._pref_thumbnail_overlay_mode = "ai"
         rendering_panel.add_widget(form_row("Output resolution", self._pref_resolution))
         rendering_panel.add_widget(form_row("Style strength", style_widget))
         rendering_panel.add_widget(form_row("Image source mode", self._pref_image_source))
-        rendering_panel.add_widget(form_row("Background source", self._pref_background_source))
-        rendering_panel.add_widget(form_row("Thumbnail overlay", self._pref_thumbnail_overlay))
+        self._bg_source_row = form_row("Background source", self._pref_background_source)
+        self._th_source_row = form_row("Thumbnail source", self._pref_thumbnail_source)
+        rendering_panel.add_widget(self._bg_source_row)
+        rendering_panel.add_widget(self._th_source_row)
         rendering_panel.add_widget(
             note_box(
-                "AI mode keeps the current background + thumbnail generation pipeline enabled."
+                "AI Generated uses Background/Thumbnail source: Category (admin samples), "
+                "User reference (portal library — coming soon), or Prompt only (text, no sample). "
+                "User Provided skips AI — place final images in the run folder and continue the pipeline. "
+                "Style strength applies when a sample/reference is used."
             )
         )
 
@@ -1345,10 +1356,11 @@ class SettingsView(QWidget):
         ):
             widget.valueChanged.connect(lambda *_: self._on_system_field_changed())
         self._pref_youtube_chunk.currentTextChanged.connect(self._on_system_field_changed)
-        self._pref_image_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
+        self._pref_image_source.currentIndexChanged.connect(lambda *_: self._on_image_source_mode_changed())
         self._pref_resolution.currentTextChanged.connect(self._on_system_field_changed)
         self._pref_background_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
-        self._pref_thumbnail_overlay.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
+        self._pref_thumbnail_source.currentIndexChanged.connect(lambda *_: self._on_system_field_changed())
+        self._update_ai_reference_controls_visibility()
 
         root.addLayout(two_column_row(paths_panel, workers_panel))
         root.addLayout(two_column_row(image_panel, rendering_panel))
@@ -2129,6 +2141,17 @@ class SettingsView(QWidget):
     def _on_style_strength_changed(self, value: int) -> None:
         self._pref_style_strength_label.setText(f"{value} / 100")
         self._on_system_field_changed()
+
+    def _on_image_source_mode_changed(self) -> None:
+        self._update_ai_reference_controls_visibility()
+        self._on_system_field_changed()
+
+    def _update_ai_reference_controls_visibility(self) -> None:
+        is_ai = str(self._pref_image_source.currentData() or "ai") != "manual"
+        self._bg_source_row.setVisible(is_ai)
+        self._th_source_row.setVisible(is_ai)
+        self._pref_background_source.setEnabled(is_ai)
+        self._pref_thumbnail_source.setEnabled(is_ai)
 
     def _on_download_ffmpeg_clicked(self) -> None:
         open_external_url(FFMPEG_DOWNLOAD_PAGE_URL)
@@ -2994,12 +3017,14 @@ class SettingsView(QWidget):
         source_index = self._pref_image_source.findData(draft.image_source_mode)
         if source_index >= 0:
             self._pref_image_source.setCurrentIndex(source_index)
-        bg_source_index = self._pref_background_source.findData(draft.background_source_mode)
+        bg_source_index = self._pref_background_source.findData(draft.image_background_source_mode)
         if bg_source_index >= 0:
             self._pref_background_source.setCurrentIndex(bg_source_index)
-        overlay_index = self._pref_thumbnail_overlay.findData(draft.thumbnail_overlay_mode)
-        if overlay_index >= 0:
-            self._pref_thumbnail_overlay.setCurrentIndex(overlay_index)
+        th_source_index = self._pref_thumbnail_source.findData(draft.image_thumbnail_source_mode)
+        if th_source_index >= 0:
+            self._pref_thumbnail_source.setCurrentIndex(th_source_index)
+        self._pref_thumbnail_overlay_mode = draft.thumbnail_overlay_mode or "ai"
+        self._update_ai_reference_controls_visibility()
         self._pref_resolution.setCurrentText(draft.output_resolution)
         if not SERVER_MANAGED_SAMPLE_PACKS:
             self._pref_bg_random.setChecked(draft.image_bg_random)
@@ -3316,8 +3341,9 @@ class SettingsView(QWidget):
             style_strength=self._pref_style_strength.value(),
             image_source_mode=self._pref_image_source.currentData() or "ai",
             output_resolution=self._pref_resolution.currentText(),
-            background_source_mode=self._pref_background_source.currentData() or "samples",
-            thumbnail_overlay_mode=self._pref_thumbnail_overlay.currentData() or "ai",
+            image_background_source_mode=self._pref_background_source.currentData() or "category",
+            image_thumbnail_source_mode=self._pref_thumbnail_source.currentData() or "category",
+            thumbnail_overlay_mode=self._pref_thumbnail_overlay_mode or "ai",
             image_bg_random=self._system_draft.image_bg_random if SERVER_MANAGED_SAMPLE_PACKS else self._pref_bg_random.isChecked(),
             image_thumb_random=self._system_draft.image_thumb_random if SERVER_MANAGED_SAMPLE_PACKS else self._pref_th_random.isChecked(),
             image_bg_samples=self._system_draft.image_bg_samples,

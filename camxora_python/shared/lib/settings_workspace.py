@@ -33,7 +33,37 @@ def normalize_profile_image_mode(value: object) -> str:
 
 
 def normalize_image_source_mode(value: object) -> str:
-    return "manual" if str(value or "").strip().lower() == "manual" else "ai"
+    mode = str(value or "").strip().lower()
+    return "manual" if mode == "manual" else "ai"
+
+
+def normalize_kind_source_mode(value: object) -> str:
+    """BG/TH reference mode: prompt_only | category | personal_reference."""
+    mode = str(value or "").strip().lower()
+    if mode in {"prompt", "prompt_only"}:
+        return "prompt_only"
+    if mode in {"personal", "personal_reference", "user_reference"}:
+        return "personal_reference"
+    return "category"
+
+
+def resolve_kind_source_modes(settings: dict[str, Any] | None) -> tuple[str, str]:
+    """Resolve BG/TH source modes with legacy ``backgroundSourceMode`` migration."""
+    data = settings if isinstance(settings, dict) else {}
+    legacy = str(data.get("backgroundSourceMode") or "").strip().lower()
+    bg_raw = str(data.get("imageBackgroundSourceMode") or "").strip()
+    th_raw = str(data.get("imageThumbnailSourceMode") or "").strip()
+    if bg_raw:
+        bg = normalize_kind_source_mode(bg_raw)
+    elif legacy in {"prompt", "prompt_only"}:
+        bg = "prompt_only"
+    else:
+        bg = "category"
+    if th_raw:
+        th = normalize_kind_source_mode(th_raw)
+    else:
+        th = "category"
+    return bg, th
 
 
 def slugify_profile_folder_name(name: str) -> str:
@@ -153,7 +183,8 @@ class SystemSettingsDraft:
     output_resolution: str = "1920x1080"
     style_strength: int = 80
     image_source_mode: str = "ai"
-    background_source_mode: str = "samples"
+    image_background_source_mode: str = "category"
+    image_thumbnail_source_mode: str = "category"
     thumbnail_overlay_mode: str = "ai"
 
 
@@ -274,8 +305,8 @@ def build_system_settings_draft(settings: dict[str, Any]) -> SystemSettingsDraft
         or read_string_setting(normalized, "imageResolution", "1920x1080"),
         style_strength=clamp(read_number_setting(normalized, "styleStrength", 80), 0, 100),
         image_source_mode=normalize_image_source_mode(normalized.get("imageSourceMode")),
-        background_source_mode=read_string_setting(normalized, "backgroundSourceMode", "samples")
-        or "samples",
+        image_background_source_mode=resolve_kind_source_modes(normalized)[0],
+        image_thumbnail_source_mode=resolve_kind_source_modes(normalized)[1],
         thumbnail_overlay_mode=read_string_setting(normalized, "thumbnailOverlayMode", "ai") or "ai",
     )
 
@@ -374,7 +405,16 @@ def build_system_settings_patch(
         assign_string("imageThumbnailSamplesDir", draft.image_thumbnail_samples_dir, current.image_thumbnail_samples_dir)
     assign_string("imageOutputDir", draft.image_output_dir, current.image_output_dir)
     assign_string("imageSourceMode", draft.image_source_mode, current.image_source_mode)
-    assign_string("backgroundSourceMode", draft.background_source_mode, current.background_source_mode)
+    assign_string(
+        "imageBackgroundSourceMode",
+        draft.image_background_source_mode,
+        current.image_background_source_mode,
+    )
+    assign_string(
+        "imageThumbnailSourceMode",
+        draft.image_thumbnail_source_mode,
+        current.image_thumbnail_source_mode,
+    )
     assign_string("thumbnailOverlayMode", draft.thumbnail_overlay_mode, current.thumbnail_overlay_mode)
 
     number_fields = (

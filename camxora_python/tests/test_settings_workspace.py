@@ -23,6 +23,39 @@ def test_build_system_settings_patch_writes_export_workers_alias() -> None:
     assert patch["videoExportWorkers"] == 3
 
 
+def test_kind_source_mode_migrates_legacy_prompt() -> None:
+    from shared.lib.settings_workspace import (
+        SystemSettingsDraft,
+        build_system_settings_draft,
+        build_system_settings_patch,
+        normalize_kind_source_mode,
+        resolve_kind_source_modes,
+    )
+
+    bg, th = resolve_kind_source_modes({"backgroundSourceMode": "prompt"})
+    assert bg == "prompt_only"
+    assert th == "category"
+
+    draft = build_system_settings_draft({"backgroundSourceMode": "samples"})
+    assert draft.image_background_source_mode == "category"
+    assert draft.image_thumbnail_source_mode == "category"
+
+    updated = SystemSettingsDraft(
+        **{
+            **draft.__dict__,
+            "image_background_source_mode": "prompt_only",
+            "image_thumbnail_source_mode": "prompt_only",
+        }
+    )
+    patch = build_system_settings_patch(updated, {"backgroundSourceMode": "samples"})
+    assert patch["imageBackgroundSourceMode"] == "prompt_only"
+    assert patch["imageThumbnailSourceMode"] == "prompt_only"
+    assert "backgroundSourceMode" not in patch
+
+    assert normalize_kind_source_mode("personal_reference") == "personal_reference"
+    assert normalize_kind_source_mode("user_reference") == "personal_reference"
+
+
 def test_build_suno_settings_patch() -> None:
     current = {"sunoRetryCount": 3}
     from shared.lib.settings_workspace import build_suno_settings_draft, SunoSettingsDraft

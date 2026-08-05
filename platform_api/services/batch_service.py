@@ -4381,7 +4381,12 @@ class BatchService:
             elif normalize_thumbnail_reference_mode(
                 str(settings.get("thumbnailReferenceMode", "composite") or "composite")
             ) == "composite":
-                prompt = enrich_thumbnail_prompt(prompt)
+                from platform_api.services.image_source_mode import is_prompt_only_source
+
+                prompt = enrich_thumbnail_prompt(
+                    prompt,
+                    prompt_only=is_prompt_only_source(settings, ImageKind.THUMBNAIL),
+                )
 
             job = ImageJob(
                 id=uuid4(),
@@ -4741,6 +4746,20 @@ class BatchService:
         kind: ImageKind,
         exclude: list[str] | None = None,
     ) -> str | None:
+        from platform_api.services.image_source_mode import (
+            is_personal_reference_source,
+            is_prompt_only_source,
+            personal_reference_not_ready_message,
+        )
+        from platform_api.exceptions import ValidationError
+
+        if is_prompt_only_source(settings, kind):
+            return None
+        if is_personal_reference_source(settings, kind):
+            raise ValidationError(
+                personal_reference_not_ready_message(kind),
+                details={"kind": str(getattr(kind, "value", kind))},
+            )
         if self._image_sample_rotation is not None:
             return await self._image_sample_rotation.pick_sample_path(
                 settings=settings,

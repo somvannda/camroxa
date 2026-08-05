@@ -141,6 +141,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._controls_card.clear_queue_requested.connect(self._clear_queue)
         self._controls_card.job_retry_requested.connect(self._on_job_retry_requested)
         self._controls_card.jobs_retry_requested.connect(self._retry_jobs)
+        self._controls_card.jobs_regenerate_requested.connect(self._regenerate_jobs)
         self._controls_card.job_open_requested.connect(self._on_job_open_requested)
 
         self.setWidget(container)
@@ -416,6 +417,8 @@ class ImageView(PollablePageMixin, QScrollArea):
         self,
         job_ids: list[str],
         batch_id: str | None = None,
+        *,
+        force: bool = False,
     ) -> None:
         if not job_ids and not batch_id:
             return
@@ -424,25 +427,35 @@ class ImageView(PollablePageMixin, QScrollArea):
             return
         from shared.services.app_logger import log_info
 
+        action = "regenerate" if force else "retry"
         if batch_id and not job_ids:
-            log_info(f"Image queue batch retry requested for {batch_id}.", category="image")
+            log_info(f"Image queue batch {action} requested for {batch_id}.", category="image")
         else:
-            log_info(f"Image queue retry requested for {len(job_ids)} job(s).", category="image")
+            log_info(
+                f"Image queue {action} requested for {len(job_ids)} job(s).",
+                category="image",
+            )
         worker = ImageRetryJobsWorker(
             self._api,
             job_ids=job_ids if job_ids else None,
             batch_id=batch_id,
+            force=force,
             parent=self,
         )
         worker.succeeded.connect(self._on_retry_succeeded)
         worker.failed.connect(self._on_retry_failed)
         worker.finished.connect(lambda: setattr(self, "_retry_worker", None))
         self._retry_worker = worker
-        if batch_id and not job_ids:
+        if force:
+            notify_action("Regenerating Background + Thumbnail…", tone="neutral")
+        elif batch_id and not job_ids:
             notify_action("Retrying failed image jobs for batch…", tone="neutral")
         else:
             notify_action(f"Retrying {len(job_ids)} image job(s)…", tone="neutral")
         worker.start()
+
+    def _regenerate_jobs(self, job_ids: list[str], batch_id: str | None = None) -> None:
+        self._retry_jobs(job_ids, batch_id, force=True)
 
     def _on_retry_succeeded(self, payload: object) -> None:
         from shared.models.platform import ImageJobsRetryResponse
@@ -451,13 +464,13 @@ class ImageView(PollablePageMixin, QScrollArea):
         if isinstance(payload, ImageJobsRetryResponse):
             updated = int(payload.updated or 0)
         if updated > 0:
-            message = f"Retry queued for {updated} image job{'s' if updated != 1 else ''}."
+            message = f"Queued {updated} image job{'s' if updated != 1 else ''} for generation."
             self._status_label = message
             self._error_banner.hide()
             notify_action(message, tone="success")
         else:
-            message = "No failed image jobs were reset. They may already be pending or running."
-            self._status_label = "No failed image jobs to retry."
+            message = "No image jobs were reset. They may already be pending or running."
+            self._status_label = "No image jobs to reset."
             self._show_workspace_error(message)
         self.refresh_data()
 
