@@ -11,6 +11,7 @@ from platform_api.services.provider_key_balance_service import (
     ProviderKeyBalanceService,
     _normalize_deepseek,
     _normalize_fal,
+    _normalize_slai,
     _normalize_suno,
 )
 
@@ -51,6 +52,31 @@ def test_normalize_fal_credits() -> None:
     assert currency == "USD"
 
 
+def test_normalize_slai_available_units() -> None:
+    amount, currency, unit = _normalize_slai(
+        {
+            "balance": {
+                "userId": "550e8400-e29b-41d4-a716-446655440000",
+                "availableUnits": 271693612,
+                "lifetimePurchasedUnits": 7700000000,
+                "lifetimeUsedUnits": 7428306388,
+                "version": 4,
+                "updatedAt": "2026-08-03T08:30:00Z",
+            }
+        }
+    )
+    assert amount == pytest.approx(271.693612)
+    assert currency is None
+    assert unit == "credits"
+
+
+def test_format_display_slai_credits() -> None:
+    text = ProviderKeyBalanceService._format_display(
+        271.693612, None, "credits", "ok", None
+    )
+    assert text == "271.69 credits"
+
+
 @pytest.mark.asyncio
 async def test_openai_marked_unsupported_on_403(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Resp:
@@ -83,6 +109,55 @@ async def test_openai_marked_unsupported_on_403(monkeypatch: pytest.MonkeyPatch)
     assert amount is None
     assert status == "unsupported"
     assert error is not None
+
+
+@pytest.mark.asyncio
+async def test_fetch_slai_uses_official_balance_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen_urls: list[str] = []
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {
+                "balance": {
+                    "userId": "u1",
+                    "availableUnits": 271693612,
+                    "lifetimePurchasedUnits": 7700000000,
+                    "lifetimeUsedUnits": 7428306388,
+                    "version": 1,
+                    "updatedAt": "2026-08-05T00:00:00Z",
+                }
+            }
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, headers=None):
+            seen_urls.append(url)
+            assert headers["Authorization"] == "Bearer sk-slai"
+            return _Resp()
+
+    monkeypatch.setattr(
+        "platform_api.services.provider_key_balance_service.httpx.AsyncClient",
+        lambda *a, **k: _Client(),
+    )
+    service = ProviderKeyBalanceService(
+        redis=None,
+        key_pool=None,
+        settings=SimpleNamespace(slai_api_base_url="https://api.slai.shop"),
+    )
+    amount, currency, unit, raw, status, error = await service._fetch_slai("sk-slai")
+    assert status == "ok"
+    assert amount == pytest.approx(271.693612)
+    assert unit == "credits"
+    assert error is None
+    assert seen_urls[0] == "https://slai-api.slai.shop/v1/balance"
+    assert isinstance(raw, dict)
 
 
 @pytest.mark.asyncio

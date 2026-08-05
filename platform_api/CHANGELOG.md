@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- SLAI remaining balance on Admin key balances: live credits via `availableUnits / 1_000_000` from `GET https://slai-api.slai.shop/v1/balance`. See `docs/changelog/2026-08-05-slai-provider-key-balance.md`.
 - Image **prompt-only** source modes (P0): `imageBackgroundSourceMode` / `imageThumbnailSourceMode` (`prompt_only` | `category` | `personal_reference`); API skips sample/style references for prompt-only BG/TH; thumbnail composite no longer requires a style sample; User reference returns a clear not-ready error until P2. See `docs/changelog/2026-08-05-image-prompt-only-p0.md` and `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
 - `POST /image-jobs/retry` `force=true` resets successful image jobs (regenerate). See `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
 - `POST /image-jobs/manual-generate`: create a today-dated **Not available** batch + BG/TH jobs and run the clicked kind (normal image-job billing). Migration `082` allows `song_count=0`. See `docs/changelog/2026-08-05-manual-gen-queue-row.md`.
@@ -21,7 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Pipeline stuck-batch housekeeping: scheduled in-process scan (PipelineStuckAlertService) detects batches with no draft/Suno/image/asset activity for 15+ min (configurable) that aren't fully complete on every configured channel role, and pushes a throttled admin:pipeline_stuck_alert WebSocket alert to every admin (same fan-out as admin:abuse_alert). New GET /admin/pipeline/stuck for an on-demand view of the same detection. See docs/changelog/2026-08-01-pipeline-stuck-batch-alerting.md.
 - Restored admin Pipeline Ops API (`/admin/pipeline/board`, batch detail, owner-charged retries via job_queue). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
 - Pipeline Ops board no longer requires desktop filesystem paths for stage/status; promotes Image → Converter/Streaming/Done from image jobs + stream uploads.
-- Admin `GET /admin/provider-key-balances`: remaining credits/money per key-pool label (Suno/DeepSeek/Fal live; OpenAI/SLAI marked when unsupported). See `docs/changelog/2026-08-02-admin-provider-key-balances.md`.
+- Admin `GET /admin/provider-key-balances`: remaining credits/money per key-pool label (Suno/DeepSeek/Fal/SLAI live; OpenAI marked unsupported). See `docs/changelog/2026-08-02-admin-provider-key-balances.md` and `docs/changelog/2026-08-05-slai-provider-key-balance.md`.
 
 ### Changed
 
