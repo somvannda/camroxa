@@ -11,6 +11,7 @@
 - [`docs/COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md`](COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md) — **P1 orthogonal axis apply**  
 - [`docs/COMPOSITION_ENGINE_P2_COLOR_PALETTES.md`](COMPOSITION_ENGINE_P2_COLOR_PALETTES.md) — **P2 color palettes (20)**  
 - [`docs/COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md`](COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md) — **P3 spectrum shapes (15)**  
+- [`docs/COMPOSITION_ENGINE_P4_MATERIALS.md`](COMPOSITION_ENGINE_P4_MATERIALS.md) — **P4 materials (20)**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  
 - [`docs/PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) — preview compositing constraints  
@@ -838,9 +839,11 @@ Scene
 
 **Exit criteria**
 
-- [ ] All 12 canonical materials apply onto at least Circle (and remaining shapes where compatible)
-- [ ] Catalog count = **20**
-- [ ] No duplicate spectrum assets required for material variants
+- [x] All 12 canonical materials apply onto at least Circle (and remaining shapes where compatible)  
+- [x] Catalog count = **20**  
+- [x] No duplicate spectrum assets required for material variants  
+
+**P4 shipped (2026-08-05):** [`docs/COMPOSITION_ENGINE_P4_MATERIALS.md`](COMPOSITION_ENGINE_P4_MATERIALS.md) + `composition_materials.py`.
 
 ---
 
@@ -1280,6 +1283,7 @@ Canonical 16: Bloom, Color Grading, Tone Mapping, HDR, Exposure, Gamma, Contrast
 | 4 | **Text and Overlay are both Layer 1 and different** — follow recommendation (Text = typography; Overlay = top composites / frames / stickers / watermarks). |
 | 5 | **P2 fill palette names locked** as shipped: Midnight, Neon Pink, Tropical, Industrial, Candy, Blood Moon, Arctic, Gold Rush. |
 | 6 | **P3 fill shape names locked** as shipped: Ring, Starburst, Pillars. |
+| 7 | **P4 fill material names locked** as shipped: Chrome, Matte, Velvet, Obsidian, Iridescent, Latex, Frosted Glass, Wireframe. |
 
 ---
 

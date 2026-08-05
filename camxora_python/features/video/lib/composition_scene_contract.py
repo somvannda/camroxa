@@ -249,7 +249,8 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
     # Audio mapping stays empty in P0 (façade lands in P11); Layer 1 audio object exists.
     out["audio"]["mapping"] = {}
 
-    # P1: preserve orthogonal axes that legacy templates cannot express yet.
+    # P1/P3/P4: preserve orthogonal axes that legacy templates cannot express,
+    # and keep composition geometry ids when they are canonical shapes.
     prev = src.get("composition")
     if isinstance(prev, dict) and prev:
         prev_n = normalize_composition_scene(prev)
@@ -259,9 +260,20 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
         out["audio"]["mapping"] = deepcopy(prev_n["audio"]["mapping"])
         if prev_n.get("colorPalette"):
             out["colorPalette"] = prev_n.get("colorPalette")
-        # Prefer explicit composition shape when legacy style missing.
-        if (not style) and prev_n["spectrum"]["shape"] != NONE:
-            out["spectrum"]["shape"] = prev_n["spectrum"]["shape"]
+        prev_shape = str(prev_n["spectrum"]["shape"] or "").strip()
+        if prev_shape and prev_shape != NONE:
+            try:
+                from features.video.lib.composition_spectrum_shapes import SPECTRUM_SHAPE_IDS
+
+                # Canonical geometry ids win over legacy style projection.
+                # Legacy style ids (orbit-spikes, …) still follow ``style``.
+                if prev_shape in SPECTRUM_SHAPE_IDS:
+                    out["spectrum"]["shape"] = prev_shape
+                elif not style:
+                    out["spectrum"]["shape"] = prev_shape
+            except Exception:
+                if not style:
+                    out["spectrum"]["shape"] = prev_shape
 
     return normalize_composition_scene(out)
 

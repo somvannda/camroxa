@@ -11,6 +11,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine P4 — materials (20).** Look packs (Neon … Carbon + 8 fill)
+  apply glow/blur/blend without changing shape — Neon/Glass/Fire/Plasma Circle
+  share one geometry. See `docs/COMPOSITION_ENGINE_P4_MATERIALS.md` and
+  `docs/changelog/2026-08-05-composition-engine-p4-materials.md`.
 - **Composition Engine P3 — spectrum shapes (15).** Geometry catalog (Circle …
   Tunnel + Ring/Starburst/Pillars) with path generators for polygon/heart/
   infinity/spiral/tunnel; shape apply preserves material/palette. See
