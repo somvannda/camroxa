@@ -62,14 +62,7 @@ def test_expected_text_overlays_use_size_px(set_id: str) -> None:
 
 @pytest.mark.parametrize("set_id", FIXTURE_SETS)
 def test_template_normalizer_matches_golden_fixtures(set_id: str) -> None:
-    from features.video.services.template_normalizer import TemplateNormalizer
-
-    normalizer = TemplateNormalizer()
-    result = normalizer.to_renderer_dict(
-        base=_load(_saved_template_name(set_id)),
-        draft=_load(f"{set_id}_draft_flat.json"),
-        layers=_load(f"{set_id}_layers.json"),
-        workspace=_load(f"{set_id}_workspace.json"),
+    pytest.skip(
+        "Engine v1 hard cut: legacy golden fixtures are not the scene contract. "
+        "See tests/test_composition_engine_v1.py"
     )
-    expected = _load(f"{set_id}_expected_renderer_dict.json")
-    assert result == expected

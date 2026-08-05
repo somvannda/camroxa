@@ -13,6 +13,7 @@
 - [`docs/COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md`](COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md) — **P3 spectrum shapes (15)**  
 - [`docs/COMPOSITION_ENGINE_P4_MATERIALS.md`](COMPOSITION_ENGINE_P4_MATERIALS.md) — **P4 materials (20)**  
 - [`docs/COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md`](COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md) — **P5 animation behaviors (12)**  
+- [`docs/COMPOSITION_ENGINE_V1.md`](COMPOSITION_ENGINE_V1.md) — **Engine v1 hard cut (composition-only)**  
 - [`docs/COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md`](COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md) — **P6 particle types (20)**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  

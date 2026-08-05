@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.video.lib.composition_draft import composition_axis_options
 from features.video.lib.spectrum_audio_dial import (
     SPECTRUM_AUDIO_DIAL_MAX,
     from_spectrum_audio_dial,
@@ -21,9 +22,6 @@ from features.video.lib.spectrum_audio_dial import (
 )
 from features.video.lib.spectrum_style_registry import (
     ANCHOR_OPTIONS,
-    SPECTRUM_PRESET_OPTIONS,
-    STACKED_SPECTRUM_PRESET_OPTIONS,
-    build_stacked_spectrum_preset_template,
 )
 from features.video.widgets.inspector_fields import InspectorSection
 from features.video.widgets.spectrum_instance_editor import SpectrumInstanceEditor
@@ -62,9 +60,10 @@ class SpectrumInspector(QWidget):
         super().__init__(parent)
         self._binding = False
         self._spectrum_toggle: QCheckBox | None = None
-        self._preset_combo: QComboBox | None = None
-        self._selected_preset_key: str | None = None
-        self._previous_preset_key: str | None = None
+        self._shape_combo: QComboBox | None = None
+        self._material_combo: QComboBox | None = None
+        self._animation_combo: QComboBox | None = None
+        self._palette_combo: QComboBox | None = None
         self._anchor_combo: QComboBox | None = None
         self._layer_editor: SpectrumLayerEditor | None = None
         self._position_x_slider: QSlider | None = None
@@ -87,54 +86,53 @@ class SpectrumInspector(QWidget):
         self._instance_editor.instance_patch_requested.connect(self.instance_patch_requested.emit)
         root.addWidget(self._instance_editor)
 
-        spectrum_section = InspectorSection("")
+        spectrum_section = InspectorSection("Composition Axes")
         self._spectrum_toggle = QCheckBox("Enable Spectrum")
         self._spectrum_toggle.toggled.connect(
             lambda checked: self._emit_patch({"spectrumEnabled": checked})
         )
         spectrum_section.add_widget(self._spectrum_toggle)
 
-        self._preset_combo = QComboBox()
-        self._preset_combo.setToolTip("Preset")
-        for value, label in SPECTRUM_PRESET_OPTIONS:
-            self._preset_combo.addItem(label, value)
-        self._preset_combo.currentIndexChanged.connect(self._on_preset_index_changed)
-        spectrum_section.add_widget(self._preset_combo)
-
-        preset_restore_row = QHBoxLayout()
-        preset_restore_row.setContentsMargins(0, 0, 0, 0)
-        preset_restore_row.addStretch()
-        spectrum_restore_btn = QPushButton("Restore original")
-        spectrum_restore_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        spectrum_restore_btn.setToolTip(
-            "Reset the selected spectrum preset to factory defaults for this session."
+        axes = composition_axis_options()
+        self._shape_combo = QComboBox()
+        self._shape_combo.setToolTip("Shape (geometry)")
+        self._shape_combo.addItem("None", "none")
+        for value, label in axes["shapes"]:
+            self._shape_combo.addItem(label, value)
+        self._shape_combo.currentIndexChanged.connect(
+            lambda: self._emit_axis("compositionSpectrumShape", self._shape_combo)
         )
-        spectrum_restore_btn.clicked.connect(self.preset_restore_requested.emit)
-        preset_restore_row.addWidget(spectrum_restore_btn)
-        preset_restore_host = QWidget()
-        preset_restore_host.setLayout(preset_restore_row)
-        spectrum_section.add_widget(preset_restore_host)
+        spectrum_section.add_widget(self._labeled_combo("Shape", self._shape_combo))
 
-        stack_row = QHBoxLayout()
-        stack_row.setContentsMargins(0, 0, 0, 0)
-        stack_row.setSpacing(6)
-        self._stack_preset_combo = QComboBox()
-        self._stack_preset_combo.setToolTip("Stacked Ring Preset")
-        self._stack_preset_combo.addItem("Pick stacked preset...", "")
-        for value, label in STACKED_SPECTRUM_PRESET_OPTIONS:
-            self._stack_preset_combo.addItem(label, value)
-        stack_row.addWidget(self._stack_preset_combo, 1)
-        apply_stack_btn = QPushButton("Apply")
-        apply_stack_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        apply_stack_btn.clicked.connect(self._on_apply_stack_preset)
-        stack_row.addWidget(apply_stack_btn)
-        clear_stack_btn = QPushButton("Clear")
-        clear_stack_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        clear_stack_btn.clicked.connect(self.stacked_preset_clear_requested.emit)
-        stack_row.addWidget(clear_stack_btn)
-        stack_host = QWidget()
-        stack_host.setLayout(stack_row)
-        spectrum_section.add_widget(stack_host)
+        self._material_combo = QComboBox()
+        self._material_combo.setToolTip("Material (look)")
+        self._material_combo.addItem("None", "none")
+        for value, label in axes["materials"]:
+            self._material_combo.addItem(label, value)
+        self._material_combo.currentIndexChanged.connect(
+            lambda: self._emit_axis("compositionSpectrumMaterial", self._material_combo)
+        )
+        spectrum_section.add_widget(self._labeled_combo("Material", self._material_combo))
+
+        self._animation_combo = QComboBox()
+        self._animation_combo.setToolTip("Animation behavior")
+        self._animation_combo.addItem("None", "none")
+        for value, label in axes["animations"]:
+            self._animation_combo.addItem(label, value)
+        self._animation_combo.currentIndexChanged.connect(
+            lambda: self._emit_axis("compositionSpectrumAnimation", self._animation_combo)
+        )
+        spectrum_section.add_widget(self._labeled_combo("Animation", self._animation_combo))
+
+        self._palette_combo = QComboBox()
+        self._palette_combo.setToolTip("Color palette")
+        self._palette_combo.addItem("None", "none")
+        for value, label in axes["palettes"]:
+            self._palette_combo.addItem(label, value)
+        self._palette_combo.currentIndexChanged.connect(
+            lambda: self._emit_axis("compositionColorPalette", self._palette_combo)
+        )
+        spectrum_section.add_widget(self._labeled_combo("Palette", self._palette_combo))
         root.addWidget(spectrum_section)
 
         audio_section = InspectorSection(
@@ -205,21 +203,28 @@ class SpectrumInspector(QWidget):
         if isinstance(layout, QVBoxLayout):
             layout.insertWidget(0, selector)
 
-    def set_preset_options(self, options: tuple[tuple[str, str], ...]) -> None:
-        if self._preset_combo is None:
+    @staticmethod
+    def _labeled_combo(title: str, combo: QComboBox) -> QWidget:
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        label = QLabel(title)
+        label.setObjectName(SUBTITLE_LABEL_ID)
+        layout.addWidget(label)
+        layout.addWidget(combo)
+        return host
+
+    def _emit_axis(self, key: str, combo: QComboBox | None) -> None:
+        if self._binding or combo is None:
             return
-        current_style = self._preset_combo.currentData()
-        self._binding = True
-        try:
-            self._preset_combo.clear()
-            for value, label in options:
-                self._preset_combo.addItem(label, value)
-            if isinstance(current_style, str):
-                index = self._preset_combo.findData(current_style)
-                if index >= 0:
-                    self._preset_combo.setCurrentIndex(index)
-        finally:
-            self._binding = False
+        value = combo.currentData()
+        if isinstance(value, str):
+            self._emit_patch({key: value})
+
+    def set_preset_options(self, options: tuple[tuple[str, str], ...]) -> None:
+        # Legacy preset dropdown removed — composition axes are the catalog UI.
+        _ = options
 
     def _build_audio_slider(
         self,
@@ -285,31 +290,15 @@ class SpectrumInspector(QWidget):
         layout.addWidget(slider)
         return host
 
-    def _on_preset_index_changed(self, _index: int) -> None:
-        if self._binding or self._preset_combo is None:
-            return
-        preset = self._preset_combo.currentData()
-        if isinstance(preset, str):
-            self._previous_preset_key = self._selected_preset_key
-            self._selected_preset_key = preset
-            self.preset_apply_requested.emit(preset)
-
     def selected_preset_key(self) -> str | None:
-        if self._preset_combo is not None:
-            current = self._preset_combo.currentData()
+        if self._shape_combo is not None:
+            current = self._shape_combo.currentData()
             if isinstance(current, str) and current:
                 return current
-        return self._selected_preset_key
+        return None
 
     def previous_preset_key(self) -> str | None:
-        return self._previous_preset_key
-
-    def _on_apply_stack_preset(self) -> None:
-        if self._binding or self._stack_preset_combo is None:
-            return
-        preset = self._stack_preset_combo.currentData()
-        if isinstance(preset, str) and preset.strip():
-            self.stacked_preset_apply_requested.emit(preset)
+        return None
 
     def _on_anchor_changed(self, _index: int) -> None:
         if self._binding or self._anchor_combo is None:
@@ -323,6 +312,13 @@ class SpectrumInspector(QWidget):
             return
         self.draft_patch_requested.emit(patch)
 
+    def _set_combo_value(self, combo: QComboBox | None, value: str) -> None:
+        if combo is None:
+            return
+        index = combo.findData(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
+
     def bind_draft(
         self,
         draft: dict,
@@ -334,8 +330,6 @@ class SpectrumInspector(QWidget):
     ) -> None:
         self._binding = True
         try:
-            style = str(draft.get("style") or "orbit-spikes")
-
             if getattr(self, "_instance_editor", None) is not None and instances is not None:
                 self._instance_editor.bind_instances(
                     instances,
@@ -353,15 +347,22 @@ class SpectrumInspector(QWidget):
             if self._spectrum_toggle is not None:
                 self._spectrum_toggle.setChecked(bool(draft.get("spectrumEnabled", True)))
 
-            if self._preset_combo is not None:
-                index = self._preset_combo.findData(style)
-                if index >= 0:
-                    self._preset_combo.setCurrentIndex(index)
-                current = self._preset_combo.currentData()
-                if isinstance(current, str) and current:
-                    self._selected_preset_key = current
-                    if self._previous_preset_key is None:
-                        self._previous_preset_key = current
+            self._set_combo_value(
+                self._shape_combo,
+                str(draft.get("compositionSpectrumShape") or "none"),
+            )
+            self._set_combo_value(
+                self._material_combo,
+                str(draft.get("compositionSpectrumMaterial") or "none"),
+            )
+            self._set_combo_value(
+                self._animation_combo,
+                str(draft.get("compositionSpectrumAnimation") or "none"),
+            )
+            self._set_combo_value(
+                self._palette_combo,
+                str(draft.get("compositionColorPalette") or "none"),
+            )
 
             if self._anchor_combo is not None:
                 anchor = str(draft.get("anchor") or "center")

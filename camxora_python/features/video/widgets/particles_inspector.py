@@ -7,8 +7,8 @@ from collections.abc import Callable
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
+from features.video.lib.composition_draft import composition_axis_options
 from features.video.lib.particle_settings import (
-    PARTICLE_MOTION_PRESETS,
     PARTICLE_SPAWN_AREA_OPTIONS,
     PARTICLE_SPAWN_MODE_OPTIONS,
     PARTICLE_SPAWN_TRIGGER_OPTIONS,
@@ -16,7 +16,6 @@ from features.video.lib.particle_settings import (
     PARTICLE_TRAVEL_MODE_OPTIONS,
 )
 from features.video.lib.particle_color_engine import apply_particle_color_draft_patch
-from features.video.lib.particle_style_registry import resolve_active_particle_preset_key
 from features.video.widgets.particle_color_editor import ParticleColorEditor
 from features.video.widgets.inspector_fields import (
     InspectorSection,
@@ -56,9 +55,8 @@ class ParticlesInspector(QWidget):
         super().__init__(parent)
         self._binding = False
         self._draft_snapshot: dict = {}
-        self._preset_combo: QComboBox | None = None
-        self._selected_preset_key: str | None = None
-        self._previous_preset_key: str | None = None
+        self._type_combo: QComboBox | None = None
+        self._behavior_combo: QComboBox | None = None
         self._combo_fields: dict[str, QComboBox] = {}
         self._float_setters: dict[str, Callable[[float], None]] = {}
         self._color_setters: dict[str, Callable[[str], None]] = {}
@@ -69,7 +67,7 @@ class ParticlesInspector(QWidget):
 
         section = InspectorSection(
             "Particles",
-            subtitle="Control density, motion, and visual behavior for the particle system.",
+            subtitle="Type and behavior are independent composition axes (engine v1).",
         )
         self._enabled_toggle = QCheckBox("Particles")
         self._enabled_toggle.toggled.connect(
@@ -77,30 +75,24 @@ class ParticlesInspector(QWidget):
         )
         section.add_widget(self._enabled_toggle)
 
-        self._preset_combo = QComboBox()
-        self._preset_combo.setToolTip("Preset look")
-        for value, label in PARTICLE_MOTION_PRESETS:
-            self._preset_combo.addItem(label, value)
-        self._preset_combo.currentIndexChanged.connect(self._on_preset_index_changed)
-        section.add_widget(form_row("Preset Look", self._preset_combo))
+        axes = composition_axis_options()
+        self._type_combo = QComboBox()
+        self._type_combo.addItem("None", "none")
+        for value, label in axes["particle_types"]:
+            self._type_combo.addItem(label, value)
+        self._type_combo.currentIndexChanged.connect(self._on_type_changed)
+        section.add_widget(form_row("Type", self._type_combo))
 
-        restore_row = QHBoxLayout()
-        restore_row.addStretch()
-        restore_btn = QPushButton("Restore original")
-        restore_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        restore_btn.setToolTip(
-            "Reset the selected preset to factory defaults. Session tweaks reset when the app closes."
-        )
-        restore_btn.clicked.connect(self.preset_restore_requested.emit)
-        restore_row.addWidget(restore_btn)
-        restore_host = QWidget()
-        restore_host.setLayout(restore_row)
-        section.add_widget(restore_host)
+        self._behavior_combo = QComboBox()
+        self._behavior_combo.addItem("None", "none")
+        for value, label in axes["animations"]:
+            self._behavior_combo.addItem(label, value)
+        self._behavior_combo.currentIndexChanged.connect(self._on_behavior_changed)
+        section.add_widget(form_row("Behavior", self._behavior_combo))
         section.add_widget(
             note_box(
-                "Presets apply a full particle recipe. Tweaks stay for this session only and reset when the app closes. "
-                "Restore original resets only the selected preset look to factory. "
-                "Save still writes the current look to this video template."
+                "Type picks the emitter catalog. Behavior is a shared Layer 4 animation id "
+                "(independent of type)."
             )
         )
 
@@ -257,25 +249,29 @@ class ParticlesInspector(QWidget):
     def _flash_speed_from_smoothing(smoothing: float) -> float:
         return float(max(0.01, min(1.0, 1.0 - float(smoothing))))
 
-    def _on_preset_index_changed(self, _index: int) -> None:
-        if self._binding or self._preset_combo is None:
+    def _on_type_changed(self, _index: int) -> None:
+        if self._binding or self._type_combo is None:
             return
-        preset = self._preset_combo.currentData()
-        if isinstance(preset, str) and preset:
-            # Combo already moved; keep the prior selection for session capture.
-            self._previous_preset_key = self._selected_preset_key
-            self._selected_preset_key = preset
-            self.preset_apply_requested.emit(preset)
+        value = self._type_combo.currentData()
+        if isinstance(value, str):
+            self._emit_patch({"compositionParticleType": value})
+
+    def _on_behavior_changed(self, _index: int) -> None:
+        if self._binding or self._behavior_combo is None:
+            return
+        value = self._behavior_combo.currentData()
+        if isinstance(value, str):
+            self._emit_patch({"compositionParticleBehavior": value})
 
     def selected_preset_key(self) -> str | None:
-        if self._preset_combo is not None:
-            current = self._preset_combo.currentData()
+        if self._type_combo is not None:
+            current = self._type_combo.currentData()
             if isinstance(current, str) and current:
                 return current
-        return self._selected_preset_key
+        return None
 
     def previous_preset_key(self) -> str | None:
-        return self._previous_preset_key
+        return None
 
     def _on_color_field_changed(self, field: str, value: str) -> None:
         if field == "particlesColor":
@@ -314,20 +310,7 @@ class ParticlesInspector(QWidget):
         self._emit_patch({key: merged[key] for key in color_keys if key in merged})
 
     def set_preset_options(self, options: tuple[tuple[str, str], ...]) -> None:
-        if self._preset_combo is None:
-            return
-        current = self._preset_combo.currentData()
-        self._binding = True
-        try:
-            self._preset_combo.clear()
-            for value, label in options:
-                self._preset_combo.addItem(label, value)
-            if isinstance(current, str):
-                index = self._preset_combo.findData(current)
-                if index >= 0:
-                    self._preset_combo.setCurrentIndex(index)
-        finally:
-            self._binding = False
+        _ = options
 
     def bind_draft(self, draft: dict) -> None:
         self._binding = True
@@ -335,6 +318,17 @@ class ParticlesInspector(QWidget):
             self._draft_snapshot = dict(draft)
             self._enabled_toggle.setChecked(bool(draft.get("particlesEnabled", True)))
             self._trail_toggle.setChecked(bool(draft.get("particlesTrailEnabled", False)))
+
+            if self._type_combo is not None:
+                index = self._type_combo.findData(str(draft.get("compositionParticleType") or "none"))
+                if index >= 0:
+                    self._type_combo.setCurrentIndex(index)
+            if self._behavior_combo is not None:
+                index = self._behavior_combo.findData(
+                    str(draft.get("compositionParticleBehavior") or "none")
+                )
+                if index >= 0:
+                    self._behavior_combo.setCurrentIndex(index)
 
             for field, combo in self._combo_fields.items():
                 index = combo.findData(str(draft.get(field) or ""))
@@ -349,20 +343,6 @@ class ParticlesInspector(QWidget):
 
             for field, setter in self._color_setters.items():
                 setter(str(draft.get(field) or "#ffffff"))
-
-            if self._preset_combo is not None:
-                active_preset = resolve_active_particle_preset_key(draft)
-                if active_preset:
-                    index = self._preset_combo.findData(active_preset)
-                    if index >= 0:
-                        self._preset_combo.setCurrentIndex(index)
-                # Keep the currently selected pack/custom entry when no built-in
-                # preset matches exactly (user tweaked values). Do not force index 0.
-                current = self._preset_combo.currentData()
-                if isinstance(current, str) and current:
-                    self._selected_preset_key = current
-                    if self._previous_preset_key is None:
-                        self._previous_preset_key = current
 
             self._color_editor.bind_draft(draft)
             color_mode = str(draft.get("particlesColorMode") or "solid")

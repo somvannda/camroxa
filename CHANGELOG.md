@@ -11,6 +11,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine V1 hard cut (P0–P6 engine-true).** Scene documents use
+  `schema: camxora.composition` only. Preview/export compile via
+  `visualizer.scene` + catalogs under `visualizer/presets` (15 shapes, 20
+  materials, 12 behaviors, 20 particle types, 20 palettes). Legacy
+  style/particlesSettings-only templates are rejected. See
+  `docs/COMPOSITION_ENGINE_V1.md`.
 - **Composition Engine P6 — particle types (20).** Catalog (Dust … Sparkles + 7
   fill) maps to GPU-safe particle recipes; type and behavior stay independent.
   See `docs/COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md` and

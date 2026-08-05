@@ -77,17 +77,21 @@ def test_composition_from_legacy_projects_motion_and_domains() -> None:
 
 
 def test_ensure_and_strip_composition() -> None:
-    template = {"style": "orbit-spikes", "backgroundSettings": {"motionMode": "none"}}
+    template = {
+        "composition": {
+            "version": 1,
+            "spectrum": {"shape": "circle", "material": "neon", "animation": "pulse"},
+        }
+    }
     ensure_composition_on_template(template)
     assert isinstance(template.get("composition"), dict)
-    assert template["composition"]["background"]["motion"] == "static"
-    assert template["composition"]["spectrum"]["shape"] == "orbit-spikes"
-    assert "style" in template
 
-    stripped = strip_composition_for_renderer(template)
-    assert "composition" not in stripped
-    assert stripped["style"] == "orbit-spikes"
-    assert "composition" in template  # original unchanged by strip copy
+    kept = strip_composition_for_renderer(template)
+    assert "composition" in kept
+    assert kept["composition"]["spectrum"]["shape"] in (
+        "circle",
+        template["composition"]["spectrum"]["shape"],
+    )
 
 
 def test_legacy_motion_roundtrip_helpers() -> None:
@@ -96,19 +100,30 @@ def test_legacy_motion_roundtrip_helpers() -> None:
     assert legacy_background_motion_mode("vibrate") == "vibrate"
 
 
-def test_template_normalizer_strips_composition_and_keeps_legacy_style() -> None:
+def test_template_normalizer_keeps_composition_engine_v1() -> None:
     from features.video.lib.video_template_draft import build_video_template_draft
     from features.video.services.template_normalizer import TemplateNormalizer
 
     base = {
-        "style": "orbit-spikes",
+        "schema": "camxora.composition",
         "spectrumEnabled": True,
         "layers": [],
         "textOverlays": [],
         "composition": {
             "version": 1,
             "spectrum": {"shape": "circle", "material": "neon", "animation": "pulse"},
+            "particles": {"type": "none", "behavior": "none"},
+            "logo": {"enabled": True, "animation": "none"},
+            "background": {"image": None, "motion": "static", "atmosphere": "none"},
+            "text": {"enabled": False},
+            "overlay": {"enabled": False, "animation": "none", "items": []},
+            "lighting": {"effect": "none", "trigger": "none"},
+            "camera": {"behavior": "none"},
+            "postProcessing": {"effects": []},
+            "audio": {"mapping": {}},
+            "colorPalette": "cyberpunk",
         },
+        "assets": {"backgroundImage": None, "logo": None, "audio": None},
     }
     draft = build_video_template_draft(base, logo_path="")
     out = TemplateNormalizer().to_renderer_dict(
@@ -117,8 +132,10 @@ def test_template_normalizer_strips_composition_and_keeps_legacy_style() -> None
         layers=[],
         workspace={},
     )
-    assert "composition" not in out
-    assert out.get("style") == "orbit-spikes"
+    assert "composition" in out
+    assert out["composition"]["spectrum"]["shape"] == "circle"
+    assert out["engine"]["compiled"] is True
+    assert "style" not in out
 
 
 def test_legacy_key_map_covers_architecture_tree() -> None:

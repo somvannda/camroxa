@@ -314,12 +314,14 @@ def ensure_composition_on_template(template: dict[str, Any]) -> dict[str, Any]:
 
 
 def strip_composition_for_renderer(template: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy without ``composition`` (GPU path ignores authoring tree)."""
+    """Engine v1: composition must stay. Raises if missing; otherwise returns copy with composition kept."""
     if not isinstance(template, dict):
         return {}
-    out = dict(template)
-    out.pop("composition", None)
-    return out
+    if not isinstance(template.get("composition"), dict) or not template.get("composition"):
+        from visualizer.scene import CompositionContractError
+
+        raise CompositionContractError("strip_composition_for_renderer refused — composition is required")
+    return dict(template)
 
 
 def legacy_background_motion_mode(composition_motion: str | None) -> str:
