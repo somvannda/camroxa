@@ -212,6 +212,28 @@ class ImageJobsSyncManualResponse(BaseModel):
     updated: int = 0
 
 
+class ImageJobsManualGenerateRequest(BaseModel):
+    kind: str
+    prompt: str | None = None
+    channel_profile_id: str | None = None
+
+
+class ImageJobsManualGenerateCreatedJob(BaseModel):
+    id: str
+    kind: str
+    status: str
+
+
+class ImageJobsManualGenerateResponse(BaseModel):
+    batch_id: str
+    job_id: str
+    kind: str
+    profile_id: str = ""
+    planned_date: str = ""
+    album_label: str = "Not available"
+    created_jobs: list[ImageJobsManualGenerateCreatedJob] = Field(default_factory=list)
+
+
 class ImageJobListItem(BaseModel):
     id: str
     batch_id: str | None = None
@@ -250,10 +272,25 @@ class ImageJobsRunResponse(BaseModel):
 class ImageJobsRetryRequest(BaseModel):
     job_ids: list[str] | None = None
     batch_id: str | None = None
+    force: bool = False
 
 
 class ImageJobsRetryResponse(BaseModel):
     updated: int = 0
+
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str
+    provider: str = "fal"
+    kind: str = "background"
+    resolution: str = "1920x1080"
+    style_strength: float = 0.6
+    base_image: str | None = None
+    channel_profile_id: str | None = None
+
+
+class ImageGenerationResponse(BaseModel):
+    image_base64: str = ""
 
 
 class ImageJobsClearRequest(BaseModel):

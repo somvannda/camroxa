@@ -225,6 +225,8 @@ class ProfileRepositoryProtocol(Protocol):
     """Protocol for profile repository to look up image config."""
 
     async def get_by_id(self, profile_id: UUID) -> Any | None: ...
+    async def get_by_id_for_user(self, profile_id: UUID, user_id: UUID) -> Any | None: ...
+    async def list_for_user(self, user_id: UUID) -> list[Any]: ...
 
 
 class PromptServiceProtocol(Protocol):
@@ -2485,6 +2487,243 @@ class BatchService:
 
         return created
 
+    async def create_manual_image_generation(
+        self,
+        *,
+        user_id: str,
+        kind: str,
+        prompt: str | None = None,
+        channel_profile_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a today-dated Not available batch + BG/TH jobs; run the clicked kind.
+
+        Used by Image page Manual Generation when no queue row is selected.
+        """
+        from platform_api.exceptions import ValidationError
+        from platform_api.services.image_source_mode import (
+            empty_prompt_error_message,
+            is_personal_reference_source,
+            is_prompt_only_source,
+            personal_reference_not_ready_message,
+        )
+
+        user_uuid = UUID(user_id)
+        kind_value = str(kind or "").strip().lower()
+        if kind_value not in {"background", "thumbnail"}:
+            raise ValidationError(
+                "kind must be background or thumbnail.",
+                details={"kind": kind},
+            )
+        target_kind = (
+            ImageKind.THUMBNAIL if kind_value == "thumbnail" else ImageKind.BACKGROUND
+        )
+
+        if self._settings_service is None:
+            raise ValidationError("Settings service is not available.")
+        settings = await self._settings_service.get_merged_settings(
+            user_uuid,
+            include_sensitive=False,
+        )
+        if self._normalize_image_source_mode(settings) == "manual":
+            raise ValidationError(
+                "Image source mode is User Provided. Switch Preferences to AI Generated "
+                "before Manual Generation, or place files in the run folder."
+            )
+
+        if is_personal_reference_source(settings, target_kind):
+            raise ValidationError(personal_reference_not_ready_message(target_kind))
+
+        profile: Any | None = None
+        if channel_profile_id:
+            profile = await self._profile_repo.get_by_id_for_user(
+                UUID(str(channel_profile_id)),
+                user_uuid,
+            )
+            if profile is None:
+                raise NotFoundError(
+                    f"Channel profile '{channel_profile_id}' not found.",
+                    details={"channel_profile_id": channel_profile_id},
+                )
+        else:
+            profiles = await self._profile_repo.list_for_user(user_uuid)
+            profile = profiles[0] if profiles else None
+            if profile is None:
+                raise ValidationError(
+                    "Create a channel profile before Manual Generation.",
+                    details={"field": "channel_profile_id"},
+                )
+
+        profile_id = UUID(str(profile.id))
+        image_config = getattr(profile, "image_config", None) or {}
+        today = datetime.now(timezone.utc).date()
+        override_prompt = str(prompt or "").strip()
+        settings_prompt = self._get_user_image_prompt(settings, target_kind)
+        effective_user_prompt = override_prompt or settings_prompt
+        if is_prompt_only_source(settings, target_kind) and not effective_user_prompt:
+            raise ValidationError(empty_prompt_error_message(target_kind))
+
+        batch = Batch(
+            id=uuid4(),
+            user_id=user_uuid,
+            ok_profile_id=profile_id,
+            alt_profile_id=None,
+            song_count=0,
+            status="manual_image",
+            auto_gen_image=False,
+            auto_gsuno=False,
+            planned_from_date=today,
+            planned_to_date=today,
+            ok_album="Not available",
+            alt_album=None,
+        )
+        await self._batch_repo.create_batch(batch)
+        await self._batch_repo.update_batch_channel_albums(
+            batch.id,
+            ok_album="Not available",
+            alt_album=None,
+        )
+
+        placeholder_song = Song(
+            id=uuid4(),
+            batch_id=batch.id,
+            user_id=user_uuid,
+            title="",
+            album="Not available",
+            status="manual_image",
+        )
+        resolution = str(
+            settings.get("outputResolution")
+            or settings.get("imageResolution")
+            or image_config.get("resolution")
+            or "1920x1080"
+        )
+        try:
+            style_raw = settings.get("styleStrength", image_config.get("style_strength", 80))
+            style_strength = float(style_raw)
+            if style_strength > 1.0:
+                style_strength = style_strength / 100.0
+            style_strength = max(0.0, min(1.0, style_strength))
+        except (TypeError, ValueError):
+            style_strength = 0.8
+
+        jobs: list[ImageJob] = []
+        background_job_id = uuid4()
+        for job_kind in (ImageKind.BACKGROUND, ImageKind.THUMBNAIL):
+            if job_kind == ImageKind.BACKGROUND:
+                profile_prompt = image_config.get("background_prompt", "")
+                user_prompt = (
+                    effective_user_prompt
+                    if job_kind == target_kind
+                    else self._get_user_image_prompt(settings, job_kind)
+                )
+                input_image_path = await self._resolve_sample_reference_path(
+                    settings=settings,
+                    kind=job_kind,
+                )
+                style_reference_path = None
+                source_job_id = None
+                job_id = background_job_id
+            else:
+                profile_prompt = image_config.get("thumbnail_prompt", "")
+                user_prompt = (
+                    effective_user_prompt
+                    if job_kind == target_kind
+                    else self._get_user_image_prompt(settings, job_kind)
+                )
+                input_image_path = None
+                style_reference_path = await self._resolve_sample_reference_path(
+                    settings=settings,
+                    kind=job_kind,
+                )
+                source_job_id = background_job_id
+                job_id = uuid4()
+
+            composed = self._compose_image_prompt(
+                song=placeholder_song,
+                batch=batch,
+                channel_role=ChannelRole.OK,
+                profile_prompt=profile_prompt,
+                user_prompt=user_prompt,
+            )
+            if job_kind == ImageKind.BACKGROUND:
+                composed = enrich_background_prompt(composed)
+            elif normalize_thumbnail_reference_mode(
+                str(settings.get("thumbnailReferenceMode", "composite") or "composite")
+            ) == "composite":
+                composed = enrich_thumbnail_prompt(
+                    composed,
+                    prompt_only=is_prompt_only_source(settings, ImageKind.THUMBNAIL),
+                )
+            if job_kind == target_kind and not composed.strip():
+                raise ValidationError(empty_prompt_error_message(job_kind))
+
+            jobs.append(
+                ImageJob(
+                    id=job_id,
+                    song_id=None,
+                    user_id=user_uuid,
+                    batch_id=batch.id,
+                    profile_id=profile_id,
+                    kind=job_kind,
+                    channel_role=ChannelRole.OK,
+                    prompt=composed or None,
+                    provider=str(image_config.get("provider", "fal") or "fal"),
+                    resolution=resolution,
+                    style_strength=style_strength,
+                    input_image_path=input_image_path,
+                    style_reference_path=style_reference_path,
+                    source_job_id=source_job_id,
+                    status=TaskStatus.PENDING,
+                    attempt_count=0,
+                    error=None,
+                )
+            )
+
+        created = await self._batch_repo.create_image_jobs(jobs)
+        if not created:
+            raise ValidationError(
+                "Could not create image jobs for Manual Generation.",
+                details={"batch_id": str(batch.id)},
+            )
+
+        target_job = next((job for job in created if job.kind == target_kind), None)
+        if target_job is None:
+            raise ValidationError(
+                "Target image job was not created.",
+                details={"kind": kind_value, "batch_id": str(batch.id)},
+            )
+
+        # Enqueue worker drain for the clicked kind only (BG click) or BG+TH
+        # (TH click needs Background first for pipeline composite). Do not await
+        # generation inline — client HTTP timeout is ~30s.
+        run_job_ids = [str(target_job.id)]
+        if target_kind == ImageKind.THUMBNAIL:
+            bg_job = next((job for job in created if job.kind == ImageKind.BACKGROUND), None)
+            if bg_job is not None:
+                run_job_ids = [str(bg_job.id), str(target_job.id)]
+        await self._schedule_image_jobs_run(
+            user_id=user_id,
+            batch_id=batch.id,
+            job_ids=run_job_ids,
+        )
+
+        return {
+            "batch_id": str(batch.id),
+            "job_id": str(target_job.id),
+            "kind": kind_value,
+            "profile_id": str(profile_id),
+            "planned_date": today.isoformat(),
+            "album_label": "Not available",
+            "created_jobs": [
+                {
+                    "id": str(job.id),
+                    "kind": str(job.kind.value),
+                    "status": str(job.status.value),
+                }
+                for job in created
+            ],
+        }
+
     async def ensure_batch_image_jobs(
         self,
         *,
@@ -2827,17 +3066,30 @@ class BatchService:
             await self.refresh_batch_status(batch_id)
         return fixed
 
-    async def _schedule_image_jobs_run(self, *, user_id: str, batch_id: UUID) -> None:
+    async def _schedule_image_jobs_run(
+        self,
+        *,
+        user_id: str,
+        batch_id: UUID,
+        job_ids: list[str] | None = None,
+    ) -> None:
         """Enqueue durable image drain (deduped) for the platform worker."""
         try:
             from platform_api.dependencies import get_job_queue_repo
             from platform_api.services.job_types import JOB_RUN_IMAGE_JOBS, PRI_RUN_IMAGE_JOBS
 
+            payload: dict[str, Any] = {
+                "user_id": user_id,
+                "batch_id": str(batch_id),
+            }
+            if job_ids:
+                payload["job_ids"] = [str(job_id) for job_id in job_ids if str(job_id).strip()]
+
             await get_job_queue_repo().enqueue_if_absent(
                 user_id=UUID(user_id),
                 batch_id=batch_id,
                 job_type=JOB_RUN_IMAGE_JOBS,
-                payload={"user_id": user_id, "batch_id": str(batch_id)},
+                payload=payload,
                 priority=PRI_RUN_IMAGE_JOBS,
             )
         except Exception:
@@ -4381,7 +4633,12 @@ class BatchService:
             elif normalize_thumbnail_reference_mode(
                 str(settings.get("thumbnailReferenceMode", "composite") or "composite")
             ) == "composite":
-                prompt = enrich_thumbnail_prompt(prompt)
+                from platform_api.services.image_source_mode import is_prompt_only_source
+
+                prompt = enrich_thumbnail_prompt(
+                    prompt,
+                    prompt_only=is_prompt_only_source(settings, ImageKind.THUMBNAIL),
+                )
 
             job = ImageJob(
                 id=uuid4(),
@@ -4741,6 +4998,20 @@ class BatchService:
         kind: ImageKind,
         exclude: list[str] | None = None,
     ) -> str | None:
+        from platform_api.services.image_source_mode import (
+            is_personal_reference_source,
+            is_prompt_only_source,
+            personal_reference_not_ready_message,
+        )
+        from platform_api.exceptions import ValidationError
+
+        if is_prompt_only_source(settings, kind):
+            return None
+        if is_personal_reference_source(settings, kind):
+            raise ValidationError(
+                personal_reference_not_ready_message(kind),
+                details={"kind": str(getattr(kind, "value", kind))},
+            )
         if self._image_sample_rotation is not None:
             return await self._image_sample_rotation.pick_sample_path(
                 settings=settings,

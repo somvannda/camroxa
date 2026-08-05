@@ -19,20 +19,24 @@ async def run_image_jobs_until_empty(
     *,
     user_id: str,
     batch_id: str,
+    job_ids: list[str] | None = None,
 ) -> None:
     """Run pending image jobs for a batch until the queue is drained.
 
     Auto-retries (pending after transient failure) are drained in the same loop.
+    When ``job_ids`` is set, only those jobs are claimed (used by Manual Generation).
     """
     image_log.log_runner_started(user_id=user_id, batch_id=batch_id)
     total_ran = 0
     idle_rounds = 0
+    resolved_job_ids = [str(job_id).strip() for job_id in (job_ids or []) if str(job_id).strip()] or None
     try:
         for iteration in range(1, 81):
             ran = await service.run_pending_jobs(
                 user_id=user_id,
                 batch_id=batch_id,
                 limit=50,
+                job_ids=resolved_job_ids,
             )
             image_log.log_runner_iteration(
                 batch_id=batch_id,

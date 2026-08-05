@@ -66,10 +66,13 @@ class ControlsQueueCard(QFrame):
     filters_changed = Signal()
     reload_requested = Signal()
     row_selected = Signal(str)
+    selection_cleared = Signal()
     prompts_changed = Signal()
     clear_queue_requested = Signal()
     job_retry_requested = Signal(str, str)
     jobs_retry_requested = Signal(list, str)
+    jobs_regenerate_requested = Signal(list, str)
+    manual_generation_requested = Signal(str)
     job_open_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -93,13 +96,26 @@ class ControlsQueueCard(QFrame):
         self._to_date = self._make_date_edit()
         reload = QPushButton("Reload")
         reload.clicked.connect(self.reload_requested.emit)
+        deselect = QPushButton("Deselect")
+        deselect.setToolTip(
+            "Clear the selected queue row. Manual Generation then creates a Not available "
+            "queue row for today."
+        )
+        deselect.clicked.connect(self.clear_selection)
         toolbar.addWidget(QLabel("From"))
         toolbar.addWidget(self._from_date)
         toolbar.addWidget(QLabel("To"))
         toolbar.addWidget(self._to_date)
         toolbar.addWidget(reload)
+        toolbar.addWidget(deselect)
         toolbar.addStretch()
         root.addLayout(toolbar)
+
+        self._filter_banner = QLabel("")
+        self._filter_banner.setObjectName(SUBTITLE_LABEL_ID)
+        self._filter_banner.setWordWrap(True)
+        self._filter_banner.hide()
+        root.addWidget(self._filter_banner)
 
         stats = QGridLayout()
         self._date_range_value = QLabel("")
@@ -135,7 +151,8 @@ class ControlsQueueCard(QFrame):
 
         queue_hint = QLabel(
             "One row per album and channel. Each album gets one shared background and thumbnail "
-            "(not per song). Click a row to preview. Right-click for retry and open actions."
+            "(not per song). Click a row to preview. Right-click to Retry failed jobs or Regenerate "
+            "(uses Preferences + prompts; charges credits/quota)."
         )
         queue_hint.setObjectName(SUBTITLE_LABEL_ID)
         root.addWidget(queue_hint)
@@ -164,10 +181,28 @@ class ControlsQueueCard(QFrame):
         self._thumbnail_prompt = self._make_prompt_edit(
             "Guide how the thumbnail should build on the generated background plus text style."
         )
+        self._bg_manual_btn = QPushButton("Manual Generation")
+        self._bg_manual_btn.setToolTip(
+            "With a row selected: regenerate that album background (credits/quota). "
+            "With no row selected: create a Not available queue row for today and generate Background."
+        )
+        self._bg_manual_btn.clicked.connect(
+            lambda: self.manual_generation_requested.emit("background")
+        )
+        self._th_manual_btn = QPushButton("Manual Generation")
+        self._th_manual_btn.setToolTip(
+            "With a row selected: regenerate that album thumbnail (credits/quota). "
+            "With no row selected: create a Not available queue row for today and generate Thumbnail."
+        )
+        self._th_manual_btn.clicked.connect(
+            lambda: self.manual_generation_requested.emit("thumbnail")
+        )
         prompts.addWidget(self._prompt_label("Background Prompt"), 0, 0)
         prompts.addWidget(self._background_prompt, 1, 0)
+        prompts.addWidget(self._bg_manual_btn, 2, 0)
         prompts.addWidget(self._prompt_label("Thumbnail Prompt"), 0, 1)
         prompts.addWidget(self._thumbnail_prompt, 1, 1)
+        prompts.addWidget(self._th_manual_btn, 2, 1)
         prompts.setColumnStretch(0, 1)
         prompts.setColumnStretch(1, 1)
         root.addLayout(prompts)
@@ -264,6 +299,14 @@ class ControlsQueueCard(QFrame):
         else:
             self._footer_detail.hide()
 
+    def set_filter_banner(self, message: str | None) -> None:
+        text = str(message or "").strip()
+        if text:
+            self._filter_banner.setText(text)
+            self._filter_banner.show()
+        else:
+            self._filter_banner.hide()
+
     def set_clear_enabled(self, enabled: bool) -> None:
         self._clear_btn.setEnabled(enabled)
 
@@ -274,7 +317,11 @@ class ControlsQueueCard(QFrame):
 
     def set_rows(self, rows: list[QueueRow], selected_key: str | None) -> None:
         self._rows = rows
-        self._selected_key = selected_key or (rows[0].key if rows else "")
+        # None = caller wants default first row; "" = explicit deselection.
+        if selected_key is None:
+            self._selected_key = rows[0].key if rows else ""
+        else:
+            self._selected_key = selected_key
         if not rows:
             self._table.setRowCount(1)
             self._table.setSpan(0, 0, 1, 8)
@@ -311,15 +358,21 @@ class ControlsQueueCard(QFrame):
                     item.setBackground(background)
                     item.setForeground(foreground)
                 item.setToolTip(tooltips[col_index])
-                if row.key == self._selected_key:
-                    item.setSelected(True)
                 self._table.setItem(row_index, col_index, item)
 
+        self._table.blockSignals(True)
+        self._table.clearSelection()
         if self._selected_key:
             for row_index, row in enumerate(rows):
                 if row.key == self._selected_key:
                     self._table.selectRow(row_index)
                     break
+        self._table.blockSignals(False)
+
+    def clear_selection(self) -> None:
+        self._selected_key = ""
+        self._table.clearSelection()
+        self.selection_cleared.emit()
 
     def selected_row(self) -> QueueRow | None:
         for row in self._rows:
@@ -330,6 +383,9 @@ class ControlsQueueCard(QFrame):
     def _on_selection_changed(self) -> None:
         selected_items = self._table.selectedItems()
         if not selected_items:
+            if self._selected_key:
+                self._selected_key = ""
+                self.selection_cleared.emit()
             return
         row_index = selected_items[0].row()
         if 0 <= row_index < len(self._rows):
@@ -395,6 +451,14 @@ class ControlsQueueCard(QFrame):
     ) -> None:
         self.jobs_retry_requested.emit(job_ids, batch_id)
 
+    def _emit_jobs_regenerate_requested(
+        self,
+        job_ids: list[str],
+        batch_id: str,
+        _checked: bool = False,
+    ) -> None:
+        self.jobs_regenerate_requested.emit(job_ids, batch_id)
+
     def _emit_job_open_requested(self, path: str, job_id: str, _checked: bool = False) -> None:
         self.job_open_requested.emit(path, job_id)
 
@@ -420,13 +484,13 @@ class ControlsQueueCard(QFrame):
 
         if entry.bg_job and self._job_is_retryable(entry.bg_job):
             bg_job = entry.bg_job
-            action = menu.addAction("Retry Background")
+            action = menu.addAction("Retry Background (failed)")
             action.triggered.connect(
                 partial(self._emit_job_retry_requested, bg_job.id, entry.batch_id)
             )
         if entry.th_job and self._job_is_retryable(entry.th_job):
             th_job = entry.th_job
-            action = menu.addAction("Retry Thumbnail")
+            action = menu.addAction("Retry Thumbnail (failed)")
             action.triggered.connect(
                 partial(self._emit_job_retry_requested, th_job.id, entry.batch_id)
             )
@@ -437,9 +501,37 @@ class ControlsQueueCard(QFrame):
                 partial(self._emit_jobs_retry_requested, retry_ids, entry.batch_id)
             )
         elif entry.batch_id and self._row_needs_image_recovery(entry):
-            action = menu.addAction("Retry Batch Images")
+            action = menu.addAction("Retry Batch Failed Images")
             action.triggered.connect(
                 partial(self._emit_jobs_retry_requested, [], entry.batch_id)
+            )
+        if entry.bg_job is not None:
+            action = menu.addAction("Regenerate Background")
+            action.triggered.connect(
+                partial(
+                    self._emit_jobs_regenerate_requested,
+                    [entry.bg_job.id],
+                    entry.batch_id,
+                )
+            )
+        if entry.th_job is not None:
+            action = menu.addAction("Regenerate Thumbnail")
+            action.triggered.connect(
+                partial(
+                    self._emit_jobs_regenerate_requested,
+                    [entry.th_job.id],
+                    entry.batch_id,
+                )
+            )
+        regen_ids: list[str] = []
+        if entry.bg_job is not None:
+            regen_ids.append(entry.bg_job.id)
+        if entry.th_job is not None:
+            regen_ids.append(entry.th_job.id)
+        if len(regen_ids) >= 2:
+            action = menu.addAction("Regenerate Background + Thumbnail")
+            action.triggered.connect(
+                partial(self._emit_jobs_regenerate_requested, list(regen_ids), entry.batch_id)
             )
         if entry.bg_job and self._job_is_success(entry.bg_job):
             bg_path = entry.bg_job.output_image_path or ""

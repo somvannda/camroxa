@@ -72,8 +72,14 @@ def _build_batch_album_labels(batches: list[MusicHistoryBatch]) -> dict[tuple[st
                 if candidate:
                     fallback = candidate
                     break
-        fallback = fallback or "Untitled album"
+        status = str(batch.status or "").strip().lower()
+        if status == "manual_image":
+            fallback = "Not available"
+        else:
+            fallback = fallback or "Untitled album"
         ok_album = str(batch.ok_album or "").strip() or fallback
+        if ok_album.lower() == "not available":
+            ok_album = "Not available"
         alt_album = str(batch.alt_album or "").strip()
         if not alt_album or alt_album.lower() == ok_album.lower():
             alt_album = f"{ok_album} II" if ok_album else f"{fallback} II"
@@ -146,6 +152,7 @@ def build_queue_rows(
     profiles: list[ProfileResponse],
 ) -> list[QueueRow]:
     profile_by_id = {profile.id: profile for profile in profiles}
+    batch_by_id = {batch.batch_id: batch for batch in batches}
     batch_meta = {batch.batch_id: batch_date_label(batch) for batch in batches}
     album_labels = _build_batch_album_labels(batches)
     track_counts = {batch.batch_id: len(batch.songs) for batch in batches}
@@ -156,7 +163,16 @@ def build_queue_rows(
         profile_id = job.profile_id or ""
         role = job.channel_role or ""
         key = f"{batch_id}-{profile_id}-{role}"
-        profile_name = profile_by_id.get(profile_id).name if profile_id in profile_by_id else profile_id or "Unknown"
+        batch = batch_by_id.get(batch_id)
+        is_manual_image = str(getattr(batch, "status", "") or "").strip().lower() == "manual_image"
+        if is_manual_image:
+            profile_name = "Not available"
+            display_role = "n/a"
+        else:
+            profile_name = (
+                profile_by_id.get(profile_id).name if profile_id in profile_by_id else profile_id or "Unknown"
+            )
+            display_role = role
         existing = rows.get(key)
         if existing is None:
             existing = QueueRow(
@@ -167,7 +183,7 @@ def build_queue_rows(
                 track_count=track_counts.get(batch_id, 0),
                 date_label=batch_meta.get(batch_id, "Unknown date"),
                 profile_name=profile_name,
-                role=role,
+                role=display_role,
                 bg_job=None,
                 th_job=None,
                 bg_jobs=(),

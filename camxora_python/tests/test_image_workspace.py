@@ -242,3 +242,32 @@ def test_filter_batches_by_date() -> None:
     ]
     filtered = filter_batches_by_date(batches, "2026-06-28", "2026-06-28")
     assert [batch.batch_id for batch in filtered] == ["b1"]
+
+
+def test_build_queue_rows_manual_image_album_label() -> None:
+    batch = _batch(
+        batch_id="manual-1",
+        status="manual_image",
+        ok_album="Not available",
+        from_date="2026-08-05",
+        to_date="2026-08-05",
+        songs=[],
+    )
+    rows = build_queue_rows(
+        [
+            ImageJobListItem(
+                id="job-bg",
+                batch_id="manual-1",
+                profile_id="profile-ok",
+                kind="background",
+                channel_role="ok",
+                status="pending",
+            )
+        ],
+        [batch],
+        [ProfileResponse(id="profile-ok", user_id="u1", name="OK Channel")],
+    )
+    assert len(rows) == 1
+    assert rows[0].album_label == "Not available"
+    assert rows[0].profile_name == "Not available"
+    assert rows[0].role == "n/a"

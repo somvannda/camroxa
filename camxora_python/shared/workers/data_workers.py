@@ -1581,6 +1581,8 @@ class ImageRetryJobsWorker(QThread):
         *,
         job_ids: list[str] | None = None,
         batch_id: str | None = None,
+        force: bool = False,
+        settings_patch: dict[str, object] | None = None,
         run_after_retry: bool = True,
         parent=None,
     ) -> None:
@@ -1588,6 +1590,8 @@ class ImageRetryJobsWorker(QThread):
         self._api = api
         self._job_ids = list(job_ids or [])
         self._batch_id = batch_id
+        self._force = bool(force)
+        self._settings_patch = dict(settings_patch or {})
         self._run_after_retry = run_after_retry
 
     def run(self) -> None:
@@ -1597,16 +1601,20 @@ class ImageRetryJobsWorker(QThread):
         try:
             if not self._job_ids and not self._batch_id:
                 raise PlatformApiError("No image jobs selected for retry.")
+            if self._settings_patch:
+                self._api.patch_settings(self._settings_patch)
             target = (
                 f"batch {self._batch_id}"
                 if self._batch_id and not self._job_ids
                 else f"{len(self._job_ids)} job(s)"
             )
-            log_info(f"Retrying image jobs for {target}…", category="image")
+            action = "Regenerating" if self._force else "Retrying"
+            log_info(f"{action} image jobs for {target}…", category="image")
             response = self._api.retry_image_jobs(
                 ImageJobsRetryRequest(
                     job_ids=self._job_ids or None,
                     batch_id=self._batch_id,
+                    force=self._force,
                 )
             )
             updated = int(getattr(response, "updated", 0) or 0)
@@ -1624,6 +1632,53 @@ class ImageRetryJobsWorker(QThread):
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Failed to retry image jobs.")
+
+
+class ImageManualGenerateWorker(QThread):
+    succeeded = Signal(object)  # ImageJobsManualGenerateResponse
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        kind: str,
+        prompt: str | None,
+        channel_profile_id: str | None,
+        settings_patch: dict[str, object] | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._kind = kind
+        self._prompt = prompt
+        self._channel_profile_id = channel_profile_id
+        self._settings_patch = dict(settings_patch or {})
+
+    def run(self) -> None:
+        from shared.models.platform import ImageJobsManualGenerateRequest
+        from shared.services.app_logger import log_info
+
+        try:
+            if self._settings_patch:
+                self._api.patch_settings(self._settings_patch)
+            kind = "thumbnail" if self._kind == "thumbnail" else "background"
+            log_info(
+                f"Manual Generation creating Not available queue row ({kind})…",
+                category="image",
+            )
+            response = self._api.manual_generate_image_jobs(
+                ImageJobsManualGenerateRequest(
+                    kind=kind,
+                    prompt=self._prompt,
+                    channel_profile_id=self._channel_profile_id,
+                )
+            )
+            self.succeeded.emit(response)
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to create Manual Generation row.")
 
 
 class EnqueueImageJobsWorker(QThread):

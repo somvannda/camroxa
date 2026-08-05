@@ -15,6 +15,20 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+## [1.1.1] - 2026-08-05
+
+### Added
+
+- Preferences: **Background source** and **Thumbnail source** are each **Category**, **User reference**, or **Prompt only** under AI Generated; overlay UI hidden; User Provided hides those sources. Image queue: **Regenerate Background + Thumbnail**. See `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
+- Image page: source-mode combos above BG/TH previews (synced to Preferences), **Manual Generation** under each prompt, clearer Retry vs Regenerate menus, and credit/quota-aware error messaging. See `docs/changelog/2026-08-05-image-page-manual-generation.md`.
+- Image page poll is quieter (12s background refresh): does not reset source/prompt controls, does not flash status/reload chrome, and only reloads previews when the selected job output actually changes.
+- Deselected **Manual Generation** creates a today-dated **Not available** Image queue row (billed image-job path), not a standalone playground preview. See `docs/changelog/2026-08-05-manual-gen-queue-row.md`.
+
+### Changed
+
+- Desktop app version stamp **1.1.1** / `CamxoraSetup-1.1.1.exe`. Requires matching production API (prompt-only modes, force regenerate, `POST /image-jobs/manual-generate`, migration `082`).
+- Image page: deselected Manual Generation creates/selects a queue row instead of a preview-only `/generation/image` result.
+
 ## [1.2.0] - 2026-08-04
 
 ### Fixed
