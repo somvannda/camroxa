@@ -10,6 +10,7 @@
 - [`docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md`](COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md) — **P0 frozen composition keys**  
 - [`docs/COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md`](COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md) — **P1 orthogonal axis apply**  
 - [`docs/COMPOSITION_ENGINE_P2_COLOR_PALETTES.md`](COMPOSITION_ENGINE_P2_COLOR_PALETTES.md) — **P2 color palettes (20)**  
+- [`docs/COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md`](COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md) — **P3 spectrum shapes (15)**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  
 - [`docs/PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) — preview compositing constraints  
@@ -801,9 +802,11 @@ Scene
 
 **Exit criteria**
 
-- [ ] All 12 canonical shapes render in preview + export
-- [ ] Catalog count = **15**
-- [ ] Each shape is selectable independent of material (Phase 1)
+- [x] All 12 canonical shapes render in preview + export  
+- [x] Catalog count = **15**  
+- [x] Each shape is selectable independent of material (Phase 1)  
+
+**P3 shipped (2026-08-05):** [`docs/COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md`](COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md) + `composition_spectrum_shapes.py`.
 
 ---
 
@@ -1276,6 +1279,7 @@ Canonical 16: Bloom, Color Grading, Tone Mapping, HDR, Exposure, Gamma, Contrast
 | 3 | **Overlaps + hard audio buses:** Clarify **one by one** when the owning implementation phase starts (not all up front). |
 | 4 | **Text and Overlay are both Layer 1 and different** — follow recommendation (Text = typography; Overlay = top composites / frames / stickers / watermarks). |
 | 5 | **P2 fill palette names locked** as shipped: Midnight, Neon Pink, Tropical, Industrial, Candy, Blood Moon, Arctic, Gold Rush. |
+| 6 | **P3 fill shape names locked** as shipped: Ring, Starburst, Pillars. |
 
 ---
 

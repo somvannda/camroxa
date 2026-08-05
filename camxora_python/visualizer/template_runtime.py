@@ -11,7 +11,18 @@ def _normalize_layer_path_mode(value: Any) -> str:
     v = str(value or "auto").lower().strip()
     if v in ("rectangle", "square"):
         return "rect"
-    if v in ("auto", "circle", "rect"):
+    if v in (
+        "auto",
+        "circle",
+        "rect",
+        "triangle",
+        "diamond",
+        "hexagon",
+        "heart",
+        "infinity",
+        "spiral",
+        "tunnel",
+    ):
         return v
     return "auto"
 

@@ -11,6 +11,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine P3 — spectrum shapes (15).** Geometry catalog (Circle …
+  Tunnel + Ring/Starburst/Pillars) with path generators for polygon/heart/
+  infinity/spiral/tunnel; shape apply preserves material/palette. See
+  `docs/COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md` and
+  `docs/changelog/2026-08-05-composition-engine-p3-spectrum-shapes.md`.
 - **Composition Engine P2 — color palettes (20).** Named palettes (Cyberpunk …
   Monochrome + 8 fill) apply across spectrum / particles / lighting / text /
   overlay via `composition.colorPalette`. See
