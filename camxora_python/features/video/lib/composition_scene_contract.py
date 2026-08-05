@@ -277,6 +277,16 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
             except Exception:
                 if not style:
                     out["spectrum"]["shape"] = prev_shape
+        prev_particle_type = str(prev_n["particles"]["type"] or "").strip()
+        if prev_particle_type and prev_particle_type != NONE:
+            try:
+                from features.video.lib.composition_particles import PARTICLE_TYPE_IDS
+
+                # Canonical catalog ids win over bare GPU variant projection.
+                if prev_particle_type in PARTICLE_TYPE_IDS:
+                    out["particles"]["type"] = prev_particle_type
+            except Exception:
+                pass
         # Canonical Layer 4 ids win over spinEnabled → rotate projection.
         prev_logo_anim = str(prev_n["logo"]["animation"] or "").strip()
         if prev_logo_anim and prev_logo_anim != NONE:
@@ -333,8 +343,8 @@ def composition_legacy_key_map() -> dict[str, str]:
         "composition.overlay.enabled": "overlaySettings.enabled (new stub domain)",
         "composition.overlay.animation": "(P5) Layer 4 shared behavior id",
         "composition.overlay.items": "overlaySettings.items (new stub domain)",
-        "composition.particles.type": "particlesSettings.variant / style",
-        "composition.particles.behavior": "(P5) shared Layer 4 id; particle types expand in P6",
+        "composition.particles.type": "(P6) catalog id → particlesSettings recipe (variant/style/…)",
+        "composition.particles.behavior": "(P5) shared Layer 4 id; independent of type",
         "composition.lighting.effect": "lightningLayers[].style",
         "composition.lighting.trigger": "lightningLayers[].trigger",
         "composition.camera.behavior": "effects.camera_shake (+ future camera library)",

@@ -141,7 +141,8 @@ def sync_legacy_aliases_from_composition(template: dict[str, Any]) -> dict[str, 
     """Write composition spectrum.shape → legacy ``style`` when shape is set.
 
     P4 materials / P5 animations sync via their apply helpers (look / motion
-    recipes). This helper only writes shape → style and particle type → variant.
+    recipes). This helper writes shape → style and particle type → GPU-safe
+    ``particlesSettings.variant`` (via P6 recipes), plus particle behavior stub.
     Does **not** re-project from legacy first (that would clobber authoring axes).
     """
     if not isinstance(template, dict):
@@ -157,7 +158,16 @@ def sync_legacy_aliases_from_composition(template: dict[str, Any]) -> dict[str, 
         if not isinstance(particles, dict):
             particles = {}
             template["particlesSettings"] = particles
-        particles["variant"] = particle_type
+        try:
+            from features.video.lib.composition_particles import gpu_variant_for_particle_type
+
+            gpu_variant = gpu_variant_for_particle_type(particle_type)
+            if gpu_variant:
+                particles["variant"] = gpu_variant
+            else:
+                particles["variant"] = particle_type
+        except Exception:
+            particles["variant"] = particle_type
     particle_behavior = str(scene.get("particles", {}).get("behavior") or "").strip()
     if particle_behavior and particle_behavior != NONE:
         particles = template.get("particlesSettings")

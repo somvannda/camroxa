@@ -13,6 +13,7 @@
 - [`docs/COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md`](COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md) — **P3 spectrum shapes (15)**  
 - [`docs/COMPOSITION_ENGINE_P4_MATERIALS.md`](COMPOSITION_ENGINE_P4_MATERIALS.md) — **P4 materials (20)**  
 - [`docs/COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md`](COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md) — **P5 animation behaviors (12)**  
+- [`docs/COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md`](COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md) — **P6 particle types (20)**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  
 - [`docs/PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) — preview compositing constraints  
@@ -901,9 +902,11 @@ Particles JSON uses `type` + `behavior` (architecture tree).
 
 **Exit criteria**
 
-- [ ] All 13 canonical types render
-- [ ] Catalog count = **20**
-- [ ] Type and behavior are independent fields
+- [x] All 13 canonical types render  
+- [x] Catalog count = **20**  
+- [x] Type and behavior are independent fields  
+
+**P6 shipped (2026-08-05):** [`docs/COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md`](COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md) + `composition_particles.py`. Fill names locked: Embers, Petals, Glitter, Smoke Rings, Energy Orbs, Pixel Dust, Feather Drift.
 
 ---
 
@@ -1287,6 +1290,7 @@ Canonical 16: Bloom, Color Grading, Tone Mapping, HDR, Exposure, Gamma, Contrast
 | 5 | **P2 fill palette names locked** as shipped: Midnight, Neon Pink, Tropical, Industrial, Candy, Blood Moon, Arctic, Gold Rush. |
 | 6 | **P3 fill shape names locked** as shipped: Ring, Starburst, Pillars. |
 | 7 | **P4 fill material names locked** as shipped: Chrome, Matte, Velvet, Obsidian, Iridescent, Latex, Frosted Glass, Wireframe. |
+| 8 | **P6 fill particle names locked** as shipped: Embers, Petals, Glitter, Smoke Rings, Energy Orbs, Pixel Dust, Feather Drift. |
 
 ---
 

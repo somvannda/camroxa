@@ -102,8 +102,8 @@ Stub sentinel for “not set / not chosen yet”: string `"none"` (or `null` onl
 | `composition.logo.animation` | **P5** Layer 4 + `logoSettings.spinEnabled` / motion |
 | `composition.text.enabled` | `albumText` / `titleText` / `textOverlays` |
 | `composition.overlay.*` | `overlaySettings` (**stub domain**; `animation` added in P5) |
-| `composition.particles.type` | `particlesSettings.variant` / `style` |
-| `composition.particles.behavior` | **P5** shared Layer 4 id (particle types expand in P6) |
+| `composition.particles.type` | **P6** catalog id → `particlesSettings` recipe |
+| `composition.particles.behavior` | **P5** shared Layer 4 id (independent of type) |
 | `composition.lighting.effect` | `lightningLayers[].style` |
 | `composition.lighting.trigger` | `lightningLayers[].trigger` |
 | `composition.camera.behavior` | `effects.camera_shake` (+ P8 camera library) |

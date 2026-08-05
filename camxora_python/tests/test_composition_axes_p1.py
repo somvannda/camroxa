@@ -103,4 +103,5 @@ def test_sync_legacy_style_alias_from_composition_shape() -> None:
     }
     sync_legacy_aliases_from_composition(template)
     assert template["style"] == "circle"
-    assert template["particlesSettings"]["variant"] == "embers"
+    # P6: composition type id stays semantic; GPU variant is classic/bokeh/soap/dust.
+    assert template["particlesSettings"]["variant"] == "classic"

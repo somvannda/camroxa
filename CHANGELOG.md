@@ -11,6 +11,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine P6 — particle types (20).** Catalog (Dust … Sparkles + 7
+  fill) maps to GPU-safe particle recipes; type and behavior stay independent.
+  See `docs/COMPOSITION_ENGINE_P6_PARTICLE_TYPES.md` and
+  `docs/changelog/2026-08-05-composition-engine-p6-particle-types.md`.
 - **Composition Engine P5 — animation behaviors (12).** Shared Layer 4 motion
   library (Pulse … Breathing) attaches the same id to Spectrum / Logo / Overlay /
   Particles without changing shape or material. See
