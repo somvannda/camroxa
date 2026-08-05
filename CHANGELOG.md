@@ -11,6 +11,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine P5 — animation behaviors (12).** Shared Layer 4 motion
+  library (Pulse … Breathing) attaches the same id to Spectrum / Logo / Overlay /
+  Particles without changing shape or material. See
+  `docs/COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md` and
+  `docs/changelog/2026-08-05-composition-engine-p5-animation-behaviors.md`.
 - **Composition Engine P4 — materials (20).** Look packs (Neon … Carbon + 8 fill)
   apply glow/blur/blend without changing shape — Neon/Glass/Fire/Plasma Circle
   share one geometry. See `docs/COMPOSITION_ENGINE_P4_MATERIALS.md` and

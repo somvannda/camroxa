@@ -60,6 +60,7 @@ Lock **exact JSON keys** for the composition architecture tree so later phases (
     },
     "overlay": {
       "enabled": false,
+      "animation": "none",
       "items": []
     },
     "particles": {
@@ -96,13 +97,13 @@ Stub sentinel for “not set / not chosen yet”: string `"none"` (or `null` onl
 | `composition.background.atmosphere` | `effects.smoke` (+ future atmosphere presets in P9) |
 | `composition.spectrum.shape` | `style` (+ `layers[]`) |
 | `composition.spectrum.material` | **new** (P4) — stub `none` |
-| `composition.spectrum.animation` | **new** (P5) — stub `none` |
+| `composition.spectrum.animation` | **P5** Layer 4 behaviors (+ spectrum audio dial recipes) |
 | `composition.logo.enabled` | `logoSettings.enabled` |
-| `composition.logo.animation` | `logoSettings.spinEnabled` / motion (`rotate` when spin on) |
+| `composition.logo.animation` | **P5** Layer 4 + `logoSettings.spinEnabled` / motion |
 | `composition.text.enabled` | `albumText` / `titleText` / `textOverlays` |
-| `composition.overlay.*` | `overlaySettings` (**new stub domain**; empty until Overlay catalog work) |
+| `composition.overlay.*` | `overlaySettings` (**stub domain**; `animation` added in P5) |
 | `composition.particles.type` | `particlesSettings.variant` / `style` |
-| `composition.particles.behavior` | **new** (P5/P6) — stub `none` |
+| `composition.particles.behavior` | **P5** shared Layer 4 id (particle types expand in P6) |
 | `composition.lighting.effect` | `lightningLayers[].style` |
 | `composition.lighting.trigger` | `lightningLayers[].trigger` |
 | `composition.camera.behavior` | `effects.camera_shake` (+ P8 camera library) |

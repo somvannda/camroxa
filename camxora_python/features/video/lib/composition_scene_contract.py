@@ -92,6 +92,7 @@ def default_composition_scene() -> dict[str, Any]:
         },
         "overlay": {
             "enabled": False,
+            "animation": NONE,
             "items": [],
         },
         "particles": {
@@ -149,6 +150,7 @@ def normalize_composition_scene(raw: Any) -> dict[str, Any]:
 
     overlay = raw.get("overlay") if isinstance(raw.get("overlay"), dict) else {}
     out["overlay"]["enabled"] = bool(overlay.get("enabled", False))
+    out["overlay"]["animation"] = _nonempty_str(overlay.get("animation"), NONE)
     items = overlay.get("items")
     out["overlay"]["items"] = list(items) if isinstance(items, list) else []
 
@@ -249,7 +251,7 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
     # Audio mapping stays empty in P0 (façade lands in P11); Layer 1 audio object exists.
     out["audio"]["mapping"] = {}
 
-    # P1/P3/P4: preserve orthogonal axes that legacy templates cannot express,
+    # P1–P5: preserve orthogonal axes that legacy templates cannot express,
     # and keep composition geometry ids when they are canonical shapes.
     prev = src.get("composition")
     if isinstance(prev, dict) and prev:
@@ -257,6 +259,7 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
         out["spectrum"]["material"] = prev_n["spectrum"]["material"]
         out["spectrum"]["animation"] = prev_n["spectrum"]["animation"]
         out["particles"]["behavior"] = prev_n["particles"]["behavior"]
+        out["overlay"]["animation"] = prev_n["overlay"]["animation"]
         out["audio"]["mapping"] = deepcopy(prev_n["audio"]["mapping"])
         if prev_n.get("colorPalette"):
             out["colorPalette"] = prev_n.get("colorPalette")
@@ -274,6 +277,16 @@ def composition_from_legacy_template(template: dict[str, Any] | None) -> dict[st
             except Exception:
                 if not style:
                     out["spectrum"]["shape"] = prev_shape
+        # Canonical Layer 4 ids win over spinEnabled → rotate projection.
+        prev_logo_anim = str(prev_n["logo"]["animation"] or "").strip()
+        if prev_logo_anim and prev_logo_anim != NONE:
+            try:
+                from features.video.lib.composition_animations import ANIMATION_BEHAVIOR_IDS
+
+                if prev_logo_anim in ANIMATION_BEHAVIOR_IDS:
+                    out["logo"]["animation"] = prev_logo_anim
+            except Exception:
+                out["logo"]["animation"] = prev_logo_anim
 
     return normalize_composition_scene(out)
 
@@ -312,15 +325,16 @@ def composition_legacy_key_map() -> dict[str, str]:
         "composition.background.motion": "backgroundSettings.motionMode",
         "composition.background.atmosphere": "effects.smoke (+ future atmosphere presets)",
         "composition.spectrum.shape": "style (+ layers[] geometry)",
-        "composition.spectrum.material": "(new — P4; stub none)",
-        "composition.spectrum.animation": "(new — P5; stub none; logo spin ≈ rotate)",
+        "composition.spectrum.material": "(P4) material look packs",
+        "composition.spectrum.animation": "(P5) Layer 4 behaviors + audio dial recipes",
         "composition.logo.enabled": "logoSettings.enabled",
-        "composition.logo.animation": "logoSettings.spinEnabled / motionMode",
+        "composition.logo.animation": "(P5) Layer 4 + logoSettings.spinEnabled / motionMode",
         "composition.text.enabled": "albumText / titleText / textOverlays",
         "composition.overlay.enabled": "overlaySettings.enabled (new stub domain)",
+        "composition.overlay.animation": "(P5) Layer 4 shared behavior id",
         "composition.overlay.items": "overlaySettings.items (new stub domain)",
         "composition.particles.type": "particlesSettings.variant / style",
-        "composition.particles.behavior": "(new — P5/P6; stub none)",
+        "composition.particles.behavior": "(P5) shared Layer 4 id; particle types expand in P6",
         "composition.lighting.effect": "lightningLayers[].style",
         "composition.lighting.trigger": "lightningLayers[].trigger",
         "composition.camera.behavior": "effects.camera_shake (+ future camera library)",

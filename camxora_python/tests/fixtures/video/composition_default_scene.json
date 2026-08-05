@@ -20,6 +20,7 @@
   },
   "overlay": {
     "enabled": false,
+    "animation": "none",
     "items": []
   },
   "particles": {

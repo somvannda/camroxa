@@ -12,6 +12,7 @@
 - [`docs/COMPOSITION_ENGINE_P2_COLOR_PALETTES.md`](COMPOSITION_ENGINE_P2_COLOR_PALETTES.md) — **P2 color palettes (20)**  
 - [`docs/COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md`](COMPOSITION_ENGINE_P3_SPECTRUM_SHAPES.md) — **P3 spectrum shapes (15)**  
 - [`docs/COMPOSITION_ENGINE_P4_MATERIALS.md`](COMPOSITION_ENGINE_P4_MATERIALS.md) — **P4 materials (20)**  
+- [`docs/COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md`](COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md) — **P5 animation behaviors (12)**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  
 - [`docs/PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) — preview compositing constraints  
@@ -868,9 +869,11 @@ Behaviors must be attachable to **many different objects** (at minimum Spectrum,
 
 **Exit criteria**
 
-- [ ] All 12 behaviors exist as JSON enum values
-- [ ] Same behavior id works on more than one scene object
-- [ ] Spectrum animation axis uses this library
+- [x] All 12 behaviors exist as JSON enum values  
+- [x] Same behavior id works on more than one scene object  
+- [x] Spectrum animation axis uses this library  
+
+**P5 shipped (2026-08-05):** [`docs/COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md`](COMPOSITION_ENGINE_P5_ANIMATION_BEHAVIORS.md) + `composition_animations.py`.
 
 ---
 

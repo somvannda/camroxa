@@ -140,7 +140,8 @@ def sync_composition_axes_on_template(template: dict[str, Any]) -> dict[str, Any
 def sync_legacy_aliases_from_composition(template: dict[str, Any]) -> dict[str, Any]:
     """Write composition spectrum.shape → legacy ``style`` when shape is set.
 
-    Material/animation have no legacy GPU fields yet (P4/P5).
+    P4 materials / P5 animations sync via their apply helpers (look / motion
+    recipes). This helper only writes shape → style and particle type → variant.
     Does **not** re-project from legacy first (that would clobber authoring axes).
     """
     if not isinstance(template, dict):
@@ -157,6 +158,13 @@ def sync_legacy_aliases_from_composition(template: dict[str, Any]) -> dict[str, 
             particles = {}
             template["particlesSettings"] = particles
         particles["variant"] = particle_type
+    particle_behavior = str(scene.get("particles", {}).get("behavior") or "").strip()
+    if particle_behavior and particle_behavior != NONE:
+        particles = template.get("particlesSettings")
+        if not isinstance(particles, dict):
+            particles = {}
+            template["particlesSettings"] = particles
+        particles["behavior"] = particle_behavior
     return template
 
 
