@@ -19,15 +19,23 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Preferences: **Background source** and **Thumbnail source** are each **Category**, **User reference**, or **Prompt only** under AI Generated; overlay UI hidden; User Provided hides those sources. Image queue: **Regenerate Background + Thumbnail**. See `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
-- Image page: source-mode combos above BG/TH previews (synced to Preferences), **Manual Generation** under each prompt, clearer Retry vs Regenerate menus, and credit/quota-aware error messaging. See `docs/changelog/2026-08-05-image-page-manual-generation.md`.
-- Image page poll is quieter (12s background refresh): does not reset source/prompt controls, does not flash status/reload chrome, and only reloads previews when the selected job output actually changes.
-- Deselected **Manual Generation** creates a today-dated **Not available** Image queue row (billed image-job path), not a standalone playground preview. See `docs/changelog/2026-08-05-manual-gen-queue-row.md`.
+- **Image source modes (P0):** Under Preferences → AI Generated, Background and Thumbnail each choose **Category**, **User reference**, or **Prompt only**. Overlay UI is hidden. User Provided media hides those source controls. Prompt only generates from your prompts with no Category sample image.
+- **Image page controls:** Source-mode combos above Background/Thumbnail previews (synced with Preferences), **Manual Generation** under each prompt, clearer **Retry** vs **Regenerate** (force) menus, and credit/quota-aware error messaging.
+- **Manual Generation queue rows:** With no song selected, Manual Generation creates a today-dated Image queue row labeled **Not available**, selects it, and runs the normal billed image-job path (Background and/or Thumbnail).
+- **Quieter Image poll:** Background refresh (~12s) no longer resets source/prompt controls, flashes status chrome, or reloads previews unless the selected job output actually changed.
+- **Queue regenerate:** Image queue supports **Regenerate Background + Thumbnail** (force reset of successful jobs).
 
 ### Changed
 
-- Desktop app version stamp **1.1.1** / `CamxoraSetup-1.1.1.exe`. Requires matching production API (prompt-only modes, force regenerate, `POST /image-jobs/manual-generate`, migration `082`).
-- Image page: deselected Manual Generation creates/selects a queue row instead of a preview-only `/generation/image` result.
+- Desktop version stamp **1.1.1** / installer `CamxoraSetup-1.1.1.exe`.
+- Deselected Manual Generation no longer uses the preview-only `/generation/image` playground; it always creates or selects a queue row.
+- Requires matching **production API** (prompt-only modes, force regenerate, `POST /image-jobs/manual-generate`, migration `082`) and restarted image workers after API deploy.
+
+### Notes
+
+- Includes prior **1.1.0** ship-safe preview (HDR bloom off by default) and windowed click hit-test fix.
+- Not in this release: theme categories (P1), personal reference library (P2), Progress Replace/Export (P3).
+- Detail: `docs/changelog/2026-08-05-desktop-1.1.1-image-prompt-modes.md`.
 
 ## [1.2.0] - 2026-08-04
 

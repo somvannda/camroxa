@@ -36,6 +36,14 @@ REPO=/opt/camxora/repo
 tar -xzf /tmp/camxora-src.tar.gz -C $REPO platform_api
 chown -R camxora:camxora $REPO/platform_api
 systemctl restart camxora-api
+# Image/draft/suno workers load platform_api in-process — restart so prompt_only
+# and other service changes take effect (API restart alone is not enough).
+systemctl list-units --type=service --all --no-pager --plain 'camxora-worker*' \
+  | awk '{print $1}' \
+  | grep -E '^camxora-worker' \
+  | while read -r unit; do
+      systemctl restart "$unit" || true
+    done
 sleep 2
 systemctl is-active camxora-api
 echo API_SYNC_DONE
