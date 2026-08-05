@@ -7,15 +7,20 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-08-05] — Desktop 1.1.1 image modes (production)
+
+### Added
+
+- Image **prompt-only** source modes (P0): prefs `imageBackgroundSourceMode` / `imageThumbnailSourceMode` (`prompt_only` | `category` | `personal_reference`). API skips sample/style references for prompt-only BG/TH; thumbnail composite no longer requires a style sample; User reference returns a clear not-ready error until P2. See `docs/changelog/2026-08-05-image-prompt-only-p0.md`.
+- `POST /image-jobs/retry` with `force=true` resets successful image jobs for regenerate. See `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
+- `POST /image-jobs/manual-generate`: today-dated **Not available** batch (`status=manual_image`, `song_count=0`) + BG/TH jobs; runs the clicked kind with normal image-job billing. Migration `082`. See `docs/changelog/2026-08-05-manual-gen-queue-row.md`.
+- Pairs with desktop installer **1.1.1** (`CamxoraSetup-1.1.1.exe`). After deploy, **restart image workers** so they load the new code. See `docs/changelog/2026-08-05-desktop-1.1.1-image-prompt-modes.md`.
+
 ## [Unreleased]
 
 ### Added
 
 - SLAI remaining balance on Admin key balances: live credits via `availableUnits / 1_000_000` from `GET https://slai-api.slai.shop/v1/balance`. See `docs/changelog/2026-08-05-slai-provider-key-balance.md`.
-- Image **prompt-only** source modes (P0): `imageBackgroundSourceMode` / `imageThumbnailSourceMode` (`prompt_only` | `category` | `personal_reference`); API skips sample/style references for prompt-only BG/TH; thumbnail composite no longer requires a style sample; User reference returns a clear not-ready error until P2. See `docs/changelog/2026-08-05-image-prompt-only-p0.md` and `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
-- `POST /image-jobs/retry` `force=true` resets successful image jobs (regenerate). See `docs/changelog/2026-08-05-image-prefs-ux-and-force-regen.md`.
-- `POST /image-jobs/manual-generate`: create a today-dated **Not available** batch + BG/TH jobs and run the clicked kind (normal image-job billing). Migration `082` allows `song_count=0`. See `docs/changelog/2026-08-05-manual-gen-queue-row.md`.
-- Desktop **1.1.1** ship pairs with these API endpoints on production. See `docs/changelog/2026-08-05-desktop-1.1.1-image-prompt-modes.md`.
 - Fail/retry absorb daily budget can be set from Admin Settings (`system_settings.daily_fail_absorb_budget` overrides `PLATFORM_DAILY_FAIL_ABSORB_BUDGET`). See `docs/changelog/2026-08-04-admin-fail-absorb-ui.md`.
 - Admin `GET /admin/user-spend`: multi-user est. COGS rollup (wallet + plan-included list value), plan meters, soft-overage / margin-risk alerts, and per-COG breakdown for the User Spent page. See `docs/changelog/2026-08-04-admin-user-spent.md`.
 - Admin period quota top-ups: `user_period_quota_topups` migration `081`, `POST /users/{id}/quota-topups`, details `quota_period` snapshot; dual-control credit adjust default off (`PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=0`). See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.

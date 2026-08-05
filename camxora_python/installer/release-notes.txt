@@ -1,30 +1,33 @@
-﻿Camxora 1.1.1 - Image Prompt only & Manual Generation queue rows
-Date: 2026-08-05
+﻿Camxora 1.1.1
+Image Prompt only & Manual Generation
+August 5, 2026
 
 What's new
 ----------
-- Preferences: Background / Thumbnail source = Category | User reference |
-  Prompt only (under AI Generated). Overlay UI hidden.
-- Image page: source combos above previews, Manual Generation under each
-  prompt, Retry vs Regenerate (force) menus, quieter background poll
-- Deselect + Manual Generation creates a today-dated **Not available**
-  Image queue row and generates via the normal billed image-job path
-- Prompt only: generate BG/TH from your prompts with no Category sample
-- Includes 1.1.0 ship-safe preview (HDR bloom off by default) and windowed
-  click hit-test fix
+• Choose how Background and Thumbnail images are made: Category,
+  User reference, or Prompt only (Preferences → AI Generated).
+• Prompt only uses your text prompts — no Category sample image.
+• On the Image page, pick the source above each preview and run
+  Manual Generation under the prompt.
+• With nothing selected, Manual Generation adds a today-dated
+  “Not available” row to your Image queue and generates there
+  (same billing as normal image jobs).
+• Retry failed jobs, or Regenerate successful ones (force new run).
+• Image page refreshes quietly in the background without resetting
+  your prompts or flashing the UI.
 
-Requires matching production API
---------------------------------
-- Prompt-only image modes, force regenerate, POST /image-jobs/manual-generate
-- Database migration 082 (song_count may be 0 for manual image rows)
+Also included from 1.1.0
+------------------------
+• Ship-safe video preview (HDR bloom off by default).
+• Windowed-mode click targeting fix.
 
-Not included in this build
---------------------------
-- Theme categories (P1), personal reference library (P2), Progress Replace (P3)
-- DistroKid automation / WAV add-on (separate branch)
+Requirements
+------------
+• Production API with prompt-only image modes and Manual Generation
+  support (already deployed for this release).
+• Installer: CamxoraSetup-1.1.1.exe
 
-Notes
------
-- Production API only
-- API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.1.1.exe
+Coming later
+------------
+• Theme categories, personal reference library, and Progress
+  Replace/Export are not in this build.
