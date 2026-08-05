@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "colorPalette": null,
+  "background": {
+    "image": null,
+    "motion": "static",
+    "atmosphere": "none"
+  },
+  "spectrum": {
+    "shape": "none",
+    "material": "none",
+    "animation": "none"
+  },
+  "logo": {
+    "enabled": true,
+    "animation": "none"
+  },
+  "text": {
+    "enabled": false
+  },
+  "overlay": {
+    "enabled": false,
+    "items": []
+  },
+  "particles": {
+    "type": "none",
+    "behavior": "none"
+  },
+  "lighting": {
+    "effect": "none",
+    "trigger": "none"
+  },
+  "camera": {
+    "behavior": "none"
+  },
+  "postProcessing": {
+    "effects": []
+  },
+  "audio": {
+    "mapping": {}
+  }
+}

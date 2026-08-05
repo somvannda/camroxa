@@ -7,6 +7,7 @@
 **Related:**
 
 - [`camxora_python/.docs/pages/09_VIDEO_DOMAIN_SCHEMA_APPENDIX.md`](../camxora_python/.docs/pages/09_VIDEO_DOMAIN_SCHEMA_APPENDIX.md) — saved template / draft / renderer contracts  
+- [`docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md`](COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md) — **P0 frozen composition keys**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  
 - [`docs/PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) — preview compositing constraints  
@@ -719,9 +720,11 @@ Scene
 
 **Exit criteria**
 
-- [ ] All 9 Layer 1 objects documented in schema appendix
-- [ ] Architecture tree fields exist as typed keys (even if some values are stub/`none`)
-- [ ] Logo, Text, Overlay explicitly in scene contract (not folded into Spectrum)
+- [x] All 9 Layer 1 objects documented in schema appendix  
+- [x] Architecture tree fields exist as typed keys (even if some values are stub/`none`)  
+- [x] Logo, Text, Overlay explicitly in scene contract (not folded into Spectrum)
+
+**P0 shipped (2026-08-05):** [`docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md`](COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md) + `composition_scene_contract.py`.
 
 ---
 

@@ -286,4 +286,8 @@ def build_video_workspace_template_save_patch(
     patch["position"] = mirror_holder.get("position", patch.get("position"))
     patch["audioSettings"] = mirror_holder.get("audioSettings", patch.get("audioSettings"))
     patch["previewBindings"] = mirror_holder.get("previewBindings", patch.get("previewBindings"))
+    # P0: attach authoring-layer composition (GPU path strips it in TemplateNormalizer).
+    from features.video.lib.composition_scene_contract import composition_from_legacy_template
+
+    patch["composition"] = composition_from_legacy_template({**template, **patch})
     return patch

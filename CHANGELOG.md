@@ -11,6 +11,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine P0 — scene schema freeze.** Saved templates can carry an
+  authoring-layer `composition` object (architecture tree: background /
+  spectrum / logo / text / overlay / particles / lighting / camera / post /
+  audio). Text ≠ Overlay. GPU preview/export still use legacy fields;
+  `TemplateNormalizer` strips `composition`. See
+  `docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md` and
+  `docs/changelog/2026-08-05-composition-engine-p0-schema.md`.
+
 ### Changed
 
 ### Fixed
