@@ -11,6 +11,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Engine P2 — color palettes (20).** Named palettes (Cyberpunk …
+  Monochrome + 8 fill) apply across spectrum / particles / lighting / text /
+  overlay via `composition.colorPalette`. See
+  `docs/COMPOSITION_ENGINE_P2_COLOR_PALETTES.md` and
+  `docs/changelog/2026-08-05-composition-engine-p2-color-palettes.md`.
 - **Composition Engine P1 — orthogonal axes.** Apply spectrum shape / material /
   animation (and particles / lighting / background axes) independently; preset
   buttons only convenience-patch shape without clearing material/animation.

@@ -9,7 +9,6 @@ sync ``style`` / particle variant aliases).
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 
 from features.video.lib.composition_scene_contract import (
@@ -20,12 +19,14 @@ from features.video.lib.composition_scene_contract import (
 
 __all__ = (
     "apply_background_axes",
+    "apply_color_palette",
     "apply_lighting_axes",
     "apply_particles_axes",
     "apply_spectrum_axes",
     "apply_spectrum_preset_convenience",
     "apply_particles_preset_convenience",
     "apply_lighting_preset_convenience",
+    "attach_spectrum_preset_to_composition",
     "sync_composition_axes_on_template",
     "sync_legacy_aliases_from_composition",
 )
@@ -157,6 +158,21 @@ def sync_legacy_aliases_from_composition(template: dict[str, Any]) -> dict[str, 
             template["particlesSettings"] = particles
         particles["variant"] = particle_type
     return template
+
+
+def apply_color_palette(
+    composition: dict[str, Any] | None,
+    palette_id: str,
+) -> dict[str, Any]:
+    """Set ``composition.colorPalette`` only (no template domain paint)."""
+    from features.video.lib.composition_color_palettes import normalize_color_palette_id
+
+    scene = normalize_composition_scene(composition)
+    key = normalize_color_palette_id(palette_id)
+    if key is None:
+        raise ValueError(f"unknown color palette: {palette_id!r}")
+    scene["colorPalette"] = key
+    return scene
 
 
 def attach_spectrum_preset_to_composition(template: dict[str, Any], preset_key: str) -> dict[str, Any]:

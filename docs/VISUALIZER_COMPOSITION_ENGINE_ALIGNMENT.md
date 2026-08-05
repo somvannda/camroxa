@@ -9,6 +9,7 @@
 - [`camxora_python/.docs/pages/09_VIDEO_DOMAIN_SCHEMA_APPENDIX.md`](../camxora_python/.docs/pages/09_VIDEO_DOMAIN_SCHEMA_APPENDIX.md) — saved template / draft / renderer contracts  
 - [`docs/COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md`](COMPOSITION_ENGINE_P0_SCENE_SCHEMA.md) — **P0 frozen composition keys**  
 - [`docs/COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md`](COMPOSITION_ENGINE_P1_ORTHOGONAL_AXES.md) — **P1 orthogonal axis apply**  
+- [`docs/COMPOSITION_ENGINE_P2_COLOR_PALETTES.md`](COMPOSITION_ENGINE_P2_COLOR_PALETTES.md) — **P2 color palettes (20)**  
 - [`camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md`](../camxora_python/.docs/pages/09_VIDEO_ENTERPRISE_ARCHITECTURE.md) — domain isolation + effect packs  
 - [`docs/PREVIEW_HDR_BLOOM_DESIGN.md`](PREVIEW_HDR_BLOOM_DESIGN.md) — post path (HDR → bloom → tonemap)  
 - [`docs/PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md`](PREVIEW_COMPOSITING_AND_INTERACTIVITY_REQUIREMENTS.md) — preview compositing constraints  
@@ -771,9 +772,11 @@ Scene
 
 **Exit criteria**
 
-- [ ] All 12 canonical palettes apply across Spectrum / Particles / Lighting / Overlay colors
-- [ ] Catalog count = **20**
-- [ ] “AI can simply choose a palette” is satisfied by stable palette JSON ids (AI itself deferred)
+- [x] All 12 canonical palettes apply across Spectrum / Particles / Lighting / Overlay colors  
+- [x] Catalog count = **20**  
+- [x] “AI can simply choose a palette” is satisfied by stable palette JSON ids (AI itself deferred)  
+
+**P2 shipped (2026-08-05):** [`docs/COMPOSITION_ENGINE_P2_COLOR_PALETTES.md`](COMPOSITION_ENGINE_P2_COLOR_PALETTES.md) + `composition_color_palettes.py`.
 
 ---
 
@@ -1272,6 +1275,7 @@ Canonical 16: Bloom, Color Grading, Tone Mapping, HDR, Exposure, Gamma, Contrast
 | 2 | **Schema / key design:** Boss leaves recommendations to engineering. Goal: **no messy keys** — clear architecture-tree field names, with aliases for today’s legacy keys. |
 | 3 | **Overlaps + hard audio buses:** Clarify **one by one** when the owning implementation phase starts (not all up front). |
 | 4 | **Text and Overlay are both Layer 1 and different** — follow recommendation (Text = typography; Overlay = top composites / frames / stickers / watermarks). |
+| 5 | **P2 fill palette names locked** as shipped: Midnight, Neon Pink, Tropical, Industrial, Candy, Blood Moon, Arctic, Gold Rush. |
 
 ---
 
