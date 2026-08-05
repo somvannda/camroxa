@@ -93,15 +93,26 @@ def _normalize_fal(raw: dict[str, Any]) -> tuple[float | None, str | None, str]:
     return amount, currency, "currency"
 
 
-def _normalize_openai_style_grants(raw: dict[str, Any]) -> tuple[float | None, str | None, str]:
-    # OpenAI-compatible dashboards often expose total_available / total_granted.
-    amount = _as_float(
-        raw.get("total_available")
-        or raw.get("total_granted")
-        or raw.get("hard_limit_usd")
-        or raw.get("balance")
+# Official SLAI balance host (distinct from generation host api.slai.shop).
+_SLAI_BALANCE_URL = "https://slai-api.slai.shop/v1/balance"
+# Ledger stores micro-units; dashboard credits = availableUnits / 1_000_000.
+_SLAI_UNITS_PER_CREDIT = 1_000_000
+
+
+def _normalize_slai(raw: dict[str, Any]) -> tuple[float | None, str | None, str]:
+    """SLAI ``GET /v1/balance`` → display credits from ``availableUnits``."""
+    payload = raw.get("balance")
+    balance = payload if isinstance(payload, dict) else raw
+    units = _as_float(
+        balance.get("availableUnits")
+        if isinstance(balance, dict)
+        else None
     )
-    return amount, "USD", "currency"
+    if units is None and isinstance(balance, dict):
+        units = _as_float(balance.get("available_units"))
+    if units is None:
+        return None, None, "credits"
+    return units / _SLAI_UNITS_PER_CREDIT, None, "credits"
 
 
 class ProviderKeyBalanceService:
@@ -317,51 +328,60 @@ class ProviderKeyBalanceService:
     async def _fetch_slai(
         self, api_key: str
     ) -> tuple[float | None, str | None, str, Any, str, str | None]:
-        base = str(getattr(self._settings, "slai_api_base_url", "") or "https://api.slai.shop").rstrip("/")
-        if base.endswith("/v1"):
-            root = base[:-3]
-        else:
-            root = base
-        # Best-effort probes — SLAI has no documented public balance API.
-        candidates = [
-            f"{root}/v1/dashboard/billing/credit_grants",
-            f"{root}/dashboard/billing/credit_grants",
-            f"{root}/user/balance",
-            f"{root}/v1/balance",
-            f"{root}/api/v1/user/balance",
-            f"{root}/api/usage/token",
-        ]
+        """Fetch remaining SLAI credits via official ``GET /v1/balance``."""
+        configured = str(
+            getattr(self._settings, "slai_api_base_url", "") or ""
+        ).rstrip("/")
+        candidates = [_SLAI_BALANCE_URL]
+        if configured:
+            root = configured[:-3] if configured.endswith("/v1") else configured
+            alt = f"{root}/v1/balance"
+            if alt not in candidates:
+                candidates.append(alt)
+
         headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
-        last_status = None
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        last_error: str | None = None
+        async with httpx.AsyncClient(timeout=20.0) as client:
             for url in candidates:
                 try:
                     response = await client.get(url, headers=headers)
-                    last_status = response.status_code
+                    if response.status_code in {401, 403}:
+                        return (
+                            None,
+                            None,
+                            "credits",
+                            None,
+                            "error",
+                            f"SLAI balance unauthorized (HTTP {response.status_code})",
+                        )
                     if response.status_code >= 400:
+                        last_error = f"HTTP {response.status_code}: {(response.text or '')[:120]}"
                         continue
                     raw = response.json()
                     if not isinstance(raw, dict):
+                        last_error = "SLAI balance response was not a JSON object"
                         continue
-                    amount, currency, unit = _normalize_openai_style_grants(raw)
+                    amount, currency, unit = _normalize_slai(raw)
                     if amount is None:
-                        amount, currency, unit = _normalize_deepseek(raw)
-                    if amount is None:
-                        amount, currency, unit = _normalize_suno(raw)
-                    if amount is not None:
-                        return amount, currency, unit, raw, "ok", None
-                except Exception:
+                        return (
+                            None,
+                            currency,
+                            unit,
+                            raw,
+                            "error",
+                            "Could not parse SLAI availableUnits",
+                        )
+                    return amount, currency, unit, raw, "ok", None
+                except Exception as exc:
+                    last_error = str(exc)[:160]
                     continue
         return (
             None,
             None,
             "credits",
             None,
-            "unsupported",
-            (
-                "SLAI does not expose a public balance API for this key "
-                f"(last HTTP {last_status}). Check the SLAI dashboard to top up."
-            ),
+            "error",
+            last_error or "SLAI balance request failed",
         )
 
     async def _fetch_openai(
@@ -438,9 +458,10 @@ class ProviderKeyBalanceService:
         if unit == "currency":
             cur = currency or "USD"
             return f"{amount:,.2f} {cur}"
+        label = "units" if unit == "units" else "credits"
         if amount == int(amount):
-            return f"{int(amount):,} credits"
-        return f"{amount:,.2f} credits"
+            return f"{int(amount):,} {label}"
+        return f"{amount:,.2f} {label}"
 
     async def _read_cache(self, cache_key: str) -> dict[str, Any] | None:
         if self._redis is None:
