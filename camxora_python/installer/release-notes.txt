@@ -1,32 +1,30 @@
-﻿Camxora 1.1.0 - Ship-safe preview (HDR bloom off)
+﻿Camxora 1.1.1 - Image Prompt only & Manual Generation queue rows
 Date: 2026-08-05
 
 What's new
 ----------
-- Preview HDR bloom is **off by default** (legacy glow path). Particles, stage
-  logo, spectrum, and lightning behave correctly out of the box
-- Optional: set CAMXORA_PREVIEW_HDR_BLOOM=1 to try CapCut-style bloom
-  (experimental until composite order is fixed)
-- Windowed UI click hit-test fix: dropdowns, calendars, scrollbars click where
-  they look (opaque shell + DWM/QSS rounding)
-- Export matches live Video preview (spectrum instances, live draft
-  style/position, lightning flash undersampling)
-- Logo inspector: Reset Center restored
-- Fixes black live preview after Alpha_Lock; GLSL smoke_hash_noise2 export crash
-- Failed-export refunds clamp reason to 500 chars; music preflight skips
-  inverted From/To dates
-- Includes 1.0.20 Raise Scroll import fix and the P0–P4 preview stack
-- Per-device media folders, Spectrum Save / Row Width, NVENC→x264 fallback
+- Preferences: Background / Thumbnail source = Category | User reference |
+  Prompt only (under AI Generated). Overlay UI hidden.
+- Image page: source combos above previews, Manual Generation under each
+  prompt, Retry vs Regenerate (force) menus, quieter background poll
+- Deselect + Manual Generation creates a today-dated **Not available**
+  Image queue row and generates via the normal billed image-job path
+- Prompt only: generate BG/TH from your prompts with no Category sample
+- Includes 1.1.0 ship-safe preview (HDR bloom off by default) and windowed
+  click hit-test fix
+
+Requires matching production API
+--------------------------------
+- Prompt-only image modes, force regenerate, POST /image-jobs/manual-generate
+- Database migration 082 (song_count may be 0 for manual image rows)
 
 Not included in this build
 --------------------------
-- DistroKid automation / WAV add-on (kept on a separate branch until ready)
-- Playlist glass polish (kept out until ready)
+- Theme categories (P1), personal reference library (P2), Progress Replace (P3)
+- DistroKid automation / WAV add-on (separate branch)
 
 Notes
 -----
 - Production API only
 - API: https://api.camxora.com/api/v1
-- Installer file: CamxoraSetup-1.1.0.exe
-- Older NVIDIA drivers (below 570): export uses x264; update the driver + restart
-  Camxora to use NVENC again
+- Installer file: CamxoraSetup-1.1.1.exe
