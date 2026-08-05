@@ -1631,12 +1631,16 @@ class BatchRepository:
         batch_id: UUID | None,
         statuses: list[str],
         limit: int,
+        job_ids: list[UUID] | None = None,
     ) -> list[ImageJob]:
         if limit <= 0:
             return []
 
         resolved_statuses = [str(value or "").strip() for value in (statuses or []) if str(value or "").strip()]
         if not resolved_statuses:
+            return []
+        resolved_job_ids = [job_id for job_id in (job_ids or []) if job_id is not None]
+        if job_ids is not None and not resolved_job_ids:
             return []
 
         async with self._pool.acquire() as conn:
@@ -1649,6 +1653,7 @@ class BatchRepository:
                         WHERE user_id = $1
                           AND ($2::uuid IS NULL OR batch_id = $2)
                           AND status = ANY($3::text[])
+                          AND ($6::uuid[] IS NULL OR id = ANY($6::uuid[]))
                         ORDER BY updated_at DESC
                         FOR UPDATE SKIP LOCKED
                         LIMIT $4
@@ -1670,6 +1675,7 @@ class BatchRepository:
                     resolved_statuses,
                     max(1, min(200, int(limit))),
                     TaskStatus.RUNNING.value,
+                    resolved_job_ids or None,
                 )
         return [self._row_to_image_job(row) for row in rows]
 
@@ -1832,9 +1838,29 @@ class BatchRepository:
             param += 1
 
         if include_success:
-            query += """
-                AND status = ANY(ARRAY['failed','cancelled','running','success','pending']::text[])
+            # Force regenerate: reset any status and drop locked sample refs so a new
+            # Category sample can be chosen (or Prompt only can run without the old base).
+            query = """
+                UPDATE image_jobs
+                SET status = $2,
+                    error = NULL,
+                    output_image_path = NULL,
+                    input_image_path = NULL,
+                    style_reference_path = NULL,
+                    attempt_count = 0,
+                    updated_at = NOW()
+                WHERE user_id = $1
             """
+            args = [user_id, TaskStatus.PENDING.value]
+            param = 3
+            if batch_id is not None:
+                query += f" AND batch_id = ${param}"
+                args.append(batch_id)
+                param += 1
+            if job_ids:
+                query += f" AND id = ANY(${param}::uuid[])"
+                args.append(job_ids)
+                param += 1
         else:
             query += """
                 AND (

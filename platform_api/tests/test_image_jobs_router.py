@@ -180,3 +180,39 @@ async def test_retry_image_jobs_force(
     assert response.json()["updated"] == 2
     kwargs = mock_image_job_service.retry_jobs.await_args.kwargs
     assert kwargs.get("force") is True
+
+
+@pytest.mark.asyncio
+async def test_manual_generate_image_jobs(client: AsyncClient, mock_batch_service: AsyncMock) -> None:
+    mock_batch_service.create_manual_image_generation = AsyncMock(
+        return_value={
+            "batch_id": "00000000-0000-0000-0000-000000000123",
+            "job_id": "00000000-0000-0000-0000-000000000456",
+            "kind": "background",
+            "profile_id": "00000000-0000-0000-0000-000000000789",
+            "planned_date": "2026-08-05",
+            "album_label": "Not available",
+            "created_jobs": [
+                {
+                    "id": "00000000-0000-0000-0000-000000000456",
+                    "kind": "background",
+                    "status": "pending",
+                },
+                {
+                    "id": "00000000-0000-0000-0000-000000000457",
+                    "kind": "thumbnail",
+                    "status": "pending",
+                },
+            ],
+        }
+    )
+    response = await client.post(
+        "/api/v1/image-jobs/manual-generate",
+        json={"kind": "background", "prompt": "Neon skyline"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["batch_id"] == "00000000-0000-0000-0000-000000000123"
+    assert body["album_label"] == "Not available"
+    assert body["kind"] == "background"
+    mock_batch_service.create_manual_image_generation.assert_awaited_once()

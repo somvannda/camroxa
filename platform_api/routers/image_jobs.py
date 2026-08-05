@@ -114,6 +114,28 @@ class ImageJobsSyncManualResponse(BaseModel):
     updated: int
 
 
+class ImageJobsManualGenerateRequest(BaseModel):
+    kind: str = Field(..., min_length=1)
+    prompt: str | None = None
+    channel_profile_id: str | None = None
+
+
+class ImageJobsManualGenerateCreatedJob(BaseModel):
+    id: str
+    kind: str
+    status: str
+
+
+class ImageJobsManualGenerateResponse(BaseModel):
+    batch_id: str
+    job_id: str
+    kind: str
+    profile_id: str
+    planned_date: str
+    album_label: str = "Not available"
+    created_jobs: list[ImageJobsManualGenerateCreatedJob] = Field(default_factory=list)
+
+
 @router.get("", response_model=ImageJobsListResponse, status_code=200)
 async def list_image_jobs(
     ctx: CurrentUserDep,
@@ -218,6 +240,22 @@ async def sync_manual_image_jobs(
         batch_id=request.batch_id,
     )
     return ImageJobsSyncManualResponse(updated=updated)
+
+
+@router.post("/manual-generate", response_model=ImageJobsManualGenerateResponse, status_code=200)
+async def manual_generate_image_jobs(
+    request: ImageJobsManualGenerateRequest,
+    ctx: CurrentUserDep,
+    batch_service: BatchServiceDep,
+) -> ImageJobsManualGenerateResponse:
+    """Create a today-dated Not available queue row and generate the clicked kind."""
+    result = await batch_service.create_manual_image_generation(
+        user_id=ctx.user_id,
+        kind=request.kind,
+        prompt=request.prompt,
+        channel_profile_id=request.channel_profile_id,
+    )
+    return ImageJobsManualGenerateResponse(**result)
 
 
 @router.post("/retry", response_model=ImageJobsRetryResponse, status_code=200)

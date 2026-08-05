@@ -35,10 +35,14 @@ from shared.models.platform import (
     ImageJobsEnqueueRequest,
     ImageJobsEnqueueResponse,
     ImageJobsListResponse,
+    ImageJobsManualGenerateRequest,
+    ImageJobsManualGenerateResponse,
     ImageJobsRunRequest,
     ImageJobsRunResponse,
     ImageJobsRetryRequest,
     ImageJobsRetryResponse,
+    ImageGenerationRequest,
+    ImageGenerationResponse,
     ImageJobsSyncManualResponse,
     ImageSamplePackListResponse,
     LyricsPolishRequest,
@@ -626,6 +630,19 @@ class PlatformApi:
         )
         return ImageJobsSyncManualResponse.model_validate(data)
 
+    def manual_generate_image_jobs(
+        self,
+        payload: ImageJobsManualGenerateRequest,
+    ) -> ImageJobsManualGenerateResponse:
+        data = self._client.request(
+            "/image-jobs/manual-generate",
+            method="POST",
+            auth=True,
+            body=payload.model_dump(exclude_none=True),
+            timeout=60.0,
+        )
+        return ImageJobsManualGenerateResponse.model_validate(data)
+
     def enqueue_image_jobs(self, batch_ids: list[str]) -> ImageJobsEnqueueResponse:
         data = self._client.request(
             "/image-jobs/enqueue",
@@ -671,6 +688,16 @@ class PlatformApi:
             body=payload.model_dump(exclude_none=True),
         )
         return ImageJobsRetryResponse.model_validate(data)
+
+    def generate_image(self, payload: ImageGenerationRequest) -> ImageGenerationResponse:
+        data = self._client.request(
+            "/generation/image",
+            method="POST",
+            auth=True,
+            body=payload.model_dump(exclude_none=True),
+            timeout=180.0,
+        )
+        return ImageGenerationResponse.model_validate(data)
 
     def clear_image_jobs(self, payload: ImageJobsClearRequest) -> ImageJobsClearResponse:
         data = self._client.request(

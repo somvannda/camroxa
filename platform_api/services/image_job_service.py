@@ -109,6 +109,7 @@ class ImageJobRepositoryProtocol(Protocol):
         batch_id: UUID | None,
         statuses: list[str],
         limit: int,
+        job_ids: list[UUID] | None = None,
     ) -> list[ImageJob]: ...
     async def get_image_jobs_for_user(
         self,
@@ -309,12 +310,14 @@ class ImageJobService:
         *,
         batch_id: str | None = None,
         limit: int = 8,
+        job_ids: list[str] | None = None,
     ) -> int:
         if limit <= 0:
             return 0
 
         user_uuid = UUID(user_id)
         resolved_batch_id = UUID(batch_id) if batch_id else None
+        parsed_job_ids = _parse_uuid_list(job_ids, field="job_ids") if job_ids else None
         settings = await self._settings_service.get_merged_settings(
             user_id=user_uuid,
             include_sensitive=False,
@@ -330,7 +333,7 @@ class ImageJobService:
 
         # Pick up failed jobs that still have auto-retry attempts (e.g. after API restart).
         requeue = getattr(self._repo, "requeue_auto_retry_failed_jobs", None)
-        if requeue is not None:
+        if requeue is not None and not parsed_job_ids:
             requeued = await requeue(
                 user_uuid,
                 batch_id=resolved_batch_id,
@@ -345,6 +348,7 @@ class ImageJobService:
             batch_id=resolved_batch_id,
             statuses=[TaskStatus.PENDING.value],
             limit=min(200, max(limit, 1)),
+            job_ids=parsed_job_ids,
         )
         if not claimed_jobs:
             return 0

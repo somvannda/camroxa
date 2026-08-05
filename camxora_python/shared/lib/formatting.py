@@ -19,6 +19,8 @@ def format_optional(value: str | None, fallback: str = "--") -> str:
 def format_channel_role_label(role: str | None) -> str:
     """Present channel role using current product wording."""
     normalized = str(role or "").strip().lower()
+    if normalized in {"n/a", "na", "not available"}:
+        return "N/A"
     if normalized in {"ok", "primary"}:
         return "Primary"
     if normalized in {"alt", "secondary"}:

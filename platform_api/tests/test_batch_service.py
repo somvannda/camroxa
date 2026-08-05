@@ -2121,3 +2121,171 @@ async def test_sanitize_suno_payload_uses_learned_terms_and_persists(
     batch_repo.update_song_draft.assert_awaited_once()
     batch_repo.update_song_suno_sanitize_metadata.assert_awaited_once()
     assert song.lyrics == payload.lyrics
+
+@pytest.mark.asyncio
+async def test_create_manual_image_generation_creates_batch_and_runs_clicked_kind(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    profile_id = uuid4()
+    profile = SimpleNamespace(
+        id=profile_id,
+        image_config={
+            "provider": "fal",
+            "background_prompt": "BG profile",
+            "thumbnail_prompt": "TH profile",
+            "resolution": "1920x1080",
+            "style_strength": 80,
+        },
+    )
+    profile_repo.list_for_user = AsyncMock(return_value=[profile])
+    profile_repo.get_by_id_for_user = AsyncMock(return_value=profile)
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={
+            "imageSourceMode": "ai",
+            "imageBackgroundSourceMode": "prompt_only",
+            "imageThumbnailSourceMode": "prompt_only",
+            "imageBackgroundPrompt": "Neon skyline",
+            "imageThumbnailPrompt": "Bold title card",
+            "outputResolution": "1920x1080",
+            "styleStrength": 80,
+        }
+    )
+    batch_repo.update_batch_channel_albums = AsyncMock()
+    batch_repo.create_image_jobs = AsyncMock(side_effect=lambda jobs: jobs)
+
+    service = BatchService(
+        batch_repo=batch_repo,
+        credit_service=credit_service,
+        pricing_service=pricing_service,
+        generation_service=generation_service,
+        profile_repo=profile_repo,
+        ai_routing_service=ai_routing_service,
+        prompt_service=prompt_service,
+        settings_service=settings_service,
+    )
+    service._schedule_image_jobs_run = AsyncMock()
+    result = await service.create_manual_image_generation(
+        user_id="00000000-0000-0000-0000-000000000001",
+        kind="background",
+        prompt="City lights",
+    )
+
+    assert result["album_label"] == "Not available"
+    assert result["kind"] == "background"
+    created_batch = batch_repo.create_batch.await_args.args[0]
+    assert created_batch.status == "manual_image"
+    assert created_batch.song_count == 0
+    assert created_batch.ok_album == "Not available"
+    created_jobs = batch_repo.create_image_jobs.await_args.args[0]
+    assert len(created_jobs) == 2
+    assert {job.kind for job in created_jobs} == {ImageKind.BACKGROUND, ImageKind.THUMBNAIL}
+    assert all(job.status == TaskStatus.PENDING for job in created_jobs)
+    service._schedule_image_jobs_run.assert_awaited_once()
+    schedule_kwargs = service._schedule_image_jobs_run.await_args.kwargs
+    assert schedule_kwargs["job_ids"] == [result["job_id"]]
+
+
+@pytest.mark.asyncio
+async def test_create_manual_image_generation_thumbnail_schedules_bg_then_th(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    profile_id = uuid4()
+    profile = SimpleNamespace(
+        id=profile_id,
+        image_config={
+            "provider": "fal",
+            "background_prompt": "BG profile",
+            "thumbnail_prompt": "TH profile",
+            "resolution": "1920x1080",
+            "style_strength": 80,
+        },
+    )
+    profile_repo.list_for_user = AsyncMock(return_value=[profile])
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={
+            "imageSourceMode": "ai",
+            "imageBackgroundSourceMode": "prompt_only",
+            "imageThumbnailSourceMode": "prompt_only",
+            "imageBackgroundPrompt": "Neon skyline",
+            "imageThumbnailPrompt": "Bold title card",
+            "outputResolution": "1920x1080",
+            "styleStrength": 80,
+        }
+    )
+    batch_repo.update_batch_channel_albums = AsyncMock()
+    batch_repo.create_image_jobs = AsyncMock(side_effect=lambda jobs: jobs)
+    service = BatchService(
+        batch_repo=batch_repo,
+        credit_service=credit_service,
+        pricing_service=pricing_service,
+        generation_service=generation_service,
+        profile_repo=profile_repo,
+        ai_routing_service=ai_routing_service,
+        prompt_service=prompt_service,
+        settings_service=settings_service,
+    )
+    service._schedule_image_jobs_run = AsyncMock()
+    result = await service.create_manual_image_generation(
+        user_id="00000000-0000-0000-0000-000000000001",
+        kind="thumbnail",
+        prompt="Title card",
+    )
+    created_jobs = batch_repo.create_image_jobs.await_args.args[0]
+    bg = next(job for job in created_jobs if job.kind == ImageKind.BACKGROUND)
+    th = next(job for job in created_jobs if job.kind == ImageKind.THUMBNAIL)
+    assert th.source_job_id == bg.id
+    schedule_kwargs = service._schedule_image_jobs_run.await_args.kwargs
+    assert schedule_kwargs["job_ids"] == [str(bg.id), str(th.id)]
+    assert result["job_id"] == str(th.id)
+
+
+@pytest.mark.asyncio
+async def test_create_manual_image_generation_blocks_personal_reference(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    profile_repo.list_for_user = AsyncMock(
+        return_value=[SimpleNamespace(id=uuid4(), image_config={})]
+    )
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={
+            "imageSourceMode": "ai",
+            "imageBackgroundSourceMode": "personal_reference",
+        }
+    )
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    with pytest.raises(ValidationError, match="not available yet"):
+        await service.create_manual_image_generation(
+            user_id="00000000-0000-0000-0000-000000000001",
+            kind="background",
+        )
+    batch_repo.create_batch.assert_not_awaited()

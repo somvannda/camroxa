@@ -213,7 +213,7 @@ flowchart LR
 - Style strength: still applies when a reference/sample is used; **hidden or disabled** in prompt-only (no reference to weight).
 - Persist via settings sync keys (see §8).
 
-**Image workspace:** surface the same modes read-only or editable for the active prefs; queue rows may show which mode/category was used (optional footer detail). Right-click **Regenerate Background + Thumbnail** force-resets both jobs including success. Progress remains the Replace/Export recovery surface (P3).
+**Image workspace:** editable Background/Thumbnail source combos above each preview (same Preferences keys). **Manual Generation** under each prompt force-regenerates the selected row’s BG or TH job using current prefs + prompt text (credits/quota via normal image-job path). Right-click: **Retry** (failed only) vs **Regenerate Background / Thumbnail / both** (force, including success). Clear client preflight for empty prompt-only and User reference not-ready; surface credit/quota job failures in the banner. Progress remains the Replace/Export recovery surface (P3).
 
 ### 6.2 Admin portal — Image Packs
 

@@ -160,10 +160,15 @@ async def _handle_run_image_jobs(job: Any, payload: dict[str, Any]) -> None:
     batch_id = str(payload.get("batch_id") or job.batch_id or "").strip()
     if not batch_id:
         raise ValueError("run_image_jobs missing batch_id")
+    raw_job_ids = payload.get("job_ids")
+    job_ids: list[str] | None = None
+    if isinstance(raw_job_ids, list):
+        job_ids = [str(value).strip() for value in raw_job_ids if str(value).strip()] or None
     await run_image_jobs_until_empty(
         get_image_job_service(),
         user_id=user_id,
         batch_id=batch_id,
+        job_ids=job_ids,
     )
 
 
