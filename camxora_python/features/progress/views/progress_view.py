@@ -88,6 +88,63 @@ STAGE_OPTIONS = (
     ("Error", "error"),
 )
 
+_TERMINAL_ACTIVE_HIDE = frozenset({"done", "completed"})
+
+
+def _display_limit_from_text(raw: str, *, default: int = 10) -> int:
+    try:
+        return max(1, int(str(raw or "").strip() or default))
+    except ValueError:
+        return default
+
+
+def _api_fetch_limit(display_limit: int, *, active_only: bool = False, stage: str = "all") -> int:
+    """Over-fetch so client-side Active/Stage filters can still fill the display limit.
+
+    Stage can change without a refetch, so the Progress page always loads a wider
+    window than the UI Limit (capped at 100).
+    """
+    _ = active_only, stage
+    resolved = max(1, int(display_limit))
+    return min(100, max(resolved * 5, 50))
+
+
+def _matches_stage_filter(effective_stage: str, stage_filter: str) -> bool:
+    normalized = str(effective_stage or "").strip().lower()
+    aliases = {
+        "export": {"export", "converter"},
+        "merge": {"merge", "merger"},
+    }
+    allowed = aliases.get(stage_filter, {stage_filter})
+    return normalized in allowed
+
+
+def filter_effective_progress_rows(
+    entries: list[EffectiveProgressRow],
+    *,
+    active_only: bool,
+    stage: str,
+    limit: int | None,
+) -> list[EffectiveProgressRow]:
+    """Apply Active → Stage → Limit on post-overlay effective stages."""
+    filtered = list(entries)
+    if active_only:
+        filtered = [
+            entry
+            for entry in filtered
+            if str(entry.effective_stage or "").strip().lower() not in _TERMINAL_ACTIVE_HIDE
+        ]
+    stage_key = str(stage or "all").strip().lower() or "all"
+    if stage_key != "all":
+        filtered = [
+            entry
+            for entry in filtered
+            if _matches_stage_filter(entry.effective_stage, stage_key)
+        ]
+    if limit is not None:
+        return filtered[: max(1, int(limit))]
+    return filtered
+
 
 class ProgressView(PollablePageMixin, QScrollArea):
     """Operational progress table with filters, runtime overlay, and recovery actions."""
@@ -262,7 +319,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._to_date.dateChanged.connect(lambda *_: self._on_filters_changed())
         self._active_only.stateChanged.connect(lambda *_: self._on_filters_changed())
         self._limit.currentTextChanged.connect(lambda *_: self._on_filters_changed())
-        self._stage_filter.currentTextChanged.connect(lambda *_: self._render_table())
+        self._stage_filter.currentTextChanged.connect(lambda *_: self._render())
 
         self.setWidget(container)
         self._container = container
@@ -294,10 +351,18 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._poll_timer.setInterval(interval)
         self.refresh_data()
 
+    def _display_limit(self) -> int:
+        return _display_limit_from_text(self._limit.currentText(), default=10)
+
     def _current_filters(self) -> ProgressFilters:
+        display_limit = self._display_limit()
+        stage = self._current_stage_filter()
+        active_only = self._active_only.isChecked()
+        # Fetch wider than the UI Limit so Active/Stage can still fill N rows after
+        # desktop overlays. Apply Active only on the client (post-overlay truth).
         return ProgressFilters(
-            limit=int(self._limit.currentText()),
-            active_only=self._active_only.isChecked(),
+            limit=_api_fetch_limit(display_limit, active_only=active_only, stage=stage),
+            active_only=False,
             from_date=self._from_date.date().toString("yyyy-MM-dd"),
             to_date=self._to_date.date().toString("yyyy-MM-dd"),
         )
@@ -466,37 +531,23 @@ class ProgressView(PollablePageMixin, QScrollArea):
             )
         return entries
 
-    def _filtered_effective_rows(self) -> list[EffectiveProgressRow]:
-        stage = self._current_stage_filter()
-        entries = self._effective_rows()
-        if self._active_only.isChecked():
-            # Match Stage filter behavior: hide terminal Done/Completed after desktop overlays.
-            entries = [
-                entry
-                for entry in entries
-                if str(entry.effective_stage or "").strip().lower() not in {"done", "completed"}
-            ]
-        if stage != "all":
-            entries = [
-                entry
-                for entry in entries
-                if self._matches_stage_filter(entry.effective_stage, stage)
-            ]
-        try:
-            limit = max(1, int(self._limit.currentText()))
-        except ValueError:
-            limit = 10
-        return entries[:limit]
+    def _matching_effective_rows(self) -> list[EffectiveProgressRow]:
+        """Active + Stage filters on effective stages (no Limit slice)."""
+        return filter_effective_progress_rows(
+            self._effective_rows(),
+            active_only=self._active_only.isChecked(),
+            stage=self._current_stage_filter(),
+            limit=None,
+        )
 
-    @staticmethod
-    def _matches_stage_filter(effective_stage: str, stage_filter: str) -> bool:
-        normalized = str(effective_stage or "").strip().lower()
-        aliases = {
-            "export": {"export", "converter"},
-            "merge": {"merge", "merger"},
-        }
-        allowed = aliases.get(stage_filter, {stage_filter})
-        return normalized in allowed
+    def _filtered_effective_rows(self) -> list[EffectiveProgressRow]:
+        """Active → Stage → Limit on post-overlay effective stages."""
+        return filter_effective_progress_rows(
+            self._effective_rows(),
+            active_only=self._active_only.isChecked(),
+            stage=self._current_stage_filter(),
+            limit=self._display_limit(),
+        )
 
     def _render(self) -> None:
         self._update_stats()
@@ -569,7 +620,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
         )
 
     def _update_stats(self) -> None:
-        entries = self._effective_rows()
+        # Stats follow Active + Stage (same set as the table before Limit).
+        entries = self._matching_effective_rows()
         active = sum(
             1 for entry in entries if entry.effective_stage.lower() not in {"done", "error"}
         )

@@ -60,6 +60,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Progress `GET /progress`: when `active_only` is set, batch over-fetch uses the full cap (100) so Active + Limit can still return up to N active rows after OK/ALT expansion. See `docs/changelog/2026-08-06-progress-filters-composition.md`.
+
 - Admin user detail no longer reports logos/covers as available when the
   stored upload path is missing on disk, which stopped the admin portal from
   requesting those media URLs and logging 404s. See

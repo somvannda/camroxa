@@ -120,6 +120,15 @@ def _is_terminal_progress_stage(stage: str) -> bool:
     return normalized in {"youtube", "done", "completed", "error"}
 
 
+def _progress_batch_fetch_limit(*, limit: int, active_only: bool) -> int:
+    """How many batches to load before OK/ALT expansion and row slicing."""
+    resolved = max(1, int(limit))
+    if active_only:
+        # Need headroom so active_only → limit can still fill N active rows.
+        return 100
+    return min(100, max(resolved * 2, resolved))
+
+
 def _normalize_image_state(group: dict[str, Any]) -> str:
     total = int(group.get("total", 0) or 0)
     ready = int(group.get("ready", 0) or 0)
@@ -424,8 +433,10 @@ async def list_progress_rows(
     if from_date and to_date and from_date > to_date:
         from_date, to_date = to_date, from_date
 
-    # Over-fetch batches so OK+ALT expansion can still fill the requested row limit.
-    batch_fetch_limit = min(100, max(limit * 2, limit))
+    # Over-fetch batches so OK+ALT expansion (and active_only) can still fill `limit` rows.
+    # Active-only filters before the row slice — use the full batch cap so "limit=10
+    # active" means up to 10 active rows, not 10 mixed rows with Done dropped afterward.
+    batch_fetch_limit = _progress_batch_fetch_limit(limit=limit, active_only=active_only)
 
     async def _fetch_batches(*, planned_dates: bool) -> list[Any]:
         end_expr = _batch_run_end_expr(use_planned_dates=planned_dates)

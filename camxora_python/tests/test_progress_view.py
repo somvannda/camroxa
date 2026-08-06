@@ -185,6 +185,65 @@ def test_stage_filter_matches_converter_alias(qapp: QApplication) -> None:
     assert view._rows_card._table.item(0, _COL_CHANNEL) is not None
 
 
+def test_active_only_then_limit_fills_display_slots(qapp: QApplication) -> None:
+    """Active only + Limit=10 means up to 10 active rows, not 10 mixed then drop Done."""
+    from features.progress.views.progress_view import filter_effective_progress_rows
+
+    entries = [
+        _effective_row(
+            row=_sample_row().model_copy(update={"channel": f"Done {index}", "stage": "Done"}),
+            effective_stage="Done",
+        )
+        for index in range(8)
+    ] + [
+        _effective_row(
+            row=_sample_row().model_copy(update={"channel": f"Music {index}", "stage": "Music"}),
+            effective_stage="Music",
+        )
+        for index in range(12)
+    ]
+
+    filtered = filter_effective_progress_rows(
+        entries,
+        active_only=True,
+        stage="all",
+        limit=10,
+    )
+    assert len(filtered) == 10
+    assert all(entry.effective_stage == "Music" for entry in filtered)
+
+
+def test_stage_filter_applies_before_limit(qapp: QApplication) -> None:
+    from features.progress.views.progress_view import filter_effective_progress_rows
+
+    entries = [
+        _effective_row(effective_stage="Music"),
+        _effective_row(effective_stage="Export"),
+        _effective_row(effective_stage="Converter"),
+        _effective_row(effective_stage="Image"),
+        _effective_row(effective_stage="Export"),
+    ]
+    filtered = filter_effective_progress_rows(
+        entries,
+        active_only=False,
+        stage="export",
+        limit=2,
+    )
+    assert len(filtered) == 2
+    assert {entry.effective_stage for entry in filtered} <= {"Export", "Converter"}
+
+
+def test_progress_view_api_filters_overfetch_without_server_active_only(
+    qapp: QApplication,
+) -> None:
+    view = ProgressView(PlatformApi())
+    view._limit.setCurrentText("10")
+    view._active_only.setChecked(True)
+    filters = view._current_filters()
+    assert filters.active_only is False
+    assert filters.limit == 50
+
+
 def test_change_run_folder_auto_continues_matching_row_once(qapp: QApplication) -> None:
     """After "Change Run Folder & Resume", the next refresh runs Continue Progress
     exactly once for that row — not the whole pipeline, and not repeated on later
