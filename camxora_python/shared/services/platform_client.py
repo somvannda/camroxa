@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 import httpx
 
+from shared.services.build_config import is_api_url_locked
 from shared.services.secure_storage import SecureStorage
 
 Method = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
@@ -21,6 +22,17 @@ class PlatformApiError(Exception):
         super().__init__(message)
         self.status = status
         self.payload = payload
+
+
+def _connect_error_message(api_base_url: str) -> str:
+    """User-facing connect failure; keep uvicorn/port hints for local/dev only."""
+    base = str(api_base_url or "").strip() or "the Camxora API"
+    if is_api_url_locked():
+        return (
+            f"Cannot reach Camxora servers ({base}). "
+            "Check your internet connection and try again."
+        )
+    return f"Cannot connect to {base}. Start platform_api (uvicorn on port 8000)."
 
 
 class PlatformClient:
@@ -164,10 +176,7 @@ class PlatformClient:
                 timeout=effective_timeout,
             )
         except httpx.ConnectError as exc:
-            err = PlatformApiError(
-                0,
-                f"Cannot connect to {self.base_url()}. Start platform_api (uvicorn on port 8000).",
-            )
+            err = PlatformApiError(0, _connect_error_message(self.base_url()))
             _log_api_error(method, path, err)
             raise err from exc
         except httpx.TimeoutException as exc:

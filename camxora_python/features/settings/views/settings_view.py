@@ -1246,11 +1246,9 @@ class SettingsView(QWidget):
         self._pref_image_source.addItem("User Provided", "manual")
         self._pref_background_source = QComboBox()
         self._pref_background_source.addItem("Category", "category")
-        self._pref_background_source.addItem("User reference", "personal_reference")
         self._pref_background_source.addItem("Prompt only", "prompt_only")
         self._pref_thumbnail_source = QComboBox()
         self._pref_thumbnail_source.addItem("Category", "category")
-        self._pref_thumbnail_source.addItem("User reference", "personal_reference")
         self._pref_thumbnail_source.addItem("Prompt only", "prompt_only")
         # Thumbnail overlay stays AI/composite behind the scenes (no UI — locked product decision).
         self._pref_thumbnail_overlay_mode = "ai"
@@ -1263,10 +1261,10 @@ class SettingsView(QWidget):
         rendering_panel.add_widget(self._th_source_row)
         rendering_panel.add_widget(
             note_box(
-                "AI Generated uses Background/Thumbnail source: Category (admin samples), "
-                "User reference (portal library — coming soon), or Prompt only (text, no sample). "
+                "AI Generated uses Background/Thumbnail source: Category (admin samples) "
+                "or Prompt only (text, no sample). "
                 "User Provided skips AI — place final images in the run folder and continue the pipeline. "
-                "Style strength applies when a sample/reference is used."
+                "Style strength applies when a Category sample is used."
             )
         )
 

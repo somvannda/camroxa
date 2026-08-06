@@ -38,12 +38,16 @@ def normalize_image_source_mode(value: object) -> str:
 
 
 def normalize_kind_source_mode(value: object) -> str:
-    """BG/TH reference mode: prompt_only | category | personal_reference."""
+    """BG/TH reference mode: prompt_only | category.
+
+    ``personal_reference`` / User reference is hidden until P2; coerce to category.
+    """
     mode = str(value or "").strip().lower()
     if mode in {"prompt", "prompt_only"}:
         return "prompt_only"
+    # personal_reference was a 1.1.1 placeholder — map away so UI never sticks on it.
     if mode in {"personal", "personal_reference", "user_reference"}:
-        return "personal_reference"
+        return "category"
     return "category"
 
 

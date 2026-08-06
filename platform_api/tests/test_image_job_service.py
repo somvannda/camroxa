@@ -427,3 +427,72 @@ async def test_read_job_output_bytes_raises_when_no_cache_no_client_path_no_arch
 
     with pytest.raises(NotFoundError):
         await service.read_job_output_bytes(job.id, user_id)
+
+@pytest.mark.asyncio
+async def test_resolve_runtime_sample_path_null_input_falls_through_to_rotation(tmp_path) -> None:
+    """Force-regen clears input_image_path; None must not become path literal 'None'."""
+    sample = tmp_path / "pack.png"
+    Image.new("RGB", (64, 64), (1, 2, 3)).save(sample)
+    user_id = uuid4()
+    job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        batch_id=uuid4(),
+        profile_id=uuid4(),
+        kind=ImageKind.BACKGROUND,
+        channel_role=ChannelRole.OK,
+        input_image_path=None,
+        status=TaskStatus.PENDING,
+    )
+    rotation = AsyncMock()
+    rotation.pick_sample_path = AsyncMock(return_value=str(sample))
+    repo = AsyncMock()
+    repo.get_image_jobs_for_user = AsyncMock(return_value=[])
+    service = ImageJobService(
+        repo=repo,
+        settings_service=AsyncMock(),
+        routing_service=AsyncMock(),
+        enforcement_service=AsyncMock(),
+        generation_service=AsyncMock(),
+        image_sample_rotation=rotation,
+    )
+    path = await service._resolve_runtime_sample_path(
+        job=job,
+        settings={"imageBackgroundSourceMode": "category"},
+        user_id=user_id,
+    )
+    assert path == str(sample)
+    rotation.pick_sample_path.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_resolve_base_image_bytes_null_input_uses_rotated_sample(tmp_path) -> None:
+    sample = tmp_path / "pack.png"
+    Image.new("RGB", (32, 32), (9, 8, 7)).save(sample)
+    user_id = uuid4()
+    job = ImageJob(
+        id=uuid4(),
+        user_id=user_id,
+        batch_id=uuid4(),
+        profile_id=uuid4(),
+        kind=ImageKind.BACKGROUND,
+        channel_role=ChannelRole.OK,
+        input_image_path=None,
+        status=TaskStatus.PENDING,
+    )
+    rotation = AsyncMock()
+    rotation.pick_sample_path = AsyncMock(return_value=str(sample))
+    service = ImageJobService(
+        repo=AsyncMock(get_image_jobs_for_user=AsyncMock(return_value=[])),
+        settings_service=AsyncMock(),
+        routing_service=AsyncMock(),
+        enforcement_service=AsyncMock(),
+        generation_service=AsyncMock(),
+        image_sample_rotation=rotation,
+    )
+    data = await service._resolve_base_image_bytes(
+        user_id=user_id,
+        job=job,
+        settings={"imageBackgroundSourceMode": "category"},
+    )
+    assert data == sample.read_bytes()
