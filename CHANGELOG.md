@@ -9,6 +9,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-06
+
 ### Added
 
 - Progress right-click **Download missing MP3s (N)** for the selected channel role:
@@ -18,6 +20,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Desktop version stamp **1.2.0** / installer `CamxoraSetup-1.2.0.exe`. Publish with
+  **Force update** (mandatory) in Admin → Software Updates. Detail:
+  `docs/changelog/2026-08-06-desktop-1.2.0.md`.
 - Desktop owns local Suno drop paths: Progress overlays, Open Run Folder, and missing
   MP3 downloads always resolve API absolute `run_dir` values under this PC's Suno root
   via the relative `channel/date_album` key.
@@ -46,7 +51,6 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Release ConnectError / API-unreachable banners no longer leak `uvicorn` / port 8000
   (local/dev builds still show the start hint). See
   `docs/changelog/2026-08-06-connect-error-and-null-sample-path.md`.
-
 - Progress filters: Active only and Stage now apply **before** Limit (after desktop overlays). Active only + Limit 10 means up to 10 active rows. See `docs/changelog/2026-08-06-progress-filters-composition.md`.
 - **Manual export merge path:** Manual batch outputs now use `{stem}.mp4` (and pass `--output` to the visualizer) so Auto merge finds the files that were actually written, instead of looking for missing `*_CAMXORA_*` stamps.
 - **Pipeline merge quality gate:** Export skip/success and merge inputs require a usable MP4 (video stream + duration, and not truncated vs source audio when ffprobe is available). Incomplete or broken exports are no longer treated as merge-ready just because they are larger than 50KB.
@@ -55,6 +59,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - **Export usable-MP4 false negative:** ffprobe success (`returncode == 0`) was treated as failure (`0 or 1`), so valid exports were marked failed and Auto merge never ran.
 - **Merge progress percent:** Merge status uses a determinate 0–100% bar (FFmpeg `-progress`) instead of an indeterminate busy spinner.
 - **Export Speed Quality CLI:** Visualizer `--speedMode` accepts `quality` / `master` (UI was sending `quality`, argparse only allowed `balanced|fast|very_fast`).
+
+### Notes
+
+- Includes **1.1.1** image prompt modes / Manual Generation and **1.1.0** ship-safe preview.
+- Production API for album-lock, Alt CDN heal, relative run keys, and null sample-path
+  guard is already deployed — no extra API ship required for this installer.
+- Not in this release: theme categories (P1), personal reference library (P2), Progress
+  Replace/Export (P3), DistroKid.
 
 ## [1.1.1] - 2026-08-05
 
@@ -78,7 +90,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Not in this release: theme categories (P1), personal reference library (P2), Progress Replace/Export (P3).
 - Detail: `docs/changelog/2026-08-05-desktop-1.1.1-image-prompt-modes.md`.
 
-## [1.2.0] - 2026-08-04
+## [1.2.0-interim] - 2026-08-04
+
+Historical short-lived stamp (window click hit-test) later folded into the **1.1.0** /
+**1.1.1** line. Superseded by production **[1.2.0] - 2026-08-06** above.
 
 ### Fixed
 
@@ -90,7 +105,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Desktop app version stamp **1.2.0** / CamxoraSetup-1.2.0.exe. Includes
+- Interim desktop stamp **1.2.0** / CamxoraSetup-1.2.0.exe (Aug 4). Includes
   everything from **1.1.0** (HDR bloom, export WYSIWYG, preview P0–P4.3 stack).
 
 ## [1.1.0] - 2026-08-05
