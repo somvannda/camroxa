@@ -73,6 +73,57 @@ class StreamingRepository:
         )
         return job_id
 
+    async def get_latest_mp3_upload_job(
+        self,
+        *,
+        suno_task_id: UUID,
+        kind: str,
+    ) -> dict[str, Any] | None:
+        """Return the newest MP3 upload job for a Suno task + kind, if any."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT *
+            FROM stream_upload_jobs
+            WHERE suno_task_id = $1
+              AND kind = $2
+            ORDER BY
+              CASE
+                WHEN status IN ('success', 'completed', 'done') THEN 0
+                WHEN status IN ('pending', 'queued', 'running', 'processing', 'uploading') THEN 1
+                ELSE 2
+              END,
+              updated_at DESC NULLS LAST,
+              created_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            suno_task_id,
+            kind,
+        )
+        return dict(row) if row else None
+
+    async def reset_upload_job_for_retry(
+        self,
+        job_id: UUID,
+        *,
+        source_url: str | None = None,
+        storage_key: str | None = None,
+    ) -> None:
+        """Reuse a failed/pending job row instead of inserting a duplicate."""
+        await self._pool.execute(
+            """
+            UPDATE stream_upload_jobs
+            SET status = 'pending',
+                error = NULL,
+                source_url = COALESCE($2, source_url),
+                storage_key = COALESCE($3, storage_key),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            job_id,
+            source_url,
+            storage_key,
+        )
+
     async def mark_upload_job(
         self,
         job_id: UUID,

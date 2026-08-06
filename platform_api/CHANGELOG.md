@@ -44,6 +44,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Streaming MP3 ingest: transient Suno CDN 403s no longer leave Pipeline Ops
+  stuck on Failed after later success — board aggregates any-success-wins per
+  clip, upload jobs are idempotent (skip/reuse), and CDN 403/404 use longer
+  warmup backoff + record-info refresh. See
+  `docs/changelog/2026-08-06-stream-cdn-403-idempotent-board.md`.
 - Image force-regen / NULL `input_image_path`: runtime no longer treats `None` as
   path literal `"None"` (Image reference file does not exist). Falls through to
   Category sample rotation. See

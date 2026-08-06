@@ -36,6 +36,11 @@ _IMAGE_HEADERS = {
 }
 
 
+def _looks_like_cdn_not_ready(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "403" in text or "404" in text or "forbidden" in text
+
+
 class StreamingUploadService:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
@@ -144,16 +149,39 @@ class StreamingUploadService:
         album_slug = slugify(album_name, fallback="album")
         song_slug = slugify(title, fallback="track")
         storage_key = f"{user_id}/{album_slug}/{song_slug}-{variant}.mp3"
+        kind = f"mp3_{variant}"
+        normalized_source = normalize_http_download_url(source_url) or None
 
-        job_id = await self._repo.create_upload_job(
-            user_id=user_id,
-            kind=f"mp3_{variant}",
-            song_id=song_id,
-            batch_id=batch_id,
+        existing = await self._repo.get_latest_mp3_upload_job(
             suno_task_id=suno_task_id,
-            source_url=normalize_http_download_url(source_url) or None,
-            storage_key=storage_key,
+            kind=kind,
         )
+        if existing is not None:
+            existing_status = str(existing.get("status") or "").lower()
+            if existing_status in {"success", "completed", "done"}:
+                logger.info(
+                    "Skipping streaming upload — already success job=%s task=%s kind=%s",
+                    existing.get("id"),
+                    suno_task_id,
+                    kind,
+                )
+                return
+            job_id = UUID(str(existing["id"]))
+            await self._repo.reset_upload_job_for_retry(
+                job_id,
+                source_url=normalized_source,
+                storage_key=storage_key,
+            )
+        else:
+            job_id = await self._repo.create_upload_job(
+                user_id=user_id,
+                kind=kind,
+                song_id=song_id,
+                batch_id=batch_id,
+                suno_task_id=suno_task_id,
+                source_url=normalized_source,
+                storage_key=storage_key,
+            )
 
         try:
             config = await resolve_streaming_storage_config(self._pool)
@@ -161,19 +189,50 @@ class StreamingUploadService:
                 await self._repo.mark_upload_job(job_id, status="failed", error="Streaming storage is not configured.")
                 return
 
-            candidates = variant_url_candidates(
-                variant=variant,
-                stored_ok=normalize_http_download_url(context.get("audio_url_ok")),
-                stored_alt=normalize_http_download_url(context.get("audio_url_alt")),
-                refreshed=refreshed,
-            )
-            primary_url = candidates[0] if candidates else normalize_http_download_url(source_url)
-            fallback_urls = candidates[1:] if len(candidates) > 1 else []
-            if not primary_url:
-                raise StorageServiceError(
-                    "No valid Suno download URL available. Re-poll record-info or retry after Suno callback."
+            active_refreshed = refreshed
+            data: bytes | None = None
+            last_download_error: Exception | None = None
+            for refresh_round in range(3):
+                candidates = variant_url_candidates(
+                    variant=variant,
+                    stored_ok=normalize_http_download_url(context.get("audio_url_ok")),
+                    stored_alt=normalize_http_download_url(context.get("audio_url_alt")),
+                    refreshed=active_refreshed,
                 )
-            data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+                primary_url = candidates[0] if candidates else normalize_http_download_url(source_url)
+                fallback_urls = candidates[1:] if len(candidates) > 1 else []
+                if not primary_url:
+                    raise StorageServiceError(
+                        "No valid Suno download URL available. Re-poll record-info or retry after Suno callback."
+                    )
+                try:
+                    data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+                    break
+                except Exception as exc:
+                    last_download_error = exc
+                    if refresh_round >= 2 or not _looks_like_cdn_not_ready(exc):
+                        raise
+                    logger.info(
+                        "Refreshing Suno URLs after CDN miss task=%s kind=%s round=%s: %s",
+                        suno_task_id,
+                        kind,
+                        refresh_round + 1,
+                        str(exc)[:160],
+                    )
+                    active_refreshed = await self._refresh_task_download_urls(context)
+                    if active_refreshed.refreshed and (
+                        active_refreshed.audio_url_ok or active_refreshed.audio_url_alt
+                    ):
+                        await self._persist_refreshed_audio_urls(
+                            suno_task_id=suno_task_id,
+                            refreshed=active_refreshed,
+                        )
+                        context = (
+                            await self._repo.get_suno_stream_context(suno_task_id) or context
+                        )
+            if data is None:
+                raise StorageServiceError(str(last_download_error or "Unable to download Suno MP3."))
+            refreshed = active_refreshed
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 

@@ -28,6 +28,9 @@ _DOWNLOAD_HEADERS = {
     "Accept": "audio/mpeg,audio/*,*/*;q=0.8",
 }
 _INVALID_URL_LITERALS = frozenset({"none", "null", "undefined", "n/a", "nil"})
+# CDN objects are often not downloadable for ~1–2 min after Suno callback.
+_CDN_NOT_READY_BACKOFF_SECONDS = (5.0, 15.0, 30.0, 45.0)
+_GENERIC_RETRY_BACKOFF_SECONDS = (1.0, 2.0)
 
 
 def normalize_http_download_url(url: str | None) -> str:
@@ -102,11 +105,12 @@ def variant_url_candidates(
     stored_alt: str,
     refreshed: SunoTaskDownloadUrls | None,
 ) -> list[str]:
+    """Same-variant download URLs only (never swap OK/ALT audio bytes)."""
     refreshed_ok = refreshed.audio_url_ok if refreshed else ""
     refreshed_alt = refreshed.audio_url_alt if refreshed else ""
     if variant == "alt":
-        return build_download_url_candidates(refreshed_alt, stored_alt, refreshed_ok, stored_ok)
-    return build_download_url_candidates(refreshed_ok, stored_ok, refreshed_alt, stored_alt)
+        return build_download_url_candidates(refreshed_alt, stored_alt)
+    return build_download_url_candidates(refreshed_ok, stored_ok)
 
 
 async def refresh_suno_task_download_urls(
@@ -289,14 +293,21 @@ async def fetch_timestamped_lrc_with_pool(
 
 
 async def download_suno_mp3_bytes(url: str, *, fallback_urls: list[str] | None = None) -> bytes:
-    """Download MP3 bytes, trying fallback URLs when the primary link is empty."""
+    """Download MP3 bytes, trying fallback URLs when the primary link is empty.
+
+    HTTP 403/404 from Suno CDN are treated as transient "not ready yet" and
+    retried with longer backoff (objects often become public 1–2 minutes after
+    callback). Other errors keep short retries.
+    """
     candidates = build_download_url_candidates(url, *(fallback_urls or []))
     if not candidates:
         raise StorageServiceError("No Suno download URL provided.")
 
     last_error: Exception | None = None
     for candidate in candidates:
-        for attempt in range(1, 4):
+        cdn_attempt = 0
+        generic_attempt = 0
+        while True:
             try:
                 data = await _download_once(candidate)
                 if len(data) >= _MIN_MP3_BYTES:
@@ -304,11 +315,49 @@ async def download_suno_mp3_bytes(url: str, *, fallback_urls: list[str] | None =
                 last_error = StorageServiceError(
                     f"Suno download returned empty body ({len(data)} bytes) for {candidate[:120]}"
                 )
+                generic_attempt += 1
+                if generic_attempt > len(_GENERIC_RETRY_BACKOFF_SECONDS):
+                    break
+                await asyncio.sleep(_GENERIC_RETRY_BACKOFF_SECONDS[generic_attempt - 1])
+                continue
             except Exception as exc:
                 last_error = exc
-            if attempt < 3:
-                await asyncio.sleep(float(attempt))
+                if _is_cdn_not_ready_error(exc):
+                    if cdn_attempt >= len(_CDN_NOT_READY_BACKOFF_SECONDS):
+                        break
+                    delay = _CDN_NOT_READY_BACKOFF_SECONDS[cdn_attempt]
+                    cdn_attempt += 1
+                    logger.info(
+                        "Suno CDN not ready (%s) for %s — retry %s/%s in %.0fs",
+                        _http_status_code(exc) or "?",
+                        candidate[:80],
+                        cdn_attempt,
+                        len(_CDN_NOT_READY_BACKOFF_SECONDS),
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                generic_attempt += 1
+                if generic_attempt > len(_GENERIC_RETRY_BACKOFF_SECONDS):
+                    break
+                await asyncio.sleep(_GENERIC_RETRY_BACKOFF_SECONDS[generic_attempt - 1])
     raise StorageServiceError(str(last_error or "Unable to download Suno MP3."))
+
+
+def _http_status_code(exc: BaseException) -> int | None:
+    response = getattr(exc, "response", None)
+    code = getattr(response, "status_code", None)
+    if isinstance(code, int):
+        return code
+    return None
+
+
+def _is_cdn_not_ready_error(exc: BaseException) -> bool:
+    code = _http_status_code(exc)
+    if code in {403, 404}:
+        return True
+    text = str(exc).lower()
+    return "403" in text or "404" in text or "forbidden" in text
 
 
 async def _download_once(url: str) -> bytes:

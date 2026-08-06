@@ -64,13 +64,64 @@ def _mark_ready_from_image_jobs(
         asset["reel_ready"] = compute_reel_ready(asset)
 
 
+_STREAM_SUCCESS = frozenset({"success", "completed", "done"})
+_STREAM_PENDING = frozenset({"pending", "queued", "running", "processing", "uploading"})
+
+
+def _stream_clip_key(row: Any) -> tuple[str, str]:
+    """Identity for one MP3 clip upload (dedupe superseded fail/success rows)."""
+    kind = str(row["kind"] or "").lower()
+    suno_task_id = str(row.get("suno_task_id") or "").strip()
+    song_id = str(row.get("song_id") or "").strip()
+    clip_id = suno_task_id or song_id or str(row.get("id") or "")
+    return (clip_id, kind)
+
+
+def _stream_status_rank(status: str) -> int:
+    """Higher is better — any success wins over pending/failed history."""
+    if status in _STREAM_SUCCESS:
+        return 3
+    if status in _STREAM_PENDING:
+        return 2
+    return 1
+
+
 def _aggregate_streaming_groups(stream_rows: list[Any]) -> dict[tuple[str, str], dict[str, Any]]:
-    """Aggregate stream_upload_jobs into (batch_id, role) progress chips."""
-    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    """Aggregate stream_upload_jobs into (batch_id, role) progress chips.
+
+    Counts one outcome per clip ``(suno_task_id|song_id, kind)`` so superseded
+    failed rows after a later success do not keep Pipeline Ops in Error.
+    """
+    best_by_clip: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     for row in stream_rows:
         batch_id = str(row["batch_id"] or "")
         kind = str(row["kind"] or "").lower()
         role = "ALT" if kind.endswith("_alt") else "OK"
+        clip_id, clip_kind = _stream_clip_key(row)
+        clip_key = (batch_id, role, clip_id, clip_kind)
+        status = str(row["status"] or "").lower()
+        updated = row.get("updated_at")
+        prev = best_by_clip.get(clip_key)
+        if prev is None:
+            best_by_clip[clip_key] = {
+                "status": status,
+                "error": str(row.get("error") or "").strip(),
+                "updated_at": updated,
+            }
+            continue
+        prev_rank = _stream_status_rank(str(prev["status"]))
+        new_rank = _stream_status_rank(status)
+        prev_updated = prev.get("updated_at")
+        newer = updated is not None and (prev_updated is None or updated >= prev_updated)
+        if new_rank > prev_rank or (new_rank == prev_rank and newer):
+            best_by_clip[clip_key] = {
+                "status": status,
+                "error": str(row.get("error") or "").strip() or str(prev.get("error") or ""),
+                "updated_at": updated if newer else prev_updated,
+            }
+
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for (batch_id, role, _clip_id, _kind), clip in best_by_clip.items():
         key = (batch_id, role)
         group = groups.setdefault(
             key,
@@ -84,18 +135,18 @@ def _aggregate_streaming_groups(stream_rows: list[Any]) -> dict[tuple[str, str],
                 "latest_status": "",
             },
         )
-        status = str(row["status"] or "").lower()
+        status = str(clip["status"] or "").lower()
         group["total"] += 1
-        if status in {"success", "completed", "done"}:
+        if status in _STREAM_SUCCESS:
             group["success"] += 1
-        elif status in {"pending", "queued", "running", "processing", "uploading"}:
+        elif status in _STREAM_PENDING:
             group["pending"] += 1
         else:
             group["failed"] += 1
-            err = str(row["error"] or "").strip()
+            err = str(clip.get("error") or "").strip()
             if err:
                 group["error"] = err
-        updated = row["updated_at"]
+        updated = clip.get("updated_at")
         if group["updated_at"] is None or (updated and updated >= group["updated_at"]):
             group["updated_at"] = updated
             group["latest_status"] = status.upper()
@@ -134,6 +185,7 @@ def _promote_admin_stage(
     stream_failed = int((stream_group or {}).get("failed", 0) or 0)
     stage_l = stage.strip().lower()
 
+    # Fail only when clips remain failed after dedupe (no later success for that clip).
     if stream_total > 0 and stream_failed > 0 and stream_pending <= 0:
         return "Error", "Failed", "Streaming upload failed."
     if stream_total > 0 and stream_pending > 0:
@@ -541,8 +593,10 @@ async def list_admin_pipeline_board(
         stream_rows = await pool.fetch(
             """
             SELECT
+                id,
                 batch_id,
                 song_id,
+                suno_task_id,
                 kind,
                 status,
                 error,

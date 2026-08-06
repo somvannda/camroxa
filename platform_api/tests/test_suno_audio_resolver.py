@@ -161,6 +161,68 @@ def test_cdn_url_for_suno_audio_id() -> None:
     )
 
 
+def test_variant_url_candidates_same_variant_only() -> None:
+    from platform_api.services.suno_audio_resolver import (
+        SunoTaskDownloadUrls,
+        variant_url_candidates,
+    )
+
+    refreshed = SunoTaskDownloadUrls(
+        audio_url_ok="https://cdn1.suno.ai/ok.mp3",
+        audio_url_alt="https://cdn1.suno.ai/alt.mp3",
+        refreshed=True,
+    )
+    assert variant_url_candidates(
+        variant="ok",
+        stored_ok="https://cdn1.suno.ai/stored-ok.mp3",
+        stored_alt="https://cdn1.suno.ai/stored-alt.mp3",
+        refreshed=refreshed,
+    ) == [
+        "https://cdn1.suno.ai/ok.mp3",
+        "https://cdn1.suno.ai/stored-ok.mp3",
+    ]
+    assert variant_url_candidates(
+        variant="alt",
+        stored_ok="https://cdn1.suno.ai/stored-ok.mp3",
+        stored_alt="https://cdn1.suno.ai/stored-alt.mp3",
+        refreshed=refreshed,
+    ) == [
+        "https://cdn1.suno.ai/alt.mp3",
+        "https://cdn1.suno.ai/stored-alt.mp3",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_download_suno_mp3_bytes_retries_403_then_succeeds(monkeypatch) -> None:
+    from platform_api.services import suno_audio_resolver as resolver
+
+    sleeps: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    class _FakeHTTPStatusError(Exception):
+        def __init__(self, status_code: int) -> None:
+            self.response = type("R", (), {"status_code": status_code})()
+            super().__init__(f"Client error '{status_code} Forbidden'")
+
+    calls = {"n": 0}
+
+    async def _fake_download_once(url: str) -> bytes:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _FakeHTTPStatusError(403)
+        return b"x" * 5000
+
+    monkeypatch.setattr(resolver.asyncio, "sleep", _fake_sleep)
+    monkeypatch.setattr(resolver, "_download_once", _fake_download_once)
+
+    data = await resolver.download_suno_mp3_bytes("https://cdn1.suno.ai/clip.mp3")
+    assert len(data) >= 4096
+    assert calls["n"] == 3
+    assert sleeps == [5.0, 15.0]
+
+
 def test_callback_indicates_success_for_complete_callback_type() -> None:
     assert callback_indicates_success({"code": 200, "data": {"callbackType": "complete"}})
 
