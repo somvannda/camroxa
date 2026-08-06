@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Dashboard **API Health · System Status** card and top-bar badge show
+  **Sandbox** / **Production** (from `/health` environment fields, with
+  hostname fallback). See `docs/changelog/2026-08-06-admin-api-health-env-label.md`.
 - Admin Settings **Fail / Retry Absorb** tab: set max platform-absorbed failed gens per user per day (`daily_fail_absorb_budget`). User detail shows today's counter with reset. See `docs/changelog/2026-08-04-admin-fail-absorb-ui.md`.
 - **User Spent** page (`/user-spent`): per-user estimated COGS roster with expandable provider × operation breakdown, plan-meter chips, and Over allowance / Margin risk alerts. See `docs/changelog/2026-08-04-admin-user-spent.md`.
 - User detail **Plan Quota** card: top up period quotas (draft / Suno / images / export / merge) and wallet credits. Period top-ups expire at billing period end. See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.

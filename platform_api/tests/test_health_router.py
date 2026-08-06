@@ -102,6 +102,8 @@ class TestHealthResponseStructure:
         assert resp.status_code == 200
         body = resp.json()
         assert "status" in body
+        assert "environment" in body
+        assert "environment_label" in body
         assert "database" in body
         assert "services" in body
         assert "uptime_seconds" in body

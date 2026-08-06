@@ -16,7 +16,7 @@ from typing import Any, Protocol
 
 from fastapi import APIRouter, Depends
 
-from platform_api.config import Settings, get_settings
+from platform_api.config import Settings, environment_display_label, get_settings
 from platform_api.dependencies import get_db_pool as get_app_db_pool
 
 logger = logging.getLogger(__name__)
@@ -161,6 +161,8 @@ async def health_check(
 
     return {
         "status": status,
+        "environment": (settings.environment or "").strip().lower() or "unknown",
+        "environment_label": environment_display_label(settings),
         "database": db_result,
         "services": {
             "suno": suno_ok,

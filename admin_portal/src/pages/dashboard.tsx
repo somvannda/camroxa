@@ -19,6 +19,10 @@ import { HealthSummary } from '@/components/key-pool/health-summary';
 import { ProviderKeyBalancesPanel } from '@/components/dashboard/provider-key-balances-panel';
 import { PageHeader } from '@/components/shared/page-header';
 import { useHealthStatus, useSunoBalance, useAdminOverview, useProviderKeyBalances } from '@/hooks/use-dashboard';
+import {
+  deploymentEnvironmentBadgeClass,
+  resolveDeploymentEnvironmentLabel,
+} from '@/lib/deployment-environment';
 import { cn } from '@/lib/utils';
 import type { HealthStatus, ServiceHealth } from '@/types/models';
 
@@ -66,6 +70,17 @@ function formatPercent(value: number): string {
   return `${Math.round(value)}%`;
 }
 
+function formatUptime(seconds: number | undefined): string {
+  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '—';
+  const total = Math.floor(seconds);
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 export default function DashboardPage() {
   const healthQuery = useHealthStatus();
   const balanceQuery = useSunoBalance();
@@ -103,6 +118,11 @@ export default function DashboardPage() {
   const activeRate = totalUsers > 0 ? (overview?.active_users ?? 0) / totalUsers * 100 : 0;
   const profileCoverage = totalUsers > 0 ? (overview?.users_with_profiles ?? 0) / totalUsers * 100 : 0;
   const licenseCoverage = totalUsers > 0 ? (overview?.users_with_active_license ?? 0) / totalUsers * 100 : 0;
+  const environmentLabel = resolveDeploymentEnvironmentLabel({
+    apiEnvironment: health?.environment,
+    apiEnvironmentLabel: health?.environment_label,
+    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+  });
 
   const primaryStats = [
     {
@@ -177,10 +197,11 @@ export default function DashboardPage() {
     {
       title: 'System Health',
       value: health ? getStatusLabel(health.status) : 'Unknown',
-      description: 'Platform API status',
+      description: `${environmentLabel} API · uptime ${formatUptime(health?.uptime_seconds)}`,
       icon: Activity,
       accent: health ? STATUS_COLORS[health.status] : '',
       dot: health ? STATUS_DOT_COLORS[health.status] : 'bg-slate-500',
+      environmentLabel,
     },
   ];
 
@@ -191,6 +212,67 @@ export default function DashboardPage() {
         title="Dashboard"
         description="Monitor system health, provider readiness, platform usage, and your current operating posture from one place."
       />
+
+      <Card className="border-slate-800 bg-slate-900/50">
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div>
+            <CardTitle className="text-lg font-semibold text-slate-100">
+              API Health · System Status
+            </CardTitle>
+            <p className="mt-1 text-sm text-slate-400">
+              Live status of the Platform API this admin portal is talking to.
+            </p>
+          </div>
+          <Badge
+            variant="outline"
+            className={cn('text-xs font-medium', deploymentEnvironmentBadgeClass(environmentLabel))}
+          >
+            {environmentLabel}
+          </Badge>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Environment</div>
+            <div className="mt-2 text-xl font-semibold text-white">{environmentLabel}</div>
+            <div className="mt-1 text-xs text-slate-500">
+              {health?.environment ? `PLATFORM_ENVIRONMENT=${health.environment}` : 'Host-derived label'}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">API Status</div>
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className={cn(
+                  'h-2.5 w-2.5 rounded-full',
+                  health ? STATUS_DOT_COLORS[health.status] : 'bg-slate-500',
+                )}
+              />
+              <Badge className={cn('text-xs', health ? STATUS_COLORS[health.status] : '')}>
+                {health ? getStatusLabel(health.status) : 'Unknown'}
+              </Badge>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              Database {health?.database ? 'connected' : 'unreachable'}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Uptime</div>
+            <div className="mt-2 text-xl font-semibold text-white">
+              {formatUptime(health?.uptime_seconds)}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">Since last API process start</div>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Checked</div>
+            <div className="mt-2 text-sm font-medium text-white">
+              {health?.timestamp
+                ? new Date(health.timestamp).toLocaleString()
+                : '—'}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">Health payload timestamp (UTC source)</div>
+          </div>
+        </CardContent>
+      </Card>
 
       <ProviderKeyBalancesPanel />
 
@@ -293,9 +375,20 @@ export default function DashboardPage() {
                         {stat.title}
                       </div>
                       {stat.dot ? (
-                        <div className="mt-2 flex items-center gap-2">
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           <span className={cn('h-2.5 w-2.5 rounded-full', stat.dot)} />
                           <Badge className={cn('text-xs', stat.accent)}>{stat.value}</Badge>
+                          {stat.environmentLabel ? (
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px]',
+                                deploymentEnvironmentBadgeClass(stat.environmentLabel),
+                              )}
+                            >
+                              {stat.environmentLabel}
+                            </Badge>
+                          ) : null}
                         </div>
                       ) : (
                         <div className="mt-2 text-xl font-semibold text-white">{stat.value}</div>
@@ -322,7 +415,6 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Affected Services Section */}
       {affectedServices.length > 0 && (
         <Card className="border-slate-800 bg-slate-900/50">
           <CardHeader>

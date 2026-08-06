@@ -1,8 +1,15 @@
 import { useLocation } from 'react-router-dom';
 import { LogOut, Search, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { useHealthStatus } from '@/hooks/use-dashboard';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import {
+  deploymentEnvironmentBadgeClass,
+  resolveDeploymentEnvironmentLabel,
+} from '@/lib/deployment-environment';
+import { cn } from '@/lib/utils';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -38,9 +45,15 @@ const PAGE_TITLES: Record<string, string> = {
 export function TopBar() {
   const { adminEmail, logout } = useAuth();
   const location = useLocation();
+  const healthQuery = useHealthStatus();
   const pageTitle =
     Object.entries(PAGE_TITLES).find(([path]) => location.pathname.startsWith(path))?.[1] ??
     'Admin Portal';
+  const environmentLabel = resolveDeploymentEnvironmentLabel({
+    apiEnvironment: healthQuery.data?.environment,
+    apiEnvironmentLabel: healthQuery.data?.environment_label,
+    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+  });
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-slate-950/70 px-5 backdrop-blur-xl lg:px-6">
@@ -52,6 +65,16 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <Badge
+          variant="outline"
+          className={cn(
+            'hidden text-[10px] font-semibold uppercase tracking-wide sm:inline-flex',
+            deploymentEnvironmentBadgeClass(environmentLabel),
+          )}
+          title="API environment for this admin portal"
+        >
+          {environmentLabel}
+        </Badge>
         <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-400 md:flex">
           <Search className="h-3.5 w-3.5 text-slate-500" />
           Command and global search coming next
