@@ -242,6 +242,27 @@ def _extract_clip_audio_id(clip: dict[str, Any]) -> str:
     return ""
 
 
+def cdn_url_for_suno_audio_id(audio_id: str | None) -> str:
+    """Stable Suno CDN MP3 URL from a clip/audio id (14-day retention).
+
+    Used when callbacks/polls store ``audio_id_*`` but omit ``audio_url_*``.
+    """
+    value = str(audio_id or "").strip()
+    if not value:
+        return ""
+    if value.startswith(("http://", "https://")):
+        return value
+    return f"https://cdn1.suno.ai/{value}.mp3"
+
+
+def coerce_suno_download_url(*, url: str | None = None, audio_id: str | None = None) -> str:
+    """Prefer an explicit http(s) URL; otherwise synthesize CDN from audio id."""
+    text = str(url or "").strip()
+    if text.startswith(("http://", "https://")):
+        return text
+    return cdn_url_for_suno_audio_id(audio_id)
+
+
 def _clip_metadata(clip: dict[str, Any]) -> tuple[str, str, float | None, str, str]:
     return (
         _extract_clip_audio_url(clip),
@@ -304,12 +325,18 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
     audio_ids: list[str] = []
     for clip in clips:
         audio_url, image_url, duration, clip_tags, audio_id = _clip_metadata(clip)
-        if audio_url:
-            audio_urls.append(audio_url)
-            image_urls.append(image_url)
-            durations.append(duration)
-            tags.append(clip_tags)
-            audio_ids.append(audio_id)
+        # Keep clips that only have an id (URL arrives later / CDN synthesize).
+        if not audio_url:
+            audio_url = cdn_url_for_suno_audio_id(audio_id)
+        if not audio_url and not audio_id:
+            continue
+        if not audio_url:
+            continue
+        audio_urls.append(audio_url)
+        image_urls.append(image_url)
+        durations.append(duration)
+        tags.append(clip_tags)
+        audio_ids.append(audio_id)
 
     if audio_urls:
         return SunoGeneratePollResult(

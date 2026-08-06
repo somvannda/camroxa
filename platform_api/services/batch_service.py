@@ -50,6 +50,8 @@ from platform_api.services.image_sample_rotation import ImageSampleRotationServi
 from platform_api.services.run_directory_planner import (
     build_run_folder_label,
     list_run_folder_entries,
+    normalize_run_key,
+    plan_relative_run_directories,
     plan_run_directories,
     resolve_channel_run_dir,
 )
@@ -689,8 +691,9 @@ class BatchService:
         billable_auto_gen_image = auto_gen_image and self._normalize_image_source_mode(settings) != "manual"
 
         # Run folders are planned after the first successful draft album exists.
-        resolved_ok = str(ok_run_dir or "").strip() or None
-        resolved_alt = str(alt_run_dir or "").strip() or None
+        # Store portable relative keys only (channel\date_album) — never a PC path.
+        resolved_ok = normalize_run_key(ok_run_dir)
+        resolved_alt = normalize_run_key(alt_run_dir)
 
         # Pre-check total cost (Requirement 13.6)
         total_cost = await self._calculate_batch_cost(
@@ -2899,6 +2902,8 @@ class BatchService:
                     batch_id,
                 )
         items: list[dict[str, Any]] = []
+        from platform_api.clients.suno_client import coerce_suno_download_url
+
         for row in rows:
             track_no_raw = row.get("batch_index")
             track_no = int(track_no_raw) + 1 if isinstance(track_no_raw, int) else None
@@ -2913,6 +2918,14 @@ class BatchService:
             ok_output_dir = str(row.get("ok_run_dir") or row.get("output_dir_ok") or "").strip() or None
             alt_output_dir = str(alt_output_dir or "").strip() or None
             title = str(row.get("title") or "").strip()
+            ok_url = coerce_suno_download_url(
+                url=str(row.get("audio_url_ok") or "").strip() or None,
+                audio_id=str(row.get("audio_id_ok") or "").strip() or None,
+            ) or None
+            alt_url = coerce_suno_download_url(
+                url=str(row.get("audio_url_alt") or "").strip() or None,
+                audio_id=str(row.get("audio_id_alt") or "").strip() or None,
+            ) or None
             items.append(
                 {
                     "task_id": str(row["id"]),
@@ -2921,7 +2934,7 @@ class BatchService:
                     "title": title or None,
                     "track_number": track_no,
                     "primary": {
-                        "download_url": str(row.get("audio_url_ok") or "").strip() or None,
+                        "download_url": ok_url,
                         "downloaded": bool(row.get("downloaded_ok")),
                         "output_dir": ok_output_dir,
                         "target_path": self._build_suno_download_target_path(
@@ -2932,7 +2945,7 @@ class BatchService:
                         ),
                     },
                     "secondary": {
-                        "download_url": str(row.get("audio_url_alt") or "").strip() or None,
+                        "download_url": alt_url,
                         "downloaded": bool(row.get("downloaded_alt")),
                         "output_dir": alt_output_dir,
                         "target_path": self._build_suno_download_target_path(
@@ -3002,10 +3015,31 @@ class BatchService:
             song_id = UUID(str(row["song_id"])) if row.get("song_id") else None
             batch_id = UUID(str(row["batch_id"])) if row.get("batch_id") else None
             if poll_result.state == "success":
+                from platform_api.clients.suno_client import coerce_suno_download_url
                 from platform_api.services.suno_audio_resolver import normalize_http_download_url
 
-                url_ok = normalize_http_download_url(poll_result.audio_url_ok) or None
-                url_alt = normalize_http_download_url(poll_result.audio_url_alt) or None
+                id_ok = str(poll_result.audio_id_ok or row.get("audio_id_ok") or "").strip() or None
+                id_alt = str(poll_result.audio_id_alt or row.get("audio_id_alt") or "").strip() or None
+                url_ok = normalize_http_download_url(
+                    coerce_suno_download_url(
+                        url=poll_result.audio_url_ok or row.get("audio_url_ok"),
+                        audio_id=id_ok,
+                    )
+                ) or None
+                url_alt = normalize_http_download_url(
+                    coerce_suno_download_url(
+                        url=poll_result.audio_url_alt or row.get("audio_url_alt"),
+                        audio_id=id_alt,
+                    )
+                ) or None
+                # Heal id→CDN without a fresh poll when Suno already stored the clip id.
+                if not url_ok and not url_alt:
+                    url_ok = normalize_http_download_url(
+                        coerce_suno_download_url(url=row.get("audio_url_ok"), audio_id=id_ok)
+                    ) or None
+                    url_alt = normalize_http_download_url(
+                        coerce_suno_download_url(url=row.get("audio_url_alt"), audio_id=id_alt)
+                    ) or None
                 if not url_ok and not url_alt:
                     logger.warning(
                         "Suno reconcile success without download URLs for task %s",
@@ -3018,8 +3052,8 @@ class BatchService:
                     status=TaskStatus.SUCCESS,
                     audio_url_ok=url_ok,
                     audio_url_alt=url_alt,
-                    audio_id_ok=str(poll_result.audio_id_ok or "").strip() or None,
-                    audio_id_alt=str(poll_result.audio_id_alt or "").strip() or None,
+                    audio_id_ok=id_ok,
+                    audio_id_alt=id_alt,
                 )
                 if song_id and batch_id:
                     await self.handle_suno_task_update(
@@ -3211,8 +3245,8 @@ class BatchService:
                 user_id=user_uuid,
                 downloaded_ok=bool(item.get("downloaded_primary")) if "downloaded_primary" in item else None,
                 downloaded_alt=bool(item.get("downloaded_secondary")) if "downloaded_secondary" in item else None,
-                output_dir_ok=str(item.get("output_dir_primary") or "").strip() or None,
-                output_dir_alt=str(item.get("output_dir_secondary") or "").strip() or None,
+                output_dir_ok=normalize_run_key(item.get("output_dir_primary")),
+                output_dir_alt=normalize_run_key(item.get("output_dir_secondary")),
             )
             if changed:
                 updated += 1
@@ -3250,17 +3284,21 @@ class BatchService:
 
             role_raw = str(item.get("role") or "OK").strip().upper()
             role = ChannelRole.OK if role_raw in {"OK", "PRIMARY"} else ChannelRole.ALT
-            run_dir = str(item.get("run_dir") or "").strip() or self._resolve_batch_run_dir(batch, role)
+            raw_run_dir = str(item.get("run_dir") or "").strip() or self._resolve_batch_run_dir(batch, role)
+            # Persist portable key only; desktop resolves under its local Suno root.
+            run_dir = normalize_run_key(raw_run_dir) or str(raw_run_dir or "").strip()
             if not run_dir:
                 continue
 
             role_disambiguate = self._batch_roles_share_run_dir(batch)
+            # Scan local absolute path when desktop sent one; store key only.
+            scan_dir = str(raw_run_dir or run_dir).strip()
             scanned = build_batch_channel_assets(
                 batch_id=batch.id,
                 user_id=batch.user_id,
                 profile_id=UUID(profile_id_raw),
                 role=role,
-                run_dir=run_dir,
+                run_dir=scan_dir,
                 source_mode=source_mode,
                 role_disambiguate=role_disambiguate,
             )
@@ -3268,8 +3306,13 @@ class BatchService:
             def pick_path(key: str) -> str | None:
                 explicit = str(item.get(key) or "").strip()
                 if explicit:
-                    return explicit
-                return getattr(scanned, key, None)
+                    # Image filenames / relative asset names only — strip machine roots.
+                    name = Path(explicit).name
+                    return name or explicit
+                value = getattr(scanned, key, None)
+                if value:
+                    return Path(str(value)).name or str(value)
+                return None
 
             mark_complete = bool(item.get("pipeline_complete"))
             asset = BatchChannelAssets(
@@ -3287,6 +3330,22 @@ class BatchService:
                 pipeline_completed_at=datetime.now(timezone.utc) if mark_complete else None,
             )
             await self._batch_repo.upsert_batch_channel_assets(asset)
+            # Rewrite batch run dirs only when desktop explicitly asks (Change Run
+            # Folder). Background Progress sync must not mutate legacy absolute
+            # ok_run_dir / alt_run_dir values. Only the requested role is updated.
+            if bool(item.get("persist_batch_run_dir")):
+                key = normalize_run_key(run_dir) or run_dir
+                if key:
+                    ok_persist = key if role == ChannelRole.OK else batch.ok_run_dir
+                    alt_persist = key if role == ChannelRole.ALT else batch.alt_run_dir
+                    if ok_persist != batch.ok_run_dir or alt_persist != batch.alt_run_dir:
+                        await self._batch_repo.update_batch_run_directories(
+                            batch.id,
+                            ok_run_dir=ok_persist,
+                            alt_run_dir=alt_persist,
+                        )
+                        batch.ok_run_dir = ok_persist
+                        batch.alt_run_dir = alt_persist
             updated += 1
             batches_to_refresh.add(batch.id)
 
@@ -3332,7 +3391,29 @@ class BatchService:
         items: list[dict[str, Any]] = []
         for row in rows:
             task_id = str(row["id"])
-            suno_url = str(row.get(url_field) or "").strip()
+            id_field = "audio_id_ok" if variant == "primary" else "audio_id_alt"
+            from platform_api.clients.suno_client import coerce_suno_download_url
+
+            raw_url = str(row.get(url_field) or "").strip()
+            audio_id = str(row.get(id_field) or "").strip() or None
+            suno_url = coerce_suno_download_url(url=raw_url or None, audio_id=audio_id)
+            # Persist synthesized CDN URL so Progress download_ready catches up.
+            if suno_url and not raw_url and audio_id:
+                try:
+                    await self._batch_repo.update_status(
+                        UUID(task_id),
+                        status=TaskStatus.SUCCESS,
+                        audio_url_ok=suno_url if variant == "primary" else None,
+                        audio_url_alt=suno_url if variant != "primary" else None,
+                        audio_id_ok=audio_id if variant == "primary" else None,
+                        audio_id_alt=audio_id if variant != "primary" else None,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not persist synthesized Suno CDN URL for task %s",
+                        task_id,
+                        exc_info=True,
+                    )
             # Suno keeps generated audio for 14 days, so its URL is the primary source —
             # we only reach for our own Backblaze copy as a fallback if the Suno URL is
             # gone/expired (e.g. an old batch outside that window), not proactively.
@@ -4793,27 +4874,31 @@ class BatchService:
         alt_album: str | None = None,
         settings: dict[str, Any],
     ) -> tuple[str | None, str | None]:
-        resolved_ok = str(ok_run_dir or "").strip()
-        resolved_alt = str(alt_run_dir or "").strip()
+        resolved_ok = normalize_run_key(ok_run_dir)
+        resolved_alt = normalize_run_key(alt_run_dir)
         if resolved_ok and resolved_alt and resolved_ok != resolved_alt:
             return resolved_ok, resolved_alt
-
-        base_dir = str(settings.get("sunoOutputDir") or settings.get("downloadsDir") or "").strip()
-        if not base_dir:
-            return resolved_ok or None, resolved_alt or None
 
         ok_profile = await self._profile_repo.get_by_id(ok_profile_id)
         alt_profile = await self._profile_repo.get_by_id(alt_profile_id)
         if ok_profile is None or alt_profile is None:
-            return resolved_ok or None, resolved_alt or None
+            return resolved_ok, resolved_alt
 
         ok_folder = str(ok_profile.folder_name or ok_profile.name or "").strip()
         alt_folder = str(alt_profile.folder_name or alt_profile.name or "").strip()
         if not ok_folder or not alt_folder:
-            return resolved_ok or None, resolved_alt or None
+            return resolved_ok, resolved_alt
 
-        planned = plan_run_directories(
-            base_dir=base_dir,
+        # Optional uniqueness listing only when a real local folder exists on this host.
+        # Production API is Linux — user Windows sunoOutputDir is never listed there.
+        base_dir = str(settings.get("sunoOutputDir") or settings.get("downloadsDir") or "").strip()
+        existing_ok: list[str] = []
+        existing_alt: list[str] = []
+        if base_dir and Path(base_dir).is_dir():
+            existing_ok = list_run_folder_entries(base_dir, ok_folder)
+            existing_alt = list_run_folder_entries(base_dir, alt_folder)
+
+        planned = plan_relative_run_directories(
             ok_profile_folder=ok_folder,
             alt_profile_folder=alt_folder,
             run_label=build_run_folder_label(run_date=from_date, album=ok_album),
@@ -4827,14 +4912,14 @@ class BatchService:
                     else self._fallback_distinct_album(str(ok_album or "Album"))
                 ),
             ),
-            existing_ok_entries=list_run_folder_entries(base_dir, ok_folder),
-            existing_alt_entries=list_run_folder_entries(base_dir, alt_folder),
+            existing_ok_entries=existing_ok,
+            existing_alt_entries=existing_alt,
         )
         if not resolved_ok:
-            resolved_ok = str(planned.ok_run_dir or "").strip()
+            resolved_ok = normalize_run_key(planned.ok_run_dir)
         if not resolved_alt or resolved_alt == resolved_ok:
-            resolved_alt = str(planned.alt_run_dir or "").strip()
-        return resolved_ok or None, resolved_alt or None
+            resolved_alt = normalize_run_key(planned.alt_run_dir)
+        return resolved_ok, resolved_alt
 
     @staticmethod
     def _batch_roles_share_run_dir(batch: Batch) -> bool:
@@ -5043,15 +5128,18 @@ class BatchService:
                 personal_reference_not_ready_message(kind),
                 details={"kind": str(getattr(kind, "value", kind))},
             )
-        if self._image_sample_rotation is not None:
-            return await self._image_sample_rotation.pick_sample_path(
-                settings=settings,
-                kind=kind,
-                exclude=exclude,
-            )
-        candidates = ImageSampleRotationService.build_candidates(settings, kind)
-        excluded = {str(value).strip() for value in (exclude or []) if str(value).strip()}
-        for candidate in candidates:
-            if candidate not in excluded:
-                return candidate
-        return candidates[0] if candidates else None
+        if self._image_sample_rotation is None:
+            return None
+        chosen = await self._image_sample_rotation.pick_sample_path(
+            settings=settings,
+            kind=kind,
+            exclude=exclude,
+        )
+        if chosen:
+            return chosen
+        kind_label = "Background" if kind == ImageKind.BACKGROUND else "Thumbnail"
+        raise ValidationError(
+            f"{kind_label}: No Category sample packs are available on the server. "
+            "Upload admin sample packs, or switch source to Prompt only.",
+            details={"kind": str(getattr(kind, "value", kind)), "source": "category"},
+        )

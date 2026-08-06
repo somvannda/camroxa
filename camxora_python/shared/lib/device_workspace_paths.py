@@ -187,20 +187,34 @@ def hydrate_local_suno_output_dir(
 
     merged, heal_patch = apply_workspace_path_defaults(cloud)
     persist_device_paths_from_settings(merged, user_id)
-    patch = {**heal_patch, **device_path_patch_against_cloud(merged, cloud)}
-    if persist_cloud and patch and api is not None:
+    # Do not push this PC's absolute media roots into account settings.
+    # Run planning uses portable relative keys on the API.
+    if persist_cloud and heal_patch and api is not None:
         try:
-            api.patch_settings(patch)
+            api.patch_settings(heal_patch)
         except Exception:
             pass
     return resolve_local_suno_output_dir(user_id, merged)
 
 
 def local_run_dir_for_disk(run_dir: str, *, local_suno_base: str | None = None) -> str:
-    """Map a server/batch run_dir onto this machine's Suno root for disk checks."""
+    """Map a server/batch run_dir onto a folder this machine can use.
+
+    Prefer an existing non-foreign absolute directory (e.g. after Change Run
+    Folder to another drive). Otherwise rebase onto this PC's Suno root using
+    the trailing ``channel/date_album`` key — API absolute paths are never
+    trusted as drop targets when they point at another Windows profile or a
+    missing path.
+    """
     text = _normalize_stored_path(str(run_dir or ""))
     if not text:
         return ""
+    if not is_foreign_windows_profile_path(text):
+        try:
+            if Path(text).is_dir():
+                return text
+        except OSError:
+            pass
     base = str(local_suno_base or "").strip() or resolve_local_suno_output_dir()
     remapped, _ = remap_suno_download_paths(text, "", base)
     return remapped or text
@@ -237,6 +251,18 @@ def album_leaf_relative(output_dir: str) -> Path:
     if parts:
         return Path(parts[-1])
     return Path()
+
+
+def run_key_from_path(path: str) -> str:
+    """Relative run key ``channel/date_album`` from any absolute or relative run path.
+
+    Desktop owns the local Suno root; API absolute paths are treated as keys only.
+    """
+    relative = album_leaf_relative(path)
+    if not str(relative):
+        return ""
+    # Stable string form for joining under localSunoRoot (Path accepts / on Windows).
+    return relative.as_posix()
 
 
 def remap_suno_download_paths(

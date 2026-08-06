@@ -55,11 +55,75 @@ def join_windows_path(*segments: str) -> str:
     return "\\".join(part for part in parts if part)
 
 
+def normalize_run_key(path: str | None) -> str | None:
+    """Store/return only ``channel\\date_album`` — never a machine absolute path.
+
+    Desktop owns the local Suno root and joins this key at download/open time.
+    Accepts legacy absolute Windows paths and strips them to the trailing key.
+    """
+    text = str(path or "").strip()
+    if not text:
+        return None
+    normalized = text.replace("/", "\\")
+    parts = [part for part in Path(normalized).parts if part not in ("/", "\\", "")]
+    if parts and len(parts[0]) == 2 and parts[0][1] == ":":
+        parts = parts[1:]
+    # Drop UNC host/share prefixes when present (\\server\\share\\channel\\album).
+    if len(parts) >= 4 and normalized.startswith("\\\\"):
+        parts = parts[-2:]
+    if len(parts) >= 2:
+        return join_windows_path(parts[-2], parts[-1])
+    if len(parts) == 1:
+        return parts[0]
+    return None
+
+
 def list_run_folder_entries(base_dir: str, profile_folder: str) -> list[str]:
     profile_dir = Path(join_windows_path(base_dir, sanitize_folder_segment(profile_folder)))
     if not profile_dir.is_dir():
         return []
     return sorted(entry.name for entry in profile_dir.iterdir() if entry.is_dir())
+
+
+def _resolve_unique_folder_name(base_name: str, entries: list[str]) -> str:
+    pattern = re.compile(rf"^{re.escape(base_name)}(?:_(\d{{2,}}))?$")
+    maximum = 0
+    for entry in entries:
+        match = pattern.match(str(entry or "").strip())
+        if not match:
+            continue
+        if not match.group(1):
+            maximum = max(maximum, 1)
+        else:
+            maximum = max(maximum, int(match.group(1)))
+    return base_name if maximum == 0 else f"{base_name}_{maximum + 1:02d}"
+
+
+def plan_relative_run_directories(
+    *,
+    ok_profile_folder: str,
+    alt_profile_folder: str,
+    run_label: str,
+    ok_run_label: str | None = None,
+    alt_run_label: str | None = None,
+    existing_ok_entries: list[str] | None = None,
+    existing_alt_entries: list[str] | None = None,
+) -> PlannedRunDirectories:
+    """Plan portable run keys (``channel\\date_album``) with no machine base path."""
+    ok_folder = sanitize_folder_segment(ok_profile_folder)
+    alt_folder = sanitize_folder_segment(alt_profile_folder)
+    if not ok_folder or not alt_folder:
+        return PlannedRunDirectories(ok_run_dir="", alt_run_dir="", run_folder_name="")
+
+    ok_base_name = sanitize_run_label(ok_run_label or run_label) or "run"
+    alt_base_name = sanitize_run_label(alt_run_label or run_label) or "run"
+    ok_folder_name = _resolve_unique_folder_name(ok_base_name, existing_ok_entries or [])
+    alt_folder_name = _resolve_unique_folder_name(alt_base_name, existing_alt_entries or [])
+    return PlannedRunDirectories(
+        ok_run_dir=join_windows_path(ok_folder, ok_folder_name),
+        alt_run_dir=join_windows_path(alt_folder, alt_folder_name),
+        run_folder_name=ok_folder_name,
+    )
 
 
 def plan_run_directories(
@@ -73,50 +137,34 @@ def plan_run_directories(
     existing_ok_entries: list[str] | None = None,
     existing_alt_entries: list[str] | None = None,
 ) -> PlannedRunDirectories:
-    base = str(base_dir or "").strip().rstrip("\\/")
-    if not base:
-        return PlannedRunDirectories(ok_run_dir="", alt_run_dir="", run_folder_name="")
+    """Plan run directories. Stored values are always portable relative keys.
 
-    ok_profile_dir = join_windows_path(base, sanitize_folder_segment(ok_profile_folder))
-    alt_profile_dir = join_windows_path(base, sanitize_folder_segment(alt_profile_folder))
-    ok_base_name = sanitize_run_label(ok_run_label or run_label) or "run"
-    alt_base_name = sanitize_run_label(alt_run_label or run_label) or "run"
-
-    def resolve_folder_name(base_name: str, entries: list[str]) -> str:
-        pattern = re.compile(rf"^{re.escape(base_name)}(?:_(\d{{2,}}))?$")
-        maximum = 0
-        for entry in entries:
-            match = pattern.match(str(entry or "").strip())
-            if not match:
-                continue
-            if not match.group(1):
-                maximum = max(maximum, 1)
-            else:
-                maximum = max(maximum, int(match.group(1)))
-        return base_name if maximum == 0 else f"{base_name}_{maximum + 1:02d}"
-
-    existing_ok = existing_ok_entries or []
-    existing_alt = existing_alt_entries or []
-    ok_folder_name = resolve_folder_name(ok_base_name, existing_ok)
-    alt_folder_name = resolve_folder_name(alt_base_name, existing_alt)
-    return PlannedRunDirectories(
-        ok_run_dir=join_windows_path(ok_profile_dir, ok_folder_name),
-        alt_run_dir=join_windows_path(alt_profile_dir, alt_folder_name),
-        run_folder_name=ok_folder_name,
+    ``base_dir`` is only used for optional on-disk uniqueness listing when that
+    folder exists on the API host (usually empty on Linux production).
+    """
+    relative = plan_relative_run_directories(
+        ok_profile_folder=ok_profile_folder,
+        alt_profile_folder=alt_profile_folder,
+        run_label=run_label,
+        ok_run_label=ok_run_label,
+        alt_run_label=alt_run_label,
+        existing_ok_entries=existing_ok_entries,
+        existing_alt_entries=existing_alt_entries,
     )
+    return relative
 
 
 def infer_alt_run_dir_from_ok(*, ok_run_dir: str, alt_profile_folder: str) -> str | None:
-    ok_path = Path(str(ok_run_dir or "").strip())
-    if not ok_path.name:
+    key = normalize_run_key(ok_run_dir)
+    if not key:
         return None
     alt_folder = sanitize_folder_segment(alt_profile_folder)
     if not alt_folder:
         return None
-    base_dir = ok_path.parent.parent
-    if not str(base_dir):
+    album = Path(key.replace("/", "\\")).name
+    if not album:
         return None
-    return join_windows_path(str(base_dir), alt_folder, ok_path.name)
+    return join_windows_path(alt_folder, album)
 
 
 def resolve_history_output_dirs(

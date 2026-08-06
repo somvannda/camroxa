@@ -321,8 +321,8 @@ async def test_create_batch_persists_run_directories(
         alt_run_dir=r"D:\Music\Secondary\2026-06-25",
     )
 
-    assert result.ok_run_dir == r"D:\Music\Primary\2026-06-25"
-    assert result.alt_run_dir == r"D:\Music\Secondary\2026-06-25"
+    assert result.ok_run_dir == r"Primary\2026-06-25"
+    assert result.alt_run_dir == r"Secondary\2026-06-25"
 
 
 @pytest.mark.asyncio
@@ -411,10 +411,8 @@ async def test_assign_batch_run_directories_after_album(
     )
 
     batch_repo.claim_batch_run_directories.assert_awaited_once()
-    assert updated.ok_run_dir is not None
-    assert updated.ok_run_dir.endswith(r"bass-drive\2026-07-13_Neon-Nights")
-    assert updated.alt_run_dir is not None
-    assert updated.alt_run_dir.endswith(r"beattok-remixes\2026-07-13_Sunset-Pulse")
+    assert updated.ok_run_dir == r"bass-drive\2026-07-13_Neon-Nights"
+    assert updated.alt_run_dir == r"beattok-remixes\2026-07-13_Sunset-Pulse"
 
 
 @pytest.mark.asyncio
@@ -2067,6 +2065,60 @@ async def test_build_batch_redownload_plan_ignores_downloaded_flag(
 
 
 @pytest.mark.asyncio
+async def test_build_batch_redownload_plan_synthesizes_cdn_from_audio_id(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    """Success rows with audio_id_alt but empty audio_url_alt remain downloadable."""
+    user_id = uuid4()
+    batch_id = uuid4()
+    task_id = uuid4()
+    batch = Batch(id=batch_id, user_id=user_id, ok_profile_id=uuid4(), song_count=1)
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.update_status = AsyncMock()
+    batch_repo.list_suno_audio_for_batch = AsyncMock(
+        return_value=[
+            {
+                "id": task_id,
+                "song_id": uuid4(),
+                "title": "Beneath Fading Golden Steel",
+                "audio_url_ok": "https://cdn1.suno.ai/ok.mp3",
+                "audio_url_alt": None,
+                "audio_id_ok": "ok-id",
+                "audio_id_alt": "25d27d13-10a9-4b73-9e2e-b344da4cf0c8",
+                "batch_index": 4,
+            }
+        ]
+    )
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    service._resolve_redownload_storage_keys = AsyncMock(return_value={})  # type: ignore[method-assign]
+
+    items = await service.build_batch_redownload_plan(
+        user_id=str(user_id),
+        batch_id=batch_id,
+        role="ALT",
+        run_dir=r"E:\SUNO\bass-gravity\run",
+    )
+    assert len(items) == 1
+    assert (
+        items[0]["download_url"]
+        == "https://cdn1.suno.ai/25d27d13-10a9-4b73-9e2e-b344da4cf0c8.mp3"
+    )
+    batch_repo.update_status.assert_awaited()
+
+
+@pytest.mark.asyncio
 async def test_build_batch_redownload_plan_prefers_suno_url_with_backblaze_as_fallback(
     monkeypatch: pytest.MonkeyPatch,
     batch_repo: AsyncMock,
@@ -2457,3 +2509,120 @@ async def test_create_manual_image_generation_blocks_personal_reference(
             kind="background",
         )
     batch_repo.create_batch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sync_local_progress_does_not_rewrite_batch_run_dir_by_default(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    batch_id = uuid4()
+    profile_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    legacy = r"D:\OldPC\Suno\bass-drive\2026-07-13_Neon-Nights"
+    batch = Batch(
+        id=batch_id,
+        user_id=user_id,
+        ok_profile_id=profile_id,
+        alt_profile_id=None,
+        song_count=1,
+        status="processing",
+        ok_run_dir=legacy,
+        alt_run_dir=None,
+    )
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.update_batch_run_directories = AsyncMock()
+    batch_repo.refresh_batch_status = AsyncMock()
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    service.refresh_batch_status = AsyncMock()
+
+    updated = await service.sync_local_progress_from_desktop(
+        user_id=str(user_id),
+        items=[
+            {
+                "batch_id": str(batch_id),
+                "profile_id": str(profile_id),
+                "role": "OK",
+                "run_dir": r"C:\Users\Alice\Camxora\Media\Suno\bass-drive\2026-07-13_Neon-Nights",
+            }
+        ],
+    )
+
+    assert updated == 1
+    batch_repo.upsert_batch_channel_assets.assert_awaited_once()
+    batch_repo.update_batch_run_directories.assert_not_awaited()
+    assert batch.ok_run_dir == legacy
+
+
+@pytest.mark.asyncio
+async def test_sync_local_progress_persists_batch_run_dir_when_flagged(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    batch_id = uuid4()
+    profile_id = uuid4()
+    user_id = UUID("00000000-0000-0000-0000-000000000001")
+    batch = Batch(
+        id=batch_id,
+        user_id=user_id,
+        ok_profile_id=profile_id,
+        alt_profile_id=None,
+        song_count=1,
+        status="processing",
+        ok_run_dir=r"D:\OldPC\Suno\bass-drive\2026-07-13_Neon-Nights",
+        alt_run_dir=r"D:\OldPC\Suno\alt\2026-07-13_Other",
+    )
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.update_batch_run_directories = AsyncMock()
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    service.refresh_batch_status = AsyncMock()
+
+    updated = await service.sync_local_progress_from_desktop(
+        user_id=str(user_id),
+        items=[
+            {
+                "batch_id": str(batch_id),
+                "profile_id": str(profile_id),
+                "role": "OK",
+                "run_dir": r"E:\NewDrive\Suno\bass-drive\2026-07-13_Neon-Nights",
+                "persist_batch_run_dir": True,
+            }
+        ],
+    )
+
+    assert updated == 1
+    batch_repo.update_batch_run_directories.assert_awaited_once()
+    kwargs = batch_repo.update_batch_run_directories.await_args.kwargs
+    assert kwargs["ok_run_dir"] == r"bass-drive\2026-07-13_Neon-Nights"
+    # Other role left untouched (still legacy absolute).
+    assert kwargs["alt_run_dir"] == r"D:\OldPC\Suno\alt\2026-07-13_Other"

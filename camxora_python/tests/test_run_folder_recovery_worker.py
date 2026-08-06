@@ -144,6 +144,7 @@ def test_recovery_worker_repoints_run_dir_and_redownloads(qapp: QApplication, tm
     assert sync_items[0].profile_id == "profile-1"
     assert sync_items[0].role == "OK"
     assert sync_items[0].run_dir == str(new_dir)
+    assert sync_items[0].persist_batch_run_dir is True
 
     api.get_batch_redownload_plan.assert_called_once_with(
         batch_id="batch-1", role="OK", run_dir=str(new_dir)

@@ -44,6 +44,8 @@ from shared.workers.data_workers import (
     BatchRetrySunoWorker,
     ImageRetryJobsWorker,
     ManualInspectionWorker,
+    MissingMp3DownloadResult,
+    MissingMp3DownloadWorker,
     RunFolderRecoveryResult,
     RunFolderRecoveryWorker,
     SettingsWorker,
@@ -111,6 +113,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._draft_retry_worker: BatchRetryDraftsWorker | None = None
         self._suno_retry_worker: BatchRetrySunoWorker | None = None
         self._run_folder_recovery_worker: RunFolderRecoveryWorker | None = None
+        self._missing_mp3_worker: MissingMp3DownloadWorker | None = None
         self._pending_auto_continue_key: tuple[str, str, str] | None = None
         self._rows: list[ProgressRow] = []
         self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
@@ -232,6 +235,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.stop_exporting_requested.connect(self._stop_exporting)
         self._rows_card.continue_progress_requested.connect(self._continue_progress)
         self._rows_card.change_run_folder_requested.connect(self._change_run_folder)
+        self._rows_card.download_missing_mp3s_requested.connect(self._download_missing_mp3s)
         self._rows_card.row_selected.connect(self._on_row_selected)
 
         self._detail_card = ProgressDetailCard()
@@ -607,8 +611,99 @@ class ProgressView(PollablePageMixin, QScrollArea):
     def _open_manual_folder(self, directory: str) -> None:
         if not directory:
             return
-        ensure_directory(directory)
-        open_path(directory)
+        from shared.lib.device_workspace_paths import local_run_dir_for_disk
+
+        # Never open another PC's absolute path — resolve under this device's Suno root.
+        local_dir = local_run_dir_for_disk(str(directory).strip()) or str(directory).strip()
+        ensure_directory(local_dir)
+        open_path(local_dir)
+
+    def _download_missing_mp3s(self, row: ProgressRow | None) -> None:
+        """Right-click: download only missing MP3s for this row's role (no re-Suno)."""
+        if row is None:
+            self._show_retry_notice("No row selected.")
+            return
+        meta = row.meta
+        batch_id = str(meta.batch_id or "").strip()
+        profile_id = str(meta.profile_id or "").strip()
+        if not batch_id or not profile_id:
+            self._show_retry_notice("Missing batch/channel id for this row.")
+            return
+        if self._missing_mp3_worker is not None and self._missing_mp3_worker.isRunning():
+            self._show_retry_notice("A missing-MP3 download is already in progress.")
+            return
+        if self._run_folder_recovery_worker is not None and self._run_folder_recovery_worker.isRunning():
+            self._show_retry_notice("A run-folder change is already in progress.")
+            return
+
+        from shared.lib.missing_mp3 import count_missing_role_mp3s, resolve_row_local_run_dir
+
+        missing_n = count_missing_role_mp3s(row)
+        if missing_n <= 0:
+            self._show_retry_notice("No missing MP3s detected for this channel.")
+            return
+        run_dir = resolve_row_local_run_dir(row)
+        if not run_dir:
+            self._show_retry_notice("Could not resolve a local run folder on this device.")
+            return
+
+        role = str(meta.role or "OK").strip().upper() or "OK"
+        suffix = "s" if missing_n != 1 else ""
+        self._error_banner.hide()
+        self._show_retry_notice(
+            f"Downloading {missing_n} missing MP3{suffix} into this PC's run folder…",
+            tone="neutral",
+        )
+        worker = MissingMp3DownloadWorker(
+            self._api,
+            batch_id=batch_id,
+            profile_id=profile_id,
+            role=role,
+            run_dir=run_dir,
+            parent=self,
+        )
+        worker.succeeded.connect(self._on_missing_mp3_download_succeeded)
+        worker.failed.connect(self._on_missing_mp3_download_failed)
+        worker.finished.connect(lambda: setattr(self, "_missing_mp3_worker", None))
+        self._missing_mp3_worker = worker
+        worker.start()
+
+    def _on_missing_mp3_download_succeeded(self, result: object) -> None:
+        if not isinstance(result, MissingMp3DownloadResult):
+            self._show_retry_notice("Missing MP3 download finished.", tone="success")
+            self.refresh_data()
+            return
+        if result.total <= 0 and result.downloaded <= 0:
+            tone = "warning"
+            message = (
+                "No fetchable audio URL for the missing track(s). "
+                "Try Retry Failed Suno, or wait until Suno finishes that song."
+            )
+            if result.skipped:
+                message = (
+                    f"{result.skipped} plan track(s) already on disk. " + message
+                )
+            self._show_retry_notice(message, tone=tone)
+            self.refresh_data()
+            return
+        tone = "warning" if result.had_any_failure else "success"
+        parts = [
+            f"Downloaded {result.downloaded}/{result.total} missing MP3"
+            f"{'s' if result.total != 1 else ''}"
+        ]
+        if result.skipped:
+            parts.append(f"{result.skipped} already present")
+        if result.failed:
+            parts.append(f"{result.failed} failed")
+        message = ". ".join(parts) + "."
+        if result.had_any_failure:
+            message += " Check the log; Retry Failed Suno if a track has no URL."
+        self._show_retry_notice(message, tone=tone)
+        self.refresh_data()
+
+    def _on_missing_mp3_download_failed(self, message: str) -> None:
+        detail = str(message or "").strip() or "Could not download missing MP3s."
+        self._show_retry_notice(detail, tone="error")
 
     def _change_run_folder(self, row: ProgressRow | None) -> None:
         """Move this row's run folder (e.g. off a bad/full drive) and resume.
@@ -628,8 +723,14 @@ class ProgressView(PollablePageMixin, QScrollArea):
         if self._run_folder_recovery_worker is not None and self._run_folder_recovery_worker.isRunning():
             self._show_retry_notice("A run-folder change is already in progress.")
             return
+        if self._missing_mp3_worker is not None and self._missing_mp3_worker.isRunning():
+            self._show_retry_notice("A missing-MP3 download is already in progress.")
+            return
 
-        current_dir = str(meta.run_dir or "").strip()
+        from shared.lib.device_workspace_paths import local_run_dir_for_disk, run_key_from_path
+        from pathlib import Path as _Path
+
+        current_dir = local_run_dir_for_disk(str(meta.run_dir or "").strip()) or str(meta.run_dir or "").strip()
         picked_root = QFileDialog.getExistingDirectory(
             self,
             "Choose a new drive/folder (the channel and date-album subfolders "
@@ -644,9 +745,10 @@ class ProgressView(PollablePageMixin, QScrollArea):
         # uses for this row underneath it, instead of dumping files flat into
         # whatever the user picked.
         new_dir = picked_root
-        if current_dir:
-            from pathlib import Path as _Path
-
+        key = run_key_from_path(current_dir) if current_dir else ""
+        if key:
+            new_dir = str(_Path(picked_root) / _Path(key))
+        elif current_dir:
             old_path = _Path(current_dir)
             channel_folder = old_path.parent.name
             album_folder = old_path.name

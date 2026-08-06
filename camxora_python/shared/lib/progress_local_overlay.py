@@ -1,7 +1,11 @@
 """Apply desktop filesystem truth to API progress rows.
 
-Missing/moved run folders must not rewind a finished pipeline back to Music.
-Local files can improve or confirm readiness; they must not clear completed work.
+When the local run folder is scannable, Music ``saved`` / Progress % use landed
+role MP3 files — not API ``downloaded_ok`` / ``downloaded_alt`` flags (those can
+flip before files exist, or stay true after files are deleted).
+
+Missing/moved run folders must not rewind a finished terminal pipeline
+(Done / YouTube / Completed / pipeline_complete).
 """
 
 from __future__ import annotations
@@ -64,29 +68,19 @@ def _image_status_label(*, ready: int, total: int, api_status: str, files_presen
     return str(api_status or "PENDING").upper()
 
 
-def _music_downloads_ready(row: ProgressRow) -> bool:
-    meta = row.meta
-    expected = max(1, int(meta.expected or 0))
-    return (
-        int(meta.saved or 0) >= expected
-        and int(meta.download_ready or 0) >= expected
-        and int(meta.download_pending or 0) <= 0
-    )
-
-
 def _apply_local_music_truth(
     row: ProgressRow,
     *,
     local_saved: int,
+    folder_scannable: bool,
     preserve_music: bool,
 ) -> ProgressRow:
+    """When the run folder can be scanned, ``saved`` is always disk MP3 count."""
     meta = row.meta
     expected = max(1, int(meta.expected or 0))
-    api_saved = max(0, int(meta.saved or 0))
     local_saved = max(0, int(local_saved or 0))
-    if local_saved >= api_saved:
-        return row
-    if preserve_music:
+
+    if preserve_music or not folder_scannable:
         return row
 
     download_ready = max(0, int(meta.download_ready or 0))
@@ -183,36 +177,29 @@ def _apply_local_stage_truth(
 
 
 def apply_local_progress_overlays(rows: list[ProgressRow]) -> list[ProgressRow]:
+    from shared.lib.device_workspace_paths import local_run_dir_for_disk
+
     patched: list[ProgressRow] = []
     for row in rows:
-        run_dir = sanitize_local_path(str(row.meta.run_dir or "").strip())
+        # API may still advertise another PC's absolute AppData/drive path.
+        # Desktop owns the drop root: always resolve under this machine's Suno folder.
+        raw_run_dir = sanitize_local_path(str(row.meta.run_dir or "").strip())
+        run_dir = local_run_dir_for_disk(raw_run_dir) if raw_run_dir else ""
         folder_missing = _run_dir_missing(run_dir)
+        folder_scannable = bool(run_dir) and not folder_missing
         pipeline_complete = bool(getattr(row.meta, "pipeline_complete", False))
         stage_key = _stage_key(row.stage)
         api_music_done = _api_music_complete(row.meta)
+        expected = max(1, int(row.meta.expected or 0))
 
-        # Never rewind download counters once the API recorded them complete,
-        # or once the pipeline already concluded.
-        preserve_music = (
-            pipeline_complete
-            or stage_key in _TERMINAL_STAGES
-            or api_music_done
-        )
-        # Never reopen stage when the run folder was archived after progress,
-        # or when a conclusive completion flag is set.
-        preserve_stage = (
-            pipeline_complete
-            or stage_key in _TERMINAL_STAGES
-            or (folder_missing and api_music_done)
-            or (
-                stage_key in _POST_MUSIC_STAGES
-                and (bool(row.meta.long_ready) or bool(row.meta.reel_ready) or pipeline_complete)
-            )
-        )
+        # Only skip rewriting Music counters when we cannot scan (archived folder)
+        # or the row is terminal / explicitly pipeline-complete.
+        # Do NOT preserve based on API downloaded_* alone — those can be premature.
+        preserve_music = pipeline_complete or stage_key in _TERMINAL_STAGES or folder_missing
 
         assets = (
             resolve_local_channel_asset_paths(run_dir, channel_role=row.meta.role)
-            if run_dir and not folder_missing
+            if folder_scannable
             else {
                 "background_16x9_path": None,
                 "background_9x16_path": None,
@@ -225,8 +212,19 @@ def apply_local_progress_overlays(rows: list[ProgressRow]) -> list[ProgressRow]:
         long_ready = local_long_ready or bool(row.meta.long_ready)
         reel_ready = local_reel_ready or bool(row.meta.reel_ready)
         assets_ready = long_ready or reel_ready
-        local_saved = (
-            0 if folder_missing else (count_channel_mp3_files(run_dir, row.meta.role) if run_dir else 0)
+        local_saved = count_channel_mp3_files(run_dir, row.meta.role) if folder_scannable else 0
+        local_music_complete = (not folder_scannable) or local_saved >= expected
+
+        # Keep post-music stages only when local MP3s are actually present (or folder gone).
+        preserve_stage = (
+            pipeline_complete
+            or stage_key in _TERMINAL_STAGES
+            or (folder_missing and api_music_done)
+            or (
+                stage_key in _POST_MUSIC_STAGES
+                and local_music_complete
+                and (bool(row.meta.long_ready) or bool(row.meta.reel_ready) or pipeline_complete)
+            )
         )
 
         bg_status = _image_status_label(
@@ -264,12 +262,14 @@ def apply_local_progress_overlays(rows: list[ProgressRow]) -> list[ProgressRow]:
         updated = _apply_local_music_truth(
             updated,
             local_saved=local_saved,
+            folder_scannable=folder_scannable,
             preserve_music=preserve_music,
         )
-        expected = max(1, int(updated.meta.expected or 0))
-        music_ready = _music_downloads_ready(updated) and (
-            preserve_music or not run_dir or local_saved >= expected
-        )
+        # Disk is authority when the folder exists; API flags only when it does not.
+        if folder_scannable:
+            music_ready = local_saved >= expected
+        else:
+            music_ready = _api_music_complete(updated.meta)
         updated = _apply_local_stage_truth(
             updated,
             assets_ready=assets_ready,

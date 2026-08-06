@@ -29,6 +29,7 @@ class LocalProgressSyncItem:
     background_9x16_path: str | None = None
     thumbnail_16x9_path: str | None = None
     thumbnail_9x16_path: str | None = None
+    pipeline_complete: bool | None = None
 
 
 def _needs_channel_asset_sync(row: ProgressRow, assets: dict[str, str | None]) -> bool:

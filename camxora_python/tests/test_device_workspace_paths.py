@@ -80,7 +80,7 @@ def test_apply_defaults_prefers_device_store(tmp_path: Path, monkeypatch) -> Non
     deactivate_local_user_scope()
 
 
-def test_ensure_workspace_defaults_persists_local_and_patches_cloud_diff(
+def test_ensure_workspace_defaults_persists_local_without_cloud_path_thrash(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
@@ -95,11 +95,14 @@ def test_ensure_workspace_defaults_persists_local_and_patches_cloud_diff(
         def patch_settings(self, patch: dict) -> None:
             patches.append(dict(patch))
 
-    cloud = {"sunoOutputDir": str(tmp_path / "other-machine-suno")}
+    other = tmp_path / "other-machine-suno"
+    other.mkdir()
+    cloud = {"sunoOutputDir": str(other)}
     merged = ensure_workspace_defaults(settings_raw=cloud, api=_Api(), persist=True)
 
     assert merged["sunoOutputDir"] == str(local_suno)
-    assert patches and patches[0]["sunoOutputDir"] == str(local_suno)
+    # Absolute media roots must not be PATCHed into account settings anymore.
+    assert all("sunoOutputDir" not in patch for patch in patches)
     stored = json.loads(
         (tmp_path / "users" / "user-a" / "device-workspace-paths.json").read_text(encoding="utf-8")
     )
@@ -157,12 +160,17 @@ def test_local_run_dir_for_disk_rebases_server_path(tmp_path: Path, monkeypatch)
     local = tmp_path / "Suno"
     local.mkdir()
     persist_device_paths_from_settings({"sunoOutputDir": str(local)})
-    from shared.lib.device_workspace_paths import local_run_dir_for_disk
+    from shared.lib.device_workspace_paths import local_run_dir_for_disk, run_key_from_path
 
     remapped = local_run_dir_for_disk(
         r"C:\Users\Other\AppData\Local\Camxora\Media\Suno\ch\2026-08-03_album"
     )
     assert remapped == str(local / "ch" / "2026-08-03_album")
+    assert run_key_from_path(
+        r"C:\Users\Other\AppData\Local\Camxora\Media\Suno\ch\2026-08-03_album"
+    ) == "ch/2026-08-03_album"
+    assert run_key_from_path("ch/2026-08-03_album") == "ch/2026-08-03_album"
+    assert local_run_dir_for_disk("ch/2026-08-03_album") == str(local / "ch" / "2026-08-03_album")
     deactivate_local_user_scope()
 
 

@@ -1003,11 +1003,17 @@ class ImageJobService:
 
     @staticmethod
     def _looks_like_foreign_client_path(path: str) -> bool:
-        from platform_api.services.client_path_utils import is_windows_absolute_path
+        from platform_api.services.client_path_utils import (
+            is_portable_run_relative_path,
+            is_windows_absolute_path,
+        )
 
         text = str(path or "").strip()
         if not text:
             return False
+        # Portable relative keys are always desktop-owned — never mkdir/write on the API host.
+        if is_portable_run_relative_path(text):
+            return True
         if is_windows_absolute_path(text):
             import sys
 

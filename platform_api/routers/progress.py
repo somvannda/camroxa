@@ -887,6 +887,9 @@ class ProgressLocalSyncItemRequest(BaseModel):
     profile_id: str
     role: str = "OK"
     run_dir: str | None = None
+    # When true (Change Run Folder), rewrite batches.ok_run_dir / alt_run_dir.
+    # Background Progress sync must leave legacy absolute batch paths untouched.
+    persist_batch_run_dir: bool = False
     long_ready: bool | None = None
     reel_ready: bool | None = None
     local_mp3_count: int | None = None

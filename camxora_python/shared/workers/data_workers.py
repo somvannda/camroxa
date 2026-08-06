@@ -434,6 +434,7 @@ class RunFolderRecoveryWorker(QThread):
                         profile_id=self._profile_id,
                         role=self._role,
                         run_dir=normalized_dir,
+                        persist_batch_run_dir=True,
                     )
                 ]
             )
@@ -533,6 +534,187 @@ class RunFolderRecoveryWorker(QThread):
                     )
         except PlatformApiError as exc:
             log_error(f"Could not list images to re-download for batch {self._batch_id}", category="images", exc=exc)
+
+        self.succeeded.emit(result)
+
+
+@dataclass(slots=True)
+class MissingMp3DownloadResult:
+    """Outcome of downloading only missing role-scoped MP3s into the local run folder."""
+
+    run_dir: str
+    total: int = 0
+    downloaded: int = 0
+    skipped: int = 0
+    failed: int = 0
+
+    @property
+    def had_any_failure(self) -> bool:
+        return self.failed > 0
+
+
+class MissingMp3DownloadWorker(QThread):
+    """Download missing MP3s for one Progress row role — no re-draft / re-Suno.
+
+    Uses ``batch-redownload-plan`` for existing Suno/Backblaze URLs, skips files
+    already on disk, and syncs ``downloaded_*`` + ``output_dir_*`` for this role.
+    """
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        batch_id: str,
+        profile_id: str,
+        role: str,
+        run_dir: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("MissingMp3DownloadWorker")
+        self._api = api
+        self._batch_id = str(batch_id or "").strip()
+        self._profile_id = str(profile_id or "").strip()
+        self._role = str(role or "OK").strip().upper() or "OK"
+        self._run_dir = str(run_dir or "").strip()
+
+    def run(self) -> None:
+        from shared.lib.disk_space import get_free_bytes
+        from shared.lib.missing_mp3 import filter_missing_redownload_items, target_path_is_present
+        from shared.models.platform import MusicDownloadSyncItem, ProgressLocalSyncItem
+        from shared.services.app_logger import log_error, log_warn
+        from shared.services.file_service import ensure_directory, sanitize_local_path
+
+        if not self._batch_id or not self._profile_id or not self._run_dir:
+            self.failed.emit("Missing batch, channel, or run folder.")
+            return
+
+        from shared.lib.device_workspace_paths import local_run_dir_for_disk
+
+        normalized_dir = local_run_dir_for_disk(sanitize_local_path(self._run_dir))
+        if not normalized_dir:
+            self.failed.emit("Could not resolve a local run folder on this device.")
+            return
+
+        if not has_sufficient_free_space(normalized_dir):
+            free = get_free_bytes(normalized_dir)
+            free_mb = f"{free / (1024 * 1024):.0f} MB" if free is not None else "unknown"
+            self.failed.emit(
+                f"Run folder does not have enough free space ({free_mb} free)."
+            )
+            return
+
+        try:
+            ensure_directory(normalized_dir)
+        except Exception as exc:
+            self.failed.emit(f"Could not create the local run folder: {exc}")
+            return
+
+        # Sync channel assets for this machine's folder only — do not rewrite
+        # batches.ok_run_dir (legacy absolute paths stay until Change Run Folder).
+        try:
+            self._api.sync_local_progress(
+                [
+                    ProgressLocalSyncItem(
+                        batch_id=self._batch_id,
+                        profile_id=self._profile_id,
+                        role=self._role,
+                        run_dir=normalized_dir,
+                        persist_batch_run_dir=False,
+                    )
+                ]
+            )
+        except PlatformApiError as exc:
+            log_warn(
+                f"Could not sync local run_dir assets before missing MP3 download "
+                f"for batch {self._batch_id}: {exc}",
+                category="music",
+            )
+
+        result = MissingMp3DownloadResult(run_dir=normalized_dir)
+        try:
+            plan = self._api.get_batch_redownload_plan(
+                batch_id=self._batch_id, role=self._role, run_dir=normalized_dir
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(f"Could not list tracks to download: {exc}")
+            return
+
+        missing_items = filter_missing_redownload_items(list(plan.items))
+        # Also count already-present plan items as skipped for the toast.
+        present_count = len(plan.items) - len(missing_items)
+        result.skipped = max(0, present_count)
+        result.total = len(missing_items)
+        if not missing_items:
+            # Heal downloaded flags for files already on disk.
+            sync_present: list[MusicDownloadSyncItem] = []
+            is_primary = self._role != "ALT"
+            for item in plan.items:
+                if not target_path_is_present(item.target_path):
+                    continue
+                sync_present.append(
+                    MusicDownloadSyncItem(
+                        task_id=item.task_id,
+                        downloaded_primary=True if is_primary else None,
+                        downloaded_secondary=True if not is_primary else None,
+                        output_dir_primary=normalized_dir if is_primary else None,
+                        output_dir_secondary=normalized_dir if not is_primary else None,
+                    )
+                )
+            if sync_present:
+                try:
+                    self._api.sync_music_downloads(sync_present)
+                except PlatformApiError:
+                    pass
+            self.succeeded.emit(result)
+            return
+
+        is_primary = self._role != "ALT"
+        sync_items: list[MusicDownloadSyncItem] = []
+        for item in missing_items:
+            try:
+                ok = MusicDownloadSyncWorker._download_file(item.download_url, item.target_path)
+                if not ok and item.fallback_download_url:
+                    log_warn(
+                        f"Suno URL expired for {item.title or item.task_id}; "
+                        "falling back to Backblaze copy.",
+                        category="music",
+                    )
+                    ok = MusicDownloadSyncWorker._download_file(
+                        item.fallback_download_url, item.target_path
+                    )
+                if ok:
+                    result.downloaded += 1
+                else:
+                    result.failed += 1
+                sync_items.append(
+                    MusicDownloadSyncItem(
+                        task_id=item.task_id,
+                        downloaded_primary=ok if is_primary else None,
+                        downloaded_secondary=ok if not is_primary else None,
+                        output_dir_primary=normalized_dir if is_primary else None,
+                        output_dir_secondary=normalized_dir if not is_primary else None,
+                    )
+                )
+            except Exception as exc:
+                result.failed += 1
+                log_error(
+                    f"Missing MP3 download failed for {item.title or item.task_id}",
+                    category="music",
+                    exc=exc,
+                )
+        if sync_items:
+            try:
+                self._api.sync_music_downloads(sync_items)
+            except PlatformApiError as exc:
+                log_error(
+                    f"Could not sync missing-MP3 download state for batch {self._batch_id}",
+                    category="music",
+                    exc=exc,
+                )
 
         self.succeeded.emit(result)
 

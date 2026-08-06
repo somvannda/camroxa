@@ -73,6 +73,25 @@ async def test_pick_sample_path_prefers_vps_assets(tmp_path) -> None:
     assert chosen == str(vps_file)
 
 
+@pytest.mark.asyncio
+async def test_pick_sample_path_does_not_fall_back_to_local_settings(tmp_path) -> None:
+    local = tmp_path / "local.png"
+    local.write_bytes(b"x")
+    pack_repo = AsyncMock()
+    pack_repo.list_vps_asset_paths = AsyncMock(return_value=[])
+    sample_repo = AsyncMock()
+    service = ImageSampleRotationService(repo=sample_repo, pack_repo=pack_repo)
+    chosen = await service.pick_sample_path(
+        settings={
+            "imageBgSamples": [str(local)],
+            "imageBackgroundSamplesDir": str(tmp_path),
+        },
+        kind=ImageKind.BACKGROUND,
+    )
+    assert chosen is None
+    sample_repo.pick_least_used_value.assert_not_awaited()
+
+
 def test_build_candidates_uses_folder_when_random_and_nothing_selected() -> None:
     settings = {
         "imageBgSamples": ["/tmp/selected.png"],

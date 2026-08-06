@@ -79,6 +79,14 @@ def test_compute_stage_progress_percent_for_music_and_merger() -> None:
         effective_stage="Music",
         effective_status="Downloading",
     ) == "50%"
+    # Pending downloads must not inflate % beyond files already landed.
+    row.meta.download_ready = 2
+    row.meta.download_pending = 1
+    assert compute_stage_progress_percent(
+        row,
+        effective_stage="Music",
+        effective_status="Downloading",
+    ) == "50%"
     assert compute_stage_progress_percent(
         row,
         effective_stage="Merge",

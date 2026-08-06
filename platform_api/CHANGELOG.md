@@ -18,6 +18,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Batch run directories are portable relative keys (`channel\date_album`) only — API no
+  longer stores machine absolute `C:\Users\...` / `D:\...` paths for new planning,
+  download sync, or local progress sync. Legacy absolute rows are stripped to the
+  trailing key on write/heal. Desktop joins its local Suno root. Image job
+  `output_image_path` values use the same portable join (no Linux-cwd resolve).
+  See `docs/changelog/2026-08-06-app-owned-run-paths-and-missing-mp3.md`.
+- Category image samples use **admin VPS packs only** — no fallback to desktop
+  `imageBackgroundSamplesDir` / `imageBgSamples` on the API host. Empty packs return
+  a clear ValidationError (switch to Prompt only or upload packs).
+- `POST /progress/sync-local` rewrites `batches.ok_run_dir` / `alt_run_dir` only when
+  `persist_batch_run_dir=true` (Change Run Folder). Background sync updates channel
+  assets only and leaves legacy absolute batch paths untouched.
+
+### Fixed
+
+- Suno success with `audio_id_alt` but empty `audio_url_alt`: synthesize
+  `https://cdn1.suno.ai/{id}.mp3`, persist on redownload/reconcile/callback, and
+  include those rows in reconcilable polls (previously only healed when *both*
+  URLs were missing).
+
 ### Added
 
 - SLAI remaining balance on Admin key balances: live credits via `availableUnits / 1_000_000` from `GET https://slai-api.slai.shop/v1/balance`. See `docs/changelog/2026-08-05-slai-provider-key-balance.md`.
