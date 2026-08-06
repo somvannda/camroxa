@@ -44,6 +44,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Image force-regen / NULL `input_image_path`: runtime no longer treats `None` as
+  path literal `"None"` (Image reference file does not exist). Falls through to
+  Category sample rotation. See
+  `docs/changelog/2026-08-06-connect-error-and-null-sample-path.md`.
 - Suno success with `audio_id_alt` but empty `audio_url_alt`: synthesize
   `https://cdn1.suno.ai/{id}.mp3`, persist on redownload/reconcile/callback, and
   include those rows in reconcilable polls (previously only healed when *both*

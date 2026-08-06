@@ -10,7 +10,6 @@ from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 
 _SOURCE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("Category", "category"),
-    ("User reference", "personal_reference"),
     ("Prompt only", "prompt_only"),
 )
 
@@ -51,8 +50,8 @@ class PreviewCard(QFrame):
         root.addWidget(self._source_mode)
 
         helper = QLabel(
-            "Saved to Preferences. Prompt only uses the prompt box on the left. "
-            "User reference is coming soon."
+            "Saved to Preferences. Category uses admin sample packs; "
+            "Prompt only uses the prompt box on the left (no sample)."
         )
         helper.setObjectName(SUBTITLE_LABEL_ID)
         helper.setWordWrap(True)
@@ -73,9 +72,8 @@ class PreviewCard(QFrame):
         normalized = str(mode or "category").strip().lower()
         if normalized in {"prompt", "prompt_only"}:
             normalized = "prompt_only"
-        elif normalized in {"personal", "personal_reference", "user_reference"}:
-            normalized = "personal_reference"
         else:
+            # personal_reference / unknown → category (User reference hidden until P2)
             normalized = "category"
         index = self._source_mode.findData(normalized)
         if index < 0:

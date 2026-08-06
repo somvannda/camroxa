@@ -52,8 +52,8 @@ def test_kind_source_mode_migrates_legacy_prompt() -> None:
     assert patch["imageThumbnailSourceMode"] == "prompt_only"
     assert "backgroundSourceMode" not in patch
 
-    assert normalize_kind_source_mode("personal_reference") == "personal_reference"
-    assert normalize_kind_source_mode("user_reference") == "personal_reference"
+    assert normalize_kind_source_mode("personal_reference") == "category"
+    assert normalize_kind_source_mode("user_reference") == "category"
 
 
 def test_build_suno_settings_patch() -> None:

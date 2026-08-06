@@ -50,14 +50,14 @@ LOADING_MESSAGE = "Loading image workspace..."
 REFRESHING_MESSAGE = "Refreshing image workspace…"
 
 _EMPTY_BG_PROMPT = (
-    "Background: Add a background prompt, or switch Background source to Category / User reference."
+    "Background: Add a background prompt, or switch Background source to Category."
 )
 _EMPTY_TH_PROMPT = (
-    "Thumbnail: Add a thumbnail prompt, or switch Thumbnail source to Category / User reference."
+    "Thumbnail: Add a thumbnail prompt, or switch Thumbnail source to Category."
 )
 _PERSONAL_NOT_READY = (
-    "{kind}: User reference images from the portal are not available yet. "
-    "Switch to Category or Prompt only for now."
+    "{kind}: User reference is not available yet. "
+    "Switch to Category or Prompt only."
 )
 _CREDIT_QUOTA_HINTS = (
     "credit",

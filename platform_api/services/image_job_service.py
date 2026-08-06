@@ -777,15 +777,20 @@ class ImageJobService:
                 details={"job_id": str(job.id)},
             )
 
-        stored_path = str(
-            job.input_image_path if job.kind == ImageKind.BACKGROUND else job.style_reference_path
-            or ""
-        ).strip()
-        if stored_path:
+        stored_raw = (
+            job.input_image_path
+            if job.kind == ImageKind.BACKGROUND
+            else job.style_reference_path
+        )
+        stored_path = str(stored_raw or "").strip()
+        if stored_path.lower() in {"", "none", "null"}:
+            stored_path = ""
+        if stored_path and Path(stored_path).expanduser().is_file():
             return stored_path
+        # Stale/missing stored refs (incl. force-regen NULL clear) fall through to rotation.
 
         if self._image_sample_rotation is None:
-            return str(job.input_image_path or job.style_reference_path or "").strip() or None
+            return None
         if kind not in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL}:
             return None
 
@@ -799,19 +804,27 @@ class ImageJobService:
             for sibling in siblings:
                 if sibling.id == job.id or sibling.kind != job.kind:
                     continue
-                sibling_path = str(
+                sibling_raw = (
                     sibling.input_image_path
                     if sibling.kind == ImageKind.BACKGROUND
                     else sibling.style_reference_path
-                    or ""
-                ).strip()
-                if sibling_path:
+                )
+                sibling_path = str(sibling_raw or "").strip()
+                if sibling_path and sibling_path.lower() not in {"none", "null"}:
                     exclude.append(sibling_path)
 
-        return await self._image_sample_rotation.pick_sample_path(
+        chosen = await self._image_sample_rotation.pick_sample_path(
             settings=settings,
             kind=kind,
             exclude=exclude,
+        )
+        if chosen:
+            return chosen
+        kind_label = "Background" if kind == ImageKind.BACKGROUND else "Thumbnail"
+        raise ValidationError(
+            f"{kind_label}: No Category sample packs are available on the server. "
+            "Upload admin sample packs, or switch source to Prompt only.",
+            details={"kind": str(getattr(kind, "value", kind)), "source": "category"},
         )
 
     async def _generate_thumbnail_composite(
@@ -948,7 +961,13 @@ class ImageJobService:
 
     @staticmethod
     def _read_image_file(path: str) -> bytes:
-        file_path = Path(str(path or "").strip()).expanduser().resolve()
+        raw = str(path or "").strip()
+        if not raw or raw.lower() in {"none", "null"}:
+            raise ValidationError(
+                "Image reference file does not exist.",
+                details={"path": raw},
+            )
+        file_path = Path(raw).expanduser().resolve()
         if not file_path.exists() or not file_path.is_file():
             raise ValidationError(
                 "Image reference file does not exist.",

@@ -36,8 +36,16 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - **Export Speed Best Quality:** Speed order is Best Quality → Quality → Balance → Fast → Very Fast. Best Quality uses a slower/higher-fidelity encode (NVENC p7) and always keeps the full-color pipe.
 - **Export Recommended bitrate:** Encode switches from CQ/constqp to CapCut-inspired VBR bitrate scaled by Resolution × FPS × Speed (2K@30 Quality ≈ 12 Mbps). Per-track export + lossless merge unchanged.
 - **Export worker safety:** Quality / Best Quality force 1 worker; QHD+ Balance caps at 2. Waiting on a full export gate shows status / times out instead of hanging at 0%.
+- Background/Thumbnail source UI shows only **Category** and **Prompt only**;
+  **User reference** is hidden until portal personal refs (P2). Saved
+  `personal_reference` coerces to Category. See
+  `docs/changelog/2026-08-06-connect-error-and-null-sample-path.md`.
 
 ### Fixed
+
+- Release ConnectError / API-unreachable banners no longer leak `uvicorn` / port 8000
+  (local/dev builds still show the start hint). See
+  `docs/changelog/2026-08-06-connect-error-and-null-sample-path.md`.
 
 - Progress filters: Active only and Stage now apply **before** Limit (after desktop overlays). Active only + Limit 10 means up to 10 active rows. See `docs/changelog/2026-08-06-progress-filters-composition.md`.
 - **Manual export merge path:** Manual batch outputs now use `{stem}.mp4` (and pass `--output` to the visualizer) so Auto merge finds the files that were actually written, instead of looking for missing `*_CAMXORA_*` stamps.
