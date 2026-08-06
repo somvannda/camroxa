@@ -80,11 +80,9 @@ def test_resolve_manual_export_output_dir_prefers_settings() -> None:
     )
 
 
-def test_build_manual_export_output_path_includes_stamp() -> None:
+def test_build_manual_export_output_path_matches_visualizer_stem() -> None:
     path = build_manual_export_output_path(audio_path="D:/music/track.mp3", output_dir="D:/exports")
-    assert Path(path).parent == Path("D:/exports")
-    assert Path(path).name.startswith("track_CAMXORA_")
-    assert path.endswith(".mp4")
+    assert path == str(Path("D:/exports/track.mp4"))
 
 
 def test_build_pipeline_render_scene_request_uses_saved_draft_source() -> None:

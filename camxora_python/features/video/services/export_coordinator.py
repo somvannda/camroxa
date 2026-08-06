@@ -145,6 +145,7 @@ class ExportCoordinator:
         self._progress_callbacks: list[ExportEventHandler] = []
         self._running_job_id: str | None = None
         self._last_exit_code: int = 1
+        self._cancel_requested = False
 
     @property
     def running_job_id(self) -> str | None:
@@ -158,6 +159,7 @@ class ExportCoordinator:
         self._progress_callbacks.append(callback)
 
     def cancel_export(self, job_id: str) -> None:
+        self._cancel_requested = True
         with self._lock:
             job = self._jobs.get(job_id)
         if job is not None and job.backend is not None:
@@ -168,11 +170,25 @@ class ExportCoordinator:
         active = _ActiveJob(job_id=job_id)
         self._running_job_id = job_id
         self._last_exit_code = 1
+        self._cancel_requested = False
         with self._lock:
             self._jobs[job_id] = active
 
         if request.acquire_gate:
-            export_gate.acquire()
+            def _on_wait(active_count: int, limit: int) -> None:
+                self._emit(
+                    {
+                        "status": "running",
+                        "message": f"Waiting for export slot ({active_count}/{limit} busy)…",
+                        "progress": 0.01,
+                    }
+                )
+
+            export_gate.acquire(
+                cancel_check=lambda: self._cancel_requested,
+                timeout_sec=120.0,
+                on_wait=_on_wait,
+            )
         try:
             self._last_exit_code = self._run_with_fallback(request, active)
         finally:

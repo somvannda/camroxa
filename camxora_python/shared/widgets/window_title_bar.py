@@ -46,16 +46,33 @@ def _load_icon_pixmap(name: str, *, size: int, color: str) -> QPixmap:
     return _render_svg_pixmap(raw_svg, size)
 
 
-class _WindowControlButton(QPushButton):
-    """Minimal icon-only window control button."""
+class WindowControlButton(QPushButton):
+    """Minimal icon-only window control button (also reused for compact list ×)."""
 
-    def __init__(self, kind: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        kind: str,
+        parent: QWidget | None = None,
+        *,
+        width: int = 40,
+        height: int = 32,
+        icon_size: int = 16,
+    ) -> None:
         super().__init__(parent)
         self._kind = kind
+        self._icon_size = max(8, int(icon_size))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setFlat(True)
-        self.setFixedSize(40, 32)
+        self.setFixedSize(max(16, int(width)), max(16, int(height)))
+
+    def enterEvent(self, event) -> None:  # noqa: N802 - Qt API
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # noqa: N802 - Qt API
+        self.update()
+        super().leaveEvent(event)
 
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
         painter = QPainter(self)
@@ -76,7 +93,8 @@ class _WindowControlButton(QPushButton):
         if background.alpha() > 0:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(background)
-            painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 6, 6)
+            radius = 4 if min(self.width(), self.height()) <= 24 else 6
+            painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), radius, radius)
 
         icon_color = "#cbd5e1"
         if self._kind == "close" and self.underMouse():
@@ -89,10 +107,14 @@ class _WindowControlButton(QPushButton):
             "maximize": "window-maximize.svg",
             "close": "window-close.svg",
         }[self._kind]
-        icon = _load_icon_pixmap(icon_name, size=16, color=icon_color)
+        icon = _load_icon_pixmap(icon_name, size=self._icon_size, color=icon_color)
         x = (self.width() - icon.width()) // 2
         y = (self.height() - icon.height()) // 2
         painter.drawPixmap(x, y, icon)
+
+
+# Backward-compatible alias used by interactive-child checks / older imports.
+_WindowControlButton = WindowControlButton
 
 
 class WindowTitleBar(QFrame):

@@ -123,7 +123,12 @@ from features.video.lib.pipeline_inputs import (
     build_video_pipeline_run_key,
     resolve_video_pipeline_inputs,
 )
-from features.video.lib.pipeline_merge import is_auto_merge_enabled_for_branch
+from features.video.lib.pipeline_merge import (
+    collect_verified_merge_inputs,
+    is_auto_merge_enabled_for_branch,
+    merge_encode_settings_from_context,
+    resolve_merge_encode_settings,
+)
 from features.video.lib.video_billing import consume_video_operation, refund_video_operation
 from features.video.lib.export_telemetry import collect_hardware_hints, report_video_telemetry_async
 from features.video.lib.render_scene_request import (
@@ -548,7 +553,7 @@ class VideoView(QWidget):
         self._export_panel.auto_merge_toggled.connect(self._set_auto_merge)
         self._export_panel.shuffle_merge_toggled.connect(self._set_shuffle_merge)
         self._export_panel.speed_mode_changed.connect(self._set_export_speed_mode)
-        self._export_panel.export_tier_changed.connect(self._set_export_tier)
+        self._export_panel.export_resolution_changed.connect(self._set_export_resolution)
         self._export_panel.fps_changed.connect(self._set_export_fps)
         self._export_panel.workers_changed.connect(self._set_export_workers)
         # python_app layout: export queue console docks under the preview.
@@ -1276,12 +1281,17 @@ class VideoView(QWidget):
                     }
                 )
                 get_video_workspace_service().set_workspace_state(self._workspace)
+        output_resolution = "1920x1080"
+        if self._workspace and str(self._workspace.output_resolution or "").strip():
+            output_resolution = str(self._workspace.output_resolution).strip()
+        elif str(self._settings.get("outputResolution") or "").strip():
+            output_resolution = str(self._settings.get("outputResolution")).strip()
         self._export_panel.bind_workspace(
             self._workspace,
             busy=export_busy,
             stop_export_pending=self._stop_export_pending,
             speed_mode=normalize_export_speed_mode(self._settings.get("videoExportSpeedMode")),
-            export_tier=normalize_export_tier(self._settings.get("videoExportTier"), default="standard"),
+            output_resolution=output_resolution,
         )
 
     def _selected_pipeline_row(self) -> ProgressRow | None:
@@ -1408,6 +1418,7 @@ class VideoView(QWidget):
         except Exception as exc:
             notify_action(f"Video export blocked (billing): {exc}", tone="warning")
             return
+        encode_fields = self._encode_fields_for_merge_context(branch, pipeline=True)
         self._pipeline_merge_context = {
             "run_dir": run_dir,
             "branch": branch,
@@ -1420,6 +1431,7 @@ class VideoView(QWidget):
             "total": len(mp3_list),
             "profile_id": profile_id,
             "ref_base": ref_base,
+            **encode_fields,
         }
         if self._workspace:
             self._publish_workspace(
@@ -1791,15 +1803,24 @@ class VideoView(QWidget):
             notify_action(f"Playing: {Path(audio_path).name}")
 
     def _reorder_tracks(self, paths: object) -> None:
-        if not isinstance(paths, list) or not paths:
+        if not isinstance(paths, list):
             return
-        self._workspace = self._store.set_mp3_order(
-            [str(path) for path in paths],
-            settings=self._settings,
-        )
+        previous = str(self._workspace.selected_mp3_path or "").strip() if self._workspace else ""
+        before_count = len(self._workspace.mp3_list) if self._workspace else 0
+        ordered = [str(path).strip() for path in paths if str(path).strip()]
+        self._workspace = self._store.set_mp3_order(ordered, settings=self._settings)
         self._publish_workspace(self._workspace)
         self._update_inspectors()
-        notify_action("Track order updated.", tone="success")
+        self._update_export_panel()
+        if previous and previous not in ordered:
+            self._flush_preview_update()
+            self._update_stage_summary()
+        if not ordered:
+            notify_action("Track list cleared.", tone="success")
+        elif len(ordered) < before_count:
+            notify_action("Removed from track list.", tone="success")
+        else:
+            notify_action("Track order updated.", tone="success")
 
     def _patch_export_setting(self, patch: dict[str, object], status: str) -> None:
         """Persist an export option like python_app's _persist_setting_patch."""
@@ -1843,9 +1864,43 @@ class VideoView(QWidget):
         normalized = normalize_export_speed_mode(mode)
         self._patch_export_setting({"videoExportSpeedMode": normalized}, "Export speed updated.")
 
-    def _set_export_tier(self, tier: str) -> None:
-        normalized = normalize_export_tier(tier)
-        self._patch_export_setting({"videoExportTier": normalized}, f"Export tier set to {normalized.title()}.")
+    def _set_export_resolution(self, resolution: str) -> None:
+        """Manual export Resolution = same OUTPUT_RESOLUTION_OPTIONS list as the stage."""
+        normalized = str(resolution or "").strip()
+        if not normalized:
+            return
+        # Concrete WxH replaces Draft/Standard/Master — keep Standard so FPS/speed apply.
+        self._settings["videoExportTier"] = "standard"
+        if self._workspace and normalized == str(self._workspace.output_resolution or "").strip():
+            self._patch_export_setting(
+                {"videoExportTier": "standard"},
+                "Export resolution updated.",
+            )
+            return
+        self._save_output_resolution(normalized, force_standard_tier=True)
+
+    def _merge_encode_settings_for_branch(self, branch: str, *, pipeline: bool):
+        tier = resolve_export_tier_settings(self._settings, pipeline=pipeline)
+        fps = self._resolve_export_fps()
+        if self._workspace and int(self._workspace.export.fps or 0) > 0:
+            fps = normalize_export_fps(self._workspace.export.fps)
+        return resolve_merge_encode_settings(
+            self._settings,
+            branch=branch,
+            pipeline=pipeline,
+            fps=fps,
+            speed_mode=tier.speed_mode,
+        )
+
+    def _encode_fields_for_merge_context(self, branch: str, *, pipeline: bool) -> dict[str, object]:
+        encode = self._merge_encode_settings_for_branch(branch, pipeline=pipeline)
+        return {
+            "encode_width": int(encode.width),
+            "encode_height": int(encode.height),
+            "encode_fps": int(encode.fps),
+            "encode_speed_mode": str(encode.speed_mode),
+            "settings": dict(self._settings),
+        }
 
     def _resolve_export_fps(self) -> int:
         if self._workspace:
@@ -1937,6 +1992,13 @@ class VideoView(QWidget):
             return
         if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
             notify_action("A pipeline export is already running.", tone="warning")
+            return
+        if int(export_gate.active) > 0:
+            notify_action(
+                f"Another export still holds {export_gate.active} worker slot(s). "
+                "Stop Export and wait a few seconds, then try again.",
+                tone="warning",
+            )
             return
         if not self._workspace:
             return
@@ -2329,35 +2391,51 @@ class VideoView(QWidget):
         auto_merge = bool(self._workspace.export.auto_merge)
         if not stopped and auto_merge and completed >= 2 and self._batch_output_dir:
             shuffle_merge = bool(self._workspace.export.shuffle_merge)
-            self._pipeline_merge_context = {
-                "run_dir": self._batch_output_dir,
-                "branch": "long",
-                "batch_id": f"manual-{int(time.time())}",
-                "role": "PRIMARY",
-                "auto_merge": True,
-                "completed": completed,
-                "total": total,
-                # Track-list order by default; optional shuffle matches python_app.
-                "mp4_paths": list(self._batch_outputs),
-                "shuffle": shuffle_merge,
-            }
-            self._publish_workspace(
-                self._workspace.model_copy(
-                    update={
-                        "export": self._workspace.export.model_copy(
-                            update={
-                                "running": True,
-                                "merge_running": True,
-                                "current_status": "Merging video outputs…",
-                                "progress_percent": 100,
-                                "completed_jobs": completed,
-                            }
-                        )
-                    }
-                )
+            ffmpeg_path = str(self._settings.get("ffmpegPath") or "ffmpeg")
+            verified_paths = collect_verified_merge_inputs(
+                list(self._batch_outputs),
+                run_dir=self._batch_output_dir,
+                branch="long",
+                ffmpeg_path=ffmpeg_path,
             )
-            self._start_pipeline_merge()
-            return
+            if len(verified_paths) < 2:
+                message = (
+                    f"{message} Merge skipped — need at least two usable MP4 files "
+                    f"(found {len(verified_paths)})."
+                )
+            else:
+                encode_fields = self._encode_fields_for_merge_context("long", pipeline=False)
+                self._pipeline_merge_context = {
+                    "run_dir": self._batch_output_dir,
+                    "branch": "long",
+                    "batch_id": f"manual-{int(time.time())}",
+                    "role": "PRIMARY",
+                    "auto_merge": True,
+                    "completed": completed,
+                    "total": total,
+                    # Verified on-disk outputs only (never stamped/missing paths).
+                    "mp4_paths": verified_paths,
+                    "shuffle": shuffle_merge,
+                    **encode_fields,
+                }
+                self._publish_workspace(
+                    self._workspace.model_copy(
+                        update={
+                            "export": self._workspace.export.model_copy(
+                                update={
+                                    "running": True,
+                                    "merge_running": True,
+                                    "merge_progress_percent": 0,
+                                    "current_status": "Merging video outputs…",
+                                    "progress_percent": 100,
+                                    "completed_jobs": completed,
+                                }
+                            )
+                        }
+                    )
+                )
+                self._start_pipeline_merge()
+                return
 
         self._publish_workspace(
             self._workspace.model_copy(
@@ -2374,7 +2452,10 @@ class VideoView(QWidget):
                 }
             )
         )
-        notify_action(message, tone="success")
+        notify_action(
+            message,
+            tone="warning" if (failures or stopped or "Merge skipped" in message) else "success",
+        )
 
     def _on_pipeline_export_progress(self, payload: object) -> None:
         if not isinstance(payload, dict) or not self._workspace:
@@ -2450,6 +2531,7 @@ class VideoView(QWidget):
                             update={
                                 "running": True,
                                 "merge_running": True,
+                                "merge_progress_percent": 0,
                                 "current_status": f"Merging {branch_label} video outputs…",
                                 "current_output_path": None,
                                 "last_output_path": last_output,
@@ -2503,6 +2585,21 @@ class VideoView(QWidget):
         if not run_dir:
             self._on_pipeline_merge_failed("Pipeline merge context is missing a run directory.")
             return
+        mp4_paths_raw = [str(path) for path in (context.get("mp4_paths") or []) if str(path).strip()]
+        ffmpeg_path = str(self._settings.get("ffmpegPath") or "ffmpeg")
+        verified_paths = collect_verified_merge_inputs(
+            mp4_paths_raw,
+            run_dir=run_dir,
+            branch=branch,
+            ffmpeg_path=ffmpeg_path,
+        )
+        if len(verified_paths) < 2:
+            self._on_pipeline_merge_failed(
+                f"Merge skipped — need at least two usable MP4 files (found {len(verified_paths)})."
+            )
+            return
+        context["mp4_paths"] = verified_paths
+        self._pipeline_merge_context = context
         profile_id = str(context.get("profile_id") or "").strip() or None
         ref_base = str(context.get("ref_base") or "")
         try:
@@ -2537,18 +2634,23 @@ class VideoView(QWidget):
                     )
                 )
             return
-        mp4_paths = tuple(str(path) for path in (context.get("mp4_paths") or []) if str(path).strip())
+        mp4_paths = tuple(verified_paths)
+        encode = merge_encode_settings_from_context(context, pipeline=True)
+        # Manual batches stash pipeline=False encode fields; prefer context values either way.
+        if str(context.get("batch_id") or "").startswith("manual-"):
+            encode = merge_encode_settings_from_context(context, pipeline=False)
         worker = VideoPipelineMergeWorker(
             PipelineMergeRequest(
                 run_dir=run_dir,
                 branch=branch,
                 batch_id=str(context.get("batch_id") or ""),
                 role=str(context.get("role") or ""),
-                ffmpeg_path=str(self._settings.get("ffmpegPath") or "ffmpeg"),
+                ffmpeg_path=ffmpeg_path,
                 completed=int(context.get("completed") or 0),
                 total=int(context.get("total") or 0),
                 mp4_paths=mp4_paths,
                 shuffle=bool(context.get("shuffle", True)),
+                encode=encode,
             ),
             parent=None,
         )
@@ -2565,17 +2667,21 @@ class VideoView(QWidget):
         if not isinstance(payload, dict) or not self._workspace:
             return
         message = str(payload.get("message") or "Merging video outputs…")
+        merge_percent = payload.get("progress")
+        try:
+            merge_progress = max(0, min(100, int(merge_percent))) if merge_percent is not None else None
+        except (TypeError, ValueError):
+            merge_progress = None
+        update: dict[str, object] = {
+            "running": True,
+            "merge_running": True,
+            "current_status": message,
+        }
+        if merge_progress is not None:
+            update["merge_progress_percent"] = merge_progress
         self._publish_workspace(
             self._workspace.model_copy(
-                update={
-                    "export": self._workspace.export.model_copy(
-                        update={
-                            "running": True,
-                            "merge_running": True,
-                            "current_status": message,
-                        }
-                    )
-                }
+                update={"export": self._workspace.export.model_copy(update=update)}
             )
         )
 
@@ -2595,7 +2701,7 @@ class VideoView(QWidget):
                         update={
                             "running": False,
                             "merge_running": False,
-                            "auto_merge": False,
+                            "merge_progress_percent": None,
                             "current_status": message,
                             "current_output_path": None,
                             "last_merged_output_path": merged_output,
@@ -2642,7 +2748,7 @@ class VideoView(QWidget):
                             update={
                                 "running": False,
                                 "merge_running": False,
-                                "auto_merge": False,
+                                "merge_progress_percent": None,
                                 "current_status": message or "Video merge failed.",
                             }
                         )
@@ -2943,7 +3049,7 @@ class VideoView(QWidget):
         )
         self._stage.set_current_track(track_path)
 
-    def _save_output_resolution(self, resolution: str) -> None:
+    def _save_output_resolution(self, resolution: str, *, force_standard_tier: bool = False) -> None:
         if not self._workspace:
             return
         normalized = str(resolution or "").strip()
@@ -2957,12 +3063,20 @@ class VideoView(QWidget):
         self._workspace = self._store.set_output_resolution(normalized, settings=self._settings)
         self._settings["outputResolution"] = normalized
         self._settings["imageResolution"] = normalized
+        patch: dict[str, object] = {
+            "outputResolution": normalized,
+            "imageResolution": normalized,
+        }
+        if force_standard_tier:
+            self._settings["videoExportTier"] = "standard"
+            patch["videoExportTier"] = "standard"
         self._update_stage_summary()
         self._update_preview()
+        self._update_export_panel()
 
         worker = PatchSettingsWorker(
             self._api,
-            {"outputResolution": normalized, "imageResolution": normalized},
+            patch,
             parent=None,
         )
         worker.succeeded.connect(self._on_output_resolution_saved)

@@ -14,6 +14,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Progress right-click **Download missing MP3s (N)** for the selected channel role:
   fetches existing Suno/Backblaze URLs for tracks not present on disk (no re-draft /
   re-Suno). See `docs/changelog/2026-08-06-app-owned-run-paths-and-missing-mp3.md`.
+- **Track list Remove:** After Select MP3 Folder, remove songs from TRACK LIST via the × on each row (or Delete/Backspace) without deleting files. Select MP3 Folder again reloads the full folder.
 
 ### Changed
 
@@ -30,10 +31,22 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Progress Music **% / X/Y** use landed role MP3 files on disk when the run folder
   is present — not API `downloaded_ok` / `downloaded_alt` flags (those can flip
   before files exist).
+- **Manual export Resolution:** Actions panel replaces Tier (Draft/Standard/Master) with **Resolution**, using the same `OUTPUT_RESOLUTION_OPTIONS` list as the preview Output resolution (no custom/Master). Selection syncs `outputResolution` so batch exports and Auto merge stay on one WxH.
+- **Export Speed Quality:** Actions Speed adds **Quality** (preview-parity: full-color pipe + spectrum glow; slower encode).
+- **Export Speed Best Quality:** Speed order is Best Quality → Quality → Balance → Fast → Very Fast. Best Quality uses a slower/higher-fidelity encode (NVENC p7) and always keeps the full-color pipe.
+- **Export Recommended bitrate:** Encode switches from CQ/constqp to CapCut-inspired VBR bitrate scaled by Resolution × FPS × Speed (2K@30 Quality ≈ 12 Mbps). Per-track export + lossless merge unchanged.
+- **Export worker safety:** Quality / Best Quality force 1 worker; QHD+ Balance caps at 2. Waiting on a full export gate shows status / times out instead of hanging at 0%.
 
 ### Fixed
 
 - Progress filters: Active only and Stage now apply **before** Limit (after desktop overlays). Active only + Limit 10 means up to 10 active rows. See `docs/changelog/2026-08-06-progress-filters-composition.md`.
+- **Manual export merge path:** Manual batch outputs now use `{stem}.mp4` (and pass `--output` to the visualizer) so Auto merge finds the files that were actually written, instead of looking for missing `*_CAMXORA_*` stamps.
+- **Pipeline merge quality gate:** Export skip/success and merge inputs require a usable MP4 (video stream + duration, and not truncated vs source audio when ffprobe is available). Incomplete or broken exports are no longer treated as merge-ready just because they are larger than 50KB.
+- **Merge input rebuild:** Merge rebuilds its file list from verified on-disk outputs (with a run-folder scan fallback) and keeps the Auto merge toggle after merge completes.
+- **Merge encode parity:** Merge is **lossless stream-copy only** (same quality as exports). Before join, inputs are probed for matching resolution/FPS/codec/color_range/audio; mismatches fail with a clear error instead of re-encoding. New exports force AAC 48 kHz stereo so audio layout stays concat-safe. Early-skip rejects stale leftovers that don't match the current batch specs.
+- **Export usable-MP4 false negative:** ffprobe success (`returncode == 0`) was treated as failure (`0 or 1`), so valid exports were marked failed and Auto merge never ran.
+- **Merge progress percent:** Merge status uses a determinate 0–100% bar (FFmpeg `-progress`) instead of an indeterminate busy spinner.
+- **Export Speed Quality CLI:** Visualizer `--speedMode` accepts `quality` / `master` (UI was sending `quality`, argparse only allowed `balanced|fast|very_fast`).
 
 ## [1.1.1] - 2026-08-05
 

@@ -4,11 +4,15 @@ from __future__ import annotations
 
 DEFAULT_EXPORT_SPEED_MODE = "fast"
 
-_EXPORT_SPEED_CHOICES = frozenset({"balanced", "fast", "very_fast"})
+_EXPORT_SPEED_CHOICES = frozenset(
+    {"best_quality", "quality", "balanced", "fast", "very_fast"}
+)
 
 
 def normalize_export_speed_mode(value: object, *, default: str = DEFAULT_EXPORT_SPEED_MODE) -> str:
     mode = str(value or default).strip().lower()
+    if mode in {"master", "best"}:
+        mode = "best_quality"
     if mode in _EXPORT_SPEED_CHOICES:
         return mode
     return default if default in _EXPORT_SPEED_CHOICES else "fast"

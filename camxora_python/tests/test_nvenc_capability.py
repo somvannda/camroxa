@@ -63,6 +63,34 @@ def test_rewrite_nvenc_cmd_to_x264_swaps_flags() -> None:
     assert "h264_nvenc" not in out
 
 
+def test_rewrite_nvenc_cmd_keeps_vbr_bitrate() -> None:
+    cmd = [
+        "ffmpeg",
+        "-c:v",
+        "h264_nvenc",
+        "-preset",
+        "p5",
+        "-rc",
+        "vbr",
+        "-b:v",
+        "12000k",
+        "-maxrate",
+        "18000k",
+        "-bufsize",
+        "24000k",
+        "-pix_fmt",
+        "yuv420p",
+        "out.mp4",
+    ]
+    out = rewrite_nvenc_cmd_to_x264(cmd, x264_preset="veryfast", x264_crf="20")
+    assert out[out.index("-c:v") + 1] == "libx264"
+    assert out[out.index("-preset") + 1] == "veryfast"
+    assert out[out.index("-b:v") + 1] == "12000k"
+    assert out[out.index("-maxrate") + 1] == "18000k"
+    assert "-crf" not in out
+    assert "-rc" not in out
+
+
 def test_force_x264_skips_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CAMXORA_FORCE_X264", "1")
     called = {"n": 0}

@@ -237,3 +237,29 @@ def test_set_mp3_directory_loads_tracks_in_python_app_order(
     reread = isolated_video_store.read_workspace_state({"outputResolution": "1920x1080"})
     assert [item.name for item in reread.mp3_list] == names
     assert reread.selected_mp3_path == str(music_dir / "1. First.mp3")
+
+
+def test_set_mp3_order_subset_excludes_removed_tracks(
+    isolated_video_store: VideoLocalStore, tmp_path: Path
+) -> None:
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    for name in ("1. First.mp3", "2. Second.mp3", "3. Third.mp3"):
+        (music_dir / name).write_bytes(b"mp3")
+
+    workspace = isolated_video_store.set_mp3_directory(str(music_dir))
+    keep = [workspace.mp3_list[0].path, workspace.mp3_list[2].path]
+    trimmed = isolated_video_store.set_mp3_order(keep)
+    assert [item.name for item in trimmed.mp3_list] == ["1. First.mp3", "3. Third.mp3"]
+    assert trimmed.selected_mp3_path == keep[0]
+
+    # Removals stick across refresh; Select MP3 Folder clears order and restores all.
+    reread = isolated_video_store.read_workspace_state({"outputResolution": "1920x1080"})
+    assert [item.name for item in reread.mp3_list] == ["1. First.mp3", "3. Third.mp3"]
+
+    restored = isolated_video_store.set_mp3_directory(str(music_dir))
+    assert [item.name for item in restored.mp3_list] == [
+        "1. First.mp3",
+        "2. Second.mp3",
+        "3. Third.mp3",
+    ]

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QThread, Signal
 
 from features.video.export_gate import export_gate
+from features.video.lib.export_output_validity import resolve_written_export_path
 from features.video.lib.render_scene_request import (
     ManualRenderSceneRequest,
     build_manual_export_output_path,
@@ -75,7 +77,13 @@ class VideoManualExportWorker(QThread):
         workers_raw = settings.get("videoExportWorkers", settings.get("perfExportWorkers", 1))
         from visualizer.export_gpu_tier import resolve_pipeline_export_workers
 
-        worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
+        worker_limit = resolve_pipeline_export_workers(
+            workers_raw,
+            default=1,
+            speed_mode=self._request.speed_mode,
+            width=int(scene.output.width),
+            height=int(scene.output.height),
+        )
         export_gate.set_limit(worker_limit)
 
         last_fail_message = ""
@@ -131,7 +139,23 @@ class VideoManualExportWorker(QThread):
                     log_error(detail, category="export")
                 self.failed.emit(self._short_fail_message(detail))
                 return
-            self.succeeded.emit(output_path)
+            resolved = resolve_written_export_path(
+                preferred_path=output_path,
+                output_dir=output_dir,
+                audio_path=audio_path,
+                ffmpeg_path=ffmpeg_path,
+                require_media=True,
+            )
+            if not resolved:
+                detail = (
+                    f"Video export did not produce a usable MP4 for {Path(audio_path).name}."
+                )
+                from shared.services.app_logger import log_error
+
+                log_error(detail, category="export")
+                self.failed.emit(detail)
+                return
+            self.succeeded.emit(resolved)
         except Exception as exc:
             self.failed.emit(str(exc) or "Unable to export video.")
         finally:

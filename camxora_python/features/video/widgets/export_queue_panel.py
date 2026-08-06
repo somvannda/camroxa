@@ -5,8 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal
+from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -21,16 +21,130 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSpinBox,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
 
 from shared.models.desktop import VideoExportState, VideoWorkspaceState
+from shared.lib.export_bitrate import format_bitrate_mbps, recommended_export_bitrate_kbps
+from shared.lib.output_resolutions import OUTPUT_RESOLUTION_OPTIONS, OUTPUT_RESOLUTION_VALUES
 from shared.themes.deep_blue import (
     SETTINGS_SECONDARY_BUTTON_ID,
     START_BUTTON_ID,
     SUBTITLE_LABEL_ID,
 )
+from shared.widgets.window_title_bar import _load_icon_pixmap
+
+
+class _TrackRemoveDelegate(QStyledItemDelegate):
+    """Paint chrome close × on the right; keep theme blue selection (no red focus)."""
+
+    _HIT = 22
+    _ICON = 11
+    _RIGHT_INSET = 10  # keep × clear of the row edge / selection frame
+
+    def __init__(self, panel: "ExportQueuePanel") -> None:
+        super().__init__(panel)
+        self._panel = panel
+        self._hover_row = -1
+        self._hover_pos = QPoint(-1, -1)
+
+    def set_hover(self, row: int, pos: QPoint) -> None:
+        self._hover_row = int(row)
+        self._hover_pos = QPoint(pos)
+
+    def _remove_rect(self, item_rect: QRect) -> QRect:
+        side = self._HIT
+        return QRect(
+            item_rect.right() - side - self._RIGHT_INSET,
+            item_rect.center().y() - side // 2,
+            side,
+            side,
+        )
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:  # noqa: N802
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        # Custom paint can fall back to the system highlight (often red on Windows).
+        # Force Video-theme selection colors and drop the focus outline.
+        opt.state &= ~QStyle.StateFlag.State_HasFocus
+        opt.palette.setColor(QPalette.ColorRole.Highlight, QColor("#1a3a5c"))
+        opt.palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#4ac0ff"))
+        # Full-row selection/hover via theme; elide text so it doesn't run under ×.
+        avail = max(0, opt.rect.width() - self._HIT - self._RIGHT_INSET - 12)
+        opt.text = opt.fontMetrics.elidedText(str(opt.text or ""), Qt.TextElideMode.ElideRight, avail)
+        widget = opt.widget
+        if widget is not None:
+            style = widget.style()
+        else:
+            from PySide6.QtWidgets import QApplication
+
+            style = QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+
+        remove_rect = self._remove_rect(opt.rect)
+        enabled = not bool(getattr(self._panel, "_export_running", False))
+        hovered = (
+            enabled
+            and index.row() == self._hover_row
+            and remove_rect.contains(self._hover_pos)
+        )
+        pressed = hovered and bool(
+            getattr(self._panel, "_track_remove_pressed_row", -1) == index.row()
+        )
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        background = QColor(0, 0, 0, 0)
+        if enabled and pressed:
+            background = QColor(244, 63, 94, 70)
+        elif enabled and hovered:
+            background = QColor(244, 63, 94, 51)
+        if background.alpha() > 0:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(background)
+            painter.drawRoundedRect(remove_rect.adjusted(0, 0, -1, -1), 4, 4)
+
+        icon_color = "#cbd5e1"
+        if not enabled:
+            icon_color = "#64748b"
+        elif hovered:
+            icon_color = "#fecdd3"
+        icon = _load_icon_pixmap("window-close.svg", size=self._ICON, color=icon_color)
+        x = remove_rect.x() + (remove_rect.width() - icon.width()) // 2
+        y = remove_rect.y() + (remove_rect.height() - icon.height()) // 2
+        painter.drawPixmap(x, y, icon)
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index) -> bool:  # noqa: N802
+        if getattr(self._panel, "_export_running", False):
+            return super().editorEvent(event, model, option, index)
+        remove_rect = self._remove_rect(option.rect)
+        etype = event.type()
+        if etype == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
+            if event.button() == Qt.MouseButton.LeftButton and remove_rect.contains(event.position().toPoint()):
+                self._panel._track_remove_pressed_row = index.row()
+                if option.widget is not None:
+                    option.widget.update(option.rect)
+                return True
+        if etype == QEvent.Type.MouseButtonRelease and isinstance(event, QMouseEvent):
+            pressed_row = int(getattr(self._panel, "_track_remove_pressed_row", -1))
+            self._panel._track_remove_pressed_row = -1
+            if (
+                event.button() == Qt.MouseButton.LeftButton
+                and pressed_row == index.row()
+                and remove_rect.contains(event.position().toPoint())
+            ):
+                path = str(index.data(Qt.ItemDataRole.UserRole) or "").strip()
+                if path:
+                    self._panel._remove_track_paths([path])
+                return True
+            if option.widget is not None:
+                option.widget.update(option.rect)
+        return super().editorEvent(event, model, option, index)
 
 
 class ExportQueuePanel(QWidget):
@@ -49,7 +163,7 @@ class ExportQueuePanel(QWidget):
     auto_merge_toggled = Signal(bool)
     shuffle_merge_toggled = Signal(bool)
     speed_mode_changed = Signal(str)
-    export_tier_changed = Signal(str)
+    export_resolution_changed = Signal(str)
     fps_changed = Signal(int)
     workers_changed = Signal(int)
 
@@ -59,6 +173,7 @@ class ExportQueuePanel(QWidget):
         self._binding_options = False
         self._track_paths: list[str] = []
         self._export_running = False
+        self._track_remove_pressed_row = -1
         # Manual double-click detection: InternalMove drag often swallows
         # Qt's MouseButtonDblClick on Windows.
         self._track_press_path = ""
@@ -82,17 +197,24 @@ class ExportQueuePanel(QWidget):
         track_title = QLabel("TRACK LIST")
         track_title.setObjectName(SUBTITLE_LABEL_ID)
         track_layout.addWidget(track_title)
-        # QListWidget like python_app: left-aligned rows, drag to reorder.
+        # Plain QListWidget items keep theme selection; delegate paints chrome ×.
         # InternalMove can swallow double-clicks on Windows — also catch
         # MouseButtonDblClick on the viewport and itemActivated.
         self._track_list = QListWidget()
+        self._track_list.setObjectName("video_export_track_list")
         self._track_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-        self._track_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._track_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._track_list.setDefaultDropAction(Qt.DropAction.MoveAction)
         self._track_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._track_list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._track_list.setMouseTracking(True)
+        self._track_list.viewport().setMouseTracking(True)
+        self._track_remove_delegate = _TrackRemoveDelegate(self)
+        self._track_list.setItemDelegate(self._track_remove_delegate)
         self._track_list.currentRowChanged.connect(self._on_track_row_changed)
         self._track_list.itemDoubleClicked.connect(self._on_track_double_clicked)
         self._track_list.itemActivated.connect(self._on_track_double_clicked)
+        self._track_list.installEventFilter(self)
         self._track_list.viewport().installEventFilter(self)
         self._track_list.model().rowsMoved.connect(self._on_track_rows_moved)
         track_layout.addWidget(self._track_list, 1)
@@ -177,22 +299,22 @@ class ExportQueuePanel(QWidget):
         fields_grid.setColumnStretch(1, 1)
         fields_grid.setColumnStretch(3, 1)
 
-        self._tier_combo = QComboBox()
-        self._tier_combo.addItem("Draft (720p)", "draft")
-        self._tier_combo.addItem("Standard (1080p)", "standard")
-        self._tier_combo.addItem("Master (custom)", "master")
-        self._tier_combo.setToolTip(
-            "Draft is fastest for pipeline-style batch exports.\n"
-            "Standard uses Preferences resolution plus your FPS and speed.\n"
-            "Draft is fixed 720p / 24 FPS / Very Fast.\n"
-            "Master uses Preferences resolution plus your FPS and speed."
+        self._resolution_combo = QComboBox()
+        for value, label in OUTPUT_RESOLUTION_OPTIONS:
+            self._resolution_combo.addItem(label, value)
+        self._resolution_combo.setToolTip(
+            "Export resolution — same list as the preview Output resolution.\n"
+            "Use one resolution for the whole batch so Auto merge can join losslessly."
         )
-        self._tier_combo.currentIndexChanged.connect(self._on_tier_changed)
+        self._resolution_combo.currentIndexChanged.connect(self._on_resolution_changed)
 
         self._speed_combo = QComboBox()
+        self._speed_combo.addItem("Best Quality", "best_quality")
+        self._speed_combo.addItem("Quality", "quality")
+        self._speed_combo.addItem("Balance", "balanced")
         self._speed_combo.addItem("Fast", "fast")
-        self._speed_combo.addItem("Balanced", "balanced")
         self._speed_combo.addItem("Very Fast", "very_fast")
+        self._refresh_speed_tooltip()
         self._speed_combo.currentIndexChanged.connect(self._on_speed_changed)
 
         self._fps_combo = QComboBox()
@@ -200,16 +322,21 @@ class ExportQueuePanel(QWidget):
             self._fps_combo.addItem(f"{fps_value} FPS", fps_value)
         self._fps_combo.setToolTip(
             "Export frame rate. Higher = smoother motion (closer to preview), slower encode.\n"
-            "Default 24 is fastest."
+            "Default 24 is fastest. Recommended bitrate scales with FPS."
         )
         self._fps_combo.currentIndexChanged.connect(self._on_fps_changed)
+        self._refresh_speed_tooltip()
 
         self._workers_spin = QSpinBox()
         self._workers_spin.setRange(1, 10)
+        self._workers_spin.setToolTip(
+            "Parallel export jobs. Quality / Best Quality always use 1 worker "
+            "(multi-worker freezes the GPU on QHD+)."
+        )
         self._workers_spin.valueChanged.connect(self._on_workers_changed)
 
-        # Row 1: Tier + Speed · Row 2: FPS + Workers
-        self._place_export_field(fields_grid, 0, 0, "Tier", self._tier_combo)
+        # Row 1: Resolution + Speed · Row 2: FPS + Workers
+        self._place_export_field(fields_grid, 0, 0, "Resolution", self._resolution_combo)
         self._place_export_field(fields_grid, 0, 2, "Speed", self._speed_combo)
         self._place_export_field(fields_grid, 1, 0, "FPS", self._fps_combo)
         self._place_export_field(fields_grid, 1, 2, "Workers", self._workers_spin)
@@ -235,9 +362,10 @@ class ExportQueuePanel(QWidget):
         self._progress.setFixedHeight(18)
         status_layout.addWidget(self._progress)
         self._merge_progress = QProgressBar()
-        self._merge_progress.setRange(0, 0)  # busy indicator while merging
+        self._merge_progress.setRange(0, 100)
+        self._merge_progress.setValue(0)
         self._merge_progress.setTextVisible(True)
-        self._merge_progress.setFormat("Merging…")
+        self._merge_progress.setFormat("Merge: 0%")
         self._merge_progress.setFixedHeight(18)
         self._merge_progress.hide()
         status_layout.addWidget(self._merge_progress)
@@ -265,7 +393,7 @@ class ExportQueuePanel(QWidget):
         right_column.addWidget(status_card, 0)
 
     _EXPORT_FIELD_HEIGHT = 24
-    _EXPORT_LABEL_WIDTH = 52
+    _EXPORT_LABEL_WIDTH = 72
     _EXPORT_CONTROL_MIN_WIDTH = 100
 
     def _place_export_field(
@@ -293,6 +421,31 @@ class ExportQueuePanel(QWidget):
         grid.addWidget(label, row, col, Qt.AlignmentFlag.AlignVCenter)
         grid.addWidget(control, row, col + 1, Qt.AlignmentFlag.AlignVCenter)
 
+    def _parse_resolution_wh(self) -> tuple[int, int]:
+        raw = str(self._resolution_combo.currentData() or "1920x1080").strip().lower()
+        try:
+            w_s, h_s = raw.split("x", 1)
+            return max(16, int(w_s)), max(16, int(h_s))
+        except Exception:
+            return 1920, 1080
+
+    def _refresh_speed_tooltip(self) -> None:
+        width, height = self._parse_resolution_wh()
+        fps = int(self._fps_combo.currentData() or 24) if hasattr(self, "_fps_combo") else 24
+        speed = str(self._speed_combo.currentData() or "fast")
+        kbps = recommended_export_bitrate_kbps(width, height, fps, speed)
+        mbps = format_bitrate_mbps(kbps)
+        self._speed_combo.setToolTip(
+            "Encode uses CapCut-inspired Recommended bitrate "
+            f"(currently ~{mbps} for {width}×{height} @ {fps}fps · {speed}).\n"
+            "Scales with Resolution, FPS, and Speed.\n\n"
+            "Best Quality — highest fidelity (full-color pipe + glow; higher Mbps).\n"
+            "Quality — preview-parity (full color + spectrum glow).\n"
+            "Balance — default throughput.\n"
+            "Fast — quicker encode, softer spectrum/color.\n"
+            "Very Fast — draft-speed encode."
+        )
+
     def _on_auto_merge_toggled(self, checked: bool) -> None:
         if not self._binding_options:
             self.auto_merge_toggled.emit(bool(checked))
@@ -301,19 +454,39 @@ class ExportQueuePanel(QWidget):
         if not self._binding_options:
             self.shuffle_merge_toggled.emit(bool(checked))
 
-    def _on_tier_changed(self, _index: int) -> None:
+    def _on_resolution_changed(self, _index: int) -> None:
+        self._refresh_speed_tooltip()
         if self._binding_options:
             return
-        tier = str(self._tier_combo.currentData() or "standard")
-        self.export_tier_changed.emit(tier)
+        resolution = str(self._resolution_combo.currentData() or "").strip()
+        if resolution:
+            self.export_resolution_changed.emit(resolution)
 
     def _on_speed_changed(self, _index: int) -> None:
+        self._clamp_workers_for_speed()
+        self._refresh_speed_tooltip()
         if self._binding_options:
             return
         mode = str(self._speed_combo.currentData() or "fast")
         self.speed_mode_changed.emit(mode)
 
+    def _clamp_workers_for_speed(self) -> None:
+        mode = str(self._speed_combo.currentData() or "fast")
+        if mode not in {"best_quality", "quality"}:
+            return
+        if int(self._workers_spin.value()) <= 1:
+            return
+        was_binding = self._binding_options
+        self._binding_options = True
+        try:
+            self._workers_spin.setValue(1)
+        finally:
+            self._binding_options = was_binding
+        if not was_binding:
+            self.workers_changed.emit(1)
+
     def _on_fps_changed(self, _index: int) -> None:
+        self._refresh_speed_tooltip()
         if self._binding_options:
             return
         fps = int(self._fps_combo.currentData() or 24)
@@ -348,12 +521,33 @@ class ExportQueuePanel(QWidget):
         self.mp3_play_requested.emit(path)
 
     def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        if watched is self._track_list and event is not None and not self._binding_tracks:
+            if event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
+                if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+                    if not self._export_running and self._track_list.selectedItems():
+                        self._remove_selected_tracks()
+                        return True
         if watched is self._track_list.viewport() and event is not None and not self._binding_tracks:
             etype = event.type()
-            if etype == QEvent.Type.MouseButtonDblClick and isinstance(event, QMouseEvent):
+            if etype in (QEvent.Type.MouseMove, QEvent.Type.HoverMove) and isinstance(event, QMouseEvent):
+                pos = event.position().toPoint()
+                item = self._track_list.itemAt(pos)
+                row = self._track_list.row(item) if item is not None else -1
+                self._track_remove_delegate.set_hover(row, pos)
+                self._track_list.viewport().update()
+            elif etype == QEvent.Type.Leave:
+                self._track_remove_delegate.set_hover(-1, QPoint(-1, -1))
+                self._track_remove_pressed_row = -1
+                self._track_list.viewport().update()
+            elif etype == QEvent.Type.MouseButtonDblClick and isinstance(event, QMouseEvent):
                 if event.button() == Qt.MouseButton.LeftButton:
                     item = self._track_list.itemAt(event.position().toPoint())
                     if item is not None:
+                        # Ignore double-clicks on the × hit zone.
+                        row = self._track_list.row(item)
+                        rect = self._track_list.visualItemRect(item)
+                        if self._track_remove_delegate._remove_rect(rect).contains(event.position().toPoint()):
+                            return True
                         self._on_track_double_clicked(item)
                         return True
             elif etype == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
@@ -361,6 +555,10 @@ class ExportQueuePanel(QWidget):
                 # Treat two quick presses on the same row as play.
                 if event.button() == Qt.MouseButton.LeftButton:
                     item = self._track_list.itemAt(event.position().toPoint())
+                    if item is not None:
+                        rect = self._track_list.visualItemRect(item)
+                        if self._track_remove_delegate._remove_rect(rect).contains(event.position().toPoint()):
+                            return False  # let delegate handle remove press
                     path = str(item.data(Qt.ItemDataRole.UserRole) or "").strip() if item else ""
                     now = time.monotonic()
                     if (
@@ -373,6 +571,47 @@ class ExportQueuePanel(QWidget):
                     self._track_press_path = path
                     self._track_press_at = now
         return super().eventFilter(watched, event)
+
+    def _add_track_list_item(self, name: str, path: str) -> None:
+        item = QListWidgetItem(name)
+        item.setData(Qt.ItemDataRole.UserRole, path)
+        item.setToolTip(
+            f"{name}\nClick × to remove from this list (file stays on disk)."
+        )
+        self._track_list.addItem(item)
+
+    def _remove_track_paths(self, paths: list[str]) -> None:
+        if self._binding_tracks or self._export_running:
+            return
+        remove_paths = {str(path).strip() for path in paths if str(path).strip()}
+        if not remove_paths:
+            return
+        remaining = [path for path in self._track_paths if path not in remove_paths]
+        self._track_paths = remaining
+        self._binding_tracks = True
+        try:
+            for index in range(self._track_list.count() - 1, -1, -1):
+                item = self._track_list.item(index)
+                path = str(item.data(Qt.ItemDataRole.UserRole) or "").strip() if item else ""
+                if path in remove_paths:
+                    self._track_list.takeItem(index)
+        finally:
+            self._binding_tracks = False
+        self._empty_tracks.setVisible(not remaining)
+        self.track_order_changed.emit(remaining)
+
+    def _remove_selected_tracks(self) -> None:
+        if self._binding_tracks or self._export_running:
+            return
+        selected = self._track_list.selectedItems()
+        if not selected:
+            return
+        remove_paths = [
+            str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+            for item in selected
+            if str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+        ]
+        self._remove_track_paths(remove_paths)
 
     def _on_track_rows_moved(self, *_args) -> None:
         if self._binding_tracks:
@@ -399,7 +638,7 @@ class ExportQueuePanel(QWidget):
         busy: bool = False,
         stop_export_pending: bool = False,
         speed_mode: str = "fast",
-        export_tier: str = "standard",
+        output_resolution: str = "1920x1080",
     ) -> None:
         selected_mp3 = ""
         export = VideoExportState()
@@ -419,9 +658,7 @@ class ExportQueuePanel(QWidget):
                 self._track_list.clear()
                 if workspace is not None:
                     for item in workspace.mp3_list:
-                        row = QListWidgetItem(item.name)
-                        row.setData(Qt.ItemDataRole.UserRole, item.path)
-                        self._track_list.addItem(row)
+                        self._add_track_list_item(item.name, item.path)
                 self._track_paths = paths
             selected_row = paths.index(selected_mp3) if selected_mp3 in paths else -1
             if self._track_list.currentRow() != selected_row:
@@ -432,6 +669,7 @@ class ExportQueuePanel(QWidget):
         running = bool(export.running)
         merging = bool(export.merge_running)
         self._export_running = running
+        self._track_list.viewport().update()
         has_output_file = bool(str(export.current_output_path or export.last_output_path or "").strip())
         has_output_folder = bool(str(export.output_dir or "").strip() or has_output_file)
 
@@ -455,21 +693,27 @@ class ExportQueuePanel(QWidget):
         try:
             self._auto_merge_toggle.setChecked(bool(export.auto_merge))
             self._shuffle_merge_toggle.setChecked(bool(export.shuffle_merge))
-            tier_index = self._tier_combo.findData(str(export_tier or "standard"))
-            self._tier_combo.setCurrentIndex(tier_index if tier_index >= 0 else 1)
+            resolution = str(output_resolution or "1920x1080").strip() or "1920x1080"
+            resolution_index = self._resolution_combo.findData(resolution)
+            if resolution_index < 0 and resolution not in OUTPUT_RESOLUTION_VALUES:
+                self._resolution_combo.addItem(resolution, resolution)
+                resolution_index = self._resolution_combo.findData(resolution)
+            self._resolution_combo.setCurrentIndex(resolution_index if resolution_index >= 0 else 2)
             speed_index = self._speed_combo.findData(str(speed_mode or "fast"))
             self._speed_combo.setCurrentIndex(speed_index if speed_index >= 0 else 0)
             fps_index = self._fps_combo.findData(int(export.fps or 24))
             self._fps_combo.setCurrentIndex(fps_index if fps_index >= 0 else 0)
             self._workers_spin.setValue(max(1, min(10, int(export.workers or 1))))
+            self._clamp_workers_for_speed()
             self._auto_merge_toggle.setEnabled(not running)
             self._shuffle_merge_toggle.setEnabled(not running)
-            self._tier_combo.setEnabled(not running)
+            self._resolution_combo.setEnabled(not running)
             self._speed_combo.setEnabled(not running)
             self._fps_combo.setEnabled(not running)
             self._workers_spin.setEnabled(not running)
         finally:
             self._binding_options = False
+        self._refresh_speed_tooltip()
 
         completed = max(0, int(export.completed_jobs))
         total = max(0, int(export.total_jobs))
@@ -479,6 +723,15 @@ class ExportQueuePanel(QWidget):
         percent = max(0, min(100, int(percent or 0)))
         self._progress.setValue(percent)
         self._progress.setFormat(f"Overall: {percent}% · {completed}/{max(total, 1)} track(s)")
+        merge_percent = 0
+        if merging:
+            try:
+                merge_percent = max(0, min(100, int(export.merge_progress_percent or 0)))
+            except (TypeError, ValueError):
+                merge_percent = 0
+        self._merge_progress.setRange(0, 100)
+        self._merge_progress.setValue(merge_percent)
+        self._merge_progress.setFormat(f"Merge: {merge_percent}%")
         self._merge_progress.setVisible(merging)
         self._stop_merge_btn.setVisible(merging and not stop_export_pending)
 

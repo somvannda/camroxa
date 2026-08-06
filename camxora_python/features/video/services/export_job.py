@@ -174,6 +174,9 @@ class ExportJob:
                 "--height",
                 str(int(self.settings.height)),
             ]
+        explicit_out = str(self.settings.output_path or "").strip()
+        if explicit_out:
+            cmd.extend(["--output", explicit_out])
         env = os.environ.copy()
         existing_pythonpath = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = (

@@ -16,6 +16,10 @@ def test_normalize_export_speed_mode_defaults_to_fast() -> None:
     assert normalize_export_speed_mode("") == "fast"
     assert normalize_export_speed_mode("fast") == "fast"
     assert normalize_export_speed_mode("very_fast") == "very_fast"
+    assert normalize_export_speed_mode("quality") == "quality"
+    assert normalize_export_speed_mode("best_quality") == "best_quality"
+    assert normalize_export_speed_mode("master") == "best_quality"
+    assert normalize_export_speed_mode("best") == "best_quality"
     assert normalize_export_speed_mode("invalid") == "fast"
 
 
