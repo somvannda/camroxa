@@ -485,6 +485,34 @@ class BatchRepository:
             str(alt_run_dir or "").strip() or None,
         )
 
+    async def claim_batch_run_directories(
+        self,
+        batch_id: UUID,
+        *,
+        ok_run_dir: str | None,
+        alt_run_dir: str | None,
+    ) -> tuple[str | None, str | None]:
+        """First writer wins for run dirs; later drafts keep the locked paths."""
+        row = await self._pool.fetchrow(
+            """
+            UPDATE batches
+            SET ok_run_dir = COALESCE(ok_run_dir, $2),
+                alt_run_dir = COALESCE(alt_run_dir, $3),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING ok_run_dir, alt_run_dir
+            """,
+            batch_id,
+            str(ok_run_dir or "").strip() or None,
+            str(alt_run_dir or "").strip() or None,
+        )
+        if row is None:
+            return None, None
+        return (
+            str(row["ok_run_dir"] or "").strip() or None,
+            str(row["alt_run_dir"] or "").strip() or None,
+        )
+
     async def update_batch_channel_albums(
         self,
         batch_id: UUID,
@@ -510,6 +538,43 @@ class BatchRepository:
                 logger.warning("Skipping batch channel album update because columns are missing.")
                 return
             raise
+
+    async def claim_batch_channel_albums(
+        self,
+        batch_id: UUID,
+        *,
+        ok_album: str | None,
+        alt_album: str | None,
+    ) -> tuple[str | None, str | None]:
+        """First writer wins for Album 1 / Album 2; parallel drafts cannot overwrite."""
+        try:
+            row = await self._pool.fetchrow(
+                """
+                UPDATE batches
+                SET ok_album = COALESCE(ok_album, $2),
+                    alt_album = COALESCE(alt_album, $3),
+                    updated_at = NOW()
+                WHERE id = $1
+                RETURNING ok_album, alt_album
+                """,
+                batch_id,
+                str(ok_album or "").strip() or None,
+                str(alt_album or "").strip() or None,
+            )
+        except Exception as error:
+            if "ok_album" in str(error).lower() or "alt_album" in str(error).lower():
+                logger.warning("Skipping batch channel album claim because columns are missing.")
+                return (
+                    str(ok_album or "").strip() or None,
+                    str(alt_album or "").strip() or None,
+                )
+            raise
+        if row is None:
+            return None, None
+        return (
+            str(row["ok_album"] or "").strip() or None,
+            str(row["alt_album"] or "").strip() or None,
+        )
 
     # ------------------------------------------------------------------
     # Song Record Management
@@ -926,11 +991,11 @@ class BatchRepository:
             """
             UPDATE suno_tasks
             SET status = $2,
-                audio_url_ok = COALESCE($3, audio_url_ok),
-                audio_url_alt = COALESCE($4, audio_url_alt),
+                audio_url_ok = COALESCE(NULLIF(BTRIM($3), ''), audio_url_ok),
+                audio_url_alt = COALESCE(NULLIF(BTRIM($4), ''), audio_url_alt),
                 error_message = COALESCE($5, error_message),
-                audio_id_ok = COALESCE($6, audio_id_ok),
-                audio_id_alt = COALESCE($7, audio_id_alt),
+                audio_id_ok = COALESCE(NULLIF(BTRIM($6), ''), audio_id_ok),
+                audio_id_alt = COALESCE(NULLIF(BTRIM($7), ''), audio_id_alt),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -959,6 +1024,8 @@ class BatchRepository:
                 st.title,
                 st.audio_url_ok,
                 st.audio_url_alt,
+                st.audio_id_ok,
+                st.audio_id_alt,
                 st.output_dir_ok,
                 st.output_dir_alt,
                 st.downloaded_ok,
@@ -984,12 +1051,20 @@ class BatchRepository:
               AND st.status = $2
               AND (
                 (
-                  st.audio_url_ok IS NOT NULL AND COALESCE(st.downloaded_ok, false) = false
+                  (
+                    st.audio_url_ok IS NOT NULL
+                    OR COALESCE(NULLIF(BTRIM(st.audio_id_ok), ''), NULL) IS NOT NULL
+                  )
+                  AND COALESCE(st.downloaded_ok, false) = false
                   AND COALESCE(bca_ok.pipeline_complete, false) = false
                 )
                 OR
                 (
-                  st.audio_url_alt IS NOT NULL AND COALESCE(st.downloaded_alt, false) = false
+                  (
+                    st.audio_url_alt IS NOT NULL
+                    OR COALESCE(NULLIF(BTRIM(st.audio_id_alt), ''), NULL) IS NOT NULL
+                  )
+                  AND COALESCE(st.downloaded_alt, false) = false
                   AND COALESCE(bca_alt.pipeline_complete, false) = false
                 )
               )
@@ -1124,6 +1199,8 @@ class BatchRepository:
                 st.title,
                 st.audio_url_ok,
                 st.audio_url_alt,
+                st.audio_id_ok,
+                st.audio_id_alt,
                 s.batch_index
             FROM suno_tasks st
             LEFT JOIN songs s ON s.id = st.song_id
@@ -1147,7 +1224,8 @@ class BatchRepository:
         """Return Suno tasks that need API polling (pending or success without URLs)."""
         rows = await self._pool.fetch(
             """
-            SELECT id, user_id, song_id, batch_id, external_task_id, status
+            SELECT id, user_id, song_id, batch_id, external_task_id, status,
+                   audio_url_ok, audio_url_alt, audio_id_ok, audio_id_alt
             FROM suno_tasks
             WHERE user_id = $1
               AND external_task_id IS NOT NULL
@@ -1156,8 +1234,20 @@ class BatchRepository:
                 status = $2
                 OR (
                   status = $3
-                  AND COALESCE(NULLIF(BTRIM(audio_url_ok), ''), NULL) IS NULL
-                  AND COALESCE(NULLIF(BTRIM(audio_url_alt), ''), NULL) IS NULL
+                  AND (
+                    (
+                      COALESCE(NULLIF(BTRIM(audio_url_ok), ''), NULL) IS NULL
+                      AND COALESCE(NULLIF(BTRIM(audio_url_alt), ''), NULL) IS NULL
+                    )
+                    OR (
+                      COALESCE(NULLIF(BTRIM(audio_url_ok), ''), NULL) IS NULL
+                      AND COALESCE(NULLIF(BTRIM(audio_id_ok), ''), NULL) IS NOT NULL
+                    )
+                    OR (
+                      COALESCE(NULLIF(BTRIM(audio_url_alt), ''), NULL) IS NULL
+                      AND COALESCE(NULLIF(BTRIM(audio_id_alt), ''), NULL) IS NOT NULL
+                    )
+                  )
                 )
               )
             ORDER BY created_at ASC

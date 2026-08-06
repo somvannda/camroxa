@@ -109,6 +109,7 @@ class OperationalRowsCard(QFrame):
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
     change_run_folder_requested = Signal(object)
+    download_missing_mp3s_requested = Signal(object)
     cancel_job_requested = Signal(object)
     stop_exporting_requested = Signal(object)
     continue_progress_requested = Signal(object)
@@ -347,16 +348,27 @@ class OperationalRowsCard(QFrame):
         return False
 
     @staticmethod
+    def _is_pipeline_finished(entry: EffectiveProgressRow) -> bool:
+        """Done / Completed / YouTube rows are archival — no Continue/Stop/export."""
+        stage = entry.effective_stage.strip().lower()
+        return stage in {"done", "completed", "youtube"}
+
+    @staticmethod
     def _can_start_video_export(entry: EffectiveProgressRow) -> bool:
+        """Force Regenerate / Rebuild — allowed even on finished rows (explicit re-run)."""
         meta = entry.row.meta
         if not str(meta.run_dir or "").strip():
             return False
-        if entry.effective_stage.strip().lower() in {"youtube", "done", "error"}:
+        if entry.effective_stage.strip().lower() == "error":
             return False
+        if OperationalRowsCard._is_pipeline_finished(entry):
+            return True
         return bool(meta.long_ready or meta.reel_ready)
 
     @staticmethod
     def _can_show_start_export(entry: EffectiveProgressRow) -> bool:
+        if OperationalRowsCard._is_pipeline_finished(entry):
+            return False
         stage = entry.effective_stage.strip().lower()
         if stage not in {"export", "converter"}:
             return False
@@ -373,8 +385,10 @@ class OperationalRowsCard(QFrame):
         meta = entry.row.meta
         if not str(meta.run_dir or "").strip():
             return False
+        if OperationalRowsCard._is_pipeline_finished(entry):
+            return False
         stage = entry.effective_stage.strip().lower()
-        if stage in {"youtube", "done", "error"}:
+        if stage == "error":
             return False
         export_text = str(entry.effective_converter or entry.row.converter or "").lower()
         if "long " in export_text or "reel " in export_text or "merged" in export_text or "completed" in export_text:
@@ -436,41 +450,42 @@ class OperationalRowsCard(QFrame):
         menu = QMenu(self)
         meta = entry.row.meta
         recovery_added = False
+        finished = self._is_pipeline_finished(entry)
 
-        # Hard stop: cancel live work and keep auto-video / helper agents paused
-        # until the user explicitly Start Export / Continue / Merge on a row.
-        stop_action = menu.addAction("Stop Exporting")
-        stop_action.triggered.connect(partial(self.stop_exporting_requested.emit, entry.row))
+        if not finished:
+            # Hard stop: cancel live work and keep auto-video / helper agents paused
+            # until the user explicitly Start Export / Continue / Merge on a row.
+            stop_action = menu.addAction("Stop Exporting")
+            stop_action.triggered.connect(partial(self.stop_exporting_requested.emit, entry.row))
 
-        # Soft cancel only (auto may resume later unless Stop Exporting was used).
-        cancel_action = menu.addAction("Cancel Active Export/Merge")
-        cancel_action.triggered.connect(partial(self.cancel_job_requested.emit, entry.row))
+            # Soft cancel only (auto may resume later unless Stop Exporting was used).
+            cancel_action = menu.addAction("Cancel Active Export/Merge")
+            cancel_action.triggered.connect(partial(self.cancel_job_requested.emit, entry.row))
 
-        continue_action = menu.addAction("Continue Progress")
-        continue_action.triggered.connect(
-            partial(self.continue_progress_requested.emit, entry)
-        )
-        menu.addSeparator()
-
-        # Export recovery is available on any column — users often right-click the
-        # Stage/Music cells after Cancel and previously saw no Rebuild/Force options.
-        export_actions_added = False
-        if self._can_show_start_export(entry):
-            action = menu.addAction("Start Export")
-            action.triggered.connect(partial(self.start_export_requested.emit, entry.row))
-            export_actions_added = True
-        if self._can_start_video_export(entry):
-            action = menu.addAction("Force Regenerate MP4")
-            action.triggered.connect(partial(self.force_export_regenerate_requested.emit, entry.row))
-            action = menu.addAction("Rebuild MP4")
-            action.triggered.connect(partial(self.rebuild_export_requested.emit, entry.row))
-            export_actions_added = True
-        if export_actions_added:
+            continue_action = menu.addAction("Continue Progress")
+            continue_action.triggered.connect(
+                partial(self.continue_progress_requested.emit, entry)
+            )
             menu.addSeparator()
 
-        if self._can_start_video_merge(entry):
-            action = menu.addAction("Start Merging Video")
-            action.triggered.connect(partial(self.start_merge_requested.emit, entry.row))
+            if self._can_show_start_export(entry):
+                action = menu.addAction("Start Export")
+                action.triggered.connect(partial(self.start_export_requested.emit, entry.row))
+                menu.addSeparator()
+
+            if self._can_start_video_merge(entry):
+                action = menu.addAction("Start Merging Video")
+                action.triggered.connect(partial(self.start_merge_requested.emit, entry.row))
+                menu.addSeparator()
+
+        # Explicit rebuild — allowed on finished rows; Continue/Stop stay hidden above.
+        if self._can_start_video_export(entry):
+            action = menu.addAction("Force Regenerate MP4")
+            action.triggered.connect(
+                partial(self.force_export_regenerate_requested.emit, entry.row)
+            )
+            action = menu.addAction("Rebuild MP4")
+            action.triggered.connect(partial(self.rebuild_export_requested.emit, entry.row))
             menu.addSeparator()
 
         copy_action = menu.addAction("Copy Batch ID")
@@ -478,54 +493,70 @@ class OperationalRowsCard(QFrame):
         copy_action.triggered.connect(partial(self._copy_batch_id, meta.batch_id))
         menu.addSeparator()
 
-        draft_ids = list(meta.draft_failed_song_ids or [])
-        if draft_ids:
-            count = len(draft_ids)
-            suffix = "s" if count != 1 else ""
-            action = menu.addAction(f"Retry Failed Drafts ({count} song{suffix})")
-            action.triggered.connect(partial(self._emit_retry_drafts, meta.batch_id, draft_ids))
-            recovery_added = True
-
-        suno_ids = list(meta.suno_failed_song_ids or [])
-        if suno_ids:
-            count = len(suno_ids)
-            suffix = "s" if count != 1 else ""
-            action = menu.addAction(f"Retry Failed Suno ({count} song{suffix})")
-            action.triggered.connect(partial(self._emit_retry_suno, meta.batch_id, suno_ids))
-            recovery_added = True
-
-        if not self._manual_mode and self._can_retry_images(entry):
-            action = menu.addAction("Retry Images")
-            action.triggered.connect(partial(self._emit_retry_images, meta.batch_id))
-            recovery_added = True
-
-        if not self._manual_mode and int(meta.bg_total or 0) == 0 and int(meta.th_total or 0) == 0:
-            # First-fire image continue when music is done and no jobs exist yet.
-            music = str(entry.row.music or "").upper()
-            if "READY" in music or "SUCCESS" in music or "DONE" in music or "COMPLETE" in music:
-                action = menu.addAction("Image")
-                action.triggered.connect(partial(self._emit_enqueue_images, meta.batch_id))
+        if not finished:
+            draft_ids = list(meta.draft_failed_song_ids or [])
+            if draft_ids:
+                count = len(draft_ids)
+                suffix = "s" if count != 1 else ""
+                action = menu.addAction(f"Retry Failed Drafts ({count} song{suffix})")
+                action.triggered.connect(partial(self._emit_retry_drafts, meta.batch_id, draft_ids))
                 recovery_added = True
 
-        if self._manual_mode:
-            key = manual_inspection_key(meta.batch_id, meta.profile_id, meta.role)
-            inspection = self._inspections.get(key)
-            if (
-                inspection
-                and inspection.ready
-                and entry.effective_stage.lower() == "image"
-            ):
-                action = menu.addAction("Continue Pipeline")
-                action.triggered.connect(partial(self._emit_sync_manual, meta.batch_id))
+            suno_ids = list(meta.suno_failed_song_ids or [])
+            if suno_ids:
+                count = len(suno_ids)
+                suffix = "s" if count != 1 else ""
+                action = menu.addAction(f"Retry Failed Suno ({count} song{suffix})")
+                action.triggered.connect(partial(self._emit_retry_suno, meta.batch_id, suno_ids))
                 recovery_added = True
 
-        if recovery_added and (meta.run_dir or self._manual_mode):
-            menu.addSeparator()
+            if not self._manual_mode and self._can_retry_images(entry):
+                action = menu.addAction("Retry Images")
+                action.triggered.connect(partial(self._emit_retry_images, meta.batch_id))
+                recovery_added = True
+
+            if not self._manual_mode and int(meta.bg_total or 0) == 0 and int(meta.th_total or 0) == 0:
+                # First-fire image continue when music is done and no jobs exist yet.
+                music = str(entry.row.music or "").upper()
+                if "READY" in music or "SUCCESS" in music or "DONE" in music or "COMPLETE" in music:
+                    action = menu.addAction("Image")
+                    action.triggered.connect(partial(self._emit_enqueue_images, meta.batch_id))
+                    recovery_added = True
+
+            if self._manual_mode:
+                key = manual_inspection_key(meta.batch_id, meta.profile_id, meta.role)
+                inspection = self._inspections.get(key)
+                if (
+                    inspection
+                    and inspection.ready
+                    and entry.effective_stage.lower() == "image"
+                ):
+                    action = menu.addAction("Continue Pipeline")
+                    action.triggered.connect(partial(self._emit_sync_manual, meta.batch_id))
+                    recovery_added = True
+
+            if recovery_added and (meta.run_dir or self._manual_mode):
+                menu.addSeparator()
 
         if meta.run_dir:
             run_dir = meta.run_dir
             action = menu.addAction("Open Run Folder")
             action.triggered.connect(partial(self._emit_open_run_folder, run_dir))
+
+            from shared.lib.missing_mp3 import count_missing_role_mp3s
+
+            missing_n = count_missing_role_mp3s(entry.row)
+            if missing_n > 0:
+                suffix = "s" if missing_n != 1 else ""
+                action = menu.addAction(f"Download missing MP3{suffix} ({missing_n})")
+                action.setToolTip(
+                    "Download only the missing track(s) for this channel from Suno "
+                    "(or Backblaze fallback) into this PC's run folder — without "
+                    "re-drafting or re-requesting Suno generation."
+                )
+                action.triggered.connect(
+                    partial(self.download_missing_mp3s_requested.emit, entry.row)
+                )
 
             action = menu.addAction("Change Run Folder && Resume…")
             action.setToolTip(

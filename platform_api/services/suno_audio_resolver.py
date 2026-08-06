@@ -13,6 +13,8 @@ from platform_api.clients.suno_client import (
     SunoGeneratePollResult,
     _extract_clip_download_url,
     _iter_generate_clips,
+    cdn_url_for_suno_audio_id,
+    coerce_suno_download_url,
     parse_suno_generate_poll,
 )
 from platform_api.services.storage_service import StorageServiceError
@@ -326,7 +328,10 @@ async def _download_once(url: str) -> bytes:
 
 def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownloadUrls:
     """Parse sunoapi.org callback payloads with nested clip arrays."""
-    from platform_api.clients.suno_client import _extract_clip_audio_id
+    from platform_api.clients.suno_client import (
+        _extract_clip_audio_id,
+        cdn_url_for_suno_audio_id,
+    )
 
     data_block = raw_payload.get("data")
     clips: list[dict[str, Any]] = []
@@ -340,11 +345,14 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
     download_urls: list[str] = []
     audio_ids: list[str] = []
     for clip in clips:
-        url = _extract_clip_download_url(clip)
+        audio_id = _extract_clip_audio_id(clip)
+        url = _extract_clip_download_url(clip) or cdn_url_for_suno_audio_id(audio_id)
+        if not url and not audio_id:
+            continue
         if not url:
             continue
         download_urls.append(url)
-        audio_ids.append(_extract_clip_audio_id(clip))
+        audio_ids.append(audio_id)
     if not download_urls:
         return SunoTaskDownloadUrls()
 
@@ -395,6 +403,8 @@ __all__ = [
     "SunoTaskDownloadUrls",
     "build_download_url_candidates",
     "callback_indicates_success",
+    "cdn_url_for_suno_audio_id",
+    "coerce_suno_download_url",
     "download_suno_mp3_bytes",
     "extract_callback_download_urls",
     "extract_callback_task_id",

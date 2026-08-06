@@ -362,3 +362,22 @@ def test_flush_pending_auto_continue_noop_when_row_not_found(qapp: QApplication)
 
     assert view._pending_auto_continue_key is None
     view._continue_progress.assert_not_called()
+
+
+def test_finished_rows_allow_explicit_rebuild_not_continue_export() -> None:
+    row = _sample_row()
+    row.stage = "Done"
+    row.meta.run_dir = r"C:\Media\Suno\channel\2026-07-07_Album"
+    row.meta.long_ready = True
+    entry = EffectiveProgressRow(
+        row=row,
+        effective_status="Done",
+        effective_converter="Completed",
+        effective_merge="Completed",
+        effective_stage="Done",
+        effective_notes="",
+    )
+    assert OperationalRowsCard._is_pipeline_finished(entry) is True
+    assert OperationalRowsCard._can_show_start_export(entry) is False
+    assert OperationalRowsCard._can_start_video_merge(entry) is False
+    assert OperationalRowsCard._can_start_video_export(entry) is True

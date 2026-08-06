@@ -24,6 +24,17 @@ def test_join_client_output_path_preserves_windows_path() -> None:
     assert joined == r"C:\Users\demo\AppData\Local\Camxora\Media\run\background-16x9.png"
 
 
+def test_join_client_output_path_keeps_portable_relative_key() -> None:
+    joined = join_client_output_path(
+        r"bass-drive\2026-08-06_Album",
+        "background-16x9.png",
+    )
+    assert joined == r"bass-drive\2026-08-06_Album\background-16x9.png"
+    # Must not resolve against the API host cwd into an absolute POSIX path.
+    assert not joined.startswith("/")
+    assert ":" not in joined.split("\\")[0]
+
+
 def test_denormalize_cross_platform_path() -> None:
     polluted = (
         "/opt/camxora/repo/C:\\Users\\demo\\AppData\\Local\\Camxora\\Media\\run\\background-16x9.png"

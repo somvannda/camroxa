@@ -181,3 +181,71 @@ def test_overlay_resolves_role_specific_asset_names(tmp_path) -> None:
 
     assert row.meta.long_ready is True
     assert row.stage == "Export"
+
+
+def test_overlay_remaps_foreign_run_dir_onto_local_suno(tmp_path, monkeypatch) -> None:
+    local_root = tmp_path / "Suno"
+    album = local_root / "Bass-Gravity" / "2026-08-06_Marble"
+    album.mkdir(parents=True)
+    (album / "1. Track_OK.mp3").write_bytes(b"mp3")
+    (album / "background-16x9.png").write_bytes(b"bg")
+    monkeypatch.setattr(
+        "shared.lib.device_workspace_paths.resolve_local_suno_output_dir",
+        lambda *_a, **_k: str(local_root),
+    )
+    foreign = r"C:\Users\Other\AppData\Local\Camxora\Media\Suno\Bass-Gravity\2026-08-06_Marble"
+    row = apply_local_progress_overlays([_row(run_dir=foreign)])[0]
+    assert row.meta.run_dir == str(album)
+    assert row.meta.saved == 1
+
+
+def test_overlay_uses_disk_mp3_count_even_when_api_downloaded_flags_complete(tmp_path) -> None:
+    """Premature downloaded_* flags must not inflate Music saved / Progress %."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "1. Track_Alt.mp3").write_bytes(b"a")
+    (run_dir / "2. Track_Alt.mp3").write_bytes(b"b")
+    # Only 2 of 3 Alt files on disk; API claims all 3 downloaded.
+    source = _row(
+        run_dir=str(run_dir),
+        role="ALT",
+        expected=3,
+        saved=3,
+        download_ready=3,
+        download_pending=0,
+        long_ready=False,
+        bg_ready=0,
+        bg_total=0,
+        th_ready=0,
+        th_total=0,
+    ).model_copy(update={"stage": "Image", "status": "Rendering", "music": "3/3 ✓"})
+    row = apply_local_progress_overlays([source])[0]
+
+    assert row.meta.saved == 2
+    assert row.meta.download_pending == 1
+    assert row.stage == "Music"
+    assert "2/3" in row.music
+
+
+def test_overlay_bumps_saved_when_disk_ahead_of_api_flags(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "1. Track_OK.mp3").write_bytes(b"a")
+    (run_dir / "2. Track_OK.mp3").write_bytes(b"b")
+    source = _row(
+        run_dir=str(run_dir),
+        expected=2,
+        saved=0,
+        download_ready=2,
+        download_pending=2,
+        long_ready=False,
+        bg_ready=0,
+        bg_total=0,
+        th_ready=0,
+        th_total=0,
+    ).model_copy(update={"stage": "Music", "status": "Downloading", "music": "0/2 ↓"})
+    row = apply_local_progress_overlays([source])[0]
+
+    assert row.meta.saved == 2
+    assert row.meta.download_pending == 0
+    assert "2/2" in row.music

@@ -625,6 +625,8 @@ class ProgressLocalSyncItem(BaseModel):
     profile_id: str
     role: str = "OK"
     run_dir: str | None = None
+    # Explicit Change Run Folder (and similar) only — not background Progress sync.
+    persist_batch_run_dir: bool = False
     long_ready: bool | None = None
     reel_ready: bool | None = None
     local_mp3_count: int | None = None

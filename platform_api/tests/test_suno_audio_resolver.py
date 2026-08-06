@@ -130,6 +130,37 @@ def test_extract_callback_download_urls_from_sunoapi_payload() -> None:
     assert parsed.audio_id_alt == "clip-alt"
 
 
+def test_extract_callback_synthesizes_cdn_url_when_clip_has_id_only() -> None:
+    parsed = extract_callback_download_urls(
+        {
+            "code": 200,
+            "data": {
+                "callbackType": "complete",
+                "data": [
+                    {"id": "clip-ok", "source_audio_url": "https://cdn.example.com/ok.mp3"},
+                    {"id": "25d27d13-10a9-4b73-9e2e-b344da4cf0c8"},
+                ],
+            },
+        }
+    )
+    assert parsed.audio_url_ok == "https://cdn.example.com/ok.mp3"
+    assert parsed.audio_id_alt == "25d27d13-10a9-4b73-9e2e-b344da4cf0c8"
+    assert (
+        parsed.audio_url_alt
+        == "https://cdn1.suno.ai/25d27d13-10a9-4b73-9e2e-b344da4cf0c8.mp3"
+    )
+
+
+def test_cdn_url_for_suno_audio_id() -> None:
+    from platform_api.clients.suno_client import cdn_url_for_suno_audio_id, coerce_suno_download_url
+
+    assert cdn_url_for_suno_audio_id("abc-123") == "https://cdn1.suno.ai/abc-123.mp3"
+    assert coerce_suno_download_url(url="", audio_id="abc-123") == "https://cdn1.suno.ai/abc-123.mp3"
+    assert coerce_suno_download_url(url="https://cdn.example.com/x.mp3", audio_id="abc") == (
+        "https://cdn.example.com/x.mp3"
+    )
+
+
 def test_callback_indicates_success_for_complete_callback_type() -> None:
     assert callback_indicates_success({"code": 200, "data": {"callbackType": "complete"}})
 

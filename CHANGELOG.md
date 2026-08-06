@@ -11,7 +11,25 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Progress right-click **Download missing MP3s (N)** for the selected channel role:
+  fetches existing Suno/Backblaze URLs for tracks not present on disk (no re-draft /
+  re-Suno). See `docs/changelog/2026-08-06-app-owned-run-paths-and-missing-mp3.md`.
+
 ### Changed
+
+- Desktop owns local Suno drop paths: Progress overlays, Open Run Folder, and missing
+  MP3 downloads always resolve API absolute `run_dir` values under this PC's Suno root
+  via the relative `channel/date_album` key.
+- Desktop no longer PATCHes absolute `sunoOutputDir` / media roots into account settings
+  (stops cross-machine path thrash). Local device store remains the drop-root authority.
+- Progress **Done / Completed / YouTube** rows hide Continue / Stop / Cancel / Start
+  Export / Merge / retries; keep Open Run Folder, Change Run Folder, and explicit
+  Force Regenerate / Rebuild MP4.
+- Change Run Folder sets `persist_batch_run_dir` so the API rewrites that role's
+  batch run key; background Progress sync and missing-MP3 download do not.
+- Progress Music **% / X/Y** use landed role MP3 files on disk when the run folder
+  is present — not API `downloaded_ok` / `downloaded_alt` flags (those can flip
+  before files exist).
 
 ### Fixed
 

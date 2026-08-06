@@ -534,8 +534,14 @@ async def suno_callback(
     audio_id_ok = str(parsed_urls.audio_id_ok or "").strip() or None
     audio_id_alt = str(parsed_urls.audio_id_alt or "").strip() or None
 
-    audio_url_ok = normalize_http_download_url(audio_url_ok) or None
-    audio_url_alt = normalize_http_download_url(audio_url_alt) or None
+    from platform_api.clients.suno_client import coerce_suno_download_url
+
+    audio_url_ok = normalize_http_download_url(
+        coerce_suno_download_url(url=audio_url_ok, audio_id=audio_id_ok)
+    ) or None
+    audio_url_alt = normalize_http_download_url(
+        coerce_suno_download_url(url=audio_url_alt, audio_id=audio_id_alt)
+    ) or None
 
     if new_status == TaskStatus.SUCCESS and not audio_url_ok and not audio_url_alt:
         try:
@@ -548,10 +554,14 @@ async def suno_callback(
             poll_result = await poll_suno_generate_with_pool(get_db_pool(), external_task_id)
             if poll_result.state == "success":
                 refreshed = urls_from_generate_poll(poll_result)
-                audio_url_ok = normalize_http_download_url(refreshed.audio_url_ok) or None
-                audio_url_alt = normalize_http_download_url(refreshed.audio_url_alt) or None
                 audio_id_ok = audio_id_ok or (str(refreshed.audio_id_ok or "").strip() or None)
                 audio_id_alt = audio_id_alt or (str(refreshed.audio_id_alt or "").strip() or None)
+                audio_url_ok = normalize_http_download_url(
+                    coerce_suno_download_url(url=refreshed.audio_url_ok, audio_id=audio_id_ok)
+                ) or None
+                audio_url_alt = normalize_http_download_url(
+                    coerce_suno_download_url(url=refreshed.audio_url_alt, audio_id=audio_id_alt)
+                ) or None
         except Exception as exc:
             logger.warning(
                 "Suno callback record-info refresh failed for task_id=%s: %s",

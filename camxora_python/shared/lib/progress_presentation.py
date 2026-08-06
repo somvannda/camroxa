@@ -247,10 +247,9 @@ def compute_stage_progress_percent(
         return f"{round(sum(parts) / len(parts))}%"
 
     if stage == "music":
+        # Disk-backed ``meta.saved`` (role MP3 count) after local overlay — never
+        # inflate Progress % from API download flags or a pending midpoint.
         expected = max(1, meta.expected)
-        if meta.download_pending > 0 and meta.download_ready > meta.saved:
-            midpoint = meta.saved + max(1, meta.download_pending) // 2
-            return f"{percent_of(midpoint, expected)}%"
         return f"{percent_of(meta.saved, expected)}%"
 
     return "—"

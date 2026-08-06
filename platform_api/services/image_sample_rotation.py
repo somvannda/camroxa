@@ -85,17 +85,21 @@ class ImageSampleRotationService:
         settings: dict[str, Any],
         kind: ImageKind,
     ) -> list[str]:
-        if self._pack_repo is not None:
-            try:
-                vps_paths = await self._pack_repo.list_vps_asset_paths(
-                    category=self._category_for_kind(kind)
-                )
-                existing = [path for path in vps_paths if Path(path).is_file()]
-                if existing:
-                    return existing
-            except Exception:
-                pass
-        return self.build_candidates(settings, kind)
+        """Category mode uses admin VPS sample packs only.
+
+        Local ``imageBackgroundSamplesDir`` / ``imageBgSamples`` settings are legacy
+        and must not be used on the API host (they point at desktop paths).
+        """
+        del settings  # intentionally unused — no desktop-folder fallback
+        if self._pack_repo is None:
+            return []
+        try:
+            vps_paths = await self._pack_repo.list_vps_asset_paths(
+                category=self._category_for_kind(kind)
+            )
+        except Exception:
+            return []
+        return [path for path in vps_paths if Path(path).is_file()]
 
     async def pick_sample_path(
         self,

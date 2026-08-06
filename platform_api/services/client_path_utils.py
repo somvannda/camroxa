@@ -14,8 +14,24 @@ def is_windows_absolute_path(path: str) -> bool:
     return bool(_WINDOWS_ABS_PATH_RE.match(text))
 
 
+def is_portable_run_relative_path(path: str) -> bool:
+    """True for ``channel\\date_album`` style keys (no drive / UNC / POSIX root)."""
+    text = str(path or "").strip().replace("/", "\\")
+    if not text or is_windows_absolute_path(text) or text.startswith("\\\\") or text.startswith("/"):
+        return False
+    # Drive-letter absolute already excluded; reject single-segment filenames.
+    parts = [part for part in Path(text).parts if part not in ("/", "\\", "")]
+    return len(parts) >= 1
+
+
 def join_client_output_path(run_dir: str, filename: str) -> str:
-    """Join a run directory with a filename without corrupting Windows paths on Linux."""
+    """Join a run directory with a filename without corrupting client paths on Linux.
+
+    Absolute Windows run dirs stay Windows-shaped.
+    Portable relative keys (``channel\\date_album``) stay relative — never
+    ``Path.resolve()`` against the API host cwd (that used to invent
+    ``/opt/camxora/.../bass-drive/...`` paths).
+    """
     base = str(run_dir or "").strip().rstrip("/\\")
     name = str(filename or "").strip().lstrip("/\\")
     if not base:
@@ -24,7 +40,9 @@ def join_client_output_path(run_dir: str, filename: str) -> str:
         return base
     if is_windows_absolute_path(base):
         return f"{base}\\{name}"
-    return str((Path(base).expanduser() / name).resolve())
+    # Portable relative run key — keep Windows-style separators for the desktop.
+    normalized_base = base.replace("/", "\\")
+    return f"{normalized_base}\\{name}"
 
 
 def denormalize_cross_platform_path(path: str) -> str:

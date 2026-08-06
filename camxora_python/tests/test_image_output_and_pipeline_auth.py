@@ -40,6 +40,23 @@ def test_ensure_image_output_local_returns_none_without_api(tmp_path: Path) -> N
     assert ensure_image_output_local(None, str(image_path), "job-789") is None
 
 
+def test_resolve_local_image_output_path_remaps_portable_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shared.lib.image_output_utils import resolve_local_image_output_path
+
+    local_root = tmp_path / "Suno"
+    local_root.mkdir()
+    monkeypatch.setattr(
+        "shared.lib.device_workspace_paths.resolve_local_suno_output_dir",
+        lambda *_a, **_k: str(local_root),
+    )
+    resolved = resolve_local_image_output_path(
+        r"bass-drive\2026-08-06_Album\background-16x9.png"
+    )
+    assert resolved == str(local_root / "bass-drive" / "2026-08-06_Album" / "background-16x9.png")
+
+
 def test_open_path_missing_file_emits_warning(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     missing = tmp_path / "missing.png"
     emitted: list[tuple[str, str]] = []
