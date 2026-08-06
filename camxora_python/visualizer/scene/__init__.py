@@ -117,7 +117,40 @@ def normalize_composition(raw: Any) -> dict[str, Any]:
 
     audio = raw.get("audio") if isinstance(raw.get("audio"), dict) else {}
     mapping = audio.get("mapping")
-    out["audio"]["mapping"] = dict(mapping) if isinstance(mapping, dict) else {}
+    try:
+        from visualizer.composition_effects.audio_mapping import normalize_audio_mapping
+
+        out["audio"]["mapping"] = normalize_audio_mapping(mapping)
+    except Exception:
+        out["audio"]["mapping"] = dict(mapping) if isinstance(mapping, dict) else {}
+
+    # Normalize catalog ids when present (keep unknown as-is for forward compat).
+    try:
+        from visualizer.presets.atmosphere import normalize_atmosphere_id
+        from visualizer.presets.background_motion import normalize_background_motion_id
+        from visualizer.presets.camera import normalize_camera_behavior_id
+        from visualizer.presets.lighting import (
+            normalize_lighting_effect_id,
+            normalize_lighting_trigger_id,
+        )
+        from visualizer.presets.post import normalize_post_effects_list
+
+        motion = normalize_background_motion_id(out["background"]["motion"])
+        if motion:
+            out["background"]["motion"] = motion
+        atm = normalize_atmosphere_id(out["background"]["atmosphere"])
+        out["background"]["atmosphere"] = atm or NONE
+        le = normalize_lighting_effect_id(out["lighting"]["effect"])
+        out["lighting"]["effect"] = le or NONE
+        lt = normalize_lighting_trigger_id(out["lighting"]["trigger"])
+        out["lighting"]["trigger"] = lt or NONE
+        cam = normalize_camera_behavior_id(out["camera"]["behavior"])
+        out["camera"]["behavior"] = cam or NONE
+        out["postProcessing"]["effects"] = normalize_post_effects_list(
+            out["postProcessing"]["effects"]
+        )
+    except Exception:
+        pass
     return out
 
 

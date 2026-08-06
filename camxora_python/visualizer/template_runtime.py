@@ -182,6 +182,28 @@ def normalize_renderer_template(input_template: Any) -> dict:
     out = copy.deepcopy(base)
     out.update({k: v for k, v in input_template.items() if k in out or k in ("previewBackground", "previewLogo")})
 
+    # Composition Engine V1 — preserve compiler output (not stripped by base-key filter).
+    _ENGINE_PASS_KEYS = (
+        "schema",
+        "composition",
+        "assets",
+        "engine",
+        "lightingSettings",
+        "cameraSettings",
+        "atmosphereSettings",
+        "postProcessingSettings",
+        "audioMapping",
+        "overlaySettings",
+    )
+    for key in _ENGINE_PASS_KEYS:
+        if key in input_template:
+            out[key] = copy.deepcopy(input_template[key])
+    # Prefer compiled effects stack when present.
+    if _is_obj(input_template.get("effects")) and (
+        _is_obj(input_template.get("engine")) and input_template.get("engine", {}).get("compiled")
+    ):
+        out["effects"] = {**out.get("effects", {}), **copy.deepcopy(input_template["effects"])}
+
     pos_in = input_template.get("position") if _is_obj(input_template.get("position")) else {}
     out["position"] = {**base["position"], **pos_in}
 

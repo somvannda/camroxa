@@ -932,9 +932,11 @@ Lighting JSON uses `effect` + `trigger` (architecture tree). Triggers integrate 
 
 **Exit criteria**
 
-- [ ] All 10 canonical lighting effects render
-- [ ] Catalog count = **15**
-- [ ] Effect ≠ whole-frame post (those stay in Layer 3)
+- [x] All 10 canonical lighting effects render
+- [x] Catalog count = **15**
+- [x] Effect ≠ whole-frame post (those stay in Layer 3)
+
+**Shipped (2026-08-05):** fill ids Strobe Flash, Rim Light, Spot Cone, Volumetric Shaft, Color Wash. Studio Lighting inspector = effect × trigger.
 
 ---
 
@@ -957,9 +959,11 @@ Lighting JSON uses `effect` + `trigger` (architecture tree). Triggers integrate 
 
 **Exit criteria**
 
-- [ ] All 10 canonical camera behaviors implemented
-- [ ] Catalog count = **15**
-- [ ] Camera is a scene-level object (not a Spectrum setting)
+- [x] All 10 canonical camera behaviors implemented
+- [x] Catalog count = **15**
+- [x] Camera is a scene-level object (not a Spectrum setting)
+
+**Shipped (2026-08-05):** fill ids Handheld, Crane, Whip Pan, Punch In, Drift. Studio Camera inspector.
 
 ---
 
@@ -999,10 +1003,12 @@ Requirement note preserved: this alone makes a static AI image feel alive (motio
 
 **Exit criteria**
 
-- [ ] All 11 canonical atmosphere presets
-- [ ] Atmosphere catalog = **15**
-- [ ] All 10 background motions
-- [ ] Motion and atmosphere are independent Background fields
+- [x] All 11 canonical atmosphere presets
+- [x] Atmosphere catalog = **15**
+- [x] All 10 background motions
+- [x] Motion and atmosphere are independent Background fields
+
+**Shipped (2026-08-05):** atmosphere fill Haze, Heatwave, Underwater, Void. Background inspector = Image + Motion + Atmosphere.
 
 ---
 
@@ -1031,10 +1037,12 @@ Requirement note preserved: this alone makes a static AI image feel alive (motio
 
 **Exit criteria**
 
-- [ ] All 16 canonical post effects available under Post Processing / `effects`
-- [ ] Catalog count = **20**
-- [ ] None of these are stored as Spectrum-only assets
-- [ ] Preview + export WYSIWYG for enabled post stack (within performance tiers)
+- [x] All 16 canonical post effects available under Post Processing / `effects`
+- [x] Catalog count = **20**
+- [x] None of these are stored as Spectrum-only assets
+- [x] Preview + export WYSIWYG for enabled post stack (within performance tiers)
+
+**Shipped (2026-08-05):** fill ids Letterbox, Posterize, RGB Split, Soft Diffusion. Studio Post inspector stack toggles.
 
 ---
 
@@ -1062,9 +1070,11 @@ Requirement note preserved: this alone makes a static AI image feel alive (motio
 
 **Exit criteria**
 
-- [ ] All 8 buses available to mapping
-- [ ] All four examples work end-to-end in preview + export
-- [ ] Users have expressive per-object audio control via JSON / UI
+- [x] All 8 buses available to mapping
+- [x] All four examples work end-to-end in preview + export
+- [x] Users have expressive per-object audio control via JSON / UI
+
+**Shipped (2026-08-05 / Session C):** Vocals / Melody / Snare ship as **v1 FFT heuristics** (smoothed band proxies), labeled in Audio Mapping UI. Mapping object routes lighting / particles / camera / logo.
 
 ---
 
@@ -1093,11 +1103,13 @@ Requirement note preserved: this alone makes a static AI image feel alive (motio
 
 **Exit criteria = project delivery done for the engine**
 
-- [ ] Every canonical named item from Layers 1–9 is implemented
-- [ ] Every catalog target count is met
-- [ ] Architecture tree is fully interpretable JSON
-- [ ] Preview and export both understand the JSON
-- [ ] No AI dependency required to use the engine
+- [x] Every canonical named item from Layers 1–9 is implemented
+- [x] Every catalog target count is met
+- [x] Architecture tree is fully interpretable JSON
+- [x] Preview and export both understand the JSON
+- [x] No AI dependency required to use the engine
+
+**Studio UI (2026-08-05):** Composition Studio shell — scene tree left rail + inspectors for all architecture-tree nodes (P0–P11). P13 AI authoring remains deferred.
 
 ---
 

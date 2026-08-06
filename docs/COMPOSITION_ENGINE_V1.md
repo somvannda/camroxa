@@ -1,8 +1,8 @@
-# Composition Engine V1 — Hard Cut
+# Composition Engine + Studio — P0–P11
 
 **Date:** 2026-08-05  
 **Branch:** `feature/composition-engine-v1`  
-**Status:** Engine-true P0–P6 milestone  
+**Status:** Engine-true catalogs + Composition Studio UI for P0–P11  
 
 ---
 
@@ -11,7 +11,9 @@
 1. **Hard cut** — old video template bags (`style`, bundled preset recipes, `particlesSettings` as catalog authority, etc.) are **not** the scene contract.
 2. **Authority** — saved scenes are `schema: camxora.composition` with `composition` + `assets` only.
 3. **Renderer** — preview and export load via `visualizer.scene.load_scene` → `compile_scene`. Documents without `composition` **fail closed**.
-4. **Catalogs (E1)** — 20 palettes, 15 shapes, 20 materials, 12 behaviors, 20 particle types are engine modules under `visualizer/`.
+4. **Studio UI** — architecture-tree left rail + single inspector host (not legacy domain-tab chrome as primary UX).
+5. **Session B** — Atmosphere = weather/fog/sky; Particles = emitters; Lighting = bolts/aura/beams; Post = whole-frame.
+6. **Session C** — Vocals / Melody / Snare are **v1 FFT heuristics** (smoothed band proxies), labeled in Audio Mapping UI.
 
 ---
 
@@ -21,7 +23,26 @@
 {
   "schema": "camxora.composition",
   "version": 1,
-  "composition": { },
+  "composition": {
+    "colorPalette": "cyberpunk",
+    "background": { "image": null, "motion": "ken_burns", "atmosphere": "fog" },
+    "spectrum": { "shape": "circle", "material": "neon", "animation": "pulse" },
+    "logo": { "enabled": true, "animation": "pulse" },
+    "text": { "enabled": false },
+    "overlay": { "enabled": false, "animation": "none", "items": [] },
+    "particles": { "type": "sparkles", "behavior": "pulse" },
+    "lighting": { "effect": "lightning", "trigger": "bass" },
+    "camera": { "behavior": "shake" },
+    "postProcessing": { "effects": ["bloom", "vignette"] },
+    "audio": {
+      "mapping": {
+        "lighting": "bass",
+        "particles": "kick",
+        "camera": "bass",
+        "logo": "vocals"
+      }
+    }
+  },
   "assets": {
     "backgroundImage": null,
     "logo": null,
@@ -30,7 +51,23 @@
 }
 ```
 
-Media paths live under `assets` (workspace), not inside legacy domain bags.
+---
+
+## Catalog counts
+
+| Catalog | Count |
+|---------|------:|
+| Spectrum shapes | 15 |
+| Materials | 20 |
+| Animations | 12 |
+| Particle types | 20 |
+| Color palettes | 20 |
+| Lighting effects | 15 |
+| Camera behaviors | 15 |
+| Atmosphere | 15 |
+| Background motions | 10 |
+| Post effects | 20 |
+| Audio buses | 8 |
 
 ---
 
@@ -38,25 +75,39 @@ Media paths live under `assets` (workspace), not inside legacy domain bags.
 
 ```text
 camxora_python/visualizer/
-  engine/                 # pass order
-  scene/                  # load + Scene + compile
-  materials/              # 20 materials
-  animations/             # 12 shared drivers
-  composition_effects/    # particles (+ later lighting/post)
-  presets/                # pure catalogs
+  scene/                  # load + Scene + compile (P0–P11 passes)
+  presets/                # pure catalogs (shapes … audio_buses)
+  materials/ animations/
+  composition_effects/    # particles, lighting, camera, atmosphere, post, audio_mapping
   composition_renderer/   # bridge to preview/export
-  rules/                  # stubs (P12)
-```
 
-Existing modules `audio.py`, `effects.py`, `renderer.py` keep their names (GPU stack).
+camxora_python/features/video/widgets/
+  studio_shell.py / scene_tree.py / left_rail.py
+  *_inspector.py          # palette … audio_mapping
+```
 
 ---
 
-## Exit criteria (engine-true)
+## Studio navigation
 
-- Neon Circle Pulse / Glass Hexagon Bounce / Fire Bars Flash / Plasma Spiral Breathing compile from composition alone
-- Same behavior id on spectrum + logo
-- Rain ≠ Snow particle emitters under same behavior
-- Material change does not change shape; type change does not clear behavior
-- Missing `composition` raises `CompositionContractError`
-- Render path does not treat `style` / old particle preset keys as authority
+Left rail scene tree: Color Palette · Background · Spectrum · Logo · Text · Overlay · Particles · Lighting · Camera · Post · Audio Mapping.
+
+Center: preview stage (compiled scene).  
+Right: Album / Title typography (Layer 1 text domains).
+
+---
+
+## Verify
+
+```text
+cd camxora_python
+python -m pytest tests/test_composition_engine_v1.py tests/test_composition_studio_p0_p11.py -q
+```
+
+---
+
+## Out of scope
+
+- P13 AI authoring  
+- Marketplace effect-pack rebinding as scene authority  
+- True UE/C++ / full PBR  

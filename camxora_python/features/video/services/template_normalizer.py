@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from features.video.lib.composition_draft import apply_draft_axes_to_composition
 from features.video.lib.text_domain_runtime import inject_text_domains_into_template
 from visualizer.composition_renderer import CompositionContractError, document_to_renderer_dict, merge_workspace_assets
-from visualizer.scene import default_composition, default_document
+from visualizer.scene import default_document
 
 
 def _composition_from_draft_domains(
@@ -21,34 +22,7 @@ def _composition_from_draft_domains(
     """Build a composition document from UI draft axes (composition-first)."""
     doc = default_document()
     existing = base.get("composition") if isinstance(base.get("composition"), dict) else {}
-    composition = default_composition()
-    if existing:
-        from visualizer.scene import normalize_composition
-
-        composition = normalize_composition(existing)
-
-    # Prefer explicit composition axes on draft when present.
-    spectrum = composition["spectrum"]
-    if draft.get("compositionSpectrumShape"):
-        spectrum["shape"] = str(draft["compositionSpectrumShape"]).strip() or spectrum["shape"]
-    if draft.get("compositionSpectrumMaterial"):
-        spectrum["material"] = str(draft["compositionSpectrumMaterial"]).strip() or spectrum["material"]
-    if draft.get("compositionSpectrumAnimation"):
-        spectrum["animation"] = str(draft["compositionSpectrumAnimation"]).strip() or spectrum["animation"]
-
-    particles = composition["particles"]
-    if draft.get("compositionParticleType"):
-        particles["type"] = str(draft["compositionParticleType"]).strip() or particles["type"]
-    if draft.get("compositionParticleBehavior"):
-        particles["behavior"] = str(draft["compositionParticleBehavior"]).strip() or particles["behavior"]
-
-    if draft.get("compositionColorPalette"):
-        composition["colorPalette"] = str(draft["compositionColorPalette"]).strip() or None
-
-    if draft.get("compositionLogoAnimation"):
-        composition["logo"]["animation"] = str(draft["compositionLogoAnimation"]).strip() or "none"
-
-    # Fallback: if composition spectrum still none but draft carried new axis keys only — keep none.
+    composition = apply_draft_axes_to_composition(existing, draft if isinstance(draft, dict) else {})
     doc["composition"] = composition
     if isinstance(base.get("assets"), dict):
         doc["assets"] = dict(base["assets"])
@@ -73,6 +47,9 @@ class TemplateNormalizer:
         draft_rec = draft if isinstance(draft, dict) else {}
         base_rec = base if isinstance(base, dict) else {}
 
+        has_axes = any(
+            key.startswith("composition") for key in draft_rec.keys()
+        )
         if isinstance(base_rec.get("composition"), dict) and base_rec.get("composition"):
             doc = {
                 "schema": "camxora.composition",
@@ -80,10 +57,9 @@ class TemplateNormalizer:
                 "composition": base_rec["composition"],
                 "assets": dict(base_rec.get("assets") or {}),
             }
-            # Overlay draft axis patches.
             patched = _composition_from_draft_domains(base=doc, draft=draft_rec)
             doc["composition"] = patched["composition"]
-        elif draft_rec.get("compositionSpectrumShape") or draft_rec.get("compositionParticleType"):
+        elif has_axes:
             doc = _composition_from_draft_domains(base=base_rec, draft=draft_rec)
         else:
             raise CompositionContractError(
@@ -105,7 +81,6 @@ class TemplateNormalizer:
             or ""
         ).strip()
 
-        # Keep composition on the payload (no strip).
         return inject_text_domains_into_template(
             rendered,
             track_paths=paths,
@@ -125,7 +100,6 @@ def ensure_composition_document(template: dict[str, Any]) -> dict[str, Any]:
     raise CompositionContractError("missing composition on template")
 
 
-# Back-compat name used by older imports during cutover.
 def strip_composition_for_renderer(template: dict[str, Any]) -> dict[str, Any]:
     """Deprecated no-op: composition is required and must not be stripped."""
     if not isinstance(template, dict) or not isinstance(template.get("composition"), dict):

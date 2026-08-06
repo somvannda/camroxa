@@ -11,6 +11,13 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Studio P0–P11.** Full Video studio redesign: architecture-tree
+  left rail + inspectors for Background / Spectrum / Logo / Text / Overlay /
+  Particles / Lighting / Camera / Post / Audio Mapping / Palette. Engine
+  catalogs: Lighting 15, Camera 15, Atmosphere 15, Background motion 10,
+  Post 20, Audio buses 8 (Vocals/Melody/Snare = v1 FFT heuristics). See
+  `docs/COMPOSITION_ENGINE_V1.md` and
+  `docs/changelog/2026-08-05-composition-studio-p0-p11.md`.
 - **Composition Engine V1 hard cut (P0–P6 engine-true).** Scene documents use
   `schema: camxora.composition` only. Preview/export compile via
   `visualizer.scene` + catalogs under `visualizer/presets` (15 shapes, 20

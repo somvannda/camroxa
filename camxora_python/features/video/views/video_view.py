@@ -148,10 +148,17 @@ from features.video.widgets.left_rail import VideoLeftRail
 from features.video.widgets.logo_inspector import LogoInspector
 from features.video.widgets.particles_inspector import ParticlesInspector
 from features.video.widgets.spectrum_inspector import SpectrumInspector
-from features.video.widgets.lightning_inspector import LightningInspector
+from features.video.widgets.lighting_inspector import LightingInspector
+from features.video.widgets.camera_inspector import CameraInspector
+from features.video.widgets.post_inspector import PostInspector
+from features.video.widgets.audio_mapping_inspector import AudioMappingInspector
+from features.video.widgets.overlay_inspector import OverlayInspector
+from features.video.widgets.palette_inspector import PaletteInspector
+from features.video.widgets.text_composition_inspector import TextCompositionInspector
 from features.video.widgets.right_rail import VideoRightRail
 from features.video.widgets.stage_panel import VideoStagePanel
 from features.video.widgets.text_domain_inspectors import AlbumInspector, TitleInspector
+from features.video.lib.composition_draft import draft_from_composition
 from features.video.lib.text_domain_registry import (
     capture_text_domain_preset,
     draft_style_snapshot,
@@ -413,52 +420,42 @@ class VideoView(QWidget):
         self._particles_inspector.preset_apply_requested.connect(self._apply_particle_preset)
         self._particles_inspector.preset_restore_requested.connect(self._restore_particle_preset)
 
-        self._lightning_inspector = LightningInspector()
-        self._lightning_inspector.draft_patch_requested.connect(self._patch_template_draft)
-        self._lightning_inspector.preset_apply_requested.connect(self._apply_lightning_preset)
-        self._lightning_inspector.layer_patch_requested.connect(self._patch_selected_lightning_layer)
-        self._lightning_inspector.layer_add_requested.connect(self._add_lightning_layer)
-        self._lightning_inspector.layer_duplicate_requested.connect(self._duplicate_lightning_layer)
-        self._lightning_inspector.layer_delete_requested.connect(self._delete_lightning_layer)
-        self._lightning_inspector.layer_move_up_requested.connect(self._move_lightning_layer_up)
-        self._lightning_inspector.layer_move_down_requested.connect(self._move_lightning_layer_down)
-        self._lightning_inspector.layer_selected.connect(self._select_lightning_layer)
+        self._lighting_inspector = LightingInspector()
+        self._lighting_inspector.draft_patch_requested.connect(self._patch_template_draft)
+
+        self._camera_inspector = CameraInspector()
+        self._camera_inspector.draft_patch_requested.connect(self._patch_template_draft)
+
+        self._post_inspector = PostInspector()
+        self._post_inspector.draft_patch_requested.connect(self._patch_template_draft)
+
+        self._audio_mapping_inspector = AudioMappingInspector()
+        self._audio_mapping_inspector.draft_patch_requested.connect(self._patch_template_draft)
+
+        self._overlay_inspector = OverlayInspector()
+        self._overlay_inspector.draft_patch_requested.connect(self._patch_template_draft)
+
+        self._palette_inspector = PaletteInspector()
+        self._palette_inspector.draft_patch_requested.connect(self._patch_template_draft)
+
+        self._text_composition_inspector = TextCompositionInspector()
+        self._text_composition_inspector.draft_patch_requested.connect(self._patch_template_draft)
 
         self._domain_inspectors = {
-            "spectrum": self._spectrum_inspector,
+            "palette": self._palette_inspector,
             "background": self._background_inspector,
+            "spectrum": self._spectrum_inspector,
             "logo": self._logo_inspector,
+            "text": self._text_composition_inspector,
+            "overlay": self._overlay_inspector,
             "particles": self._particles_inspector,
-            "lightning": self._lightning_inspector,
+            "lighting": self._lighting_inspector,
+            "camera": self._camera_inspector,
+            "post": self._post_inspector,
+            "audio_mapping": self._audio_mapping_inspector,
         }
-        for domain, inspector in self._domain_inspectors.items():
-            if domain not in EFFECT_PACK_DOMAIN_LABELS:
-                continue
-            title, subtitle = EFFECT_PACK_DOMAIN_LABELS[domain]
-            selector = EffectPackSelector(
-                title=title,
-                subtitle=subtitle,
-                show_apply_combo=domain not in {"spectrum", "particles", "background", "logo", "lightning"},
-            )
-            selector.apply_requested.connect(
-                lambda value, pack_domain=domain: self._apply_effect_pack(pack_domain, value)
-            )
-            selector.clear_requested.connect(
-                lambda pack_domain=domain: self._clear_effect_pack(pack_domain)
-            )
-            selector.install_requested.connect(self._install_effect_pack)
-            selector.reload_requested.connect(self._reload_effect_pack_catalog)
-            selector.toggle_enabled_requested.connect(
-                lambda pack_domain=domain: self._toggle_effect_pack_enabled(pack_domain)
-            )
-            selector.activate_requested.connect(
-                lambda pack_domain=domain: self._activate_effect_pack_version(pack_domain)
-            )
-            selector.remove_requested.connect(
-                lambda pack_domain=domain: self._remove_effect_pack_version(pack_domain)
-            )
-            inspector.mount_effect_pack_selector(selector)
-            self._effect_pack_selectors[domain] = selector
+        # Effect packs are marketplace later — not primary scene authority in Composition Studio.
+        self._effect_pack_selectors = {}
 
         if SHOW_VIDEO_WORKSPACE_DIAGNOSTICS:
             panel = VideoWorkspaceDiagnosticsPanel()
@@ -1075,6 +1072,16 @@ class VideoView(QWidget):
     def _bind_inspectors(self) -> None:
         if not self._template_draft:
             return
+        # Ensure composition axis keys are present for studio inspectors.
+        comp_axes = draft_from_composition(
+            (self._workspace.template.get("composition") if self._workspace else None)
+            if self._workspace
+            else None
+        )
+        for key, value in comp_axes.items():
+            if key not in self._template_draft:
+                self._template_draft[key] = value
+
         self._spectrum_inspector.bind_draft(
             self._template_draft,
             layers=self._spectrum_layers,
@@ -1085,11 +1092,13 @@ class VideoView(QWidget):
         self._background_inspector.bind_draft(self._template_draft)
         self._logo_inspector.bind_draft(self._template_draft)
         self._particles_inspector.bind_draft(self._template_draft)
-        self._lightning_inspector.bind_draft(
-            self._template_draft,
-            layers=self._lightning_layers,
-            selected_layer_index=self._selected_lightning_layer_index,
-        )
+        self._lighting_inspector.bind_draft(self._template_draft)
+        self._camera_inspector.bind_draft(self._template_draft)
+        self._post_inspector.bind_draft(self._template_draft)
+        self._audio_mapping_inspector.bind_draft(self._template_draft)
+        self._overlay_inspector.bind_draft(self._template_draft)
+        self._palette_inspector.bind_draft(self._template_draft)
+        self._text_composition_inspector.bind_draft(self._template_draft)
 
         track_paths = self._current_track_paths()
         album_settings = album_settings_from_draft(self._template_draft)
@@ -3814,8 +3823,11 @@ class VideoView(QWidget):
         self._schedule_dirty_state_update()
         if scrub_ok:
             return
+        composition_keys = {k for k in patch.keys() if str(k).startswith("composition")}
         if {"particlesEnabled", "spectrumEnabled", "backgroundEnabled", "logoEnabled"} & set(patch.keys()):
             self._flush_preview_update()
+        elif composition_keys:
+            self._schedule_preview_update()
         elif spectrum_keys & set(patch.keys()):
             self._schedule_preview_update()
         elif particle_patch_touches_preset_fields(patch) or background_patch_touches_preset_fields(patch) or logo_patch_touches_preset_fields(patch):
@@ -4477,7 +4489,8 @@ class VideoView(QWidget):
         self._update_dirty_state()
 
     def _on_domain_tab_changed(self, tab_key: str) -> None:
-        self._active_domain_tab = tab_key
+        key = "lighting" if tab_key == "lightning" else tab_key
+        self._active_domain_tab = key
         self._preview_edit_focus = "domain"
         self._flush_preview_update()
         self._schedule_dirty_state_update()

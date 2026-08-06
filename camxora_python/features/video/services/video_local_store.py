@@ -170,15 +170,14 @@ class VideoLocalStore:
         name: str = "Untitled Template",
         settings: dict[str, Any] | None = None,
     ) -> VideoWorkspaceState:
-        """Create a user template from scratch and select it."""
+        """Create a user composition from scratch and select it."""
         from uuid import uuid4
 
-        from features.video.lib.spectrum_style_registry import build_spectrum_preset_template
+        from features.video.lib.composition_draft import new_blank_composition_template
 
-        display_name = str(name or "").strip() or "Untitled Template"
+        display_name = str(name or "").strip() or "New Composition"
         uid = str(uuid4())
-        payload = build_spectrum_preset_template({}, "orbit-spikes")
-        payload["templateName"] = display_name
+        payload = new_blank_composition_template(name=display_name)
         payload["backgroundEnabled"] = True
         payload["logoEnabled"] = True
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
