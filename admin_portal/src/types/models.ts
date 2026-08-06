@@ -632,7 +632,14 @@ export interface AdminSongSummary {
 
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
-  services: Record<string, ServiceHealth>;
+  /** Raw PLATFORM_ENVIRONMENT value (e.g. staging, production). */
+  environment?: string;
+  /** Ops-facing label (Sandbox / Production / …). */
+  environment_label?: string;
+  database?: boolean;
+  services: Record<string, ServiceHealth | boolean>;
+  uptime_seconds?: number;
+  timestamp?: string;
 }
 
 export interface ServiceHealth {

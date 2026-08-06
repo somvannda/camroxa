@@ -226,6 +226,27 @@ def is_production(settings: Settings | None = None) -> bool:
     return (resolved.environment or "").strip().lower() in {"production", "prod"}
 
 
+def environment_display_label(settings: Settings | None = None) -> str:
+    """Human-facing environment label for ops UI (admin health / status).
+
+    Maps PLATFORM_ENVIRONMENT values to product language:
+    production/prod → Production, staging/sandbox → Sandbox, etc.
+    """
+    resolved = settings or get_settings()
+    raw = (resolved.environment or "").strip().lower()
+    if raw in {"production", "prod"}:
+        return "Production"
+    if raw in {"staging", "sandbox"}:
+        return "Sandbox"
+    if raw in {"development", "dev"}:
+        return "Development"
+    if raw in {"local", "localhost"}:
+        return "Local"
+    if raw:
+        return raw.replace("_", " ").title()
+    return "Unknown"
+
+
 def validate_production_settings(settings: Settings | None = None) -> None:
     """Fail fast when production would run with unsafe billing/auth settings.
 

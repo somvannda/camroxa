@@ -8,6 +8,7 @@ import pytest
 
 from platform_api.config import (
     Settings,
+    environment_display_label,
     is_production,
     validate_production_settings,
 )
@@ -17,6 +18,13 @@ def test_is_production_accepts_prod_aliases() -> None:
     assert is_production(Settings(environment="production")) is True
     assert is_production(Settings(environment="prod")) is True
     assert is_production(Settings(environment="development")) is False
+
+
+def test_environment_display_label_maps_ops_language() -> None:
+    assert environment_display_label(Settings(environment="production")) == "Production"
+    assert environment_display_label(Settings(environment="staging")) == "Sandbox"
+    assert environment_display_label(Settings(environment="sandbox")) == "Sandbox"
+    assert environment_display_label(Settings(environment="development")) == "Development"
 
 
 def test_validate_production_settings_allows_safe_config(
