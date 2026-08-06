@@ -1,33 +1,37 @@
-﻿Camxora 1.1.1
-Image Prompt only & Manual Generation
-August 5, 2026
+﻿Camxora 1.2.0
+Progress paths, missing MP3s, export merge & Quality
+August 6, 2026
 
 What's new
 ----------
-• Choose how Background and Thumbnail images are made: Category,
-  User reference, or Prompt only (Preferences → AI Generated).
-• Prompt only uses your text prompts — no Category sample image.
-• On the Image page, pick the source above each preview and run
-  Manual Generation under the prompt.
-• With nothing selected, Manual Generation adds a today-dated
-  “Not available” row to your Image queue and generates there
-  (same billing as normal image jobs).
-• Retry failed jobs, or Regenerate successful ones (force new run).
-• Image page refreshes quietly in the background without resetting
-  your prompts or flashing the UI.
+• Progress remaps run folders to this PC’s Suno root (no more foreign
+  absolute paths breaking Open / downloads).
+• Right-click Download missing MP3s (N) for the selected channel role —
+  fills gaps from existing Suno/Backblaze URLs (no re-Suno).
+• Music % / X/Y follow MP3s on disk; Done/Completed/YouTube menus drop
+  Continue/Stop/export retries (keep Open / Change Run Folder / rebuild).
+• Progress Active only + Stage filters apply before Limit.
+• Export: Recommended bitrate, Quality / Best Quality tiers, safer
+  workers; manual merge finds real outputs; merge is lossless stream-copy
+  with a usable-MP4 gate.
+• Cleaner ConnectError copy on release builds; Image source UI shows
+  Category + Prompt only (User reference hidden until P2).
 
-Also included from 1.1.0
+Also included from 1.1.1
 ------------------------
-• Ship-safe video preview (HDR bloom off by default).
-• Windowed-mode click targeting fix.
+• Image Prompt only, Manual Generation “Not available” rows, force
+  Regenerate.
+• Ship-safe preview (HDR bloom off by default) and windowed click fix.
 
 Requirements
 ------------
-• Production API with prompt-only image modes and Manual Generation
-  support (already deployed for this release).
-• Installer: CamxoraSetup-1.1.1.exe
+• Production API already deployed for album/run-dir lock, Alt CDN heal,
+  relative run keys, null sample-path guard, and image prompt modes.
+• Installer: CamxoraSetup-1.2.0.exe
+• Publish this release in Admin → Software Updates with Force update
+  (mandatory) enabled so older clients must install.
 
 Coming later
 ------------
-• Theme categories, personal reference library, and Progress
-  Replace/Export are not in this build.
+• Theme categories, personal reference library, Progress Replace/Export,
+  DistroKid / WAV add-on.
