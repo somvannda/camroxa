@@ -44,3 +44,11 @@ def test_batch_run_dates_fallback_to_utc_created_at() -> None:
     batch = {"created_at": created}
     assert _batch_run_from_date(batch) == date(2026, 7, 11)
     assert _batch_run_to_date(batch) == date(2026, 7, 11)
+
+
+def test_progress_batch_fetch_limit_widens_for_active_only() -> None:
+    from platform_api.routers.progress import _progress_batch_fetch_limit
+
+    assert _progress_batch_fetch_limit(limit=10, active_only=False) == 20
+    assert _progress_batch_fetch_limit(limit=10, active_only=True) == 100
+    assert _progress_batch_fetch_limit(limit=80, active_only=False) == 100

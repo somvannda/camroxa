@@ -15,6 +15,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Progress filters: Active only and Stage now apply **before** Limit (after desktop overlays). Active only + Limit 10 means up to 10 active rows. See `docs/changelog/2026-08-06-progress-filters-composition.md`.
+
 ## [1.1.1] - 2026-08-05
 
 ### Added
