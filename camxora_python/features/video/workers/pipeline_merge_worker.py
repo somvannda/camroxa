@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from PySide6.QtCore import QThread, Signal
 
 from features.video.lib.pipeline_merge import (
+    MergeEncodeSettings,
     build_merged_output_path,
-    list_branch_export_outputs,
+    collect_verified_merge_inputs,
     merge_video_outputs,
 )
 
@@ -25,6 +26,7 @@ class PipelineMergeRequest:
     # Manual batches pass explicit outputs in track order and skip shuffling.
     mp4_paths: tuple[str, ...] = ()
     shuffle: bool = True
+    encode: MergeEncodeSettings | None = None
 
 
 class VideoPipelineMergeWorker(QThread):
@@ -46,14 +48,22 @@ class VideoPipelineMergeWorker(QThread):
         branch = "reel" if request.branch == "reel" else "long"
         branch_label = "reel" if branch == "reel" else "long"
 
-        def emit_progress(message: str) -> None:
-            self.progressed.emit({"status": "merging", "message": message})
+        def emit_progress(message: str, percent: int | None = None) -> None:
+            payload: dict[str, object] = {"status": "merging", "message": message}
+            if percent is not None:
+                payload["progress"] = max(0, min(100, int(percent)))
+            self.progressed.emit(payload)
 
-        emit_progress(f"Merging {branch_label} video outputs…")
-        branch_outputs = (
-            list(request.mp4_paths)
-            if request.mp4_paths
-            else list_branch_export_outputs(request.run_dir, branch)
+        emit_progress(f"Merging {branch_label} video outputs…", 0)
+        encode = request.encode
+        branch_outputs = collect_verified_merge_inputs(
+            list(request.mp4_paths) if request.mp4_paths else [],
+            run_dir=request.run_dir,
+            branch=branch,
+            ffmpeg_path=request.ffmpeg_path,
+            expected_width=int(encode.width) if encode else None,
+            expected_height=int(encode.height) if encode else None,
+            expected_fps=int(encode.fps) if encode else None,
         )
         merged_target_path = build_merged_output_path(
             output_dir=request.run_dir,
@@ -69,6 +79,7 @@ class VideoPipelineMergeWorker(QThread):
                 on_progress=emit_progress,
                 cancel_check=lambda: self._cancel_requested,
                 shuffle=request.shuffle,
+                encode=request.encode,
             )
         except Exception as exc:
             if self._cancel_requested:

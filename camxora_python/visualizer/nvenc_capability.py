@@ -124,7 +124,11 @@ def probe_h264_nvenc(ffmpeg_path: str, *, force: bool = False, timeout_sec: floa
 
 
 def rewrite_nvenc_cmd_to_x264(cmd: list[str], *, x264_preset: str, x264_crf: str) -> list[str]:
-    """Swap h264_nvenc flags in an ffmpeg argv list for libx264 equivalents."""
+    """Swap h264_nvenc flags in an ffmpeg argv list for libx264 equivalents.
+
+    Keeps Recommended VBR ``-b:v`` / ``-maxrate`` / ``-bufsize`` when present;
+    otherwise inserts ``-crf`` as a legacy fallback.
+    """
     cmd2 = list(cmd)
     if "h264_nvenc" not in cmd2:
         return cmd2
@@ -136,7 +140,7 @@ def rewrite_nvenc_cmd_to_x264(cmd: list[str], *, x264_preset: str, x264_crf: str
     if "-preset" in cmd2:
         i = cmd2.index("-preset")
         cmd2[i + 1] = x264_preset
-    if "-crf" not in cmd2:
+    if "-b:v" not in cmd2 and "-crf" not in cmd2:
         pix = cmd2.index("-pix_fmt") if "-pix_fmt" in cmd2 else len(cmd2)
         cmd2.insert(pix, "-crf")
         cmd2.insert(pix + 1, x264_crf)

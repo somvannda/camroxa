@@ -1914,6 +1914,38 @@ QFrame#video_export_fields QComboBox QAbstractItemView::item {
     padding: 2px 6px;
 }
 
+QListWidget#video_export_track_list {
+    background-color: #0f1923;
+    border: none;
+    outline: none;
+}
+
+QListWidget#video_export_track_list::item {
+    padding: 6px 8px;
+    border: none;
+    border-radius: 3px;
+    color: #c0c0c0;
+    outline: none;
+}
+
+QListWidget#video_export_track_list::item:selected,
+QListWidget#video_export_track_list::item:selected:active,
+QListWidget#video_export_track_list::item:selected:!active {
+    background-color: #1a3a5c;
+    color: #4ac0ff;
+    border: none;
+    outline: none;
+}
+
+QListWidget#video_export_track_list::item:hover:!selected {
+    background-color: #1a2a3c;
+}
+
+QListWidget#video_export_track_list::item:focus {
+    border: none;
+    outline: none;
+}
+
 QWidget#video_workspace QComboBox QAbstractItemView {
     background-color: #0f1923;
     border: 1px solid #2a4a6c;

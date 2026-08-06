@@ -210,6 +210,8 @@ class GpuOptions:
     width: int
     height: int
     speed_mode: str = "balanced"
+    # Explicit MP4 path from ExportSettings; empty ⇒ ``{stem}.mp4`` under output_dir.
+    output_path: str = ""
 
 
 def _send(payload: dict) -> None:
@@ -2208,7 +2210,9 @@ class _ExportFrameProfiler:
 
 def normalize_export_speed_mode(speed_mode: str | None) -> str:
     mode = str(speed_mode or "balanced").strip().lower()
-    if mode in {"very_fast", "draft", "fast", "balanced", "quality", "master"}:
+    if mode in {"master", "best"}:
+        return "best_quality"
+    if mode in {"very_fast", "draft", "fast", "balanced", "quality", "best_quality"}:
         return mode
     return "balanced"
 
@@ -2221,10 +2225,7 @@ def export_glow_pass_limit(speed_mode: str | None) -> int:
     frame on the CPU waveform path. Speed tiers trade glow for throughput:
 
     - ``very_fast`` / ``draft`` / ``fast`` / ``balanced``: skip glow (0)
-    - ``quality`` / ``master``: full dual glow (2)
-
-    On ``low`` GPU tier (GTX 1050 Ti-class), Balanced already skips glow; Master
-    stays full so high-end quality is unchanged.
+    - ``quality`` / ``best_quality``: full dual glow (2)
     """
     mode = normalize_export_speed_mode(speed_mode)
     if mode in {"very_fast", "draft", "fast", "balanced"}:
@@ -2239,7 +2240,7 @@ def export_particle_caps(speed_mode: str | None, *, max_count: int, spawn_rate: 
     mostly particle load. Caps leave light templates alone and tame heavy ones.
 
     ``low`` GPU tier (``CAMXORA_GPU_TIER=low`` or auto <6GB / 1050-class) uses
-    tighter Draft/Fast/Balanced caps. Master/quality stay uncapped.
+    tighter Draft/Fast/Balanced caps. Quality / Best Quality stay uncapped.
     """
     from visualizer.export_gpu_tier import detect_export_gpu_tier
 
@@ -2259,14 +2260,24 @@ def export_particle_caps(speed_mode: str | None, *, max_count: int, spawn_rate: 
     return count, rate
 
 
-def build_nvenc_export_args(speed_mode: str, *, pipe_pix_fmt: str = "rgba", color_range: str = "pc") -> list[str]:
-    """NVENC output flags by speed mode (REQ-2.x encode throughput).
+def build_nvenc_export_args(
+    speed_mode: str,
+    *,
+    width: int,
+    height: int,
+    fps: int | float = 30,
+    pipe_pix_fmt: str = "rgba",
+    color_range: str = "pc",
+) -> list[str]:
+    """NVENC output flags by speed mode (Recommended VBR bitrate).
 
-    Presets/CQ match pre-throughput baselines so file size stays predictable.
-    Low-latency / ``-bf 0`` are opt-in via ``CAMXORA_NVENC_LL=1`` — they inflate
-    bitrate and often feel slower on desktop exports.
+    Preset still follows Speed; rate control is CapCut-inspired VBR scaled by
+    resolution × FPS × Speed (see ``shared.lib.export_bitrate``).
+    Low-latency / ``-bf 0`` are opt-in via ``CAMXORA_NVENC_LL=1``.
     """
     import os
+
+    from shared.lib.export_bitrate import ffmpeg_vbr_bitrate_args, recommended_vbr_ladder_kbps
 
     mode = normalize_export_speed_mode(speed_mode)
     range_tag = str(color_range or "pc").strip().lower()
@@ -2275,26 +2286,26 @@ def build_nvenc_export_args(speed_mode: str, *, pipe_pix_fmt: str = "rgba", colo
     _ = pipe_pix_fmt  # API reserved for pipe-specific codec flags
     if mode in {"very_fast", "draft"}:
         nvenc_preset = "p1"
-        nvenc_cq = "27"
     elif mode == "fast":
         nvenc_preset = "p3"
-        nvenc_cq = "23"
-    elif mode in {"quality", "master"}:
+    elif mode == "best_quality":
+        nvenc_preset = "p7"
+    elif mode == "quality":
         nvenc_preset = "p5"
-        nvenc_cq = "19"
     else:
         # balanced / Standard default
         nvenc_preset = "p3"
-        nvenc_cq = "23"
+    target_kbps, maxrate_kbps, bufsize_kbps = recommended_vbr_ladder_kbps(
+        int(width), int(height), fps, mode
+    )
     args: list[str] = [
         "-c:v",
         "h264_nvenc",
         "-preset",
         nvenc_preset,
         "-rc",
-        "constqp",
-        "-cq",
-        nvenc_cq,
+        "vbr",
+        *ffmpeg_vbr_bitrate_args(target_kbps, maxrate_kbps, bufsize_kbps),
         "-color_range",
         range_tag,
         "-pix_fmt",
@@ -2304,6 +2315,16 @@ def build_nvenc_export_args(speed_mode: str, *, pipe_pix_fmt: str = "rgba", colo
     if ll_raw in {"1", "true", "yes", "on"}:
         args += ["-tune", "ll", "-zerolatency", "1", "-bf", "0"]
     return args
+
+
+def _x264_preset_for_speed(mode: str) -> str:
+    if mode == "very_fast":
+        return "ultrafast"
+    if mode == "fast":
+        return "superfast"
+    if mode == "best_quality":
+        return "medium"
+    return "veryfast"
 
 
 def _start_ffmpeg(
@@ -2317,21 +2338,19 @@ def _start_ffmpeg(
     *,
     pipe_pix_fmt: str = "rgba",
 ) -> tuple[subprocess.Popen, str]:
+    from shared.lib.export_bitrate import ffmpeg_vbr_bitrate_args, recommended_vbr_ladder_kbps
+
     mode = str(speed_mode or "balanced").strip().lower()
     pipe_fmt = str(pipe_pix_fmt or "rgba").strip().lower()
     if pipe_fmt not in {"rgba", "nv12", "yuv420p"}:
         pipe_fmt = "rgba"
     if pipe_fmt in {"nv12", "yuv420p"} and (int(w) % 2 != 0 or int(h) % 2 != 0):
         pipe_fmt = "rgba"
-    if mode == "very_fast":
-        x264_preset = "ultrafast"
-        x264_crf = "26"
-    elif mode == "fast":
-        x264_preset = "superfast"
-        x264_crf = "23"
-    else:
-        x264_preset = "veryfast"
-        x264_crf = "20"
+    if mode in {"best", "master"}:
+        mode = "best_quality"
+    x264_preset = _x264_preset_for_speed(mode)
+    target_kbps, maxrate_kbps, bufsize_kbps = recommended_vbr_ladder_kbps(int(w), int(h), fps, mode)
+    vbr_args = ffmpeg_vbr_bitrate_args(target_kbps, maxrate_kbps, bufsize_kbps)
     from visualizer.nvenc_capability import (
         nvenc_error_indicates_unavailable,
         probe_h264_nvenc,
@@ -2373,7 +2392,14 @@ def _start_ffmpeg(
     if pipe_fmt == "rgba":
         cmd += ["-vf", "scale=in_range=pc:out_range=pc"]
     if use_nvenc:
-        cmd += build_nvenc_export_args(mode, pipe_pix_fmt=pipe_fmt, color_range=color_range)
+        cmd += build_nvenc_export_args(
+            mode,
+            width=int(w),
+            height=int(h),
+            fps=fps,
+            pipe_pix_fmt=pipe_fmt,
+            color_range=color_range,
+        )
         video_codec = "h264_nvenc"
     else:
         cmd += [
@@ -2381,8 +2407,7 @@ def _start_ffmpeg(
             "libx264",
             "-preset",
             x264_preset,
-            "-crf",
-            x264_crf,
+            *vbr_args,
             "-color_range",
             color_range,
             "-pix_fmt",
@@ -2394,6 +2419,10 @@ def _start_ffmpeg(
         "aac",
         "-b:a",
         "192k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
         "-shortest",
         out_path,
     ]
@@ -2413,7 +2442,7 @@ def _start_ffmpeg(
                     enc.kill()
             except OSError:
                 pass
-            cmd2 = rewrite_nvenc_cmd_to_x264(cmd, x264_preset=x264_preset, x264_crf=x264_crf)
+            cmd2 = rewrite_nvenc_cmd_to_x264(cmd, x264_preset=x264_preset, x264_crf="23")
             err_file.seek(0)
             err_file.truncate()
             enc = popen_hidden(cmd2, stdin=subprocess.PIPE, stderr=err_file, bufsize=_stdin_buf)
@@ -2872,7 +2901,12 @@ def run_gpu_render(
 
     out_dir = Path(opts.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = str(out_dir / f"{_stem(opts.mp3_path)}.mp4")
+    explicit_out = str(opts.output_path or "").strip()
+    if explicit_out:
+        out_path = explicit_out
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_path = str(out_dir / f"{_stem(opts.mp3_path)}.mp4")
 
     golden_png = str(single_frame_png or "").strip() or None
     golden_idx = int(single_frame_index) if single_frame_index is not None else None

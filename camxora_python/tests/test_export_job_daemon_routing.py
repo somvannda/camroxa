@@ -56,6 +56,8 @@ def test_export_job_skips_daemon_when_disallowed(monkeypatch) -> None:
     assert calls == ["subprocess"]
     assert job.backend_used == "subprocess"
     assert launched
+    assert "--output" in launched[0]
+    assert "out.mp4" in launched[0]
 
 
 def test_export_job_uses_daemon_when_allowed(monkeypatch) -> None:

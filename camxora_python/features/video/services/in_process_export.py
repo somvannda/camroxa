@@ -104,7 +104,8 @@ def build_gpu_options(
         fps=int(scene.output.fps),
         width=int(scene.output.width),
         height=int(scene.output.height),
-        speed_mode=str(speed_mode or "balanced"),
+        speed_mode=str(speed_mode or "balanced"),
+        output_path=str(export_settings.output_path or ""),
     )
 
 

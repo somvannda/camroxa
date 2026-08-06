@@ -89,6 +89,17 @@ def test_resolve_pipeline_export_workers_forces_one_on_low(monkeypatch: pytest.M
     assert resolve_pipeline_export_workers(3) == 3
 
 
+def test_resolve_pipeline_export_workers_forces_one_for_quality(monkeypatch: pytest.MonkeyPatch) -> None:
+    from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+
+    monkeypatch.setenv("CAMXORA_GPU_TIER", "high")
+    clear_export_gpu_tier_cache()
+    assert resolve_pipeline_export_workers(5, speed_mode="best_quality") == 1
+    assert resolve_pipeline_export_workers(5, speed_mode="quality") == 1
+    assert resolve_pipeline_export_workers(5, speed_mode="fast") == 5
+    assert resolve_pipeline_export_workers(5, speed_mode="balanced", width=2560, height=1440) == 2
+
+
 def test_resolve_pipeline_export_workers_honors_prefs_when_frozen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

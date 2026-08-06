@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -143,9 +142,13 @@ def resolve_manual_export_output_dir(*, settings: dict[str, Any], audio_path: st
 
 
 def build_manual_export_output_path(*, audio_path: str, output_dir: str) -> str:
+    """Match visualizer default naming: ``{stem}.mp4`` under ``output_dir``.
+
+    Stamped ``*_CAMXORA_*`` names previously diverged from what the renderer
+    actually wrote, so merge looked for files that never existed.
+    """
     stem = Path(audio_path).stem if audio_path else "manual-export"
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return str(Path(output_dir) / f"{stem}_CAMXORA_{stamp}.mp4")
+    return str(Path(output_dir) / f"{stem}.mp4")
 
 
 def build_pipeline_render_scene_request(

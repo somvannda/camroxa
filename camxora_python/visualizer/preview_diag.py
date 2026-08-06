@@ -43,7 +43,11 @@ def write_preview_gl_diag(
     line = f"[{stamp}] {level_key.upper():<5} {text}"
 
     try:
-        print(f"[preview-gl-diag] {text}", flush=True)
+        # High-frequency paint breadcrumbs stay in the file log only — printing
+        # every hitch/frame floods the console during idle preview / track clicks.
+        noisy = text.startswith("preview hitch") or text.startswith("paintGL frame=")
+        if not noisy:
+            print(f"[preview-gl-diag] {text}", flush=True)
     except Exception:
         pass
 

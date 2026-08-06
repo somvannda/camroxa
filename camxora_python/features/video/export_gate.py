@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 
 
 class ExportGate:
@@ -37,10 +38,32 @@ class ExportGate:
         with self._cv:
             return self._active
 
-    def acquire(self) -> None:
+    def acquire(
+        self,
+        *,
+        cancel_check: Callable[[], bool] | None = None,
+        timeout_sec: float | None = None,
+        on_wait: Callable[[int, int], None] | None = None,
+    ) -> None:
+        """Acquire a slot. Raises RuntimeError on cancel or timeout while waiting."""
+        deadline = None if timeout_sec is None else (time.monotonic() + max(0.0, float(timeout_sec)))
+        waited_notice = False
         with self._cv:
             while self._active >= self._limit:
-                self._cv.wait()
+                if cancel_check is not None and cancel_check():
+                    raise RuntimeError("Export cancelled while waiting for a free worker slot.")
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise RuntimeError(
+                        f"Timed out waiting for an export worker slot "
+                        f"({self._active}/{self._limit} busy). Stop the other export or lower Workers."
+                    )
+                if on_wait is not None and not waited_notice:
+                    on_wait(int(self._active), int(self._limit))
+                    waited_notice = True
+                remaining = None
+                if deadline is not None:
+                    remaining = max(0.05, deadline - time.monotonic())
+                self._cv.wait(timeout=0.25 if remaining is None else min(0.25, remaining))
             self._active += 1
 
     def release(self) -> None:

@@ -42,6 +42,7 @@ class VideoExportState(BaseModel):
     auto_merge: bool = Field(default=False, alias="autoMerge")
     shuffle_merge: bool = Field(default=False, alias="shuffleMerge")
     merge_running: bool = Field(default=False, alias="mergeRunning")
+    merge_progress_percent: int | None = Field(default=None, alias="mergeProgressPercent")
     current_status: str = Field(default="", alias="currentStatus")
     output_dir: str | None = Field(default=None, alias="outputDir")
     current_output_path: str | None = Field(default=None, alias="currentOutputPath")

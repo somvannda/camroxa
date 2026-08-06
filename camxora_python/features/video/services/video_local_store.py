@@ -88,10 +88,9 @@ def _mp3_track_key(name: str) -> tuple[int, int, str] | tuple[int, str]:
 
 
 def _apply_saved_track_order(items: list[Mp3ListItem], order: list[str]) -> list[Mp3ListItem]:
-    """User drag order first; tracks not in the saved order keep default sort."""
+    """Apply saved playlist order. Paths not in ``order`` are excluded (removed from list)."""
     by_path = {item.path: item for item in items}
-    ordered = [by_path.pop(path) for path in order if path in by_path]
-    return ordered + list(by_path.values())
+    return [by_path[path] for path in order if path in by_path]
 
 
 class VideoLocalStore:
@@ -411,17 +410,25 @@ class VideoLocalStore:
         selected = str(prefs.get("selectedMp3Path") or "").strip()
         if selected not in paths:
             selected = paths[0] if paths else ""
-        if str(prefs.get("mp3Directory") or "").strip() != normalized:
-            prefs.pop("mp3Order", None)  # Custom order belongs to one folder.
+        # Always reset playlist membership so Select MP3 Folder reloads every track.
+        prefs.pop("mp3Order", None)
         prefs["mp3Directory"] = normalized
         prefs["selectedMp3Path"] = selected
         self.write_prefs(prefs)
         return self.read_workspace_state(settings)
 
     def set_mp3_order(self, paths: list[str], *, settings: dict[str, Any] | None = None) -> VideoWorkspaceState:
-        """Persist the drag-and-drop track order; export and merge follow it."""
+        """Persist track playlist order / membership; export and merge follow it.
+
+        When set, only these paths (that still exist in the folder) appear in the
+        track list. Select MP3 Folder clears this so the full folder reloads.
+        """
         prefs = self.read_prefs()
-        prefs["mp3Order"] = [str(path).strip() for path in paths if str(path).strip()]
+        ordered = [str(path).strip() for path in paths if str(path).strip()]
+        prefs["mp3Order"] = ordered
+        selected = str(prefs.get("selectedMp3Path") or "").strip()
+        if selected not in ordered:
+            prefs["selectedMp3Path"] = ordered[0] if ordered else ""
         self.write_prefs(prefs)
         return self.read_workspace_state(settings)
 
