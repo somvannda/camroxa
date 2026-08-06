@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Dashboard API Health no longer reads same-origin `/health` (SPA HTML). It
+  uses `/api/v1/health` via the nginx API proxy. See
+  `docs/changelog/2026-08-06-admin-health-via-api-proxy.md`.
+
 ### Added
 
 - Dashboard **API Health · System Status** card and top-bar badge show

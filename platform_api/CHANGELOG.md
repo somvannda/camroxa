@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `GET /api/v1/health` alias of root `/health` so same-origin admin portals can
+  reach health via nginx `/api/` proxy. See
+  `docs/changelog/2026-08-06-admin-health-via-api-proxy.md`.
 - `GET /health` includes `environment` and `environment_label` (staging→Sandbox,
   production→Production) for admin API Health · System Status. See
   `docs/changelog/2026-08-06-admin-api-health-env-label.md`.

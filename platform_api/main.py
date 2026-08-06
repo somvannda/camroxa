@@ -450,7 +450,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     wire_all_dependencies(app)
 
     # Health check at root (no auth, no API prefix).
+    # Root /health for probes; also under api_v1 so same-origin admin/user
+    # portals can reach it via nginx /api/ proxy (admin /health is SPA HTML).
     app.include_router(health.router)
+    app.include_router(health.router, prefix=settings.api_v1_prefix)
 
     app.include_router(auth.router, prefix=settings.api_v1_prefix)
     app.include_router(billing.router, prefix=settings.api_v1_prefix)
