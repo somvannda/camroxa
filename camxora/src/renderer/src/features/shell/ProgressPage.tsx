@@ -32,6 +32,23 @@ function normalizeImageSourceMode(value: unknown): 'ai' | 'manual' {
   return String(value ?? '').trim().toLowerCase() === 'manual' ? 'manual' : 'ai'
 }
 
+function progressApiFetchLimit(displayLimit: number): number {
+  const resolved = Math.max(1, Number(displayLimit) || 25)
+  return Math.min(100, Math.max(resolved * 5, 50))
+}
+
+function matchesProgressStageFilter(effectiveStage: string, stageFilter: string): boolean {
+  const normalized = String(effectiveStage || '').trim().toLowerCase()
+  const aliases: Record<string, Set<string>> = {
+    export: new Set(['export', 'converter']),
+    converter: new Set(['export', 'converter']),
+    merge: new Set(['merge', 'merger']),
+    merger: new Set(['merge', 'merger']),
+  }
+  const allowed = aliases[stageFilter] ?? new Set([stageFilter])
+  return allowed.has(normalized)
+}
+
 function getManualInspectionKey(batchId: string, profileId: string, role: string): string {
   return `${batchId}:${profileId}:${role}`
 }
@@ -72,15 +89,18 @@ export function ProgressPage(): React.JSX.Element {
 
   const filters = useMemo(
     () => ({
-      limit,
-      activeOnly,
+      // Over-fetch so Active/Stage can still fill the UI limit after overlays.
+      limit: progressApiFetchLimit(limit),
+      activeOnly: false,
       fromDate,
       toDate,
     }),
-    [activeOnly, fromDate, limit, toDate],
+    [fromDate, limit, toDate],
   )
 
-  const { data, isLoading, isError, isFetching, refetch } = useProgressRowsQuery(filters)
+  const { data, isLoading, isError, isFetching, refetch } = useProgressRowsQuery(filters, {
+    refetchInterval: activeOnly ? 4_000 : undefined,
+  })
   const { runtimeByKey } = useProgressVideoRuntime(data?.rows)
   const settingsQuery = useSharedSettingsQuery()
   const pendingDownloadsQuery = useQuery({
@@ -108,16 +128,17 @@ export function ProgressPage(): React.JSX.Element {
       }),
     [data?.rows, runtimeByKey],
   )
-  const filteredRows = useMemo(
-    () =>
-      effectiveRows.filter((entry) => {
-        if (stageFilter === 'all') {
-          return true
-        }
-        return entry.effectiveStage.toLowerCase() === stageFilter
-      }),
-    [effectiveRows, stageFilter],
-  )
+  const matchingRows = useMemo(() => {
+    let rows = effectiveRows
+    if (activeOnly) {
+      rows = rows.filter((entry) => !['done', 'completed'].includes(entry.effectiveStage.toLowerCase()))
+    }
+    if (stageFilter !== 'all') {
+      rows = rows.filter((entry) => matchesProgressStageFilter(entry.effectiveStage, stageFilter))
+    }
+    return rows
+  }, [activeOnly, effectiveRows, stageFilter])
+  const filteredRows = useMemo(() => matchingRows.slice(0, Math.max(1, limit)), [limit, matchingRows])
   const selectedEntry = useMemo(
     () =>
       filteredRows.find(
@@ -128,34 +149,34 @@ export function ProgressPage(): React.JSX.Element {
     [filteredRows, selectedRowKey],
   )
   const activeRunCount = useMemo(
-    () => effectiveRows.filter((entry) => !['done', 'error'].includes(entry.effectiveStage.toLowerCase())).length,
-    [effectiveRows],
+    () => matchingRows.filter((entry) => !['done', 'error'].includes(entry.effectiveStage.toLowerCase())).length,
+    [matchingRows],
   )
   const failedRunCount = useMemo(
     () =>
-      effectiveRows.filter(
+      matchingRows.filter(
         (entry) =>
           entry.effectiveStage.toLowerCase() === 'error' || entry.effectiveStatus.toLowerCase() === 'failed',
       ).length,
-    [effectiveRows],
+    [matchingRows],
   )
   const converterOrMergerCount = useMemo(
     () =>
-      effectiveRows.filter((entry) =>
-        ['converter', 'merger'].includes(entry.effectiveStage.toLowerCase()),
+      matchingRows.filter((entry) =>
+        ['converter', 'export', 'merger', 'merge'].includes(entry.effectiveStage.toLowerCase()),
       ).length,
-    [effectiveRows],
+    [matchingRows],
   )
   const waitingOnUserCount = useMemo(
     () =>
       imageSourceMode !== 'manual'
         ? 0
-        : effectiveRows.filter((entry) => {
+        : matchingRows.filter((entry) => {
             const inspection =
               manualInspections[getManualInspectionKey(entry.row.meta.batch_id, entry.row.meta.profile_id, entry.row.meta.role)]
-            return entry.effectiveStage === 'Image' && inspection && !inspection.ready
+            return entry.effectiveStage.toLowerCase() === 'image' && inspection && !inspection.ready
           }).length,
-    [effectiveRows, imageSourceMode, manualInspections],
+    [matchingRows, imageSourceMode, manualInspections],
   )
   const syncManualMutation = useMutation({
     mutationFn: async (batchId: string) => apiSyncManualImageJobs({ batch_id: batchId }),
