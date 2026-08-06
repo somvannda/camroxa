@@ -109,6 +109,24 @@ class TestHealthResponseStructure:
         assert "uptime_seconds" in body
         assert "timestamp" in body
 
+    async def test_api_v1_health_alias(self, app_healthy) -> None:
+        """Admin same-origin proxy uses /api/v1/health (root /health is SPA on admin host)."""
+        with patch(
+            "platform_api.routers.health._check_suno", return_value=True
+        ), patch(
+            "platform_api.routers.health._check_fal", return_value=True
+        ), patch(
+            "platform_api.routers.health._check_slai", return_value=True
+        ):
+            transport = ASGITransport(app=app_healthy)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.get("/api/v1/health")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "healthy"
+        assert "environment_label" in body
+
     async def test_services_contains_all_providers(self, app_healthy) -> None:
         """Services dict must include suno, fal, slai."""
         with patch(

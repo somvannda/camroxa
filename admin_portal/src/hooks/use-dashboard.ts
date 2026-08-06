@@ -3,10 +3,25 @@ import httpClient from '@/lib/http-client';
 import type { HealthStatus } from '@/types/models';
 import type { ProviderKeyBalancesResponse } from '@/types/provider-balances';
 
+function assertHealthPayload(data: unknown): HealthStatus {
+  if (
+    data == null ||
+    typeof data !== 'object' ||
+    typeof (data as HealthStatus).status !== 'string'
+  ) {
+    throw new Error(
+      'Invalid health payload — expected Platform API JSON from /api/v1/health (not admin SPA HTML).',
+    );
+  }
+  return data as HealthStatus;
+}
+
 export function useHealthStatus() {
   return useQuery({
     queryKey: ['health'],
-    queryFn: () => httpClient.get<HealthStatus>('/health'),
+    // Same-origin /api/ is proxied to platform_api. Do NOT call /health on the
+    // admin host — nginx serves index.html there (false "Unknown" / unreachable).
+    queryFn: async () => assertHealthPayload(await httpClient.get<HealthStatus>('/api/v1/health')),
     refetchInterval: 30_000, // Poll health every 30s
   });
 }
