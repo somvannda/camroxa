@@ -21,6 +21,21 @@ def batch_repo() -> AsyncMock:
     repo.create_batch = AsyncMock(side_effect=lambda batch: batch)
     repo.create_songs = AsyncMock(side_effect=lambda songs: songs)
     repo.upsert_batch_channel_assets = AsyncMock()
+
+    async def _claim_albums(_batch_id, *, ok_album, alt_album):
+        return (
+            str(ok_album or "").strip() or None,
+            str(alt_album or "").strip() or None,
+        )
+
+    async def _claim_dirs(_batch_id, *, ok_run_dir, alt_run_dir):
+        return (
+            str(ok_run_dir or "").strip() or None,
+            str(alt_run_dir or "").strip() or None,
+        )
+
+    repo.claim_batch_channel_albums = AsyncMock(side_effect=_claim_albums)
+    repo.claim_batch_run_directories = AsyncMock(side_effect=_claim_dirs)
     return repo
 
 
@@ -356,7 +371,10 @@ async def test_assign_batch_run_directories_after_album(
     prompt_service: AsyncMock,
     settings_service: AsyncMock,
 ) -> None:
-    batch_repo.update_batch_run_directories = AsyncMock()
+    async def _claim(_batch_id, *, ok_run_dir, alt_run_dir):
+        return ok_run_dir, alt_run_dir
+
+    batch_repo.claim_batch_run_directories = AsyncMock(side_effect=_claim)
     profile_repo.get_by_id = AsyncMock(
         side_effect=[
             SimpleNamespace(folder_name="bass-drive", name="Bass Drive"),
@@ -386,17 +404,164 @@ async def test_assign_batch_run_directories_after_album(
         planned_from_date=date(2026, 7, 13),
         planned_to_date=date(2026, 7, 13),
     )
+    batch_repo.get_batch_by_id = AsyncMock(return_value=batch)
 
     updated = await service._assign_batch_run_directories_if_needed(
         batch, ok_album="Neon Nights", alt_album="Sunset Pulse"
     )
 
-    batch_repo.update_batch_run_directories.assert_awaited_once()
+    batch_repo.claim_batch_run_directories.assert_awaited_once()
     assert updated.ok_run_dir is not None
     assert updated.ok_run_dir.endswith(r"bass-drive\2026-07-13_Neon-Nights")
     assert updated.alt_run_dir is not None
     assert updated.alt_run_dir.endswith(r"beattok-remixes\2026-07-13_Sunset-Pulse")
 
+
+@pytest.mark.asyncio
+async def test_persist_batch_channel_albums_first_writer_wins(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    batch_id = uuid4()
+    batch = Batch(
+        id=batch_id,
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        ok_profile_id=UUID("00000000-0000-0000-0000-000000000002"),
+        alt_profile_id=UUID("00000000-0000-0000-0000-000000000003"),
+        ok_album="Twilight Letters Burn",
+        alt_album="Opal Silence Drift",
+    )
+    batch_repo.get_batch_by_id = AsyncMock(return_value=batch)
+    batch_repo.claim_batch_channel_albums = AsyncMock(
+        return_value=("Twilight Letters Burn", "Opal Silence Drift")
+    )
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    song = SimpleNamespace(album="Crystal Desire Collection", batch_index=1)
+    updated = await service._persist_batch_channel_albums(
+        batch_id=batch_id,
+        user_id="00000000-0000-0000-0000-000000000001",
+        successful_songs=[song],
+        use_content_pools=False,
+        draft_requests=[
+            DraftRequest(
+                language="en",
+                creativity_level=55,
+                description="Desc",
+                structure="[Verse]",
+            )
+        ],
+        draft_routing=SimpleNamespace(),
+        channel_profile_id=batch.ok_profile_id,
+    )
+    assert updated is not None
+    assert updated.ok_album == "Twilight Letters Burn"
+    assert updated.alt_album == "Opal Silence Drift"
+    batch_repo.claim_batch_channel_albums.assert_not_awaited()
+    generation_service.generate_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_retry_song_draft_forces_locked_ok_album(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    batch_id = uuid4()
+    song_id = uuid4()
+    batch = Batch(
+        id=batch_id,
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        ok_profile_id=UUID("00000000-0000-0000-0000-000000000002"),
+        alt_profile_id=UUID("00000000-0000-0000-0000-000000000003"),
+        song_count=2,
+        auto_gsuno=False,
+        ok_album="Locked Album",
+        alt_album="Locked Alt",
+        ok_run_dir=r"D:\Music\primary\2026-08-03_Locked-Album",
+        alt_run_dir=r"D:\Music\secondary\2026-08-03_Locked-Alt",
+        status="processing",
+    )
+    racing_song = Song(
+        id=song_id,
+        batch_id=batch_id,
+        user_id=batch.user_id,
+        batch_index=1,
+        status="pending",
+    )
+    sibling = Song(
+        id=uuid4(),
+        batch_id=batch_id,
+        user_id=batch.user_id,
+        batch_index=0,
+        status="draft_ready",
+        title="Sibling",
+        album="Locked Album",
+        lyrics="x",
+    )
+    batch_repo.get_batch_for_user = AsyncMock(return_value=batch)
+    batch_repo.get_songs_for_user_batch = AsyncMock(return_value=[sibling, racing_song])
+    batch_repo.get_batch_by_id = AsyncMock(return_value=batch)
+    batch_repo.update_song_status = AsyncMock()
+    batch_repo.update_song_draft = AsyncMock()
+    batch_repo.claim_batch_channel_albums = AsyncMock(
+        return_value=("Locked Album", "Locked Alt")
+    )
+    batch_repo.claim_batch_run_directories = AsyncMock(
+        return_value=(batch.ok_run_dir, batch.alt_run_dir)
+    )
+    batch_repo.get_batch_status_counters = AsyncMock(
+        return_value={
+            "total_songs": 2,
+            "drafts_completed": 2,
+            "drafts_failed": 0,
+            "suno_submitted": 0,
+            "suno_completed": 0,
+            "suno_failed": 0,
+        }
+    )
+    batch_repo.update_batch_status = AsyncMock()
+    generation_service.submit_draft = AsyncMock(
+        return_value=SongDraft(title="Racer Title", album="Locked Album", lyrics="Lyrics")
+    )
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    song = await service.retry_song_draft(
+        batch_id=batch_id,
+        song_id=song_id,
+        user_id=str(batch.user_id),
+        submit_suno=False,
+    )
+    assert song.album == "Locked Album"
+    request = generation_service.submit_draft.await_args.args[1]
+    assert request.forced_album == "Locked Album"
 
 @pytest.mark.asyncio
 async def test_create_batch_rejects_inverted_date_window(
@@ -980,10 +1145,13 @@ async def test_orchestrate_drafts_persists_distinct_channel_albums(
     )
     batch_repo.get_batch_by_id = AsyncMock(return_value=batch)
     batch_repo.update_batch_status = AsyncMock()
-    batch_repo.update_batch_channel_albums = AsyncMock()
     batch_repo.update_song_draft = AsyncMock()
     batch_repo.update_song_status = AsyncMock()
-    batch_repo.update_batch_channel_albums = AsyncMock()
+
+    async def _claim(_batch_id, *, ok_album, alt_album):
+        return ok_album, alt_album
+
+    batch_repo.claim_batch_channel_albums = AsyncMock(side_effect=_claim)
     generation_service.submit_draft = AsyncMock(
         return_value=SongDraft(title="Pool Title", album="Primary Album", lyrics="Lyrics")
     )
@@ -1035,7 +1203,7 @@ async def test_orchestrate_drafts_persists_distinct_channel_albums(
         use_content_pools=True,
     )
 
-    batch_repo.update_batch_channel_albums.assert_awaited_once_with(
+    batch_repo.claim_batch_channel_albums.assert_awaited_once_with(
         batch_id,
         ok_album="Primary Album",
         alt_album="Polished Secondary Album",

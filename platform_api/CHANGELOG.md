@@ -42,7 +42,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   stored upload path is missing on disk, which stopped the admin portal from
   requesting those media URLs and logging 404s. See
   docs/changelog/2026-08-04-admin-channel-profile-media-404.md.
-
+- Parallel draft workers no longer invent extra album folders: Album 1 / Album 2
+  and run dirs lock once (SQL `COALESCE` first-wins); songs stick to `ok_album`,
+  and Suno downloads prefer locked batch dirs. See
+  `docs/changelog/2026-08-03-lock-batch-album-run-dirs.md`.
 - Desktop installer publish: version comes from the Software Update form /
   draft (Force update checkbox), not from the installer filename. Filename
   parse is auto-fill only; `CamxoraSetup-*.exe` still parses when present.
