@@ -3,7 +3,6 @@ import { RefreshCw } from 'lucide-react';
 import {
   useForceRefreshProviderKeyBalances,
   useProviderKeyBalances,
-  useSunoBalance,
 } from '@/hooks/use-dashboard';
 import type { ProviderKeyBalanceItem } from '@/types/provider-balances';
 import { cn } from '@/lib/utils';
@@ -39,6 +38,15 @@ function balanceClass(item: ProviderKeyBalanceItem): string {
     return 'text-emerald-300';
   }
   return 'text-slate-500';
+}
+
+/** True when at least one key has a numeric balance we can show. */
+function hasReadableBalance(keys: ProviderKeyBalanceItem[]): boolean {
+  return keys.some(
+    (k) =>
+      (k.fetch_status === 'ok' || k.fetch_status === 'cached') &&
+      typeof k.balance === 'number',
+  );
 }
 
 function formatTotal(
@@ -113,7 +121,6 @@ function CompactProviderCard({
         totalTone === 'low' ? 'border-red-500/35' : 'border-slate-800',
       )}
     >
-      {/* Header: Provider (N keys) …… total */}
       <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0 truncate text-sm font-semibold text-slate-100">
           {title}{' '}
@@ -131,7 +138,6 @@ function CompactProviderCard({
         </div>
       </div>
 
-      {/* Right-aligned Remaining label under total */}
       <div className="mt-0.5 flex items-center justify-between gap-2">
         <div className="min-w-0">
           {error ? (
@@ -143,7 +149,6 @@ function CompactProviderCard({
         </div>
       </div>
 
-      {/* Key rows: label left, value right — 2 cols when many keys */}
       {rows.length > 0 ? (
         <div
           className={cn(
@@ -169,24 +174,21 @@ function CompactProviderCard({
 
 type ProviderKeyBalancesPanelProps = {
   className?: string;
-  /** Include Suno platform-level balance card (from /admin/suno-balance). */
-  includeSunoPlatform?: boolean;
 };
 
-export function ProviderKeyBalancesPanel({
-  className,
-  includeSunoPlatform = true,
-}: ProviderKeyBalancesPanelProps) {
+export function ProviderKeyBalancesPanel({ className }: ProviderKeyBalancesPanelProps) {
   const query = useProviderKeyBalances();
   const forceRefresh = useForceRefreshProviderKeyBalances();
-  const sunoQuery = useSunoBalance();
   const refreshing = query.isFetching || forceRefresh.isPending;
 
-  const groups = [...(query.data?.providers ?? [])].sort((a, b) => {
-    const ai = PROVIDER_ORDER.indexOf(a.provider as (typeof PROVIDER_ORDER)[number]);
-    const bi = PROVIDER_ORDER.indexOf(b.provider as (typeof PROVIDER_ORDER)[number]);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  });
+  // Hide providers with no readable remaining balance (e.g. OpenAI N/A).
+  const groups = [...(query.data?.providers ?? [])]
+    .filter((group) => hasReadableBalance(group.keys))
+    .sort((a, b) => {
+      const ai = PROVIDER_ORDER.indexOf(a.provider as (typeof PROVIDER_ORDER)[number]);
+      const bi = PROVIDER_ORDER.indexOf(b.provider as (typeof PROVIDER_ORDER)[number]);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
 
   return (
     <section className={cn('space-y-3', className)}>
@@ -212,42 +214,13 @@ export function ProviderKeyBalancesPanel({
         <p className="text-sm text-slate-500">Loading balances…</p>
       ) : query.isError ? (
         <p className="text-sm text-red-300">Failed to load balances</p>
-      ) : groups.length === 0 && !includeSunoPlatform ? (
-        <p className="text-sm text-slate-500">No keys configured</p>
+      ) : groups.length === 0 ? (
+        <p className="text-sm text-slate-500">No readable provider balances</p>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {includeSunoPlatform ? (
-            <CompactProviderCard
-              title="Suno"
-              keyCountLabel="platform"
-              totalText={
-                sunoQuery.isLoading
-                  ? '…'
-                  : sunoQuery.data?.credits == null
-                    ? '—'
-                    : sunoQuery.data.credits.toLocaleString()
-              }
-              totalTone={
-                sunoQuery.data?.credits != null && sunoQuery.data.credits <= 0 ? 'low' : 'ok'
-              }
-              remainingLabel="Remaining"
-              rows={[
-                {
-                  id: 'suno-platform',
-                  label: 'Platform account',
-                  value:
-                    sunoQuery.data?.credits == null
-                      ? '—'
-                      : sunoQuery.data.credits.toLocaleString(),
-                  valueClass:
-                    sunoQuery.data?.credits != null && sunoQuery.data.credits <= 0
-                      ? 'text-red-400'
-                      : 'text-emerald-300',
-                },
-              ]}
-            />
-          ) : null}
-
+        <div
+          className="grid w-full gap-2"
+          style={{ gridTemplateColumns: `repeat(${groups.length}, minmax(0, 1fr))` }}
+        >
           {groups.map((group) => {
             const label = PROVIDER_LABELS[group.provider] ?? group.provider;
             const total = formatTotal(group.keys);
