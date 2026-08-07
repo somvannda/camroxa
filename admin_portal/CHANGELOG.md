@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard redesigned as a live ops + money glance board: system/workers health, provider credits, income/COGS/profit/credits purchased, and Top 10 spenders (last 30 days). Layout clarified into Platform API / Database / Workers, key-pool row (incl. CALA), per-provider credit cards, then Accounts → Money → Top 10. See `docs/changelog/2026-08-07-admin-dashboard-live-ops.md`.
+
 ### Fixed
 
 - Dashboard API Health no longer reads same-origin `/health` (SPA HTML). It

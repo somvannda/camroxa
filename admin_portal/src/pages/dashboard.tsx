@@ -1,466 +1,214 @@
-import {
-  Users,
-  KeyRound,
-  Coins,
-  Activity,
-  Music,
-  Image,
-  Shield,
-  UserCheck,
-  UserMinus,
-  UserPlus,
-  FolderKanban,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { LoadingSkeleton } from '@/components/shared/loading-skeleton';
-import { ErrorState } from '@/components/shared/error-state';
-import { HealthSummary } from '@/components/key-pool/health-summary';
+import { useMemo } from 'react';
+import { Users, UserCheck, UserPlus, UserMinus } from 'lucide-react';
+
+import { MoneyGlanceStrip } from '@/components/dashboard/money-glance-strip';
+import { OperationsStatusHero } from '@/components/dashboard/operations-status-hero';
 import { ProviderKeyBalancesPanel } from '@/components/dashboard/provider-key-balances-panel';
-import { PageHeader } from '@/components/shared/page-header';
-import { useHealthStatus, useSunoBalance, useAdminOverview, useProviderKeyBalances } from '@/hooks/use-dashboard';
 import {
-  deploymentEnvironmentBadgeClass,
-  resolveDeploymentEnvironmentLabel,
-} from '@/lib/deployment-environment';
-import { cn } from '@/lib/utils';
-import type { HealthStatus, ServiceHealth } from '@/types/models';
+  TopSpendersTable,
+  useTopSpendSort,
+} from '@/components/dashboard/top-spenders-table';
+import { PageHeader } from '@/components/shared/page-header';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAIRoutingAssignments } from '@/hooks/use-ai-routing';
+import {
+  useGlobalCreditValue,
+  useModelCosts,
+  usePricing,
+} from '@/hooks/use-credits';
+import {
+  useAdminOverview,
+  useHealthStatus,
+} from '@/hooks/use-dashboard';
+import { useJobQueueMetrics } from '@/hooks/use-job-queue';
+import { useUsage } from '@/hooks/use-usage';
+import { useUserSpend } from '@/hooks/use-user-spend';
+import {
+  buildOperationFinanceRows,
+  buildRoutingHintMap,
+  computeFinanceGlance,
+  flattenRoutingAssignments,
+  lastDaysFromIso,
+} from '@/lib/finance-estimates';
 
-type StatusLevel = HealthStatus['status'];
-
-const STATUS_COLORS: Record<StatusLevel, string> = {
-  healthy: 'bg-green-500/10 text-green-500 border-green-500/20',
-  degraded: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  unhealthy: 'bg-red-500/10 text-red-500 border-red-500/20',
-};
-
-const STATUS_DOT_COLORS: Record<StatusLevel, string> = {
-  healthy: 'bg-green-500',
-  degraded: 'bg-yellow-500',
-  unhealthy: 'bg-red-500',
-};
-
-function getStatusLabel(status: StatusLevel | undefined): string {
-  if (!status) return 'Unknown';
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function getAffectedServices(
-  services: Record<string, ServiceHealth | boolean> | null | undefined,
-): Array<{ name: string; status: StatusLevel; message?: string }> {
-  if (!services || typeof services !== 'object') {
-    return [];
-  }
-
-  return Object.entries(services)
-    .filter(([, svc]) => {
-      if (typeof svc === 'boolean') return !svc;
-      return svc?.status !== 'healthy';
-    })
-    .map(([name, svc]) => ({
-      name,
-      status: typeof svc === 'boolean'
-        ? ((svc ? 'healthy' : 'unhealthy') as StatusLevel)
-        : (svc?.status ?? 'unhealthy'),
-      message: typeof svc === 'boolean' ? undefined : svc?.message,
-    }));
-}
-
-function formatPercent(value: number): string {
-  return `${Math.round(value)}%`;
-}
-
-function formatUptime(seconds: number | undefined): string {
-  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return '—';
-  const total = Math.floor(seconds);
-  const days = Math.floor(total / 86_400);
-  const hours = Math.floor((total % 86_400) / 3_600);
-  const minutes = Math.floor((total % 3_600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
+const DASHBOARD_WINDOW_DAYS = 30;
 
 export default function DashboardPage() {
+  const fromDate = useMemo(() => lastDaysFromIso(DASHBOARD_WINDOW_DAYS), []);
+  const windowLabel = `Last ${DASHBOARD_WINDOW_DAYS} days`;
+
   const healthQuery = useHealthStatus();
-  const balanceQuery = useSunoBalance();
+  const jobQueueQuery = useJobQueueMetrics();
   const overviewQuery = useAdminOverview();
-  const providerBalancesQuery = useProviderKeyBalances();
 
-  const isLoading = healthQuery.isLoading || balanceQuery.isLoading || overviewQuery.isLoading;
-  const isError = healthQuery.isError || balanceQuery.isError || overviewQuery.isError;
-  const errorMessage =
-    healthQuery.error?.message || balanceQuery.error?.message || overviewQuery.error?.message || 'Failed to load dashboard data';
-
-  if (isLoading) {
-    return <LoadingSkeleton />;
-  }
-
-  if (isError) {
-    return (
-      <ErrorState
-        message={errorMessage}
-        onRetry={() => {
-          healthQuery.refetch();
-          balanceQuery.refetch();
-          overviewQuery.refetch();
-          providerBalancesQuery.refetch();
-        }}
-      />
-    );
-  }
-
-  const health = healthQuery.data;
-  const balance = balanceQuery.data?.credits ?? 0;
-  const overview = overviewQuery.data;
-  const affectedServices = getAffectedServices(health?.services);
-  const totalUsers = overview?.total_users ?? 0;
-  const activeRate = totalUsers > 0 ? (overview?.active_users ?? 0) / totalUsers * 100 : 0;
-  const profileCoverage = totalUsers > 0 ? (overview?.users_with_profiles ?? 0) / totalUsers * 100 : 0;
-  const licenseCoverage = totalUsers > 0 ? (overview?.users_with_active_license ?? 0) / totalUsers * 100 : 0;
-  const environmentLabel = resolveDeploymentEnvironmentLabel({
-    apiEnvironment: health?.environment,
-    apiEnvironmentLabel: health?.environment_label,
-    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+  const [spendSort, setSpendSort] = useTopSpendSort('cogs_desc');
+  const spendQuery = useUserSpend({
+    page: 1,
+    page_size: 10,
+    sort: spendSort,
+    from_date: fromDate,
   });
 
-  const primaryStats = [
+  const usageQuery = useUsage({
+    page: 1,
+    page_size: 1,
+    from_date: fromDate,
+  });
+  const pricingQuery = usePricing();
+  const modelCostsQuery = useModelCosts();
+  const gcvQuery = useGlobalCreditValue();
+  const routingQuery = useAIRoutingAssignments();
+
+  const gcv = gcvQuery.data?.global_credit_value ?? null;
+  const routingByOperation = useMemo(
+    () => buildRoutingHintMap(flattenRoutingAssignments(routingQuery.data)),
+    [routingQuery.data],
+  );
+  const operationRows = useMemo(
+    () =>
+      buildOperationFinanceRows(
+        usageQuery.data?.summary?.by_operation ?? [],
+        pricingQuery.data ?? [],
+        modelCostsQuery.data ?? [],
+        gcv,
+        routingByOperation,
+      ),
+    [
+      usageQuery.data?.summary?.by_operation,
+      pricingQuery.data,
+      modelCostsQuery.data,
+      gcv,
+      routingByOperation,
+    ],
+  );
+  const financeGlance = useMemo(
+    () => computeFinanceGlance(usageQuery.data?.summary, operationRows, gcv),
+    [usageQuery.data?.summary, operationRows, gcv],
+  );
+
+  const moneyLoading =
+    usageQuery.isLoading ||
+    pricingQuery.isLoading ||
+    modelCostsQuery.isLoading ||
+    gcvQuery.isLoading;
+  const moneyError =
+    usageQuery.isError ||
+    pricingQuery.isError ||
+    modelCostsQuery.isError ||
+    gcvQuery.isError;
+  const moneyErrorMessage =
+    (usageQuery.error as Error | null)?.message ||
+    (pricingQuery.error as Error | null)?.message ||
+    (modelCostsQuery.error as Error | null)?.message ||
+    (gcvQuery.error as Error | null)?.message;
+
+  const overview = overviewQuery.data;
+  const userStrip = [
     {
-      title: 'Total Users',
+      title: 'Total users',
       value: overview?.total_users?.toLocaleString() ?? '—',
-      description: 'All registered accounts',
       icon: Users,
     },
     {
-      title: 'Active Accounts',
+      title: 'Active',
       value: overview?.active_users?.toLocaleString() ?? '—',
-      description: `${formatPercent(activeRate)} of users are active`,
       icon: UserCheck,
     },
     {
-      title: 'New Users (7d)',
+      title: 'New (7d)',
       value: overview?.new_users_7d?.toLocaleString() ?? '—',
-      description: 'Recently created accounts',
       icon: UserPlus,
     },
     {
-      title: 'Suspended Users',
+      title: 'Suspended',
       value: overview?.suspended_users?.toLocaleString() ?? '—',
-      description: 'Accounts currently blocked',
       icon: UserMinus,
-    },
-    {
-      title: 'Users With Profiles',
-      value: overview?.users_with_profiles?.toLocaleString() ?? '—',
-      description: `${formatPercent(profileCoverage)} have channel setup`,
-      icon: FolderKanban,
-    },
-    {
-      title: 'Users With License',
-      value: overview?.users_with_active_license?.toLocaleString() ?? '—',
-      description: `${formatPercent(licenseCoverage)} have active access`,
-      icon: KeyRound,
-    },
-  ];
-
-  const platformStats = [
-    {
-      title: 'Admin Accounts',
-      value: overview?.total_admins?.toLocaleString() ?? '—',
-      description: 'Internal operators with admin access',
-      icon: Shield,
-    },
-    {
-      title: 'Active Licenses',
-      value: overview?.active_licenses?.toLocaleString() ?? '—',
-      description: 'Currently assigned and active',
-      icon: KeyRound,
-    },
-    {
-      title: 'Total Songs',
-      value: overview?.total_songs?.toLocaleString() ?? '—',
-      description: 'Generated across the platform',
-      icon: Music,
-    },
-    {
-      title: 'Total Images',
-      value: overview?.total_images?.toLocaleString() ?? '—',
-      description: 'Image jobs created so far',
-      icon: Image,
-    },
-    {
-      title: 'Suno Balance',
-      value: balance.toLocaleString(),
-      description: 'External API credits',
-      icon: Coins,
-    },
-    {
-      title: 'System Health',
-      value: health ? getStatusLabel(health.status) : 'Unknown',
-      description: `${environmentLabel} API · uptime ${formatUptime(health?.uptime_seconds)}`,
-      icon: Activity,
-      accent: health ? STATUS_COLORS[health.status] : '',
-      dot: health ? STATUS_DOT_COLORS[health.status] : 'bg-slate-500',
-      environmentLabel,
     },
   ];
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       <PageHeader
         eyebrow="Operations overview"
         title="Dashboard"
-        description="Monitor system health, provider readiness, platform usage, and your current operating posture from one place."
+        description="Live health, provider credits, money, and top spenders — the signals that matter first."
       />
 
-      <Card className="border-slate-800 bg-slate-900/50">
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
-          <div>
-            <CardTitle className="text-lg font-semibold text-slate-100">
-              API Health · System Status
-            </CardTitle>
-            <p className="mt-1 text-sm text-slate-400">
-              Live status of the Platform API this admin portal is talking to.
-            </p>
-          </div>
-          <Badge
-            variant="outline"
-            className={cn('text-xs font-medium', deploymentEnvironmentBadgeClass(environmentLabel))}
-          >
-            {environmentLabel}
-          </Badge>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Environment</div>
-            <div className="mt-2 text-xl font-semibold text-white">{environmentLabel}</div>
-            <div className="mt-1 text-xs text-slate-500">
-              {health?.environment ? `PLATFORM_ENVIRONMENT=${health.environment}` : 'Host-derived label'}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">API Status</div>
-            <div className="mt-2 flex items-center gap-2">
-              <span
-                className={cn(
-                  'h-2.5 w-2.5 rounded-full',
-                  health ? STATUS_DOT_COLORS[health.status] : 'bg-slate-500',
-                )}
-              />
-              <Badge className={cn('text-xs', health ? STATUS_COLORS[health.status] : '')}>
-                {health ? getStatusLabel(health.status) : 'Unknown'}
-              </Badge>
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Database {health?.database ? 'connected' : 'unreachable'}
-            </div>
-          </div>
-          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Uptime</div>
-            <div className="mt-2 text-xl font-semibold text-white">
-              {formatUptime(health?.uptime_seconds)}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">Since last API process start</div>
-          </div>
-          <div className="rounded-2xl border border-white/8 bg-slate-950/45 p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Checked</div>
-            <div className="mt-2 text-sm font-medium text-white">
-              {health?.timestamp
-                ? new Date(health.timestamp).toLocaleString()
-                : '—'}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">Health payload timestamp (UTC source)</div>
-          </div>
-        </CardContent>
-      </Card>
+      <OperationsStatusHero
+        healthQuery={healthQuery}
+        jobQueueQuery={jobQueueQuery}
+      />
 
       <ProviderKeyBalancesPanel />
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-white">User Statistics</h2>
-            <p className="text-sm text-slate-400">
-              Track account growth, adoption, and operational account status.
-            </p>
+            <h2 className="text-lg font-semibold text-white">Accounts</h2>
+            <p className="text-sm text-slate-400">Quick user snapshot</p>
           </div>
-          <Badge variant="outline" className="border-violet-400/20 bg-violet-500/10 text-violet-200">
-            Last 30 days: {overview?.new_users_30d?.toLocaleString() ?? '—'} new users
-          </Badge>
+          {overview?.new_users_30d != null ? (
+            <Badge
+              variant="outline"
+              className="border-violet-400/20 bg-violet-500/10 text-violet-200"
+            >
+              Last 30 days: {overview.new_users_30d.toLocaleString()} new
+            </Badge>
+          ) : null}
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {primaryStats.map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <Card key={stat.title} className="border-slate-800 bg-slate-900/50">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-slate-400">
-                    {stat.title}
-                  </CardTitle>
-                  <Icon className="h-4 w-4 text-slate-400" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-slate-100">{stat.value}</div>
-                  <p className="text-xs text-slate-500">{stat.description}</p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-        <Card className="border-slate-800 bg-slate-900/50">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-100">
-              Account Coverage
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {[
-              {
-                label: 'Accounts with channel profiles',
-                value: overview?.users_with_profiles ?? 0,
-                total: totalUsers,
-                percent: profileCoverage,
-              },
-              {
-                label: 'Accounts with active license access',
-                value: overview?.users_with_active_license ?? 0,
-                total: totalUsers,
-                percent: licenseCoverage,
-              },
-              {
-                label: 'Active account health',
-                value: overview?.active_users ?? 0,
-                total: totalUsers,
-                percent: activeRate,
-              },
-            ].map((item) => (
-              <div key={item.label} className="space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm text-slate-300">{item.label}</div>
-                  <div className="text-sm font-medium text-white">
-                    {item.value.toLocaleString()} / {item.total.toLocaleString()} ({formatPercent(item.percent)})
-                  </div>
-                </div>
-                <div className="h-2 rounded-full bg-slate-800/90">
-                  <div
-                    className="h-2 rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500"
-                    style={{ width: `${Math.max(6, Math.min(100, item.percent))}%` }}
-                  />
-                </div>
-              </div>
+        {overviewQuery.isLoading ? (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-20 rounded-2xl" />
             ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-800 bg-slate-900/50">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-100">
-              Platform Snapshot
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            {platformStats.map((stat) => {
+          </div>
+        ) : overviewQuery.isError ? (
+          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {(overviewQuery.error as Error)?.message || 'Failed to load account overview'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {userStrip.map((stat) => {
               const Icon = stat.icon;
               return (
                 <div
                   key={stat.title}
-                  className="rounded-2xl border border-white/8 bg-slate-950/45 p-4"
+                  className="rounded-2xl border border-slate-800/80 bg-slate-900/40 px-4 py-3"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                        {stat.title}
-                      </div>
-                      {stat.dot ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className={cn('h-2.5 w-2.5 rounded-full', stat.dot)} />
-                          <Badge className={cn('text-xs', stat.accent)}>{stat.value}</Badge>
-                          {stat.environmentLabel ? (
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                'text-[10px]',
-                                deploymentEnvironmentBadgeClass(stat.environmentLabel),
-                              )}
-                            >
-                              {stat.environmentLabel}
-                            </Badge>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-xl font-semibold text-white">{stat.value}</div>
-                      )}
-                      <div className="mt-1 text-xs text-slate-500">{stat.description}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      {stat.title}
                     </div>
-                    <Icon className="h-4 w-4 text-slate-500" />
+                    <Icon className="h-3.5 w-3.5 text-slate-500" />
+                  </div>
+                  <div className="mt-2 text-xl font-semibold text-slate-100 tabular-nums">
+                    {stat.value}
                   </div>
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        )}
+      </section>
 
-      <Card className="border-slate-800 bg-slate-900/50">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold text-slate-100">
-            Provider Key Pool Health
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <HealthSummary />
-        </CardContent>
-      </Card>
+      <MoneyGlanceStrip
+        glance={moneyLoading ? null : financeGlance}
+        isLoading={moneyLoading}
+        isError={moneyError}
+        errorMessage={moneyErrorMessage}
+        windowLabel={windowLabel}
+      />
 
-      {affectedServices.length > 0 && (
-        <Card className="border-slate-800 bg-slate-900/50">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-slate-100">
-              Affected Services
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {affectedServices.map((service) => (
-                <div
-                  key={service.name}
-                  className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-950/50 px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={cn(
-                        'h-2.5 w-2.5 rounded-full',
-                        STATUS_DOT_COLORS[service.status],
-                      )}
-                    />
-                    <span className="text-sm font-medium text-slate-200">
-                      {service.name}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {service.message && (
-                      <span className="text-xs text-slate-400">
-                        {service.message}
-                      </span>
-                    )}
-                    <Badge
-                      className={cn(
-                        'text-xs',
-                        STATUS_COLORS[service.status],
-                      )}
-                    >
-                      {getStatusLabel(service.status)}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <TopSpendersTable
+        items={spendQuery.data?.items ?? []}
+        sort={spendSort}
+        onSortChange={setSpendSort}
+        isLoading={spendQuery.isLoading}
+        isError={spendQuery.isError}
+        errorMessage={(spendQuery.error as Error | null)?.message}
+        windowLabel={windowLabel}
+      />
     </div>
   );
 }

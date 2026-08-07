@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildOperationFinanceRows,
+  computeFinanceGlance,
+  lastDaysFromIso,
   resolveCostCredits,
   resolveModelCostUsd,
 } from '@/lib/finance-estimates';
@@ -167,5 +169,56 @@ describe('resolveModelCostUsd', () => {
     ];
     expect(resolveModelCostUsd(costs, 'channel_cover', null, null)).toBeNull();
     expect(resolveModelCostUsd(costs, 'channel_cover', 'slai', 'slai/gpt-image-2')).toBe(0.01);
+  });
+});
+
+describe('computeFinanceGlance', () => {
+  it('computes income, COGS, profit, and credit pack cash', () => {
+    const rows = buildOperationFinanceRows(
+      [
+        {
+          operation: 'music',
+          provider: 'suno',
+          model: '',
+          events: 10,
+          wallet_charged: 5,
+          plan_included_list: 0,
+        },
+      ],
+      [
+        pricing({
+          ai_service: 'suno',
+          operation_type: 'music',
+          external_cost_cents: 0.01,
+        }),
+      ],
+      [],
+      0.01,
+    );
+    const glance = computeFinanceGlance(
+      {
+        wallet_charged: 100,
+        subscription_revenue_cents: 5000,
+        credit_pack_revenue_cents: 1200,
+        credit_pack_payment_count: 3,
+        by_operation: [],
+      },
+      rows,
+      0.01,
+    );
+    expect(glance.walletRevenueUsd).toBe(1);
+    expect(glance.subscriptionRevenueUsd).toBe(50);
+    expect(glance.cashRevenueUsd).toBe(51);
+    expect(glance.creditPackRevenueUsd).toBe(12);
+    expect(glance.creditPackPaymentCount).toBe(3);
+    expect(glance.estimatedCogsUsd).toBeCloseTo(0.001, 6);
+    expect(glance.profitUsd).toBeCloseTo(50.999, 3);
+  });
+});
+
+describe('lastDaysFromIso', () => {
+  it('returns a UTC midnight ISO string N days ago', () => {
+    const now = new Date('2026-08-07T15:30:00.000Z');
+    expect(lastDaysFromIso(30, now)).toBe('2026-07-08T00:00:00.000Z');
   });
 });

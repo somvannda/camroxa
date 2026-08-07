@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import httpClient from '@/lib/http-client';
 import type { HealthStatus } from '@/types/models';
 import type { ProviderKeyBalancesResponse } from '@/types/provider-balances';
@@ -22,7 +22,8 @@ export function useHealthStatus() {
     // Same-origin /api/ is proxied to platform_api. Do NOT call /health on the
     // admin host — nginx serves index.html there (false "Unknown" / unreachable).
     queryFn: async () => assertHealthPayload(await httpClient.get<HealthStatus>('/api/v1/health')),
-    refetchInterval: 30_000, // Poll health every 30s
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -31,6 +32,8 @@ export function useSunoBalance() {
     queryKey: ['suno-balance'],
     queryFn: () =>
       httpClient.get<{ credits: number | null; status: string }>('/api/v1/admin/suno-balance'),
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -39,9 +42,24 @@ export function useProviderKeyBalances() {
     queryKey: ['provider-key-balances'],
     queryFn: () =>
       httpClient.get<ProviderKeyBalancesResponse>(
+        '/api/v1/admin/provider-key-balances?refresh=false',
+      ),
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useForceRefreshProviderKeyBalances() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      httpClient.get<ProviderKeyBalancesResponse>(
         '/api/v1/admin/provider-key-balances?refresh=true',
       ),
-    refetchOnWindowFocus: true,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['provider-key-balances'], data);
+    },
   });
 }
 
