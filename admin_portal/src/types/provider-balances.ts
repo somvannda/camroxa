@@ -10,6 +10,9 @@ export interface ProviderKeyBalanceItem {
   fetch_status: string;
   error: string | null;
   checked_at: string | null;
+  /** Credits/money dropped since UTC day-start baseline (balance drop). */
+  used_today?: number | null;
+  day_start_balance?: number | null;
 }
 
 export interface ProviderKeyBalanceGroup {

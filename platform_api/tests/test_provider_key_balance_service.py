@@ -13,6 +13,7 @@ from platform_api.services.provider_key_balance_service import (
     _normalize_fal,
     _normalize_slai,
     _normalize_suno,
+    compute_day_usage,
 )
 
 
@@ -68,6 +69,25 @@ def test_normalize_slai_available_units() -> None:
     assert amount == pytest.approx(271.693612)
     assert currency is None
     assert unit == "credits"
+
+
+def test_compute_day_usage_first_read() -> None:
+    start, used = compute_day_usage(current=5000.0, start=None, last=None)
+    assert start == 5000.0
+    assert used == 0.0
+
+
+def test_compute_day_usage_balance_drop() -> None:
+    start, used = compute_day_usage(current=4880.0, start=5000.0, last=5000.0)
+    assert start == 5000.0
+    assert used == pytest.approx(120.0)
+
+
+def test_compute_day_usage_top_up_preserves_prior_usage() -> None:
+    # Used 120 already (5000 -> 4880), then top-up +1000 to 5880.
+    start, used = compute_day_usage(current=5880.0, start=5000.0, last=4880.0)
+    assert start == pytest.approx(6000.0)
+    assert used == pytest.approx(120.0)
 
 
 def test_format_display_slai_credits() -> None:

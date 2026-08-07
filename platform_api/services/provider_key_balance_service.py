@@ -19,7 +19,9 @@ logger = logging.getLogger(__name__)
 
 BALANCE_PROVIDERS = ("suno", "slai", "fal", "openai", "deepseek")
 _CACHE_PREFIX = "provider_key_balance:"
+_DAY_PREFIX = "provider_key_balance_day:"
 _DEFAULT_TTL = 45
+_DAY_TTL_SECONDS = 60 * 60 * 40  # cover past UTC midnight with margin
 
 
 class RedisProtocol(Protocol):
@@ -36,6 +38,32 @@ class KeyPoolProtocol(Protocol):
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _utc_day() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def compute_day_usage(
+    *,
+    current: float,
+    start: float | None,
+    last: float | None,
+) -> tuple[float, float]:
+    """Return ``(day_start_balance, used_today)`` from balance drop.
+
+    - First reading of the day: start = current, used = 0
+    - Balance dropped: used = start - current
+    - Top-up (current > last): shift start up by the increase so prior usage
+      for the day is preserved
+    """
+    if start is None:
+        return float(current), 0.0
+    new_start = float(start)
+    if last is not None and current > last + 1e-9:
+        new_start = float(start) + (float(current) - float(last))
+    used = max(0.0, new_start - float(current))
+    return new_start, used
 
 
 def _as_float(value: Any) -> float | None:
@@ -177,6 +205,8 @@ class ProviderKeyBalanceService:
             "error": None,
             "checked_at": _now_iso(),
             "raw": None,
+            "used_today": None,
+            "day_start_balance": None,
         }
 
         cache_key = f"{_CACHE_PREFIX}{provider}:{key_id}"
@@ -188,6 +218,13 @@ class ProviderKeyBalanceService:
                 cached["priority"] = base["priority"]
                 if cached.get("fetch_status") == "ok":
                     cached["fetch_status"] = "cached"
+                await self._attach_day_usage(
+                    cached,
+                    provider=provider,
+                    key_id=str(key_id),
+                    # Cache hit: no top-up detection vs a prior sample in this call.
+                    previous_balance=_as_float(cached.get("balance")),
+                )
                 return cached
 
         try:
@@ -198,6 +235,12 @@ class ProviderKeyBalanceService:
             return base
 
         try:
+            previous_balance = None
+            if force_refresh:
+                prev_cached = await self._read_cache(cache_key)
+                if prev_cached is not None:
+                    previous_balance = _as_float(prev_cached.get("balance"))
+
             amount, currency, unit, raw, fetch_status, error = await self._fetch_provider_balance(
                 provider, api_key
             )
@@ -208,6 +251,12 @@ class ProviderKeyBalanceService:
             base["error"] = error
             base["raw"] = raw
             base["display"] = self._format_display(amount, currency, unit, fetch_status, error)
+            await self._attach_day_usage(
+                base,
+                provider=provider,
+                key_id=str(key_id),
+                previous_balance=previous_balance if previous_balance is not None else amount,
+            )
             if fetch_status in {"ok", "unsupported"}:
                 await self._write_cache(cache_key, base)
             return base
@@ -217,6 +266,37 @@ class ProviderKeyBalanceService:
             base["error"] = str(exc)[:200]
             base["display"] = "Error"
             return base
+
+    async def _attach_day_usage(
+        self,
+        payload: dict[str, Any],
+        *,
+        provider: str,
+        key_id: str,
+        previous_balance: float | None,
+    ) -> None:
+        """Stamp ``used_today`` / ``day_start_balance`` from Redis day snapshot."""
+        amount = _as_float(payload.get("balance"))
+        if amount is None:
+            payload["used_today"] = None
+            payload["day_start_balance"] = None
+            return
+
+        day_key = f"{_DAY_PREFIX}{provider}:{key_id}:{_utc_day()}"
+        snap = await self._read_cache(day_key)
+        start = _as_float(snap.get("start")) if isinstance(snap, dict) else None
+        last = previous_balance
+        if last is None and isinstance(snap, dict):
+            last = _as_float(snap.get("last"))
+
+        new_start, used = compute_day_usage(current=amount, start=start, last=last)
+        payload["day_start_balance"] = new_start
+        payload["used_today"] = used
+        await self._write_cache_ttl(
+            day_key,
+            {"start": new_start, "last": amount, "used": used, "updated_at": _now_iso()},
+            _DAY_TTL_SECONDS,
+        )
 
     async def _fetch_provider_balance(
         self, provider: str, api_key: str
@@ -477,14 +557,21 @@ class ProviderKeyBalanceService:
             return None
 
     async def _write_cache(self, cache_key: str, payload: dict[str, Any]) -> None:
+        await self._write_cache_ttl(cache_key, payload, self._cache_ttl)
+
+    async def _write_cache_ttl(
+        self, cache_key: str, payload: dict[str, Any], ttl_seconds: int
+    ) -> None:
         if self._redis is None:
             return
         try:
-            # Avoid caching huge raw blobs forever in Redis
             to_store = dict(payload)
-            raw = to_store.get("raw")
-            if isinstance(raw, (dict, list)):
-                to_store["raw"] = raw
-            await self._redis.setex(cache_key, self._cache_ttl, json.dumps(to_store, default=str))
+            if cache_key.startswith(_DAY_PREFIX):
+                to_store.pop("raw", None)
+            elif isinstance(to_store.get("raw"), (dict, list)):
+                pass  # keep raw for short balance cache
+            await self._redis.setex(
+                cache_key, max(15, int(ttl_seconds)), json.dumps(to_store, default=str)
+            )
         except Exception:
             logger.debug("Failed to cache provider balance %s", cache_key, exc_info=True)

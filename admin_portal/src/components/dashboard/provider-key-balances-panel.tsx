@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
+import type { ReactNode } from 'react';
 import {
   useForceRefreshProviderKeyBalances,
   useProviderKeyBalances,
@@ -49,16 +50,33 @@ function hasReadableBalance(keys: ProviderKeyBalanceItem[]): boolean {
   );
 }
 
-function formatTotal(
-  keys: ProviderKeyBalanceItem[],
-): { text: string; tone: 'ok' | 'low' | 'muted'; remainingLabel: string } {
+function formatAmount(value: number, unit: 'usd' | 'credits'): string {
+  if (unit === 'usd') {
+    return `$${value.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+  }
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function formatTotal(keys: ProviderKeyBalanceItem[]): {
+  usedToday: number | null;
+  remaining: number | null;
+  unit: 'usd' | 'credits' | null;
+  tone: 'ok' | 'low' | 'muted';
+  remainingLabel: string;
+} {
   const numeric = keys.filter(
     (k) =>
       (k.fetch_status === 'ok' || k.fetch_status === 'cached') &&
       typeof k.balance === 'number',
   );
   if (numeric.length === 0) {
-    return { text: '—', tone: 'muted', remainingLabel: 'Remaining' };
+    return {
+      usedToday: null,
+      remaining: null,
+      unit: null,
+      tone: 'muted',
+      remainingLabel: 'Used today / remaining',
+    };
   }
 
   const units = new Set(
@@ -70,43 +88,67 @@ function formatTotal(
 
   if (units.size > 1) {
     return {
-      text: `${numeric.length}`,
+      usedToday: null,
+      remaining: null,
+      unit: null,
       tone: 'muted',
-      remainingLabel: 'Keys (mixed units)',
+      remainingLabel: 'Mixed units',
     };
   }
 
-  const unit = [...units][0];
-  const total = numeric.reduce((sum, k) => sum + (k.balance as number), 0);
-  const low = total <= 0;
-  if (unit === 'usd') {
-    return {
-      text: `$${total.toLocaleString(undefined, { maximumFractionDigits: 4 })}`,
-      tone: low ? 'low' : 'ok',
-      remainingLabel: 'Remaining',
-    };
-  }
+  const unit = [...units][0] as 'usd' | 'credits';
+  const remaining = numeric.reduce((sum, k) => sum + (k.balance as number), 0);
+  const usedToday = numeric.reduce((sum, k) => sum + (Number(k.used_today) || 0), 0);
+  const low = remaining <= 0;
   return {
-    text: total.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+    usedToday,
+    remaining,
+    unit,
     tone: low ? 'low' : 'ok',
-    remainingLabel: 'Remaining',
+    remainingLabel: 'Used today / remaining',
   };
+}
+
+function TotalHeadline({
+  usedToday,
+  remaining,
+  unit,
+  tone,
+}: {
+  usedToday: number | null;
+  remaining: number | null;
+  unit: 'usd' | 'credits' | null;
+  tone: 'ok' | 'low' | 'muted';
+}): ReactNode {
+  if (remaining == null || unit == null) {
+    return <span className="text-slate-400">—</span>;
+  }
+  const remClass =
+    tone === 'low' ? 'text-red-400' : tone === 'ok' ? 'text-emerald-300' : 'text-slate-400';
+  const used = usedToday ?? 0;
+  return (
+    <span className="tabular-nums">
+      <span className="text-red-400">{formatAmount(used, unit)}</span>
+      <span className="mx-1 text-slate-500">/</span>
+      <span className={remClass}>{formatAmount(remaining, unit)}</span>
+    </span>
+  );
 }
 
 type CompactProviderCardProps = {
   title: string;
   keyCountLabel: string;
-  totalText: string;
+  totalNode: ReactNode;
   totalTone: 'ok' | 'low' | 'muted';
   remainingLabel: string;
   error?: string | null;
-  rows: Array<{ id: string; label: string; value: string; valueClass: string }>;
+  rows: Array<{ id: string; label: string; value: ReactNode }>;
 };
 
 function CompactProviderCard({
   title,
   keyCountLabel,
-  totalText,
+  totalNode,
   totalTone,
   remainingLabel,
   error,
@@ -126,16 +168,7 @@ function CompactProviderCard({
           {title}{' '}
           <span className="font-normal text-slate-500">({keyCountLabel})</span>
         </div>
-        <div
-          className={cn(
-            'shrink-0 text-lg font-semibold tabular-nums leading-none',
-            totalTone === 'ok' && 'text-emerald-300',
-            totalTone === 'low' && 'text-red-400',
-            totalTone === 'muted' && 'text-slate-400',
-          )}
-        >
-          {totalText}
-        </div>
+        <div className="shrink-0 text-lg font-semibold leading-none">{totalNode}</div>
       </div>
 
       <div className="mt-0.5 flex items-center justify-between gap-2">
@@ -161,9 +194,7 @@ function CompactProviderCard({
               <span className="min-w-0 truncate text-xs text-slate-400" title={row.label}>
                 {row.label}
               </span>
-              <span className={cn('shrink-0 text-xs font-medium tabular-nums', row.valueClass)}>
-                {row.value}
-              </span>
+              <span className="shrink-0 text-xs font-medium tabular-nums">{row.value}</span>
             </div>
           ))}
         </div>
@@ -195,7 +226,9 @@ export function ProviderKeyBalancesPanel({ className }: ProviderKeyBalancesPanel
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-white">Credits remaining</h2>
-          <p className="text-sm text-slate-400">Provider totals and each key balance</p>
+          <p className="text-sm text-slate-400">
+            Today used (balance drop) / remaining — per provider
+          </p>
         </div>
         <Button
           variant="ghost"
@@ -230,16 +263,40 @@ export function ProviderKeyBalancesPanel({ className }: ProviderKeyBalancesPanel
                 key={group.provider}
                 title={label}
                 keyCountLabel={`${keyCount} key${keyCount === 1 ? '' : 's'}`}
-                totalText={total.text}
+                totalNode={
+                  <TotalHeadline
+                    usedToday={total.usedToday}
+                    remaining={total.remaining}
+                    unit={total.unit}
+                    tone={total.tone}
+                  />
+                }
                 totalTone={total.tone}
                 remainingLabel={total.remainingLabel}
                 error={group.error}
-                rows={group.keys.map((item) => ({
-                  id: item.key_id,
-                  label: item.label,
-                  value: balanceText(item),
-                  valueClass: balanceClass(item),
-                }))}
+                rows={group.keys.map((item) => {
+                  const used = Number(item.used_today) || 0;
+                  const unit =
+                    item.unit === 'usd' || item.currency === 'USD' ? 'usd' : 'credits';
+                  if (typeof item.balance !== 'number') {
+                    return {
+                      id: item.key_id,
+                      label: item.label,
+                      value: <span className={balanceClass(item)}>{balanceText(item)}</span>,
+                    };
+                  }
+                  return {
+                    id: item.key_id,
+                    label: item.label,
+                    value: (
+                      <span className="tabular-nums">
+                        <span className="text-red-400">{formatAmount(used, unit)}</span>
+                        <span className="mx-0.5 text-slate-600">/</span>
+                        <span className={balanceClass(item)}>{balanceText(item)}</span>
+                      </span>
+                    ),
+                  };
+                })}
               />
             );
           })}
