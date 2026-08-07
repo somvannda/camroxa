@@ -8,6 +8,7 @@ export function useJobQueueMetrics() {
     queryKey: ['job-queue', 'metrics'],
     queryFn: () =>
       httpClient.get<JobQueueMetricsResponse>('/api/v1/admin/job-queue/metrics'),
-    refetchInterval: 15_000,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
 }

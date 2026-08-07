@@ -936,7 +936,11 @@ class CreditRepository:
         from_date: datetime | None = None,
         to_date: datetime | None = None,
     ) -> dict[str, int]:
-        """Sum paid+fulfilled plan checkout cash from billing_payments (cents)."""
+        """Sum paid+fulfilled checkout cash from billing_payments (cents).
+
+        Also returns credit-pack cash separately (metadata.product_type).
+        ``subscription_revenue_cents`` stays total paid+fulfilled (legacy).
+        """
         filters: list[str] = [
             "bp.status = 'paid'",
             "bp.fulfilled_at IS NOT NULL",
@@ -962,7 +966,27 @@ class CreditRepository:
             f"""
             SELECT
                 COALESCE(SUM(bp.amount_cents), 0)::bigint AS subscription_revenue_cents,
-                COUNT(*)::bigint AS subscription_payment_count
+                COUNT(*)::bigint AS subscription_payment_count,
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN COALESCE(bp.metadata->>'product_type', 'plan') = 'credit_pack'
+                            THEN bp.amount_cents
+                            ELSE 0
+                        END
+                    ),
+                    0
+                )::bigint AS credit_pack_revenue_cents,
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN COALESCE(bp.metadata->>'product_type', 'plan') = 'credit_pack'
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                )::bigint AS credit_pack_payment_count
             FROM billing_payments bp
             {where_sql}
             """,
@@ -974,6 +998,12 @@ class CreditRepository:
             ),
             "subscription_payment_count": (
                 int(row["subscription_payment_count"] or 0) if row else 0
+            ),
+            "credit_pack_revenue_cents": (
+                int(row["credit_pack_revenue_cents"] or 0) if row else 0
+            ),
+            "credit_pack_payment_count": (
+                int(row["credit_pack_payment_count"] or 0) if row else 0
             ),
         }
 

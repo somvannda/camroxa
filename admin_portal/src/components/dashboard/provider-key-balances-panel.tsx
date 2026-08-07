@@ -1,6 +1,10 @@
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
-import { useProviderKeyBalances } from '@/hooks/use-dashboard';
+import {
+  useForceRefreshProviderKeyBalances,
+  useProviderKeyBalances,
+  useSunoBalance,
+} from '@/hooks/use-dashboard';
 import type { ProviderKeyBalanceItem } from '@/types/provider-balances';
 import { cn } from '@/lib/utils';
 
@@ -10,7 +14,10 @@ const PROVIDER_LABELS: Record<string, string> = {
   deepseek: 'DeepSeek',
   openai: 'OpenAI',
   fal: 'Fal',
+  cala: 'CALA',
 };
+
+const PROVIDER_ORDER = ['suno', 'slai', 'fal', 'openai', 'deepseek', 'cala'] as const;
 
 function balanceText(item: ProviderKeyBalanceItem): string {
   if (item.fetch_status === 'ok' || item.fetch_status === 'cached') {
@@ -29,65 +36,242 @@ function balanceClass(item: ProviderKeyBalanceItem): string {
     return 'text-red-400';
   }
   if (item.fetch_status === 'ok' || item.fetch_status === 'cached') {
-    return 'text-emerald-400';
+    return 'text-emerald-300';
   }
   return 'text-slate-500';
 }
 
-export function ProviderKeyBalancesPanel() {
-  const query = useProviderKeyBalances();
-  const rows = (query.data?.providers ?? []).flatMap((group) =>
-    group.keys.map((item) => ({
-      provider: PROVIDER_LABELS[group.provider] ?? group.provider,
-      item,
-    })),
+function formatTotal(
+  keys: ProviderKeyBalanceItem[],
+): { text: string; tone: 'ok' | 'low' | 'muted'; remainingLabel: string } {
+  const numeric = keys.filter(
+    (k) =>
+      (k.fetch_status === 'ok' || k.fetch_status === 'cached') &&
+      typeof k.balance === 'number',
+  );
+  if (numeric.length === 0) {
+    return { text: '—', tone: 'muted', remainingLabel: 'Remaining' };
+  }
+
+  const units = new Set(
+    numeric.map((k) => {
+      if (k.unit === 'usd' || k.currency === 'USD') return 'usd';
+      return 'credits';
+    }),
   );
 
+  if (units.size > 1) {
+    return {
+      text: `${numeric.length}`,
+      tone: 'muted',
+      remainingLabel: 'Keys (mixed units)',
+    };
+  }
+
+  const unit = [...units][0];
+  const total = numeric.reduce((sum, k) => sum + (k.balance as number), 0);
+  const low = total <= 0;
+  if (unit === 'usd') {
+    return {
+      text: `$${total.toLocaleString(undefined, { maximumFractionDigits: 4 })}`,
+      tone: low ? 'low' : 'ok',
+      remainingLabel: 'Remaining',
+    };
+  }
+  return {
+    text: total.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+    tone: low ? 'low' : 'ok',
+    remainingLabel: 'Remaining',
+  };
+}
+
+type CompactProviderCardProps = {
+  title: string;
+  keyCountLabel: string;
+  totalText: string;
+  totalTone: 'ok' | 'low' | 'muted';
+  remainingLabel: string;
+  error?: string | null;
+  rows: Array<{ id: string; label: string; value: string; valueClass: string }>;
+};
+
+function CompactProviderCard({
+  title,
+  keyCountLabel,
+  totalText,
+  totalTone,
+  remainingLabel,
+  error,
+  rows,
+}: CompactProviderCardProps) {
+  const manyKeys = rows.length > 4;
+
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/50">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
-        <div className="text-sm font-medium text-slate-200">Key balances</div>
+    <div
+      className={cn(
+        'rounded-xl border bg-slate-900/55 px-3 py-2.5',
+        totalTone === 'low' ? 'border-red-500/35' : 'border-slate-800',
+      )}
+    >
+      {/* Header: Provider (N keys) …… total */}
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0 truncate text-sm font-semibold text-slate-100">
+          {title}{' '}
+          <span className="font-normal text-slate-500">({keyCountLabel})</span>
+        </div>
+        <div
+          className={cn(
+            'shrink-0 text-lg font-semibold tabular-nums leading-none',
+            totalTone === 'ok' && 'text-emerald-300',
+            totalTone === 'low' && 'text-red-400',
+            totalTone === 'muted' && 'text-slate-400',
+          )}
+        >
+          {totalText}
+        </div>
+      </div>
+
+      {/* Right-aligned Remaining label under total */}
+      <div className="mt-0.5 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          {error ? (
+            <span className="truncate text-[10px] text-amber-400">{error}</span>
+          ) : null}
+        </div>
+        <div className="shrink-0 text-[10px] uppercase tracking-wide text-slate-500">
+          {remainingLabel}
+        </div>
+      </div>
+
+      {/* Key rows: label left, value right — 2 cols when many keys */}
+      {rows.length > 0 ? (
+        <div
+          className={cn(
+            'mt-2 border-t border-white/5 pt-1.5',
+            manyKeys ? 'grid grid-cols-2 gap-x-4 gap-y-0.5' : 'space-y-0.5',
+          )}
+        >
+          {rows.map((row) => (
+            <div key={row.id} className="flex items-baseline justify-between gap-2 py-0.5">
+              <span className="min-w-0 truncate text-xs text-slate-400" title={row.label}>
+                {row.label}
+              </span>
+              <span className={cn('shrink-0 text-xs font-medium tabular-nums', row.valueClass)}>
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type ProviderKeyBalancesPanelProps = {
+  className?: string;
+  /** Include Suno platform-level balance card (from /admin/suno-balance). */
+  includeSunoPlatform?: boolean;
+};
+
+export function ProviderKeyBalancesPanel({
+  className,
+  includeSunoPlatform = true,
+}: ProviderKeyBalancesPanelProps) {
+  const query = useProviderKeyBalances();
+  const forceRefresh = useForceRefreshProviderKeyBalances();
+  const sunoQuery = useSunoBalance();
+  const refreshing = query.isFetching || forceRefresh.isPending;
+
+  const groups = [...(query.data?.providers ?? [])].sort((a, b) => {
+    const ai = PROVIDER_ORDER.indexOf(a.provider as (typeof PROVIDER_ORDER)[number]);
+    const bi = PROVIDER_ORDER.indexOf(b.provider as (typeof PROVIDER_ORDER)[number]);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  return (
+    <section className={cn('space-y-3', className)}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Credits remaining</h2>
+          <p className="text-sm text-slate-400">Provider totals and each key balance</p>
+        </div>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-slate-400 hover:text-slate-200"
-          disabled={query.isFetching}
-          onClick={() => query.refetch()}
+          className="h-8 px-2 text-slate-400 hover:text-slate-200"
+          disabled={refreshing}
+          onClick={() => forceRefresh.mutate()}
+          title="Force refresh provider balances"
         >
-          <RefreshCw className={cn('h-3.5 w-3.5', query.isFetching && 'animate-spin')} />
+          <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+          <span className="ml-1.5 text-xs">Refresh</span>
         </Button>
       </div>
 
       {query.isLoading ? (
-        <p className="px-3 py-2 text-xs text-slate-500">Loading…</p>
+        <p className="text-sm text-slate-500">Loading balances…</p>
       ) : query.isError ? (
-        <p className="px-3 py-2 text-xs text-red-300">Failed to load</p>
-      ) : rows.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-slate-500">No keys</p>
+        <p className="text-sm text-red-300">Failed to load balances</p>
+      ) : groups.length === 0 && !includeSunoPlatform ? (
+        <p className="text-sm text-slate-500">No keys configured</p>
       ) : (
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-slate-800/80 text-[10px] uppercase tracking-wide text-slate-500">
-              <th className="px-3 py-1.5 font-medium">Provider</th>
-              <th className="px-3 py-1.5 font-medium">Key</th>
-              <th className="px-3 py-1.5 text-right font-medium">Remaining</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ provider, item }) => (
-              <tr key={item.key_id} className="border-b border-slate-800/40 last:border-0">
-                <td className="whitespace-nowrap px-3 py-1.5 text-slate-400">{provider}</td>
-                <td className="max-w-[14rem] truncate px-3 py-1.5 text-slate-200" title={item.label}>
-                  {item.label}
-                </td>
-                <td className={cn('whitespace-nowrap px-3 py-1.5 text-right font-medium tabular-nums', balanceClass(item))}>
-                  {balanceText(item)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {includeSunoPlatform ? (
+            <CompactProviderCard
+              title="Suno"
+              keyCountLabel="platform"
+              totalText={
+                sunoQuery.isLoading
+                  ? '…'
+                  : sunoQuery.data?.credits == null
+                    ? '—'
+                    : sunoQuery.data.credits.toLocaleString()
+              }
+              totalTone={
+                sunoQuery.data?.credits != null && sunoQuery.data.credits <= 0 ? 'low' : 'ok'
+              }
+              remainingLabel="Remaining"
+              rows={[
+                {
+                  id: 'suno-platform',
+                  label: 'Platform account',
+                  value:
+                    sunoQuery.data?.credits == null
+                      ? '—'
+                      : sunoQuery.data.credits.toLocaleString(),
+                  valueClass:
+                    sunoQuery.data?.credits != null && sunoQuery.data.credits <= 0
+                      ? 'text-red-400'
+                      : 'text-emerald-300',
+                },
+              ]}
+            />
+          ) : null}
+
+          {groups.map((group) => {
+            const label = PROVIDER_LABELS[group.provider] ?? group.provider;
+            const total = formatTotal(group.keys);
+            const keyCount = group.keys.length;
+            return (
+              <CompactProviderCard
+                key={group.provider}
+                title={label}
+                keyCountLabel={`${keyCount} key${keyCount === 1 ? '' : 's'}`}
+                totalText={total.text}
+                totalTone={total.tone}
+                remainingLabel={total.remainingLabel}
+                error={group.error}
+                rows={group.keys.map((item) => ({
+                  id: item.key_id,
+                  label: item.label,
+                  value: balanceText(item),
+                  valueClass: balanceClass(item),
+                }))}
+              />
+            );
+          })}
+        </div>
       )}
-    </div>
+    </section>
   );
 }

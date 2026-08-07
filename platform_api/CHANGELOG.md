@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Admin usage summary includes `credit_pack_revenue_cents` / `credit_pack_payment_count` (fulfilled credit-pack checkout cash) for the dashboard money glance. See `docs/changelog/2026-08-07-admin-dashboard-live-ops.md`.
 - `GET /api/v1/health` alias of root `/health` so same-origin admin portals can
   reach health via nginx `/api/` proxy. See
   `docs/changelog/2026-08-06-admin-health-via-api-proxy.md`.

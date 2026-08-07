@@ -282,6 +282,8 @@ class UsageSummaryResponse(BaseModel):
     platform_absorb_list: float = 0
     subscription_revenue_cents: int = 0
     subscription_payment_count: int = 0
+    credit_pack_revenue_cents: int = 0
+    credit_pack_payment_count: int = 0
     by_operation: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -1097,6 +1099,12 @@ async def get_usage(
         ),
         subscription_payment_count=int(
             sub_cash.get("subscription_payment_count") or 0
+        ),
+        credit_pack_revenue_cents=int(
+            sub_cash.get("credit_pack_revenue_cents") or 0
+        ),
+        credit_pack_payment_count=int(
+            sub_cash.get("credit_pack_payment_count") or 0
         ),
         by_operation=by_operation,
     )

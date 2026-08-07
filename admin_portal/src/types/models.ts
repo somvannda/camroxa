@@ -524,6 +524,8 @@ export interface UsageSummary {
   platform_absorb_list?: number;
   subscription_revenue_cents?: number;
   subscription_payment_count?: number;
+  credit_pack_revenue_cents?: number;
+  credit_pack_payment_count?: number;
   by_operation: UsageOperationSummary[];
 }
 

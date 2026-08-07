@@ -2,12 +2,17 @@ import { AlertTriangle } from 'lucide-react';
 
 import { useAllProvidersHealth } from '@/hooks/use-key-pool';
 import type { ProviderHealth, HealthIndicator } from '@/types/key-pool';
+import type { ServiceHealth } from '@/types/models';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'youtube', 'facebook'] as const;
+
+/** Core generation providers shown on the dashboard key-pool row. */
+const DASHBOARD_ROW_PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala'] as const;
 
 const PROVIDER_LABELS: Record<string, string> = {
   suno: 'Suno',
@@ -46,19 +51,52 @@ function getHealthBorderColor(indicator: HealthIndicator): string {
   }
 }
 
-interface ProviderHealthCardProps {
-  health: ProviderHealth;
+function serviceAvailable(
+  services: Record<string, ServiceHealth | boolean> | null | undefined,
+  provider: string,
+): boolean | null {
+  if (!services || !(provider in services)) return null;
+  const svc = services[provider];
+  if (typeof svc === 'boolean') return svc;
+  return svc?.status === 'healthy';
 }
 
-function ProviderHealthCard({ health }: ProviderHealthCardProps) {
+function fallbackFromApiHealth(
+  provider: string,
+  services: Record<string, ServiceHealth | boolean> | null | undefined,
+): ProviderHealth {
+  const available = serviceAvailable(services, provider);
+  return {
+    provider,
+    total_keys: 0,
+    active_keys: 0,
+    rate_limited_keys: 0,
+    exhausted_keys: 0,
+    disabled_keys: 0,
+    health_indicator: available === true ? 'healthy' : 'critical',
+  };
+}
+
+interface ProviderHealthCardProps {
+  health: ProviderHealth;
+  className?: string;
+}
+
+function ProviderHealthCard({ health, className }: ProviderHealthCardProps) {
   return (
-    <Card className={`bg-navy-900 ${getHealthBorderColor(health.health_indicator)}`}>
-      <CardContent className="p-4 space-y-2">
-        <div className="flex items-center justify-between">
+    <Card
+      className={cn(
+        'h-full bg-navy-900',
+        getHealthBorderColor(health.health_indicator),
+        className,
+      )}
+    >
+      <CardContent className="space-y-2 p-4">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-slate-200">
             {PROVIDER_LABELS[health.provider] ?? health.provider}
           </p>
-          <Badge className={`text-[10px] ${getHealthBadgeStyles(health.health_indicator)}`}>
+          <Badge className={`shrink-0 text-[10px] ${getHealthBadgeStyles(health.health_indicator)}`}>
             {health.health_indicator}
           </Badge>
         </div>
@@ -70,15 +108,15 @@ function ProviderHealthCard({ health }: ProviderHealthCardProps) {
 
         <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-400">
           <div>
-            <span className="text-yellow-400 font-medium">{health.rate_limited_keys}</span>{' '}
+            <span className="font-medium text-yellow-400">{health.rate_limited_keys}</span>{' '}
             limited
           </div>
           <div>
-            <span className="text-red-400 font-medium">{health.exhausted_keys}</span>{' '}
+            <span className="font-medium text-red-400">{health.exhausted_keys}</span>{' '}
             exhausted
           </div>
           <div>
-            <span className="text-slate-500 font-medium">{health.disabled_keys}</span>{' '}
+            <span className="font-medium text-slate-500">{health.disabled_keys}</span>{' '}
             disabled
           </div>
         </div>
@@ -101,7 +139,7 @@ function CriticalAlertBanner({ criticalProviders }: { criticalProviders: string[
         <p className="text-sm font-medium text-red-300">
           Critical: No active keys available
         </p>
-        <p className="text-xs text-red-400/80 mt-0.5">
+        <p className="mt-0.5 text-xs text-red-400/80">
           {providerNames} {criticalProviders.length === 1 ? 'has' : 'have'} no active API keys.
           Requests to {criticalProviders.length === 1 ? 'this provider' : 'these providers'} will fail.
         </p>
@@ -110,15 +148,44 @@ function CriticalAlertBanner({ criticalProviders }: { criticalProviders: string[
   );
 }
 
-export function HealthSummary() {
+export function HealthSummary({
+  showAllWithKeys = true,
+  alwaysIncludeCritical = true,
+  /** Merge /health services so providers like CALA still appear when key-pool omits them. */
+  apiServices = null,
+  /** Stretch cards evenly across the full container width. */
+  fillRow = false,
+  /** Prefer the compact dashboard provider set (includes CALA). */
+  dashboardRow = false,
+}: {
+  showAllWithKeys?: boolean;
+  alwaysIncludeCritical?: boolean;
+  apiServices?: Record<string, ServiceHealth | boolean> | null;
+  fillRow?: boolean;
+  dashboardRow?: boolean;
+} = {}) {
   const { data, isLoading, isError } = useAllProvidersHealth();
+
+  const skeletonCount = dashboardRow ? DASHBOARD_ROW_PROVIDERS.length : PROVIDERS.length;
 
   if (isLoading) {
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {PROVIDERS.map((p) => (
-            <Skeleton key={p} className="h-28 w-full" />
+        <div
+          className={cn(
+            'grid gap-3',
+            fillRow
+              ? 'w-full'
+              : 'grid-cols-2 md:grid-cols-4 xl:grid-cols-8',
+          )}
+          style={
+            fillRow
+              ? { gridTemplateColumns: `repeat(${skeletonCount}, minmax(0, 1fr))` }
+              : undefined
+          }
+        >
+          {Array.from({ length: skeletonCount }).map((_, i) => (
+            <Skeleton key={i} className="h-28 w-full" />
           ))}
         </div>
       </div>
@@ -133,31 +200,90 @@ export function HealthSummary() {
 
   const providers = data.providers ?? [];
 
-  // Only show cards for providers that have entries (total_keys > 0)
-  const providersWithEntries = PROVIDERS.filter((providerId) => {
-    const health = providers.find((h: ProviderHealth) => h.provider === providerId);
-    return health && health.total_keys > 0;
-  });
+  const baseIds = dashboardRow
+    ? [...DASHBOARD_ROW_PROVIDERS]
+    : [
+        ...PROVIDERS,
+        ...providers
+          .map((h) => h.provider)
+          .filter((id) => !PROVIDERS.includes(id as (typeof PROVIDERS)[number])),
+      ];
 
-  // Identify critical providers (have entries but zero active keys)
-  const criticalProviders = providers
-    .filter((h: ProviderHealth) => h.health_indicator === 'critical' && h.total_keys > 0)
-    .map((h: ProviderHealth) => h.provider);
+  // Always include any provider present in API health services (e.g. unhealthy CALA).
+  if (apiServices) {
+    for (const id of Object.keys(apiServices)) {
+      if (!baseIds.includes(id as (typeof baseIds)[number])) {
+        baseIds.push(id as (typeof DASHBOARD_ROW_PROVIDERS)[number]);
+      }
+    }
+  }
+
+  const resolved: ProviderHealth[] = [];
+  for (const providerId of baseIds) {
+    const fromPool = providers.find((h: ProviderHealth) => h.provider === providerId);
+    if (fromPool) {
+      if (
+        fromPool.total_keys > 0 ||
+        (alwaysIncludeCritical && fromPool.health_indicator === 'critical') ||
+        serviceAvailable(apiServices, providerId) === false
+      ) {
+        resolved.push(fromPool);
+      } else if (showAllWithKeys && fromPool.total_keys > 0) {
+        resolved.push(fromPool);
+      }
+      continue;
+    }
+
+    // Not in key-pool response — still show if API health knows about it.
+    const available = serviceAvailable(apiServices, providerId);
+    if (available === false || (dashboardRow && DASHBOARD_ROW_PROVIDERS.includes(providerId as (typeof DASHBOARD_ROW_PROVIDERS)[number]))) {
+      // For dashboard row, always show the six core providers (synthesize if missing).
+      if (
+        dashboardRow &&
+        DASHBOARD_ROW_PROVIDERS.includes(providerId as (typeof DASHBOARD_ROW_PROVIDERS)[number])
+      ) {
+        resolved.push(fallbackFromApiHealth(providerId, apiServices));
+      } else if (available === false) {
+        resolved.push(fallbackFromApiHealth(providerId, apiServices));
+      }
+    }
+  }
+
+  // Dashboard: force all six core slots so CALA is never missing.
+  const visible = dashboardRow
+    ? DASHBOARD_ROW_PROVIDERS.map((id) => {
+        const found = resolved.find((h) => h.provider === id);
+        return found ?? fallbackFromApiHealth(id, apiServices);
+      })
+    : resolved.filter((h) => {
+        if (alwaysIncludeCritical && h.health_indicator === 'critical') return true;
+        if (showAllWithKeys) return h.total_keys > 0 || serviceAvailable(apiServices, h.provider) === false;
+        return h.total_keys > 0;
+      });
+
+  const criticalProviders = visible
+    .filter((h) => h.health_indicator === 'critical')
+    .map((h) => h.provider);
 
   return (
     <div className="space-y-3">
       <CriticalAlertBanner criticalProviders={criticalProviders} />
 
-      {providersWithEntries.length > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {providersWithEntries.map((providerId) => {
-            const health = providers.find((h: ProviderHealth) => h.provider === providerId);
-            if (!health) return null;
-            return <ProviderHealthCard key={providerId} health={health} />;
-          })}
+      {visible.length > 0 ? (
+        <div
+          className={cn('grid w-full gap-3', !fillRow && 'grid-cols-2 md:grid-cols-4 xl:grid-cols-8')}
+          style={
+            fillRow
+              ? { gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }
+              : undefined
+          }
+        >
+          {visible.map((health) => (
+            <ProviderHealthCard key={health.provider} health={health} />
+          ))}
         </div>
       ) : (
-        <p className="text-sm text-slate-400 text-center py-4">
+        <p className="py-4 text-center text-sm text-slate-400">
           No providers have API keys configured yet.
         </p>
       )}

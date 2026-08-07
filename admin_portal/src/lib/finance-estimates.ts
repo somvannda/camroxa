@@ -259,3 +259,70 @@ export function buildOperationFinanceRows(
     };
   });
 }
+
+export type FinanceGlance = {
+  estimatedCogsUsd: number;
+  walletRevenueUsd: number | null;
+  subscriptionRevenueUsd: number | null;
+  creditPackRevenueUsd: number | null;
+  cashRevenueUsd: number | null;
+  profitUsd: number | null;
+  creditPackPaymentCount: number;
+  cogsCoverageEvents: number;
+  totalEvents: number;
+};
+
+/** Shared income / COGS / profit glance used by Finance page and Dashboard. */
+export function computeFinanceGlance(
+  summary: {
+    wallet_charged?: number;
+    subscription_revenue_cents?: number;
+    credit_pack_revenue_cents?: number;
+    credit_pack_payment_count?: number;
+    by_operation?: UsageOperationSummary[];
+  } | null | undefined,
+  operationRows: OperationFinanceRow[],
+  gcv: number | null,
+): FinanceGlance {
+  const estimatedCogsUsd = operationRows.reduce(
+    (sum, row) => sum + (row.estimatedCogsUsd ?? 0),
+    0,
+  );
+  const cogsCoverageEvents = operationRows
+    .filter((row) => row.coverage !== 'none')
+    .reduce((sum, row) => sum + row.events, 0);
+  const totalEvents = operationRows.reduce((sum, row) => sum + row.events, 0);
+
+  const walletRevenueUsd =
+    gcv != null && summary ? (summary.wallet_charged ?? 0) * gcv : null;
+  const subscriptionRevenueUsd =
+    summary != null ? (summary.subscription_revenue_cents ?? 0) / 100 : null;
+  const creditPackRevenueUsd =
+    summary != null ? (summary.credit_pack_revenue_cents ?? 0) / 100 : null;
+  const cashRevenueUsd =
+    walletRevenueUsd != null && subscriptionRevenueUsd != null
+      ? walletRevenueUsd + subscriptionRevenueUsd
+      : walletRevenueUsd ?? subscriptionRevenueUsd;
+  const profitUsd =
+    cashRevenueUsd != null ? cashRevenueUsd - estimatedCogsUsd : null;
+
+  return {
+    estimatedCogsUsd,
+    walletRevenueUsd,
+    subscriptionRevenueUsd,
+    creditPackRevenueUsd,
+    cashRevenueUsd,
+    profitUsd,
+    creditPackPaymentCount: summary?.credit_pack_payment_count ?? 0,
+    cogsCoverageEvents,
+    totalEvents,
+  };
+}
+
+/** ISO from_date for "last N days" dashboard windows (UTC midnight). */
+export function lastDaysFromIso(days: number, now = new Date()): string {
+  const start = new Date(now);
+  start.setUTCDate(start.getUTCDate() - days);
+  start.setUTCHours(0, 0, 0, 0);
+  return start.toISOString();
+}
