@@ -426,6 +426,8 @@ class ProviderKeyBalanceItem(BaseModel):
     fetch_status: str
     error: str | None = None
     checked_at: str | None = None
+    used_today: float | None = None
+    day_start_balance: float | None = None
 
 
 class ProviderKeyBalanceGroup(BaseModel):
@@ -736,6 +738,8 @@ async def get_provider_key_balances(
                         fetch_status=str(item.get("fetch_status") or "unknown"),
                         error=item.get("error"),
                         checked_at=item.get("checked_at"),
+                        used_today=item.get("used_today"),
+                        day_start_balance=item.get("day_start_balance"),
                     )
                     for item in (group.get("keys") or [])
                 ],
