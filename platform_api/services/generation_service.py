@@ -1136,10 +1136,14 @@ def build_ai_structure_lyrics_system_prompt(
         parse_vocal_profile,
     )
 
+    from platform_api.services.ai_structure_diversity import (
+        build_ai_structure_diversity_system_rules,
+    )
+
     parsed = profile if isinstance(profile, VocalProfile) else parse_vocal_profile(profile)
     base = (
         "You are a professional songwriter. Write a complete song with section headers "
-        "you choose (for example [Intro], [Verse], [Chorus], [Bridge], [Outro]).\n"
+        "you choose (for example [Verse], [Chorus], [Bridge], [Drop], [Outro]).\n"
         "Output plain text only — one section header or lyric line per line.\n"
         "Rules:\n"
         "- Do NOT use JSON, markdown fences, commentary, or production notes.\n"
@@ -1148,6 +1152,7 @@ def build_ai_structure_lyrics_system_prompt(
         "- Write original lyric lines beneath each header.\n"
         "- Do not repeat the same couplet across the song.\n"
         f"- Write at least {min_lines} non-header lyric lines in total.\n"
+        f"{build_ai_structure_diversity_system_rules()}"
     )
     if parsed is not None and parsed.is_bilingual and secondary_language:
         return base + build_bilingual_language_instruction(
@@ -1254,14 +1259,28 @@ def build_ai_structure_lyrics_user_prompt(
     description: str = "",  # deprecated; ignored — description is Suno-only
     avoid_openings: list[str] | None = None,
     forced_opening: str | None = None,
+    preferred_structure_layout: str | None = None,
+    avoid_structures: list[str] | None = None,
+    description_genres: list[str] | None = None,
 ) -> str:
-    """User prompt for AI Structure mode — title + mood + opening; no description."""
+    """User prompt for AI Structure mode — title + mood + layout seed; no description."""
+    from platform_api.services.ai_structure_diversity import (
+        build_ai_structure_seed_user_block,
+    )
+
     del description  # production description belongs on Suno style only
     parts = [
         build_mood_writing_context(mood, title=title),
-        "Choose a sensible section layout for this song and write full lyrics.",
-        "Invent your own section headers (for example [Verse], [Chorus], [Bridge]).",
+        "Choose a viral-friendly section layout for this song and write full lyrics.",
+        "Invent section headers that fit the preferred layout shape when provided.",
     ]
+    seed_block = build_ai_structure_seed_user_block(
+        preferred_layout=preferred_structure_layout,
+        avoid_structures=avoid_structures,
+        genres=description_genres,
+    )
+    if seed_block:
+        parts.append(seed_block)
     if avoid_openings:
         avoid_str = ", ".join(avoid_openings[:200])
         parts.append(f"Avoid these opening lines: {avoid_str}")
@@ -1629,7 +1648,14 @@ def build_suno_lyrics_prompt(
     if opening:
         parts.append(opening)
     if structure_mode == STRUCTURE_MODE_AI_FREE:
-        parts.append("use your own section headers")
+        # Compact soft seed if caller packed preferred headers into `structure`.
+        seed_labels: list[str] = []
+        for header in extract_structure_header_lines(structure)[:4]:
+            seed_labels.append(_compact(lyric_header_line(header).strip("[]"), 14))
+        if seed_labels:
+            parts.append("prefer " + "-".join(seed_labels))
+        else:
+            parts.append("use your own section headers")
     elif sections:
         parts.append(sections)
     if lang:
@@ -2060,6 +2086,29 @@ class GenerationService:
         temperature = min(1.0, max(0.25, request.creativity_level / 100.0 * 1.15))
         mood_text = str(getattr(request, "mood", "") or "").strip()
         metadata_context = build_mood_writing_context(mood_text)
+        description_genres = [
+            str(item).strip()
+            for item in (getattr(request, "description_genres", None) or [])
+            if str(item).strip()
+        ]
+        preferred_structure_layout = str(
+            getattr(request, "preferred_structure_layout", None) or ""
+        ).strip() or None
+        avoid_structures = [
+            str(item).strip()
+            for item in (getattr(request, "avoid_structures", None) or [])
+            if str(item).strip()
+        ]
+        if ai_free and preferred_structure_layout is None:
+            from platform_api.services.ai_structure_diversity import choose_ai_structure_seed
+
+            seed_index = max(0, int(getattr(request, "song_number", None) or 1) - 1)
+            seed = choose_ai_structure_seed(
+                genres=description_genres,
+                batch_index=seed_index,
+                avoid_fingerprints=avoid_structures,
+            )
+            preferred_structure_layout = seed.layout_block
         if ai_free:
             # Title is injected after album/title generation.
             lyrics_user_context = ""
@@ -2339,6 +2388,9 @@ class GenerationService:
                     title=title,
                     avoid_openings=request.avoid_openings,
                     forced_opening=request.forced_opening,
+                    preferred_structure_layout=preferred_structure_layout,
+                    avoid_structures=avoid_structures,
+                    description_genres=description_genres,
                 )
             else:
                 lyrics_user_context = self._build_freeform_lyrics_user_prompt(
@@ -2364,8 +2416,13 @@ class GenerationService:
                 draft_lyrics = ""
                 try:
                     if use_suno_lyrics:
+                        suno_structure = (
+                            preferred_structure_layout
+                            if ai_free and preferred_structure_layout
+                            else request.structure
+                        )
                         suno_prompt = build_suno_lyrics_prompt(
-                            structure=request.structure,
+                            structure=suno_structure or "",
                             language=request.language,
                             secondary_language=request.secondary_language,
                             vocal_profile=request.vocal_profile,

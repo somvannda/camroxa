@@ -56,6 +56,10 @@ class DraftRequest:
     song_number: int | None = None
     song_id: str | None = None
     structure_mode: str = "template"
+    # AI Structure diversity (genres + soft layout seed; not production description text)
+    description_genres: list[str] = field(default_factory=list)
+    preferred_structure_layout: str | None = None
+    avoid_structures: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

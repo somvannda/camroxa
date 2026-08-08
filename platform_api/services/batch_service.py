@@ -989,15 +989,23 @@ class BatchService:
         unique_opening: bool,
         batch_album: str | None,
         batch_titles: list[str],
+        batch_structures: list[str] | None = None,
         secondary_channel_profile_id: UUID | None = None,
-    ) -> tuple[Song, str | None, list[str]]:
-        """Generate a draft for one song and return updated batch album/title context."""
+    ) -> tuple[Song, str | None, list[str], list[str]]:
+        """Generate a draft for one song and return updated batch album/title/structure context."""
+        from platform_api.services.ai_structure_diversity import (
+            choose_ai_structure_seed,
+            structure_fingerprint_from_lyrics,
+        )
+        from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE
+
         claimed_items: list[ClaimedPoolItem] = []
         draft_charged = 0
         draft_list_units = 0
         draft_billed_slots = 0
         draft_billing_applied = False
         secondary_draft_attributed = False
+        structures = list(batch_structures or [])
         try:
             prepared_request = await self._resolve_song_prompt_content(song, draft_request)
             if batch_album:
@@ -1006,6 +1014,17 @@ class BatchService:
                 prepared_request = replace(
                     prepared_request,
                     avoid_titles=[*prepared_request.avoid_titles, *batch_titles],
+                )
+            if prepared_request.structure_mode == STRUCTURE_MODE_AI_FREE:
+                seed = choose_ai_structure_seed(
+                    genres=getattr(prepared_request, "description_genres", None) or [],
+                    batch_index=int(song.batch_index or 0),
+                    avoid_fingerprints=structures,
+                )
+                prepared_request = replace(
+                    prepared_request,
+                    preferred_structure_layout=seed.layout_block,
+                    avoid_structures=[*structures],
                 )
 
             if use_content_pools:
@@ -1118,6 +1137,9 @@ class BatchService:
             title = str(draft.title or "").strip()
             if title:
                 batch_titles = [*batch_titles, title]
+            fingerprint = structure_fingerprint_from_lyrics(str(draft.lyrics or ""))
+            if fingerprint and fingerprint not in structures:
+                structures = [*structures, fingerprint]
 
             await self._batch_repo.update_song_draft(
                 song.id, draft.title, album, draft.lyrics
@@ -1134,7 +1156,7 @@ class BatchService:
                 song.batch_index,
                 draft.title,
             )
-            return song, batch_album, batch_titles
+            return song, batch_album, batch_titles, structures
         except Exception as exc:
             if claimed_items:
                 await release_claimed_items(claimed_items)
@@ -1448,10 +1470,11 @@ class BatchService:
 
         batch_album: str | None = None
         batch_titles: list[str] = []
+        batch_structures: list[str] = []
 
         for song, draft_request in zip(songs, draft_requests):
             try:
-                song, batch_album, batch_titles = await self._generate_song_draft(
+                song, batch_album, batch_titles, batch_structures = await self._generate_song_draft(
                     batch_id=batch_id,
                     user_id=user_id,
                     song=song,
@@ -1462,6 +1485,7 @@ class BatchService:
                     unique_opening=unique_opening,
                     batch_album=batch_album,
                     batch_titles=batch_titles,
+                    batch_structures=batch_structures,
                     secondary_channel_profile_id=secondary_channel_profile_id,
                 )
                 successful_songs.append(song)
@@ -2127,8 +2151,13 @@ class BatchService:
         use_content_pools, unique_opening = await self._load_music_pool_settings(user_id)
 
         # Parallel drafts may invent titles/lyrics, but Album 1 is batch-locked.
+        from platform_api.services.ai_structure_diversity import (
+            structure_fingerprint_from_lyrics,
+        )
+
         batch_album = str(batch.ok_album or "").strip() or None
         batch_titles: list[str] = []
+        batch_structures: list[str] = []
         for sibling in songs:
             if sibling.id == song_id:
                 continue
@@ -2136,6 +2165,9 @@ class BatchService:
                 batch_titles.append(str(sibling.title))
             if batch_album is None and sibling.album:
                 batch_album = str(sibling.album)
+            fingerprint = structure_fingerprint_from_lyrics(str(sibling.lyrics or ""))
+            if fingerprint and fingerprint not in batch_structures:
+                batch_structures.append(fingerprint)
 
         draft_requests = self._build_draft_requests(batch)
         draft_request = draft_requests[song.batch_index]
@@ -2144,7 +2176,7 @@ class BatchService:
             await self._batch_repo.update_song_status(song_id, SONG_STATUS_PENDING)
             song.status = SONG_STATUS_PENDING
 
-        song, batch_album, _batch_titles = await self._generate_song_draft(
+        song, batch_album, _batch_titles, _batch_structures = await self._generate_song_draft(
             batch_id=batch_id,
             user_id=user_id,
             song=song,
@@ -2155,6 +2187,7 @@ class BatchService:
             unique_opening=unique_opening,
             batch_album=batch_album,
             batch_titles=batch_titles,
+            batch_structures=batch_structures,
         )
         album = str(song.album or batch_album or "").strip()
         if album:
@@ -3902,11 +3935,14 @@ class BatchService:
         )
         from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE
 
+        from platform_api.services.music_genre_utils import parse_genre_list
+
         description_text = draft_request.description.strip()
         structure_text = draft_request.structure.strip()
         mood_text = str(getattr(draft_request, "mood", "") or "").strip()
         ai_free = draft_request.structure_mode == STRUCTURE_MODE_AI_FREE
         description_profile = parse_vocal_profile(draft_request.vocal_profile)
+        description_genres = list(getattr(draft_request, "description_genres", None) or [])
 
         if song.description_id is not None:
             description = await self._prompt_service.get_description_for_access(
@@ -3918,6 +3954,7 @@ class BatchService:
             description_profile = parse_vocal_profile(
                 getattr(description, "vocal_profile", None)
             )
+            description_genres = parse_genre_list(getattr(description, "genres", None))
 
         if song.structure_id is not None and not ai_free:
             structure = await self._prompt_service.get_structure_for_access(
@@ -3942,6 +3979,7 @@ class BatchService:
             structure="" if ai_free else (structure_text or draft_request.structure),
             mood=mood_text or str(getattr(draft_request, "mood", "") or ""),
             vocal_profile=vocal_profile_to_dict(lyric_profile),
+            description_genres=description_genres,
         )
 
     async def resolve_lyric_rewrite_context(
