@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QThread, Signal
@@ -1931,6 +1932,8 @@ class ImagePreviewLoadWorker(QThread):
         th_path: str | None,
         bg_job_id: str | None = None,
         th_job_id: str | None = None,
+        bg_updated_at: str | None = None,
+        th_updated_at: str | None = None,
         footer_detail: str,
         parent=None,
     ) -> None:
@@ -1940,6 +1943,8 @@ class ImagePreviewLoadWorker(QThread):
         self._th_path = th_path
         self._bg_job_id = bg_job_id
         self._th_job_id = th_job_id
+        self._bg_updated_at = bg_updated_at
+        self._th_updated_at = th_updated_at
         self._footer_detail = footer_detail
 
     def run(self) -> None:
@@ -1948,24 +1953,38 @@ class ImagePreviewLoadWorker(QThread):
         try:
             self.succeeded.emit(
                 {
-                    "bg_bytes": self._load_image_bytes(self._bg_path, self._bg_job_id),
-                    "th_bytes": self._load_image_bytes(self._th_path, self._th_job_id),
+                    "bg_bytes": self._load_image_bytes(
+                        self._bg_path, self._bg_job_id, self._bg_updated_at
+                    ),
+                    "th_bytes": self._load_image_bytes(
+                        self._th_path, self._th_job_id, self._th_updated_at
+                    ),
                     "footer_detail": self._footer_detail,
                 }
             )
         except Exception as exc:
             self.failed.emit(str(exc) or "Failed to load image previews.")
 
-    def _load_image_bytes(self, path: str | None, job_id: str | None) -> bytes | None:
+    def _load_image_bytes(
+        self,
+        path: str | None,
+        job_id: str | None,
+        remote_updated_at: str | None = None,
+    ) -> bytes | None:
         from shared.lib.image_output_utils import ensure_image_output_local
         from shared.services.file_service import read_file_bytes
 
-        local_path = ensure_image_output_local(self._api, path, job_id)
+        local_path = ensure_image_output_local(
+            self._api,
+            path,
+            job_id,
+            remote_updated_at=remote_updated_at,
+        )
         return read_file_bytes(local_path) if local_path else None
 
 
 class ImageOutputSyncWorker(QThread):
-    """Download successful image jobs from the API when files are missing locally."""
+    """Download successful image jobs from the API when files are missing or stale locally."""
 
     succeeded = Signal(int)
     failed = Signal(str)
@@ -1977,17 +1996,35 @@ class ImageOutputSyncWorker(QThread):
         self._limit = limit
 
     def run(self) -> None:
-        from shared.lib.image_output_utils import ensure_image_output_local
-        from shared.services.file_service import read_file_bytes, sanitize_local_path
+        from shared.lib.image_output_utils import (
+            ensure_image_output_local,
+            resolve_local_image_output_path,
+        )
 
         try:
             response = self._api.list_image_jobs(status=["success"], limit=self._limit)
             synced = 0
             for job in response.items:
-                target_path = sanitize_local_path(str(job.output_image_path or "").strip())
-                if not target_path or read_file_bytes(target_path):
+                target_path = resolve_local_image_output_path(job.output_image_path)
+                if not target_path:
                     continue
-                if ensure_image_output_local(self._api, job.output_image_path, job.id):
+                before = Path(target_path)
+                before_mtime = before.stat().st_mtime if before.is_file() else None
+                before_size = before.stat().st_size if before.is_file() else None
+                local_path = ensure_image_output_local(
+                    self._api,
+                    job.output_image_path,
+                    job.id,
+                    remote_updated_at=getattr(job, "updated_at", None),
+                )
+                if not local_path:
+                    continue
+                after = Path(local_path)
+                if not after.is_file():
+                    continue
+                after_mtime = after.stat().st_mtime
+                after_size = after.stat().st_size
+                if before_mtime is None or before_size != after_size or after_mtime != before_mtime:
                     synced += 1
             self.succeeded.emit(synced)
         except PlatformApiError as exc:
@@ -2008,18 +2045,25 @@ class ImageOpenWorker(QThread):
         *,
         path: str,
         job_id: str,
+        remote_updated_at: str | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self._api = api
         self._path = path
         self._job_id = job_id
+        self._remote_updated_at = remote_updated_at
 
     def run(self) -> None:
         from shared.lib.image_output_utils import ensure_image_output_local
 
         try:
-            local_path = ensure_image_output_local(self._api, self._path, self._job_id)
+            local_path = ensure_image_output_local(
+                self._api,
+                self._path,
+                self._job_id,
+                remote_updated_at=self._remote_updated_at,
+            )
             if not local_path:
                 self.failed.emit("Image file is not available yet.")
                 return
