@@ -8,8 +8,8 @@ first machine's drive letters / Windows profile paths.
 This module stores those path keys under
 ``%LOCALAPPDATA%\\Camxora\\users\\{userId}\\device-workspace-paths.json`` —
 already machine-local via LOCALAPPDATA — so each PC keeps its own roots.
-Cloud settings are still updated from the *active* desktop so server run-dir
-planning matches the machine currently generating music.
+Absolute media roots are **not** account settings; the API plans portable
+``channel\\date_album`` run keys and each desktop joins its own Suno root.
 """
 
 from __future__ import annotations
@@ -189,9 +189,10 @@ def hydrate_local_suno_output_dir(
     persist_device_paths_from_settings(merged, user_id)
     # Do not push this PC's absolute media roots into account settings.
     # Run planning uses portable relative keys on the API.
-    if persist_cloud and heal_patch and api is not None:
+    cloud_patch = {key: value for key, value in heal_patch.items() if key not in DEVICE_MEDIA_PATH_KEYS}
+    if persist_cloud and cloud_patch and api is not None:
         try:
-            api.patch_settings(heal_patch)
+            api.patch_settings(cloud_patch)
         except Exception:
             pass
     return resolve_local_suno_output_dir(user_id, merged)
@@ -200,23 +201,37 @@ def hydrate_local_suno_output_dir(
 def local_run_dir_for_disk(run_dir: str, *, local_suno_base: str | None = None) -> str:
     """Map a server/batch run_dir onto a folder this machine can use.
 
-    Prefer an existing non-foreign absolute directory (e.g. after Change Run
-    Folder to another drive). Otherwise rebase onto this PC's Suno root using
-    the trailing ``channel/date_album`` key — API absolute paths are never
-    trusted as drop targets when they point at another Windows profile or a
-    missing path.
+    Portable keys and legacy absolute paths under the default AppData
+    ``Media\\Suno`` tree are always rebased onto this PC's configured Suno
+    root. An existing absolute directory outside that default tree is kept
+    (Change Run Folder to another drive). Foreign Windows profile paths are
+    never trusted as drop targets.
     """
     text = _normalize_stored_path(str(run_dir or ""))
     if not text:
         return ""
+    base = str(local_suno_base or "").strip() or resolve_local_suno_output_dir()
+    if path_is_under_base(text, base):
+        return text
+
+    remapped, _ = remap_suno_download_paths(text, "", base)
+    default_suno = _normalize_stored_path(default_workspace_paths()["sunoOutputDir"])
+    base_norm = _normalize_stored_path(base)
+    # Leftover AppData Media\Suno folders must not win after the user pointed
+    # Preferences at another root (e.g. E:\SUNO).
+    if (
+        default_suno
+        and path_is_under_base(text, default_suno)
+        and base_norm.casefold() != default_suno.casefold()
+    ):
+        return remapped or text
+
     if not is_foreign_windows_profile_path(text):
         try:
             if Path(text).is_dir():
                 return text
         except OSError:
             pass
-    base = str(local_suno_base or "").strip() or resolve_local_suno_output_dir()
-    remapped, _ = remap_suno_download_paths(text, "", base)
     return remapped or text
 
 

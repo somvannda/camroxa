@@ -385,6 +385,24 @@ def build_publication_payload(draft: PublicationDraft, base_config: dict[str, ob
     }
 
 
+def device_paths_dict_from_draft(draft: SystemSettingsDraft) -> dict[str, str]:
+    """Media roots to write into the per-device local store (never account settings)."""
+    return {
+        "downloadsDir": normalize_path(draft.downloads_dir),
+        "sunoOutputDir": normalize_path(draft.suno_output_dir),
+        "mergedDir": normalize_path(draft.merged_dir),
+        "imageBackgroundSamplesDir": normalize_path(draft.image_background_samples_dir),
+        "imageThumbnailSamplesDir": normalize_path(draft.image_thumbnail_samples_dir),
+        "imageOutputDir": normalize_path(draft.image_output_dir),
+    }
+
+
+def device_media_paths_dirty(draft: SystemSettingsDraft, current_settings: dict[str, Any]) -> bool:
+    """True when Preferences media roots differ from the overlaid current settings."""
+    current = build_system_settings_draft(current_settings)
+    return device_paths_dict_from_draft(draft) != device_paths_dict_from_draft(current)
+
+
 def build_system_settings_patch(
     draft: SystemSettingsDraft,
     current_settings: dict[str, Any],
@@ -400,14 +418,9 @@ def build_system_settings_patch(
         if next_value != existing:
             patch[patch_key or key] = next_value
 
+    # Absolute media folder roots stay on this machine only (device-workspace-paths.json).
+    # Pushing them into account settings caused cross-PC thrash and Preferences-save wipes.
     assign_string("ffmpegPath", draft.ffmpeg_path, current.ffmpeg_path)
-    assign_string("downloadsDir", draft.downloads_dir, current.downloads_dir)
-    assign_string("sunoOutputDir", draft.suno_output_dir, current.suno_output_dir)
-    assign_string("mergedDir", draft.merged_dir, current.merged_dir)
-    if not exclude_sample_pack_settings:
-        assign_string("imageBackgroundSamplesDir", draft.image_background_samples_dir, current.image_background_samples_dir)
-        assign_string("imageThumbnailSamplesDir", draft.image_thumbnail_samples_dir, current.image_thumbnail_samples_dir)
-    assign_string("imageOutputDir", draft.image_output_dir, current.image_output_dir)
     assign_string("imageSourceMode", draft.image_source_mode, current.image_source_mode)
     assign_string(
         "imageBackgroundSourceMode",

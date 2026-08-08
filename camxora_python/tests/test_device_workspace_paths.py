@@ -174,6 +174,43 @@ def test_local_run_dir_for_disk_rebases_server_path(tmp_path: Path, monkeypatch)
     deactivate_local_user_scope()
 
 
+def test_local_run_dir_for_disk_rebases_existing_default_appdata_suno(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Same-machine AppData Media\\Suno leftovers must not beat E:\\SUNO preference."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    defaults = default_workspace_paths()
+    stale = Path(defaults["sunoOutputDir"]) / "ch" / "2026-08-08_album"
+    stale.mkdir(parents=True)
+    custom = tmp_path / "E-drive-Suno"
+    custom.mkdir()
+    persist_device_paths_from_settings({"sunoOutputDir": str(custom)})
+    from shared.lib.device_workspace_paths import local_run_dir_for_disk
+
+    remapped = local_run_dir_for_disk(str(stale))
+    assert remapped == str(custom / "ch" / "2026-08-08_album")
+    deactivate_local_user_scope()
+
+
+def test_ensure_workspace_defaults_never_patches_media_roots_to_cloud(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    patches: list[dict] = []
+
+    class _Api:
+        def patch_settings(self, patch: dict) -> None:
+            patches.append(dict(patch))
+
+    ensure_workspace_defaults(settings_raw={}, api=_Api(), persist=True)
+    assert patches  # ffmpeg / speed defaults may still sync
+    assert all("sunoOutputDir" not in patch for patch in patches)
+    assert all("downloadsDir" not in patch for patch in patches)
+    deactivate_local_user_scope()
+
+
 def test_local_mp3_files_ready_uses_remapped_run_dir(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     _scope_user(tmp_path, monkeypatch)
