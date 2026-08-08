@@ -21,6 +21,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Startup splash no longer flashes as if Camxora closed/reopened when Video
+  workspace prewarm mounts the GPU preview (`QOpenGLWidget` HWND recreate).
+  OpenGL is configured before `QApplication` and primed on `RootWindow` before
+  the first `show()`. See `docs/changelog/2026-08-08-startup-opengl-window-prime.md`.
 - Preferences save no longer overwrites the local Suno root with a stale AppData path from
   account settings. Device store is written from the draft the user saved; absolute media
   roots are not PATCHed to the cloud. Leftover `%LOCALAPPDATA%\...\Media\Suno` folders no

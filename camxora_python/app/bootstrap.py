@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication
 
 from app.root_window import RootWindow
 from shared.lib.app_icon import APP_USER_MODEL_ID, apply_app_window_icon
+from shared.lib.opengl_startup import configure_opengl_before_qapplication
 from shared.lib.single_instance import SingleInstanceGuard, notify_already_running
 from shared.themes import apply_theme
 
@@ -90,6 +91,10 @@ def run() -> int:
     get_or_seed_install_datetime()
     _set_windows_app_id()
     _install_global_excepthook()
+
+    # Before QApplication: shared contexts + default format so the first
+    # QOpenGLWidget (video preview prewarm) does not recreate the HWND mid-splash.
+    configure_opengl_before_qapplication()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Camxora")
