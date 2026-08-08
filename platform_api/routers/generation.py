@@ -164,7 +164,7 @@ class ImageGenerationRequest(BaseModel):
     base_image size, and forward to provider.
     """
 
-    prompt: str = Field(min_length=1, max_length=2000)
+    prompt: str = Field(min_length=1, max_length=5000)
     provider: str = Field(pattern=r"^(fal|slai|openai|cala)$")
     kind: str = Field(default="background", pattern=r"^(background|thumbnail)$")
     resolution: str = Field(default="1920x1080", pattern=r"^\d+x\d+$")

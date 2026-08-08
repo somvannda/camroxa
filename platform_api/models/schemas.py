@@ -74,7 +74,7 @@ class ImageGenerationRequest(BaseModel):
     """Submit an image generation request (background or thumbnail)."""
 
     kind: str = Field(pattern=r"^(background|thumbnail)$")
-    prompt: str = Field(min_length=1, max_length=2000)
+    prompt: str = Field(min_length=1, max_length=5000)
     image_base64: str  # PNG bytes as base64
     resolution: str = Field(pattern=r"^\d+x\d+$")
     style_strength: float = Field(ge=0.0, le=1.0, default=0.6)

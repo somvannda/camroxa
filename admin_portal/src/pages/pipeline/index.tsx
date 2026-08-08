@@ -606,12 +606,19 @@ function PipelineDrawer({
                       <div className="flex justify-between gap-2 text-slate-200">
                         <span>
                           {job.channel_role || '—'} · {job.kind}
+                          {job.provider ? ` · ${job.provider}` : ''}
                         </span>
                         <span>
                           {job.status}
                           {job.attempt_count > 1 ? ` ×${job.attempt_count}` : ''}
                         </span>
                       </div>
+                      {typeof job.prompt_length === 'number' ? (
+                        <p className="mt-1 text-slate-500">
+                          Prompt length: {job.prompt_length}
+                          {job.prompt_length > 5000 ? ' (over 5000 max)' : ''}
+                        </p>
+                      ) : null}
                       {job.error ? <p className="mt-2 text-red-300">{job.error}</p> : null}
                       {job.status.toLowerCase() === 'failed' ? (
                         <Button

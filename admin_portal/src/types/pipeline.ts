@@ -82,6 +82,8 @@ export interface AdminPipelineImageJob {
   channel_role: string | null;
   kind: string;
   status: string;
+  provider?: string | null;
+  prompt_length?: number | null;
   attempt_count: number;
   error: string | null;
   updated_at: string | null;

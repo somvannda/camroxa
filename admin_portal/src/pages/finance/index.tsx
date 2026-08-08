@@ -59,11 +59,32 @@ function filtersToParams(filters: FinanceFiltersState): UsageListParams {
   };
 }
 
-function formatProviderModel(provider: string | null, model: string | null): string {
-  if (provider && model) return `${provider} / ${model}`;
-  if (provider) return provider;
-  if (model) return model;
-  return '—';
+function ProviderModelCell({
+  provider,
+  model,
+  providerSource,
+}: {
+  provider: string | null;
+  model: string | null;
+  providerSource?: string;
+}) {
+  return (
+    <div className="space-y-0.5">
+      <div>
+        <span className="text-[10px] uppercase tracking-wide text-slate-600">Provider </span>
+        <span className="font-medium text-slate-200">{provider || '—'}</span>
+        {providerSource === 'routing' ? (
+          <span className="ml-1 text-[10px] text-amber-400/80">(routing)</span>
+        ) : null}
+      </div>
+      <div className="font-mono text-xs text-slate-500">
+        <span className="font-sans text-[10px] uppercase tracking-wide text-slate-600">
+          Model{' '}
+        </span>
+        {model || '—'}
+      </div>
+    </div>
+  );
 }
 
 export default function FinancePage() {
@@ -397,12 +418,11 @@ export default function FinancePage() {
                         {formatOperationLabel(row.operation)}
                       </td>
                       <td className="py-2.5 pr-4">
-                        <div className="font-mono text-sm text-slate-200">
-                          {formatProviderModel(row.provider, row.model)}
-                        </div>
-                        {row.providerSource === 'routing' ? (
-                          <div className="text-[11px] text-slate-500">from current routing</div>
-                        ) : null}
+                        <ProviderModelCell
+                          provider={row.provider}
+                          model={row.model}
+                          providerSource={row.providerSource}
+                        />
                       </td>
                       <td className="py-2.5 pr-4 font-mono">{row.events}</td>
                       <td className="py-2.5 pr-4 font-mono text-red-300/90">

@@ -63,7 +63,7 @@ MAX_ALBUM_ATTEMPTS = 2
 MAX_TITLE_ALBUM_ATTEMPTS = 6
 IMAGE_MIN_RESOLUTION = 512
 IMAGE_MAX_RESOLUTION = 2048
-IMAGE_MAX_PROMPT_LENGTH = 2000
+IMAGE_MAX_PROMPT_LENGTH = 5000
 IMAGE_MAX_BASE64_BYTES = 10 * 1024 * 1024  # 10 MB
 CHANNEL_COVER_ALLOWED_RESOLUTION = (1920, 1080)
 
@@ -3227,7 +3227,7 @@ class GenerationService:
 
         Checks:
         - style_strength in [0, 1]
-        - prompt length 1-2000 chars
+        - prompt length 1-IMAGE_MAX_PROMPT_LENGTH chars
         - base_image (if provided) ≤ 10 MB
         """
         if not (0.0 <= request.style_strength <= 1.0):
@@ -3238,7 +3238,7 @@ class GenerationService:
 
         if not request.prompt or len(request.prompt) < 1:
             raise ValidationError(
-                "Image prompt is required (1-2000 characters).",
+                f"Image prompt is required (1-{IMAGE_MAX_PROMPT_LENGTH} characters).",
                 details={"prompt_length": 0},
             )
 

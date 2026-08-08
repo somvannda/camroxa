@@ -212,9 +212,17 @@ function ExpandedBreakdown({
                       <div className="font-medium text-slate-200">
                         {formatOperationLabel(cog.operation)}
                       </div>
-                      <div className="font-mono text-[11px] text-slate-500">
-                        {cog.provider || '—'}
-                        {cog.model ? ` / ${cog.model}` : ''}
+                      <div className="mt-0.5 space-y-0.5 text-[11px] text-slate-500">
+                        <div>
+                          <span className="text-slate-600">Provider </span>
+                          <span className="font-medium text-slate-300">
+                            {cog.provider || '—'}
+                          </span>
+                        </div>
+                        <div className="font-mono">
+                          <span className="font-sans text-slate-600">Model </span>
+                          {cog.model || '—'}
+                        </div>
                       </div>
                     </td>
                     <td className="px-3 py-2 tabular-nums text-slate-300">{cog.events}</td>

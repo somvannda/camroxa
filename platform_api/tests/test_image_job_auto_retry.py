@@ -23,6 +23,9 @@ def test_non_retryable_detects_fail_budget() -> None:
         )
     )
     assert _is_non_retryable_image_error(Exception("Daily fail/retry budget exceeded. Try again tomorrow."))
+    assert _is_non_retryable_image_error(
+        Exception("Image prompt exceeds maximum length of 5000 characters.")
+    )
     assert not _is_non_retryable_image_error(Exception("fal timeout after 30s"))
 
 

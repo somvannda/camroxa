@@ -90,8 +90,12 @@ def ai_routing_service() -> AsyncMock:
             return image_routing
         return text_routing
 
+    async def _resolve_image_chain(operation: str) -> list[SimpleNamespace]:
+        return [await _resolve(operation)]
+
     service = AsyncMock()
     service.resolve = AsyncMock(side_effect=_resolve)
+    service.resolve_image_chain = AsyncMock(side_effect=_resolve_image_chain)
     return service
 
 

@@ -180,7 +180,7 @@ Request → SHA-256 dedup check → Credit deduction → Forward to Suno → Ret
 
 **Image Generation:**
 ```
-Request → Validate (resolution 512-2048, prompt ≤2000, base64 ≤10MB) → Credit deduction → Provider call → Return PNG
+Request → Validate (resolution 512-2048, prompt ≤5000, base64 ≤10MB) → Credit deduction → Provider call → Return PNG
 ```
 
 | Component | Responsibility |
