@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from shared.lib.image_workspace import (
+    IMAGE_PROMPT_MAX_CHARS,
     batch_date_label,
     batch_is_within_range,
     build_footer_detail,
     build_queue_rows,
     build_queue_status_summary,
+    clamp_image_prompt,
     filter_batches_by_date,
     format_queue_role_status,
     normalize_image_prompt_settings,
@@ -47,6 +49,22 @@ def test_normalize_image_prompt_settings_legacy_fallback() -> None:
     settings = normalize_image_prompt_settings({"imagePrompt": "Legacy prompt"})
     assert settings.image_background_prompt == "Legacy prompt"
     assert settings.image_thumbnail_prompt == ""
+
+
+def test_clamp_image_prompt_enforces_max() -> None:
+    assert clamp_image_prompt("short") == "short"
+    assert len(clamp_image_prompt("x" * (IMAGE_PROMPT_MAX_CHARS + 50))) == IMAGE_PROMPT_MAX_CHARS
+
+
+def test_normalize_image_prompt_settings_clamps_oversize() -> None:
+    settings = normalize_image_prompt_settings(
+        {
+            "imageBackgroundPrompt": "b" * (IMAGE_PROMPT_MAX_CHARS + 10),
+            "imageThumbnailPrompt": "t" * (IMAGE_PROMPT_MAX_CHARS + 3),
+        }
+    )
+    assert len(settings.image_background_prompt) == IMAGE_PROMPT_MAX_CHARS
+    assert len(settings.image_thumbnail_prompt) == IMAGE_PROMPT_MAX_CHARS
 
 
 def test_batch_is_within_range() -> None:

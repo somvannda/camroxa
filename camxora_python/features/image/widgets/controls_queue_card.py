@@ -22,7 +22,12 @@ from PySide6.QtWidgets import (
 
 from shared.lib.formatting import today_ymd
 from shared.lib.formatting import format_channel_role_label
-from shared.lib.image_workspace import QueueRow, format_queue_role_status
+from shared.lib.image_workspace import (
+    IMAGE_PROMPT_MAX_CHARS,
+    QueueRow,
+    clamp_image_prompt,
+    format_queue_role_status,
+)
 from shared.themes.deep_blue import SHELL_TEXT_EDIT_ID, SUBTITLE_LABEL_ID
 from shared.widgets.data_table import create_data_table
 from shared.widgets.shell_date_edit import make_shell_date_edit
@@ -181,6 +186,8 @@ class ControlsQueueCard(QFrame):
         self._thumbnail_prompt = self._make_prompt_edit(
             "Guide how the thumbnail should build on the generated background plus text style."
         )
+        bg_header, self._background_counter = self._make_prompt_header("Background Prompt")
+        th_header, self._thumbnail_counter = self._make_prompt_header("Thumbnail Prompt")
         self._bg_manual_btn = QPushButton("Manual Generation")
         self._bg_manual_btn.setToolTip(
             "With a row selected: regenerate that album background (credits/quota). "
@@ -197,10 +204,10 @@ class ControlsQueueCard(QFrame):
         self._th_manual_btn.clicked.connect(
             lambda: self.manual_generation_requested.emit("thumbnail")
         )
-        prompts.addWidget(self._prompt_label("Background Prompt"), 0, 0)
+        prompts.addWidget(bg_header, 0, 0)
         prompts.addWidget(self._background_prompt, 1, 0)
         prompts.addWidget(self._bg_manual_btn, 2, 0)
-        prompts.addWidget(self._prompt_label("Thumbnail Prompt"), 0, 1)
+        prompts.addWidget(th_header, 0, 1)
         prompts.addWidget(self._thumbnail_prompt, 1, 1)
         prompts.addWidget(self._th_manual_btn, 2, 1)
         prompts.setColumnStretch(0, 1)
@@ -216,8 +223,14 @@ class ControlsQueueCard(QFrame):
 
         self._from_date.dateChanged.connect(lambda *_: self.filters_changed.emit())
         self._to_date.dateChanged.connect(lambda *_: self.filters_changed.emit())
-        self._background_prompt.textChanged.connect(lambda *_: self.prompts_changed.emit())
-        self._thumbnail_prompt.textChanged.connect(lambda *_: self.prompts_changed.emit())
+        self._background_prompt.textChanged.connect(
+            lambda *_: self._on_prompt_edited(self._background_prompt, self._background_counter)
+        )
+        self._thumbnail_prompt.textChanged.connect(
+            lambda *_: self._on_prompt_edited(self._thumbnail_prompt, self._thumbnail_counter)
+        )
+        self._refresh_prompt_counter(self._background_prompt, self._background_counter)
+        self._refresh_prompt_counter(self._thumbnail_prompt, self._thumbnail_counter)
 
     def _configure_queue_table_columns(self) -> None:
         header = self._table.horizontalHeader()
@@ -242,6 +255,7 @@ class ControlsQueueCard(QFrame):
         edit.setObjectName(SHELL_TEXT_EDIT_ID)
         edit.setPlaceholderText(placeholder)
         edit.setMinimumHeight(112)
+        edit.setToolTip(f"Maximum {IMAGE_PROMPT_MAX_CHARS} characters (matches API image prompt gate).")
         return edit
 
     @staticmethod
@@ -249,6 +263,42 @@ class ControlsQueueCard(QFrame):
         label = QLabel(text.upper())
         label.setObjectName(SUBTITLE_LABEL_ID)
         return label
+
+    def _make_prompt_header(self, title: str) -> tuple[QWidget, QLabel]:
+        host = QWidget()
+        row = QHBoxLayout(host)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.addWidget(self._prompt_label(title))
+        row.addStretch(1)
+        counter = QLabel(f"0 / {IMAGE_PROMPT_MAX_CHARS}")
+        counter.setObjectName(SUBTITLE_LABEL_ID)
+        counter.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(counter)
+        return host, counter
+
+    def _refresh_prompt_counter(self, edit: QTextEdit, counter: QLabel) -> None:
+        length = len(edit.toPlainText())
+        counter.setText(f"{length} / {IMAGE_PROMPT_MAX_CHARS}")
+        if length >= IMAGE_PROMPT_MAX_CHARS:
+            counter.setStyleSheet("color: #f87171;")
+        else:
+            counter.setStyleSheet("")
+
+    def _on_prompt_edited(self, edit: QTextEdit, counter: QLabel) -> None:
+        text = edit.toPlainText()
+        if len(text) > IMAGE_PROMPT_MAX_CHARS:
+            cursor = edit.textCursor()
+            position = cursor.position()
+            clamped = clamp_image_prompt(text)
+            edit.blockSignals(True)
+            edit.setPlainText(clamped)
+            cursor = edit.textCursor()
+            cursor.setPosition(min(position, len(clamped)))
+            edit.setTextCursor(cursor)
+            edit.blockSignals(False)
+        self._refresh_prompt_counter(edit, counter)
+        self.prompts_changed.emit()
 
     def from_date(self) -> str:
         return self._from_date.date().toString("yyyy-MM-dd")
@@ -271,18 +321,20 @@ class ControlsQueueCard(QFrame):
         self._to_date.blockSignals(False)
 
     def background_prompt(self) -> str:
-        return self._background_prompt.toPlainText()
+        return clamp_image_prompt(self._background_prompt.toPlainText())
 
     def thumbnail_prompt(self) -> str:
-        return self._thumbnail_prompt.toPlainText()
+        return clamp_image_prompt(self._thumbnail_prompt.toPlainText())
 
     def set_prompts(self, background: str, thumbnail: str) -> None:
         self._background_prompt.blockSignals(True)
         self._thumbnail_prompt.blockSignals(True)
-        self._background_prompt.setPlainText(background)
-        self._thumbnail_prompt.setPlainText(thumbnail)
+        self._background_prompt.setPlainText(clamp_image_prompt(background))
+        self._thumbnail_prompt.setPlainText(clamp_image_prompt(thumbnail))
         self._background_prompt.blockSignals(False)
         self._thumbnail_prompt.blockSignals(False)
+        self._refresh_prompt_counter(self._background_prompt, self._background_counter)
+        self._refresh_prompt_counter(self._thumbnail_prompt, self._thumbnail_counter)
 
     def set_stat_values(self, *, date_range: str, matched_batches: int, queue_status: str) -> None:
         self._date_range_value.setText(date_range)
