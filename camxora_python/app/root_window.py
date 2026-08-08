@@ -12,6 +12,7 @@ from features.account.views.startup_view import StartupView
 from features.onboarding.views.onboarding_views import OnboardingWelcomeView, OnboardingWizardView
 from shared.constants.auth import REGISTRATION_ENABLED
 from shared.lib.app_icon import apply_app_window_icon
+from shared.lib.opengl_startup import prime_opengl_on_window
 from shared.lib.window_chrome import (
     center_window_on_screen,
     configure_rounded_window,
@@ -69,6 +70,10 @@ class RootWindow(QMainWindow):
 
         self._connect_signals()
         configure_rounded_window(self)
+        # Parent a 1x1 hidden QOpenGLWidget before the first show() so Windows
+        # creates an OpenGL-capable HWND. Video prewarm mounts the real preview
+        # later; without this prime the splash window briefly "restarts".
+        prime_opengl_on_window(self)
         self._show_page(self._PAGE_STARTUP)
         self._start_bootstrap()
 
