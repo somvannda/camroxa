@@ -661,11 +661,13 @@ class SettingsView(QWidget):
                 tabs.append("Profiles")
         if self._selected_profile() and not publication_draft_equal(self._publication_draft, self._baseline_publication_draft):
             tabs.append("Publication")
+        from shared.lib.settings_workspace import device_media_paths_dirty
+
         if build_system_settings_patch(
             self._system_draft,
             self._settings_raw,
             exclude_sample_pack_settings=SERVER_MANAGED_SAMPLE_PACKS,
-        ):
+        ) or device_media_paths_dirty(self._system_draft, self._settings_raw):
             tabs.append("Preferences")
         if build_suno_settings_patch(self._suno_draft, self._settings_raw):
             tabs.append("Suno")
@@ -1108,17 +1110,15 @@ class SettingsView(QWidget):
         root.setSpacing(12)
 
         paths_panel = SettingsPanel(
-            "Video Paths",
-            subtitle="Core local paths used by rendering, downloads, Suno output, and merges.",
+            "Local Paths",
+            subtitle="This PC only — music/images land under the Suno root. Not synced to your account.",
         )
         workers_panel = SettingsPanel(
             "Workers",
             subtitle="Worker and chunk settings used by generation, rendering, and uploads.",
         )
         self._pref_ffmpeg = QLineEdit()
-        self._pref_downloads = QLineEdit()
         self._pref_suno_output = QLineEdit()
-        self._pref_merged = QLineEdit()
         self._ffmpeg_download_btn = QPushButton("Download FFmpeg")
         self._ffmpeg_download_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._ffmpeg_download_btn.clicked.connect(self._on_download_ffmpeg_clicked)
@@ -1136,22 +1136,22 @@ class SettingsView(QWidget):
         paths_panel.add_widget(
             note_box(ffmpeg_preferences_note())
         )
-        for label, field, picker in (
-            ("Downloads dir", self._pref_downloads, lambda: self._pick_directory(self._pref_downloads)),
-            ("Suno output dir", self._pref_suno_output, lambda: self._pick_directory(self._pref_suno_output)),
-            ("Merged dir", self._pref_merged, lambda: self._pick_directory(self._pref_merged)),
-        ):
-            paths_panel.add_widget(
-                form_row(
-                    label,
-                    path_row(
-                        line_edit=field,
-                        on_browse=picker,
-                        on_open=lambda field=field: self._open_path_field(field),
-                    ),
-                )
+        paths_panel.add_widget(
+            form_row(
+                "Suno output dir",
+                path_row(
+                    line_edit=self._pref_suno_output,
+                    on_browse=lambda: self._pick_directory(self._pref_suno_output),
+                    on_open=lambda: self._open_path_field(self._pref_suno_output),
+                ),
             )
-        paths_panel.add_widget(note_box("Keep these paths accessible to the app."))
+        )
+        paths_panel.add_widget(
+            note_box(
+                "Batch folders are created as {channel}/{date_album} under this root. "
+                "Downloads, merges, and images use the same tree (or app defaults)."
+            )
+        )
 
         worker_grid = QGridLayout()
         self._pref_music_workers = self._make_spinbox(1, 5)
@@ -1180,8 +1180,8 @@ class SettingsView(QWidget):
         image_panel = SettingsPanel(
             "Image",
             subtitle=(
-                "Local output folder and rendering defaults. Background and thumbnail reference "
-                "images are managed on the Camxora server."
+                "Background and thumbnail reference images are managed on the Camxora server. "
+                "Generated files land in each batch run folder under your Suno output dir."
                 if SERVER_MANAGED_SAMPLE_PACKS
                 else "System-wide image folders and rendering defaults."
             ),
@@ -1190,7 +1190,6 @@ class SettingsView(QWidget):
             "Rendering",
             subtitle="Image output resolution and style blending used by the desktop renderer.",
         )
-        self._pref_image_output = QLineEdit()
         if SERVER_MANAGED_SAMPLE_PACKS:
             image_panel.add_widget(
                 note_box(
@@ -1199,19 +1198,10 @@ class SettingsView(QWidget):
                     "are no longer required."
                 )
             )
-            image_panel.add_widget(
-                form_row(
-                    "Output dir (optional)",
-                    path_row(
-                        line_edit=self._pref_image_output,
-                        on_browse=lambda: self._pick_directory(self._pref_image_output),
-                        on_open=lambda: self._open_path_field(self._pref_image_output),
-                    ),
-                )
-            )
         else:
             self._pref_bg_samples_dir = QLineEdit()
             self._pref_th_samples_dir = QLineEdit()
+            self._pref_image_output = QLineEdit()
             for label, field, picker in (
                 ("BG samples dir", self._pref_bg_samples_dir, lambda: self._pick_directory(self._pref_bg_samples_dir)),
                 ("Thumb samples dir", self._pref_th_samples_dir, lambda: self._pick_directory(self._pref_th_samples_dir)),
@@ -1338,10 +1328,10 @@ class SettingsView(QWidget):
                 )
             )
 
-        for widget in (self._pref_ffmpeg, self._pref_downloads, self._pref_suno_output, self._pref_merged, self._pref_image_output):
+        for widget in (self._pref_ffmpeg, self._pref_suno_output):
             widget.textChanged.connect(self._on_system_field_changed)
         if not SERVER_MANAGED_SAMPLE_PACKS:
-            for widget in (self._pref_bg_samples_dir, self._pref_th_samples_dir):
+            for widget in (self._pref_bg_samples_dir, self._pref_th_samples_dir, self._pref_image_output):
                 widget.textChanged.connect(self._on_system_field_changed)
             self._pref_bg_samples_dir.textChanged.connect(lambda *_: self._update_sample_pack_install_buttons())
             self._pref_th_samples_dir.textChanged.connect(lambda *_: self._update_sample_pack_install_buttons())
@@ -2992,13 +2982,11 @@ class SettingsView(QWidget):
     def _bind_preferences_tab(self) -> None:
         draft = self._system_draft
         self._pref_ffmpeg.setText(draft.ffmpeg_path)
-        self._pref_downloads.setText(draft.downloads_dir)
         self._pref_suno_output.setText(draft.suno_output_dir)
-        self._pref_merged.setText(draft.merged_dir)
-        self._pref_image_output.setText(draft.image_output_dir)
         if not SERVER_MANAGED_SAMPLE_PACKS:
             self._pref_bg_samples_dir.setText(draft.image_background_samples_dir)
             self._pref_th_samples_dir.setText(draft.image_thumbnail_samples_dir)
+            self._pref_image_output.setText(draft.image_output_dir)
         self._pref_music_workers.setValue(draft.perf_music_workers)
         self._pref_image_workers.setValue(draft.perf_image_workers)
         self._pref_export_workers.setValue(draft.perf_export_workers)
@@ -3316,10 +3304,15 @@ class SettingsView(QWidget):
             chunk_size = self._system_draft.youtube_upload_chunk_size_mb
         self._system_draft = SystemSettingsDraft(
             ffmpeg_path=self._pref_ffmpeg.text(),
-            downloads_dir=self._pref_downloads.text(),
+            # Downloads / merged / image output are auto-defaults (not shown in Preferences).
+            downloads_dir=self._system_draft.downloads_dir,
             suno_output_dir=self._pref_suno_output.text(),
-            merged_dir=self._pref_merged.text(),
-            image_output_dir=self._pref_image_output.text(),
+            merged_dir=self._system_draft.merged_dir,
+            image_output_dir=(
+                self._system_draft.image_output_dir
+                if SERVER_MANAGED_SAMPLE_PACKS
+                else self._pref_image_output.text()
+            ),
             image_background_samples_dir=(
                 self._system_draft.image_background_samples_dir
                 if SERVER_MANAGED_SAMPLE_PACKS
@@ -3456,13 +3449,35 @@ class SettingsView(QWidget):
         log_info("Saved Publication.", category="settings")
         self.refresh_data(force=True)
 
+    def _persist_device_media_paths_from_draft(self, draft: SystemSettingsDraft | None = None) -> None:
+        from shared.lib.device_workspace_paths import persist_device_paths_from_settings
+        from shared.lib.settings_workspace import device_paths_dict_from_draft
+        from shared.lib.workspace_defaults import ensure_directory
+
+        source = draft or self._system_draft
+        payload = device_paths_dict_from_draft(source)
+        persist_device_paths_from_settings(payload)
+        suno = str(payload.get("sunoOutputDir") or "").strip()
+        if suno:
+            ensure_directory(suno)
+
     def _save_system_settings(self) -> None:
+        from shared.lib.settings_workspace import device_media_paths_dirty
+
+        paths_changed = device_media_paths_dirty(self._system_draft, self._settings_raw)
+        if paths_changed:
+            # Device store is authoritative — write the draft the user sees, never the API body.
+            self._persist_device_media_paths_from_draft(self._system_draft)
+
         patch = build_system_settings_patch(
             self._system_draft,
             self._settings_raw,
             exclude_sample_pack_settings=SERVER_MANAGED_SAMPLE_PACKS,
         )
-        if not patch:
+        if not patch and not paths_changed:
+            return
+        if not patch and paths_changed:
+            self._after_local_paths_saved()
             return
         worker = PatchSettingsWorker(self._api, patch, parent=self)
         worker.succeeded.connect(lambda settings: self._after_settings_saved(settings, "Preferences"))
@@ -3480,14 +3495,31 @@ class SettingsView(QWidget):
         worker.start()
         self._patch_worker = worker
 
+    def _after_local_paths_saved(self) -> None:
+        """Preferences save that only changed device-local media roots (no API patch)."""
+        self._persist_device_media_paths_from_draft(self._system_draft)
+        try:
+            from shared.services.music_download_coordinator import get_music_download_coordinator
+
+            coordinator = get_music_download_coordinator()
+            if coordinator is not None:
+                coordinator.request_poll()
+        except Exception:
+            pass
+        # Rebuild from cloud + device overlay so the UI matches what downloads will use.
+        self._system_draft = build_system_settings_draft(self._settings_raw)
+        self._baseline_system_draft = build_system_settings_draft(self._settings_raw)
+        self._show_save_success("Saved Preferences.")
+        log_info("Saved Preferences (local media paths).", category="settings")
+        self._bind_preferences_tab()
+        self._refresh_footer()
+
     def _after_settings_saved(self, settings: object, label: str) -> None:
+        # Capture Preferences draft before settings_raw refresh — API must not wipe device paths.
+        saved_system_draft = self._system_draft
         if hasattr(settings, "model_dump"):
             self._settings_raw = settings.model_dump(by_alias=True)
-        from shared.lib.device_workspace_paths import persist_device_paths_from_settings
-
-        # Keep this machine's media roots local even though Preferences also
-        # PATCHes account settings (active desktop owns planning paths).
-        persist_device_paths_from_settings(self._settings_raw)
+        self._persist_device_media_paths_from_draft(saved_system_draft)
         try:
             from shared.services.music_download_coordinator import get_music_download_coordinator
 

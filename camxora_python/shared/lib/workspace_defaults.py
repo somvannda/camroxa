@@ -5,10 +5,10 @@ directories are created automatically.
 
 Media folder roots are stored per-machine in
 ``device_workspace_paths`` (under the local user workspace) and overlaid onto
-cloud settings before heal/defaults run. Account ``user_settings`` still
-receives the *active* machine's paths so server run-dir planning matches the
-desktop currently generating. Foreign / unusable cloud leftovers self-heal to
-this machine's defaults.
+cloud settings before heal/defaults run. Absolute media roots are never
+pushed into account ``user_settings`` — the API plans portable run keys.
+Foreign / unusable cloud leftovers self-heal to this machine's defaults in
+the local store only.
 """
 
 from __future__ import annotations

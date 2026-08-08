@@ -23,6 +23,40 @@ def test_build_system_settings_patch_writes_export_workers_alias() -> None:
     assert patch["videoExportWorkers"] == 3
 
 
+def test_build_system_settings_patch_excludes_absolute_media_roots(tmp_path) -> None:
+    from shared.lib.settings_workspace import (
+        SystemSettingsDraft,
+        build_system_settings_draft,
+        device_media_paths_dirty,
+        device_paths_dict_from_draft,
+    )
+
+    current = {
+        "sunoOutputDir": str(tmp_path / "AppDataSuno"),
+        "downloadsDir": str(tmp_path / "Downloads"),
+        "perfMusicWorkers": 1,
+    }
+    (tmp_path / "AppDataSuno").mkdir()
+    (tmp_path / "Downloads").mkdir()
+    (tmp_path / "E-SUNO").mkdir()
+    draft = build_system_settings_draft(current)
+    updated = SystemSettingsDraft(
+        **{
+            **draft.__dict__,
+            "suno_output_dir": str(tmp_path / "E-SUNO"),
+            "perf_music_workers": 2,
+        }
+    )
+    patch = build_system_settings_patch(updated, current)
+    assert "sunoOutputDir" not in patch
+    assert "downloadsDir" not in patch
+    assert "mergedDir" not in patch
+    assert "imageOutputDir" not in patch
+    assert patch["perfMusicWorkers"] == 2
+    assert device_media_paths_dirty(updated, current)
+    assert device_paths_dict_from_draft(updated)["sunoOutputDir"] == str(tmp_path / "E-SUNO")
+
+
 def test_kind_source_mode_migrates_legacy_prompt() -> None:
     from shared.lib.settings_workspace import (
         SystemSettingsDraft,

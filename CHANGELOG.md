@@ -13,6 +13,20 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 - Image page Background / Thumbnail prompts show a live `current / 5000` counter and hard-cap input at 5000 characters (matches API image prompt gate). See `docs/changelog/2026-08-08-image-prompt-ui-char-cap.md`.
 
+### Changed
+
+- Preferences **Local Paths** keeps FFmpeg + **Suno output dir** only (this PC). Downloads /
+  Merged / optional Image output fields removed from the UI (auto-defaults; batch assets
+  still land under the Suno tree).
+
+### Fixed
+
+- Preferences save no longer overwrites the local Suno root with a stale AppData path from
+  account settings. Device store is written from the draft the user saved; absolute media
+  roots are not PATCHed to the cloud. Leftover `%LOCALAPPDATA%\...\Media\Suno` folders no
+  longer win when Suno output dir is elsewhere (e.g. `E:\SUNO`). See
+  `docs/changelog/2026-08-08-suno-device-path-preference-fix.md`.
+
 ## [1.2.0] - 2026-08-06
 
 ### Added

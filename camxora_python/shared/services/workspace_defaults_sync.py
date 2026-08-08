@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.lib.device_workspace_paths import persist_device_paths_from_settings
+from shared.lib.device_workspace_paths import DEVICE_MEDIA_PATH_KEYS, persist_device_paths_from_settings
 from shared.lib.workspace_defaults import apply_workspace_path_defaults
 from shared.services.platform_api import PlatformApi
 from shared.services.workspace_cache import WorkspaceCache
@@ -29,9 +29,10 @@ def ensure_workspace_defaults(
     if cache is not None and (patch or merged != cloud):
         connections, _ = cache.snapshot_settings_extras()
         cache.apply_settings_workspace(settings_raw=merged, youtube_connections=connections)
-    if persist and patch and api is not None:
+    cloud_patch = {key: value for key, value in patch.items() if key not in DEVICE_MEDIA_PATH_KEYS}
+    if persist and cloud_patch and api is not None:
         try:
-            api.patch_settings(patch)
+            api.patch_settings(cloud_patch)
         except Exception:
             pass
     return merged
