@@ -22,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Image prompt over the **5000**-char allowance is rejected before wallet hold / provider calls (exact API error, no truncation) and does not burn fail-absorb retries. Image-only gate (text/LLM limits unchanged). Image jobs + ledger record routed vs executed provider; profile `image_config.provider` ignored. Migration `083` drops unused OpenAI image fallback hop. See `docs/changelog/2026-08-08-image-provider-truth-prompt-limit.md`.
 
+### Changed
+
+- AI Structure lyric mode uses genre-aware viral layout seeds + batch avoid-list so section sequences vary (still no production-description text in lyric prompts). Seed pool expanded with extra EDM/electronic/dance families. See `docs/changelog/2026-08-08-ai-structure-viral-diversity.md`.
+
 ### Added
 
 - Provider credit cards show **today used / remaining** from UTC day-start balance drop (`used_today` on `/admin/provider-key-balances`). See `docs/changelog/2026-08-07-admin-provider-today-usage.md`.

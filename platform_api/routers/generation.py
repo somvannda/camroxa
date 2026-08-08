@@ -315,14 +315,17 @@ async def generate_draft(
 
     description_text = (request.description or "").strip()
     vocal_profile = None
+    description_genres: list[str] = []
     if request.description_id is not None:
         description = await prompt_service.get_description_for_access(
             request.description_id, UUID(ctx.user_id)
         )
         from platform_api.ai.purposes.vocal_profile import sanitize_production_description
+        from platform_api.services.music_genre_utils import parse_genre_list
 
         description_text = sanitize_production_description(description.content)
         vocal_profile = getattr(description, "vocal_profile", None)
+        description_genres = parse_genre_list(getattr(description, "genres", None))
 
     structure_text = (request.structure or "").strip()
     structure_mode = request.structure_mode
@@ -387,6 +390,15 @@ async def generate_draft(
         secondary=secondary_language,
     )
 
+    preferred_structure_layout = None
+    if structure_mode == STRUCTURE_MODE_AI_FREE:
+        from platform_api.services.ai_structure_diversity import choose_ai_structure_seed
+
+        preferred_structure_layout = choose_ai_structure_seed(
+            genres=description_genres,
+            batch_index=0,
+        ).layout_block
+
     draft_request = DraftRequest(
         language=primary_language,
         secondary_language=secondary_language,
@@ -404,6 +416,8 @@ async def generate_draft(
         forced_opening=request.forced_opening,
         title_seed=request.title_seed,
         album_seed=request.album_seed,
+        description_genres=description_genres,
+        preferred_structure_layout=preferred_structure_layout,
     )
 
     # Match batch: charge draft meter + list price per lyric/title/album slot
