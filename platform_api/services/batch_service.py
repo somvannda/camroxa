@@ -221,6 +221,7 @@ class GenerationServiceProtocol(Protocol):
 
 class AIRoutingServiceProtocol(Protocol):
     async def resolve(self, operation: str) -> Any: ...
+    async def resolve_image_chain(self, operation: str) -> list[Any]: ...
 
 
 class ProfileRepositoryProtocol(Protocol):
@@ -2694,7 +2695,11 @@ class BatchService:
                     kind=job_kind,
                     channel_role=ChannelRole.OK,
                     prompt=composed or None,
-                    provider=str(image_config.get("provider", "fal") or "fal"),
+                    provider=await self._routed_image_provider(
+                        "thumbnail_image"
+                        if job_kind == ImageKind.THUMBNAIL
+                        else "background_image"
+                    ),
                     resolution=resolution,
                     style_strength=style_strength,
                     input_image_path=input_image_path,
@@ -4652,6 +4657,26 @@ class BatchService:
             return 1
         return 2
 
+    async def _routed_image_provider(self, operation: str = "background_image") -> str:
+        """Resolve create-time image provider from AI routing (not profile image_config).
+
+        Profile ``image_config.provider`` is legacy and ignored for execution truth.
+        """
+        if self._ai_routing_service is None:
+            return "slai"
+        try:
+            chain = await self._ai_routing_service.resolve_image_chain(operation)
+        except Exception:
+            logger.warning(
+                "Image routing resolve failed for %s; defaulting provider to slai",
+                operation,
+                exc_info=True,
+            )
+            return "slai"
+        if not chain:
+            return "slai"
+        return str(getattr(chain[0], "provider", "") or "").strip() or "slai"
+
     async def _create_jobs_for_profile(
         self,
         song: Song,
@@ -4681,7 +4706,7 @@ class BatchService:
             )
             return []
 
-        # Get image config from profile
+        # Get image config from profile (mode/prompts/resolution only — not provider).
         image_config = getattr(profile, "image_config", None) or {}
         kinds = self._resolve_profile_image_kinds(image_config)
 
@@ -4702,6 +4727,8 @@ class BatchService:
         }
         jobs: list[ImageJob] = []
         background_job_id: UUID | None = None
+        routed_bg_provider = await self._routed_image_provider("background_image")
+        routed_thumb_provider = await self._routed_image_provider("thumbnail_image")
         for kind in kinds:
             if kind == ImageKind.BACKGROUND:
                 profile_prompt = image_config.get("background_prompt", "")
@@ -4758,7 +4785,11 @@ class BatchService:
                 kind=kind,
                 channel_role=channel_role,
                 prompt=prompt or None,
-                provider=image_config.get("provider", "fal"),
+                provider=(
+                    routed_thumb_provider
+                    if kind == ImageKind.THUMBNAIL
+                    else routed_bg_provider
+                ),
                 resolution=image_config.get("resolution", "1920x1080"),
                 style_strength=float(image_config.get("style_strength", 0.6)),
                 input_image_path=input_image_path,

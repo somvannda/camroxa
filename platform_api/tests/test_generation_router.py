@@ -708,11 +708,11 @@ class TestGenerateImage:
         assert response.status_code == 422
 
     async def test_prompt_too_long(self, client: AsyncClient) -> None:
-        """Prompt exceeding 2000 chars returns 422."""
+        """Prompt exceeding 5000 chars returns 422."""
         response = await client.post(
             "/api/v1/generation/image",
             json={
-                "prompt": "A" * 2001,
+                "prompt": "A" * 5001,
                 "provider": "fal",
                 "resolution": "1920x1080",
             },

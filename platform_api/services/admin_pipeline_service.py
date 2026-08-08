@@ -778,6 +778,8 @@ async def get_admin_pipeline_batch_detail(batch_id: UUID) -> dict[str, Any] | No
             channel_role,
             kind,
             status,
+            provider,
+            length(prompt) AS prompt_length,
             attempt_count,
             error,
             updated_at
@@ -892,6 +894,10 @@ async def get_admin_pipeline_batch_detail(batch_id: UUID) -> dict[str, Any] | No
                 "channel_role": row["channel_role"],
                 "kind": row["kind"],
                 "status": row["status"],
+                "provider": row["provider"],
+                "prompt_length": (
+                    int(row["prompt_length"]) if row["prompt_length"] is not None else None
+                ),
                 "attempt_count": int(row["attempt_count"] or 0),
                 "error": row["error"],
                 "updated_at": row["updated_at"],

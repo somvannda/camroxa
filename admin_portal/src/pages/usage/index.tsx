@@ -106,10 +106,35 @@ function amountCell(row: UsageEntry) {
 }
 
 function providerModelCell(row: UsageEntry) {
+  const meta = row.metadata ?? {};
+  const routed =
+    typeof meta.routed_provider === 'string' ? meta.routed_provider : null;
+  const executed =
+    typeof meta.executed_provider === 'string' ? meta.executed_provider : null;
+  const showRouteSplit =
+    Boolean(routed && executed && routed !== executed) ||
+    Boolean(routed && !executed);
+
   return (
     <div className="space-y-1">
-      <div className="font-medium text-slate-200">{row.provider || '—'}</div>
-      <div className="font-mono text-xs text-slate-500">{row.model || '—'}</div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-slate-600">Provider</div>
+        <div className="font-medium text-slate-200">
+          {formatProviderLabel(row.provider) === 'All providers'
+            ? '—'
+            : formatProviderLabel(row.provider)}
+        </div>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-slate-600">Model</div>
+        <div className="font-mono text-xs text-slate-500">{row.model || '—'}</div>
+      </div>
+      {showRouteSplit ? (
+        <div className="text-[10px] text-slate-600">
+          routed {routed || '—'}
+          {executed ? ` · ran ${executed}` : ' · not executed'}
+        </div>
+      ) : null}
       {row.legacy ? (
         <div className="text-[10px] uppercase tracking-wide text-slate-600">legacy estimate</div>
       ) : null}

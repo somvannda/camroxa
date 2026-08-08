@@ -26,9 +26,20 @@ export function formatOperationLabel(operation?: string | null): string {
   return OPERATION_LABELS[operation] ?? operation.replace(/_/g, ' ');
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  slai: 'SLAI',
+  fal: 'Fal',
+  openai: 'OpenAI',
+  deepseek: 'DeepSeek',
+  suno: 'Suno',
+  cala: 'Cala',
+  local: 'Local',
+};
+
 export function formatProviderLabel(provider?: string | null): string {
   if (!provider) return 'All providers';
-  return provider;
+  const key = provider.trim().toLowerCase();
+  return PROVIDER_LABELS[key] ?? provider;
 }
 
 export function formatCredits(value: number): string {

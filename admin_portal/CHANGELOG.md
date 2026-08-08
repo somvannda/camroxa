@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Usages / User Spent / Finance show Provider and Model as separate labels (avoids GPT-named SLAI models reading as OpenAI). Pipeline image jobs show provider, prompt length, and error (over **5000** max marker). See `docs/changelog/2026-08-08-image-provider-truth-prompt-limit.md`.
+
 ### Added
 
 - Provider credit cards: **today used (red) / remaining (green)** from balance drop. See `docs/changelog/2026-08-07-admin-provider-today-usage.md`.

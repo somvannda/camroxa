@@ -989,6 +989,10 @@ class UsageEnforcementService:
         list_credit_units: int | None = None,
         prior_ledger_recorded: bool = True,
         count: int = 1,
+        routed_provider: str | None = None,
+        routed_model: str | None = None,
+        executed_provider: str | None = None,
+        executed_model: str | None = None,
     ) -> None:
         """Undo customer billing after a failed generation; keep COGS-visible ledger.
 
@@ -1007,11 +1011,17 @@ class UsageEnforcementService:
                 count=count,
             )
 
+        display_provider = str(executed_provider or ai_service or "").strip() or ai_service
+        display_model = executed_model if executed_provider else sub_model
         resolved_list = list_credit_units
         if resolved_list is None:
             pricing_entry = await lookup_pricing_entry(
-                self._pricing_repo, ai_service, operation_type, sub_model
+                self._pricing_repo, display_provider, operation_type, display_model
             )
+            if pricing_entry is None and display_provider != ai_service:
+                pricing_entry = await lookup_pricing_entry(
+                    self._pricing_repo, ai_service, operation_type, sub_model
+                )
             resolved_list = (
                 int(pricing_entry["credits_per_operation"])
                 if pricing_entry is not None
@@ -1033,8 +1043,13 @@ class UsageEnforcementService:
             "category": "generation",
             "operation": operation_type,
             "operation_type": operation_type,
-            "provider": ai_service,
-            "model": sub_model,
+            # Backward-compatible primary fields: prefer executed when known.
+            "provider": display_provider,
+            "model": display_model,
+            "routed_provider": routed_provider or ai_service,
+            "routed_model": routed_model if routed_model is not None else sub_model,
+            "executed_provider": executed_provider,
+            "executed_model": executed_model,
             "purpose": reason,
             "outcome": "failed",
             "failed": True,
@@ -1295,6 +1310,10 @@ class UsageEnforcementService:
         *,
         sub_model: str | None = None,
         hold: OperationHold,
+        routed_provider: str | None = None,
+        routed_model: str | None = None,
+        executed_provider: str | None = None,
+        executed_model: str | None = None,
     ) -> int:
         """After a successful provider call: write plan ledger or settle wallet hold."""
         pricing_entry = await lookup_pricing_entry(
@@ -1311,6 +1330,12 @@ class UsageEnforcementService:
                 },
             )
         actual_units = int(pricing_entry["credits_per_operation"])
+        route_kwargs = {
+            "routed_provider": routed_provider or ai_service,
+            "routed_model": routed_model if routed_model is not None else sub_model,
+            "executed_provider": executed_provider or ai_service,
+            "executed_model": executed_model if executed_model is not None else sub_model,
+        }
 
         if hold.plan_covered:
             await self._record_plan_allowance_ledger(
@@ -1319,6 +1344,7 @@ class UsageEnforcementService:
                 ai_service=ai_service,
                 list_credit_units=actual_units,
                 sub_model=sub_model,
+                **route_kwargs,
             )
             credit_log.log_subscription_quota(
                 user_id=user_id,
@@ -1336,6 +1362,7 @@ class UsageEnforcementService:
                 list_credit_units=actual_units,
                 charged_credit_units=actual_units,
                 purpose=f"{operation_type}_hold_settle",
+                **route_kwargs,
             )
             settle_meta["hold_settle"] = True
             refund = getattr(self._credit_repo, "refund", None)
@@ -1358,6 +1385,7 @@ class UsageEnforcementService:
                 list_credit_units=actual_units,
                 charged_credit_units=actual_units,
                 purpose=reason,
+                **route_kwargs,
             )
             ok = await self._credit_repo.atomic_deduct(
                 user_id, delta, reason, metadata=usage_metadata
@@ -1547,6 +1575,10 @@ class UsageEnforcementService:
         list_credit_units: int,
         sub_model: str | None = None,
         ref_id: str | None = None,
+        routed_provider: str | None = None,
+        routed_model: str | None = None,
+        executed_provider: str | None = None,
+        executed_model: str | None = None,
     ) -> None:
         """Always write amount=0 debit for plan-covered billable ops."""
         record = getattr(self._credit_repo, "record_ledger_entry", None)
@@ -1569,6 +1601,10 @@ class UsageEnforcementService:
             "operation_type": operation_type,
             "provider": ai_service,
             "model": sub_model,
+            "routed_provider": routed_provider or ai_service,
+            "routed_model": routed_model if routed_model is not None else sub_model,
+            "executed_provider": executed_provider or ai_service,
+            "executed_model": executed_model if executed_model is not None else sub_model,
             "purpose": reason,
             "billing": "plan_allowance",
             "list_credit_units": list_credit_units,
@@ -1594,6 +1630,10 @@ class UsageEnforcementService:
         charged_credit_units: int,
         purpose: str,
         wallet_daily_overage: bool = False,
+        routed_provider: str | None = None,
+        routed_model: str | None = None,
+        executed_provider: str | None = None,
+        executed_model: str | None = None,
     ) -> dict[str, Any]:
         if counts_toward_image_quota(operation_type):
             coverage = "image_allowance"
@@ -1611,6 +1651,10 @@ class UsageEnforcementService:
             "operation_type": operation_type,
             "provider": ai_service,
             "model": sub_model,
+            "routed_provider": routed_provider or ai_service,
+            "routed_model": routed_model if routed_model is not None else sub_model,
+            "executed_provider": executed_provider or ai_service,
+            "executed_model": executed_model if executed_model is not None else sub_model,
             "purpose": purpose,
             "billing": "wallet",
             "list_credit_units": list_credit_units,

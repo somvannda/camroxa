@@ -128,6 +128,8 @@ class AdminPipelineImageJob(BaseModel):
     channel_role: str | None = None
     kind: str
     status: str
+    provider: str | None = None
+    prompt_length: int | None = None
     attempt_count: int = 0
     error: str | None = None
     updated_at: datetime | None = None

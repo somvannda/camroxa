@@ -40,6 +40,10 @@ _NON_RETRYABLE_ERROR_MARKERS = (
     "insufficient credits",
     "generation quota exceeded",
     "quota exceeded",
+    # Hard prompt allowance — do not burn fail-absorb budget retrying these.
+    "image prompt exceeds maximum length",
+    "prompt exceeds maximum length",
+    "image prompt is required",
 )
 
 
@@ -388,12 +392,18 @@ class ImageJobService:
             attempt_count = max(0, int(job.attempt_count or 0))
 
             try:
+                from platform_api.services.generation_service import IMAGE_MAX_PROMPT_LENGTH
+
                 quota_reserved = False
                 provider_invoked = False
                 billing_finalized = False
                 charged_credit_units = 0
                 operation_hold = None
-                resolved_provider = "fal"
+                routed_provider = "slai"
+                routed_model: str | None = None
+                executed_provider: str | None = None
+                executed_model: str | None = None
+                resolved_provider = "slai"
                 resolved_sub_model: str | None = None
                 operation_type = "background_image"
                 batch = await self._resolve_job_batch(job, user_id)
@@ -413,10 +423,46 @@ class ImageJobService:
                     operation_type
                 )
                 primary_routing = routing_chain[0]
-                resolved_provider = str(
+                routed_provider = str(
                     getattr(primary_routing, "provider", "") or ""
-                ).strip() or "fal"
-                model_id = str(getattr(primary_routing, "sub_model", "") or "").strip() or None
+                ).strip() or "slai"
+                routed_model = (
+                    str(getattr(primary_routing, "sub_model", "") or "").strip() or None
+                )
+                # Billing hold + job row use routed primary until a provider executes.
+                resolved_provider = routed_provider
+                model_id = routed_model
+
+                kind = getattr(job, "kind", None)
+                if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_personal_reference_source(
+                    settings, kind
+                ):
+                    raise ValidationError(
+                        personal_reference_not_ready_message(kind),
+                        details={"job_id": str(job.id)},
+                    )
+
+                # Reject over-long / empty prompts before wallet hold or provider calls
+                # so current desktop still sees the exact API error and we do not burn
+                # fail-absorb budget on non-retryable validation.
+                prompt = str(job.prompt or "").strip()
+                if not prompt:
+                    raise ValidationError(
+                        empty_prompt_error_message(kind or ImageKind.BACKGROUND),
+                        details={"job_id": str(job.id)},
+                    )
+                if len(prompt) > IMAGE_MAX_PROMPT_LENGTH:
+                    raise ValidationError(
+                        (
+                            f"Image prompt exceeds maximum length of "
+                            f"{IMAGE_MAX_PROMPT_LENGTH} characters."
+                        ),
+                        details={
+                            "job_id": str(job.id),
+                            "prompt_length": len(prompt),
+                            "max_length": IMAGE_MAX_PROMPT_LENGTH,
+                        },
+                    )
 
                 if self._enforcement_service is not None:
                     # Always bill like credit ops / plan_allowance — never skip
@@ -453,22 +499,6 @@ class ImageJobService:
                     charged_credit_units = int(hold.held_units or 0)
                     billing_finalized = bool(hold.held_units > 0)
 
-                kind = getattr(job, "kind", None)
-                if kind in {ImageKind.BACKGROUND, ImageKind.THUMBNAIL} and is_personal_reference_source(
-                    settings, kind
-                ):
-                    raise ValidationError(
-                        personal_reference_not_ready_message(kind),
-                        details={"job_id": str(job.id)},
-                    )
-
-                prompt = str(job.prompt or "").strip()
-                if not prompt:
-                    raise ValidationError(
-                        empty_prompt_error_message(kind or ImageKind.BACKGROUND),
-                        details={"job_id": str(job.id)},
-                    )
-
                 reference_mode = normalize_thumbnail_reference_mode(
                     str(settings.get("thumbnailReferenceMode", "composite") or "composite")
                 )
@@ -481,7 +511,7 @@ class ImageJobService:
                     )
                     reference_mode = "composite"
 
-                resolved_sub_model: str | None = model_id
+                resolved_sub_model = model_id
                 provider_invoked = True
                 thumb_prompt_only = (
                     getattr(job, "kind", None) == ImageKind.THUMBNAIL
@@ -504,6 +534,12 @@ class ImageJobService:
                             operation_type=operation_type,
                             slai_retry_attempts=slai_retry_attempts,
                         )
+                    )
+                    executed_provider = str(resolved_provider or "").strip() or None
+                    executed_model = (
+                        str(resolved_sub_model or "").strip() or None
+                        if resolved_sub_model is not None
+                        else None
                     )
                 else:
                     base_image = await self._resolve_base_image_bytes(
@@ -529,6 +565,12 @@ class ImageJobService:
                     image_bytes = outcome.image_bytes
                     resolved_provider = outcome.provider
                     resolved_sub_model = outcome.sub_model
+                    executed_provider = str(outcome.provider or "").strip() or None
+                    executed_model = (
+                        str(outcome.sub_model or "").strip() or None
+                        if getattr(outcome, "sub_model", None) is not None
+                        else None
+                    )
                     if getattr(job, "kind", None) == ImageKind.BACKGROUND:
                         image_bytes = to_cover_png_bytes(
                             image_bytes,
@@ -543,6 +585,10 @@ class ImageJobService:
                             ai_service=resolved_provider,
                             sub_model=resolved_sub_model,
                             hold=operation_hold,
+                            routed_provider=routed_provider,
+                            routed_model=routed_model,
+                            executed_provider=executed_provider or resolved_provider,
+                            executed_model=executed_model or resolved_sub_model,
                         )
                         or 0
                     )
@@ -561,7 +607,7 @@ class ImageJobService:
                     status=TaskStatus.SUCCESS,
                     output_image_path=output_path,
                     error=None,
-                    provider=resolved_provider,
+                    provider=executed_provider or resolved_provider,
                     attempt_count=attempt_count,
                 )
                 image_log.log_job_success(
@@ -614,6 +660,10 @@ class ImageJobService:
                                 reason="image_generation_deferred",
                                 ref_id=str(job.id),
                                 prior_ledger_recorded=True,
+                                routed_provider=routed_provider,
+                                routed_model=routed_model,
+                                executed_provider=executed_provider,
+                                executed_model=executed_model,
                             )
                         else:
                             await self._enforcement_service.release_operation_quota(
@@ -663,6 +713,10 @@ class ImageJobService:
                             reason="image_generation_failed",
                             ref_id=str(job.id),
                             prior_ledger_recorded=billing_finalized,
+                            routed_provider=routed_provider,
+                            routed_model=routed_model,
+                            executed_provider=executed_provider,
+                            executed_model=executed_model,
                         )
                     else:
                         await self._enforcement_service.release_operation_quota(
@@ -675,11 +729,14 @@ class ImageJobService:
                 max_attempts = _image_job_max_attempts()
                 auto_retry = next_attempt < max_attempts and not _is_non_retryable_image_error(exc)
                 next_status = TaskStatus.PENDING if auto_retry else TaskStatus.FAILED
+                # Persist routed/executed truth — never leave stale create-time "fal".
+                job_provider = executed_provider or resolved_provider or routed_provider
                 await self._repo.update_image_job_status(
                     job.id,
                     user_id,
                     status=next_status,
                     error=message[:500],
+                    provider=job_provider,
                     attempt_count=next_attempt,
                 )
                 if auto_retry:
