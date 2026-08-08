@@ -445,10 +445,16 @@ class ImageView(PollablePageMixin, QScrollArea):
     def _on_job_open_requested(self, path: str, job_id: str) -> None:
         if self._open_worker is not None and self._open_worker.isRunning():
             return
+        updated_at = None
+        for job in self._image_jobs:
+            if str(job.id) == str(job_id):
+                updated_at = getattr(job, "updated_at", None)
+                break
         worker = ImageOpenWorker(
             self._api,
             path=path,
             job_id=job_id,
+            remote_updated_at=str(updated_at) if updated_at else None,
             parent=self,
         )
         worker.succeeded.connect(open_path)
@@ -514,6 +520,12 @@ class ImageView(PollablePageMixin, QScrollArea):
             th_path=row.th_job.output_image_path if row.th_job else None,
             bg_job_id=row.bg_job.id if row.bg_job else None,
             th_job_id=row.th_job.id if row.th_job else None,
+            bg_updated_at=(
+                str(row.bg_job.updated_at) if row.bg_job and row.bg_job.updated_at else None
+            ),
+            th_updated_at=(
+                str(row.th_job.updated_at) if row.th_job and row.th_job.updated_at else None
+            ),
             footer_detail=footer,
             parent=self,
         )
@@ -608,6 +620,10 @@ class ImageView(PollablePageMixin, QScrollArea):
                 f"Image queue {action} requested for {len(job_ids)} job(s).",
                 category="image",
             )
+        if force:
+            # Server reuses the same relative output path; drop stale local PNGs now so
+            # preview/sync pull the new generation instead of the previous file.
+            self._invalidate_local_outputs_for_jobs(job_ids)
         if self._prompt_save_timer.isActive():
             self._prompt_save_timer.stop()
         patch = self._current_settings_patch()
@@ -632,6 +648,20 @@ class ImageView(PollablePageMixin, QScrollArea):
         else:
             notify_action(f"Retrying {len(job_ids)} image job(s)…", tone="neutral")
         worker.start()
+
+    def _invalidate_local_outputs_for_jobs(self, job_ids: list[str]) -> None:
+        from shared.lib.image_output_utils import invalidate_local_image_output
+
+        wanted = {str(job_id).strip() for job_id in job_ids if str(job_id).strip()}
+        if not wanted:
+            return
+        for job in self._image_jobs:
+            if str(job.id) not in wanted:
+                continue
+            invalidate_local_image_output(getattr(job, "output_image_path", None))
+        self._preview_fingerprint = ""
+        self._background_preview.set_image_bytes(None)
+        self._thumbnail_preview.set_image_bytes(None)
 
     def _regenerate_jobs(self, job_ids: list[str], batch_id: str | None = None) -> None:
         self._retry_jobs(job_ids, batch_id, force=True)

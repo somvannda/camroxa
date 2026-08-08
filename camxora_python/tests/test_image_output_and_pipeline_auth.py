@@ -5,8 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from datetime import datetime, timedelta, timezone
+
 from features.video.services.pipeline_automation_service import PipelineAutomationService
-from shared.lib.image_output_utils import ensure_image_output_local
+from shared.lib.image_output_utils import (
+    ensure_image_output_local,
+    invalidate_local_image_output,
+)
 from shared.services.file_service import open_path
 from shared.services.platform_client import PlatformApiError
 
@@ -38,6 +43,52 @@ def test_ensure_image_output_local_returns_none_without_api(tmp_path: Path) -> N
     image_path = tmp_path / "missing.png"
 
     assert ensure_image_output_local(None, str(image_path), "job-789") is None
+
+
+def test_ensure_image_output_local_redownloads_when_job_newer(tmp_path: Path) -> None:
+    image_path = tmp_path / "thumbnail-16x9.png"
+    image_path.write_bytes(b"old-png")
+    old = datetime.now(timezone.utc) - timedelta(hours=1)
+    import os
+
+    os.utime(image_path, (old.timestamp(), old.timestamp()))
+    api = MagicMock()
+    api.get_image_job_output.return_value = b"new-png"
+    remote = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    result = ensure_image_output_local(
+        api,
+        str(image_path),
+        "job-regen",
+        remote_updated_at=remote,
+    )
+
+    assert result == str(image_path)
+    assert image_path.read_bytes() == b"new-png"
+    api.get_image_job_output.assert_called_once_with("job-regen")
+
+
+def test_ensure_image_output_local_force_overwrites(tmp_path: Path) -> None:
+    image_path = tmp_path / "background-16x9.png"
+    image_path.write_bytes(b"old-png")
+    api = MagicMock()
+    api.get_image_job_output.return_value = b"forced-png"
+
+    result = ensure_image_output_local(
+        api, str(image_path), "job-force", force=True
+    )
+
+    assert result == str(image_path)
+    assert image_path.read_bytes() == b"forced-png"
+    api.get_image_job_output.assert_called_once_with("job-force")
+
+
+def test_invalidate_local_image_output_deletes_file(tmp_path: Path) -> None:
+    image_path = tmp_path / "background-16x9.png"
+    image_path.write_bytes(b"stale")
+
+    assert invalidate_local_image_output(str(image_path)) is True
+    assert not image_path.exists()
 
 
 def test_resolve_local_image_output_path_remaps_portable_key(

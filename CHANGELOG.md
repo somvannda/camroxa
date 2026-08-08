@@ -21,6 +21,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Image page **Regenerate Background / Thumbnail** now replaces the previous local PNG
+  instead of keeping the old file when the server reuses the same output path. See
+  `docs/changelog/2026-08-08-image-regenerate-stale-local.md`.
 - Startup splash no longer flashes as if Camxora closed/reopened when Video
   workspace prewarm mounts the GPU preview (`QOpenGLWidget` HWND recreate).
   OpenGL is configured before `QApplication` and primed on `RootWindow` before
