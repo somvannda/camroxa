@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Image page Background / Thumbnail prompts show a live `current / 5000` counter and hard-cap input at 5000 characters (matches API image prompt gate). See `docs/changelog/2026-08-08-image-prompt-ui-char-cap.md`.
+
 ## [1.2.0] - 2026-08-06
 
 ### Added

@@ -8,11 +8,23 @@ from pathlib import Path
 from shared.models.auth import ProfileResponse
 from shared.models.platform import ImageJobListItem, MusicHistoryBatch
 
+# Match platform_api.services.generation_service.IMAGE_MAX_PROMPT_LENGTH
+IMAGE_PROMPT_MAX_CHARS = 5000
+
 
 @dataclass(frozen=True, slots=True)
 class ImageUiSettings:
     image_background_prompt: str
     image_thumbnail_prompt: str
+
+
+def clamp_image_prompt(text: str | None, *, max_chars: int = IMAGE_PROMPT_MAX_CHARS) -> str:
+    """Return prompt text truncated to the hard UI/API allowance."""
+    value = text if isinstance(text, str) else ""
+    limit = max(1, int(max_chars))
+    if len(value) <= limit:
+        return value
+    return value[:limit]
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,8 +107,12 @@ def normalize_image_prompt_settings(settings: dict[str, object] | None) -> Image
     background = raw.get("imageBackgroundPrompt")
     thumbnail = raw.get("imageThumbnailPrompt")
     return ImageUiSettings(
-        image_background_prompt=background if isinstance(background, str) else legacy,
-        image_thumbnail_prompt=thumbnail if isinstance(thumbnail, str) else "",
+        image_background_prompt=clamp_image_prompt(
+            background if isinstance(background, str) else legacy
+        ),
+        image_thumbnail_prompt=clamp_image_prompt(
+            thumbnail if isinstance(thumbnail, str) else ""
+        ),
     )
 
 

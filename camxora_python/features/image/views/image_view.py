@@ -17,6 +17,7 @@ from features.image.widgets.controls_queue_card import ControlsQueueCard
 from features.image.widgets.error_banner import LOAD_ERROR, ImageErrorBanner
 from features.image.widgets.preview_card import PreviewCard
 from shared.lib.image_workspace import (
+    IMAGE_PROMPT_MAX_CHARS,
     build_footer_detail,
     build_queue_rows,
     build_queue_status_summary,
@@ -674,6 +675,11 @@ class ImageView(PollablePageMixin, QScrollArea):
             if kind_value == "thumbnail"
             else self._controls_card.background_prompt()
         ).strip()
+        if len(prompt) > IMAGE_PROMPT_MAX_CHARS:
+            self._show_workspace_error(
+                f"Image prompt exceeds maximum length of {IMAGE_PROMPT_MAX_CHARS} characters."
+            )
+            return
         if mode == "prompt_only" and not prompt:
             self._show_workspace_error(
                 _EMPTY_TH_PROMPT if kind_value == "thumbnail" else _EMPTY_BG_PROMPT
