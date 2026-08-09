@@ -11,6 +11,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Studio platform phases P1–P7.** Creator fidelity (camera/lighting/overlay/timeline/autosave),
+  Asset Library filters/favorites, Template Library + schema validation, Beginner/Creator/Expert/Developer
+  modes, rule-based AI Designer, Plugin SDK sample, and marketplace/cloud stubs. See
+  `docs/MOTION_GRAPHICS_PLATFORM_PHASES.md` and
+  `docs/changelog/2026-08-09-studio-platform-phases-p1-p7.md`.
 - **Composition Studio UI split + atmosphere pass.** Left rail is Scene Tree only;
   Asset Library opens via **Browse assets**. Preview draws Session B atmosphere
   (fog volume / rain-snow streaks / sky wash) from `atmosphereDraw`, not particle

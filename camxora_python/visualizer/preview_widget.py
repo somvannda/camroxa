@@ -2438,6 +2438,30 @@ class VideoSpectrumPreview(QOpenGLWidget):
             cy += shake_out.y
             logo_cx += shake_out.x
             logo_cy += shake_out.y
+            # Composition cameraSettings — pan/orbit offsets (+ mild zoom via center pull).
+            try:
+                from visualizer.composition_effects.camera_gpu import camera_view_offset_px
+
+                cam_settings = (
+                    self.template.get("cameraSettings")
+                    if isinstance(self.template.get("cameraSettings"), dict)
+                    else {}
+                )
+                cam_ox, cam_oy, cam_zoom = camera_view_offset_px(cam_settings, width=w, height=h)
+                cx += cam_ox
+                cy += cam_oy
+                logo_cx += cam_ox
+                logo_cy += cam_oy
+                if abs(cam_zoom - 1.0) > 1e-3:
+                    # Pull centers slightly toward screen mid when zoomed for punch/dolly feel.
+                    mid_x, mid_y = float(w) * 0.5, float(h) * 0.5
+                    pull = 1.0 - (1.0 / cam_zoom)
+                    cx = cx + (mid_x - cx) * pull * 0.35
+                    cy = cy + (mid_y - cy) * pull * 0.35
+                    logo_cx = logo_cx + (mid_x - logo_cx) * pull * 0.35
+                    logo_cy = logo_cy + (mid_y - logo_cy) * pull * 0.35
+            except Exception:
+                pass
             spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
             logo_circle_mask = bool(ls.get("circleMask", True))
             logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)

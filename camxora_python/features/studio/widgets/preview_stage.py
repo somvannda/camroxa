@@ -61,6 +61,10 @@ class StudioPreviewStage(QWidget):
             fallback.setWordWrap(True)
             layout.addWidget(fallback, stretch=1)
 
+    @property
+    def preview_widget(self) -> Any:
+        return self._preview
+
     def apply_document(self, doc: dict[str, Any]) -> None:
         from visualizer.composition_renderer import document_to_renderer_dict
 
@@ -104,3 +108,55 @@ class StudioPreviewStage(QWidget):
                     self._preview.stop_preview()
         except Exception as exc:
             self._status.setText(f"Preview update failed: {exc}")
+
+    def seek(self, time_sec: float) -> None:
+        if self._preview is not None and hasattr(self._preview, "seek_preview"):
+            self._preview.seek_preview(float(time_sec))
+
+    def set_playing(self, playing: bool) -> None:
+        if self._preview is None:
+            return
+        if playing and hasattr(self._preview, "play_preview"):
+            try:
+                self._preview.play_preview()
+                return
+            except Exception:
+                pass
+        if not playing and hasattr(self._preview, "pause_preview"):
+            try:
+                self._preview.pause_preview()
+                return
+            except Exception:
+                pass
+        # Fallbacks used by VideoSpectrumPreview
+        if playing and hasattr(self._preview, "start_preview"):
+            self._preview.start_preview()
+        elif not playing and hasattr(self._preview, "stop_preview"):
+            # stop_preview clears audio — prefer pause if available
+            if hasattr(self._preview, "pause"):
+                self._preview.pause()
+
+    def duration_sec(self) -> float:
+        if self._preview is None:
+            return 0.0
+        for attr in ("duration", "audio_duration", "total_duration"):
+            if hasattr(self._preview, attr):
+                try:
+                    return float(getattr(self._preview, attr) or 0.0)
+                except Exception:
+                    pass
+        try:
+            snap = self._preview.snapshot_state() if hasattr(self._preview, "snapshot_state") else {}
+            if isinstance(snap, dict):
+                return float(snap.get("durationSec") or snap.get("duration") or 0.0)
+        except Exception:
+            pass
+        return 0.0
+
+    def position_sec(self) -> float:
+        if self._preview is None:
+            return 0.0
+        try:
+            return float(getattr(self._preview, "current_time", 0.0) or 0.0)
+        except Exception:
+            return 0.0

@@ -37,10 +37,11 @@ Projects live in per-user `studio-projects/` (not Video templates).
 | Project schema bridge (doc 09) | Shipped — projection; composition authoritative |
 | Studio export JSON / video | Shipped — readiness gate; reuses Video export worker |
 | Preview media + GPU bridge | Shipped — loads bg/logo/audio; bridges camera/lighting/atmosphere to GPU |
-| AI Designer | Out of scope |
-| Timeline | Out of scope |
-| Plugin SDK / Marketplace | Out of scope |
-| Music→Video pipeline cutover | Out of scope |
+| Platform phases P1–P7 | Shipped as vertical slices — see `docs/MOTION_GRAPHICS_PLATFORM_PHASES.md` |
+| AI Designer | Shipped — rule-based Generate/Modify/Improve (LLM provider adapter later) |
+| Timeline | Shipped — stub (play/seek; not full NLE) |
+| Plugin SDK / Marketplace | Shipped — loader + sample plugin; marketplace/cloud stubs |
+| Music→Video pipeline cutover | Still deferred (Video frozen) |
 
 ## Key modules
 

@@ -94,6 +94,8 @@ def normalize_studio_document(raw: Any) -> dict[str, Any]:
     doc["titleEnabled"] = bool(raw.get("titleEnabled", False))
     doc["albumManualText"] = str(raw.get("albumManualText") or "")
     doc["titleManualText"] = str(raw.get("titleManualText") or "")
+    doc["overlayStyle"] = str(raw.get("overlayStyle") or "film_grain")
+    doc["studioMode"] = str(raw.get("studioMode") or "creator")
     return doc
 
 
@@ -164,6 +166,10 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
     if "compositionOverlayAnimation" in patch:
         anim = normalize_animation_behavior_id(patch.get("compositionOverlayAnimation"))
         comp["overlay"]["animation"] = anim or NONE
+    if "overlayStyle" in patch:
+        style = str(patch.get("overlayStyle") or "film_grain").strip().lower()
+        allowed = {"film_grain", "vhs", "glitch", "scanlines", "light_leak", "dust"}
+        out["overlayStyle"] = style if style in allowed else "film_grain"
 
     if "compositionParticleType" in patch:
         ptype = normalize_particle_type_id(patch.get("compositionParticleType"))
@@ -237,6 +243,8 @@ def inspector_bind_state(doc: dict[str, Any]) -> dict[str, Any]:
         "titleManualText": str(scene.get("titleManualText") or ""),
         "compositionOverlayEnabled": bool(comp["overlay"].get("enabled", False)),
         "compositionOverlayAnimation": comp["overlay"].get("animation") or NONE,
+        "overlayStyle": str(scene.get("overlayStyle") or "film_grain"),
+        "studioMode": str(scene.get("studioMode") or "creator"),
         "compositionParticleType": comp["particles"]["type"],
         "compositionParticleBehavior": comp["particles"]["behavior"],
         "particlesEnabled": comp["particles"]["type"] not in (None, "", NONE),

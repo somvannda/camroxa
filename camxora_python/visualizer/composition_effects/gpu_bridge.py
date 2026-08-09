@@ -215,10 +215,17 @@ def apply_gpu_preview_bridge(
                 "seedLock": False,
             }
         ]
-        # Soft glow for non-bolt lighting looks.
-        if effect_id in {"aura", "glow", "halo", "neon_rim", "color_wash"}:
-            _merge_effect(effects, "glow", {"enabled": True, "amount": 0.35})
-            _merge_effect(effects, "bloom", {"enabled": True, "amount": 0.3})
+        # Soft glow / cinematic lighting looks beyond bolt geometry.
+        if effect_id in {"aura", "glow", "halo", "neon_rim", "color_wash", "rim_light"}:
+            _merge_effect(effects, "glow", {"enabled": True, "amount": 0.4})
+            _merge_effect(effects, "bloom", {"enabled": True, "amount": 0.35})
+        if effect_id in {"god_rays", "volumetric_shaft", "light_beam", "light_sweep", "spot_cone"}:
+            _merge_effect(effects, "bloom", {"enabled": True, "amount": 0.45})
+            _merge_effect(effects, "vignette", {"enabled": True, "amount": 0.22})
+            _merge_effect(effects, "soft_diffusion", {"enabled": True, "amount": 0.2})
+        if effect_id in {"lens_flare", "strobe_flash", "energy_pulse"}:
+            _merge_effect(effects, "bloom", {"enabled": True, "amount": 0.5})
+            _merge_effect(effects, "chromatic_aberration", {"enabled": True, "amount": 0.18})
     else:
         out.setdefault("lightningEnabled", False)
 
@@ -252,5 +259,49 @@ def apply_gpu_preview_bridge(
             "enabled": bool(src.get("titleEnabled")),
             "text": str(src.get("titleManualText") or ""),
         }
+        overlays: list[dict[str, Any]] = []
+        if bool(src.get("albumEnabled")) and str(src.get("albumManualText") or "").strip():
+            overlays.append(
+                {
+                    "enabled": True,
+                    "text": str(src.get("albumManualText") or ""),
+                    "anchor": "top-center",
+                    "animation": "fade",
+                    "startSec": 0.0,
+                    "durationSec": 3600.0,
+                    "overlayKind": "text",
+                }
+            )
+        if bool(src.get("titleEnabled")) and str(src.get("titleManualText") or "").strip():
+            overlays.append(
+                {
+                    "enabled": True,
+                    "text": str(src.get("titleManualText") or ""),
+                    "anchor": "bottom-center",
+                    "animation": "fade",
+                    "startSec": 0.0,
+                    "durationSec": 3600.0,
+                    "overlayKind": "text",
+                }
+            )
+        if overlays:
+            out["textOverlays"] = overlays
+
+    # Overlay object → filmic frame overlays (Session A: ≠ Text typography).
+    overlay_settings = out.get("overlaySettings") if isinstance(out.get("overlaySettings"), dict) else {}
+    if bool(overlay_settings.get("enabled")):
+        style = str(src.get("overlayStyle") or overlay_settings.get("style") or "film_grain")
+        style_to_effect = {
+            "film_grain": "film_grain",
+            "vhs": "rgb_split",
+            "glitch": "chromatic_aberration",
+            "scanlines": "vignette",
+            "light_leak": "bloom",
+            "dust": "film_grain",
+        }
+        effect_key = style_to_effect.get(style, "film_grain")
+        _merge_effect(effects, effect_key, {"enabled": True, "amount": 0.28})
+        out["overlaySettings"] = {**overlay_settings, "style": style}
+        out["effects"] = effects
 
     return out

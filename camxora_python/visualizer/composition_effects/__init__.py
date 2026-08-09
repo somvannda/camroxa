@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from visualizer.composition_effects.atmosphere import build_atmosphere_pass
 from visualizer.composition_effects.atmosphere_gpu import build_atmosphere_draw
+from visualizer.composition_effects.camera_gpu import camera_view_offset_px
 from visualizer.composition_effects.audio_mapping import (
     apply_mapping_levels,
     normalize_audio_mapping,
@@ -22,6 +23,7 @@ __all__ = (
     "build_atmosphere_draw",
     "build_atmosphere_pass",
     "build_lighting_pass",
+    "camera_view_offset_px",
     "build_particle_emitter",
     "build_post_stack",
     "emitters_visibly_distinct",

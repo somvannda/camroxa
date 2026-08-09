@@ -1,0 +1,16 @@
+{
+  "id": "camxora.plugin.sample-neon-spectrum",
+  "name": "Sample Neon Spectrum",
+  "version": "1.0.0",
+  "type": "Spectrum",
+  "engineVersion": ">=1.0.0",
+  "assets": [
+    {
+      "id": "sample.neon_ribbon",
+      "category": "shape",
+      "name": "Sample Neon Ribbon",
+      "tags": ["EDM", "Plugin", "Neon"],
+      "description": "Sample plugin spectrum shape placeholder (registers in Asset Library)."
+    }
+  ]
+}

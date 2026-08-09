@@ -245,6 +245,16 @@ class TextInspector(_AxisPanel):
         self._binding = False
 
 
+_OVERLAY_STYLES: tuple[tuple[str, str], ...] = (
+    ("film_grain", "Film Grain"),
+    ("vhs", "VHS"),
+    ("glitch", "Glitch"),
+    ("scanlines", "Scanlines"),
+    ("light_leak", "Light Leak"),
+    ("dust", "Dust"),
+)
+
+
 class OverlayInspector(_AxisPanel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("Overlay", subtitle="Top composites — not Text typography.")
@@ -253,6 +263,12 @@ class OverlayInspector(_AxisPanel):
             lambda checked: self._emit({"compositionOverlayEnabled": checked})
         )
         self._section.add_widget(self._enabled)
+        self._style = QComboBox()
+        populate_combo(self._style, _OVERLAY_STYLES, include_none=False)
+        self._style.currentIndexChanged.connect(
+            lambda: self._emit({"overlayStyle": self._style.currentData() or "film_grain"})
+        )
+        self._section.add_widget(form_row("Style", self._style))
         self._animation = QComboBox()
         populate_combo(self._animation, catalog_options()["animations"])
         self._animation.currentIndexChanged.connect(
@@ -265,6 +281,7 @@ class OverlayInspector(_AxisPanel):
     def bind(self, state: dict) -> None:
         self._binding = True
         self._enabled.setChecked(bool(state.get("compositionOverlayEnabled")))
+        set_combo_data(self._style, str(state.get("overlayStyle") or "film_grain"), fallback="film_grain")
         set_combo_data(self._animation, str(state.get("compositionOverlayAnimation") or "none"))
         self._binding = False
 
