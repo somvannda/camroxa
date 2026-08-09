@@ -10,7 +10,7 @@ from shared.constants.navigation import (
 
 
 def test_shell_route_count() -> None:
-    assert len(SHELL_ROUTES) == 11
+    assert len(SHELL_ROUTES) == 12
 
 
 def test_workspace_routes_exclude_system() -> None:
@@ -20,6 +20,7 @@ def test_workspace_routes_exclude_system() -> None:
     assert "merger" not in keys
     assert "music" in keys
     assert "video" in keys
+    assert "studio" in keys
 
 
 def test_utility_routes_hide_log_by_default(monkeypatch) -> None:
@@ -40,3 +41,9 @@ def test_get_route_by_key() -> None:
     route = get_route_by_key("music")
     assert route.label == "Music"
     assert route.path == "/app/music"
+
+
+def test_studio_route_meta() -> None:
+    route = get_route_by_key("studio")
+    assert route.label == "Studio"
+    assert route.path == "/app/studio"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from visualizer.composition_effects.gpu_bridge import apply_gpu_preview_bridge
 from visualizer.scene import CompositionContractError, Scene, load_scene, require_composition_document
 from visualizer.scene.compile import CompiledFrame, compile_scene
 
@@ -17,7 +18,7 @@ def document_to_renderer_dict(
     """Fail-closed: requires composition; returns compiled GPU payload."""
     scene = load_scene(doc)
     compiled = compile_scene(scene, time_sec=time_sec, audio_level=audio_level)
-    return compiled.to_renderer_dict()
+    return apply_gpu_preview_bridge(compiled.to_renderer_dict(), source_doc=doc if isinstance(doc, dict) else None)
 
 
 def merge_workspace_assets(doc: dict[str, Any], workspace: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -45,6 +46,7 @@ __all__ = (
     "CompiledFrame",
     "CompositionContractError",
     "Scene",
+    "apply_gpu_preview_bridge",
     "compile_scene",
     "document_to_renderer_dict",
     "load_scene",

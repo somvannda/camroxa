@@ -11,6 +11,16 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Studio follow-ups.** Asset Library metadata search/apply,
+  doc-09 `camxora.project` schema bridge (composition remains authoritative),
+  and Studio Export JSON / Export Video (audio + background readiness gate).
+  See `docs/COMPOSITION_STUDIO_V1.md` and
+  `docs/changelog/2026-08-09-composition-studio-followups.md`.
+- **Composition Studio v1 (docs-first).** New sidebar route **Studio**
+  (`/app/studio`) with scene tree, axes-only inspectors, local project store,
+  and `compile_scene` preview. Video page stays frozen as the production
+  visualizer/export console. See `docs/COMPOSITION_STUDIO_V1.md` and
+  `docs/changelog/2026-08-06-composition-studio-v1.md`.
 - **Composition Studio P0–P11.** Full Video studio redesign: architecture-tree
   left rail + inspectors for Background / Spectrum / Logo / Text / Overlay /
   Particles / Lighting / Camera / Post / Audio Mapping / Palette. Engine

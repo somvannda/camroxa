@@ -1,0 +1,1 @@
+"""Studio widgets package."""

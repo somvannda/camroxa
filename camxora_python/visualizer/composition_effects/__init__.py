@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from visualizer.composition_effects.atmosphere import build_atmosphere_pass
+from visualizer.composition_effects.gpu_bridge import apply_gpu_preview_bridge
 from visualizer.composition_effects.audio_mapping import (
     apply_mapping_levels,
     normalize_audio_mapping,
@@ -15,6 +16,7 @@ from visualizer.composition_effects.particles import build_particle_emitter, emi
 from visualizer.composition_effects.post import build_post_stack
 
 __all__ = (
+    "apply_gpu_preview_bridge",
     "apply_mapping_levels",
     "build_atmosphere_pass",
     "build_lighting_pass",

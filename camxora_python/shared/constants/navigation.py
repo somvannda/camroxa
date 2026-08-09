@@ -14,6 +14,7 @@ ShellRouteKey = Literal[
     "music",
     "image",
     "video",
+    "studio",
     "marketplace",
     "merger",
     "settings",
@@ -105,6 +106,17 @@ SHELL_ROUTES: tuple[ShellRouteMeta, ...] = (
         eyebrow="Workspace",
         description=(
             "Video workspace with template loading, live GPU preview, domain editors, and export."
+        ),
+    ),
+    ShellRouteMeta(
+        key="studio",
+        path="/app/studio",
+        label="Studio",
+        title="Studio",
+        eyebrow="Motion Graphics",
+        description=(
+            "Composition Studio — scene tree, orthogonal axes, and live preview "
+            "(docs-first motion graphics workspace)."
         ),
     ),
     ShellRouteMeta(

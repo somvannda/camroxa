@@ -58,6 +58,14 @@ from visualizer.presets.materials import (
     list_spectrum_material_options,
     normalize_spectrum_material_id,
 )
+from visualizer.presets.metadata import (
+    ASSET_CATEGORIES,
+    AssetMetadata,
+    all_asset_metadata,
+    asset_metadata_index,
+    get_asset_metadata,
+    search_assets,
+)
 from visualizer.presets.palettes import (
     COLOR_PALETTE_CATALOG,
     COLOR_PALETTE_COUNT,
@@ -95,12 +103,14 @@ __all__ = (
     "ANIMATION_BEHAVIOR_CATALOG",
     "ANIMATION_BEHAVIOR_COUNT",
     "ANIMATION_BEHAVIOR_IDS",
+    "ASSET_CATEGORIES",
     "ATMOSPHERE_CATALOG",
     "ATMOSPHERE_COUNT",
     "ATMOSPHERE_IDS",
     "AUDIO_BUS_CATALOG",
     "AUDIO_BUS_COUNT",
     "AUDIO_BUS_IDS",
+    "AssetMetadata",
     "BACKGROUND_MOTION_CATALOG",
     "BACKGROUND_MOTION_COUNT",
     "BACKGROUND_MOTION_IDS",
@@ -127,7 +137,10 @@ __all__ = (
     "SPECTRUM_SHAPE_CATALOG",
     "SPECTRUM_SHAPE_COUNT",
     "SPECTRUM_SHAPE_IDS",
+    "all_asset_metadata",
+    "asset_metadata_index",
     "build_shape_layers",
+    "get_asset_metadata",
     "get_material",
     "get_palette",
     "get_particle_type",
@@ -158,4 +171,5 @@ __all__ = (
     "normalize_post_effects_list",
     "normalize_spectrum_material_id",
     "normalize_spectrum_shape_id",
+    "search_assets",
 )

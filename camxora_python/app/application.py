@@ -215,9 +215,10 @@ class AppShellWidget(QWidget):
         route = self._router.navigate(key)
         self._sidebar.select_route(key)
 
-        is_video = key == "video"
-        self._page_header.setVisible(not is_video)
-        if not is_video:
+        # Full-bleed workspaces: Video (legacy) and Studio (docs-first).
+        is_full_bleed = key in ("video", "studio")
+        self._page_header.setVisible(not is_full_bleed)
+        if not is_full_bleed:
             self._page_header.set_route(route)
 
         self._route_ready_message = f"Ready: {route.label}"

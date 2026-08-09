@@ -66,6 +66,15 @@ def get_video_draft_store_dir(user_id: str | None = None) -> Path:
     return _workspace_root(user_id) / "video-drafts"
 
 
+def get_studio_projects_dir(user_id: str | None = None) -> Path:
+    """Composition Studio projects (separate from Video templates)."""
+    return _workspace_root(user_id) / "studio-projects"
+
+
+def get_studio_prefs_path(user_id: str | None = None) -> Path:
+    return _workspace_root(user_id) / "camxora-studio-workspace.json"
+
+
 def get_effect_packs_dir() -> Path:
     """Shared effect-pack assets (large downloads) — machine-global."""
     return get_user_data_dir() / "effect-packs"
