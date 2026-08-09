@@ -662,6 +662,73 @@ class VideoSpectrumPreview(QOpenGLWidget):
             angles=angles,
         )
 
+    def _draw_atmosphere_pass(self, *, w: int, h: int, time_sec: float) -> None:
+        """Session B atmosphere — volume/weather/sky draw (not particle emitters)."""
+        if self.ctx is None or not hasattr(self, "vao_lines"):
+            return
+        tpl = self.template if isinstance(self.template, dict) else {}
+        atm = tpl.get("atmosphereDraw") if isinstance(tpl.get("atmosphereDraw"), dict) else None
+        if atm is None or not bool(atm.get("enabled")):
+            return
+        try:
+            from visualizer.composition_effects.atmosphere_gpu import (
+                _hex_rgba,
+                atmosphere_fog_quad,
+                atmosphere_star_points,
+                atmosphere_weather_segments,
+            )
+        except Exception:
+            return
+        kind = str(atm.get("kind") or "volume")
+        density = float(atm.get("density") or 0.35)
+        tint = str(atm.get("tint") or "#a8b4c8")
+        speed = float(atm.get("speed") or 1.0)
+        try:
+            self._blend_normal()
+            if kind in {"volume", "distort"}:
+                rgba = _hex_rgba(tint, 0.12 + 0.35 * density)
+                verts = atmosphere_fog_quad(rgba)
+                self._write_vbo(self.line_vbo, verts)
+                self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
+            if kind == "weather":
+                aid = str(atm.get("atmosphereId") or "rain")
+                weather_kind = "snow" if aid == "snow" else ("storm" if aid == "storm" else "rain")
+                segs = atmosphere_weather_segments(
+                    kind=weather_kind,
+                    density=density,
+                    speed=speed,
+                    tint=tint,
+                    time_sec=time_sec,
+                    width=w,
+                    height=h,
+                )
+                if segs.shape[0]:
+                    self._blend_additive()
+                    self._write_vbo(self.line_vbo, segs)
+                    self.vao_lines.render(mode=moderngl.LINES, vertices=int(segs.shape[0]))
+                    self._blend_normal()
+            if kind == "sky":
+                # Soft wash + twinkling points for stars/nebula/aurora/void.
+                rgba = _hex_rgba(tint, 0.08 + 0.22 * density)
+                verts = atmosphere_fog_quad(rgba)
+                self._write_vbo(self.line_vbo, verts)
+                self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
+                if hasattr(self, "vao_pts") and hasattr(self, "pt_vbo"):
+                    pts = atmosphere_star_points(
+                        density=density,
+                        twinkle=float(atm.get("twinkle") or 0.5),
+                        time_sec=time_sec,
+                    )
+                    if pts.shape[0]:
+                        self._blend_additive()
+                        self._write_vbo(self.pt_vbo, pts)
+                        self.vao_pts.render(mode=moderngl.POINTS, vertices=int(pts.shape[0]))
+                        self._blend_normal()
+        except Exception as exc:
+            if not getattr(self, "_atmosphere_err_logged", False):
+                self._atmosphere_err_logged = True
+                self._log(f"Atmosphere pass skipped: {exc}", level="warn")
+
     def _finish_lightning_frame(
         self,
         *,
@@ -2879,6 +2946,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 feats=feats,
                 logo_enabled=logo_enabled,
             )
+            self._draw_atmosphere_pass(w=w, h=h, time_sec=float(self.current_time))
             self._blend_normal()
             if logo_enabled:
                 self.prog_logo['tex_logo'].value = 1

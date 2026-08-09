@@ -15,11 +15,12 @@ does not import Video inspectors, style registries, or draft hydrate paths.
 ## Layout (doc 06 Creator)
 
 ```text
-Toolbar: New | Save | Undo | Audio | Export JSON | Export Video | project picker | name
-Scene Tree + Asset Library | Live Preview | Inspector
+Toolbar: New | Save | Undo | Browse assets | Audio | Export JSON | Export Video | project | name
+Scene Tree | Live Preview | Inspector
 ```
 
-Inspectors are axes-only (Level 2 progressive disclosure).
+Inspectors are axes-only (Level 2 progressive disclosure).  
+**Browse assets** opens the Asset Library drawer (discovery). Scene Tree owns structure.
 
 ## Engine
 

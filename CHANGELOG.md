@@ -11,6 +11,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Composition Studio UI split + atmosphere pass.** Left rail is Scene Tree only;
+  Asset Library opens via **Browse assets**. Preview draws Session B atmosphere
+  (fog volume / rain-snow streaks / sky wash) from `atmosphereDraw`, not particle
+  emitters.
 - **Composition Studio follow-ups.** Asset Library metadata search/apply,
   doc-09 `camxora.project` schema bridge (composition remains authoritative),
   and Studio Export JSON / Export Video (audio + background readiness gate).

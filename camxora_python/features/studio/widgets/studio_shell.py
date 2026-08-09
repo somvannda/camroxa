@@ -1,4 +1,7 @@
-"""Studio shell — toolbar + scene tree | preview | inspector + asset library (doc 06)."""
+"""Studio shell — toolbar + scene tree | preview | inspector (doc 06 Creator).
+
+Asset Library is discovery-only via Browse assets (not duplicated under the tree).
+"""
 
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from features.studio.widgets.asset_library import AssetLibraryPanel
+from features.studio.widgets.asset_browser_dialog import AssetBrowserDialog
 from features.studio.widgets.inspector_host import InspectorHost
 from features.studio.widgets.preview_stage import StudioPreviewStage
 from features.studio.widgets.scene_tree import StudioSceneTree
@@ -64,9 +67,13 @@ class StudioShell(QWidget):
         self._undo_btn = QPushButton("Undo")
         self._undo_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._undo_btn.clicked.connect(self.undo_requested.emit)
+        self._browse_btn = QPushButton("Browse assets")
+        self._browse_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._browse_btn.setToolTip("Search catalog by mood / genre / tags (Asset Library)")
+        self._browse_btn.clicked.connect(self._open_asset_browser)
         self._audio_btn = QPushButton("Audio")
         self._audio_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        self._audio_btn.setToolTip("Select MP3 for Studio video export")
+        self._audio_btn.setToolTip("Select MP3 for Studio preview / export")
         self._audio_btn.clicked.connect(self.select_audio_requested.emit)
         self._export_json_btn = QPushButton("Export JSON")
         self._export_json_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
@@ -76,6 +83,7 @@ class StudioShell(QWidget):
         toolbar.addWidget(self._new_btn)
         toolbar.addWidget(self._save_btn)
         toolbar.addWidget(self._undo_btn)
+        toolbar.addWidget(self._browse_btn)
         toolbar.addWidget(self._audio_btn)
         toolbar.addWidget(self._export_json_btn)
         toolbar.addWidget(self._export_video_btn)
@@ -92,11 +100,11 @@ class StudioShell(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(8)
+        tree_caption = QLabel("Scene")
+        tree_caption.setObjectName(SUBTITLE_LABEL_ID)
+        left_layout.addWidget(tree_caption)
         self._tree = StudioSceneTree()
         left_layout.addWidget(self._tree, stretch=1)
-        self._assets = AssetLibraryPanel()
-        self._assets.apply_requested.connect(self.patch_requested.emit)
-        left_layout.addWidget(self._assets, stretch=1)
         splitter.addWidget(left)
 
         self._preview = StudioPreviewStage()
@@ -109,11 +117,21 @@ class StudioShell(QWidget):
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
-        splitter.setSizes([280, 640, 360])
+        splitter.setSizes([240, 700, 360])
         root.addWidget(splitter, stretch=1)
 
         self._tree.node_selected.connect(self._inspector.show_node)
         self._switching_project = False
+        self._asset_dialog: AssetBrowserDialog | None = None
+
+    def _open_asset_browser(self) -> None:
+        if self._asset_dialog is None:
+            dialog = AssetBrowserDialog(self)
+            dialog.apply_requested.connect(self.patch_requested.emit)
+            self._asset_dialog = dialog
+        self._asset_dialog.show()
+        self._asset_dialog.raise_()
+        self._asset_dialog.activateWindow()
 
     def _emit_project(self, _index: int) -> None:
         if self._switching_project:
@@ -148,6 +166,7 @@ class StudioShell(QWidget):
     def set_export_busy(self, busy: bool) -> None:
         self._export_video_btn.setEnabled(not busy)
         self._export_json_btn.setEnabled(not busy)
+        self._browse_btn.setEnabled(not busy)
         if busy:
             self._export_video_btn.setText("Exporting…")
         else:

@@ -191,6 +191,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
         "lightingSettings",
         "cameraSettings",
         "atmosphereSettings",
+        "atmosphereDraw",
         "postProcessingSettings",
         "audioMapping",
         "overlaySettings",

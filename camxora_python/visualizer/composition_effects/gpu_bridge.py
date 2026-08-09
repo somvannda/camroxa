@@ -12,6 +12,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from visualizer.composition_effects.atmosphere_gpu import build_atmosphere_draw
 from visualizer.scene import NONE
 
 # Composition lighting effect → GPU lightning style.
@@ -221,12 +222,16 @@ def apply_gpu_preview_bridge(
     else:
         out.setdefault("lightningEnabled", False)
 
-    # --- Atmosphere proxies (additive; do not clobber explicit post) ---
+    # --- Atmosphere: GPU draw descriptor + soft post proxies ---
     atmosphere = out.get("atmosphereSettings") if isinstance(out.get("atmosphereSettings"), dict) else {}
     atm_id = str(atmosphere.get("atmosphereId") or NONE)
-    if bool(atmosphere.get("enabled")) and atm_id not in ("", NONE, "none"):
+    atm_draw = build_atmosphere_draw(atmosphere)
+    if atm_draw is not None:
+        out["atmosphereDraw"] = atm_draw
         for key, payload in _ATMOSPHERE_PROXIES.get(atm_id, {}).items():
             _merge_effect(effects, key, payload)
+    else:
+        out.pop("atmosphereDraw", None)
 
     out["effects"] = effects
 

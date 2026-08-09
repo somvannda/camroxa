@@ -201,6 +201,36 @@ def test_gpu_bridge_wires_lighting_camera_atmosphere() -> None:
     assert rendered["backgroundSettings"]["motionMode"] in {"zoom", "vibrate", "both"}
     assert rendered["effects"]["soft_diffusion"]["enabled"] is True
     assert "bloom" in rendered["effects"]
+    assert rendered["atmosphereDraw"]["atmosphereId"] == "fog"
+    assert rendered["atmosphereDraw"]["kind"] == "volume"
+
+
+def test_atmosphere_weather_draw_descriptor() -> None:
+    from visualizer.composition_effects.atmosphere_gpu import (
+        atmosphere_weather_segments,
+        build_atmosphere_draw,
+    )
+    from visualizer.composition_renderer import document_to_renderer_dict
+
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {"compositionBackgroundAtmosphere": "rain"},
+    )
+    rendered = document_to_renderer_dict(doc)
+    draw = rendered["atmosphereDraw"]
+    assert draw["kind"] == "weather"
+    assert build_atmosphere_draw(rendered["atmosphereSettings"]) is not None
+    segs = atmosphere_weather_segments(
+        kind="rain",
+        density=0.6,
+        speed=1.0,
+        tint="#dbeafe",
+        time_sec=1.25,
+        width=1280,
+        height=720,
+    )
+    assert segs.shape[0] >= 40
+    assert segs.shape[1] == 6
 
 
 def test_studio_export_readiness_and_json(tmp_path: Path) -> None:
