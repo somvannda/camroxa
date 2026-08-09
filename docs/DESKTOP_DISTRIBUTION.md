@@ -125,14 +125,18 @@ This keeps one canonical download experience tied to the public API.
 
 ## In-app force update
 
-When an admin publishes a software update:
+Mandatory updates are enforced **when the user opens the app**, not mid-session:
 
-1. Platform pushes `software_update.available` via the notification/WebSocket channel.
-2. Desktop app (`camxora_python/shared/services/software_update_service.py`) compares the offered version to the running build.
-3. If newer, the update gate overlay appears; **mandatory** updates block the UI until the user installs.
+1. Admin **Save Draft** (version, download URL, mandatory, notes) then **Publish** (sets `published_at` and public visibility).
+2. On next desktop launch — **before login, relogin, or entering the studio** — the client calls `GET /api/v1/public/desktop-release`.
+3. If the published version is newer and `mandatory` is true, the blocking update gate appears; login/shell stay unreachable until install.
 4. Install flow downloads from `download_url` and runs the Windows installer (`software_update_installer.py`).
+5. Live WebSocket `software_update.available` pushes never open the blocking gate.
+   While the user is already in the studio, a green update icon appears in the
+   header (left of notifications); click installs when convenient. Mandatory still
+   force-gates on the next app open.
 
-The in-app path uses the same `system_settings` values saved before publish; the public API is for website/portal surfaces only.
+Fail-open: if the public release endpoint is unreachable or 404, startup continues (unless a prior mandatory update is still persisted on disk).
 
 ## Changelog content strategy
 

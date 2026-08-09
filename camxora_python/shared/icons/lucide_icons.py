@@ -79,6 +79,12 @@ _LUCIDE_PATHS: dict[str, tuple[str, ...]] = {
         '<polyline points="7 10 12 15 17 10"/>',
         '<line x1="12" x2="12" y1="15" y2="3"/>',
     ),
+    # Soft “update available” header affordance (reads clearly on #060b20).
+    "arrow-up-circle": (
+        '<circle cx="12" cy="12" r="10"/>',
+        '<path d="m16 12-4-4-4 4"/>',
+        '<path d="M12 16V8"/>',
+    ),
 }
 
 SIDEBAR_ICON_BY_ROUTE: dict[ShellRouteKey, str] = {

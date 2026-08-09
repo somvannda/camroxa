@@ -21,11 +21,12 @@ from shared.lib.window_chrome import (
 from shared.services.push_notification_runtime import PushNotificationRuntime
 from shared.services.session_service import BootstrapDestination, BootstrapResult, SessionService
 from shared.services.setup_readiness_service import refresh_setup_readiness
-from shared.services.software_update_service import SoftwareUpdateService
+from shared.services.software_update_service import SoftwareUpdateOffer, SoftwareUpdateService
 from shared.widgets.software_update_gate import SoftwareUpdateGateOverlay
 from shared.widgets.window_title_bar import WindowTitleBar
 from shared.workers.bootstrap_worker import AuthWorker, BootstrapWorker
 from shared.workers.shell_warmup_worker import ShellWarmupWorker
+from shared.workers.software_update_check_worker import SoftwareUpdateCheckWorker
 
 
 class RootWindow(QMainWindow):
@@ -55,6 +56,7 @@ class RootWindow(QMainWindow):
 
         self._stack = QStackedWidget()
         self._title_bar = WindowTitleBar(self)
+        self._title_bar.software_update_requested.connect(self._start_software_update_install)
         self._build_window_surface()
 
         self._startup = StartupView()
@@ -75,7 +77,8 @@ class RootWindow(QMainWindow):
         # later; without this prime the splash window briefly "restarts".
         prime_opengl_on_window(self)
         self._show_page(self._PAGE_STARTUP)
-        self._start_bootstrap()
+        # Force-update runs before login / shell so we never interrupt mid-session.
+        self._run_mandatory_update_check(on_clear=self._start_bootstrap)
 
     def _build_window_surface(self) -> None:
         surface = QWidget(self)
@@ -100,9 +103,13 @@ class RootWindow(QMainWindow):
         self._auth.login_requested.connect(self._on_login_requested)
         self._auth.register_requested.connect(self._on_register_requested)
         self._auth.switch_account_requested.connect(self._on_switch_account_requested)
-        self._onboarding_welcome.continue_clicked.connect(self._show_login)
+        self._onboarding_welcome.continue_clicked.connect(
+            lambda: self._run_mandatory_update_check(on_clear=self._show_login)
+        )
         self._onboarding_wizard.refresh_requested.connect(self._retry_bootstrap_after_onboarding)
-        self._onboarding_wizard.skip_to_app.connect(self._show_app_shell)
+        self._onboarding_wizard.skip_to_app.connect(
+            lambda: self._run_mandatory_update_check(on_clear=self._show_app_shell)
+        )
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API
         # Stop shell background workers before destroying the window hierarchy.
@@ -240,7 +247,49 @@ class RootWindow(QMainWindow):
     def _show_page(self, index: int) -> None:
         self._stack.setCurrentIndex(index)
 
+    def _run_mandatory_update_check(self, *, on_clear) -> None:
+        """Block login/shell until a published mandatory update is resolved."""
+        if SoftwareUpdateService.instance().should_block_app():
+            self._sync_software_update_gate_geometry()
+            return
+
+        self._startup.reset_progress(5)
+        self._show_page(self._PAGE_STARTUP)
+        self._startup.set_progress(
+            "Checking for updates",
+            "Contacting Camxora servers.",
+            10,
+        )
+        worker = SoftwareUpdateCheckWorker(self._session.get_api_base_url(), parent=self)
+        worker.finished_with_offer.connect(
+            lambda offer, cont=on_clear: self._on_mandatory_update_check_finished(offer, cont)
+        )
+        self._worker = worker
+        worker.start()
+
+    def _on_mandatory_update_check_finished(self, offer: object, on_clear) -> None:
+        self._worker = None
+        if isinstance(offer, SoftwareUpdateOffer) and offer.mandatory:
+            SoftwareUpdateService.instance().apply_push_payload(
+                {
+                    "version": offer.version,
+                    "download_url": offer.download_url,
+                    "mandatory": True,
+                    "release_notes": offer.release_notes,
+                    "notification_id": offer.notification_id or "startup-desktop-release",
+                }
+            )
+            self._sync_software_update_gate_geometry()
+            return
+        if SoftwareUpdateService.instance().should_block_app():
+            self._sync_software_update_gate_geometry()
+            return
+        on_clear()
+
     def _start_bootstrap(self) -> None:
+        if SoftwareUpdateService.instance().should_block_app():
+            self._sync_software_update_gate_geometry()
+            return
         worker = BootstrapWorker(self._session, self)
         worker.progress.connect(self._startup.set_progress)
         worker.finished_with_result.connect(self._on_bootstrap_finished)
@@ -249,21 +298,33 @@ class RootWindow(QMainWindow):
 
     def _on_bootstrap_finished(self, result: object) -> None:
         if not isinstance(result, BootstrapResult):
-            self._show_login()
+            self._run_mandatory_update_check(on_clear=self._show_login)
             return
         self._apply_bootstrap_result(result)
 
     def _apply_bootstrap_result(self, result: BootstrapResult) -> None:
+        if SoftwareUpdateService.instance().should_block_app():
+            self._sync_software_update_gate_geometry()
+            return
         if result.destination == BootstrapDestination.LOGIN:
-            self._show_login(error=result.message)
+            self._run_mandatory_update_check(
+                on_clear=lambda: self._show_login(error=result.message)
+            )
         elif result.destination == BootstrapDestination.ONBOARDING_WELCOME:
-            self._show_page(self._PAGE_ONBOARDING_WELCOME)
+            self._run_mandatory_update_check(
+                on_clear=lambda: self._show_page(self._PAGE_ONBOARDING_WELCOME)
+            )
         elif result.destination == BootstrapDestination.ONBOARDING_WIZARD:
-            self._show_page(self._PAGE_ONBOARDING_WIZARD)
+            self._run_mandatory_update_check(
+                on_clear=lambda: self._show_page(self._PAGE_ONBOARDING_WIZARD)
+            )
         else:
-            self._show_app_shell()
+            self._run_mandatory_update_check(on_clear=self._show_app_shell)
 
     def _show_login(self, *, error: str = "") -> None:
+        if SoftwareUpdateService.instance().should_block_app():
+            self._sync_software_update_gate_geometry()
+            return
         self._stop_push_notifications()
         self._title_bar.set_setup_notifications_visible(False)
         self._auth.show_login_form()
@@ -282,6 +343,9 @@ class RootWindow(QMainWindow):
         self._worker = worker
 
     def _show_app_shell(self) -> None:
+        if SoftwareUpdateService.instance().should_block_app():
+            self._sync_software_update_gate_geometry()
+            return
         # Rebuild the shell so lazy pages never keep the previous account's UI.
         self._destroy_app_shell()
         # Keep one continuous loading pass. Only reset progress when coming
@@ -349,17 +413,25 @@ class RootWindow(QMainWindow):
         self._show_login(error="Unable to switch accounts.")
 
     def _on_login_requested(self, email: str, password: str) -> None:
-        self._run_auth_worker(mode="login", email=email, password=password)
+        self._run_mandatory_update_check(
+            on_clear=lambda: self._run_auth_worker(
+                mode="login",
+                email=email,
+                password=password,
+            )
+        )
 
     def _on_register_requested(self, email: str, password: str, display_name: str) -> None:
         if not REGISTRATION_ENABLED:
             self._auth.set_error("Account registration is not available. Contact your administrator.")
             return
-        self._run_auth_worker(
-            mode="register",
-            email=email,
-            password=password,
-            display_name=display_name,
+        self._run_mandatory_update_check(
+            on_clear=lambda: self._run_auth_worker(
+                mode="register",
+                email=email,
+                password=password,
+                display_name=display_name,
+            )
         )
 
     def _run_auth_worker(
@@ -422,7 +494,7 @@ class RootWindow(QMainWindow):
         self._stop_push_notifications()
         self._session.logout()
         self._destroy_app_shell()
-        self._show_login()
+        self._run_mandatory_update_check(on_clear=self._show_login)
 
     def _start_push_notifications(self) -> None:
         self._stop_push_notifications()
