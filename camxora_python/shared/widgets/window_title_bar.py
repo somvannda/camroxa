@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QByteArray, QPoint, Qt
+from PySide6.QtCore import QByteArray, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePol
 from shared.icons.chrome_assets import CHROME_SVG_BY_NAME
 from shared.lib.resource_paths import get_resource_path
 from shared.widgets.setup_notification import SetupNotificationButton
+from shared.widgets.software_update_header_button import SoftwareUpdateHeaderButton
 
 
 def _read_chrome_svg(name: str) -> str:
@@ -120,6 +121,8 @@ _WindowControlButton = WindowControlButton
 class WindowTitleBar(QFrame):
     """Custom desktop header with brand lockup and window controls."""
 
+    software_update_requested = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("window_title_bar")
@@ -168,6 +171,9 @@ class WindowTitleBar(QFrame):
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setSpacing(4)
 
+        self._software_update = SoftwareUpdateHeaderButton(self)
+        self._software_update.update_requested.connect(self.software_update_requested.emit)
+
         self._setup_notifications = SetupNotificationButton(self)
         self._setup_notifications.hide()
 
@@ -179,6 +185,8 @@ class WindowTitleBar(QFrame):
         self._maximize_button.clicked.connect(self._toggle_maximize)
         self._close_button.clicked.connect(self._close_window)
 
+        # Update icon sits immediately left of the notification bell.
+        controls.addWidget(self._software_update)
         controls.addWidget(self._setup_notifications)
         controls.addWidget(self._minimize_button)
         controls.addWidget(self._maximize_button)
@@ -191,7 +199,10 @@ class WindowTitleBar(QFrame):
     @staticmethod
     def _is_interactive_child(widget: QWidget | None) -> bool:
         while widget is not None:
-            if isinstance(widget, (_WindowControlButton, SetupNotificationButton)):
+            if isinstance(
+                widget,
+                (_WindowControlButton, SetupNotificationButton, SoftwareUpdateHeaderButton),
+            ):
                 return True
             widget = widget.parentWidget()
         return False

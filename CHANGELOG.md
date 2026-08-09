@@ -9,12 +9,23 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-08
+
 ### Added
 
 - Image page Background / Thumbnail prompts show a live `current / 5000` counter and hard-cap input at 5000 characters (matches API image prompt gate). See `docs/changelog/2026-08-08-image-prompt-ui-char-cap.md`.
 
 ### Changed
 
+- Desktop version stamp **1.2.1** / installer `CamxoraSetup-1.2.1.exe`. Publish with
+  **Force update** (mandatory) in Admin → Software Updates so **1.2.0** clients upgrade.
+  Detail: `docs/changelog/2026-08-08-desktop-1.2.1.md`.
+- **Force update runs only at app open** — before login, relogin, or entering the studio.
+  The client reads `GET /public/desktop-release` and blocks with the update gate when the
+  published release is newer and mandatory. Mid-session publish shows a green
+  **arrow-up-circle** header icon (left of notifications, tooltip “Update available”)
+  so users can update when ready — without a blocking overlay. See
+  `docs/changelog/2026-08-08-force-update-on-app-open.md`.
 - Preferences **Local Paths** keeps FFmpeg + **Suno output dir** only (this PC). Downloads /
   Merged / optional Image output fields removed from the UI (auto-defaults; batch assets
   still land under the Suno tree).

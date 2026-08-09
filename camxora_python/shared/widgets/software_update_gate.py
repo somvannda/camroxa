@@ -161,16 +161,22 @@ class SoftwareUpdateGateOverlay(QFrame):
         service = SoftwareUpdateService.instance()
         service.reconcile_with_installed_version()
         offer = service.pending
-        if not isinstance(offer, SoftwareUpdateOffer) or not offer.mandatory:
+        # Soft mid-session notices use the header icon only — gate is mandatory
+        # (or install progress after the user chooses Update from the header).
+        if not isinstance(offer, SoftwareUpdateOffer):
+            self.hide()
+            return
+        if not offer.mandatory and not service.install_in_progress:
             self.hide()
             return
 
         current = get_app_version()
-        self._title.setText("Update required")
+        self._title.setText("Update required" if offer.mandatory else "Update available")
         self._message.setText(
             format_update_summary(required_version=offer.version, current_version=current)
         )
-        self._version_row.setText(f"Required  v{offer.version}    ·    Current  v{current}")
+        label = "Required" if offer.mandatory else "Available"
+        self._version_row.setText(f"{label}  v{offer.version}    ·    Current  v{current}")
 
         bullets = format_whats_new(offer.release_notes)
         if bullets:
@@ -193,12 +199,19 @@ class SoftwareUpdateGateOverlay(QFrame):
         self.raise_()
 
     def _on_install_started(self) -> None:
+        service = SoftwareUpdateService.instance()
+        offer = service.pending
+        if isinstance(offer, SoftwareUpdateOffer) and not self.isVisible():
+            # Header-initiated install: show progress overlay without a prior mandatory gate.
+            self._on_update_changed(offer)
         self._update_button.hide()
         self._progress_wrap.show()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._status.setText("Preparing update…")
         self._title.setText("Updating Camxora")
+        self.show()
+        self.raise_()
 
     def _on_install_progress(self, message: str, percent: int = -1) -> None:
         self._progress_wrap.show()

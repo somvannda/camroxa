@@ -80,18 +80,11 @@ class PushNotificationHub(QObject):
 
             version = str(safe_payload.get("version") or "").strip()
             if not version or not is_remote_version_newer(get_app_version(), version):
-                # Already current — clear any stale mandatory gate and skip inbox noise.
                 SoftwareUpdateService.instance().reconcile_with_installed_version()
                 return
-
-            inbox_item = self._build_inbox_item(normalized_event, safe_payload)
-            if inbox_item is None:
-                return
-            self._inbox.insert(0, inbox_item)
-            self.inbox_changed.emit()
-            update_payload = dict(inbox_item.payload)
-            update_payload["notification_id"] = inbox_item.id
-            SoftwareUpdateService.instance().apply_push_payload(update_payload)
+            # Mid-session: header icon only — never slam the mandatory gate overlay.
+            # Force update still applies on the next app open via public desktop-release.
+            SoftwareUpdateService.instance().apply_session_notice(safe_payload)
             return
 
         inbox_item = self._build_inbox_item(normalized_event, safe_payload)

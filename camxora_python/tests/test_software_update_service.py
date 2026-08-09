@@ -56,6 +56,26 @@ def test_software_update_offer_ignores_same_or_older_version(
     assert SoftwareUpdateOffer.from_payload({"version": "2.5.0", "mandatory": True}) is None
 
 
+def test_apply_session_notice_never_blocks(monkeypatch: pytest.MonkeyPatch, updates_dir: Path) -> None:
+    del updates_dir
+    monkeypatch.setattr(
+        "shared.services.software_update_service.get_app_version",
+        lambda: "1.2.0",
+    )
+    service = SoftwareUpdateService()
+    offer = service.apply_session_notice(
+        {
+            "version": "1.2.1",
+            "download_url": "https://example.com/CamxoraSetup-1.2.1.exe",
+            "mandatory": True,
+            "release_notes": "notes",
+        }
+    )
+    assert isinstance(offer, SoftwareUpdateOffer)
+    assert offer.mandatory is False
+    assert not service.should_block_app()
+
+
 def test_force_update_blocks_dismiss(monkeypatch: pytest.MonkeyPatch, updates_dir: Path) -> None:
     del updates_dir
     monkeypatch.setattr(

@@ -1,35 +1,37 @@
-﻿Camxora 1.2.0
-Progress paths, missing MP3s, export merge & Quality
-August 6, 2026
+﻿Camxora 1.2.1
+Image regenerate, Suno paths, prompt cap & on-open force update
+August 8, 2026
 
 What's new
 ----------
-• Progress remaps run folders to this PC’s Suno root (no more foreign
-  absolute paths breaking Open / downloads).
-• Right-click Download missing MP3s (N) for the selected channel role —
-  fills gaps from existing Suno/Backblaze URLs (no re-Suno).
-• Music % / X/Y follow MP3s on disk; Done/Completed/YouTube menus drop
-  Continue/Stop/export retries (keep Open / Change Run Folder / rebuild).
-• Progress Active only + Stage filters apply before Limit.
-• Export: Recommended bitrate, Quality / Best Quality tiers, safer
-  workers; manual merge finds real outputs; merge is lossless stream-copy
-  with a usable-MP4 gate.
-• Cleaner ConnectError copy on release builds; Image source UI shows
-  Category + Prompt only (User reference hidden until P2).
+• Force update only when opening the app — before login or the studio.
+  Mid-session: a green update icon appears in the header (left of
+  notifications) so you can update when ready.
+• Image Regenerate Background / Thumbnail replaces the previous local
+  PNG instead of keeping a stale file when the server reuses the path.
+• Preferences Local Paths keeps FFmpeg + Suno output dir only; saving
+  Preferences no longer overwrites your Suno root with a stale AppData
+  path from account settings.
+• Image page Background / Thumbnail prompts show a live current / 5000
+  counter and hard-cap at 5000 characters (matches the API gate).
+• Startup splash no longer flashes as if Camxora closed/reopened when
+  Video workspace prewarm mounts the GPU preview.
 
-Also included from 1.1.1
+Also included from 1.2.0
 ------------------------
-• Image Prompt only, Manual Generation “Not available” rows, force
-  Regenerate.
-• Ship-safe preview (HDR bloom off by default) and windowed click fix.
+• Progress run-folder remapping, Download missing MP3s, export Quality /
+  Best Quality + Recommended bitrate, lossless merge gate.
+• Cleaner ConnectError copy; Image source UI Category + Prompt only.
 
 Requirements
 ------------
 • Production API already deployed for album/run-dir lock, Alt CDN heal,
   relative run keys, null sample-path guard, and image prompt modes.
-• Installer: CamxoraSetup-1.2.0.exe
+• Installer: CamxoraSetup-1.2.1.exe
 • Publish this release in Admin → Software Updates with Force update
-  (mandatory) enabled so older clients must install.
+  (mandatory) enabled. Clients on 1.2.1+ pick up the next mandatory
+  release on app open; 1.2.0 users need this installer once (manual or
+  prior push behavior).
 
 Coming later
 ------------

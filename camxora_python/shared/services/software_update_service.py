@@ -125,6 +125,22 @@ class SoftwareUpdateService(QObject):
             )
         return offer
 
+    def apply_session_notice(self, payload: dict[str, Any]) -> SoftwareUpdateOffer | None:
+        """Record a mid-session update for the header icon without blocking the UI.
+
+        Even if the server marks the release mandatory, the gate only applies on
+        the next app open (public desktop-release check). While the user is
+        working, we only surface a non-blocking header affordance.
+        """
+        if self._pending is not None and self._pending.mandatory:
+            # Keep an existing blocking offer (e.g. restored mid-Setup).
+            return self._pending
+        soft_payload = dict(payload)
+        soft_payload["mandatory"] = False
+        if not str(soft_payload.get("notification_id") or "").strip():
+            soft_payload["notification_id"] = "session-desktop-release"
+        return self.apply_push_payload(soft_payload)
+
     def apply_push_payload(self, payload: dict[str, Any]) -> SoftwareUpdateOffer | None:
         offer = SoftwareUpdateOffer.from_payload(payload)
         if offer is None:
