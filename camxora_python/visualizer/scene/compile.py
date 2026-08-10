@@ -221,6 +221,18 @@ class CompiledFrame:
 
                 "animationId": self.logo.get("animation", NONE),
 
+                "size": float(self.logo.get("size") or 192.0),
+
+                "scale": float(self.logo.get("scale") or 1.0),
+
+                "circleMask": bool(self.logo.get("circleMask", False)),
+
+                "fitToShape": bool(self.logo.get("fitToShape", True)),
+
+                "maskShape": str(self.logo.get("maskShape") or "auto"),
+
+                "reactivity": float(self.logo.get("reactivity") or 0.0),
+
             },
 
             "particlesSettings": {

@@ -25,16 +25,33 @@ def _existing_file(path: str | None) -> str:
     text = str(path or "").strip()
     if not text:
         return ""
+    candidates: list[Path] = []
     try:
-        return text if Path(text).is_file() else ""
+        p = Path(text).expanduser()
+        candidates.append(p)
+        if not p.is_absolute():
+            candidates.append(Path.cwd() / p)
+            downloads = Path.home() / "Downloads" / p.name
+            candidates.append(downloads)
+            # UI often shows a clipped "…loads/file.png" — try Downloads/file.
+            if "loads" in text.replace("\\", "/").lower():
+                candidates.append(Path.home() / "Downloads" / Path(text).name)
     except OSError:
         return ""
+    for cand in candidates:
+        try:
+            if cand.is_file():
+                return str(cand.resolve())
+        except OSError:
+            continue
+    return ""
 
 
 class StudioPreviewStage(QWidget):
     spectrum_position_changed = Signal(int, int)
     logo_position_changed = Signal(int, int)
     spectrum_size_delta_requested = Signal(float)
+    spectrum_layer_patch_changed = Signal(object)
     playback_state_changed = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -70,6 +87,10 @@ class StudioPreviewStage(QWidget):
             if hasattr(self._preview, "spectrum_size_delta_requested"):
                 self._preview.spectrum_size_delta_requested.connect(
                     self.spectrum_size_delta_requested.emit
+                )
+            if hasattr(self._preview, "spectrum_layer_patch_changed"):
+                self._preview.spectrum_layer_patch_changed.connect(
+                    self.spectrum_layer_patch_changed.emit
                 )
             if hasattr(self._preview, "playback_state_changed"):
                 self._preview.playback_state_changed.connect(self.playback_state_changed.emit)
@@ -114,19 +135,30 @@ class StudioPreviewStage(QWidget):
         assets = scene.get("assets") if isinstance(scene.get("assets"), dict) else {}
         bg = _existing_file(str(assets.get("backgroundImage") or ""))
         bg_video = _existing_file(str(assets.get("backgroundVideo") or ""))
-        logo = _existing_file(str(assets.get("logo") or ""))
+        raw_logo = str(assets.get("logo") or "").strip()
+        logo = _existing_file(raw_logo)
         audio = _existing_file(str(assets.get("audio") or ""))
         plate = "video" if bg_video else ("image" if bg else "no")
+        if raw_logo and not logo:
+            logo_status = f"MISSING:{Path(raw_logo).name}"
+        else:
+            logo_status = "yes" if logo else "no"
         self._status.setText(
             f"Compiled · spectrum={shape or 'none'} · lighting={lighting or 'none'} · "
             f"camera={camera or 'none'} · atmosphere={atmosphere or 'none'} · "
             f"post={engine.get('postCount', 0)} · "
-            f"bg={plate} · logo={'yes' if logo else 'no'} · audio={'yes' if audio else 'no'}"
+            f"bg={plate} · logo={logo_status} · audio={'yes' if audio else 'no'}"
         )
         if self._preview is None:
             return
         try:
             self._preview.set_template(rendered)
+            # Keep authored composition on the live template so bar/raise edits persist.
+            if isinstance(scene.get("composition"), dict):
+                try:
+                    self._preview.template["composition"] = dict(scene.get("composition") or {})
+                except Exception:
+                    pass
             if bg_video != self._background_video_path or bg != self._background_path:
                 self._background_video_path = bg_video
                 self._background_path = bg
@@ -136,7 +168,8 @@ class StudioPreviewStage(QWidget):
                     if hasattr(self._preview, "clear_background_video"):
                         self._preview.clear_background_video()
                     self._preview.load_background(bg)
-            if logo != self._logo_path:
+            preview_logo = str(getattr(self._preview, "logo_path", "") or "").strip()
+            if logo != self._logo_path or (logo and not preview_logo):
                 self._logo_path = logo
                 self._preview.load_logo(logo)
             if audio != self._audio_path:

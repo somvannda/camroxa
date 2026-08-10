@@ -93,6 +93,7 @@ class StudioView(QWidget):
         self._shell.spectrum_position_changed.connect(self._on_spectrum_position)
         self._shell.logo_position_changed.connect(self._on_logo_position)
         self._shell.spectrum_size_delta_requested.connect(self._on_spectrum_size_delta)
+        self._shell.spectrum_layer_patch_changed.connect(self._on_spectrum_layer_patch)
 
         self._autosave = QTimer(self)
         self._autosave.setInterval(15000)
@@ -156,6 +157,7 @@ class StudioView(QWidget):
         doc = normalize_studio_document(self._document)
         comp = doc.get("composition") if isinstance(doc.get("composition"), dict) else {}
         spec = comp.get("spectrum") if isinstance(comp.get("spectrum"), dict) else {}
+        logo = comp.get("logo") if isinstance(comp.get("logo"), dict) else {}
         shape = str(spec.get("shape") or NONE)
         spectrum_on = shape not in (None, "", NONE, "none")
         key = ""
@@ -163,13 +165,12 @@ class StudioView(QWidget):
             key = str(self._shell._left._tree.current_node() or "")
         except Exception:
             key = ""
-        attached = bool(doc.get("spectrumAttachToLogo", False))
+        attached = bool(doc.get("spectrumAttachToLogo", False)) or bool(logo.get("containInShape"))
         has_center = bool(str((doc.get("assets") or {}).get("logo") or "").strip())
-        # Center image is authored under Spectrum (Vizzy-style); drag when attached.
-        center_drag = key == "spectrum" and (attached or has_center)
+        # Always allow spectrum drag when shape is on; logo mode only when detached center image.
         self._shell.set_preview_interaction_modes(
             spectrum_position=spectrum_on,
-            logo_position=center_drag,
+            logo_position=bool(key == "spectrum" and has_center and not attached),
         )
 
     def _on_export_options(self, options: dict) -> None:
@@ -209,10 +210,19 @@ class StudioView(QWidget):
 
     def _on_spectrum_position(self, x: int, y: int) -> None:
         # Preview already moved live; persist without full UI rebuild mid-drag.
-        self._document = apply_axis_patch(
-            self._document,
-            {"compositionSpectrumPositionPx": {"x": float(x), "y": float(y)}},
-        )
+        patch: dict[str, Any] = {
+            "compositionSpectrumPositionPx": {"x": float(x), "y": float(y)},
+        }
+        doc = normalize_studio_document(self._document)
+        comp = doc.get("composition") if isinstance(doc.get("composition"), dict) else {}
+        logo = comp.get("logo") if isinstance(comp.get("logo"), dict) else {}
+        locked = bool(doc.get("spectrumAttachToLogo", False)) or bool(logo.get("containInShape"))
+        if locked:
+            # Shared center — keep logo offsets cleared so paint uses spectrum position.
+            patch["compositionLogoOffsetX"] = 0.0
+            patch["compositionLogoOffsetY"] = 0.0
+            patch["spectrumAttachToLogo"] = True
+        self._document = apply_axis_patch(self._document, patch)
         self._dirty = True
         self._shell.set_dirty(True)
 
@@ -222,8 +232,14 @@ class StudioView(QWidget):
             "compositionLogoOffsetY": max(-0.5, min(0.5, float(y) / 270.0)),
         }
         doc = normalize_studio_document(self._document)
-        if bool(doc.get("spectrumAttachToLogo", False)):
+        comp = doc.get("composition") if isinstance(doc.get("composition"), dict) else {}
+        logo = comp.get("logo") if isinstance(comp.get("logo"), dict) else {}
+        locked = bool(doc.get("spectrumAttachToLogo", False)) or bool(logo.get("containInShape"))
+        if locked:
             patch["compositionSpectrumPositionPx"] = {"x": float(x), "y": float(y)}
+            patch["compositionLogoOffsetX"] = 0.0
+            patch["compositionLogoOffsetY"] = 0.0
+            patch["spectrumAttachToLogo"] = True
         self._document = apply_axis_patch(self._document, patch)
         self._dirty = True
         self._shell.set_dirty(True)
@@ -245,6 +261,21 @@ class StudioView(QWidget):
         self._shell.apply_preview(self._document)
         self._shell.set_dirty(True)
         self._shell.bind_document(inspector_bind_state(self._document))
+
+    def _on_spectrum_layer_patch(self, fields: object) -> None:
+        if not isinstance(fields, dict) or not fields:
+            return
+        # Preview already applied live; persist into the studio document.
+        self._document = apply_axis_patch(
+            self._document, {"compositionSpectrumLayerPatch": dict(fields)}
+        )
+        self._dirty = True
+        self._shell.set_dirty(True)
+        # Refresh dials/sliders without full preview recompile mid-drag.
+        try:
+            self._shell.bind_document(inspector_bind_state(self._document))
+        except Exception:
+            pass
 
     def _on_name_changed(self, name: str) -> None:
         if str(self._document.get("name") or "") == name:

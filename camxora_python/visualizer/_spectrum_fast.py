@@ -138,6 +138,28 @@ def scroll_spectrum_heights(render_fft: np.ndarray, scroll: float | int | None) 
     return (src[i0] * (1.0 - frac) + src[i1] * frac).astype(np.float32)
 
 
+def apply_bar_height_overrides(
+    heights: np.ndarray,
+    overrides: dict | None,
+) -> np.ndarray:
+    """Multiply sparse per-bar scales onto sampled heights."""
+    src = np.asarray(heights, dtype=np.float32).reshape(-1)
+    if not isinstance(overrides, dict) or not overrides or src.shape[0] <= 0:
+        return src.astype(np.float32, copy=False)
+    out = src.astype(np.float32, copy=True)
+    n = int(out.shape[0])
+    for key, value in overrides.items():
+        try:
+            i = int(key)
+            scale = float(value)
+        except (TypeError, ValueError):
+            continue
+        if i < 0 or i >= n:
+            continue
+        out[i] = float(max(0.0, out[i] * max(0.05, min(4.0, scale))))
+    return out
+
+
 def clamp_spectrum_bar_count(value: float | int | None, default: int = _BINS) -> int:
     try:
         n = int(round(float(value if value is not None else default)))
@@ -170,6 +192,76 @@ def normalize_spectrum_gravity(gravity: str | None) -> str:
     if g in ("top", "bottom", "left", "right", "outward", "inward"):
         return g
     return "top"
+
+
+def normalize_raise_angle_deg(value) -> float | None:
+    """Optional free raise angle (degrees). ``None`` = follow Raise preset."""
+    if value in (None, "", "auto", "none", "null", "follow"):
+        return None
+    try:
+        deg = float(value) % 360.0
+    except (TypeError, ValueError):
+        return None
+    if deg < 0.0:
+        deg += 360.0
+    return float(deg)
+
+
+def raise_angle_direction(raise_angle_deg: float | None) -> tuple[float, float] | None:
+    """Screen-space unit raise vector. 0°=+X (right), 90°=+Y (top / gravity top)."""
+    deg = normalize_raise_angle_deg(raise_angle_deg)
+    if deg is None:
+        return None
+    rad = float(np.deg2rad(deg))
+    return float(np.cos(rad)), float(np.sin(rad))
+
+
+def apply_raise_angle_override(
+    dx: np.ndarray,
+    dy: np.ndarray,
+    raise_angle_deg: float | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Replace per-bar raise directions with a uniform free angle when set."""
+    vec = raise_angle_direction(raise_angle_deg)
+    if vec is None:
+        return dx, dy
+    ux, uy = vec
+    n = int(max(int(np.asarray(dx).shape[0]), int(np.asarray(dy).shape[0]), 1))
+    return (
+        np.full(n, float(ux), dtype=np.float32),
+        np.full(n, float(uy), dtype=np.float32),
+    )
+
+
+def rotate_spectrum_bases(
+    px: np.ndarray,
+    py: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
+    rot_deg: float,
+    *,
+    raise_angle_deg: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Rotate path points by ``rot_deg``. Free raise angle stays absolute on screen."""
+    try:
+        angle = float(rot_deg)
+    except (TypeError, ValueError):
+        angle = 0.0
+    if abs(angle) <= 0.05:
+        if normalize_raise_angle_deg(raise_angle_deg) is not None:
+            dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy
+    rad = float(np.deg2rad(angle))
+    cos_a = float(np.cos(rad))
+    sin_a = float(np.sin(rad))
+    rx = px * cos_a - py * sin_a
+    ry = px * sin_a + py * cos_a
+    if normalize_raise_angle_deg(raise_angle_deg) is not None:
+        dx2, dy2 = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return rx, ry, dx2, dy2
+    rdx = dx * cos_a - dy * sin_a
+    rdy = dx * sin_a + dy * cos_a
+    return rx, ry, rdx, rdy
 
 
 def is_radial_spectrum_gravity(gravity: str | None) -> bool:
@@ -589,11 +681,15 @@ def generate_spectrum_layer_geometry(
     frame_w: int = 1920,
     frame_h: int = 1080,
     linear_span: float = 1.0,
+    raise_angle_deg: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     """Build bar bases for a layer.
 
     Returns:
         ``(px, py, dx, dy, path_length)``
+
+    When ``raise_angle_deg`` is set (0–360), every bar uses that uniform raise
+    direction instead of the Raise preset normals.
     """
     path = resolve_spectrum_path_mode(
         path_mode,
@@ -608,28 +704,51 @@ def generate_spectrum_layer_geometry(
         span = clamp_linear_span(linear_span, 1.0)
         total = float(frame_h * span) if g in ("left", "right") else float(frame_w * span)
         px, py, dx, dy = generate_points_linear(n, total, g)
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
         return px, py, dx, dy, float(total)
     if path == "rect":
         # Radial spikes always wrap the full rectangle perimeter.
         rect_mirrored = bool(mirrored) or g in ("outward", "inward")
         px, py, dx, dy = generate_points_rect(n, hw, hh, rect_mirrored, g)
         total = rect_path_length(hw, hh, rect_mirrored, g)
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
         return px, py, dx, dy, float(total)
     sign = -1.0 if g == "inward" else 1.0
     if path == "triangle":
-        return generate_points_regular_polygon(n, float(radius), 3, rotation=-np.pi / 2.0, outward_sign=sign)
+        px, py, dx, dy, peri = generate_points_regular_polygon(
+            n, float(radius), 3, rotation=-np.pi / 2.0, outward_sign=sign
+        )
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy, peri
     if path == "diamond":
-        return generate_points_regular_polygon(n, float(radius), 4, rotation=np.pi / 4.0, outward_sign=sign)
+        # Point-up diamond (tips on axes). rotation=π/4 would be an axis-aligned square.
+        px, py, dx, dy, peri = generate_points_regular_polygon(
+            n, float(radius), 4, rotation=0.0, outward_sign=sign
+        )
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy, peri
     if path == "hexagon":
-        return generate_points_regular_polygon(n, float(radius), 6, rotation=0.0, outward_sign=sign)
+        px, py, dx, dy, peri = generate_points_regular_polygon(
+            n, float(radius), 6, rotation=0.0, outward_sign=sign
+        )
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy, peri
     if path == "heart":
-        return generate_points_heart(n, float(radius), outward_sign=sign)
+        px, py, dx, dy, peri = generate_points_heart(n, float(radius), outward_sign=sign)
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy, peri
     if path == "infinity":
-        return generate_points_infinity(n, float(radius), outward_sign=sign)
+        px, py, dx, dy, peri = generate_points_infinity(n, float(radius), outward_sign=sign)
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy, peri
     if path == "spiral":
-        return generate_points_spiral(n, float(radius), outward_sign=sign)
+        px, py, dx, dy, peri = generate_points_spiral(n, float(radius), outward_sign=sign)
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy, peri
     if path == "tunnel":
-        return generate_points_tunnel(n, float(radius), outward_sign=sign)
+        px, py, dx, dy, peri = generate_points_tunnel(n, float(radius), outward_sign=sign)
+        dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
+        return px, py, dx, dy, peri
     # Circle path: radial modes look best on a full ring — keep caller's
     # mirrored flag so Circle Raise 180° still works as a semi-arc.
     start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(g)
@@ -643,6 +762,7 @@ def generate_spectrum_layer_geometry(
         gravity=g,
     )
     total = float(radius) * (np.pi * 2.0 if mirrored else np.pi)
+    dx, dy = apply_raise_angle_override(dx, dy, raise_angle_deg)
     return px, py, dx, dy, float(total)
 
 

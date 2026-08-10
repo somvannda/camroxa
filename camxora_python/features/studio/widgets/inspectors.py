@@ -7,6 +7,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDial,
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
@@ -29,10 +30,61 @@ from features.video.widgets.inspector_fields import build_color_field
 from shared.icons.lucide_icons import lucide_pixmap
 from shared.themes.deep_blue import SETTINGS_FORM_ROW_ID, SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import SettingsPanel
+from visualizer.logo_mask import CENTER_IMAGE_MASK_OPTIONS
 from visualizer.presets.background_motion import background_motion_tuning_ui
 
 _LAYER_ICON_COLOR = "#c4b5fd"
 _LAYER_ICON_DANGER = "#fda4af"
+
+_ROT_DIAL_SIZE = 56
+_ROT_DIAL_QSS = f"""
+QDial {{
+    background-color: #0c1230;
+    border: 1px solid #2a3566;
+    border-radius: {_ROT_DIAL_SIZE // 2}px;
+}}
+QDial::handle {{
+    background-color: #a855f7;
+}}
+"""
+
+
+def _compact_dial(parent, *, tooltip: str, on_changed) -> QDial:
+    dial = QDial(parent)
+    dial.setRange(0, 360)
+    dial.setWrapping(True)
+    dial.setNotchesVisible(True)
+    dial.setFixedSize(_ROT_DIAL_SIZE, _ROT_DIAL_SIZE)
+    dial.setToolTip(tooltip)
+    dial.setStyleSheet(_ROT_DIAL_QSS)
+    dial.valueChanged.connect(on_changed)
+    return dial
+
+
+def _center_mask_for_spectrum_shape(shape: str | None) -> str:
+    """Map spectrum shape → center-image mask so the image sits inside the path."""
+    try:
+        from visualizer.presets.shapes import normalize_spectrum_shape_id
+
+        key = normalize_spectrum_shape_id(shape)
+    except Exception:
+        key = None
+    if key in ("triangle", "diamond", "hexagon", "heart", "circle"):
+        return str(key)
+    if key in (
+        "ring",
+        "double_circle",
+        "wave",
+        "audio_ribbon",
+        "starburst",
+        "spiral",
+        "tunnel",
+        "infinity",
+    ):
+        return "circle"
+    if key in ("bars", "soft_eq", "rect"):
+        return "square"
+    return "auto"
 
 
 def _expert_slider(
@@ -440,8 +492,8 @@ class SpectrumInspector(_AxisPanel):
         self._enabled.toggled.connect(lambda checked: self._emit({"spectrumEnabled": checked}))
         self._section.add_widget(self._enabled)
 
-        self._size = _expert_slider("Size", minimum=0.35, maximum=2.5, step=0.05, value=1.0)
-        self._size.setToolTip("Overall spectrum width in the preview")
+        self._size = _expert_slider("Shape size", minimum=0.35, maximum=2.5, step=0.05, value=1.0)
+        self._size.setToolTip("Spectrum path size only — does not change the center image")
         self._size.float_changed.connect(
             lambda v: self._emit({"compositionSpectrumSizeScale": float(v)})
         )
@@ -470,14 +522,32 @@ class SpectrumInspector(_AxisPanel):
         clear_center.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         clear_center.clicked.connect(self._clear_center_image)
         self._center_card.add_widget(asset_row("File", self._center_path, pick_center, clear_center))
-        self._center_circle = QCheckBox("Circle mask")
-        self._center_circle.toggled.connect(
-            lambda checked: self._emit({"compositionLogoCircleMask": bool(checked)})
+        self._center_enabled = QCheckBox("Show center image")
+        self._center_enabled.toggled.connect(
+            lambda checked: self._emit({"logoEnabled": bool(checked)})
         )
-        self._center_card.add_widget(self._center_circle)
+        self._center_card.add_widget(self._center_enabled)
+        self._center_contain = QCheckBox("Stay inside shape")
+        self._center_contain.setToolTip(
+            "On: image locks to the spectrum — drag either and they move together; "
+            "Image size can grow to the yellow path edge. "
+            "Shape rotation spins path + mask only; use Image rotation for the picture."
+        )
+        self._center_contain.setChecked(False)
+        self._center_contain.toggled.connect(self._on_center_contain_toggled)
+        self._center_card.add_widget(self._center_contain)
+        self._center_mask = QComboBox()
+        populate_combo(self._center_mask, CENTER_IMAGE_MASK_OPTIONS, include_none=False)
+        self._center_mask.setToolTip(
+            "Clip the square image to this silhouette. "
+            "Match spectrum follows the Spectrum shape; Square shows the full image."
+        )
+        self._center_mask.currentIndexChanged.connect(self._on_center_mask_changed)
+        self._center_card.add_widget(stacked_field("Mask", self._center_mask))
         self._center_size = _expert_slider(
-            "Size px", minimum=64.0, maximum=512.0, step=8.0, decimals=0, value=192.0
+            "Image size px", minimum=64.0, maximum=512.0, step=8.0, decimals=0, value=192.0
         )
+        self._center_size.setToolTip("Center image size only — does not change the spectrum shape")
         self._center_size.float_changed.connect(
             lambda v: self._emit({"compositionLogoSize": float(v)})
         )
@@ -496,13 +566,15 @@ class SpectrumInspector(_AxisPanel):
         self._center_card.add_widget(self._center_size)
         self._center_card.add_widget(self._center_opacity)
         self._center_card.add_widget(self._center_react)
-        self._center_note = QLabel(
-            "Image sits inside the spectrum (Vizzy-style). "
-            "Use Raise → Outside if bars should grow away from it."
+        self._image_rot_label = QLabel("Image rotation (0°)")
+        self._image_rot_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._center_card.add_widget(self._image_rot_label)
+        self._image_rot_dial = _compact_dial(
+            self,
+            tooltip="Rotate the picture only (0–360°). Does not spin the spectrum path.",
+            on_changed=self._on_image_rotation_dial,
         )
-        self._center_note.setObjectName(SUBTITLE_LABEL_ID)
-        self._center_note.setWordWrap(True)
-        self._center_card.add_widget(self._center_note)
+        self._center_card.add_widget(self._image_rot_dial)
         self.layout().insertWidget(1, self._center_card)
 
         # Layer stack — each selected layer has its own settings below.
@@ -582,9 +654,29 @@ class SpectrumInspector(_AxisPanel):
         self._raise.addItem("Right", "right")
         self._raise.addItem("Outside shape", "outward")
         self._raise.addItem("Inside shape", "inward")
-        self._raise.setToolTip("Where this layer's bars grow")
+        self._raise.setToolTip("Where this layer's bars grow (presets). Cleared when Raise angle dial is used.")
         self._raise.currentIndexChanged.connect(self._on_raise_changed)
         self._raise_row = stacked_field("Raise", self._raise)
+        self._raise_angle_label = QLabel("Raise angle (follow)")
+        self._raise_angle_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._raise_angle_dial = _compact_dial(
+            self,
+            tooltip=(
+                "Point bar growth any direction (0°=right, 90°=up). "
+                "Overrides Raise presets. Change Raise to follow presets again. "
+                "Preview: Shift+drag a bar to aim."
+            ),
+            on_changed=self._on_raise_angle_dial,
+        )
+        self._path_phase = _expert_slider(
+            "Path phase", minimum=0.0, maximum=1.0, step=0.01, value=0.0
+        )
+        self._path_phase.setToolTip(
+            "Slide peaks along the path (0–1). Preview: Alt+drag around the shape."
+        )
+        self._path_phase.float_changed.connect(
+            lambda v: self._layer_patch(frequencyScroll=float(v))
+        )
         self._peak_caps = QCheckBox("Peak caps")
         self._peak_caps.toggled.connect(lambda checked: self._layer_patch(peakCapsEnabled=bool(checked)))
         self._solid_band = QCheckBox("Solid graph")
@@ -607,6 +699,9 @@ class SpectrumInspector(_AxisPanel):
             self._tip_taper,
             self._mirror_row,
             self._raise_row,
+            self._raise_angle_label,
+            self._raise_angle_dial,
+            self._path_phase,
             self._peak_caps,
             self._solid_band,
             self._glow,
@@ -625,6 +720,9 @@ class SpectrumInspector(_AxisPanel):
         self._section.add_widget(self._tip_taper)
         self._section.add_widget(self._mirror_row)
         self._section.add_widget(self._raise_row)
+        self._section.add_widget(self._raise_angle_label)
+        self._section.add_widget(self._raise_angle_dial)
+        self._section.add_widget(self._path_phase)
         self._section.add_widget(self._peak_caps)
         self._section.add_widget(self._solid_band)
         self._section.add_widget(self._glow)
@@ -636,10 +734,15 @@ class SpectrumInspector(_AxisPanel):
         populate_combo(self._shape, opts["shapes"])
         self._shape.currentIndexChanged.connect(self._on_shape_changed)
         self._shape_card.add_widget(stacked_field("Shape", self._shape))
-        self._shape_note = QLabel("Bar / raise / solid settings are per layer above.")
-        self._shape_note.setObjectName(SUBTITLE_LABEL_ID)
-        self._shape_note.setWordWrap(True)
-        self._shape_card.add_widget(self._shape_note)
+        self._shape_rot_label = QLabel("Shape rotation (0°)")
+        self._shape_rot_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._shape_card.add_widget(self._shape_rot_label)
+        self._shape_rot_dial = _compact_dial(
+            self,
+            tooltip="Rotate the spectrum path and crop mask (0–360°). Picture stays put.",
+            on_changed=self._on_shape_rotation_dial,
+        )
+        self._shape_card.add_widget(self._shape_rot_dial)
         self.layout().insertWidget(2, self._shape_card)
 
         # Material card — shared material + palette
@@ -752,9 +855,69 @@ class SpectrumInspector(_AxisPanel):
         self._layers_cache: list[dict] = []
         self._sync_axis_visibility()
 
+    def _on_shape_rotation_dial(self, value: int) -> None:
+        if self._binding:
+            return
+        deg = int(value) % 360
+        self._shape_rot_label.setText(f"Shape rotation ({deg}°)")
+        # Path + mask only — picture orientation stays on Image rotation.
+        self._emit({"compositionSpectrumRotationDeg": float(deg)})
+
+    def _on_image_rotation_dial(self, value: int) -> None:
+        if self._binding:
+            return
+        deg = int(value) % 360
+        self._image_rot_label.setText(f"Image rotation ({deg}°)")
+        self._emit({"compositionLogoRotationDeg": float(deg)})
+
     def _on_shape_changed(self, *_args) -> None:
-        self._emit({"compositionSpectrumShape": self._shape.currentData() or "none"})
+        if self._binding:
+            return
+        shape = str(self._shape.currentData() or "none")
+        mask = _center_mask_for_spectrum_shape(shape)
+        self._emit(
+            {
+                "compositionSpectrumShape": shape,
+                "compositionLogoMaskShape": mask,
+                "compositionLogoFitToShape": True,
+            }
+        )
+        if hasattr(self, "_center_mask"):
+            self._binding = True
+            set_combo_data(self._center_mask, mask, fallback="auto")
+            self._binding = False
         self._sync_axis_visibility()
+
+    def _on_center_mask_changed(self, *_args) -> None:
+        if self._binding:
+            return
+        self._emit({"compositionLogoMaskShape": self._center_mask.currentData() or "auto"})
+
+    def _on_center_contain_toggled(self, checked: bool) -> None:
+        if self._binding:
+            return
+        patch: dict = {"compositionLogoContainInShape": bool(checked)}
+        if checked:
+            # Lock center image to spectrum path (shared drag + size clamp).
+            # Shape rotation still spins path/mask only — Image rotation stays independent.
+            patch["spectrumAttachToLogo"] = True
+            patch["compositionLogoOffsetX"] = 0.0
+            patch["compositionLogoOffsetY"] = 0.0
+            patch["compositionLogoFitToShape"] = True
+            patch["compositionLogoMaskShape"] = "auto"
+            self._binding = True
+            set_combo_data(self._center_mask, "auto", fallback="auto")
+            self._binding = False
+        self._emit(patch)
+        self._sync_rotation_tips()
+
+    def _sync_rotation_tips(self) -> None:
+        self._image_rot_dial.setToolTip(
+            "Rotate the picture only (0–360°). Does not spin the spectrum path."
+        )
+        self._shape_rot_dial.setToolTip(
+            "Rotate the spectrum path and crop mask (0–360°). Picture stays put."
+        )
 
     def _pick_center_image(self) -> None:
         if self._binding:
@@ -766,11 +929,17 @@ class SpectrumInspector(_AxisPanel):
             "Images (*.png *.jpg *.jpeg *.webp *.bmp *.svg)",
         )
         if path:
+            from pathlib import Path as _Path
+
+            resolved = str(_Path(path).expanduser().resolve())
             self._emit(
                 {
-                    "logoPath": path,
+                    "logoPath": resolved,
                     "logoEnabled": True,
                     "spectrumAttachToLogo": True,
+                    "compositionLogoFitToShape": True,
+                    "compositionLogoMaskShape": "auto",
+                    "compositionLogoSize": 280.0,
                 }
             )
 
@@ -894,7 +1063,23 @@ class SpectrumInspector(_AxisPanel):
 
     def _on_raise_changed(self, *_args) -> None:
         data = str(self._raise.currentData() or "auto")
-        self._layer_patch(gravity=None if data == "auto" else data)
+        # Changing Raise preset clears free angle so dropdown drives growth again.
+        self._layer_patch(
+            gravity=None if data == "auto" else data,
+            raiseAngleDeg=None,
+        )
+        if not self._binding:
+            self._raise_angle_dial.blockSignals(True)
+            self._raise_angle_dial.setValue(90)
+            self._raise_angle_dial.blockSignals(False)
+            self._raise_angle_label.setText("Raise angle (follow)")
+
+    def _on_raise_angle_dial(self, value: int) -> None:
+        if self._binding:
+            return
+        deg = int(value) % 360
+        self._raise_angle_label.setText(f"Raise angle ({deg}°)")
+        self._layer_patch(raiseAngleDeg=float(deg))
 
     def _on_layer_audio_bus(self, *_args) -> None:
         self._layer_patch(audioBus=self._layer_audio_bus.currentData() or "none")
@@ -907,7 +1092,6 @@ class SpectrumInspector(_AxisPanel):
             w.setVisible(shape_on)
         self._layer_name.setVisible(shape_on)
         self._layer_audio_bus_row.setVisible(shape_on)
-        self._shape_note.setVisible(shape_on)
         self._palette_row.setVisible(shape_on)
         self._material_note.setVisible(shape_on)
         self._center_card.setVisible(shape_on)
@@ -958,6 +1142,27 @@ class SpectrumInspector(_AxisPanel):
             "auto" if raise_mode in (None, "", "auto") else str(raise_mode),
             fallback="auto",
         )
+        raw_raise_angle = layer.get("raiseAngleDeg")
+        if raw_raise_angle in (None, "", "auto", "none"):
+            self._raise_angle_dial.blockSignals(True)
+            self._raise_angle_dial.setValue(90)
+            self._raise_angle_dial.blockSignals(False)
+            self._raise_angle_label.setText("Raise angle (follow)")
+        else:
+            try:
+                raise_deg = int(round(float(raw_raise_angle))) % 360
+            except (TypeError, ValueError):
+                raise_deg = 90
+            self._raise_angle_dial.blockSignals(True)
+            self._raise_angle_dial.setValue(raise_deg)
+            self._raise_angle_dial.blockSignals(False)
+            self._raise_angle_label.setText(f"Raise angle ({raise_deg}°)")
+        try:
+            from visualizer._spectrum_fast import clamp_frequency_scroll
+
+            self._path_phase.set_float(float(clamp_frequency_scroll(layer.get("frequencyScroll"), 0.0)))
+        except Exception:
+            self._path_phase.set_float(0.0)
         self._peak_caps.setChecked(bool(layer.get("peakCapsEnabled", False)))
         self._solid_band.setChecked(bool(layer.get("solidBand", False)))
         glow_raw = layer.get("glow")
@@ -971,11 +1176,29 @@ class SpectrumInspector(_AxisPanel):
         self._enabled.setChecked(bool(state.get("spectrumEnabled")))
         self._size.set_float(float(state.get("compositionSpectrumSizeScale") or 1.0))
         self._center_path.setText(str(state.get("logoPath") or ""))
-        self._center_circle.setChecked(bool(state.get("compositionLogoCircleMask")))
+        self._center_enabled.setChecked(bool(state.get("logoEnabled", True)) and bool(state.get("logoPath")))
+        self._center_contain.setChecked(bool(state.get("compositionLogoContainInShape", False)))
+        set_combo_data(self._center_mask, str(state.get("compositionLogoMaskShape") or "auto"), fallback="auto")
         self._center_size.set_float(float(state.get("compositionLogoSize") or 192.0))
         self._center_opacity.set_float(float(state.get("compositionLogoOpacity") or 1.0))
         self._center_react.set_float(float(state.get("compositionLogoReactivity") or 0.0))
         set_combo_data(self._shape, str(state.get("compositionSpectrumShape") or "none"))
+        try:
+            rot = int(round(float(state.get("compositionSpectrumRotationDeg") or 0.0))) % 360
+        except (TypeError, ValueError):
+            rot = 0
+        self._shape_rot_dial.blockSignals(True)
+        self._shape_rot_dial.setValue(rot)
+        self._shape_rot_dial.blockSignals(False)
+        self._shape_rot_label.setText(f"Shape rotation ({rot}°)")
+        try:
+            img_rot = int(round(float(state.get("compositionLogoRotationDeg") or 0.0))) % 360
+        except (TypeError, ValueError):
+            img_rot = 0
+        self._image_rot_dial.blockSignals(True)
+        self._image_rot_dial.setValue(img_rot)
+        self._image_rot_dial.blockSignals(False)
+        self._image_rot_label.setText(f"Image rotation ({img_rot}°)")
         set_combo_data(self._material, str(state.get("compositionSpectrumMaterial") or "none"))
         set_combo_data(self._animation, str(state.get("compositionSpectrumAnimation") or "none"))
         speed_raw = state.get("compositionSpectrumAnimationSpeed")
@@ -1006,6 +1229,7 @@ class SpectrumInspector(_AxisPanel):
             self._layer_combo.setCurrentIndex(max(0, min(idx, self._layer_combo.count() - 1)))
         self._bind_selected_layer()
         self._sync_axis_visibility()
+        self._sync_rotation_tips()
         self._binding = False
 
     def set_expert_mode(self, _enabled: bool = True) -> None:

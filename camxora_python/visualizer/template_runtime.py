@@ -27,6 +27,48 @@ def _normalize_layer_path_mode(value: Any) -> str:
     return "auto"
 
 
+def _clamp_frequency_scroll_safe(value: Any) -> float:
+    try:
+        from visualizer._spectrum_fast import clamp_frequency_scroll
+
+        return float(clamp_frequency_scroll(value, 0.0))
+    except Exception:
+        try:
+            return float(value or 0.0) % 1.0
+        except (TypeError, ValueError):
+            return 0.0
+
+
+def _normalize_raise_angle_safe(value: Any) -> float | None:
+    try:
+        from visualizer._spectrum_fast import normalize_raise_angle_deg
+
+        return normalize_raise_angle_deg(value)
+    except Exception:
+        return None
+
+
+def _normalize_bar_overrides_safe(value: Any) -> dict[str, float]:
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, raw in value.items():
+        try:
+            idx = int(key)
+            scale = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if idx < 0 or idx > 512:
+            continue
+        scale = max(0.05, min(4.0, scale))
+        if abs(scale - 1.0) < 1e-3:
+            continue
+        out[str(idx)] = scale
+        if len(out) >= 160:
+            break
+    return out
+
+
 def default_renderer_template() -> dict:
     return {
         "templateName": "New Template",
@@ -63,6 +105,9 @@ def default_renderer_template() -> dict:
                 "peakCapThickness": 3.0,
                 "peakCapDecay": 0.92,
                 "pathMode": "auto",
+                "frequencyScroll": 0.0,
+                "raiseAngleDeg": None,
+                "barHeightOverrides": {},
             }
         ],
         "globalColor": {
@@ -98,7 +143,9 @@ def default_renderer_template() -> dict:
             "size": 200,
             "scale": 1.0,
             "opacity": 1.0,
-            "circleMask": True,
+            "circleMask": False,
+            "fitToShape": True,
+            "maskShape": "auto",
             "reactivity": 0.5,
             "smoothing": 0.75,
             "spinEnabled": False,
@@ -332,7 +379,11 @@ def normalize_renderer_template(input_template: Any) -> dict:
     ls["enabled"] = bool(ls.get("enabled", True))
     if not isinstance(ls.get("size"), (int, float)):
         ls["size"] = 200
-    ls["size"] = float(max(100, min(1000, float(ls.get("size", 200)))))
+    # Allow Studio center-image sizes down to 64px (was hard-min 100).
+    ls["size"] = float(max(64, min(1000, float(ls.get("size", 200)))))
+    ls["circleMask"] = bool(ls.get("circleMask", False))
+    ls["fitToShape"] = bool(ls.get("fitToShape", True))
+    ls["maskShape"] = str(ls.get("maskShape") or "auto")
     ls["reactivity"] = float(max(0.0, min(2.0, float(ls.get("reactivity", 0.5)))))
     ls["smoothing"] = float(max(0.0, min(0.99, float(ls.get("smoothing", 0.75)))))
     ls["spinEnabled"] = bool(ls.get("spinEnabled", False))
@@ -586,6 +637,23 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 ),
                 "pathMode": _normalize_layer_path_mode(
                     layer_in.get("pathMode", fallback_layer.get("pathMode", "auto"))
+                ),
+                "frequencyScroll": float(
+                    _clamp_frequency_scroll_safe(
+                        layer_in.get(
+                            "frequencyScroll",
+                            fallback_layer.get("frequencyScroll", 0.0),
+                        )
+                    )
+                ),
+                "raiseAngleDeg": _normalize_raise_angle_safe(
+                    layer_in.get("raiseAngleDeg", fallback_layer.get("raiseAngleDeg"))
+                ),
+                "barHeightOverrides": _normalize_bar_overrides_safe(
+                    layer_in.get(
+                        "barHeightOverrides",
+                        fallback_layer.get("barHeightOverrides"),
+                    )
                 ),
             }
         )

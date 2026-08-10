@@ -21,7 +21,7 @@ Status legend: **FULL** = control changes preview (and export when applicable); 
 | Right Inspector | Inspector / Developer tabs | 380px rail | Axis settings + Tuning + JSON | Template | FULL |
 | Spectrum shape / material / animation | Dropdown | `spectrum.*` | Unique shape geometry × material scale × live instance sync | Template | FULL |
 | Spectrum Expert (height/glow/opacity/blur/width/thickness) | Expert sliders | `spectrum.*` | Layer uniforms | Template | FULL |
-| Spectrum center image (Vizzy-style) | File + mask/size/opacity/react | `assets.logo` + `logo.*` + `spectrumAttachToLogo` | logoSettings live; authored under Spectrum (no Logo tree node) | Template | FULL |
+| Spectrum center image (Vizzy-style) | File + Mask + Show + size/opacity/react | `assets.logo` + `logo.*` + `maskShape` + `spectrumAttachToLogo` | logoSettings live; clipped by Mask in GPU | Template | FULL |
 | Text + Expert opacity/scale/offset | Checks / fields / Expert sliders | text + studio extras | textOverlays | Template | FULL |
 | Overlay style / animation / amount | Dropdown + Expert slider | overlay + `overlayStyle` | Distinct effect stacks per style | Template | FULL |
 | Particles + Expert spawn/size/opacity/speed/react | Dropdown + Expert sliders | `particles.*` | particlesSettings (type-native colors) | Template | FULL |

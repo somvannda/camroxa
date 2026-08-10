@@ -262,6 +262,14 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
                 comp["spectrum"][dest] = max(lo, min(hi, float(patch.get(key))))
             except (TypeError, ValueError):
                 pass
+    if "compositionSpectrumRotationDeg" in patch:
+        try:
+            rot = float(patch.get("compositionSpectrumRotationDeg") or 0.0) % 360.0
+            if rot < 0.0:
+                rot += 360.0
+            comp["spectrum"]["rotationDeg"] = float(rot)
+        except (TypeError, ValueError):
+            pass
     if "compositionSpectrumAnimationSmoothing" in patch:
         raw_s = patch.get("compositionSpectrumAnimationSmoothing")
         if raw_s in (None, "", "auto", "none"):
@@ -442,6 +450,33 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
             pass
     if "compositionLogoCircleMask" in patch:
         comp["logo"]["circleMask"] = bool(patch.get("compositionLogoCircleMask"))
+    if "compositionLogoFitToShape" in patch:
+        comp["logo"]["fitToShape"] = bool(patch.get("compositionLogoFitToShape"))
+    if "compositionLogoMaskShape" in patch:
+        try:
+            from visualizer.logo_mask import normalize_logo_mask_shape_id
+
+            comp["logo"]["maskShape"] = normalize_logo_mask_shape_id(
+                patch.get("compositionLogoMaskShape")
+            )
+        except Exception:
+            pass
+    if "compositionLogoContainInShape" in patch:
+        contain = bool(patch.get("compositionLogoContainInShape"))
+        comp["logo"]["containInShape"] = contain
+        if contain:
+            # Lock logo to spectrum path: shared center + size clamp.
+            out["spectrumAttachToLogo"] = True
+            comp["logo"]["offsetX"] = 0.0
+            comp["logo"]["offsetY"] = 0.0
+    if "compositionLogoRotationDeg" in patch:
+        try:
+            rot = float(patch.get("compositionLogoRotationDeg") or 0.0) % 360.0
+            if rot < 0.0:
+                rot += 360.0
+            comp["logo"]["rotationDeg"] = float(rot)
+        except (TypeError, ValueError):
+            pass
     for key, dest, lo, hi in (
         ("compositionLogoReactivity", "reactivity", 0.0, 1.0),
         ("compositionLogoOffsetX", "offsetX", -0.5, 0.5),
@@ -721,6 +756,7 @@ def inspector_bind_state(doc: dict[str, Any]) -> dict[str, Any]:
         ),
         "compositionSpectrumOffsetX": float(comp["spectrum"].get("offsetX") or 0.0),
         "compositionSpectrumOffsetY": float(comp["spectrum"].get("offsetY") or 0.0),
+        "compositionSpectrumRotationDeg": float(comp["spectrum"].get("rotationDeg") or 0.0),
         "compositionSpectrumColorPalette": comp["spectrum"].get("colorPalette") or NONE,
         "compositionSpectrumGradientColors": list(comp["spectrum"].get("gradientColors") or []),
         "compositionSpectrumBarCount": int(comp["spectrum"].get("barCount") or 64),
@@ -743,10 +779,14 @@ def inspector_bind_state(doc: dict[str, Any]) -> dict[str, Any]:
         "compositionLogoScale": float(comp["logo"].get("scale") or 1.0),
         "compositionLogoOpacity": float(comp["logo"].get("opacity") or 1.0),
         "compositionLogoCircleMask": bool(comp["logo"].get("circleMask", False)),
+        "compositionLogoFitToShape": bool(comp["logo"].get("fitToShape", True)),
+        "compositionLogoMaskShape": str(comp["logo"].get("maskShape") or "auto"),
+        "compositionLogoContainInShape": bool(comp["logo"].get("containInShape", False)),
         "compositionLogoReactivity": float(comp["logo"].get("reactivity") or 0.0),
         "compositionLogoOffsetX": float(comp["logo"].get("offsetX") or 0.0),
         "compositionLogoOffsetY": float(comp["logo"].get("offsetY") or 0.0),
         "compositionLogoSize": float(comp["logo"].get("size") or 192.0),
+        "compositionLogoRotationDeg": float(comp["logo"].get("rotationDeg") or 0.0),
         "logoEnabled": bool(comp["logo"].get("enabled", True)),
         "logoPath": assets.get("logo") or "",
         "spectrumAttachToLogo": bool(scene.get("spectrumAttachToLogo", False)),

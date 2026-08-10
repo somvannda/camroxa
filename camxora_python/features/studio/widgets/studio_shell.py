@@ -44,6 +44,7 @@ class StudioShell(QWidget):
     spectrum_position_changed = Signal(int, int)
     logo_position_changed = Signal(int, int)
     spectrum_size_delta_requested = Signal(float)
+    spectrum_layer_patch_changed = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -84,6 +85,7 @@ class StudioShell(QWidget):
         self._stage.spectrum_position_changed.connect(self.spectrum_position_changed.emit)
         self._stage.logo_position_changed.connect(self.logo_position_changed.emit)
         self._stage.spectrum_size_delta_requested.connect(self.spectrum_size_delta_requested.emit)
+        self._stage.spectrum_layer_patch_changed.connect(self.spectrum_layer_patch_changed.emit)
         content.addWidget(self._stage, stretch=1)
 
         self._right = StudioRightRail()

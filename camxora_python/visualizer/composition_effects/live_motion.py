@@ -449,7 +449,11 @@ def apply_live_composition_motion(
                 else:
                     item["glow"] = mat_glow * (0.35 + 1.4 * expert_glow) + expert_glow * 3.0
                 item["opacity"] = mat_op * float(motion.get("opacity") or 1.0) * expert_opacity
-                item["rotation"] = float(motion.get("rotation") or 0.0)
+                try:
+                    base_rot = float(spec_comp.get("rotationDeg") or 0.0)
+                except (TypeError, ValueError):
+                    base_rot = 0.0
+                item["rotation"] = float(base_rot) + float(motion.get("rotation") or 0.0)
                 item["animScale"] = float(motion.get("scale") or 1.0)
                 if item.get("tipTaper") is None:
                     item["tipTaper"] = tip_taper
@@ -475,6 +479,38 @@ def apply_live_composition_motion(
                 item["audioSettings"] = dict(audio)
                 synced.append(item)
             template["spectrumInstances"] = synced
+    elif layers_live:
+        # No animation behavior — still apply the static Shape rotation dial.
+        try:
+            base_rot = float(spec_comp.get("rotationDeg") or 0.0) % 360.0
+        except (TypeError, ValueError):
+            base_rot = 0.0
+        if abs(base_rot) > 1e-6:
+
+            def _stamp_rot(source: list) -> list:
+                out_l: list = []
+                for layer in source:
+                    if not isinstance(layer, dict):
+                        out_l.append(layer)
+                        continue
+                    item = dict(layer)
+                    item["rotation"] = float(base_rot)
+                    out_l.append(item)
+                return out_l
+
+            template["layers"] = _stamp_rot(layers_live)
+            instances = template.get("spectrumInstances")
+            if isinstance(instances, list) and instances:
+                synced = []
+                for inst in instances:
+                    if not isinstance(inst, dict):
+                        synced.append(inst)
+                        continue
+                    item = dict(inst)
+                    src_layers = item.get("layers") if isinstance(item.get("layers"), list) else []
+                    item["layers"] = _stamp_rot(src_layers) if src_layers else list(template["layers"])
+                    synced.append(item)
+                template["spectrumInstances"] = synced
 
     # --- Logo animation ---
     logo_comp = comp.get("logo") if isinstance(comp.get("logo"), dict) else {}
@@ -487,6 +523,18 @@ def apply_live_composition_motion(
     )
     ls = template.get("logoSettings") if isinstance(template.get("logoSettings"), dict) else {}
     ls = dict(ls)
+    try:
+        ls["maskRotationDeg"] = float(spec_comp.get("rotationDeg") or 0.0) % 360.0
+    except (TypeError, ValueError):
+        ls["maskRotationDeg"] = 0.0
+    try:
+        ls["rotationDeg"] = float(logo_comp.get("rotationDeg") or 0.0) % 360.0
+    except (TypeError, ValueError):
+        ls["rotationDeg"] = 0.0
+    if bool(logo_comp.get("containInShape", ls.get("containInShape", False))):
+        ls["containInShape"] = True
+        ls["fitToShape"] = True
+    ls["shapeRotationDeg"] = float(ls.get("maskRotationDeg") or 0.0)
     rot = float(logo_motion.get("rotation") or 0.0)
     scale_m = float(logo_motion.get("scale") or 1.0)
     ls["spinEnabled"] = bool(rot != 0.0 or logo_anim == "rotate")
@@ -502,6 +550,18 @@ def apply_live_composition_motion(
     ls["animationId"] = logo_anim
     if "circleMask" in logo_comp:
         ls["circleMask"] = bool(logo_comp.get("circleMask"))
+    if "fitToShape" in logo_comp:
+        ls["fitToShape"] = bool(logo_comp.get("fitToShape"))
+    else:
+        ls.setdefault("fitToShape", True)
+    if "maskShape" in logo_comp:
+        ls["maskShape"] = str(logo_comp.get("maskShape") or "auto")
+    else:
+        ls.setdefault("maskShape", "auto")
+    if "containInShape" in logo_comp:
+        ls["containInShape"] = bool(logo_comp.get("containInShape"))
+    else:
+        ls.setdefault("containInShape", False)
     template["logoSettings"] = ls
 
     # --- Particles react to mapping ---

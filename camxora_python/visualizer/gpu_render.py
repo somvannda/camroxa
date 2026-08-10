@@ -13,6 +13,7 @@ from typing import Any, Callable
 import glfw
 import moderngl
 from ._spectrum_fast import (
+    apply_bar_height_overrides,
     normalize_spectrum_gravity,
     resolve_bar_pixel_width,
     scroll_spectrum_heights,
@@ -292,6 +293,89 @@ def _resolve_attached_layer_base_offset(spectrum_layers: list[dict], sf: float) 
     return float(min(offsets)) if offsets else 0.0
 
 
+def _composition_spectrum_base_radius_px(
+    template: dict | None,
+    *,
+    frame_w: float,
+    frame_h: float,
+    sf: float,
+    logo_visual_radius: float,
+    logo_visible_radius_ratio: float = 1.0,
+    spectrum_logo_gap: float = 0.0,
+    attached_to_logo: bool = False,
+) -> float:
+    """Base spectrum ring radius.
+
+    Composition Studio keeps Shape size (``sizeScale``) independent from center-image
+    Size px. Legacy Video / ``fitRadiusToCenterImage`` still hugs the logo radius.
+    """
+    tpl = template if isinstance(template, dict) else {}
+    comp = tpl.get("composition") if isinstance(tpl.get("composition"), dict) else None
+    spec = comp.get("spectrum") if isinstance(comp, dict) else {}
+    if not isinstance(spec, dict):
+        spec = {}
+    # No composition document → preserve historic Video attach-sizing.
+    fit_logo = True if comp is None else bool(spec.get("fitRadiusToCenterImage", False))
+    if fit_logo and attached_to_logo and float(logo_visual_radius) > 0.0:
+        return float(
+            max(0.0, float(logo_visual_radius) * float(logo_visible_radius_ratio) + float(spectrum_logo_gap))
+        )
+    try:
+        size_scale = float(spec.get("sizeScale") or 1.0)
+    except (TypeError, ValueError):
+        size_scale = 1.0
+    size_scale = float(max(0.35, min(2.5, size_scale)))
+    # ~20% of the short frame edge at sizeScale=1 (independent of logo Size px).
+    base = float(min(float(frame_w), float(frame_h))) * 0.20 * size_scale
+    # sf is already baked into frame dimensions from the caller in preview;
+    # keep gap as an absolute pixel pad outside the ring.
+    del sf  # frame_w/h are already in pixels
+    return float(max(0.0, base + float(spectrum_logo_gap)))
+
+
+def _clamp_logo_size_inside_shape(
+    logo_size_px: float,
+    shape_radius_px: float,
+    *,
+    contain: bool,
+    inset: float = 1.0,
+) -> float:
+    """Clamp center-image size so the logo quad stays inside the spectrum frame.
+
+    ``shape_radius_px`` is center→path. Logo is drawn as a square of side
+    ``logo_size_px``; with contain on, side ≤ 2 * radius * inset.
+    Default inset 1.0 fills to the yellow path edge (no forced gap).
+    """
+    try:
+        size = float(logo_size_px)
+    except (TypeError, ValueError):
+        size = 192.0
+    size = float(max(64.0, min(2000.0, size)))
+    if not contain:
+        return size
+    try:
+        radius = float(shape_radius_px)
+    except (TypeError, ValueError):
+        return size
+    if radius <= 1.0:
+        return size
+    max_size = float(max(64.0, radius * 2.0 * float(max(0.5, min(1.0, inset)))))
+    return float(min(size, max_size))
+
+
+def _logo_contain_in_shape_enabled(template: dict | None) -> bool:
+    tpl = template if isinstance(template, dict) else {}
+    ls = tpl.get("logoSettings") if isinstance(tpl.get("logoSettings"), dict) else {}
+    if "containInShape" in ls:
+        return bool(ls.get("containInShape"))
+    comp = tpl.get("composition") if isinstance(tpl.get("composition"), dict) else {}
+    logo = comp.get("logo") if isinstance(comp.get("logo"), dict) else {}
+    if "containInShape" in logo:
+        return bool(logo.get("containInShape"))
+    # Default off: Image size may exceed the frame; mask still crops to the shape.
+    return False
+
+
 def _resolve_spectrum_layer_radius(
     *,
     attached_to_logo: bool,
@@ -301,16 +385,16 @@ def _resolve_spectrum_layer_radius(
     bar_width: float = 0.0,
     radius_offset: float,
 ) -> float:
-    """Ring radius from logo + Layer Gap only.
+    """Ring radius from shape base + Layer Gap.
 
-    ``bar_width`` is accepted for call-site compatibility but must not expand
-    the circle — Bar Width controls individual bar thickness, not ring size.
+    ``attached_base_radius`` is the shape ring (sizeScale or legacy logo-hug).
+    ``logo_visual_radius`` / ``bar_width`` remain for call-site compatibility.
     """
-    del bar_width  # intentionally unused (legacy callers still pass it)
+    del bar_width, logo_visual_radius  # intentionally unused
     if attached_to_logo:
         normalized_offset = max(0.0, max(0.0, radius_offset) - attached_layer_base_offset)
         return float(max(0.0, attached_base_radius + normalized_offset))
-    return float(max(0.0, logo_visual_radius + radius_offset))
+    return float(max(0.0, attached_base_radius + radius_offset))
 
 
 def _init_glfw_hidden(width: int, height: int, *, samples: int = 4) -> None:
@@ -487,8 +571,14 @@ def _compile(ctx: moderngl.Context):
     // 0=none 1=circle 2=triangle 3=diamond 4=hexagon 5=heart
     uniform int logo_mask_mode;
     uniform vec2 logo_px;
+    // Content size (Image size). May be larger than the shape frame → zoom inside crop.
     uniform vec2 logo_size_px;
+    // Crop aperture = spectrum shape frame. (0,0) falls back to logo_size_px.
+    uniform vec2 logo_frame_size_px;
+    // Image content rotation (radians). Independent of the shape / mask.
     uniform float logo_rot_rad;
+    // Mask / shape crop rotation (radians). Follows Spectrum Shape rotation.
+    uniform float logo_mask_rot_rad;
     uniform vec2 out_size;
     in vec2 v_uv;
     out vec4 frag;
@@ -497,22 +587,52 @@ def _compile(ctx: moderngl.Context):
         return length(p) - r;
     }
 
-    // Regular n-gon SDF (Inigo Quilez), p centered, pointy-top when rotated.
-    float sdRegularPoly(vec2 p, float n, float r) {
-        float an = 3.14159265359 / n;
-        float en = 3.14159265359 / n;
-        vec2 acs = vec2(cos(an), sin(an));
-        vec2 ecs = vec2(cos(en), sin(en));
-        float bn = mod(atan(p.x, p.y) + 3.14159265359, 2.0 * an) - an;
-        p = length(p) * vec2(cos(bn), abs(sin(bn)));
-        p -= r * acs;
-        p += ecs * clamp(-dot(p, ecs), 0.0, r * acs.y / ecs.y);
-        return length(p) * sign(p.x);
+    // Point-up equilateral triangle matching spectrum pathMode "triangle"
+    // (generate_points_regular_polygon sides=3, rotation=-PI/2).
+    // Frame is 2R×2R; tips sit at circumradius R → |dc| = 0.5.
+    // Pixel Y grows down, so tip at (0,-0.5) is screen-up — same as path py=-R.
+    float sdTriangleSpectrum(vec2 p) {
+        const vec2 p0 = vec2(0.0, -0.5);
+        const vec2 p1 = vec2(0.43301270189, 0.25);
+        const vec2 p2 = vec2(-0.43301270189, 0.25);
+        vec2 e0 = p1 - p0;
+        vec2 e1 = p2 - p1;
+        vec2 e2 = p0 - p2;
+        vec2 v0 = p - p0;
+        vec2 v1 = p - p1;
+        vec2 v2 = p - p2;
+        vec2 pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+        vec2 pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+        vec2 pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+        float s = sign(e0.x * e2.y - e0.y * e2.x);
+        vec2 d = min(
+            min(
+                vec2(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),
+                vec2(dot(pq1, pq1), s * (v1.x * e1.y - v1.y * e1.x))
+            ),
+            vec2(dot(pq2, pq2), s * (v2.x * e2.y - v2.y * e2.x))
+        );
+        return -sqrt(d.x) * sign(d.y);
+    }
+
+    float sdDiamond(vec2 p) {
+        // L1 diamond with tips on the axes — matches spectrum pathMode "diamond".
+        // 0.5 fills the frame AABB (tips reach mid-edges = circumradius).
+        vec2 q = abs(p);
+        return (q.x + q.y) - 0.5;
+    }
+
+    float sdHexagon(vec2 p) {
+        // Flat-top hex matching spectrum pathMode "hexagon" (rotation=0), circumradius 0.5.
+        const vec3 k = vec3(-0.866025404, 0.5, 0.577350269);
+        vec2 q = abs(p);
+        q = q - 2.0 * min(dot(k.xy, q), 0.0) * k.xy;
+        q = q - vec2(clamp(q.x, -k.z * 0.5, k.z * 0.5), 0.5);
+        return length(q) * sign(q.y);
     }
 
     float sdHeart(vec2 p) {
         p.x = abs(p.x);
-        // Fit classic heart into the logo quad.
         p = p * vec2(1.25, 1.15) + vec2(0.0, 0.12);
         if (p.y + p.x > 1.0) {
             return sqrt(dot(p - vec2(0.25, 0.75), p - vec2(0.25, 0.75))) - sqrt(2.0) / 4.0;
@@ -524,7 +644,6 @@ def _compile(ctx: moderngl.Context):
     }
 
     float shapeMaskAlpha(vec2 dc) {
-        // dc in roughly [-0.5, 0.5] after rotation
         int mode = logo_mask_mode;
         if (mode <= 0) {
             return 1.0;
@@ -532,25 +651,17 @@ def _compile(ctx: moderngl.Context):
         float edge = 0.012;
         float d;
         if (mode == 1) {
-            d = sdCircle(dc, 0.49);
+            d = sdCircle(dc, 0.5);
         } else if (mode == 2) {
-            // Point-up triangle
-            float ca = cos(-1.5707963);
-            float sa = sin(-1.5707963);
-            vec2 q = vec2(dc.x * ca - dc.y * sa, dc.x * sa + dc.y * ca);
-            d = sdRegularPoly(q, 3.0, 0.48);
+            d = sdTriangleSpectrum(dc);
         } else if (mode == 3) {
-            // Diamond = square rotated 45°
-            float ca = cos(0.78539816);
-            float sa = sin(0.78539816);
-            vec2 q = vec2(dc.x * ca - dc.y * sa, dc.x * sa + dc.y * ca);
-            d = sdRegularPoly(q, 4.0, 0.48);
+            d = sdDiamond(dc);
         } else if (mode == 4) {
-            d = sdRegularPoly(dc, 6.0, 0.48);
+            d = sdHexagon(dc);
         } else if (mode == 5) {
             d = sdHeart(dc * 2.0);
         } else {
-            d = sdCircle(dc, 0.49);
+            d = sdCircle(dc, 0.5);
         }
         return 1.0 - smoothstep(-edge, edge, d);
     }
@@ -558,20 +669,36 @@ def _compile(ctx: moderngl.Context):
     void main() {
         vec2 px = v_uv * out_size;
         vec2 center = out_size * 0.5 + logo_px;
-        vec2 p0 = center - logo_size_px * 0.5;
-        vec2 p1 = center + logo_size_px * 0.5;
+        // Fixed crop window (shape frame). Independent of Image size.
+        vec2 frame = logo_frame_size_px;
+        if (frame.x < 1.0 || frame.y < 1.0) {
+            frame = logo_size_px;
+        }
+        vec2 bounds = max(frame, logo_size_px);
+        vec2 p0 = center - bounds * 0.5;
+        vec2 p1 = center + bounds * 0.5;
         if (px.x < p0.x || px.y < p0.y || px.x > p1.x || px.y > p1.y) {
             frag = vec4(0.0);
             return;
         }
-        vec2 luv = (px - p0) / (p1 - p0);
-        vec2 dc0 = luv - vec2(0.5, 0.5);
+        vec2 from_c = px - center;
         float c = cos(logo_rot_rad);
         float s = sin(logo_rot_rad);
-        vec2 ruv = vec2(dc0.x * c - dc0.y * s, dc0.x * s + dc0.y * c) + vec2(0.5, 0.5);
+        // Texture samples use Image rotation only.
+        vec2 local_tex = vec2(from_c.x * c - from_c.y * s, from_c.x * s + from_c.y * c);
+        vec2 luv = local_tex / max(logo_size_px, vec2(1e-5)) + vec2(0.5, 0.5);
+        if (luv.x < 0.0 || luv.y < 0.0 || luv.x > 1.0 || luv.y > 1.0) {
+            frag = vec4(0.0);
+            return;
+        }
+        vec2 ruv = clamp(luv, vec2(0.0), vec2(1.0));
         vec4 lg = texture(tex_logo, ruv);
-        vec2 dc = ruv - vec2(0.5, 0.5);
-        float mask = shapeMaskAlpha(dc);
+        // Mask follows Spectrum Shape rotation (crop window), not Image rotation.
+        float cm = cos(logo_mask_rot_rad);
+        float sm = sin(logo_mask_rot_rad);
+        vec2 local_mask = vec2(from_c.x * cm - from_c.y * sm, from_c.x * sm + from_c.y * cm);
+        vec2 dc_frame = local_mask / max(frame, vec2(1e-5));
+        float mask = shapeMaskAlpha(dc_frame);
         float a = lg.a * mask * logo_opacity;
         frag = vec4(lg.rgb, a);
     }
@@ -2950,13 +3077,17 @@ def run_gpu_render(
     logo_circle_mask = bool(logo_raw.get("circleMask", True))
     logo_fit_to_shape = bool(logo_raw.get("fitToShape", True))
     from visualizer.logo_mask import (
+        apply_logo_frame_size_uniform,
         apply_logo_mask_uniform,
+        apply_logo_rotation_uniforms,
+        logo_frame_size_for_mask,
         resolve_logo_mask_mode,
         spectrum_shape_from_template,
     )
 
     logo_mask_mode = resolve_logo_mask_mode(
         spectrum_shape_from_template(template),
+        mask_shape=logo_raw.get("maskShape"),
         fit_to_shape=logo_fit_to_shape,
         circle_mask=logo_circle_mask,
     )
@@ -2972,8 +3103,25 @@ def run_gpu_render(
     preview_bindings = template.get("previewBindings", {}) if isinstance(template.get("previewBindings"), dict) else {}
     spectrum_attach_to_logo = bool(preview_bindings.get("spectrumAttachToLogo", True))
     spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
+    # Cap authored size so the square fits inside the spectrum frame when locked.
+    shape_frame_radius_px = _composition_spectrum_base_radius_px(
+        template,
+        frame_w=float(w),
+        frame_h=float(h),
+        sf=float(sf),
+        logo_visual_radius=0.0,
+        spectrum_logo_gap=0.0,
+        attached_to_logo=False,
+    )
+    logo_contain = _logo_contain_in_shape_enabled(template)
+    logo_size_base = _clamp_logo_size_inside_shape(
+        logo_size_base,
+        float(shape_frame_radius_px) / max(float(sf), 1e-6),
+        contain=logo_contain,
+    )
+    # Shape masks approximate as circle for attach-radius (inscribed hollow).
     logo_visible_radius_ratio = (
-        _compute_visible_logo_radius_ratio(logo_rgba, logo_circle_mask)
+        _compute_visible_logo_radius_ratio(logo_rgba, logo_mask_mode != 0)
         if spectrum_attach_to_logo and logo_rgba is not None
         else 1.0
     )
@@ -2985,14 +3133,6 @@ def run_gpu_render(
     logo_spin_dir_s = 1.0 if logo_spin_dir == "cw" else -1.0
     logo_spin_speed_deg = float(logo_raw.get("spinSpeed", 0.0) or 0.0)
     logo_spin_speed_deg = float(max(0.0, min(720.0, logo_spin_speed_deg)))
-    preview_bindings = template.get("previewBindings", {}) if isinstance(template.get("previewBindings"), dict) else {}
-    spectrum_attach_to_logo = bool(preview_bindings.get("spectrumAttachToLogo", True))
-    spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
-    logo_visible_radius_ratio = (
-        _compute_visible_logo_radius_ratio(logo_rgba, logo_circle_mask)
-        if spectrum_attach_to_logo and logo_rgba is not None
-        else 1.0
-    )
 
     out_dir = Path(opts.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -3172,8 +3312,17 @@ def run_gpu_render(
             prog_logo["logo_size_px"].value = base_logo_size_px
             prog_logo["logo_opacity"].value = float(logo_opacity)
             apply_logo_mask_uniform(prog_logo, logo_mask_mode)
+            apply_logo_frame_size_uniform(
+                prog_logo,
+                logo_frame_size_for_mask(
+                    mask_mode=logo_mask_mode,
+                    shape_radius_px=float(shape_frame_radius_px),
+                ),
+            )
             if "logo_rot_rad" in prog_logo:
                 prog_logo["logo_rot_rad"].value = 0.0
+            if "logo_mask_rot_rad" in prog_logo:
+                prog_logo["logo_mask_rot_rad"].value = 0.0
 
         prog_post["tex_in"].value = 0
         prog_post["out_size"].value = (float(w), float(h))
@@ -3222,7 +3371,7 @@ def run_gpu_render(
         clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
         build_solid_graph_strip_vertices,
         normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
-        scroll_spectrum_heights,
+        scroll_spectrum_heights, rotate_spectrum_bases, apply_bar_height_overrides,
     )
     from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
@@ -3235,7 +3384,7 @@ def run_gpu_render(
     _tpl_off_y = float(_tpl_position.get("y", 0.0)) * sf
     _tpl_spectrum_enabled = bool(template.get("spectrumEnabled", True))
     _tpl_spectrum_jobs = _spectrum_draw_jobs(template) if _tpl_spectrum_enabled else []
-    _tpl_logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)
+    _tpl_logo_shape = normalize_logo_shape(circle_mask=logo_mask_mode != 0)
     from features.video.lib.spectrum_instance_registry import instance_position_dict
     last_analysis_idx = -1
 
@@ -3252,8 +3401,15 @@ def run_gpu_render(
             job_attach_pre = bool(job_pre.get("spectrumAttachToLogo", True))
             job_gap_pre = float(max(0.0, float(job_pre.get("spectrumLogoGap", 0.0) or 0.0))) * sf
             attached_to_logo_pre = bool(job_attach_pre and logo_rgba is not None)
-            attached_base_radius_pre = float(
-                max(0.0, (logo_base_radius * logo_scale_base * logo_visible_radius_ratio) + job_gap_pre)
+            attached_base_radius_pre = _composition_spectrum_base_radius_px(
+                template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=float(logo_visual_radius_pre),
+                logo_visible_radius_ratio=float(logo_visible_radius_ratio),
+                spectrum_logo_gap=float(job_gap_pre),
+                attached_to_logo=bool(attached_to_logo_pre),
             )
             attached_layer_base_offset_pre = _resolve_attached_layer_base_offset(job_layers_pre, sf)
             for layer_idx, sl_pre in enumerate(job_layers_pre):
@@ -3313,6 +3469,7 @@ def run_gpu_render(
                     frame_w=w,
                     frame_h=h,
                     linear_span=float(sl_pre.get("linearSpan", 1.0) or 1.0),
+                    raise_angle_deg=sl_pre.get("raiseAngleDeg"),
                 )
                 pass_specs_pre: list[dict] = []
                 if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
@@ -3444,12 +3601,42 @@ def run_gpu_render(
             s_logo = logo_scale_base * (1.0 + logo_audio_env * logo_react_bass)
             s_logo = max(0.05, min(4.0, s_logo))
             final_logo_size = base_radius * 2.0 * s_logo
+            final_logo_size = _clamp_logo_size_inside_shape(
+                final_logo_size,
+                float(shape_frame_radius_px),
+                contain=logo_contain,
+            )
             prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
+            apply_logo_frame_size_uniform(
+                prog_logo,
+                logo_frame_size_for_mask(
+                    mask_mode=logo_mask_mode,
+                    shape_radius_px=float(shape_frame_radius_px),
+                ),
+            )
             if "logo_rot_rad" in prog_logo:
-                angle = 0.0
+                spin_rad = 0.0
                 if logo_spin_enabled and logo_spin_speed_deg > 0.0:
-                    angle = float(logo_spin_dir_s) * float(logo_spin_speed_deg) * 0.017453292519943295 * time_sec
-                prog_logo["logo_rot_rad"].value = float(angle)
+                    spin_rad = float(logo_spin_dir_s) * float(logo_spin_speed_deg) * 0.017453292519943295 * time_sec
+                try:
+                    content_deg = float(logo_raw.get("rotationDeg") or 0.0)
+                except (TypeError, ValueError):
+                    content_deg = 0.0
+                try:
+                    mask_deg = float(
+                        logo_raw.get("maskRotationDeg")
+                        if logo_raw.get("maskRotationDeg") is not None
+                        else logo_raw.get("shapeRotationDeg")
+                        or 0.0
+                    )
+                except (TypeError, ValueError):
+                    mask_deg = 0.0
+                apply_logo_rotation_uniforms(
+                    prog_logo,
+                    content_deg=content_deg,
+                    mask_deg=mask_deg,
+                    spin_rad=spin_rad,
+                )
             
             logo_anchor_pos = template.get("position") if isinstance(template.get("position"), dict) else {}
             _spec_c, l_pos = _resolve_spectrum_logo_centers(
@@ -3656,8 +3843,15 @@ def run_gpu_render(
             job_gap = float(max(0.0, float(spectrum_job.get("spectrumLogoGap", 0.0) or 0.0))) * sf
             job_pos = instance_position_dict(spectrum_job)
             attached_to_logo = bool(job_attach and logo_rgba is not None)
-            attached_base_radius = float(
-                max(0.0, (logo_base_radius * logo_scale_base * logo_visible_radius_ratio) + job_gap)
+            attached_base_radius = _composition_spectrum_base_radius_px(
+                template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=float(logo_base_radius * logo_scale_base),
+                logo_visible_radius_ratio=float(logo_visible_radius_ratio),
+                spectrum_logo_gap=float(job_gap),
+                attached_to_logo=bool(attached_to_logo),
             )
             attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
             c_pos, _logo_unused = _resolve_spectrum_logo_centers(
@@ -3731,6 +3925,9 @@ def run_gpu_render(
                 render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
 
                 sampled_fft = resample_fft_bins(render_fft, bar_count)
+                sampled_fft = apply_bar_height_overrides(
+                    sampled_fft, sl.get("barHeightOverrides")
+                )
 
                 # 3) Generate Points (vectorized)
                 n = int(sampled_fft.shape[0])
@@ -3748,6 +3945,19 @@ def run_gpu_render(
                     frame_w=w,
                     frame_h=h,
                     linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
+                    raise_angle_deg=sl.get("raiseAngleDeg"),
+                )
+                try:
+                    rot_deg = float(sl.get("rotation") or 0.0)
+                except (TypeError, ValueError):
+                    rot_deg = 0.0
+                px_arr, py_arr, dx_arr, dy_arr = rotate_spectrum_bases(
+                    px_arr,
+                    py_arr,
+                    dx_arr,
+                    dy_arr,
+                    rot_deg,
+                    raise_angle_deg=sl.get("raiseAngleDeg"),
                 )
                 reflection_enabled = bool(sl.get("reflectionEnabled", False))
                 try:
@@ -4618,6 +4828,22 @@ def render_preview_png(
     logo_raw = template.get("logoSettings", {}) if isinstance(template.get("logoSettings"), dict) else {}
     logo_enabled = bool(logo_raw.get("enabled", True))
     logo_circle_mask = bool(logo_raw.get("circleMask", True))
+    logo_fit_to_shape = bool(logo_raw.get("fitToShape", True))
+    from visualizer.logo_mask import (
+        apply_logo_frame_size_uniform,
+        apply_logo_mask_uniform,
+        apply_logo_rotation_uniforms,
+        logo_frame_size_for_mask,
+        resolve_logo_mask_mode,
+        spectrum_shape_from_template,
+    )
+
+    logo_mask_mode = resolve_logo_mask_mode(
+        spectrum_shape_from_template(template),
+        mask_shape=logo_raw.get("maskShape"),
+        fit_to_shape=logo_fit_to_shape,
+        circle_mask=logo_circle_mask,
+    )
     logo_opacity = float(logo_raw.get("opacity", 1.0))
     logo_opacity = float(max(0.0, min(1.0, logo_opacity)))
     logo_scale_base = float(logo_raw.get("scale", 1.0))
@@ -4629,7 +4855,7 @@ def render_preview_png(
     spectrum_attach_to_logo = bool(preview_bindings.get("spectrumAttachToLogo", True))
     spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
     logo_visible_radius_ratio = (
-        _compute_visible_logo_radius_ratio(logo_rgba, logo_circle_mask)
+        _compute_visible_logo_radius_ratio(logo_rgba, logo_mask_mode != 0)
         if spectrum_attach_to_logo and logo_rgba is not None
         else 1.0
     )
@@ -4663,7 +4889,20 @@ def render_preview_png(
             base_logo_size_px = (float(logo_size_px[0]), float(logo_size_px[1]))
             prog_logo["logo_size_px"].value = base_logo_size_px
             prog_logo["logo_opacity"].value = float(logo_opacity)
-            prog_logo["logo_circle_mask"].value = 1 if logo_circle_mask else 0
+            apply_logo_mask_uniform(prog_logo, logo_mask_mode)
+            _shape_r0 = _composition_spectrum_base_radius_px(
+                template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=0.0,
+                spectrum_logo_gap=0.0,
+                attached_to_logo=False,
+            )
+            apply_logo_frame_size_uniform(
+                prog_logo,
+                logo_frame_size_for_mask(mask_mode=logo_mask_mode, shape_radius_px=float(_shape_r0)),
+            )
             if "logo_rot_rad" in prog_logo:
                 prog_logo["logo_rot_rad"].value = 0.0
 
@@ -4717,7 +4956,25 @@ def render_preview_png(
             s_logo = float(logo_scale_base) * (1.0 + bass * float(logo_react_bass))
             s_logo = float(max(0.05, min(4.0, s_logo)))
             final_logo_size = base_radius * 2.0 * s_logo
+            shape_r = _composition_spectrum_base_radius_px(
+                template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=0.0,
+                spectrum_logo_gap=0.0,
+                attached_to_logo=False,
+            )
+            final_logo_size = _clamp_logo_size_inside_shape(
+                final_logo_size,
+                float(shape_r),
+                contain=_logo_contain_in_shape_enabled(template),
+            )
             prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
+            apply_logo_frame_size_uniform(
+                prog_logo,
+                logo_frame_size_for_mask(mask_mode=logo_mask_mode, shape_radius_px=float(shape_r)),
+            )
             
             _spec_c, l_pos = _resolve_spectrum_logo_centers(
                 w=w,
@@ -4775,7 +5032,25 @@ def render_preview_png(
             s_logo = float(logo_scale_base) * (1.0 + logo_audio_env * float(logo_react_bass))
             s_logo = float(max(0.05, min(4.0, s_logo)))
             final_logo_size = base_radius * 2.0 * s_logo
+            shape_r = _composition_spectrum_base_radius_px(
+                template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=0.0,
+                spectrum_logo_gap=0.0,
+                attached_to_logo=False,
+            )
+            final_logo_size = _clamp_logo_size_inside_shape(
+                final_logo_size,
+                float(shape_r),
+                contain=_logo_contain_in_shape_enabled(template),
+            )
             prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
+            apply_logo_frame_size_uniform(
+                prog_logo,
+                logo_frame_size_for_mask(mask_mode=logo_mask_mode, shape_radius_px=float(shape_r)),
+            )
         ps_smoothing = float(max(0.0, min(0.99, particles_cfg_raw.get("smoothing", 0.65))))
         onset = float(feats.get("onset", 0.0) or 0.0)
         beat = float(feats.get("beat", 0.0) or 0.0)
@@ -4923,8 +5198,15 @@ def render_preview_png(
         raw_layers = spectrum_container.get("layers", [])
         spectrum_layers: list[dict] = [x for x in raw_layers if isinstance(x, dict)]
         attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
-        attached_base_radius = float(
-            max(0.0, ((float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base) * logo_visible_radius_ratio) + spectrum_logo_gap)
+        attached_base_radius = _composition_spectrum_base_radius_px(
+            template,
+            frame_w=float(w),
+            frame_h=float(h),
+            sf=float(sf),
+            logo_visual_radius=float((float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base)),
+            logo_visible_radius_ratio=float(logo_visible_radius_ratio),
+            spectrum_logo_gap=float(spectrum_logo_gap),
+            attached_to_logo=bool(attached_to_logo),
         )
         attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
 
@@ -5068,8 +5350,11 @@ def render_preview_png(
             
             # 3) Generate Points
             n = BINS
-            _legacy_logo_shape = "square" if not bool(logo_circle_mask) else "circle"
-            from ._spectrum_fast import generate_spectrum_layer_geometry as _gen_spec_geom
+            _legacy_logo_shape = "square" if logo_mask_mode == 0 else "circle"
+            from ._spectrum_fast import (
+                generate_spectrum_layer_geometry as _gen_spec_geom,
+                rotate_spectrum_bases as _rotate_spec_bases,
+            )
             px_arr, py_arr, dx_arr, dy_arr, total_length = _gen_spec_geom(
                 n,
                 curved=curved,
@@ -5083,8 +5368,22 @@ def render_preview_png(
                 logo_shape=_legacy_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                raise_angle_deg=sl.get("raiseAngleDeg"),
+            )
+            try:
+                rot_deg = float(sl.get("rotation") or 0.0)
+            except (TypeError, ValueError):
+                rot_deg = 0.0
+            px_arr, py_arr, dx_arr, dy_arr = _rotate_spec_bases(
+                px_arr,
+                py_arr,
+                dx_arr,
+                dy_arr,
+                rot_deg,
+                raise_angle_deg=sl.get("raiseAngleDeg"),
             )
             val_arr = (render_fft[:n] * thickness).astype(np.float32)
+            val_arr = apply_bar_height_overrides(val_arr, sl.get("barHeightOverrides"))
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))
 
@@ -5904,6 +6203,21 @@ def run_live_preview(opts: GpuOptions) -> int:
         logo_raw = template.get("logoSettings", {}) if isinstance(template.get("logoSettings"), dict) else {}
         logo_enabled = bool(logo_raw.get("enabled", True))
         logo_circle_mask = bool(logo_raw.get("circleMask", True))
+        logo_fit_to_shape = bool(logo_raw.get("fitToShape", True))
+        from visualizer.logo_mask import (
+            apply_logo_frame_size_uniform,
+            apply_logo_mask_uniform,
+            logo_frame_size_for_mask,
+            resolve_logo_mask_mode,
+            spectrum_shape_from_template,
+        )
+
+        logo_mask_mode = resolve_logo_mask_mode(
+            spectrum_shape_from_template(template),
+            mask_shape=logo_raw.get("maskShape"),
+            fit_to_shape=logo_fit_to_shape,
+            circle_mask=logo_circle_mask,
+        )
         logo_opacity = float(logo_raw.get("opacity", 1.0))
         logo_opacity = float(max(0.0, min(1.0, logo_opacity)))
         logo_scale_base = float(logo_raw.get("scale", 1.0))
@@ -5915,7 +6229,7 @@ def run_live_preview(opts: GpuOptions) -> int:
         spectrum_attach_to_logo = bool(preview_bindings.get("spectrumAttachToLogo", True))
         spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
         logo_visible_radius_ratio = (
-            _compute_visible_logo_radius_ratio(logo_rgba, logo_circle_mask)
+            _compute_visible_logo_radius_ratio(logo_rgba, logo_mask_mode != 0)
             if spectrum_attach_to_logo and logo_rgba is not None
             else 1.0
         )
@@ -6045,7 +6359,22 @@ def run_live_preview(opts: GpuOptions) -> int:
             base_logo_size_px = (float(logo_size_px[0]), float(logo_size_px[1]))
             prog_logo["logo_size_px"].value = base_logo_size_px
             prog_logo["logo_opacity"].value = float(logo_opacity)
-            prog_logo["logo_circle_mask"].value = 1 if logo_circle_mask else 0
+            apply_logo_mask_uniform(prog_logo, logo_mask_mode)
+            _shape_r_live = _composition_spectrum_base_radius_px(
+                template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=0.0,
+                spectrum_logo_gap=0.0,
+                attached_to_logo=False,
+            )
+            apply_logo_frame_size_uniform(
+                prog_logo,
+                logo_frame_size_for_mask(
+                    mask_mode=logo_mask_mode, shape_radius_px=float(_shape_r_live)
+                ),
+            )
 
         prog_post["tex_in"].value = 0
         prog_post["out_size"].value = (float(w), float(h))
@@ -6115,8 +6444,15 @@ def run_live_preview(opts: GpuOptions) -> int:
         cx = c_pos[0] + float(shake_out.x)
         cy = c_pos[1] + float(shake_out.y)
         attached_to_logo = bool(spectrum_attach_to_logo and logo_rgba is not None)
-        attached_base_radius = float(
-            max(0.0, ((float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base) * logo_visible_radius_ratio) + spectrum_logo_gap)
+        attached_base_radius = _composition_spectrum_base_radius_px(
+            template,
+            frame_w=float(w),
+            frame_h=float(h),
+            sf=float(sf),
+            logo_visual_radius=float((float(logo_raw.get("size", 192.0)) * 0.5) * sf * float(logo_scale_base)),
+            logo_visible_radius_ratio=float(logo_visible_radius_ratio),
+            spectrum_logo_gap=float(spectrum_logo_gap),
+            attached_to_logo=bool(attached_to_logo),
         )
         attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
 
@@ -6200,8 +6536,11 @@ def run_live_preview(opts: GpuOptions) -> int:
             render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
 
             n = BINS
-            _legacy_logo_shape = "square" if not bool(logo_circle_mask) else "circle"
-            from ._spectrum_fast import generate_spectrum_layer_geometry as _gen_spec_geom
+            _legacy_logo_shape = "square" if logo_mask_mode == 0 else "circle"
+            from ._spectrum_fast import (
+                generate_spectrum_layer_geometry as _gen_spec_geom,
+                rotate_spectrum_bases as _rotate_spec_bases,
+            )
             px_arr, py_arr, dx_arr, dy_arr, total_length = _gen_spec_geom(
                 n,
                 curved=curved,
@@ -6215,8 +6554,22 @@ def run_live_preview(opts: GpuOptions) -> int:
                 logo_shape=_legacy_logo_shape,
                 frame_w=w,
                 frame_h=h,
+                raise_angle_deg=sl.get("raiseAngleDeg"),
+            )
+            try:
+                rot_deg = float(sl.get("rotation") or 0.0)
+            except (TypeError, ValueError):
+                rot_deg = 0.0
+            px_arr, py_arr, dx_arr, dy_arr = _rotate_spec_bases(
+                px_arr,
+                py_arr,
+                dx_arr,
+                dy_arr,
+                rot_deg,
+                raise_angle_deg=sl.get("raiseAngleDeg"),
             )
             val_arr = (render_fft[:n] * thickness).astype(np.float32)
+            val_arr = apply_bar_height_overrides(val_arr, sl.get("barHeightOverrides"))
 
             cols = _build_spectrum_vertex_colors(color_cfg, spec_col, n, float(spec_col[3]))
 
@@ -6497,7 +6850,27 @@ def run_live_preview(opts: GpuOptions) -> int:
                 s_logo = float(logo_scale_base) * (1.0 + logo_audio_env * float(logo_react_bass))
                 s_logo = float(max(0.05, min(4.0, s_logo)))
                 final_logo_size = base_radius * 2.0 * s_logo
+                shape_r = _composition_spectrum_base_radius_px(
+                    template,
+                    frame_w=float(w),
+                    frame_h=float(h),
+                    sf=float(sf),
+                    logo_visual_radius=0.0,
+                    spectrum_logo_gap=0.0,
+                    attached_to_logo=False,
+                )
+                final_logo_size = _clamp_logo_size_inside_shape(
+                    final_logo_size,
+                    float(shape_r),
+                    contain=_logo_contain_in_shape_enabled(template),
+                )
                 prog_logo["logo_size_px"].value = (final_logo_size, final_logo_size)
+                apply_logo_frame_size_uniform(
+                    prog_logo,
+                    logo_frame_size_for_mask(
+                        mask_mode=logo_mask_mode, shape_radius_px=float(shape_r)
+                    ),
+                )
                 
                 _spec_c, l_pos = _resolve_spectrum_logo_centers(
                     w=w,

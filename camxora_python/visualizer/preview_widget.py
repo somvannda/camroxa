@@ -55,9 +55,12 @@ def _configure_preview_gl_format() -> QSurfaceFormat:
 
 import moderngl
 from visualizer.gpu_render import (
+    _clamp_logo_size_inside_shape,
     _compile,
     _compile_particle_quads,
+    _composition_spectrum_base_radius_px,
     _compute_visible_logo_radius_ratio,
+    _logo_contain_in_shape_enabled,
     _particle_trail_cfg_from_settings,
     _quad_vao,
     _render_particle_styled_quads,
@@ -74,15 +77,19 @@ from visualizer.hdr_bloom import (
     preview_hdr_bloom_enabled,
 )
 from visualizer._spectrum_fast import (
+    apply_bar_height_overrides,
     build_contour_wave_strips,
     build_solid_band_strip_vertices,
     build_solid_graph_strip_vertices,
+    clamp_frequency_scroll,
     clamp_spectrum_bar_count,
     generate_spectrum_layer_geometry,
     mirror_spectrum_points_vertical,
     normalize_spectrum_gravity,
     resample_fft_bins,
     resolve_bar_pixel_width,
+    rotate_spectrum_bases,
+    scroll_spectrum_heights,
     smooth_fft_envelope,
 )
 from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
@@ -335,6 +342,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
     position_changed = Signal(int, int)
     lightning_position_changed = Signal(int, int)
     logo_position_changed = Signal(int, int)
+    spectrum_layer_patch_changed = Signal(object)
     spectrum_size_delta_requested = Signal(float)
     background_transform_changed = Signal(float, float, float)
     playback_state_changed = Signal(object)
@@ -401,6 +409,14 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._text_sizes: list[tuple[int, int]] = []
         self._dragging = False
         self._drag_last = None
+        self._bar_edit_mode = None  # "raise" | "phase" | "height" | None
+        self._bar_edit_index = -1
+        self._bar_edit_layer_index = 0
+        self._bar_hit_cache: list[dict] = []
+        self._bar_edit_center = (0.0, 0.0)
+        self._bar_edit_last_angle = 0.0
+        self._spectrum_path_radius_px = 0.0
+        self._spectrum_center_px = (0.0, 0.0)
         self._bg_edit_mode = False
         self._spectrum_position_edit_mode = False
         self._lightning_position_edit_mode = False
@@ -1371,6 +1387,24 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self._text_drag_dy = 0.0
         self.update()
 
+    def set_interaction_modes(
+        self,
+        *,
+        spectrum_position: bool = False,
+        logo_position: bool = False,
+        background: bool = False,
+        text_domain: str = "",
+        lightning_position: bool = False,
+    ) -> None:
+        """Studio alias for ``set_edit_modes`` (position drag on/off)."""
+        self.set_edit_modes(
+            background=background,
+            spectrum_position=spectrum_position,
+            text_domain=text_domain,
+            lightning_position=lightning_position,
+            logo_position=logo_position,
+        )
+
     def set_text_drag_offset(self, domain: str, dx: float, dy: float) -> None:
         """Apply live widget-pixel offset in paintGL (GPU real-time drag)."""
         key = str(domain or "").strip().lower()
@@ -1815,6 +1849,34 @@ class VideoSpectrumPreview(QOpenGLWidget):
 
     def mousePressEvent(self, ev):
         # Album/Title drag is handled by TextDragOverlay (CapCut-style UI layer).
+        if ev.button() == Qt.MouseButton.LeftButton and bool(
+            getattr(self, "_spectrum_position_edit_mode", False)
+        ):
+            mods = ev.modifiers()
+            shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
+            alt = bool(mods & Qt.KeyboardModifier.AltModifier)
+            if shift or alt:
+                hit = self._nearest_bar_hit(float(ev.position().x()), float(ev.position().y()))
+                if hit is not None:
+                    self._dragging = True
+                    self._drag_last = (float(ev.position().x()), float(ev.position().y()))
+                    self._bar_edit_layer_index = int(hit["layer"])
+                    self._bar_edit_index = int(hit["bar"])
+                    self._bar_edit_center = (float(hit["cx"]), float(hit["cy"]))
+                    self._bar_edit_last_angle = math.atan2(
+                        float(ev.position().y()) - float(hit["cy"]),
+                        float(ev.position().x()) - float(hit["cx"]),
+                    )
+                    if shift and alt:
+                        self._bar_edit_mode = "height"
+                    elif shift:
+                        self._bar_edit_mode = "raise"
+                    else:
+                        self._bar_edit_mode = "phase"
+                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                    self.grabMouse()
+                    ev.accept()
+                    return
         if ev.button() == Qt.MouseButton.LeftButton and (
             self._bg_edit_mode
             or self._spectrum_position_edit_mode
@@ -1823,6 +1885,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         ):
             self._dragging = True
             self._drag_last = (float(ev.position().x()), float(ev.position().y()))
+            self._bar_edit_mode = None
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
             self.grabMouse()
             ev.accept()
@@ -1833,11 +1896,64 @@ class VideoSpectrumPreview(QOpenGLWidget):
         if ev.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
             self._drag_last = None
+            self._bar_edit_mode = None
+            self._bar_edit_index = -1
             self.releaseMouse()
             self.unsetCursor()
             ev.accept()
             return
         super().mouseReleaseEvent(ev)
+
+    def _nearest_bar_hit(self, x: float, y: float, max_dist: float = 28.0) -> dict | None:
+        best = None
+        best_d = float(max_dist)
+        for hit in list(getattr(self, "_bar_hit_cache", []) or []):
+            try:
+                d = math.hypot(float(hit["tx"]) - x, float(hit["ty"]) - y)
+            except Exception:
+                continue
+            if d < best_d:
+                best_d = d
+                best = hit
+        return best
+
+    def _patch_selected_spectrum_layer(self, **fields) -> None:
+        """Live-mutate authored + compiled layer knobs, then persist via signal."""
+        comp = self.template.get("composition")
+        layer_idx = int(getattr(self, "_bar_edit_layer_index", 0) or 0)
+        if isinstance(comp, dict):
+            spec = dict(comp.get("spectrum") if isinstance(comp.get("spectrum"), dict) else {})
+            layers = list(spec.get("layers") or [])
+            if layers:
+                idx = max(0, min(len(layers) - 1, layer_idx))
+                layer = dict(layers[idx]) if isinstance(layers[idx], dict) else {}
+                layer.update(fields)
+                layers[idx] = layer
+                spec["layers"] = layers
+                self.template["composition"] = {**comp, "spectrum": spec}
+        # Compiled rings used by paintGL.
+        for key in ("layers",):
+            rings = self.template.get(key)
+            if isinstance(rings, list) and rings:
+                idx = max(0, min(len(rings) - 1, layer_idx))
+                if isinstance(rings[idx], dict):
+                    rings[idx] = {**rings[idx], **fields}
+                    self.template[key] = rings
+        instances = self.template.get("spectrumInstances")
+        if isinstance(instances, list) and instances:
+            inst0 = instances[0] if isinstance(instances[0], dict) else {}
+            rings = list(inst0.get("layers") or [])
+            if rings:
+                idx = max(0, min(len(rings) - 1, layer_idx))
+                if isinstance(rings[idx], dict):
+                    rings[idx] = {**rings[idx], **fields}
+                    instances[0] = {**inst0, "layers": rings}
+                    self.template["spectrumInstances"] = instances
+        try:
+            self.spectrum_layer_patch_changed.emit(dict(fields))
+        except Exception:
+            pass
+        self.update()
 
     def mouseMoveEvent(self, ev):
         if not self._dragging or not self._drag_last:
@@ -1849,6 +1965,76 @@ class VideoSpectrumPreview(QOpenGLWidget):
         dx = x1 - x0
         dy = y1 - y0
         self._drag_last = (x1, y1)
+
+        mode = getattr(self, "_bar_edit_mode", None)
+        if mode in ("raise", "phase", "height"):
+            hits = list(getattr(self, "_bar_hit_cache", []) or [])
+            hit = None
+            for item in hits:
+                if int(item.get("bar", -1)) == int(self._bar_edit_index) and int(
+                    item.get("layer", -1)
+                ) == int(self._bar_edit_layer_index):
+                    hit = item
+                    break
+            if hit is None and hits:
+                hit = hits[min(len(hits) - 1, max(0, int(self._bar_edit_index)))]
+            if mode == "raise" and hit is not None:
+                vx = x1 - float(hit["bx"])
+                vy = -(y1 - float(hit["by"]))  # screen Y down → math Y up
+                if abs(vx) + abs(vy) > 1e-3:
+                    deg = (math.degrees(math.atan2(vy, vx)) + 360.0) % 360.0
+                    self._patch_selected_spectrum_layer(raiseAngleDeg=float(deg))
+            elif mode == "phase":
+                cx, cy = self._bar_edit_center
+                ang = math.atan2(y1 - cy, x1 - cx)
+                delta = ang - float(self._bar_edit_last_angle)
+                # Wrap to [-pi, pi]
+                while delta > math.pi:
+                    delta -= 2.0 * math.pi
+                while delta < -math.pi:
+                    delta += 2.0 * math.pi
+                self._bar_edit_last_angle = ang
+                # Read current scroll from authored layer when possible.
+                scroll = 0.0
+                comp = self.template.get("composition")
+                if isinstance(comp, dict):
+                    spec = comp.get("spectrum") if isinstance(comp.get("spectrum"), dict) else {}
+                    layers = spec.get("layers") if isinstance(spec.get("layers"), list) else []
+                    idx = max(0, min(len(layers) - 1, int(self._bar_edit_layer_index)))
+                    if layers and isinstance(layers[idx], dict):
+                        scroll = clamp_frequency_scroll(layers[idx].get("frequencyScroll"), 0.0)
+                scroll = clamp_frequency_scroll(scroll - delta / (2.0 * math.pi), 0.0)
+                self._patch_selected_spectrum_layer(frequencyScroll=float(scroll))
+            elif mode == "height" and hit is not None:
+                bdx = float(hit.get("dx") or 0.0)
+                bdy = float(hit.get("dy") or 0.0)
+                along = float(dx) * bdx + float(dy) * bdy
+                # Pull tip outward → taller
+                delta_scale = along / 80.0
+                overrides = {}
+                comp = self.template.get("composition")
+                if isinstance(comp, dict):
+                    spec = comp.get("spectrum") if isinstance(comp.get("spectrum"), dict) else {}
+                    layers = spec.get("layers") if isinstance(spec.get("layers"), list) else []
+                    idx = max(0, min(len(layers) - 1, int(self._bar_edit_layer_index)))
+                    if layers and isinstance(layers[idx], dict):
+                        raw = layers[idx].get("barHeightOverrides")
+                        if isinstance(raw, dict):
+                            overrides = dict(raw)
+                key = str(int(self._bar_edit_index))
+                try:
+                    cur = float(overrides.get(key, 1.0))
+                except (TypeError, ValueError):
+                    cur = 1.0
+                nxt = max(0.05, min(4.0, cur + delta_scale))
+                if abs(nxt - 1.0) < 1e-3:
+                    overrides.pop(key, None)
+                else:
+                    overrides[key] = float(nxt)
+                self._patch_selected_spectrum_layer(barHeightOverrides=overrides)
+            ev.accept()
+            return
+
         if bool(getattr(self, "_bg_edit_mode", False)):
             bg = self.template.get("backgroundSettings", {}) if isinstance(self.template.get("backgroundSettings"), dict) else {}
             ox = float(bg.get("userOffsetX", 0.0) or 0.0) + float(dx)
@@ -1891,38 +2077,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self.lightning_position_changed.emit(nx, ny)
             ev.accept()
             return
-        if bool(getattr(self, "_logo_position_edit_mode", False)):
-            preview_bindings = (
-                self.template.get("previewBindings")
-                if isinstance(self.template.get("previewBindings"), dict)
-                else {}
-            )
-            attached = bool(preview_bindings.get("spectrumAttachToLogo", True))
-            if attached:
-                pos_cfg = self.template.get("position", {}) if isinstance(self.template.get("position"), dict) else {}
-                anchor = str(pos_cfg.get("anchor") or "center")
-                nx = float(pos_cfg.get("x", 0.0) or 0.0) + float(dx) / sf
-                ny = float(pos_cfg.get("y", 0.0) or 0.0) + float(dy) / sf
-                nx, ny = _clamp_xy(anchor, nx, ny)
-                self.template["position"] = {**pos_cfg, "x": nx, "y": ny}
-                ls = self.template.get("logoSettings") if isinstance(self.template.get("logoSettings"), dict) else {}
-                logo_pos = ls.get("position") if isinstance(ls.get("position"), dict) else {}
-                self.template["logoSettings"] = {**ls, "position": {**logo_pos, "anchor": "center", "x": nx, "y": ny}}
-                self.position_changed.emit(nx, ny)
-                self.logo_position_changed.emit(nx, ny)
-            else:
-                ls = self.template.get("logoSettings") if isinstance(self.template.get("logoSettings"), dict) else {}
-                logo_pos = ls.get("position") if isinstance(ls.get("position"), dict) else {}
-                anchor = str(logo_pos.get("anchor") or "center")
-                nx = float(logo_pos.get("x", 0.0) or 0.0) + float(dx) / sf
-                ny = float(logo_pos.get("y", 0.0) or 0.0) + float(dy) / sf
-                nx, ny = _clamp_xy(anchor, nx, ny)
-                self.template["logoSettings"] = {**ls, "position": {**logo_pos, "anchor": "center", "x": nx, "y": ny}}
-                self.logo_position_changed.emit(nx, ny)
-            ev.accept()
-            return
-        # Spectrum drag — free overscan (not clamped to frame edges).
-        # Soft limit matches composition offset ±2.0 (×480 / ×270 template units).
+
+        # Spectrum free-drag first — Stay inside / attach also updates logo.
+        # (Logo edit mode used to run first and only patched `position`, while paint
+        # reads `spectrumInstances`, so the pair looked stuck.)
         def _free_spectrum_xy(nx: float, ny: float) -> tuple[float, float]:
             return (
                 float(max(-960.0, min(960.0, nx))),
@@ -1938,35 +2096,92 @@ class VideoSpectrumPreview(QOpenGLWidget):
             spec["offsetY"] = float(ny) / 270.0
             self.template["composition"] = {**comp, "spectrum": spec}
 
-        if bool(getattr(self, "_spectrum_position_edit_mode", False)):
+        def _logo_locked_to_spectrum() -> bool:
+            preview_bindings = (
+                self.template.get("previewBindings")
+                if isinstance(self.template.get("previewBindings"), dict)
+                else {}
+            )
+            ls = self.template.get("logoSettings") if isinstance(self.template.get("logoSettings"), dict) else {}
+            return bool(preview_bindings.get("spectrumAttachToLogo", False)) or bool(
+                ls.get("containInShape")
+            )
+
+        def _mirror_logo_to_spectrum(nx: float, ny: float) -> None:
+            if not _logo_locked_to_spectrum():
+                return
+            ls = self.template.get("logoSettings") if isinstance(self.template.get("logoSettings"), dict) else {}
+            logo_pos = ls.get("position") if isinstance(ls.get("position"), dict) else {}
+            self.template["logoSettings"] = {
+                **ls,
+                "position": {**logo_pos, "anchor": "center", "x": float(nx), "y": float(ny)},
+            }
+
+        def _apply_spectrum_drag(nx: float, ny: float) -> None:
             instances = self.template.get("spectrumInstances")
             if isinstance(instances, list) and instances:
-                idx = int(max(0, min(getattr(self, "_selected_spectrum_instance_index", 0), len(instances) - 1)))
+                idx = int(
+                    max(0, min(getattr(self, "_selected_spectrum_instance_index", 0), len(instances) - 1))
+                )
                 inst = instances[idx] if isinstance(instances[idx], dict) else {}
-                nx = float(inst.get("x", 0.0) or 0.0) + float(dx) / sf
-                ny = float(inst.get("y", 0.0) or 0.0) + float(dy) / sf
-                nx, ny = _free_spectrum_xy(nx, ny)
                 instances[idx] = {**inst, "x": float(nx), "y": float(ny)}
                 self.template["spectrumInstances"] = instances
-                # Mirror primary into legacy position for packs / single-path readers.
-                if idx == 0:
-                    pos_cfg = self.template.get("position", {}) if isinstance(self.template.get("position"), dict) else {}
-                    self.template["position"] = {**pos_cfg, "x": nx, "y": ny}
-                    _mirror_spectrum_offsets(nx, ny)
-                self.position_changed.emit(int(round(nx)), int(round(ny)))
-                ev.accept()
-                return
-        if not bool(getattr(self, "_spectrum_position_edit_mode", False)):
-            super().mouseMoveEvent(ev)
+            pos_cfg = self.template.get("position", {}) if isinstance(self.template.get("position"), dict) else {}
+            self.template["position"] = {**pos_cfg, "x": float(nx), "y": float(ny)}
+            _mirror_spectrum_offsets(nx, ny)
+            _mirror_logo_to_spectrum(nx, ny)
+            self.position_changed.emit(int(round(nx)), int(round(ny)))
+            if _logo_locked_to_spectrum():
+                self.logo_position_changed.emit(int(round(nx)), int(round(ny)))
+
+        if bool(getattr(self, "_spectrum_position_edit_mode", False)):
+            pos_cfg = self.template.get("position", {}) if isinstance(self.template.get("position"), dict) else {}
+            instances = self.template.get("spectrumInstances")
+            if isinstance(instances, list) and instances:
+                idx = int(
+                    max(0, min(getattr(self, "_selected_spectrum_instance_index", 0), len(instances) - 1))
+                )
+                inst = instances[idx] if isinstance(instances[idx], dict) else {}
+                cur_x = float(inst.get("x", pos_cfg.get("x", 0.0)) or 0.0)
+                cur_y = float(inst.get("y", pos_cfg.get("y", 0.0)) or 0.0)
+            else:
+                cur_x = float(pos_cfg.get("x", 0.0) or 0.0)
+                cur_y = float(pos_cfg.get("y", 0.0) or 0.0)
+            nx, ny = _free_spectrum_xy(cur_x + float(dx) / sf, cur_y + float(dy) / sf)
+            _apply_spectrum_drag(nx, ny)
+            ev.accept()
             return
-        pos_cfg = self.template.get('position', {}) if isinstance(self.template.get('position'), dict) else {}
-        nx = float(pos_cfg.get('x', 0.0) or 0.0) + float(dx) / sf
-        ny = float(pos_cfg.get('y', 0.0) or 0.0) + float(dy) / sf
-        nx, ny = _free_spectrum_xy(nx, ny)
-        self.template['position'] = {**pos_cfg, 'x': nx, 'y': ny}
-        _mirror_spectrum_offsets(nx, ny)
-        self.position_changed.emit(int(round(nx)), int(round(ny)))
-        ev.accept()
+
+        if bool(getattr(self, "_logo_position_edit_mode", False)):
+            preview_bindings = (
+                self.template.get("previewBindings")
+                if isinstance(self.template.get("previewBindings"), dict)
+                else {}
+            )
+            ls = self.template.get("logoSettings") if isinstance(self.template.get("logoSettings"), dict) else {}
+            attached = bool(preview_bindings.get("spectrumAttachToLogo", False)) or bool(
+                ls.get("containInShape")
+            )
+            if attached:
+                pos_cfg = self.template.get("position", {}) if isinstance(self.template.get("position"), dict) else {}
+                nx = float(pos_cfg.get("x", 0.0) or 0.0) + float(dx) / sf
+                ny = float(pos_cfg.get("y", 0.0) or 0.0) + float(dy) / sf
+                nx, ny = _free_spectrum_xy(nx, ny)
+                _apply_spectrum_drag(nx, ny)
+            else:
+                logo_pos = ls.get("position") if isinstance(ls.get("position"), dict) else {}
+                anchor = str(logo_pos.get("anchor") or "center")
+                nx = float(logo_pos.get("x", 0.0) or 0.0) + float(dx) / sf
+                ny = float(logo_pos.get("y", 0.0) or 0.0) + float(dy) / sf
+                nx, ny = _clamp_xy(anchor, nx, ny)
+                self.template["logoSettings"] = {
+                    **ls,
+                    "position": {**logo_pos, "anchor": "center", "x": nx, "y": ny},
+                }
+                self.logo_position_changed.emit(nx, ny)
+            ev.accept()
+            return
+        super().mouseMoveEvent(ev)
 
     def wheelEvent(self, ev):
         if bool(getattr(self, "_bg_edit_mode", False)):
@@ -2818,13 +3033,33 @@ class VideoSpectrumPreview(QOpenGLWidget):
             logo_scale_base = float(ls.get('scale', 1.0))
             logo_react = float(ls.get('reactivity', 0.0))
             self.logo_audio_env = env_out.logo_audio_env
-            logo_visual_radius = logo_size_base * 0.5 * sf * logo_scale_base
             preview_bindings = (
                 self.template.get("previewBindings")
                 if isinstance(self.template.get("previewBindings"), dict)
                 else {}
             )
             spectrum_attach_to_logo = bool(preview_bindings.get("spectrumAttachToLogo", True))
+            if _logo_contain_in_shape_enabled(self.template) or bool(ls.get("containInShape")):
+                spectrum_attach_to_logo = True
+            spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
+            # Shape frame radius (no gap) — used to keep image inside the spectrum path.
+            shape_radius_px = _composition_spectrum_base_radius_px(
+                self.template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=0.0,
+                spectrum_logo_gap=0.0,
+                attached_to_logo=False,
+            )
+            if _logo_contain_in_shape_enabled(self.template):
+                # logo_size_base is logical px; shape_radius is screen px → convert.
+                logo_size_base = _clamp_logo_size_inside_shape(
+                    logo_size_base,
+                    float(shape_radius_px) / max(float(sf), 1e-6),
+                    contain=True,
+                )
+            logo_visual_radius = logo_size_base * 0.5 * sf * logo_scale_base
             from features.video.lib.logo_spectrum_bindings import resolve_spectrum_logo_centers
 
             (cx, cy), (logo_cx, logo_cy) = resolve_spectrum_logo_centers(
@@ -2866,15 +3101,31 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 pass
             spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
             logo_circle_mask = bool(ls.get("circleMask", False))
-            logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)
+            logo_fit_to_shape = bool(ls.get("fitToShape", True))
+            from visualizer.logo_mask import resolve_logo_mask_mode, spectrum_shape_from_template
+
+            logo_mask_mode = resolve_logo_mask_mode(
+                spectrum_shape_from_template(self.template),
+                mask_shape=ls.get("maskShape"),
+                fit_to_shape=logo_fit_to_shape,
+                circle_mask=logo_circle_mask,
+            )
+            logo_shape = normalize_logo_shape(circle_mask=logo_mask_mode != 0)
             logo_visible_radius_ratio = (
-                self._logo_visible_radius_ratio_cached(circle_mask=logo_circle_mask)
+                self._logo_visible_radius_ratio_cached(circle_mask=logo_mask_mode != 0)
                 if spectrum_attach_to_logo
                 else 1.0
             )
             attached_to_logo = bool(spectrum_attach_to_logo and logo_enabled and bool(str(self.logo_path or "").strip()))
-            attached_base_radius = float(
-                max(0.0, (logo_visual_radius * logo_visible_radius_ratio) + spectrum_logo_gap)
+            attached_base_radius = _composition_spectrum_base_radius_px(
+                self.template,
+                frame_w=float(w),
+                frame_h=float(h),
+                sf=float(sf),
+                logo_visual_radius=float(logo_visual_radius),
+                logo_visible_radius_ratio=float(logo_visible_radius_ratio),
+                spectrum_logo_gap=float(spectrum_logo_gap),
+                attached_to_logo=bool(attached_to_logo),
             )
             ps_early = self._particle_settings()
             if bool(ps_early.get("enabled", True)):
@@ -2946,6 +3197,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 iter_render_spectrum_instances,
             )
             spectrum_instances = iter_render_spectrum_instances(self.template) if spectrum_enabled else []
+            self._bar_hit_cache = []
             if spectrum_enabled and not spectrum_instances:
                 spectrum_layers = self.template.get("layers") if isinstance(self.template.get("layers"), list) else []
                 spectrum_layers = [sl for sl in spectrum_layers if isinstance(sl, dict)]
@@ -2986,12 +3238,19 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 attached_to_logo = bool(inst_attach and logo_enabled and bool(str(self.logo_path or "").strip()))
                 spectrum_logo_gap = float(max(0.0, float(spectrum_inst.get("spectrumLogoGap", 0.0) or 0.0))) * sf
                 logo_visible_radius_ratio = (
-                    self._logo_visible_radius_ratio_cached(circle_mask=logo_circle_mask)
+                    self._logo_visible_radius_ratio_cached(circle_mask=logo_mask_mode != 0)
                     if attached_to_logo
                     else 1.0
                 )
-                attached_base_radius = float(
-                    max(0.0, (logo_visual_radius * logo_visible_radius_ratio) + spectrum_logo_gap)
+                attached_base_radius = _composition_spectrum_base_radius_px(
+                    self.template,
+                    frame_w=float(w),
+                    frame_h=float(h),
+                    sf=float(sf),
+                    logo_visual_radius=float(logo_visual_radius),
+                    logo_visible_radius_ratio=float(logo_visible_radius_ratio),
+                    spectrum_logo_gap=float(spectrum_logo_gap),
+                    attached_to_logo=bool(attached_to_logo),
                 )
                 inst_audio = spectrum_inst.get("audioSettings") if isinstance(spectrum_inst.get("audioSettings"), dict) else {}
                 try:
@@ -3106,9 +3365,18 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         bar_width=bar_width_px,
                         radius_offset=radius_offset_px,
                     )
+                    if int(inst_idx) == 0 and int(layer_idx) == 0:
+                        self._spectrum_path_radius_px = float(radius)
+                        self._spectrum_center_px = (float(cx), float(cy))
                     # Keep ring diameter stable — animation scale drives bar height/width only.
                     # (Multiplying radius by animScale made circles permanently zoom in/out.)
+                    render_fft = scroll_spectrum_heights(
+                        render_fft, sl.get("frequencyScroll", 0.0)
+                    )
                     sampled_fft = resample_fft_bins(render_fft, bar_count)
+                    sampled_fft = apply_bar_height_overrides(
+                        sampled_fft, sl.get("barHeightOverrides")
+                    )
                     # Per-layer audio bus: frequency weights + drive (Bass≠Treble).
                     # Layer override wins; else Audio Mapping → Spectrum reaction.
                     _apply_bus = None
@@ -3184,21 +3452,21 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         logo_shape=logo_shape,
                         frame_w=w,
                         frame_h=h,
+                        raise_angle_deg=sl.get("raiseAngleDeg"),
                     )
-                    # Spectrum animation rotation (pulse/rotate/twist/…).
+                    # Spectrum animation / shape rotation (pulse/rotate/twist/…).
                     try:
                         rot_deg = float(sl.get("rotation") or 0.0)
                     except (TypeError, ValueError):
                         rot_deg = 0.0
-                    if abs(rot_deg) > 0.05:
-                        rad = float(np.deg2rad(rot_deg))
-                        cos_a = float(np.cos(rad))
-                        sin_a = float(np.sin(rad))
-                        rx = px_arr * cos_a - py_arr * sin_a
-                        ry = px_arr * sin_a + py_arr * cos_a
-                        rdx = dx_arr * cos_a - dy_arr * sin_a
-                        rdy = dx_arr * sin_a + dy_arr * cos_a
-                        px_arr, py_arr, dx_arr, dy_arr = rx, ry, rdx, rdy
+                    px_arr, py_arr, dx_arr, dy_arr = rotate_spectrum_bases(
+                        px_arr,
+                        py_arr,
+                        dx_arr,
+                        dy_arr,
+                        rot_deg,
+                        raise_angle_deg=sl.get("raiseAngleDeg"),
+                    )
                     contour_style = style_preset == 'contour-waves'
                     waveform_style = style_preset in ('aurora-ribbon', 'magma-ridge', 'plasma-bloom', 'soft-waveform', 'mountain', 'liquid', 'continuous-waveform')
                     ring_close_style = waveform_style or contour_style
@@ -3220,6 +3488,32 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         r_px, r_py, r_dx, r_dy = mirror_spectrum_points_vertical(px_arr, py_arr, dx_arr, dy_arr)
                         draw_variants.append((r_px, r_py, r_dx, r_dy, reflection_opacity))
                     main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
+                    # Hit targets for Shift/Alt bar editing (primary instance only).
+                    if int(inst_idx) == 0 and int(main_px.shape[0]) > 0:
+                        tip = np.maximum(
+                            8.0,
+                            np.asarray(sampled_fft[: int(main_px.shape[0])], dtype=np.float32)
+                            * float(spike_height_px),
+                        )
+                        for bi in range(int(main_px.shape[0])):
+                            bx = float(cx) + float(main_px[bi])
+                            by = float(cy) + float(main_py[bi])
+                            tx = bx + float(main_dx[bi]) * float(tip[bi])
+                            ty = by + float(main_dy[bi]) * float(tip[bi])
+                            self._bar_hit_cache.append(
+                                {
+                                    "layer": int(layer_idx),
+                                    "bar": int(bi),
+                                    "bx": bx,
+                                    "by": by,
+                                    "tx": tx,
+                                    "ty": ty,
+                                    "dx": float(main_dx[bi]),
+                                    "dy": float(main_dy[bi]),
+                                    "cx": float(cx),
+                                    "cy": float(cy),
+                                }
+                            )
                     pass_specs: list[dict] = []
                     if glow_strength > 0.0:
                         # Softness comes mostly from Blur; keep Glow crisp when Blur=0
@@ -3581,29 +3875,83 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         self._write_vbo(self.line_vbo, cap_verts)
                         self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
             self._blend_normal()
-            if logo_enabled:
+            if logo_enabled and bool(str(self.logo_path or "").strip()):
                 self.prog_logo['tex_logo'].value = 1
                 if hasattr(self, 'tex_logo'):
                     self.tex_logo.use(location=1)
                 if 'out_size' in self.prog_logo:
                     self.prog_logo['out_size'].value = (float(w), float(h))
-                ax, ay = (logo_cx, logo_cy)
+                # Stay inside / attach: logo must share the spectrum path center.
+                lock_center = bool(spectrum_attach_to_logo) or _logo_contain_in_shape_enabled(
+                    self.template
+                ) or bool(ls.get("containInShape"))
+                if lock_center:
+                    cached = getattr(self, "_spectrum_center_px", None)
+                    if isinstance(cached, tuple) and len(cached) == 2 and (
+                        abs(float(cached[0])) + abs(float(cached[1])) > 1.0
+                    ):
+                        ax, ay = float(cached[0]), float(cached[1])
+                    else:
+                        ax, ay = float(cx), float(cy)
+                else:
+                    ax, ay = float(logo_cx), float(logo_cy)
                 self.prog_logo['logo_px'].value = (float(ax) - float(w) * 0.5, float(ay) - float(h) * 0.5)
                 s_logo = logo_scale_base * (1.0 + self.logo_audio_env * logo_react)
                 s_logo = float(max(0.05, min(4.0, s_logo)))
                 size = logo_size_base * sf * s_logo
+                frame_radius = float(getattr(self, "_spectrum_path_radius_px", 0.0) or 0.0)
+                if frame_radius <= 1.0:
+                    frame_radius = float(shape_radius_px)
+                if _logo_contain_in_shape_enabled(self.template):
+                    size = _clamp_logo_size_inside_shape(
+                        size,
+                        float(frame_radius),
+                        contain=True,
+                    )
                 self.prog_logo['logo_size_px'].value = (float(size), float(size))
                 self.prog_logo['logo_opacity'].value = float(max(0.0, min(1.0, float(ls.get('opacity', 1.0)))))
-                self.prog_logo['logo_circle_mask'].value = 1 if bool(ls.get('circleMask', False)) else 0
+                from visualizer.logo_mask import (
+                    apply_logo_frame_size_uniform,
+                    apply_logo_mask_uniform,
+                    apply_logo_rotation_uniforms,
+                    logo_frame_size_for_mask,
+                )
+
+                apply_logo_mask_uniform(self.prog_logo, logo_mask_mode)
+                apply_logo_frame_size_uniform(
+                    self.prog_logo,
+                    logo_frame_size_for_mask(
+                        mask_mode=logo_mask_mode,
+                        shape_radius_px=float(frame_radius),
+                    ),
+                )
                 if "logo_rot_rad" in self.prog_logo:
                     spin_en = bool(ls.get("spinEnabled", False))
                     spin_dir = str(ls.get("spinDirection", "cw") or "cw").strip().lower()
                     dir_s = 1.0 if spin_dir == "cw" else -1.0
                     speed_deg = float(ls.get("spinSpeed", 0.0) or 0.0)
-                    angle = 0.0
+                    spin_rad = 0.0
                     if spin_en and abs(speed_deg) > 1e-06:
-                        angle = float(dir_s) * float(speed_deg) * 0.017453292519943295 * float(self.current_time)
-                    self.prog_logo["logo_rot_rad"].value = float(angle)
+                        spin_rad = float(dir_s) * float(speed_deg) * 0.017453292519943295 * float(self.current_time)
+                    try:
+                        content_deg = float(ls.get("rotationDeg") or 0.0)
+                    except (TypeError, ValueError):
+                        content_deg = 0.0
+                    try:
+                        mask_deg = float(
+                            ls.get("maskRotationDeg")
+                            if ls.get("maskRotationDeg") is not None
+                            else ls.get("shapeRotationDeg")
+                            or 0.0
+                        )
+                    except (TypeError, ValueError):
+                        mask_deg = 0.0
+                    apply_logo_rotation_uniforms(
+                        self.prog_logo,
+                        content_deg=content_deg,
+                        mask_deg=mask_deg,
+                        spin_rad=spin_rad,
+                    )
                 self.vao_quad_logo.render(mode=moderngl.TRIANGLE_STRIP)
             overlays = self.template.get("textOverlays") if isinstance(self.template.get("textOverlays"), list) else []
             if overlays:

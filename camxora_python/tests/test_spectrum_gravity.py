@@ -184,3 +184,66 @@ def test_bar_count_clamp_and_fft_resample() -> None:
     assert out.shape == (24,)
     assert float(out[0]) == 0.0
     assert float(out[-1]) == 1.0
+
+
+def test_raise_angle_overrides_uniform_direction() -> None:
+    from visualizer._spectrum_fast import (
+        apply_raise_angle_override,
+        normalize_raise_angle_deg,
+        raise_angle_direction,
+    )
+
+    assert normalize_raise_angle_deg(None) is None
+    assert normalize_raise_angle_deg("auto") is None
+    assert abs(float(normalize_raise_angle_deg(450.0)) - 90.0) < 1e-6
+
+    right = raise_angle_direction(0.0)
+    assert right is not None
+    assert abs(right[0] - 1.0) < 1e-6
+    assert abs(right[1]) < 1e-6
+
+    up = raise_angle_direction(90.0)
+    assert up is not None
+    assert abs(up[0]) < 1e-6
+    assert abs(up[1] - 1.0) < 1e-6
+
+    from visualizer._spectrum_fast import apply_bar_height_overrides, scroll_spectrum_heights
+
+    base = np.linspace(0.1, 1.0, 16, dtype=np.float32)
+    scrolled = scroll_spectrum_heights(base, 0.25)
+    assert scrolled.shape == base.shape
+    assert float(scrolled[0]) != float(base[0])
+    scaled = apply_bar_height_overrides(base, {"0": 2.0, "3": 0.5})
+    assert abs(float(scaled[0]) - float(base[0]) * 2.0) < 1e-5
+    assert abs(float(scaled[3]) - float(base[3]) * 0.5) < 1e-5
+
+    px, py, dx, dy, _total = generate_spectrum_layer_geometry(
+        32,
+        curved=True,
+        mirrored=True,
+        gravity="outward",
+        path_mode="diamond",
+        radius=120.0,
+        raise_angle_deg=0.0,
+    )
+    assert len(dx) == 32
+    assert np.allclose(dx, 1.0, atol=1e-5)
+    assert np.allclose(dy, 0.0, atol=1e-5)
+
+    _px2, _py2, dx2, dy2, _t2 = generate_spectrum_layer_geometry(
+        32,
+        curved=True,
+        mirrored=True,
+        gravity="outward",
+        path_mode="diamond",
+        radius=120.0,
+        raise_angle_deg=90.0,
+    )
+    assert np.allclose(dx2, 0.0, atol=1e-5)
+    assert np.allclose(dy2, 1.0, atol=1e-5)
+
+    odx = np.ones(8, dtype=np.float32)
+    ody = np.zeros(8, dtype=np.float32)
+    ndx, ndy = apply_raise_angle_override(odx, ody, 180.0)
+    assert np.allclose(ndx, -1.0, atol=1e-5)
+    assert np.allclose(ndy, 0.0, atol=1e-5)

@@ -82,6 +82,26 @@ def test_extended_path_modes_generate_points(path_mode: str) -> None:
     assert np.all(np.isfinite(py))
 
 
+def test_diamond_path_is_point_up_not_axis_aligned_square() -> None:
+    """Diamond spectrum must tip on the axes (◇), not draw a flat square (□)."""
+    px, py, _dx, _dy, _total = generate_spectrum_layer_geometry(
+        64,
+        curved=True,
+        mirrored=True,
+        gravity="outward",
+        path_mode="diamond",
+        radius=100.0,
+    )
+    pts = np.column_stack([px, py])
+    # Furthest point from center should be near an axis tip (±100, 0) or (0, ±100).
+    dist = np.sqrt(px * px + py * py)
+    tip = pts[int(np.argmax(dist))]
+    ax = abs(float(tip[0]))
+    ay = abs(float(tip[1]))
+    assert max(ax, ay) > 90.0
+    assert min(ax, ay) < 15.0  # near an axis, not a corner like (70,70)
+
+
 def test_apply_shape_preserves_material_and_colors() -> None:
     template = {
         "style": "orbit-spikes",

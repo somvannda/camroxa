@@ -60,14 +60,16 @@ def test_spectrum_center_image_patch_sets_path_and_attach() -> None:
             "logoEnabled": True,
             "spectrumAttachToLogo": True,
             "compositionLogoSize": 220.0,
-            "compositionLogoCircleMask": True,
+            "compositionLogoFitToShape": True,
+            "compositionLogoMaskShape": "hexagon",
         },
     )
     assert doc["assets"]["logo"] == "C:/tmp/center.png"
     assert doc["composition"]["logo"]["enabled"] is True
     assert doc["spectrumAttachToLogo"] is True
     assert float(doc["composition"]["logo"]["size"]) == 220.0
-    assert doc["composition"]["logo"]["circleMask"] is True
+    assert doc["composition"]["logo"]["fitToShape"] is True
+    assert doc["composition"]["logo"]["maskShape"] == "hexagon"
     cleared = apply_axis_patch(
         doc,
         {"logoPath": "", "logoEnabled": False, "spectrumAttachToLogo": False},
@@ -75,6 +77,235 @@ def test_spectrum_center_image_patch_sets_path_and_attach() -> None:
     assert cleared["assets"]["logo"] in (None, "")
     assert cleared["composition"]["logo"]["enabled"] is False
     assert cleared["spectrumAttachToLogo"] is False
+
+
+def test_composition_shape_radius_independent_of_logo_size() -> None:
+    from visualizer.gpu_render import _composition_spectrum_base_radius_px
+
+    tpl = {
+        "composition": {
+            "spectrum": {"sizeScale": 1.0, "fitRadiusToCenterImage": False},
+        }
+    }
+    r_small_logo = _composition_spectrum_base_radius_px(
+        tpl,
+        frame_w=1920,
+        frame_h=1080,
+        sf=1.0,
+        logo_visual_radius=50.0,
+        attached_to_logo=True,
+    )
+    r_big_logo = _composition_spectrum_base_radius_px(
+        tpl,
+        frame_w=1920,
+        frame_h=1080,
+        sf=1.0,
+        logo_visual_radius=400.0,
+        attached_to_logo=True,
+    )
+    assert abs(r_small_logo - r_big_logo) < 1e-6
+    tpl2 = {
+        "composition": {
+            "spectrum": {"sizeScale": 2.0, "fitRadiusToCenterImage": False},
+        }
+    }
+    r_large_shape = _composition_spectrum_base_radius_px(
+        tpl2,
+        frame_w=1920,
+        frame_h=1080,
+        sf=1.0,
+        logo_visual_radius=50.0,
+        attached_to_logo=True,
+    )
+    assert r_large_shape > r_small_logo * 1.5
+
+
+def test_logo_contain_in_shape_clamp() -> None:
+    from visualizer.gpu_render import (
+        _clamp_logo_size_inside_shape,
+        _composition_spectrum_base_radius_px,
+        _logo_contain_in_shape_enabled,
+    )
+
+    assert _clamp_logo_size_inside_shape(500.0, 100.0, contain=False) == 500.0
+    clamped = _clamp_logo_size_inside_shape(500.0, 100.0, contain=True)
+    assert abs(clamped - 200.0) < 1e-6  # fills to path edge (2 * radius)
+    assert _clamp_logo_size_inside_shape(150.0, 100.0, contain=True) == 150.0
+
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {"compositionLogoContainInShape": False, "compositionLogoSize": 400.0},
+    )
+    assert doc["composition"]["logo"]["containInShape"] is False
+    assert float(doc["composition"]["logo"]["size"]) == 400.0
+    flat = inspector_bind_state(doc)
+    assert flat.get("compositionLogoContainInShape") is False
+
+    locked = apply_axis_patch(doc, {"compositionLogoContainInShape": True})
+    assert locked["composition"]["logo"]["containInShape"] is True
+    assert locked.get("spectrumAttachToLogo") is True
+    assert float(locked["composition"]["logo"].get("offsetX") or 0.0) == 0.0
+    assert _logo_contain_in_shape_enabled(
+        {"composition": locked["composition"], "logoSettings": {"containInShape": True}}
+    )
+
+    shape_r = _composition_spectrum_base_radius_px(
+        {"composition": locked["composition"]},
+        frame_w=1920,
+        frame_h=1080,
+        sf=1.0,
+        logo_visual_radius=0.0,
+        attached_to_logo=False,
+    )
+    max_side = shape_r * 2.0
+    assert abs(_clamp_logo_size_inside_shape(max_side + 80.0, shape_r, contain=True) - max_side) < 1e-6
+    assert abs(_clamp_logo_size_inside_shape(max_side - 20.0, shape_r, contain=True) - (max_side - 20.0)) < 1e-6
+
+
+def test_spectrum_layer_raise_angle_patch() -> None:
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {
+            "compositionSpectrumShape": "diamond",
+            "compositionSpectrumLayerPatch": {"raiseAngleDeg": 45.0},
+        },
+    )
+    layers = doc["composition"]["spectrum"]["layers"]
+    assert layers
+    assert abs(float(layers[0].get("raiseAngleDeg")) - 45.0) < 1e-6
+    cleared = apply_axis_patch(
+        doc,
+        {"compositionSpectrumLayerPatch": {"raiseAngleDeg": None, "gravity": "outward"}},
+    )
+    assert cleared["composition"]["spectrum"]["layers"][0].get("raiseAngleDeg") is None
+    assert cleared["composition"]["spectrum"]["layers"][0].get("gravity") == "outward"
+
+
+def test_spectrum_layer_path_phase_and_bar_overrides_patch() -> None:
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {
+            "compositionSpectrumShape": "triangle",
+            "compositionSpectrumLayerPatch": {
+                "frequencyScroll": 0.35,
+                "barHeightOverrides": {"2": 1.5, "4": 0.6},
+            },
+        },
+    )
+    layer = doc["composition"]["spectrum"]["layers"][0]
+    assert abs(float(layer.get("frequencyScroll") or 0.0) - 0.35) < 1e-6
+    overrides = layer.get("barHeightOverrides") or {}
+    assert abs(float(overrides.get("2")) - 1.5) < 1e-6
+    from visualizer.composition_renderer import document_to_renderer_dict
+
+    rendered = document_to_renderer_dict(doc)
+    rings = rendered.get("layers") or []
+    assert rings
+    assert abs(float(rings[0].get("frequencyScroll") or 0.0) - 0.35) < 1e-6
+    assert abs(float((rings[0].get("barHeightOverrides") or {}).get("2")) - 1.5) < 1e-6
+
+
+def test_spectrum_shape_rotation_dial_patch() -> None:
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {
+            "compositionSpectrumShape": "triangle",
+            "compositionSpectrumRotationDeg": 90.0,
+        },
+    )
+    assert float(doc["composition"]["spectrum"]["rotationDeg"]) == 90.0
+    from visualizer.composition_renderer import document_to_renderer_dict
+
+    rendered = document_to_renderer_dict(doc)
+    layers = rendered.get("layers") or []
+    assert layers
+    assert abs(float(layers[0].get("rotation") or 0.0) - 90.0) < 1e-6
+    assert abs(float((rendered.get("logoSettings") or {}).get("maskRotationDeg") or 0.0) - 90.0) < 1e-6
+    assert abs(float((rendered.get("logoSettings") or {}).get("rotationDeg") or 0.0)) < 1e-6
+
+
+def test_logo_image_rotation_independent_of_shape() -> None:
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {
+            "compositionSpectrumShape": "diamond",
+            "compositionSpectrumRotationDeg": 45.0,
+            "compositionLogoRotationDeg": 90.0,
+        },
+    )
+    assert float(doc["composition"]["spectrum"]["rotationDeg"]) == 45.0
+    assert float(doc["composition"]["logo"]["rotationDeg"]) == 90.0
+    from visualizer.composition_renderer import document_to_renderer_dict
+
+    rendered = document_to_renderer_dict(doc)
+    ls = rendered.get("logoSettings") or {}
+    assert abs(float(ls.get("maskRotationDeg") or 0.0) - 45.0) < 1e-6
+    assert abs(float(ls.get("rotationDeg") or 0.0) - 90.0) < 1e-6
+
+
+def test_stay_inside_shape_keeps_image_rotation_independent() -> None:
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {
+            "compositionSpectrumShape": "triangle",
+            "compositionSpectrumRotationDeg": 183.0,
+            "compositionLogoRotationDeg": 12.0,
+            "compositionLogoContainInShape": True,
+        },
+    )
+    from visualizer.composition_renderer import document_to_renderer_dict
+
+    rendered = document_to_renderer_dict(doc)
+    ls = rendered.get("logoSettings") or {}
+    assert bool(ls.get("containInShape")) is True
+    assert abs(float(ls.get("maskRotationDeg") or 0.0) - 183.0) < 1e-6
+    # Picture must NOT follow Shape rotation — only the crop/mask does.
+    assert abs(float(ls.get("rotationDeg") or 0.0) - 12.0) < 1e-6
+
+
+def test_logo_mask_rotation_uniform_matches_spectrum_convention() -> None:
+    """Mask radians must match spectrum rotate_spectrum_bases (no Y flip)."""
+    from visualizer.logo_mask import apply_logo_rotation_uniforms
+
+    class _U:
+        def __init__(self) -> None:
+            self.value = 0.0
+
+    class _Prog(dict):
+        pass
+
+    prog_map = _Prog()
+    prog_map["logo_rot_rad"] = _U()
+    prog_map["logo_mask_rot_rad"] = _U()
+    apply_logo_rotation_uniforms(prog_map, content_deg=90.0, mask_deg=90.0)
+    assert abs(float(prog_map["logo_mask_rot_rad"].value) - 1.57079632679) < 1e-5
+    assert abs(float(prog_map["logo_rot_rad"].value) - 1.57079632679) < 1e-5
+
+
+def test_logo_mask_mode_follows_spectrum_shape() -> None:
+    from visualizer.logo_mask import (
+        LOGO_MASK_CIRCLE,
+        LOGO_MASK_DIAMOND,
+        LOGO_MASK_HEART,
+        LOGO_MASK_HEXAGON,
+        LOGO_MASK_NONE,
+        LOGO_MASK_TRIANGLE,
+        resolve_logo_mask_mode,
+    )
+
+    assert resolve_logo_mask_mode("triangle", fit_to_shape=True) == LOGO_MASK_TRIANGLE
+    assert resolve_logo_mask_mode("hexagon", fit_to_shape=True) == LOGO_MASK_HEXAGON
+    assert resolve_logo_mask_mode("diamond", fit_to_shape=True) == LOGO_MASK_DIAMOND
+    assert resolve_logo_mask_mode("heart", fit_to_shape=True) == LOGO_MASK_HEART
+    assert resolve_logo_mask_mode("ring", fit_to_shape=True) == LOGO_MASK_CIRCLE
+    assert resolve_logo_mask_mode("audio_ribbon", fit_to_shape=True) == LOGO_MASK_CIRCLE
+    assert resolve_logo_mask_mode("bars", fit_to_shape=True) == LOGO_MASK_NONE
+    assert resolve_logo_mask_mode("triangle", fit_to_shape=False, circle_mask=True) == LOGO_MASK_CIRCLE
+    assert resolve_logo_mask_mode("triangle", fit_to_shape=False, circle_mask=False) == LOGO_MASK_NONE
+    assert resolve_logo_mask_mode("bars", mask_shape="triangle") == LOGO_MASK_TRIANGLE
+    assert resolve_logo_mask_mode("heart", mask_shape="square") == LOGO_MASK_NONE
+    assert resolve_logo_mask_mode("bars", mask_shape="hexagon") == LOGO_MASK_HEXAGON
+    assert resolve_logo_mask_mode(None, mask_shape="circle") == LOGO_MASK_CIRCLE
 
 
 def test_blank_document_compiles() -> None:

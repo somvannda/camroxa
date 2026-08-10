@@ -46,6 +46,7 @@ class StudioStagePanel(SettingsPanel):
     spectrum_position_changed = Signal(int, int)
     logo_position_changed = Signal(int, int)
     spectrum_size_delta_requested = Signal(float)
+    spectrum_layer_patch_changed = Signal(object)
     playback_state_changed = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -72,6 +73,7 @@ class StudioStagePanel(SettingsPanel):
         self._preview.spectrum_position_changed.connect(self.spectrum_position_changed.emit)
         self._preview.logo_position_changed.connect(self.logo_position_changed.emit)
         self._preview.spectrum_size_delta_requested.connect(self.spectrum_size_delta_requested.emit)
+        self._preview.spectrum_layer_patch_changed.connect(self.spectrum_layer_patch_changed.emit)
         self._preview.playback_state_changed.connect(self._on_preview_playback_state)
         # Status line lives on preview stage; keep stage chrome Video-like.
         self.add_widget(self._preview, stretch=2)

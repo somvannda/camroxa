@@ -11,6 +11,38 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Shape rotation vs image + preview drag.** Shape rotation spins path/mask only
+  (picture stays); Stay inside drag updates spectrumInstances so the pair moves on
+  preview. See `docs/changelog/2026-08-10-stay-inside-lock-mask-align.md`.
+- **Stay inside shape mask align.** Crop silhouette matches the yellow spectrum path.
+  See `docs/changelog/2026-08-10-stay-inside-lock-mask-align.md`.
+- **Spectrum dials + path phase + bar drag.** Smaller rotation dials (no tip text);
+  Path phase slides peaks; Shift/Alt preview gestures aim raise / phase / bar height.
+  See `docs/changelog/2026-08-10-spectrum-dial-path-phase-bar-drag.md`.
+- **Free bar raise angle.** Per-layer Raise angle dial points spikes any direction
+  (overrides Raise presets). See `docs/changelog/2026-08-10-free-bar-raise-angle.md`.
+- **Shape vs image rotation.** Shape rotation dial spins the spectrum path + mask;
+  Center image has its own Image rotation dial for the picture. See
+  `docs/changelog/2026-08-10-shape-vs-image-rotation.md`.
+- **Stay inside shape locks move + size.** Checking Stay inside shape attaches the
+  center image to the spectrum so dragging either moves both, and size still caps
+  at the yellow path edge.
+- **Stay inside shape fills to the path edge.** Contain clamp no longer leaves an
+  8% gap; Image size can grow up to the yellow spectrum outline.
+- **Diamond path matches mask.** Shape Diamond no longer draws a square ring while
+  Mask crops a diamond. See `docs/changelog/2026-08-10-diamond-path-matches-mask.md`.
+- **Stay inside shape / fixed-frame crop.** Image size may exceed the spectrum frame
+  (zoom); Mask always crops to the shape. Optional Stay inside shape caps size.
+  See `docs/changelog/2026-08-10-stay-inside-shape.md`.
+- **Independent shape vs image size.** Spectrum Shape size and center Image size px
+  no longer scale together. See
+  `docs/changelog/2026-08-10-independent-shape-image-size.md`.
+- **Spectrum shape rotation dial.** Shape card includes a 0–360° dial that spins the
+  spectrum path and center-image mask together. See
+  `docs/changelog/2026-08-10-spectrum-shape-rotation-dial.md`.
+- **Center image fits spectrum shape.** Center image Mask (square/circle/triangle/hex/
+  heart/Match spectrum) + Show toggle; GPU clips the square texture. See
+  `docs/changelog/2026-08-10-spectrum-center-image-fit-shape.md`.
 - **Spectrum-owned center image (Vizzy-style).** Logo removed from Studio scene tree;
   Spectrum loads the center image with auto-attach. See
   `docs/changelog/2026-08-10-spectrum-center-image.md`.

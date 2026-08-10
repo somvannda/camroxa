@@ -163,6 +163,14 @@ def apply_gpu_preview_bridge(
         ls["circleMask"] = bool(logo_comp.get("circleMask"))
     elif "circleMask" not in ls:
         ls["circleMask"] = False
+    if isinstance(logo_comp, dict) and "fitToShape" in logo_comp:
+        ls["fitToShape"] = bool(logo_comp.get("fitToShape"))
+    elif "fitToShape" not in ls:
+        ls["fitToShape"] = True
+    if isinstance(logo_comp, dict) and "maskShape" in logo_comp:
+        ls["maskShape"] = str(logo_comp.get("maskShape") or "auto")
+    elif "maskShape" not in ls:
+        ls["maskShape"] = "auto"
     out["logoSettings"] = ls
 
     # --- Camera → effects.camera_shake ---
@@ -268,6 +276,15 @@ def apply_gpu_preview_bridge(
     bindings = dict(bindings)
     if "spectrumAttachToLogo" in src:
         bindings["spectrumAttachToLogo"] = bool(src.get("spectrumAttachToLogo"))
+    # Stay inside shape locks image to the spectrum path (move + size together).
+    logo_lock = (
+        src.get("composition")
+        if isinstance(src.get("composition"), dict)
+        else {}
+    )
+    logo_lock = logo_lock.get("logo") if isinstance(logo_lock.get("logo"), dict) else {}
+    if bool(logo_lock.get("containInShape")):
+        bindings["spectrumAttachToLogo"] = True
     out["previewBindings"] = bindings
 
     if src.get("albumEnabled") or src.get("titleEnabled") or src.get("albumManualText") or src.get("titleManualText"):
@@ -524,6 +541,11 @@ def _apply_expert_tuning(out: dict[str, Any], comp: dict[str, Any]) -> None:
         else:
             gravity_override = None
 
+        try:
+            shape_rot = float(spec.get("rotationDeg") or 0.0) % 360.0
+        except (TypeError, ValueError):
+            shape_rot = 0.0
+
         def _apply_bar_geometry(source: list[Any]) -> list[Any]:
             tuned_g: list[Any] = []
             for layer in source:
@@ -543,6 +565,11 @@ def _apply_expert_tuning(out: dict[str, Any], comp: dict[str, Any]) -> None:
                     item["peakCapsEnabled"] = peak_caps
                 if "solidBand" not in item:
                     item["solidBand"] = solid_band
+                try:
+                    existing = float(item.get("rotation") or 0.0)
+                except (TypeError, ValueError):
+                    existing = 0.0
+                item["rotation"] = float(existing) + float(shape_rot)
                 tuned_g.append(item)
             return tuned_g
 
@@ -573,6 +600,36 @@ def _apply_expert_tuning(out: dict[str, Any], comp: dict[str, Any]) -> None:
         ls["opacity"] = float(logo_comp.get("opacity") or 1.0)
     if "reactivity" in logo_comp:
         ls["reactivity"] = float(logo_comp.get("reactivity") or 0.0)
+    if "circleMask" in logo_comp:
+        ls["circleMask"] = bool(logo_comp.get("circleMask"))
+    if "fitToShape" in logo_comp:
+        ls["fitToShape"] = bool(logo_comp.get("fitToShape"))
+    elif "fitToShape" not in ls:
+        ls["fitToShape"] = True
+    if "maskShape" in logo_comp:
+        ls["maskShape"] = str(logo_comp.get("maskShape") or "auto")
+    elif "maskShape" not in ls:
+        ls["maskShape"] = "auto"
+    if "containInShape" in logo_comp:
+        ls["containInShape"] = bool(logo_comp.get("containInShape"))
+    elif "containInShape" not in ls:
+        ls["containInShape"] = False
+    try:
+        # Mask follows Spectrum Shape rotation; image content has its own dial.
+        ls["maskRotationDeg"] = float(spec.get("rotationDeg") or 0.0) % 360.0
+    except (TypeError, ValueError):
+        ls["maskRotationDeg"] = float(ls.get("maskRotationDeg") or 0.0)
+    try:
+        ls["rotationDeg"] = float(logo_comp.get("rotationDeg") or 0.0) % 360.0
+    except (TypeError, ValueError):
+        ls["rotationDeg"] = float(ls.get("rotationDeg") or 0.0)
+    # Stay inside shape: keep picture orientation independent of path/mask spin.
+    if bool(ls.get("containInShape")):
+        ls["fitToShape"] = True
+        if str(ls.get("maskShape") or "auto") in ("", "none"):
+            ls["maskShape"] = "auto"
+    # Legacy alias — older preview paths read shapeRotationDeg as mask spin.
+    ls["shapeRotationDeg"] = float(ls.get("maskRotationDeg") or 0.0)
     if "offsetX" in logo_comp:
         ls["offsetX"] = float(logo_comp.get("offsetX") or 0.0) * 480.0
     if "offsetY" in logo_comp:

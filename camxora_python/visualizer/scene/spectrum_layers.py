@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 from visualizer.presets.audio_buses import normalize_audio_bus_id
+from visualizer._spectrum_fast import clamp_frequency_scroll, normalize_raise_angle_deg
 
 # Keys stamped from authored rings onto render layers.
 _LAYER_CONTROL_KEYS: tuple[str, ...] = (
@@ -16,6 +17,9 @@ _LAYER_CONTROL_KEYS: tuple[str, ...] = (
     "tipTaper",
     "mirrored",
     "gravity",
+    "raiseAngleDeg",
+    "frequencyScroll",
+    "barHeightOverrides",
     "peakCapsEnabled",
     "solidBand",
     "glow",
@@ -38,6 +42,9 @@ def default_spectrum_layer(index: int = 0, *, defaults: dict[str, Any] | None = 
         "tipTaper": 0.0,
         "mirrored": None,  # None = shape default
         "gravity": None,  # None = shape default
+        "raiseAngleDeg": None,  # None = follow Raise preset; 0–360 = free direction
+        "frequencyScroll": 0.0,  # 0–1 slide peaks along the path
+        "barHeightOverrides": {},  # sparse {barIndex: scale} from preview drag
         "peakCapsEnabled": False,
         "solidBand": False,
         "glow": None,  # None = inherit spectrum/material glow
@@ -96,7 +103,22 @@ def normalize_spectrum_layers(
         if not isinstance(item, dict):
             continue
         merged = default_spectrum_layer(len(out), defaults=seed)
-        merged.update({k: v for k, v in item.items() if v is not None or k in ("audioBus", "mirrored", "gravity", "glow", "blur")})
+        merged.update(
+            {
+                k: v
+                for k, v in item.items()
+                if v is not None or k in (
+                    "audioBus",
+                    "mirrored",
+                    "gravity",
+                    "raiseAngleDeg",
+                    "frequencyScroll",
+                    "barHeightOverrides",
+                    "glow",
+                    "blur",
+                )
+            }
+        )
         try:
             gap = float(merged.get("radiusOffset") or 0.0)
         except (TypeError, ValueError):
@@ -133,6 +155,9 @@ def normalize_spectrum_layers(
                 gravity = normalize_spectrum_gravity(gravity)
             except Exception:
                 gravity = None
+        raise_angle = normalize_raise_angle_deg(merged.get("raiseAngleDeg"))
+        freq_scroll = clamp_frequency_scroll(merged.get("frequencyScroll"), 0.0)
+        bar_overrides = _normalize_bar_height_overrides(merged.get("barHeightOverrides"))
         glow = merged.get("glow")
         if glow is not None:
             glow = _clamp_float(glow, 0.0, 1.0, 0.45)
@@ -154,6 +179,9 @@ def normalize_spectrum_layers(
                 "tipTaper": _clamp_float(merged.get("tipTaper"), 0.0, 1.0, 0.0),
                 "mirrored": mirrored,
                 "gravity": gravity,
+                "raiseAngleDeg": raise_angle,
+                "frequencyScroll": freq_scroll,
+                "barHeightOverrides": bar_overrides,
                 "peakCapsEnabled": bool(merged.get("peakCapsEnabled", False)),
                 "solidBand": bool(merged.get("solidBand", False)),
                 "glow": glow,
@@ -197,6 +225,12 @@ def expand_spectrum_layers(
             layer["mirrored"] = bool(ring.get("mirrored"))
         if ring.get("gravity") is not None:
             layer["gravity"] = ring.get("gravity")
+        if "raiseAngleDeg" in ring:
+            layer["raiseAngleDeg"] = normalize_raise_angle_deg(ring.get("raiseAngleDeg"))
+        if "frequencyScroll" in ring:
+            layer["frequencyScroll"] = clamp_frequency_scroll(ring.get("frequencyScroll"), 0.0)
+        if "barHeightOverrides" in ring:
+            layer["barHeightOverrides"] = _normalize_bar_height_overrides(ring.get("barHeightOverrides"))
         if ring.get("glow") is not None:
             lg = float(ring.get("glow"))
             layer["layerGlow"] = lg
@@ -255,6 +289,31 @@ def expand_spectrum_layers(
         layer["sizeScale"] = scale
         _stamp_controls(layer, ring)
         out.append(layer)
+    return out
+
+
+def _normalize_bar_height_overrides(raw: Any) -> dict[str, float]:
+    """Sparse per-bar height scales from preview drag: ``{"12": 1.4, ...}``."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, float] = {}
+    for key, value in raw.items():
+        try:
+            idx = int(key)
+        except (TypeError, ValueError):
+            continue
+        if idx < 0 or idx > 512:
+            continue
+        try:
+            scale = float(value)
+        except (TypeError, ValueError):
+            continue
+        scale = max(0.05, min(4.0, scale))
+        if abs(scale - 1.0) < 1e-3:
+            continue
+        out[str(idx)] = scale
+        if len(out) >= 160:
+            break
     return out
 
 

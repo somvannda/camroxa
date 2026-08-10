@@ -73,6 +73,9 @@ def default_composition() -> dict[str, Any]:
             "sizeScale": 1.0,
             "offsetX": 0.0,
             "offsetY": 0.0,
+            "rotationDeg": 0.0,
+            # Studio: Shape size (sizeScale) ≠ center-image Size px unless opted in.
+            "fitRadiusToCenterImage": False,
             "colorPalette": None,
             "gradientColors": None,  # custom stops; None = use palette catalog
             "barCount": 64,
@@ -98,10 +101,16 @@ def default_composition() -> dict[str, Any]:
             "opacity": 1.0,
             "circleMask": False,
             "fitToShape": True,
+            "maskShape": "auto",
+            # When True, Image size is clamped ≤ shape frame. When False, size may
+            # exceed the frame (zoom) while Mask still crops to the shape silhouette.
+            "containInShape": False,
             "reactivity": 0.0,
             "offsetX": 0.0,
             "offsetY": 0.0,
             "size": 192.0,
+            # Image content rotation (independent of Spectrum Shape rotationDeg).
+            "rotationDeg": 0.0,
         },
         "text": {"enabled": False, "opacity": 1.0, "scale": 1.0, "offsetY": 0.0},
         "overlay": {"enabled": False, "animation": NONE, "items": [], "amount": 0.28},
@@ -208,6 +217,14 @@ def normalize_composition(raw: Any) -> dict[str, Any]:
     out["spectrum"]["sizeScale"] = _clamp_float(spec.get("sizeScale"), 0.35, 2.5, 1.0)
     out["spectrum"]["offsetX"] = _clamp_float(spec.get("offsetX"), -2.0, 2.0, 0.0)
     out["spectrum"]["offsetY"] = _clamp_float(spec.get("offsetY"), -2.0, 2.0, 0.0)
+    try:
+        rot = float(spec.get("rotationDeg") or 0.0) % 360.0
+    except (TypeError, ValueError):
+        rot = 0.0
+    if rot < 0.0:
+        rot += 360.0
+    out["spectrum"]["rotationDeg"] = float(rot)
+    out["spectrum"]["fitRadiusToCenterImage"] = bool(spec.get("fitRadiusToCenterImage", False))
     from visualizer.presets.palettes import normalize_color_palette_id
     from visualizer.scene.spectrum_layers import normalize_spectrum_layers
 
@@ -279,10 +296,27 @@ def normalize_composition(raw: Any) -> dict[str, Any]:
     else:
         # Default on: Vizzy-style clip to spectrum geometry.
         out["logo"]["fitToShape"] = True
+    try:
+        from visualizer.logo_mask import normalize_logo_mask_shape_id
+
+        out["logo"]["maskShape"] = normalize_logo_mask_shape_id(logo.get("maskShape"))
+    except Exception:
+        out["logo"]["maskShape"] = "auto"
+    if "containInShape" in logo:
+        out["logo"]["containInShape"] = bool(logo.get("containInShape"))
+    else:
+        out["logo"]["containInShape"] = False
     out["logo"]["reactivity"] = _clamp_float(logo.get("reactivity"), 0.0, 1.0, 0.0)
     out["logo"]["offsetX"] = _clamp_float(logo.get("offsetX"), -0.5, 0.5, 0.0)
     out["logo"]["offsetY"] = _clamp_float(logo.get("offsetY"), -0.5, 0.5, 0.0)
     out["logo"]["size"] = _clamp_float(logo.get("size"), 64.0, 512.0, 192.0)
+    try:
+        rot = float(logo.get("rotationDeg") or 0.0) % 360.0
+        if rot < 0.0:
+            rot += 360.0
+        out["logo"]["rotationDeg"] = float(rot)
+    except (TypeError, ValueError):
+        out["logo"]["rotationDeg"] = 0.0
 
     text = raw.get("text") if isinstance(raw.get("text"), dict) else {}
     out["text"]["enabled"] = bool(text.get("enabled", False))
