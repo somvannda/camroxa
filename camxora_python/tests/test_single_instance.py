@@ -7,7 +7,10 @@ import sys
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from shared.lib.single_instance import SingleInstanceGuard
+from shared.lib.single_instance import (
+    SingleInstanceGuard,
+    single_instance_server_name,
+)
 
 
 @pytest.fixture(scope="module")
@@ -18,7 +21,30 @@ def qapp() -> QApplication:
     return app
 
 
-def test_second_guard_cannot_become_primary(qapp: QApplication) -> None:
+def test_production_keeps_stable_server_name() -> None:
+    assert single_instance_server_name("production") == (
+        "Camxora.DesktopStudio.SingleInstance.v1"
+    )
+    assert single_instance_server_name("development") == (
+        "Camxora.DesktopStudio.SingleInstance.v1"
+    )
+
+
+def test_sandbox_uses_distinct_server_name() -> None:
+    assert single_instance_server_name("sandbox") == (
+        "Camxora.DesktopStudio.SingleInstance.v1.sandbox"
+    )
+
+
+def test_second_guard_cannot_become_primary(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CAMXORA_BUILD_ENV", "production")
+    monkeypatch.setattr(
+        "shared.lib.single_instance.single_instance_server_name",
+        lambda build_env=None: "Camxora.DesktopStudio.SingleInstance.v1.test-primary",
+    )
+
     first = SingleInstanceGuard(qapp)
     assert first.try_become_primary() is True
 
@@ -38,3 +64,24 @@ def test_second_guard_cannot_become_primary(qapp: QApplication) -> None:
         if activated["count"] >= 1:
             break
     assert activated["count"] >= 1
+
+
+def test_sandbox_and_production_can_both_be_primary(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    names = iter(
+        [
+            "Camxora.DesktopStudio.SingleInstance.v1.test-prod",
+            "Camxora.DesktopStudio.SingleInstance.v1.test-sandbox",
+        ]
+    )
+    monkeypatch.setattr(
+        "shared.lib.single_instance.single_instance_server_name",
+        lambda build_env=None: next(names),
+    )
+
+    production = SingleInstanceGuard(qapp)
+    assert production.try_become_primary() is True
+
+    sandbox = SingleInstanceGuard(qapp)
+    assert sandbox.try_become_primary() is True

@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Sandbox desktop single-instance lock is env-scoped so sandbox can run alongside production; production keeps `Camxora.DesktopStudio.SingleInstance.v1`. See `docs/changelog/2026-08-10-sandbox-dual-instance-lock.md`.
+
 ## [1.2.1] - 2026-08-08
 
 ### Added
