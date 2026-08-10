@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
-from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
+from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID
 
 
 class AiDesignerPanel(QWidget):
@@ -16,18 +16,14 @@ class AiDesignerPanel(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        title = QLabel("AI Designer")
-        title.setObjectName(SUBTITLE_LABEL_ID)
-        layout.addWidget(title)
-        hint = QLabel("AI edits Scene JSON only — never pixels.")
-        hint.setObjectName(SUBTITLE_LABEL_ID)
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
         self._prompt = QLineEdit()
         self._prompt.setPlaceholderText("Futuristic purple EDM visualizer with lightning…")
         layout.addWidget(self._prompt)
         row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
         gen = QPushButton("Generate")
         gen.clicked.connect(lambda: self.generate_requested.emit(self._prompt.text()))
         mod = QPushButton("Modify")
@@ -42,7 +38,8 @@ class AiDesignerPanel(QWidget):
         layout.addLayout(row)
         self._log = QTextEdit()
         self._log.setReadOnly(True)
-        self._log.setMaximumHeight(120)
+        self._log.setMaximumHeight(100)
+        self._log.setPlaceholderText("AI result…")
         layout.addWidget(self._log)
 
     def set_explanation(self, text: str) -> None:

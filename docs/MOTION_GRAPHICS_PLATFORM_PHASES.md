@@ -19,4 +19,5 @@
 - Authoring authority remains `schema: camxora.composition` axes; project/objects is a projection.
 - AI Designer never renders pixels — only Scene JSON.
 - P7 marketplace/cloud are **stubs** for future wiring (no production network services in this slice).
+- Follow-up (2026-08-09): Expert inspector density + video background preview + pinned Timeline UI.
 - Out of scope unchanged: full NLE, heavy VFX suite, character animation, 3D modeling, AI pixel video.

@@ -33,7 +33,7 @@ CANONICAL_12 = (
     "spiral",
     "tunnel",
 )
-FILL_3 = ("ring", "starburst", "pillars")
+FILL_3 = ("ring", "starburst", "soft_eq")
 
 
 def test_shape_catalog_count_is_15() -> None:

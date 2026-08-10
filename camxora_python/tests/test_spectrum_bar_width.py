@@ -16,6 +16,7 @@ def test_resolve_bar_pixel_width_uses_slider_value_when_no_slot() -> None:
     assert resolve_bar_pixel_width(1.0) == 1.0
     assert resolve_bar_pixel_width(7.5) == 7.5
     assert resolve_bar_pixel_width(40.0) == 40.0
+    assert resolve_bar_pixel_width(0.4) == 0.4
 
 
 def test_resolve_bar_pixel_width_reserves_gap_inside_slot() -> None:
@@ -47,3 +48,30 @@ def test_bar_density_allows_up_to_192() -> None:
     assert clamp_spectrum_bar_count(128) == 128
     assert clamp_spectrum_bar_count(192) == 192
     assert clamp_spectrum_bar_count(300) == 192
+
+
+def test_classic_bars_tip_taper_control() -> None:
+    """Tip taper 0 = equal width; tip taper 1 = narrower tip."""
+    import numpy as np
+
+    from visualizer._spectrum_fast import build_bar_vertices
+
+    n = 4
+    px = np.zeros(n, dtype=np.float32)
+    py = np.zeros(n, dtype=np.float32)
+    dx = np.zeros(n, dtype=np.float32)
+    dy = np.ones(n, dtype=np.float32)
+    val = np.full(n, 40.0, dtype=np.float32)
+    equal = build_bar_vertices(
+        px, py, dx, dy, val, 100.0, 100.0, 200, 200, 10.0, "orbit-spikes", 1.0, tip_taper=0.0
+    )
+    tapered = build_bar_vertices(
+        px, py, dx, dy, val, 100.0, 100.0, 200, 200, 10.0, "orbit-spikes", 1.0, tip_taper=1.0
+    )
+    eq_base = abs(float(equal[1, 0] - equal[0, 0]))
+    eq_tip = abs(float(equal[2, 0] - equal[5, 0]))
+    tap_base = abs(float(tapered[1, 0] - tapered[0, 0]))
+    tap_tip = abs(float(tapered[2, 0] - tapered[5, 0]))
+    assert abs(eq_tip - eq_base) < 1e-5
+    assert tap_tip < tap_base * 0.7
+    assert tap_tip > tap_base * 0.35

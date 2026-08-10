@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
 from features.studio.lib.scene_document import SCENE_TREE_NODES
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 
 
 class StudioSceneTree(QWidget):
@@ -16,10 +15,7 @@ class StudioSceneTree(QWidget):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        caption = QLabel("Scene")
-        caption.setObjectName(SUBTITLE_LABEL_ID)
-        layout.addWidget(caption)
+        layout.setSpacing(0)
         self._list = QListWidget()
         for key, label in SCENE_TREE_NODES:
             item = QListWidgetItem(label)

@@ -1,6 +1,8 @@
 """Live GPU preview widget — PySide6 port of python_app SpectrumPreview."""
 
 
+import math
+import os
 import time
 import threading
 from pathlib import Path
@@ -10,7 +12,46 @@ import numpy as np
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtCore import Signal, QTimer, QByteArray, Qt, QRectF, QSize, QMetaObject, Slot, Q_ARG
-from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPixmap
+from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPixmap, QSurfaceFormat
+
+
+def _preview_target_hz() -> int:
+    """Studio preview paint rate. Default 120; override with CAMXORA_PREVIEW_HZ."""
+    raw = str(os.environ.get("CAMXORA_PREVIEW_HZ") or "120").strip()
+    try:
+        return int(max(30, min(240, int(raw))))
+    except (TypeError, ValueError):
+        return 120
+
+
+def _configure_preview_gl_format() -> QSurfaceFormat:
+    """Prefer unlocked swap + full RGB; optional 10-bit via CAMXORA_PREVIEW_DEEP_COLOR=1."""
+    fmt = QSurfaceFormat(QSurfaceFormat.defaultFormat())
+    fmt.setSwapBehavior(QSurfaceFormat.SwapBehavior.DoubleBuffer)
+    fmt.setSwapInterval(0)  # uncapped when the driver/compositor allows
+    # Multisample edges — classic spectrum quads otherwise look jagged/aliased.
+    if fmt.samples() < 4:
+        fmt.setSamples(4)
+    if fmt.depthBufferSize() < 16:
+        fmt.setDepthBufferSize(24)
+    deep = str(os.environ.get("CAMXORA_PREVIEW_DEEP_COLOR") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if deep:
+        # Request 10-bit; Qt/OS fall back to 8-bit when unsupported.
+        fmt.setRedBufferSize(10)
+        fmt.setGreenBufferSize(10)
+        fmt.setBlueBufferSize(10)
+        fmt.setAlphaBufferSize(2)
+    else:
+        fmt.setRedBufferSize(8)
+        fmt.setGreenBufferSize(8)
+        fmt.setBlueBufferSize(8)
+        fmt.setAlphaBufferSize(8)
+    return fmt
 
 import moderngl
 from visualizer.gpu_render import (
@@ -35,6 +76,7 @@ from visualizer.hdr_bloom import (
 from visualizer._spectrum_fast import (
     build_contour_wave_strips,
     build_solid_band_strip_vertices,
+    build_solid_graph_strip_vertices,
     clamp_spectrum_bar_count,
     generate_spectrum_layer_geometry,
     mirror_spectrum_points_vertical,
@@ -51,6 +93,7 @@ from features.video.lib.particle_color_engine import (
 )
 from features.video.lib.spectrum_color_engine import (
     build_spectrum_bar_quad_rgba,
+    build_spectrum_fill_fan_rgba,
     build_spectrum_vertex_rgba,
     dampen_spectrum_glow_rgba,
 )
@@ -203,11 +246,20 @@ class _QtGLContextLoader:
 
 class AspectRatioBox(QWidget):
 
-    def __init__(self, child: QWidget, ratio_w: int=16, ratio_h: int=9, parent=None):
+    def __init__(
+        self,
+        child: QWidget,
+        ratio_w: int = 16,
+        ratio_h: int = 9,
+        parent=None,
+        *,
+        enforce_height_for_width: bool = True,
+    ):
         super().__init__(parent)
         self._child = child
         self._overlay: QWidget | None = None
         self._ratio = float(ratio_w) / float(ratio_h)
+        self._enforce_height_for_width = bool(enforce_height_for_width)
         self._child.setParent(self)
 
     def _apply_child_geometry(self) -> None:
@@ -260,7 +312,7 @@ class AspectRatioBox(QWidget):
         self.update()
 
     def hasHeightForWidth(self) -> bool:
-        return True
+        return bool(self._enforce_height_for_width)
 
     def heightForWidth(self, w: int) -> int:
         width = max(1, int(w))
@@ -269,6 +321,8 @@ class AspectRatioBox(QWidget):
     def sizeHint(self):
         from PySide6.QtCore import QSize
         w = 480
+        if not self._enforce_height_for_width:
+            return QSize(w, 270)
         return QSize(w, self.heightForWidth(w))
 
     def resizeEvent(self, ev):
@@ -279,6 +333,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
     position_changed = Signal(int, int)
     lightning_position_changed = Signal(int, int)
     logo_position_changed = Signal(int, int)
+    spectrum_size_delta_requested = Signal(float)
     background_transform_changed = Signal(float, float, float)
     playback_state_changed = Signal(object)
     text_domain_position_changed = Signal(str, float, float)
@@ -286,14 +341,18 @@ class VideoSpectrumPreview(QOpenGLWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFormat(_configure_preview_gl_format())
         self.ctx = None
         self._gl_ready = False
+        self._target_hz = _preview_target_hz()
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(1000 // 60)
+        self.timer.start(max(1, 1000 // int(self._target_hz)))
         self.template = normalize_renderer_template(default_renderer_template())
         self.audio_path = None
         self.bg_path = None
+        self._bg_video = None
+        self._bg_video_path = ""
         self.logo_path = None
         self._logo_rgba_cache = None
         self._logo_visible_radius_ratio = 1.0
@@ -309,6 +368,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         except Exception:
             pass
         self.audio_playing = False
+        self._loop_playback = False
         self.audio_loading = False
         self.audio_ready = False
         self.analysis_loading = False
@@ -330,7 +390,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self.particle_audio_env = 0.0
         self.p_trigger_env = 0.0
         self._particle_audio_state = ParticleAudioState()
-        self.dt = 1.0 / 60.0
+        self.dt = 1.0 / float(self._target_hz)
         self._frame_counter = 0
         self._screen_fbo = None
         self._particles_wh = (0, 0)
@@ -663,35 +723,51 @@ class VideoSpectrumPreview(QOpenGLWidget):
         )
 
     def _draw_atmosphere_pass(self, *, w: int, h: int, time_sec: float) -> None:
-        """Session B atmosphere — volume/weather/sky draw (not particle emitters)."""
+        """Session B atmosphere — per-style weather/volume/sky (not particle emitters)."""
         if self.ctx is None or not hasattr(self, "vao_lines"):
             return
         tpl = self.template if isinstance(self.template, dict) else {}
         atm = tpl.get("atmosphereDraw") if isinstance(tpl.get("atmosphereDraw"), dict) else None
         if atm is None or not bool(atm.get("enabled")):
+            self._draw_post_effect_proxies(w=w, h=h, time_sec=time_sec)
             return
         try:
             from visualizer.composition_effects.atmosphere_gpu import (
                 _hex_rgba,
+                atmosphere_aurora_ribbons,
+                atmosphere_caustic_points,
+                atmosphere_cloud_bands,
+                atmosphere_dust_points,
                 atmosphere_fog_quad,
+                atmosphere_heat_shimmer,
                 atmosphere_star_points,
                 atmosphere_weather_segments,
             )
         except Exception:
+            self._draw_post_effect_proxies(w=w, h=h, time_sec=time_sec)
             return
+        aid = str(atm.get("atmosphereId") or "fog")
         kind = str(atm.get("kind") or "volume")
         density = float(atm.get("density") or 0.35)
         tint = str(atm.get("tint") or "#a8b4c8")
         speed = float(atm.get("speed") or 1.0)
+        opacity = float(atm.get("opacity") or 1.0)
+        wind = float(atm.get("wind") or 1.0)
         try:
             self._blend_normal()
-            if kind in {"volume", "distort"}:
-                rgba = _hex_rgba(tint, 0.12 + 0.35 * density)
-                verts = atmosphere_fog_quad(rgba)
-                self._write_vbo(self.line_vbo, verts)
-                self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
-            if kind == "weather":
-                aid = str(atm.get("atmosphereId") or "rain")
+            # Volume/sky wash scales with density×opacity — no fixed floor (was stuck shade).
+            # Weather (rain/snow/storm) is streaks only — never a full-screen tint.
+            dens = max(0.0, float(density))
+            op = max(0.0, min(1.0, float(opacity)))
+            if dens > 0.001 and op > 0.001 and kind in {"volume", "distort", "sky"}:
+                wash_a = dens * op * (0.55 if aid == "void" else (0.22 if kind == "volume" else 0.12))
+                if wash_a > 0.01:
+                    rgba = _hex_rgba(tint, wash_a)
+                    verts = atmosphere_fog_quad(rgba)
+                    self._write_vbo(self.line_vbo, verts)
+                    self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
+
+            if kind == "weather" or aid in {"rain", "snow", "storm"}:
                 weather_kind = "snow" if aid == "snow" else ("storm" if aid == "storm" else "rain")
                 segs = atmosphere_weather_segments(
                     kind=weather_kind,
@@ -701,33 +777,225 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     time_sec=time_sec,
                     width=w,
                     height=h,
+                    wind=wind,
+                    opacity=opacity,
                 )
                 if segs.shape[0]:
                     self._blend_additive()
                     self._write_vbo(self.line_vbo, segs)
                     self.vao_lines.render(mode=moderngl.LINES, vertices=int(segs.shape[0]))
                     self._blend_normal()
-            if kind == "sky":
-                # Soft wash + twinkling points for stars/nebula/aurora/void.
-                rgba = _hex_rgba(tint, 0.08 + 0.22 * density)
-                verts = atmosphere_fog_quad(rgba)
-                self._write_vbo(self.line_vbo, verts)
-                self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
-                if hasattr(self, "vao_pts") and hasattr(self, "pt_vbo"):
-                    pts = atmosphere_star_points(
-                        density=density,
-                        twinkle=float(atm.get("twinkle") or 0.5),
-                        time_sec=time_sec,
-                    )
-                    if pts.shape[0]:
+                if aid == "storm" and float(atm.get("flash") or 0.0) > 0.05:
+                    flash = abs(math.sin(float(time_sec) * 7.0 * speed)) ** 12
+                    if flash > 0.35:
+                        rgba = _hex_rgba("#e0f2fe", 0.12 * flash * opacity)
+                        verts = atmosphere_fog_quad(rgba)
                         self._blend_additive()
-                        self._write_vbo(self.pt_vbo, pts)
-                        self.vao_pts.render(mode=moderngl.POINTS, vertices=int(pts.shape[0]))
+                        self._write_vbo(self.line_vbo, verts)
+                        self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
                         self._blend_normal()
+
+            if aid in {"dust", "smoke", "haze", "fog", "mist"} and hasattr(self, "vao_pts"):
+                pts = atmosphere_dust_points(
+                    density=density * (1.25 if aid == "dust" else 0.9),
+                    speed=speed,
+                    time_sec=time_sec,
+                    wind=wind,
+                )
+                if pts.shape[0]:
+                    self._blend_additive()
+                    self._write_vbo(self.pt_vbo, pts)
+                    self.vao_pts.render(mode=moderngl.POINTS, vertices=int(pts.shape[0]))
+                    self._blend_normal()
+
+            if aid == "clouds":
+                bands = atmosphere_cloud_bands(
+                    density=density,
+                    speed=speed,
+                    tint=tint,
+                    time_sec=time_sec,
+                    opacity=opacity,
+                )
+                if bands.shape[0]:
+                    self._blend_normal()
+                    self._write_vbo(self.line_vbo, bands)
+                    self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(bands.shape[0]))
+
+            if aid == "aurora":
+                ribbons = atmosphere_aurora_ribbons(
+                    density=density,
+                    speed=speed,
+                    tint=tint,
+                    time_sec=time_sec,
+                    opacity=opacity,
+                )
+                if ribbons.shape[0]:
+                    self._blend_additive()
+                    self._write_vbo(self.line_vbo, ribbons)
+                    self.vao_lines.render(mode=moderngl.LINES, vertices=int(ribbons.shape[0]))
+                    self._blend_normal()
+
+            if aid in {"stars", "nebula", "void"} and hasattr(self, "vao_pts"):
+                pts = atmosphere_star_points(
+                    density=density * (0.35 if aid == "void" else 1.0),
+                    twinkle=float(atm.get("twinkle") or (0.75 if aid == "stars" else 0.35)),
+                    time_sec=time_sec,
+                )
+                if pts.shape[0]:
+                    self._blend_additive()
+                    self._write_vbo(self.pt_vbo, pts)
+                    self.vao_pts.render(mode=moderngl.POINTS, vertices=int(pts.shape[0]))
+                    self._blend_normal()
+
+            if aid == "heatwave" or kind == "distort":
+                shimmer = atmosphere_heat_shimmer(
+                    density=density,
+                    speed=speed,
+                    amplitude=float(atm.get("amplitude") or 0.03),
+                    time_sec=time_sec,
+                    opacity=opacity,
+                )
+                if shimmer.shape[0]:
+                    self._blend_additive()
+                    self._write_vbo(self.line_vbo, shimmer)
+                    self.vao_lines.render(mode=moderngl.LINES, vertices=int(shimmer.shape[0]))
+                    self._blend_normal()
+
+            if aid == "underwater" and hasattr(self, "vao_pts"):
+                pts = atmosphere_caustic_points(density=density, speed=speed, time_sec=time_sec)
+                if pts.shape[0]:
+                    self._blend_additive()
+                    self._write_vbo(self.pt_vbo, pts)
+                    self.vao_pts.render(mode=moderngl.POINTS, vertices=int(pts.shape[0]))
+                    self._blend_normal()
         except Exception as exc:
             if not getattr(self, "_atmosphere_err_logged", False):
                 self._atmosphere_err_logged = True
                 self._log(f"Atmosphere pass skipped: {exc}", level="warn")
+        self._draw_post_effect_proxies(w=w, h=h, time_sec=time_sec)
+
+    def _draw_post_effect_proxies(self, *, w: int, h: int, time_sec: float) -> None:
+        """Visible Studio proxies for post/overlay effects the full export stack may also run."""
+        if self.ctx is None or not hasattr(self, "vao_lines"):
+            return
+        tpl = self.template if isinstance(self.template, dict) else {}
+        fx = tpl.get("effects") if isinstance(tpl.get("effects"), dict) else {}
+
+        def _amt(key: str, default: float = 0.2) -> float:
+            block = fx.get(key) if isinstance(fx.get(key), dict) else {}
+            if not bool(block.get("enabled")):
+                return 0.0
+            try:
+                return float(block.get("amount") or default)
+            except (TypeError, ValueError):
+                return default
+
+        try:
+            from visualizer.composition_effects.atmosphere_gpu import (
+                _hex_rgba,
+                atmosphere_fog_quad,
+                atmosphere_star_points,
+                atmosphere_weather_segments,
+            )
+        except Exception:
+            return
+        try:
+            grain_amt = max(_amt("film_grain"), _amt("sharpen") * 0.7, _amt("posterize") * 0.55)
+            if grain_amt > 0.01 and hasattr(self, "vao_pts") and hasattr(self, "pt_vbo"):
+                pts = atmosphere_star_points(
+                    density=0.28 + grain_amt,
+                    twinkle=0.55 + 0.5 * _amt("posterize"),
+                    time_sec=time_sec,
+                )
+                if pts.shape[0]:
+                    self._blend_normal()
+                    self._write_vbo(self.pt_vbo, pts)
+                    self.vao_pts.render(mode=moderngl.POINTS, vertices=int(pts.shape[0]))
+
+            # Soft washes — keep alpha low so spectrum palette hues stay readable.
+            wash_specs = (
+                ("soft_diffusion", "#c7d2fe", 0.04),
+                ("color_grading", "#f9a8d4", 0.03),
+                ("tone_mapping", "#fde68a", 0.03),
+                ("hdr", "#fef3c7", 0.03),
+                ("exposure", "#fff7ed", 0.03),
+                ("gamma", "#e2e8f0", 0.03),
+                ("contrast", "#94a3b8", 0.03),
+                ("glow", "#a78bfa", 0.05),
+                ("bloom", "#e9d5ff", 0.04),
+            )
+            for key, tint, base_a in wash_specs:
+                amt = _amt(key)
+                if amt <= 0.01:
+                    continue
+                if key in {"glow", "bloom", "hdr"}:
+                    self._blend_additive()
+                else:
+                    self._blend_normal()
+                rgba = _hex_rgba(tint, base_a + 0.08 * amt)
+                verts = atmosphere_fog_quad(rgba)
+                self._write_vbo(self.line_vbo, verts)
+                self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
+                self._blend_normal()
+
+            split_amt = max(_amt("rgb_split"), _amt("chromatic_aberration"), _amt("lens_distortion") * 0.8)
+            if split_amt > 0.01:
+                self._blend_additive()
+                for hex_tint, alpha in (
+                    ("#ff3355", 0.05 + 0.12 * split_amt),
+                    ("#33e0ff", 0.04 + 0.1 * split_amt),
+                ):
+                    rgba = _hex_rgba(hex_tint, alpha)
+                    verts = atmosphere_fog_quad(rgba)
+                    self._write_vbo(self.line_vbo, verts)
+                    self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(verts.shape[0]))
+                self._blend_normal()
+
+            motion_amt = max(_amt("motion_blur"), _amt("depth_of_field"))
+            if motion_amt > 0.01:
+                segs = atmosphere_weather_segments(
+                    kind="rain" if _amt("motion_blur") >= _amt("depth_of_field") else "snow",
+                    density=0.2 + motion_amt,
+                    speed=0.6 + motion_amt,
+                    tint="#e2e8f0",
+                    time_sec=time_sec,
+                    width=w,
+                    height=h,
+                )
+                if segs.shape[0]:
+                    self._blend_normal()
+                    self._write_vbo(self.line_vbo, segs)
+                    self.vao_lines.render(mode=moderngl.LINES, vertices=int(segs.shape[0]))
+
+            letter_amt = _amt("letterbox")
+            if letter_amt > 0.01:
+                band = max(0.04, min(0.28, 0.08 + 0.22 * letter_amt))
+                rgba = _hex_rgba("#020617", 0.55 + 0.35 * letter_amt)
+                # Top + bottom bars in NDC.
+                bars = np.array(
+                    [
+                        [-1.0, 1.0 - band, *rgba],
+                        [1.0, 1.0 - band, *rgba],
+                        [1.0, 1.0, *rgba],
+                        [-1.0, 1.0 - band, *rgba],
+                        [1.0, 1.0, *rgba],
+                        [-1.0, 1.0, *rgba],
+                        [-1.0, -1.0, *rgba],
+                        [1.0, -1.0, *rgba],
+                        [1.0, -1.0 + band, *rgba],
+                        [-1.0, -1.0, *rgba],
+                        [1.0, -1.0 + band, *rgba],
+                        [-1.0, -1.0 + band, *rgba],
+                    ],
+                    dtype=np.float32,
+                )
+                self._blend_normal()
+                self._write_vbo(self.line_vbo, bars)
+                self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(bars.shape[0]))
+        except Exception as exc:
+            if not getattr(self, "_post_proxy_err_logged", False):
+                self._post_proxy_err_logged = True
+                self._log(f"Post proxy pass skipped: {exc}", level="warn")
 
     def _finish_lightning_frame(
         self,
@@ -1044,7 +1312,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
             return
         self._interactive_scrub = want
         try:
-            self.timer.setInterval(1000 // 20 if want else 1000 // 60)
+            hz = 20 if want else int(getattr(self, "_target_hz", _preview_target_hz()) or 120)
+            self.timer.setInterval(max(1, 1000 // hz))
         except Exception:
             pass
 
@@ -1447,6 +1716,12 @@ class VideoSpectrumPreview(QOpenGLWidget):
     def _emit_playback_state_on_gui(self) -> None:
         self.playback_state_changed.emit(self.playback_snapshot())
 
+    def set_loop_playback(self, enabled: bool) -> None:
+        self._loop_playback = bool(enabled)
+
+    def loop_playback(self) -> bool:
+        return bool(getattr(self, "_loop_playback", False))
+
     def play_preview(self) -> None:
         if not str(self.audio_path or "").strip():
             return
@@ -1644,35 +1919,51 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 self.logo_position_changed.emit(nx, ny)
             ev.accept()
             return
-        # Spectrum drag — prefer selected spectrumInstances entry when present.
+        # Spectrum drag — free overscan (not clamped to frame edges).
+        # Soft limit matches composition offset ±2.0 (×480 / ×270 template units).
+        def _free_spectrum_xy(nx: float, ny: float) -> tuple[float, float]:
+            return (
+                float(max(-960.0, min(960.0, nx))),
+                float(max(-540.0, min(540.0, ny))),
+            )
+
+        def _mirror_spectrum_offsets(nx: float, ny: float) -> None:
+            comp = self.template.get("composition")
+            if not isinstance(comp, dict):
+                return
+            spec = dict(comp.get("spectrum") if isinstance(comp.get("spectrum"), dict) else {})
+            spec["offsetX"] = float(nx) / 480.0
+            spec["offsetY"] = float(ny) / 270.0
+            self.template["composition"] = {**comp, "spectrum": spec}
+
         if bool(getattr(self, "_spectrum_position_edit_mode", False)):
             instances = self.template.get("spectrumInstances")
             if isinstance(instances, list) and instances:
                 idx = int(max(0, min(getattr(self, "_selected_spectrum_instance_index", 0), len(instances) - 1)))
                 inst = instances[idx] if isinstance(instances[idx], dict) else {}
-                anchor = str(inst.get("anchor") or "center")
                 nx = float(inst.get("x", 0.0) or 0.0) + float(dx) / sf
                 ny = float(inst.get("y", 0.0) or 0.0) + float(dy) / sf
-                nx, ny = _clamp_xy(anchor, nx, ny)
+                nx, ny = _free_spectrum_xy(nx, ny)
                 instances[idx] = {**inst, "x": float(nx), "y": float(ny)}
                 self.template["spectrumInstances"] = instances
                 # Mirror primary into legacy position for packs / single-path readers.
                 if idx == 0:
                     pos_cfg = self.template.get("position", {}) if isinstance(self.template.get("position"), dict) else {}
                     self.template["position"] = {**pos_cfg, "x": nx, "y": ny}
-                self.position_changed.emit(nx, ny)
+                    _mirror_spectrum_offsets(nx, ny)
+                self.position_changed.emit(int(round(nx)), int(round(ny)))
                 ev.accept()
                 return
         if not bool(getattr(self, "_spectrum_position_edit_mode", False)):
             super().mouseMoveEvent(ev)
             return
         pos_cfg = self.template.get('position', {}) if isinstance(self.template.get('position'), dict) else {}
-        anchor = str(pos_cfg.get("anchor") or "center")
         nx = float(pos_cfg.get('x', 0.0) or 0.0) + float(dx) / sf
         ny = float(pos_cfg.get('y', 0.0) or 0.0) + float(dy) / sf
-        nx, ny = _clamp_xy(anchor, nx, ny)
+        nx, ny = _free_spectrum_xy(nx, ny)
         self.template['position'] = {**pos_cfg, 'x': nx, 'y': ny}
-        self.position_changed.emit(nx, ny)
+        _mirror_spectrum_offsets(nx, ny)
+        self.position_changed.emit(int(round(nx)), int(round(ny)))
         ev.accept()
 
     def wheelEvent(self, ev):
@@ -1688,6 +1979,17 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 nxt = float(max(0.05, min(20.0, cur * factor)))
                 self.template["backgroundSettings"] = {**bg, "userScale": nxt}
                 self.background_transform_changed.emit(float(bg.get("userOffsetX", 0.0) or 0.0), float(bg.get("userOffsetY", 0.0) or 0.0), float(nxt))
+                ev.accept()
+                return
+        if bool(getattr(self, "_spectrum_position_edit_mode", False)):
+            try:
+                delta = float(ev.angleDelta().y())
+            except Exception:
+                delta = 0.0
+            if abs(delta) > 1e-06:
+                # Positive wheel = larger spectrum (~0.05 steps).
+                step = 0.05 if delta > 0 else -0.05
+                self.spectrum_size_delta_requested.emit(float(step))
                 ev.accept()
                 return
         super().wheelEvent(ev)
@@ -1791,8 +2093,72 @@ class VideoSpectrumPreview(QOpenGLWidget):
         t = threading.Thread(target=analyze, daemon=True)
         t.start()
 
+    def clear_background_video(self) -> None:
+        if self._bg_video is not None:
+            try:
+                self._bg_video.close()
+            except Exception:
+                pass
+        self._bg_video = None
+        self._bg_video_path = ""
+
+    def load_background_video(self, path) -> None:
+        """Open a video plate; frames upload each paint from current_time."""
+        p = str(path or "").strip()
+        self.clear_background_video()
+        if not p or not Path(p).exists():
+            self.bg_path = ""
+            self.load_background("")
+            return
+        try:
+            from visualizer.composition_effects.video_background import VideoBackgroundSource
+        except Exception as exc:
+            self._set_gl_error(f"Video background unavailable: {exc}")
+            return
+        source = VideoBackgroundSource()
+        if not source.open(p):
+            self._set_gl_error(f"Video background open failed: {p}")
+            return
+        self._bg_video = source
+        self._bg_video_path = p
+        self.bg_path = p
+        self._log(f"Background video selected: {p}")
+        self._upload_background_video_frame(force=True)
+
+    def _upload_background_video_frame(self, *, force: bool = False) -> None:
+        if self._bg_video is None or not self.ctx:
+            return
+        try:
+            if not self._ensure_gl_current("load_background_video"):
+                return
+            rgba = self._bg_video.frame_rgba_at(float(self.current_time or 0.0))
+            if rgba is None:
+                return
+            arr = np.flipud(np.asarray(rgba, dtype=np.uint8))
+            h, w = int(arr.shape[0]), int(arr.shape[1])
+            if h < 1 or w < 1:
+                return
+            if force or not hasattr(self, "tex_bg") or tuple(getattr(self, "_bg_tex_size", (0, 0))) != (float(w), float(h)):
+                if hasattr(self, "tex_bg"):
+                    try:
+                        self.tex_bg.release()
+                    except Exception:
+                        pass
+                self.tex_bg = self.ctx.texture((w, h), 4, arr.tobytes())
+                self.tex_bg.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                self._bg_tex_size = (float(w), float(h))
+            else:
+                self.tex_bg.write(arr.tobytes())
+            if self._last_gl_error.startswith("Background"):
+                self._last_gl_error = ""
+        except Exception as exc:
+            self._set_gl_error(f"Background video frame failed: {exc}")
+
     def load_background(self, path):
         p = str(path or "").strip()
+        # Still-image plate replaces any active video source.
+        if self._bg_video is not None and p != self._bg_video_path:
+            self.clear_background_video()
         if not p or not Path(p).exists():
             self.bg_path = ""
             self._log("Background cleared")
@@ -2016,7 +2382,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 tx = self.ctx.texture((1, 1), 4, b"\x00\x00\x00\x00")
                 tx.filter = (moderngl.LINEAR, moderngl.LINEAR)
                 self._text_textures.append(tx)
-            if self.bg_path:
+            if self._bg_video_path:
+                self.load_background_video(self._bg_video_path)
+            elif self.bg_path:
                 self.load_background(self.bg_path)
             if self.logo_path:
                 self.load_logo(self.logo_path)
@@ -2185,6 +2553,20 @@ class VideoSpectrumPreview(QOpenGLWidget):
             if getattr(self, 'audio_playing', False):
                 if pygame.mixer.music.get_busy():
                     self._sync_current_time_from_clock()
+                elif bool(getattr(self, "_loop_playback", False)):
+                    # Repeat: restart from the beginning without flipping to Pause.
+                    self.current_time = 0.0
+                    self._audio_clock_base = 0.0
+                    self._audio_clock_started_at = None
+                    try:
+                        pygame.mixer.music.play(start=0.0)
+                        self._mark_playback_started(0.0)
+                    except Exception:
+                        self.audio_playing = False
+                        self._emit_playback_state()
+                        self._schedule_clean_preview_snapshot()
+                    else:
+                        self._emit_playback_state()
                 else:
                     # Track finished (or mixer stopped). Snap to end so Play restarts cleanly.
                     duration = float(max(0.0, self._audio_duration_sec))
@@ -2203,6 +2585,24 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 fft = np.zeros(1024, dtype=np.float32)
                 feats = {'bass': 0.0, 'beat': 0.0, 'onset': 0.0}
             bass = float(feats.get('bass', 0.0))
+            if self._bg_video is not None:
+                self._upload_background_video_frame()
+            # Keep composition axes time-live (camera/bg/logo/mapping) — not frozen compile snapshot.
+            try:
+                from visualizer.composition_effects.live_motion import apply_live_composition_motion
+
+                apply_live_composition_motion(
+                    self.template if isinstance(self.template, dict) else {},
+                    time_sec=float(self.current_time or 0.0),
+                    bass=bass,
+                    treble=float(feats.get("treble", feats.get("high", 0.0)) or 0.0),
+                    kick=float(feats.get("kick", feats.get("beat", 0.0)) or 0.0),
+                    beat=float(feats.get("beat", 0.0) or 0.0),
+                    onset=float(feats.get("onset", 0.0) or 0.0),
+                    mid=float(feats.get("mid", 0.0) or 0.0) if feats.get("mid") is not None else None,
+                )
+            except Exception:
+                pass
             tpl_bg = self.template.get('backgroundSettings', {}) if isinstance(self.template.get('backgroundSettings'), dict) else {}
             bg_enabled = bool(tpl_bg.get('enabled', True))
             bg_brightness = float(tpl_bg.get('brightness', 1.0))
@@ -2463,7 +2863,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             except Exception:
                 pass
             spectrum_logo_gap = float(max(0.0, float(preview_bindings.get("spectrumLogoGap", 0.0) or 0.0))) * sf
-            logo_circle_mask = bool(ls.get("circleMask", True))
+            logo_circle_mask = bool(ls.get("circleMask", False))
             logo_shape = normalize_logo_shape(circle_mask=logo_circle_mask)
             logo_visible_radius_ratio = (
                 self._logo_visible_radius_ratio_cached(circle_mask=logo_circle_mask)
@@ -2526,6 +2926,18 @@ class VideoSpectrumPreview(QOpenGLWidget):
             self.fft_smoothed = smooth_fft_envelope(self.fft_smoothed, self.fft_log, aud_smooth)
             rg = float(max(0.1, min(8.0, aud_sens)))
             fft_s = np.clip(self.fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
+            self._finish_particles_frame(
+                w=w,
+                h=h,
+                sf=sf,
+                logo_visual_radius=logo_visual_radius,
+                bass=bass,
+                kick_pow=kick_pow,
+                feats=feats,
+                logo_enabled=logo_enabled,
+            )
+            self._draw_atmosphere_pass(w=w, h=h, time_sec=float(self.current_time))
+
             spectrum_enabled = bool(self.template.get("spectrumEnabled", True))
             from features.video.lib.spectrum_instance_registry import (
                 instance_position_dict,
@@ -2603,6 +3015,25 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 fft_s = np.clip(self.fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
                 inst_style = str(spectrum_inst.get("style") or self.template.get("style", "orbit-spikes") or "orbit-spikes")
                 attached_layer_base_offset = _resolve_attached_layer_base_offset(spectrum_layers, sf)
+                try:
+                    from visualizer.composition_effects.audio_mapping import resolve_bus_levels
+
+                    treble_v = float(feats.get("treble", feats.get("high", 0.0)) or 0.0)
+                    kick_v = float(feats.get("kick", feats.get("beat", 0.0)) or 0.0)
+                    beat_v = float(feats.get("beat", 0.0) or 0.0)
+                    onset_v = float(feats.get("onset", 0.0) or 0.0)
+                    mid_v = float(feats.get("mid", 0.0) or 0.0) if feats.get("mid") is not None else (bass + treble_v) * 0.5
+                    layer_bus_levels = resolve_bus_levels(
+                        bass=bass,
+                        treble=treble_v,
+                        kick=kick_v,
+                        overall=max(bass, treble_v, kick_v, beat_v),
+                        mid=mid_v,
+                        presence=max(treble_v, mid_v * 0.85),
+                        transient_mid=max(onset_v, kick_v * 0.7),
+                    )
+                except Exception:
+                    layer_bus_levels = {}
                 for layer_idx, sl in enumerate(spectrum_layers):
                     curved = bool(sl.get('curved', False))
                     mirrored = bool(sl.get('mirrored', False))
@@ -2611,8 +3042,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         inst_style,
                         sl,
                     )
-                    bar_width_px = float(sl.get('barWidth', 4.0)) * sf
-                    spike_height_px = float(sl.get('thickness', 30.0)) * sf * inst_aud_bar_height
+                    anim_scale = float(sl.get("animScale", 1.0) or 1.0)
+                    anim_scale = float(max(0.55, min(1.85, anim_scale)))
+                    bar_width_px = float(sl.get('barWidth', 4.0)) * sf * (0.85 + 0.15 * anim_scale)
+                    spike_height_px = float(sl.get('thickness', 30.0)) * sf * inst_aud_bar_height * anim_scale
                     radius_offset_px = float(sl.get('radiusOffset', 0.0)) * sf
                     layer_op = float(max(0.0, min(1.0, float(sl.get('opacity', 1.0)))))
                     color_cfg = sl.get('color') if isinstance(sl.get('color'), dict) else {}
@@ -2626,6 +3059,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     blend_mode = str(sl.get('blend_mode', 'normal')).lower().strip()
                     glow_strength = float(max(0.0, min(100.0, float(sl.get('glow', 0.0))))) / 100.0
                     glow_softness = float(max(0.0, min(30.0, float(sl.get('blur', 0.0)))))
+                    # Additive materials read brighter; lift glow floor so Neon/Chrome ≠ Matte.
+                    if blend_mode == "add":
+                        glow_strength = float(min(1.0, glow_strength * 1.25 + 0.04))
                     bar_count = clamp_spectrum_bar_count(sl.get("barCount", 64))
                     solid_band = bool(sl.get("solidBand", False))
                     # Peak Caps must work from the checkbox alone — don't require
@@ -2663,7 +3099,45 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         bar_width=bar_width_px,
                         radius_offset=radius_offset_px,
                     )
+                    # Keep ring diameter stable — animation scale drives bar height/width only.
+                    # (Multiplying radius by animScale made circles permanently zoom in/out.)
                     sampled_fft = resample_fft_bins(render_fft, bar_count)
+                    # Per-layer audio bus: frequency weights + drive (Bass≠Treble).
+                    _apply_bus = None
+                    layer_bus = None
+                    layer_gain = 1.0
+                    try:
+                        from visualizer.composition_effects.bus_fft import apply_layer_audio_bus as _apply_bus
+                        from visualizer.presets.audio_buses import normalize_audio_bus_id
+
+                        layer_bus = normalize_audio_bus_id(sl.get("audioBus"))
+                        layer_gain = float(
+                            sl.get("audioGain") if sl.get("audioGain") is not None else 1.0
+                        )
+                    except Exception:
+                        _apply_bus = None
+                        layer_bus = None
+                        layer_gain = 1.0
+                    if _apply_bus is not None:
+                        sampled_fft = _apply_bus(
+                            sampled_fft,
+                            bus_id=layer_bus,
+                            bus_levels=layer_bus_levels if isinstance(layer_bus_levels, dict) else {},
+                            audio_gain=layer_gain,
+                        )
+                    # Animation kickImpact punches spectrum bins for bounce/flash/etc.
+                    try:
+                        kick_impact = float(
+                            (inst_audio.get("kickImpact") if inst_audio else None)
+                            if (inst_audio or {}).get("kickImpact") is not None
+                            else (tpl_audio.get("kickImpact", 0.0) if isinstance(tpl_audio, dict) else 0.0)
+                            or 0.0
+                        )
+                    except (TypeError, ValueError):
+                        kick_impact = 0.0
+                    if kick_impact > 0.01:
+                        punch = 1.0 + kick_impact * (0.35 + 0.9 * float(bass))
+                        sampled_fft = np.clip(sampled_fft * punch, 0.0, 3.5).astype(np.float32)
                     n = int(sampled_fft.shape[0])
                     px_arr, py_arr, dx_arr, dy_arr, base_total_length = generate_spectrum_layer_geometry(
                         n,
@@ -2679,6 +3153,20 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         frame_w=w,
                         frame_h=h,
                     )
+                    # Spectrum animation rotation (pulse/rotate/twist/…).
+                    try:
+                        rot_deg = float(sl.get("rotation") or 0.0)
+                    except (TypeError, ValueError):
+                        rot_deg = 0.0
+                    if abs(rot_deg) > 0.05:
+                        rad = float(np.deg2rad(rot_deg))
+                        cos_a = float(np.cos(rad))
+                        sin_a = float(np.sin(rad))
+                        rx = px_arr * cos_a - py_arr * sin_a
+                        ry = px_arr * sin_a + py_arr * cos_a
+                        rdx = dx_arr * cos_a - dy_arr * sin_a
+                        rdy = dx_arr * sin_a + dy_arr * cos_a
+                        px_arr, py_arr, dx_arr, dy_arr = rx, ry, rdx, rdy
                     contour_style = style_preset == 'contour-waves'
                     waveform_style = style_preset in ('aurora-ribbon', 'magma-ridge', 'plasma-bloom', 'soft-waveform', 'mountain', 'liquid', 'continuous-waveform')
                     ring_close_style = waveform_style or contour_style
@@ -2702,8 +3190,25 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
                     pass_specs: list[dict] = []
                     if glow_strength > 0.0:
-                        pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.14 + glow_strength * 0.22), 'bar_width': bar_width_px + (glow_softness * 1.8 + glow_strength * 18.0) * sf, 'spike_height': spike_height_px + (glow_softness * 2.2 + glow_strength * 22.0) * sf, 'fill_circle': False})
-                        pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.08 + glow_strength * 0.15), 'bar_width': bar_width_px + (glow_softness * 3.0 + glow_strength * 32.0) * sf, 'spike_height': spike_height_px + (glow_softness * 3.4 + glow_strength * 34.0) * sf, 'fill_circle': False})
+                        # Softness comes mostly from Blur; keep Glow crisp when Blur=0
+                        # so bars don't look smeared/"square blur" while raising.
+                        soft = float(max(0.0, glow_softness))
+                        bloom = 0.35 + 0.65 * min(1.0, soft / 4.0)
+                        pass_specs.append({
+                            'is_glow': True,
+                            'alpha': layer_op * (0.10 + glow_strength * 0.16) * bloom,
+                            'bar_width': bar_width_px + (soft * 1.4 + glow_strength * 8.0 * bloom) * sf,
+                            'spike_height': spike_height_px + (soft * 1.6 + glow_strength * 10.0 * bloom) * sf,
+                            'fill_circle': False,
+                        })
+                        if soft > 0.15 or glow_strength > 0.55:
+                            pass_specs.append({
+                                'is_glow': True,
+                                'alpha': layer_op * (0.06 + glow_strength * 0.10) * bloom,
+                                'bar_width': bar_width_px + (soft * 2.4 + glow_strength * 16.0 * bloom) * sf,
+                                'spike_height': spike_height_px + (soft * 2.8 + glow_strength * 18.0 * bloom) * sf,
+                                'fill_circle': False,
+                            })
                     pass_specs.append({'is_glow': False, 'alpha': layer_op, 'bar_width': bar_width_px, 'spike_height': spike_height_px, 'fill_circle': bool(sl.get('fillCircle', False))})
                     for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
                       px_arr, py_arr, dx_arr, dy_arr = v_px, v_py, v_dx, v_dy
@@ -2741,6 +3246,40 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         ctx_col = mk_col_array(nn)
                         slot_w = float(base_total_length / max(1, n))
                         bw = resolve_bar_pixel_width(pass_bar_width_px, slot_w)
+                        # Solid graph: filled base→tip strip instead of discrete bars.
+                        if solid_band and not contour_style and not waveform_style:
+                            graph_pos = build_solid_graph_strip_vertices(
+                                px_arr,
+                                py_arr,
+                                dx_arr,
+                                dy_arr,
+                                val_arr,
+                                cx=float(cx),
+                                cy=float(cy),
+                                w=int(w),
+                                h=int(h),
+                            )
+                            if graph_pos.shape[0]:
+                                graph_nn = int(max(1, graph_pos.shape[0] // 2))
+                                graph_cols = np.repeat(
+                                    build_spectrum_vertex_rgba(
+                                        mode=col_mode,
+                                        solid_color=solid_hex,
+                                        gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                        count=graph_nn,
+                                        alpha=pass_alpha,
+                                    ),
+                                    2,
+                                    axis=0,
+                                )
+                                if pass_cfg["is_glow"]:
+                                    graph_cols = dampen_spectrum_glow_rgba(graph_cols, strength=0.38)
+                                graph_verts = np.column_stack([graph_pos, graph_cols]).astype(np.float32)
+                                self._write_vbo(self.line_vbo, graph_verts)
+                                self.vao_lines.render(
+                                    mode=moderngl.TRIANGLE_STRIP, vertices=int(graph_pos.shape[0])
+                                )
+                            continue
                         if contour_style:
                             strips = build_contour_wave_strips(
                                 px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
@@ -2800,9 +3339,18 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                 pos_fill[0, 1] = cy_ndc
                                 pos_fill[1:, 0] = xs_o
                                 pos_fill[1:, 1] = ys_o
-                                cols_edge = ctx_col[:nn].copy()
-                                cols_center = cols_edge[:1].copy()
-                                cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                                cols_fill = build_spectrum_fill_fan_rgba(
+                                    xs_ndc=xs_o,
+                                    ys_ndc=ys_o,
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    alpha=pass_alpha,
+                                    gradient_direction=grad_dir,
+                                    close_loop=bool(curved and mirrored),
+                                )
+                                if pass_cfg["is_glow"]:
+                                    cols_fill = dampen_spectrum_glow_rgba(cols_fill, strength=0.38)
                                 verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
                                 self._write_vbo(self.line_vbo, verts_fill)
                                 self.vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(nn + 1))
@@ -2818,10 +3366,18 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         else:
                             # Match export: shared bar builder (same geometry as paintGL).
                             from visualizer._spectrum_fast import build_bar_vertices
+                            try:
+                                tip_taper = float(sl.get("tipTaper") if sl.get("tipTaper") is not None else 0.0)
+                            except (TypeError, ValueError):
+                                tip_taper = 0.0
+                            tip_taper = float(max(0.0, min(1.0, tip_taper)))
+                            if style_preset in ("soft-eq", "rounded-bars") or bool(sl.get("roundCaps")):
+                                tip_taper = 0.0
                             bar_out = build_bar_vertices(
                                 px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
                                 bw, style_preset, sf, self.logo_audio_env, self.particle_audio_env,
                                 colors=ctx_col[:n],
+                                tip_taper=tip_taper,
                             )
                             if isinstance(bar_out, tuple):
                                 pos, colsi = bar_out
@@ -2850,12 +3406,11 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                 tip_h = np.maximum(2.0, val_arr[:n]).astype(np.float32)
                                 xs_o = ((cx + px_arr[:n] + dx_arr[:n] * tip_h) / float(w) * 2.0 - 1.0).astype(np.float32)
                                 ys_o = ((cy + py_arr[:n] + dy_arr[:n] * tip_h) / float(h) * 2.0 - 1.0).astype(np.float32)
-                                if mirrored:
+                                close_loop = bool(mirrored)
+                                if close_loop:
                                     xs_o = np.concatenate([xs_o, xs_o[:1]])
                                     ys_o = np.concatenate([ys_o, ys_o[:1]])
-                                    tip_n = int(xs_o.shape[0])
-                                else:
-                                    tip_n = int(n)
+                                tip_n = int(xs_o.shape[0])
                                 cx_ndc = float(cx) / float(w) * 2.0 - 1.0
                                 cy_ndc = float(cy) / float(h) * 2.0 - 1.0
                                 pos_fill = np.empty((tip_n + 1, 2), dtype=np.float32)
@@ -2863,45 +3418,23 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                 pos_fill[0, 1] = cy_ndc
                                 pos_fill[1:, 0] = xs_o
                                 pos_fill[1:, 1] = ys_o
-                                cols_edge = mk_col_array(tip_n)
-                                cols_center = cols_edge[:1].copy()
-                                cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                                cols_fill = build_spectrum_fill_fan_rgba(
+                                    xs_ndc=xs_o,
+                                    ys_ndc=ys_o,
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    alpha=pass_alpha,
+                                    gradient_direction=grad_dir,
+                                    close_loop=close_loop,
+                                )
+                                if pass_cfg["is_glow"]:
+                                    cols_fill = dampen_spectrum_glow_rgba(cols_fill, strength=0.38)
                                 verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
                                 self._write_vbo(self.line_vbo, verts_fill)
                                 self.vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(tip_n + 1))
                     px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
-                    if solid_band:
-                        band_pos = build_solid_band_strip_vertices(
-                            px_arr,
-                            py_arr,
-                            dx_arr,
-                            dy_arr,
-                            cx=float(cx),
-                            cy=float(cy),
-                            w=int(w),
-                            h=int(h),
-                            band_width_px=float(max(1.0, bar_width_px * 0.45)),
-                        )
-                        if band_pos.shape[0]:
-                            # Mirrored curved waveform styles append a closing point.
-                            # Build colors from the actual strip vertex count to keep
-                            # color rows aligned with geometry rows.
-                            band_bar_count = int(max(1, band_pos.shape[0] // 2))
-                            band_cols = np.repeat(
-                                build_spectrum_vertex_rgba(
-                                    mode=col_mode,
-                                    solid_color=solid_hex,
-                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
-                                    count=band_bar_count,
-                                    alpha=float(max(0.0, min(1.0, layer_op * 0.6))),
-                                ),
-                                2,
-                                axis=0,
-                            )
-                            band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
-                            self._write_vbo(self.line_vbo, band_verts)
-                            self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
-                    if peak_caps_enabled and n > 0:
+                    if peak_caps_enabled and n > 0 and not solid_band:
                         # Mirrored curved waveform styles may append a closing point
                         # to px/dx arrays; peak caps must stay on the original bar count.
                         cap_px = px_arr[:n]
@@ -2960,17 +3493,6 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         cap_verts = np.column_stack([cap_pos, cap_cols]).astype(np.float32)
                         self._write_vbo(self.line_vbo, cap_verts)
                         self.vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(cap_pos.shape[0]))
-            self._finish_particles_frame(
-                w=w,
-                h=h,
-                sf=sf,
-                logo_visual_radius=logo_visual_radius,
-                bass=bass,
-                kick_pow=kick_pow,
-                feats=feats,
-                logo_enabled=logo_enabled,
-            )
-            self._draw_atmosphere_pass(w=w, h=h, time_sec=float(self.current_time))
             self._blend_normal()
             if logo_enabled:
                 self.prog_logo['tex_logo'].value = 1
@@ -2985,7 +3507,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 size = logo_size_base * sf * s_logo
                 self.prog_logo['logo_size_px'].value = (float(size), float(size))
                 self.prog_logo['logo_opacity'].value = float(max(0.0, min(1.0, float(ls.get('opacity', 1.0)))))
-                self.prog_logo['logo_circle_mask'].value = 1 if bool(ls.get('circleMask', True)) else 0
+                self.prog_logo['logo_circle_mask'].value = 1 if bool(ls.get('circleMask', False)) else 0
                 if "logo_rot_rad" in self.prog_logo:
                     spin_en = bool(ls.get("spinEnabled", False))
                     spin_dir = str(ls.get("spinDirection", "cw") or "cw").strip().lower()

@@ -1029,6 +1029,15 @@ def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None)
     layer = layer if isinstance(layer, dict) else {}
     fill_circle = bool(layer.get("fillCircle", False))
     raw = str(style_preset or "orbit-spikes").lower().strip()
+    shape_id = str(layer.get("shapeId") or "").lower().strip()
+    layer_style = str(layer.get("stylePreset") or layer.get("style") or "").lower().strip()
+    if (
+        shape_id in ("soft_eq", "soft-eq")
+        or layer_style in ("soft-eq", "rounded-bars", "soft_eq")
+        or bool(layer.get("roundCaps"))
+        or raw in ("soft-eq", "rounded-bars", "soft_eq")
+    ):
+        return "soft-eq"
 
     # Packs that still ship flying-glow / halo-stack keep fill-aware mapping.
     if raw in ("flying-glow", "halo-stack"):
@@ -1047,6 +1056,8 @@ def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None)
         "grid-steps",
         "ignition-flare",
         "drift-capsules",
+        "soft-eq",
+        "rounded-bars",
     }
     if normalized in camxora_ids:
         return normalized
@@ -3096,6 +3107,7 @@ def run_gpu_render(
         generate_spectrum_layer_geometry,
         build_waveform_vertices, build_bar_vertices, resolve_bar_pixel_width,
         clamp_spectrum_bar_count, resample_fft_bins, build_solid_band_strip_vertices,
+        build_solid_graph_strip_vertices,
         normalize_spectrum_gravity, build_contour_wave_strips, mirror_spectrum_points_vertical,
         scroll_spectrum_heights,
     )
@@ -3639,22 +3651,24 @@ def run_gpu_render(
                 prog_lines["clip_enabled"].value = 0
                 pass_specs: list[dict] = []
                 if glow_strength > 0.0 and glow_pass_limit >= 1:
+                    soft = float(max(0.0, glow_softness))
+                    bloom = 0.35 + 0.65 * min(1.0, soft / 4.0)
                     pass_specs.append(
                         {
                             "is_glow": True,
-                            "alpha": op * (0.14 + glow_strength * 0.22),
-                            "bar_width": bar_width + ((glow_softness * 1.8) + (glow_strength * 18.0)) * sf,
-                            "thickness": thickness + ((glow_softness * 2.2) + (glow_strength * 22.0)) * sf,
+                            "alpha": op * (0.10 + glow_strength * 0.16) * bloom,
+                            "bar_width": bar_width + (soft * 1.4 + glow_strength * 8.0 * bloom) * sf,
+                            "thickness": thickness + (soft * 1.6 + glow_strength * 10.0 * bloom) * sf,
                             "fill_circle": False,
                         }
                     )
-                    if glow_pass_limit >= 2:
+                    if glow_pass_limit >= 2 and (soft > 0.15 or glow_strength > 0.55):
                         pass_specs.append(
                             {
                                 "is_glow": True,
-                                "alpha": op * (0.08 + glow_strength * 0.15),
-                                "bar_width": bar_width + ((glow_softness * 3.0) + (glow_strength * 32.0)) * sf,
-                                "thickness": thickness + ((glow_softness * 3.4) + (glow_strength * 34.0)) * sf,
+                                "alpha": op * (0.06 + glow_strength * 0.10) * bloom,
+                                "bar_width": bar_width + (soft * 2.4 + glow_strength * 16.0 * bloom) * sf,
+                                "thickness": thickness + (soft * 2.8 + glow_strength * 18.0 * bloom) * sf,
                                 "fill_circle": False,
                             }
                         )
@@ -3757,6 +3771,8 @@ def run_gpu_render(
                         )
 
                         if curved and fill_circle_pass:
+                            from features.video.lib.spectrum_color_engine import build_spectrum_fill_fan_rgba
+
                             cx_ndc = float(cx) / float(w) * 2.0 - 1.0
                             cy_ndc = float(cy) / float(h) * 2.0 - 1.0
                             pos_fill = np.empty((nn + 1, 2), dtype=np.float32)
@@ -3764,9 +3780,25 @@ def run_gpu_render(
                             pos_fill[0, 1] = cy_ndc
                             pos_fill[1:, 0] = xs_o
                             pos_fill[1:, 1] = ys_o
-                            cols_edge = cols2[:nn].copy()
-                            cols_center = cols_edge[:1].copy()
-                            cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                            grad_dir = str(
+                                color_cfg.get("gradientDirection", "left-to-right") or "left-to-right"
+                            )
+                            solid_hex = str(color_cfg.get("solidColor") or "#ffffff")
+                            grad_cols = (
+                                color_cfg.get("gradientColors")
+                                if isinstance(color_cfg.get("gradientColors"), list)
+                                else None
+                            )
+                            cols_fill = build_spectrum_fill_fan_rgba(
+                                xs_ndc=xs_o,
+                                ys_ndc=ys_o,
+                                mode=str(color_cfg.get("mode", "solid") or "solid"),
+                                solid_color=solid_hex,
+                                gradient_colors=grad_cols,
+                                alpha=pass_alpha,
+                                gradient_direction=grad_dir,
+                                close_loop=bool(curved and mirrored),
+                            )
                             verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
                             if verts_fill.nbytes > line_vbo.size:
                                 line_vbo.orphan(size=verts_fill.nbytes)
@@ -3806,10 +3838,18 @@ def run_gpu_render(
                             style_sf=float(sf),
                         )
                     else:
+                        try:
+                            tip_taper = float(
+                                sl.get("tipTaper") if sl.get("tipTaper") is not None else 0.0
+                            )
+                        except (TypeError, ValueError):
+                            tip_taper = 0.0
+                        tip_taper = float(max(0.0, min(1.0, tip_taper)))
                         bar_out = build_bar_vertices(
                             px_arr, py_arr, dx_arr, dy_arr, val_arr, cx, cy, w, h,
                             bw, style_preset, sf, logo_audio_env, particle_audio_env,
                             colors=cols,
+                            tip_taper=tip_taper,
                         )
                         if isinstance(bar_out, tuple):
                             pos, colsi = bar_out
@@ -3825,10 +3865,13 @@ def run_gpu_render(
                         line_vbo.write(verts.tobytes())
                         vao_lines.render(mode=moderngl.TRIANGLES, vertices=int(pos.shape[0]))
                         if curved and fill_circle_pass and n > 0:
+                            from features.video.lib.spectrum_color_engine import build_spectrum_fill_fan_rgba
+
                             tip_h = np.maximum(2.0, val_arr[:n]).astype(np.float32)
                             xs_o = ((cx + px_arr[:n] + dx_arr[:n] * tip_h) / float(w) * 2.0 - 1.0).astype(np.float32)
                             ys_o = ((cy + py_arr[:n] + dy_arr[:n] * tip_h) / float(h) * 2.0 - 1.0).astype(np.float32)
-                            if curved and mirrored:
+                            close_loop = bool(curved and mirrored)
+                            if close_loop:
                                 xs_o = np.concatenate([xs_o, xs_o[:1]])
                                 ys_o = np.concatenate([ys_o, ys_o[:1]])
                             tip_n = int(xs_o.shape[0])
@@ -3839,9 +3882,25 @@ def run_gpu_render(
                             pos_fill[0, 1] = cy_ndc
                             pos_fill[1:, 0] = xs_o
                             pos_fill[1:, 1] = ys_o
-                            cols_edge = _build_spectrum_vertex_colors(color_cfg, spec_col, tip_n, pass_alpha)
-                            cols_center = cols_edge[:1].copy()
-                            cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                            grad_dir = str(
+                                color_cfg.get("gradientDirection", "left-to-right") or "left-to-right"
+                            )
+                            solid_hex = str(color_cfg.get("solidColor") or "#ffffff")
+                            grad_cols = (
+                                color_cfg.get("gradientColors")
+                                if isinstance(color_cfg.get("gradientColors"), list)
+                                else None
+                            )
+                            cols_fill = build_spectrum_fill_fan_rgba(
+                                xs_ndc=xs_o,
+                                ys_ndc=ys_o,
+                                mode=str(color_cfg.get("mode", "solid") or "solid"),
+                                solid_color=solid_hex,
+                                gradient_colors=grad_cols,
+                                alpha=pass_alpha,
+                                gradient_direction=grad_dir,
+                                close_loop=close_loop,
+                            )
                             verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
                             if verts_fill.nbytes > line_vbo.size:
                                 line_vbo.orphan(size=verts_fill.nbytes)
@@ -3849,27 +3908,28 @@ def run_gpu_render(
                             vao_lines.render(mode=moderngl.TRIANGLE_FAN, vertices=int(tip_n + 1))
                 px_arr, py_arr, dx_arr, dy_arr = main_px, main_py, main_dx, main_dy
                 if solid_band:
-                    band_pos = build_solid_band_strip_vertices(
+                    tip_h = (np.asarray(sampled_fft, dtype=np.float32) * float(max(1.0, thickness))).astype(
+                        np.float32
+                    )
+                    band_pos = build_solid_graph_strip_vertices(
                         px_arr,
                         py_arr,
                         dx_arr,
                         dy_arr,
+                        tip_h,
                         cx=float(cx),
                         cy=float(cy),
                         w=int(w),
                         h=int(h),
-                        band_width_px=float(max(1.0, bar_width * 0.45)),
                     )
                     if band_pos.shape[0]:
-                        # Keep color rows aligned with strip rows when geometry adds
-                        # a closing point for mirrored curved waveform layers.
                         band_bar_count = int(max(1, band_pos.shape[0] // 2))
                         band_cols = np.repeat(
                             _build_spectrum_vertex_colors(
                                 color_cfg,
                                 spec_col,
                                 band_bar_count,
-                                float(max(0.0, min(1.0, op * 0.6))),
+                                float(max(0.0, min(1.0, op))),
                             ),
                             2,
                             axis=0,
@@ -3879,7 +3939,7 @@ def run_gpu_render(
                             line_vbo.orphan(size=band_verts.nbytes)
                         line_vbo.write(band_verts.tobytes())
                         vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(band_pos.shape[0]))
-                if peak_caps_enabled and n > 0:
+                if peak_caps_enabled and n > 0 and not solid_band:
                     # Mirrored curved waveform styles may append a closing point;
                     # peak caps must use the original bar-count geometry only.
                     cap_px = px_arr[:n]
@@ -4948,6 +5008,8 @@ def render_preview_png(
                         ys_i[i] = (cy + py_arr[i] + dy_arr[i] * (h_val - half_t)) / float(h) * 2.0 - 1.0
 
                 if curved and bool(sl.get("fillCircle", False)):
+                    from features.video.lib.spectrum_color_engine import build_spectrum_fill_fan_rgba
+
                     cx_ndc = float(cx) / float(w) * 2.0 - 1.0
                     cy_ndc = float(cy) / float(h) * 2.0 - 1.0
                     pos_fill = np.empty((nn + 1, 2), dtype=np.float32)
@@ -4955,9 +5017,22 @@ def render_preview_png(
                     pos_fill[0, 1] = cy_ndc
                     pos_fill[1:, 0] = xs_o
                     pos_fill[1:, 1] = ys_o
-                    cols_edge = cols[:nn].copy()
-                    cols_center = cols_edge[:1].copy()
-                    cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
+                    cols_fill = build_spectrum_fill_fan_rgba(
+                        xs_ndc=xs_o,
+                        ys_ndc=ys_o,
+                        mode=str(color_cfg.get("mode", "solid") or "solid"),
+                        solid_color=str(color_cfg.get("solidColor") or "#ffffff"),
+                        gradient_colors=(
+                            color_cfg.get("gradientColors")
+                            if isinstance(color_cfg.get("gradientColors"), list)
+                            else None
+                        ),
+                        alpha=float(op),
+                        gradient_direction=str(
+                            color_cfg.get("gradientDirection", "left-to-right") or "left-to-right"
+                        ),
+                        close_loop=bool(mirrored),
+                    )
                     verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
                     if verts_fill.nbytes > line_vbo.size:
                         line_vbo.orphan(size=verts_fill.nbytes)

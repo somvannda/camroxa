@@ -40,11 +40,13 @@ from visualizer.composition_effects.post import build_post_stack
 
 from visualizer.materials import apply_material_to_layers
 
-from visualizer.presets.palettes import get_palette
+from visualizer.presets.palettes import apply_palette_expert, clarify_palette, get_palette
 
 from visualizer.presets.shapes import build_shape_layers, normalize_spectrum_shape_id
 
 from visualizer.scene import NONE, Scene, load_scene
+
+from visualizer.scene.spectrum_layers import expand_spectrum_layers, normalize_spectrum_layers
 
 
 
@@ -153,6 +155,16 @@ class CompiledFrame:
             "spectrumEnabled": self.spectrum_shape != NONE,
 
             "layers": deepcopy(self.spectrum_layers),
+
+            "position": {
+
+                "anchor": "center",
+
+                "x": float(self.composition.get("spectrum", {}).get("offsetX") or 0.0) * 480.0,
+
+                "y": float(self.composition.get("spectrum", {}).get("offsetY") or 0.0) * 270.0,
+
+            },
 
             "audioSettings": {
 
@@ -345,12 +357,45 @@ def compile_scene(
     assets = scene.assets
 
     palette = get_palette(comp.get("colorPalette"))
+    try:
+        # Use None-check — ``0.0 or 1.0`` wrongly forced intensity back to 1.0.
+        raw_i = comp.get("paletteIntensity")
+        pal_intensity = float(1.0 if raw_i is None else raw_i)
+    except (TypeError, ValueError):
+        pal_intensity = 1.0
+    try:
+        raw_s = comp.get("paletteSaturation")
+        pal_saturation = float(1.0 if raw_s is None else raw_s)
+    except (TypeError, ValueError):
+        pal_saturation = 1.0
+    palette = apply_palette_expert(palette, intensity=pal_intensity, saturation=pal_saturation)
 
     solid = palette["solid"] if palette else "#ff4fd8"
 
     accent = palette["accent"] if palette else "#22d3ee"
 
     stops = list(palette["stops"]) if palette else [solid, accent, "#ffffff"]
+
+    # Spectrum may override the global palette; None/empty inherits global.
+    # Clarify pushes pastel catalog stops toward neon “true color” bars.
+    spec_palette = get_palette((comp.get("spectrum") or {}).get("colorPalette"))
+    if spec_palette is not None:
+        spec_palette = apply_palette_expert(
+            spec_palette,
+            intensity=pal_intensity,
+            saturation=max(pal_saturation, 1.15),
+        )
+    spectrum_palette = clarify_palette(
+        spec_palette if spec_palette is not None else palette,
+        amount=0.4,
+    )
+    spectrum_solid = spectrum_palette["solid"] if spectrum_palette else solid
+    spectrum_accent = spectrum_palette["accent"] if spectrum_palette else accent
+    spectrum_stops = (
+        list(spectrum_palette["stops"]) if spectrum_palette else list(stops)
+    )
+    if not spectrum_stops:
+        spectrum_stops = [spectrum_solid, spectrum_accent, "#ffffff"]
 
 
 
@@ -376,11 +421,21 @@ def compile_scene(
 
     if shape_id and shape_id != NONE:
 
-        layers = build_shape_layers(shape_id)
+        template_layers = build_shape_layers(shape_id)
 
         if material_id and material_id != NONE:
 
-            layers = apply_material_to_layers(layers, material_id)
+            template_layers = apply_material_to_layers(template_layers, material_id)
+
+        size_scale = float(comp["spectrum"].get("sizeScale") or 1.0)
+
+        authored = normalize_spectrum_layers(
+            comp["spectrum"].get("layers"), defaults=comp["spectrum"]
+        )
+
+        layers = expand_spectrum_layers(
+            template_layers, authored, size_scale=size_scale, defaults=comp["spectrum"]
+        )
 
         for layer in layers:
 
@@ -388,15 +443,50 @@ def compile_scene(
 
                 "mode": "gradient",
 
-                "solidColor": solid,
+                "solidColor": spectrum_solid,
 
-                "gradientColors": list(stops),
+                "gradientColors": list(spectrum_stops),
 
                 "gradientDirection": "left-to-right",
 
             }
 
-        motion = evaluate_behavior(animation_id, time_sec=time_sec, audio_level=audio_level, target="spectrum")
+        try:
+            anim_speed = max(
+                0.15,
+                min(
+                    3.0,
+                    float(
+                        1.0
+                        if comp["spectrum"].get("animationSpeed") is None
+                        else comp["spectrum"].get("animationSpeed")
+                    ),
+                ),
+            )
+        except (TypeError, ValueError):
+            anim_speed = 1.0
+        motion = evaluate_behavior(
+            animation_id,
+            time_sec=time_sec,
+            audio_level=audio_level,
+            target="spectrum",
+            speed=anim_speed,
+            scale_amount=float(comp["spectrum"].get("animationScaleAmount") or 1.0),
+            opacity_amount=float(comp["spectrum"].get("animationOpacityAmount") or 1.0),
+            rotate_amount=float(comp["spectrum"].get("animationRotateAmount") or 1.0),
+            audio_amount=float(comp["spectrum"].get("animationAudioAmount") or 1.0),
+        )
+
+        grav_override = comp["spectrum"].get("gravity")
+        if grav_override not in (None, "", "none", "auto"):
+            try:
+                from visualizer._spectrum_fast import normalize_spectrum_gravity
+
+                grav_override = normalize_spectrum_gravity(grav_override)
+            except Exception:
+                grav_override = None
+        else:
+            grav_override = None
 
         for layer in layers:
 
@@ -404,9 +494,25 @@ def compile_scene(
 
             layer["rotation"] = float(layer.get("rotation", 0.0) or 0.0) + float(motion["rotation"])
 
+            layer["animScale"] = float(motion.get("scale") or 1.0)
+
             layer["animationId"] = animation_id if animation_id != NONE else NONE
 
+            if grav_override is not None and layer.get("gravity") is None:
+                layer["gravity"] = grav_override
+
         spectrum_audio = spectrum_audio_from_behavior(animation_id if animation_id != NONE else None)
+        try:
+            kick_mul = max(0.0, min(2.5, float(comp["spectrum"].get("animationKick") or 1.0)))
+        except (TypeError, ValueError):
+            kick_mul = 1.0
+        try:
+            smooth_override = comp["spectrum"].get("animationSmoothing")
+            if smooth_override is not None:
+                spectrum_audio["motionSmoothing"] = max(0.1, min(1.0, float(smooth_override)))
+        except (TypeError, ValueError):
+            pass
+        spectrum_audio["kickImpact"] = float(spectrum_audio.get("kickImpact") or 0.0) * kick_mul
 
         spectrum_motion = {k: float(v) for k, v in motion.items() if k != "behavior_id"}
 
@@ -428,13 +534,14 @@ def compile_scene(
 
     if particle_type != NONE:
 
+        # Keep type-native colors unless an authored palette is selected.
         particles = build_particle_emitter(
 
             particle_type,
 
             particle_behavior if particle_behavior != NONE else None,
 
-            palette_solid=solid,
+            palette_solid=solid if palette else None,
 
         )
 
@@ -542,9 +649,22 @@ def compile_scene(
 
     bg_motion_id = str(comp["background"].get("motion") or "static")
 
-    bg_eval = evaluate_background_motion(bg_motion_id, time_sec=time_sec)
+    bg_eval = evaluate_background_motion(
+        bg_motion_id,
+        time_sec=time_sec,
+        speed=float(comp["background"].get("motionSpeed") or 1.0),
+        amplitude=float(comp["background"].get("motionAmplitude") or 1.0),
+        zoom_amount=float(comp["background"].get("motionZoom") or 1.0),
+        warp_amount=float(comp["background"].get("motionWarp") or 1.0),
+    )
 
-    atmosphere = build_atmosphere_pass(comp["background"].get("atmosphere"))
+    atmosphere = build_atmosphere_pass(
+        comp["background"].get("atmosphere"),
+        density_scale=float(comp["background"].get("atmosphereDensity") or 1.0),
+        speed_scale=float(comp["background"].get("atmosphereSpeed") or 1.0),
+        opacity_scale=float(comp["background"].get("atmosphereOpacity") or 1.0),
+        wind_scale=float(comp["background"].get("atmosphereWind") or 1.0),
+    )
 
     post = build_post_stack(comp.get("postProcessing", {}).get("effects"))
 

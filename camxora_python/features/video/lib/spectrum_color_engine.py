@@ -162,6 +162,24 @@ def _mix_neighbor_rgb(rgb: np.ndarray, *, strength: float = 0.35) -> np.ndarray:
     return mixed.astype(np.float32)
 
 
+def _sample_gradient_rgb(stops_lin: np.ndarray, t: np.ndarray) -> np.ndarray:
+    """Sample multi-stop linear-space gradient at positions ``t`` in [0, 1]."""
+    tt = np.clip(np.asarray(t, dtype=np.float32), 0.0, 1.0)
+    n = int(tt.shape[0])
+    if stops_lin.shape[0] < 2:
+        rgb = np.repeat(stops_lin[:1], n, axis=0)
+        return _linear_to_srgb(rgb)
+    segment_count = int(stops_lin.shape[0] - 1)
+    scaled = tt * float(segment_count)
+    seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
+    # Softer melt between stops — removes hard “joint” lines in fills.
+    local_t = _smoothstep01(_smoothstep01(scaled - seg_idx.astype(np.float32))).reshape((n, 1))
+    c1 = stops_lin[seg_idx]
+    c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
+    rgb_lin = c1 * (1.0 - local_t) + c2 * local_t
+    return _linear_to_srgb(rgb_lin)
+
+
 def build_spectrum_vertex_rgba(
     *,
     mode: str,
@@ -184,20 +202,78 @@ def build_spectrum_vertex_rgba(
         stops_lin = _srgb_to_linear(stops)
         if stops.shape[0] >= 2:
             t = np.linspace(0.0, 1.0, n, dtype=np.float32)
-            segment_count = int(stops.shape[0] - 1)
-            scaled = t * float(segment_count)
-            seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
-            # Mild smoothstep only — keep stops readable (no neighbor wash).
-            local_t = _smoothstep01(scaled - seg_idx.astype(np.float32)).reshape((n, 1))
-            c1 = stops_lin[seg_idx]
-            c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
-            rgb_lin = c1 * (1.0 - local_t) + c2 * local_t
-            rgb = _linear_to_srgb(rgb_lin)
+            rgb = _sample_gradient_rgb(stops_lin, t)
             alpha_col = np.full((n, 1), a, dtype=np.float32)
             return np.concatenate([rgb.astype(np.float32), alpha_col], axis=1)
 
     base = _hex_to_rgb01(solid_color)
     return np.tile(np.array([base[0], base[1], base[2], a], dtype=np.float32)[None, :], (n, 1))
+
+
+def build_spectrum_fill_fan_rgba(
+    *,
+    xs_ndc: np.ndarray,
+    ys_ndc: np.ndarray,
+    mode: str,
+    solid_color: str,
+    gradient_colors: list[str] | None,
+    alpha: float,
+    gradient_direction: str = "left-to-right",
+    close_loop: bool = False,
+) -> np.ndarray:
+    """RGBA for a TRIANGLE_FAN fill (center + edge ring) with a smooth spatial melt.
+
+    Colors sample the palette by screen position (not bar index), so left/right
+    halves blend instead of meeting as a hard vertical joint. The center uses the
+    mid-stop color. When ``close_loop`` is set, the duplicated closing edge vertex
+    reuses the first edge color (no wrap seam).
+    """
+    xs = np.asarray(xs_ndc, dtype=np.float32).reshape(-1)
+    ys = np.asarray(ys_ndc, dtype=np.float32).reshape(-1)
+    tip_n = int(xs.shape[0])
+    a = float(max(0.0, min(1.0, alpha)))
+    if tip_n <= 0:
+        return np.zeros((1, 4), dtype=np.float32)
+
+    direction = str(gradient_direction or "left-to-right").lower().strip()
+    if direction in ("radial", "circular"):
+        direction = "left-to-right"
+
+    if str(mode or "solid").lower().strip() != "gradient":
+        base = _hex_to_rgb01(solid_color)
+        row = np.array([base[0], base[1], base[2], a], dtype=np.float32)
+        return np.tile(row[None, :], (tip_n + 1, 1))
+
+    stops_raw = [str(c).strip() for c in (gradient_colors or []) if str(c or "").strip()]
+    stops_raw = normalize_spectrum_gradient_colors(stops_raw, solid_color or GRADIENT_FALLBACK_COLOR)
+    stops = np.stack([_hex_to_rgb01(c) for c in stops_raw], axis=0).astype(np.float32)
+    stops_lin = _srgb_to_linear(stops)
+
+    # Spatial factor from edge positions (NDC −1…1 → 0…1).
+    if direction == "top-to-bottom":
+        t_edge = (1.0 - (ys + 1.0) * 0.5).astype(np.float32)
+    elif direction == "diagonal":
+        t_edge = ((xs + 1.0) * 0.5 * 0.55 + (1.0 - (ys + 1.0) * 0.5) * 0.45).astype(np.float32)
+    else:
+        t_edge = ((xs + 1.0) * 0.5).astype(np.float32)
+    t_edge = np.clip(t_edge, 0.0, 1.0)
+
+    # Widen the melt zone slightly so two-stop palettes don't read as a hard cut.
+    t_edge = _smoothstep01(t_edge)
+
+    edge_n = tip_n - 1 if close_loop and tip_n >= 2 else tip_n
+    if close_loop and tip_n >= 2:
+        rgb_core = _sample_gradient_rgb(stops_lin, t_edge[:edge_n])
+        rgb_edge = np.concatenate([rgb_core, rgb_core[:1]], axis=0)
+    else:
+        rgb_edge = _sample_gradient_rgb(stops_lin, t_edge)
+
+    # Center = true mid palette (melts both sides together, no single-stop pie).
+    mid_rgb = _sample_gradient_rgb(stops_lin, np.asarray([0.5], dtype=np.float32))[0]
+    alpha_col = np.full((tip_n, 1), a, dtype=np.float32)
+    edge = np.concatenate([rgb_edge.astype(np.float32), alpha_col], axis=1)
+    center = np.array([[mid_rgb[0], mid_rgb[1], mid_rgb[2], a]], dtype=np.float32)
+    return np.concatenate([center, edge], axis=0)
 
 
 def build_spectrum_bar_quad_rgba(

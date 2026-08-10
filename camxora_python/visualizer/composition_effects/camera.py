@@ -78,8 +78,11 @@ def evaluate_camera_behavior(
         out["offsetY"] = -0.05 * math.sin(t * 0.35)
         out["zoom"] = 1.0 + 0.06 * math.sin(t * 0.35)
     elif bid == "whip_pan":
-        phase = (t * 0.5) % 1.0
-        out["offsetX"] = 0.2 * math.sin(phase * math.pi) if phase < 0.15 else 0.0
+        # Continuous whip pulses (not sparse 15% windows that look like identity).
+        pulse = abs(math.sin(t * 2.4))
+        whip = pulse**6
+        out["offsetX"] = 0.22 * whip * (1.0 if math.sin(t * 2.4) >= 0 else -1.0)
+        out["shake"] = 0.01 * whip
     elif bid == "punch_in":
         out["zoom"] = 1.0 + 0.15 * a
     elif bid == "drift":

@@ -11,6 +11,52 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Studio Spectrum per-layer controls + animation dials.** Each layer owns bar /
+  raise / solid / glow settings; rename + icon layer actions; Animation Scale /
+  Opacity / Rotate / Audio / Kick / Smoothing. See
+  `docs/changelog/2026-08-09-studio-spectrum-per-layer-animation.md`.
+- **Studio player repeat + spectrum raise/solid graph + logo inside.** Repeat
+  control; end-of-track Play state; Solid graph; Raise directions; fixed layer
+  audio buses; Logo inside shape. See
+  `docs/changelog/2026-08-09-studio-player-spectrum-raise-logo.md`.
+- **Studio Spectrum Soft EQ + layer audio + motion speed.** Thinner bar-width range;
+  Soft EQ rounded-cap shape; Animation Motion speed; per-layer audio bus/gain. See
+  `docs/changelog/2026-08-09-studio-spectrum-soft-eq-layer-audio.md`.
+- **Studio Spectrum tip taper + glow 0 + clearer palettes.** Tip taper control (equal
+  width default); Glow can be set to 0; neon/Rainbow palette clarity. See
+  `docs/changelog/2026-08-09-studio-spectrum-tip-glow-palette.md`.
+- **Studio Spectrum inspector clip + smoother bars.** Scrollable inspectors, stacked
+  dropdowns, layer action grid; tip-tapered classic bars + MSAA; quieter glow when
+  Blur=0. See `docs/changelog/2026-08-09-studio-spectrum-inspector-smooth-bars.md`.
+- **Studio Spectrum live drag + local palette + bar controls.** Free overscan drag while
+  spectrum is active; spectrum-owned color palette; bar count / mirror / peak caps /
+  solid band; circle pulse no longer zooms the whole ring; preview aims ~120 Hz
+  (`CAMXORA_PREVIEW_HZ`, optional `CAMXORA_PREVIEW_DEEP_COLOR=1`). See
+  `docs/changelog/2026-08-09-studio-spectrum-live-drag-palette-bars.md`.
+- **Studio Spectrum layers + sectioned settings.** Multi-ring layers, separate Shape /
+  Material / Animation cards, overall Size scale, full-preview drag + wheel resize;
+  preview draws spectrum above particles/atmosphere. See
+  `docs/changelog/2026-08-09-studio-spectrum-layers-sections.md`.
+- **Studio shell matches Video layout.** Left Composition Studio (420) + center stage
+  (preview / playback / track list + export actions) + right Inspector (380, AI/Developer).
+  See `docs/changelog/2026-08-09-studio-shell-tabs-player.md`.
+- **Studio unique JSON + Expert controls.** Shape geometry preserved under materials;
+  distinct lighting/overlay/animation signatures; Expert spins on every scene axis
+  (palette/bg/spectrum/logo/text/particles/lighting/camera/audio). See
+  `docs/changelog/2026-08-09-studio-unique-json-expert.md`.
+- **Studio wiring polish.** Horizontal scroll chip pickers for axis catalogs; richer
+  background-motion signatures; Studio Export panel (resolution / fps / quality /
+  include-audio / range) wired into the export request; wiring matrix in
+  `docs/COMPOSITION_STUDIO_WIRING.md`. NLE timeline remains future-only. See
+  `docs/changelog/2026-08-09-studio-wiring-polish.md`.
+- **Studio scene axis live wiring.** Camera/bg motion/logo/audio-mapping/overlay/post
+  re-evaluate each preview frame (`live_motion`); particle type colors preserved without
+  palette; post/overlay preview proxies. See
+  `docs/changelog/2026-08-09-studio-scene-axis-wiring-audit.md`.
+- **Studio Expert + preview fidelity.** Fixed-height Timeline under the shell (Creator/Expert);
+  Expert inspectors with denser axis controls; video background plate in preview (OpenCV frames);
+  expert tuning bridged into GPU keys. See
+  `docs/changelog/2026-08-09-studio-expert-preview-fidelity.md`.
 - **Composition Studio platform phases P1–P7.** Creator fidelity (camera/lighting/overlay/timeline/autosave),
   Asset Library filters/favorites, Template Library + schema validation, Beginner/Creator/Expert/Developer
   modes, rule-based AI Designer, Plugin SDK sample, and marketplace/cloud stubs. See

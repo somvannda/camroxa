@@ -660,12 +660,12 @@ def resolve_bar_pixel_width(
     each slot. Past the gap-reserved max, width is clamped so bars stay separated
     (higher density => smaller usable width).
     """
-    bw = float(max(1.0, pass_bar_width))
+    bw = float(max(0.35, pass_bar_width))
     slot = float(slot_width if slot_width is not None else slot_w)
     if slot > 1.0:
         fill = float(max(0.35, min(0.95, max_fill)))
         gap = float(max(min_gap_px, slot * (1.0 - fill)))
-        max_bw = float(max(1.0, slot - gap))
+        max_bw = float(max(0.35, slot - gap))
         bw = float(min(bw, max_bw))
     return bw
 
@@ -700,6 +700,37 @@ def build_solid_band_strip_vertices(
     pos[0::2, 1] = ys_l
     pos[1::2, 0] = xs_r
     pos[1::2, 1] = ys_r
+    return pos
+
+
+def build_solid_graph_strip_vertices(
+    px: np.ndarray,
+    py: np.ndarray,
+    dx: np.ndarray,
+    dy: np.ndarray,
+    heights: np.ndarray,
+    *,
+    cx: float,
+    cy: float,
+    w: int,
+    h: int,
+) -> np.ndarray:
+    """Filled solid graph: triangle strip from bar bases to tip heights."""
+    nn = int(min(len(px), len(py), len(dx), len(dy), len(heights)))
+    if nn <= 0:
+        return np.zeros((0, 2), dtype=np.float32)
+    inv_w = 2.0 / float(max(1, w))
+    inv_h = 2.0 / float(max(1, h))
+    tip = np.maximum(1.0, np.asarray(heights[:nn], dtype=np.float32))
+    base_x = (cx + px[:nn]) * inv_w - 1.0
+    base_y = (cy + py[:nn]) * inv_h - 1.0
+    tip_x = (cx + px[:nn] + dx[:nn] * tip) * inv_w - 1.0
+    tip_y = (cy + py[:nn] + dy[:nn] * tip) * inv_h - 1.0
+    pos = np.empty((nn * 2, 2), dtype=np.float32)
+    pos[0::2, 0] = tip_x
+    pos[0::2, 1] = tip_y
+    pos[1::2, 0] = base_x
+    pos[1::2, 1] = base_y
     return pos
 
 
@@ -832,16 +863,23 @@ def build_bar_vertices(
     bw: float, style_preset: str, sf: float,
     logo_audio_env: float = 0.0, particle_audio_env: float = 0.0,
     colors: np.ndarray | None = None,
+    tip_taper: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray] | np.ndarray:
     """Build bar-style quad vertices matching live preview paintGL geometry.
 
     When ``colors`` is provided, returns ``(pos, colsi)`` so variable-length
     styles (pulse-beads) can expand colors correctly. Without colors, returns
     ``pos`` only for backward compatibility (fixed 6 verts/bar styles).
+
+    ``tip_taper`` in ``[0, 1]``: ``0`` = equal width base→tip, ``1`` = sharp tip.
     """
     n = len(px)
     h_val = np.maximum(2.0, val_arr[:n]).astype(np.float32)
     style = str(style_preset or "").lower().strip()
+    try:
+        taper_amt = float(max(0.0, min(1.0, float(tip_taper))))
+    except (TypeError, ValueError):
+        taper_amt = 0.0
 
     wx = -dy * (bw / 2.0)
     wy = dx * (bw / 2.0)
@@ -1003,16 +1041,82 @@ def build_bar_vertices(
         p2y = py + dy * h_val + wy_tip
         p3x = px + dx * h_val - wx_tip
         p3y = py + dy * h_val - wy_tip
-    else:
-        # orbit-spikes / classic-vertical — match preview (no tip taper).
+    elif style in ("soft-eq", "rounded-bars"):
+        # Equal-width shaft + semicircle tip (reference Soft EQ look).
+        tip_r = float(max(0.6, bw * 0.5))
+        shaft_h = np.maximum(0.0, h_val - tip_r).astype(np.float32)
+        # Shaft rectangle
         p0x = px - wx
         p0y = py - wy
         p1x = px + wx
         p1y = py + wy
-        p2x = px + dx * h_val + wx
-        p2y = py + dy * h_val + wy
-        p3x = px + dx * h_val - wx
-        p3y = py + dy * h_val - wy
+        p2x = px + dx * shaft_h + wx
+        p2y = py + dy * shaft_h + wy
+        p3x = px + dx * shaft_h - wx
+        p3y = py + dy * shaft_h - wy
+        shaft = _pack(p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y)
+        # Semicircle tip: SEG wedges from tip center along growth direction.
+        seg = 8
+        tip_cx = px + dx * shaft_h
+        tip_cy = py + dy * shaft_h
+        # Unit axes: along = (dx,dy), side = (-dy, dx) already in wx/wy scaled by tip_r.
+        side_x = -dy * tip_r
+        side_y = dx * tip_r
+        along_x = dx * tip_r
+        along_y = dy * tip_r
+        tip_parts: list[np.ndarray] = []
+        tip_cols: list[np.ndarray] = []
+        for i in range(n):
+            tcx = float(tip_cx[i])
+            tcy = float(tip_cy[i])
+            sx = float(side_x[i])
+            sy = float(side_y[i])
+            ax = float(along_x[i])
+            ay = float(along_y[i])
+            # Angles from -90° (left) through +90° (right) via tip (+along).
+            angles = np.linspace(-0.5 * np.pi, 0.5 * np.pi, seg + 1, dtype=np.float32)
+            rim_x = tcx + np.cos(angles) * sx + np.sin(angles) * ax
+            rim_y = tcy + np.cos(angles) * sy + np.sin(angles) * ay
+            # Fan triangles center→rim[k]→rim[k+1]
+            tris = np.empty((seg * 6,), dtype=np.float32).reshape(seg * 3, 2)
+            for k in range(seg):
+                tris[k * 3 + 0, 0] = tcx
+                tris[k * 3 + 0, 1] = tcy
+                tris[k * 3 + 1, 0] = float(rim_x[k])
+                tris[k * 3 + 1, 1] = float(rim_y[k])
+                tris[k * 3 + 2, 0] = float(rim_x[k + 1])
+                tris[k * 3 + 2, 1] = float(rim_y[k + 1])
+            # To NDC
+            tris[:, 0] = (cx + tris[:, 0]) * inv_w - 1.0
+            tris[:, 1] = (cy + tris[:, 1]) * inv_h - 1.0
+            tip_parts.append(tris.astype(np.float32))
+            if colors is not None:
+                tip_cols.append(np.repeat(colors[i : i + 1], seg * 3, axis=0))
+        tip_pos = np.concatenate(tip_parts, axis=0) if tip_parts else np.zeros((0, 2), dtype=np.float32)
+        pos = np.concatenate([shaft, tip_pos], axis=0)
+        if colors is None:
+            return pos
+        shaft_cols = np.repeat(colors[:n], 6, axis=0)
+        tip_col_arr = (
+            np.concatenate(tip_cols, axis=0)
+            if tip_cols
+            else np.zeros((0, 4), dtype=np.float32)
+        )
+        return pos, np.concatenate([shaft_cols, tip_col_arr], axis=0).astype(np.float32)
+    else:
+        # orbit-spikes / classic-vertical — tip taper is artist-controlled
+        # (0 = equal width from base to tip, like classic EQ bars).
+        tip = 1.0 - 0.55 * taper_amt
+        wx_tip = wx * tip
+        wy_tip = wy * tip
+        p0x = px - wx
+        p0y = py - wy
+        p1x = px + wx
+        p1y = py + wy
+        p2x = px + dx * h_val + wx_tip
+        p2y = py + dy * h_val + wy_tip
+        p3x = px + dx * h_val - wx_tip
+        p3y = py + dy * h_val - wy_tip
 
     pos = _pack(p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y)
     return _finish(pos)

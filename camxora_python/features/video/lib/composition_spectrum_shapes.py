@@ -17,7 +17,7 @@ from features.video.lib.composition_scene_contract import (
     normalize_composition_scene,
 )
 
-# Canonical 12 + fill 3 (Ring, Starburst, Pillars) → 15
+# Canonical 12 + fill 3 (Ring, Starburst, Soft EQ) → 15
 _SHAPE_ROWS: tuple[tuple[str, str], ...] = (
     ("circle", "Circle"),
     ("double_circle", "Double Circle"),
@@ -33,7 +33,7 @@ _SHAPE_ROWS: tuple[tuple[str, str], ...] = (
     ("tunnel", "Tunnel"),
     ("ring", "Ring"),
     ("starburst", "Starburst"),
-    ("pillars", "Pillars"),
+    ("soft_eq", "Soft EQ"),
 )
 
 SPECTRUM_SHAPE_CATALOG: tuple[dict[str, str], ...] = tuple(
@@ -65,8 +65,13 @@ _SHAPE_ALIASES: dict[str, str] = {
     "tunnel": "tunnel",
     "ring": "ring",
     "starburst": "starburst",
-    "pillars": "pillars",
-    "pillar": "pillars",
+    "soft_eq": "soft_eq",
+    "soft eq": "soft_eq",
+    "soft-eq": "soft_eq",
+    "pillars": "soft_eq",
+    "pillar": "soft_eq",
+    "rounded bars": "soft_eq",
+    "eq": "soft_eq",
     # Legacy Camxora style ids → nearest geometry
     "orbit-spikes": "bars",
     "straight-bars": "bars",
@@ -127,15 +132,18 @@ def spectrum_shape_layer_recipe(shape_id: str) -> list[dict[str, Any]]:
     if key == "bars":
         layer.update({"curved": False, "mirrored": False, "gravity": "top", "pathMode": "auto", "barWidth": 5.0})
         return [layer]
-    if key == "pillars":
+    if key == "soft_eq":
         layer.update(
             {
                 "curved": False,
                 "mirrored": False,
-                "gravity": "bottom",
+                "gravity": "top",
                 "pathMode": "auto",
-                "barWidth": 8.0,
-                "thickness": 64.0,
+                "barWidth": 2.4,
+                "thickness": 52.0,
+                "stylePreset": "soft-eq",
+                "roundCaps": True,
+                "tipTaper": 0.0,
             }
         )
         return [layer]

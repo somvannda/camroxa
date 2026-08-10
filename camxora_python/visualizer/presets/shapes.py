@@ -20,7 +20,7 @@ _SHAPE_ROWS: tuple[tuple[str, str], ...] = (
     ("tunnel", "Tunnel"),
     ("ring", "Ring"),
     ("starburst", "Starburst"),
-    ("pillars", "Pillars"),
+    ("soft_eq", "Soft EQ"),
 )
 
 SPECTRUM_SHAPE_CATALOG: tuple[dict[str, str], ...] = tuple(
@@ -37,7 +37,11 @@ _ALIASES: dict[str, str] = {
     "audio ribbon": "audio_ribbon",
     "hex": "hexagon",
     "bar": "bars",
-    "pillar": "pillars",
+    "pillar": "soft_eq",
+    "pillars": "soft_eq",
+    "soft eq": "soft_eq",
+    "rounded bars": "soft_eq",
+    "eq": "soft_eq",
     "ribbon": "audio_ribbon",
 }
 
@@ -91,29 +95,43 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
     layer["shapeId"] = key
 
     if key == "bars":
-        layer.update({"curved": False, "mirrored": False, "gravity": "top", "pathMode": "auto", "barWidth": 5.0})
-        return [layer]
-    if key == "pillars":
-        layer.update(
-            {
-                "curved": False,
-                "mirrored": False,
-                "gravity": "bottom",
-                "pathMode": "auto",
-                "barWidth": 8.0,
-                "thickness": 64.0,
-            }
-        )
-        return [layer]
-    if key == "wave":
         layer.update(
             {
                 "curved": False,
                 "mirrored": False,
                 "gravity": "top",
                 "pathMode": "auto",
-                "barWidth": 3.0,
-                "thickness": 28.0,
+                "barWidth": 5.0,
+                "thickness": 40.0,
+            }
+        )
+        return [layer]
+    if key == "soft_eq":
+        # Thin equal-width linear bars with rounded caps (reference Soft EQ look).
+        layer.update(
+            {
+                "curved": False,
+                "mirrored": False,
+                "gravity": "top",
+                "pathMode": "auto",
+                "barWidth": 2.4,
+                "thickness": 52.0,
+                "stylePreset": "soft-eq",
+                "roundCaps": True,
+                "tipTaper": 0.0,
+                "fillCircle": False,
+            }
+        )
+        return [layer]
+    if key == "wave":
+        layer.update(
+            {
+                "curved": True,
+                "mirrored": True,
+                "gravity": "center",
+                "pathMode": "auto",
+                "barWidth": 2.4,
+                "thickness": 48.0,
             }
         )
         return [layer]
@@ -124,8 +142,10 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
                 "mirrored": True,
                 "gravity": "outward",
                 "pathMode": "circle",
-                "barWidth": 2.5,
-                "thickness": 22.0,
+                "barWidth": 1.8,
+                "thickness": 26.0,
+                "radiusOffset": 12.0,
+                "fillCircle": False,
             }
         )
         return [layer]
@@ -138,6 +158,8 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
                 "pathMode": "circle",
                 "barWidth": 4.0,
                 "thickness": 34.0,
+                "radiusOffset": 0.0,
+                "fillCircle": True,
             }
         )
         return [layer]
@@ -148,8 +170,9 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
                 "mirrored": True,
                 "gravity": "outward",
                 "pathMode": "circle",
-                "barWidth": 2.0,
-                "thickness": 18.0,
+                "barWidth": 1.6,
+                "thickness": 14.0,
+                "radiusOffset": 22.0,
                 "fillCircle": False,
             }
         )
@@ -161,8 +184,10 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
                 "mirrored": True,
                 "gravity": "outward",
                 "pathMode": "circle",
-                "barWidth": 3.0,
-                "thickness": 52.0,
+                "barWidth": 2.2,
+                "thickness": 72.0,
+                "radiusOffset": -6.0,
+                "fillCircle": False,
             }
         )
         return [layer]

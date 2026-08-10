@@ -21,8 +21,10 @@ from features.studio.services.marketplace_cloud import MarketplaceCloudService
 from features.studio.services.studio_export import (
     build_studio_manual_export_request,
     export_project_json,
+    studio_export_options,
     studio_export_readiness,
 )
+from shared.lib.export_codec import normalize_export_speed_mode
 from features.studio.services.studio_store import StudioStore
 from features.studio.services.template_library import StudioTemplateLibrary
 from features.studio.widgets.studio_shell import StudioShell
@@ -30,6 +32,8 @@ from features.video.workers.manual_export_worker import ManualExportRequest, Vid
 from shared.services.action_feedback import notify_action
 from shared.services.platform_api import PlatformApi
 from shared.services.workspace_cache import WorkspaceCache
+from shared.themes.deep_blue import VIDEO_WORKSPACE_ID
+from visualizer.scene import NONE
 
 
 class StudioView(QWidget):
@@ -43,7 +47,8 @@ class StudioView(QWidget):
         cache: WorkspaceCache | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setObjectName("studio_workspace")
+        # Share Video workspace QSS (account_card rails / stage chrome).
+        self.setObjectName(VIDEO_WORKSPACE_ID)
         self._api = api
         self._cache = cache
         self._store = StudioStore()
@@ -69,16 +74,25 @@ class StudioView(QWidget):
         self._shell.patch_requested.connect(self._on_patch)
         self._shell.export_json_requested.connect(self._on_export_json)
         self._shell.export_video_requested.connect(self._on_export_video)
+        self._shell.export_options_changed.connect(self._on_export_options)
         self._shell.select_audio_requested.connect(self._on_select_audio)
-        self._shell.mode_changed.connect(self._on_mode)
+        self._shell.add_tracks_requested.connect(self._on_add_tracks)
+        self._shell.track_selected.connect(self._on_track_selected)
+        self._shell.remove_track_requested.connect(self._on_remove_track)
         self._shell.template_save_requested.connect(self._on_save_template)
         self._shell.ai_generate_requested.connect(self._on_ai_generate)
         self._shell.ai_modify_requested.connect(self._on_ai_modify)
         self._shell.ai_improve_requested.connect(self._on_ai_improve)
         self._shell.json_apply_requested.connect(self._on_json_apply)
         self._shell.timeline_play_toggled.connect(self._on_timeline_play)
+        self._shell.timeline_stop_requested.connect(self._on_timeline_stop)
         self._shell.timeline_seek_requested.connect(self._on_timeline_seek)
+        self._shell.timeline_seek_relative_requested.connect(self._on_timeline_seek_relative)
         self._shell.favorite_toggled.connect(self._on_favorite)
+        self._shell.node_selected.connect(self._on_node_selected)
+        self._shell.spectrum_position_changed.connect(self._on_spectrum_position)
+        self._shell.logo_position_changed.connect(self._on_logo_position)
+        self._shell.spectrum_size_delta_requested.connect(self._on_spectrum_size_delta)
 
         self._autosave = QTimer(self)
         self._autosave.setInterval(15000)
@@ -92,10 +106,12 @@ class StudioView(QWidget):
 
         self._discover_plugins()
         self._load_active()
+        self._on_node_selected(self._shell._left._tree.current_node())
 
     def activate_page(self) -> None:
         self._refresh_project_list()
         self._push_ui()
+        self._on_node_selected(self._shell._left._tree.current_node())
 
     def deactivate_page(self) -> None:
         if self._dirty:
@@ -130,7 +146,47 @@ class StudioView(QWidget):
         self._shell.set_name(str(doc.get("name") or "Untitled Composition"))
         self._shell.set_dirty(self._dirty)
         self._shell.bind_document(inspector_bind_state(doc))
+        ready, reason = studio_export_readiness(doc)
+        self._shell.set_export_readiness(ready, reason)
         self._shell.apply_preview(doc)
+        self._sync_preview_interaction()
+
+    def _sync_preview_interaction(self) -> None:
+        """Spectrum drag stays on whenever spectrum is active — not only when selected."""
+        doc = normalize_studio_document(self._document)
+        comp = doc.get("composition") if isinstance(doc.get("composition"), dict) else {}
+        spec = comp.get("spectrum") if isinstance(comp.get("spectrum"), dict) else {}
+        shape = str(spec.get("shape") or NONE)
+        spectrum_on = shape not in (None, "", NONE, "none")
+        key = ""
+        try:
+            key = str(self._shell._left._tree.current_node() or "")
+        except Exception:
+            key = ""
+        attached = bool(doc.get("spectrumAttachToLogo", False))
+        logo = key == "logo"
+        self._shell.set_preview_interaction_modes(
+            spectrum_position=spectrum_on,
+            logo_position=logo or (key == "spectrum" and attached),
+        )
+
+    def _on_export_options(self, options: dict) -> None:
+        if not options:
+            return
+        current = studio_export_options(self._document)
+        if (
+            current.get("resolution") == options.get("resolution")
+            and int(current.get("fps") or 24) == int(options.get("fps") or 24)
+            and current.get("quality") == options.get("quality")
+            and bool(current.get("includeAudio", True)) == bool(options.get("includeAudio", True))
+            and float(current.get("rangeStart") or 0.0) == float(options.get("rangeStart") or 0.0)
+            and float(current.get("rangeEnd") or 0.0) == float(options.get("rangeEnd") or 0.0)
+        ):
+            return
+        self._checkpoint()
+        self._document = apply_axis_patch(self._document, {"studioExport": options})
+        self._dirty = True
+        self._push_ui()
 
     def _checkpoint(self) -> None:
         self._undo_stack.append(deepcopy(self._document))
@@ -145,6 +201,49 @@ class StudioView(QWidget):
         self._dirty = True
         self._push_ui()
 
+    def _on_node_selected(self, key: str) -> None:
+        _ = key
+        self._sync_preview_interaction()
+
+    def _on_spectrum_position(self, x: int, y: int) -> None:
+        # Preview already moved live; persist without full UI rebuild mid-drag.
+        self._document = apply_axis_patch(
+            self._document,
+            {"compositionSpectrumPositionPx": {"x": float(x), "y": float(y)}},
+        )
+        self._dirty = True
+        self._shell.set_dirty(True)
+
+    def _on_logo_position(self, x: int, y: int) -> None:
+        patch: dict[str, Any] = {
+            "compositionLogoOffsetX": max(-0.5, min(0.5, float(x) / 480.0)),
+            "compositionLogoOffsetY": max(-0.5, min(0.5, float(y) / 270.0)),
+        }
+        doc = normalize_studio_document(self._document)
+        if bool(doc.get("spectrumAttachToLogo", False)):
+            patch["compositionSpectrumPositionPx"] = {"x": float(x), "y": float(y)}
+        self._document = apply_axis_patch(self._document, patch)
+        self._dirty = True
+        self._shell.set_dirty(True)
+
+    def _on_spectrum_size_delta(self, delta: float) -> None:
+        state = inspector_bind_state(self._document)
+        try:
+            cur = float(state.get("compositionSpectrumSizeScale") or 1.0)
+        except (TypeError, ValueError):
+            cur = 1.0
+        nxt = max(0.35, min(2.5, cur + float(delta)))
+        if abs(nxt - cur) < 1e-6:
+            return
+        self._document = apply_axis_patch(
+            self._document, {"compositionSpectrumSizeScale": nxt}
+        )
+        self._dirty = True
+        # Size needs recompile so radius updates; keep it light (preview only).
+        self._shell.apply_preview(self._document)
+        self._shell.set_dirty(True)
+        self._shell.bind_document(inspector_bind_state(self._document))
+
     def _on_name_changed(self, name: str) -> None:
         if str(self._document.get("name") or "") == name:
             return
@@ -152,13 +251,6 @@ class StudioView(QWidget):
         self._document = apply_axis_patch(self._document, {"name": name})
         self._dirty = True
         self._shell.set_dirty(True)
-
-    def _on_mode(self, mode: str) -> None:
-        self._checkpoint()
-        self._document = normalize_studio_document(self._document)
-        self._document["studioMode"] = str(mode or "creator")
-        self._dirty = True
-        self._shell.set_status(f"Mode: {mode}")
 
     def _on_new(self) -> None:
         self._checkpoint()
@@ -209,11 +301,34 @@ class StudioView(QWidget):
         self._push_ui()
 
     def _on_select_audio(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select audio track", "", "Audio (*.mp3 *.wav *.m4a *.flac)"
+        self._on_add_tracks()
+
+    def _on_add_tracks(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Add audio tracks", "", "Audio (*.mp3 *.wav *.m4a *.flac)"
         )
-        if path:
-            self._on_patch({"audioPath": path})
+        if not paths:
+            return
+        assets = self._document.get("assets") if isinstance(self._document.get("assets"), dict) else {}
+        tracks = [str(x) for x in (assets.get("audioTracks") or []) if str(x).strip()]
+        for path in paths:
+            if path and path not in tracks:
+                tracks.append(path)
+        active = str(paths[0] if paths else assets.get("audio") or "")
+        self._on_patch({"audioTracks": tracks, "audioPath": active})
+
+    def _on_track_selected(self, path: str) -> None:
+        track = str(path or "").strip()
+        if not track:
+            return
+        if track == str((self._document.get("assets") or {}).get("audio") or ""):
+            return
+        self._on_patch({"audioPath": track})
+
+    def _on_remove_track(self, path: str) -> None:
+        track = str(path or "").strip()
+        if track:
+            self._on_patch({"removeAudioTrack": track})
 
     def _on_save_template(self) -> None:
         payload = self._templates.save_template(self._document)
@@ -274,8 +389,30 @@ class StudioView(QWidget):
         self._shell.preview().set_playing(playing)
         self._shell.set_timeline_playing(playing)
 
+    def _on_timeline_stop(self) -> None:
+        preview = self._shell.preview()
+        preview.set_playing(False)
+        if hasattr(preview, "preview_widget") and preview.preview_widget is not None:
+            widget = preview.preview_widget
+            if hasattr(widget, "stop_preview"):
+                try:
+                    widget.stop_preview()
+                except Exception:
+                    pass
+        preview.seek(0.0)
+        self._shell.set_timeline_playing(False)
+        self._shell.set_timeline_position(0.0)
+
     def _on_timeline_seek(self, time_sec: float) -> None:
         self._shell.preview().seek(time_sec)
+
+    def _on_timeline_seek_relative(self, delta_sec: float) -> None:
+        preview = self._shell.preview()
+        duration = float(preview.duration_sec() or 0.0)
+        if duration <= 0:
+            return
+        target = float(preview.position_sec() or 0.0) + float(delta_sec)
+        preview.seek(max(0.0, min(duration, target)))
 
     def _sync_timeline(self) -> None:
         preview = self._shell.preview()
@@ -313,12 +450,29 @@ class StudioView(QWidget):
         output_dir = QFileDialog.getExistingDirectory(self, "Choose export folder")
         if not output_dir:
             return
+        opts = studio_export_options(self._document)
         try:
-            scene = build_studio_manual_export_request(self._document, output_dir=output_dir)
+            scene = build_studio_manual_export_request(
+                self._document,
+                resolution=str(opts["resolution"]),
+                fps=int(opts["fps"]),
+                quality=str(opts["quality"]),
+                output_dir=output_dir,
+            )
         except Exception as exc:
             notify_action(f"Could not build export request: {exc}", tone="error")
             return
-        request = ManualExportRequest(scene=scene, settings={}, output_dir=output_dir)
+        request = ManualExportRequest(
+            scene=scene,
+            settings={
+                "includeAudio": bool(opts["includeAudio"]),
+                "rangeStart": float(opts["rangeStart"]),
+                "rangeEnd": float(opts["rangeEnd"]),
+                "studioExport": dict(opts),
+            },
+            speed_mode=normalize_export_speed_mode(opts["quality"]),
+            output_dir=output_dir,
+        )
         worker = VideoManualExportWorker(request)
         self._export_worker = worker
         self._shell.set_export_busy(True)

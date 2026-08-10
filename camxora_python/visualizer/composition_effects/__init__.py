@@ -16,9 +16,13 @@ from visualizer.composition_effects.gpu_bridge import apply_gpu_preview_bridge
 from visualizer.composition_effects.lighting import build_lighting_pass
 from visualizer.composition_effects.particles import build_particle_emitter, emitters_visibly_distinct
 from visualizer.composition_effects.post import build_post_stack
+from visualizer.composition_effects.live_motion import apply_live_composition_motion
+from visualizer.composition_effects.video_background import VideoBackgroundSource, is_video_path
 
 __all__ = (
+    "VideoBackgroundSource",
     "apply_gpu_preview_bridge",
+    "apply_live_composition_motion",
     "apply_mapping_levels",
     "build_atmosphere_draw",
     "build_atmosphere_pass",
@@ -29,6 +33,7 @@ __all__ = (
     "emitters_visibly_distinct",
     "evaluate_background_motion",
     "evaluate_camera_behavior",
+    "is_video_path",
     "normalize_audio_mapping",
     "resolve_bus_levels",
 )
