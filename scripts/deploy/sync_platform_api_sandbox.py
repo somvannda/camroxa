@@ -46,8 +46,19 @@ else
 fi
 grep '^PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=' $REPO/platform_api/.env
 systemctl restart camxora-api
+# Draft/Suno jobs run in worker processes; restart them so they load synced code.
+systemctl list-units 'camxora-worker*' --type=service --state=running,failed,inactive --no-pager --no-legend \
+  | awk '{print $1}' | while read -r unit; do
+  case "$unit" in
+    *.service)
+      systemctl restart "$unit" || true
+      ;;
+  esac
+done
 sleep 2
 systemctl is-active camxora-api
+systemctl list-units 'camxora-worker*' --type=service --state=running --no-pager --no-legend \
+  | awk '{print $1, $4}' | head -20
 echo API_SYNC_DONE
 """
     _, stdout, stderr = client.exec_command(cmd, get_pty=True)

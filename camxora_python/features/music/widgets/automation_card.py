@@ -25,6 +25,16 @@ from shared.themes.deep_blue import (
 
 AI_STRUCTURE_SENTINEL = "__ai_structure__"
 AI_STRUCTURE_LABEL = "AI Structure"
+SUNO_STRUCTURE_SENTINEL = "__suno_structure__"
+SUNO_STRUCTURE_LABEL = "Suno Structure"
+FREE_STRUCTURE_SENTINELS = frozenset({AI_STRUCTURE_SENTINEL, SUNO_STRUCTURE_SENTINEL})
+_STRUCTURE_SHUFFLE_TOOLTIP = (
+    "When on, songs in the same batch use varied structures from the available Structure list."
+)
+_STRUCTURE_SHUFFLE_DISABLED_TOOLTIP = (
+    "Shuffle applies to Music Structure templates only. "
+    "AI Structure and Suno Structure invent their own section layouts."
+)
 
 
 class AutomationCard(QFrame):
@@ -62,11 +72,11 @@ class AutomationCard(QFrame):
         structure_header.setSpacing(8)
         structure_header.addWidget(QLabel("Structure"))
         self._shuffle_structure = QCheckBox("Shuffle")
-        self._shuffle_structure.setToolTip(
-            "When on, songs in the same batch use varied structures from the available Structure list."
-        )
+        self._shuffle_structure.setToolTip(_STRUCTURE_SHUFFLE_TOOLTIP)
         self._structure.setToolTip(
-            "Choose a fixed template, or AI Structure to let the lyric model pick sections."
+            "AI Structure: lyric model picks sections (guided). "
+            "Suno Structure: native free layout (no section seed). "
+            "Templates: fixed Music Structure list."
         )
         structure_header.addWidget(self._shuffle_structure)
         structure_header.addStretch(1)
@@ -164,9 +174,12 @@ class AutomationCard(QFrame):
         self.structure_changed.emit(self._structure.currentData() or "")
 
     def _sync_structure_shuffle_enabled(self) -> None:
-        ai_selected = self.is_ai_structure_selected()
-        self._shuffle_structure.setEnabled(not ai_selected)
-        if ai_selected:
+        free_selected = self.is_free_structure_selected()
+        self._shuffle_structure.setEnabled(not free_selected)
+        self._shuffle_structure.setToolTip(
+            _STRUCTURE_SHUFFLE_DISABLED_TOOLTIP if free_selected else _STRUCTURE_SHUFFLE_TOOLTIP
+        )
+        if free_selected and self._shuffle_structure.isChecked():
             self._shuffle_structure.blockSignals(True)
             self._shuffle_structure.setChecked(False)
             self._shuffle_structure.blockSignals(False)
@@ -188,6 +201,7 @@ class AutomationCard(QFrame):
                 self._description.addItem(name, option_id)
             self._structure.clear()
             self._structure.addItem(AI_STRUCTURE_LABEL, AI_STRUCTURE_SENTINEL)
+            self._structure.addItem(SUNO_STRUCTURE_LABEL, SUNO_STRUCTURE_SENTINEL)
             for option_id, name in structures:
                 self._structure.addItem(name, option_id)
             self._mood.clear()
@@ -211,7 +225,12 @@ class AutomationCard(QFrame):
             desc_index = self._description.findData(description_id)
             if desc_index >= 0:
                 self._description.setCurrentIndex(desc_index)
-            lookup_id = AI_STRUCTURE_SENTINEL if not structure_id else structure_id
+            if structure_id in FREE_STRUCTURE_SENTINELS:
+                lookup_id = structure_id
+            elif not structure_id:
+                lookup_id = AI_STRUCTURE_SENTINEL
+            else:
+                lookup_id = structure_id
             struct_index = self._structure.findData(lookup_id)
             if struct_index >= 0:
                 self._structure.setCurrentIndex(struct_index)
@@ -231,7 +250,7 @@ class AutomationCard(QFrame):
 
     def selected_structure_id(self) -> str:
         value = str(self._structure.currentData() or "")
-        if value == AI_STRUCTURE_SENTINEL:
+        if value in FREE_STRUCTURE_SENTINELS:
             return ""
         return value
 
@@ -241,8 +260,18 @@ class AutomationCard(QFrame):
     def is_ai_structure_selected(self) -> bool:
         return str(self._structure.currentData() or "") == AI_STRUCTURE_SENTINEL
 
+    def is_suno_structure_selected(self) -> bool:
+        return str(self._structure.currentData() or "") == SUNO_STRUCTURE_SENTINEL
+
+    def is_free_structure_selected(self) -> bool:
+        return str(self._structure.currentData() or "") in FREE_STRUCTURE_SENTINELS
+
     def selected_structure_mode(self) -> str:
-        return "ai_free" if self.is_ai_structure_selected() else "template"
+        if self.is_ai_structure_selected():
+            return "ai_free"
+        if self.is_suno_structure_selected():
+            return "suno"
+        return "template"
 
     def selected_description_name(self) -> str:
         return self._description.currentText()
@@ -254,12 +283,17 @@ class AutomationCard(QFrame):
         return self._mood.currentText()
 
     def shuffle_structure(self) -> bool:
+        if self.is_free_structure_selected():
+            return False
         return self._shuffle_structure.isChecked()
 
     def set_shuffle_structure(self, enabled: bool) -> None:
+        # Settings restore must not re-check Shuffle while AI/Suno Structure is selected.
+        checked = bool(enabled) and not self.is_free_structure_selected()
         self._shuffle_structure.blockSignals(True)
-        self._shuffle_structure.setChecked(enabled)
+        self._shuffle_structure.setChecked(checked)
         self._shuffle_structure.blockSignals(False)
+        self._sync_structure_shuffle_enabled()
 
     def shuffle_mood(self) -> bool:
         return self._shuffle_mood.isChecked()

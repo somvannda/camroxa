@@ -221,9 +221,17 @@ _SECTION_HEADER_RE = re.compile(r"^\[(.+)\]$", re.IGNORECASE)
 
 STRUCTURE_MODE_TEMPLATE = "template"
 STRUCTURE_MODE_AI_FREE = "ai_free"
+STRUCTURE_MODE_SUNO = "suno"
+FREE_STRUCTURE_MODES = frozenset({STRUCTURE_MODE_AI_FREE, STRUCTURE_MODE_SUNO})
 AI_STRUCTURE_SENTINEL = "__ai_structure__"
+SUNO_STRUCTURE_SENTINEL = "__suno_structure__"
 AI_STRUCTURE_MIN_CONTENT_LINES = 16
 AI_STRUCTURE_MIN_SECTION_HEADERS = 2
+
+
+def is_free_structure_mode(structure_mode: str | None) -> bool:
+    """True when lyrics keep provider section headers (AI Structure or Suno Structure)."""
+    return str(structure_mode or "").strip() in FREE_STRUCTURE_MODES
 _SECTION_KEY_SYNONYMS: dict[str, str] = {
     "hook": "chorus",
     "refrain": "chorus",
@@ -1629,7 +1637,7 @@ def build_suno_lyrics_prompt(
     lang = _compact(language_label(primary), 16)
 
     section_labels: list[str] = []
-    if structure_mode != STRUCTURE_MODE_AI_FREE:
+    if not is_free_structure_mode(structure_mode):
         headers = structure_headers or extract_structure_header_lines(structure)
         for header in headers:
             section_labels.append(_compact(lyric_header_line(header).strip("[]"), 18))
@@ -1647,7 +1655,10 @@ def build_suno_lyrics_prompt(
     opening = _compact(forced_opening, 35) if forced_opening else ""
     if opening:
         parts.append(opening)
-    if structure_mode == STRUCTURE_MODE_AI_FREE:
+    if structure_mode == STRUCTURE_MODE_SUNO:
+        # Native Suno layout — never soft-seed preferred headers.
+        parts.append("use your own section headers")
+    elif structure_mode == STRUCTURE_MODE_AI_FREE:
         # Compact soft seed if caller packed preferred headers into `structure`.
         seed_labels: list[str] = []
         for header in extract_structure_header_lines(structure)[:4]:
@@ -2034,7 +2045,7 @@ class GenerationService:
             )
 
         structure_mode = str(getattr(request, "structure_mode", STRUCTURE_MODE_TEMPLATE) or STRUCTURE_MODE_TEMPLATE)
-        if structure_mode == STRUCTURE_MODE_AI_FREE:
+        if is_free_structure_mode(structure_mode):
             structure_headers: list[str] = []
         else:
             if not str(request.structure or "").strip():
@@ -2081,7 +2092,8 @@ class GenerationService:
             sanitize_metadata_name,
         )
 
-        ai_free = structure_mode == STRUCTURE_MODE_AI_FREE
+        ai_free = is_free_structure_mode(structure_mode)
+        use_ai_structure_seeds = structure_mode == STRUCTURE_MODE_AI_FREE
         # Cap temperature — legacy desktop used ~creativity/85; 1.5x caused gibberish.
         temperature = min(1.0, max(0.25, request.creativity_level / 100.0 * 1.15))
         mood_text = str(getattr(request, "mood", "") or "").strip()
@@ -2099,16 +2111,17 @@ class GenerationService:
             for item in (getattr(request, "avoid_structures", None) or [])
             if str(item).strip()
         ]
-        if ai_free and preferred_structure_layout is None:
+        if use_ai_structure_seeds and preferred_structure_layout is None:
             from platform_api.services.ai_structure_diversity import choose_ai_structure_seed
 
             seed_index = max(0, int(getattr(request, "song_number", None) or 1) - 1)
-            seed = choose_ai_structure_seed(
+            preferred_structure_layout = choose_ai_structure_seed(
                 genres=description_genres,
                 batch_index=seed_index,
                 avoid_fingerprints=avoid_structures,
-            )
-            preferred_structure_layout = seed.layout_block
+            ).layout_block
+        elif not use_ai_structure_seeds:
+            preferred_structure_layout = None
         if ai_free:
             # Title is injected after album/title generation.
             lyrics_user_context = ""
@@ -2418,7 +2431,7 @@ class GenerationService:
                     if use_suno_lyrics:
                         suno_structure = (
                             preferred_structure_layout
-                            if ai_free and preferred_structure_layout
+                            if use_ai_structure_seeds and preferred_structure_layout
                             else request.structure
                         )
                         suno_prompt = build_suno_lyrics_prompt(
@@ -3186,7 +3199,7 @@ class GenerationService:
 
         parts = [f"Description:\n{sanitize_production_description(request.description)}"]
         structure_mode = str(getattr(request, "structure_mode", STRUCTURE_MODE_TEMPLATE) or STRUCTURE_MODE_TEMPLATE)
-        if structure_mode != STRUCTURE_MODE_AI_FREE and str(request.structure or "").strip():
+        if not is_free_structure_mode(structure_mode) and str(request.structure or "").strip():
             parts.append(
                 "Song structure guide (sonic/production intent only):\n"
                 f"{request.structure.strip()}"

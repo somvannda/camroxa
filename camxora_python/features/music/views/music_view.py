@@ -552,7 +552,11 @@ class MusicView(QWidget):
             next_description_id = descriptions[0][0]
         elif next_description_id not in description_ids:
             next_description_id = descriptions[0][0] if descriptions else ""
-        if not next_structure_id and structures:
+        from features.music.widgets.automation_card import FREE_STRUCTURE_SENTINELS
+
+        if next_structure_id in FREE_STRUCTURE_SENTINELS:
+            pass
+        elif not next_structure_id and structures:
             next_structure_id = structures[0][0]
         elif next_structure_id not in structure_ids:
             next_structure_id = structures[0][0] if structures else ""
@@ -763,6 +767,10 @@ class MusicView(QWidget):
         self._apply_description_language_mode(self._selected_description_id)
         self._automation_card.set_shuffle_structure(self._music_settings.shuffle_structure)
         self._automation_card.set_shuffle_mood(self._music_settings.shuffle_mood)
+        # Re-assert free-mode shuffle lock after settings restore (order-safe).
+        if self._automation_card.is_free_structure_selected():
+            self._music_settings.shuffle_structure = False
+            self._automation_card.set_shuffle_structure(False)
         self._automation_card.apply_automation_flags(
             auto_gen_image=self._music_settings.auto_gen_image,
             auto_gsuno=self._music_settings.auto_gsuno,
@@ -912,6 +920,14 @@ class MusicView(QWidget):
         self._prompt_selection_touched = True
         self._selected_structure_id = option_id
         self._composer.structure = self._automation_card.selected_structure_name()
+        # Free modes cannot shuffle templates — clear persisted preference so a later
+        # settings apply / batch create cannot resurrect Shuffle under Suno/AI Structure.
+        if self._automation_card.is_free_structure_selected():
+            if self._music_settings.shuffle_structure:
+                self._music_settings.shuffle_structure = False
+                self._schedule_settings_save()
+        else:
+            self._music_settings.shuffle_structure = self._automation_card.shuffle_structure()
         self._schedule_local_workspace_save()
 
     def _on_mood_changed(self, option_id: str) -> None:
@@ -1677,7 +1693,9 @@ class MusicView(QWidget):
             "description": self._composer.description,
             "structure": self._composer.structure,
             "description_id": self._selected_description_id or None,
-            "structure_id": self._selected_structure_id or None,
+            "structure_id": self._automation_card.selected_structure_id() or None,
+            "structure_mode": self._automation_card.selected_structure_mode(),
+            "mood_id": self._automation_card.selected_mood_id() or None,
             "channel_profile_id": self._primary_profiles()[0].id if self._primary_profiles() else None,
         }
         worker = DraftGenerationWorker(self._api, payload, self)
@@ -1769,9 +1787,7 @@ class MusicView(QWidget):
             "strength": self._song_card.polish_strength(),
             "channel_profile_id": primary[0].id,
             "mood_id": self._automation_card.selected_mood_id() or self._selected_mood_id or None,
-            "structure_id": self._automation_card.selected_structure_id()
-            or self._selected_structure_id
-            or None,
+            "structure_id": self._automation_card.selected_structure_id() or None,
         }
         row = self._resolve_polish_suno_row()
         if row is not None and row.song is not None:

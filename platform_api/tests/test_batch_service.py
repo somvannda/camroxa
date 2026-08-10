@@ -1977,6 +1977,140 @@ def test_build_draft_requests_preserves_ai_free_structure_mode() -> None:
     assert all(request.structure_mode == "ai_free" for request in requests)
 
 
+def test_build_draft_requests_preserves_suno_structure_mode() -> None:
+    batch = Batch(song_count=2, structure_mode="suno")
+    service = BatchService(
+        batch_repo=AsyncMock(),
+        credit_service=AsyncMock(),
+        pricing_service=AsyncMock(),
+        generation_service=AsyncMock(),
+        profile_repo=AsyncMock(),
+        ai_routing_service=AsyncMock(),
+    )
+    requests = service._build_draft_requests(batch)
+    assert len(requests) == 2
+    assert all(request.structure_mode == "suno" for request in requests)
+
+
+@pytest.mark.asyncio
+async def test_create_batch_rejects_structure_id_for_suno_mode(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    with pytest.raises(ValidationError, match="structure_id must be null"):
+        await service.create_batch(
+            user_id="00000000-0000-0000-0000-000000000001",
+            ok_profile_id="00000000-0000-0000-0000-000000000002",
+            alt_profile_id="00000000-0000-0000-0000-000000000003",
+            structure_id="00000000-0000-0000-0000-000000000099",
+            structure_mode="suno",
+            song_count=1,
+            from_date=date(2026, 8, 1),
+            to_date=date(2026, 8, 1),
+        )
+    batch_repo.create_batch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_batch_rejects_shuffle_for_suno_mode(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    with pytest.raises(ValidationError, match="shuffle_structure cannot be enabled"):
+        await service.create_batch(
+            user_id="00000000-0000-0000-0000-000000000001",
+            ok_profile_id="00000000-0000-0000-0000-000000000002",
+            alt_profile_id="00000000-0000-0000-0000-000000000003",
+            structure_mode="suno",
+            shuffle_structure=True,
+            song_count=1,
+            from_date=date(2026, 8, 1),
+            to_date=date(2026, 8, 1),
+        )
+    batch_repo.create_batch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_batch_suno_mode_ignores_settings_shuffle_structure(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """Saved shuffleStructure must not assign template ids under structure_mode=suno."""
+    prompt_service.list_structures_workspace = AsyncMock(
+        return_value=[SimpleNamespace(id=uuid4(), name="S1")]
+    )
+    settings_service.get_merged_settings = AsyncMock(
+        return_value={"shuffleStructure": True, "sunoDefaultVersion": "v5.5"}
+    )
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+
+    await service.create_batch(
+        user_id="00000000-0000-0000-0000-000000000001",
+        ok_profile_id="00000000-0000-0000-0000-000000000002",
+        alt_profile_id="00000000-0000-0000-0000-000000000003",
+        description_id="00000000-0000-0000-0000-000000000004",
+        structure_mode="suno",
+        shuffle_structure=False,
+        song_count=3,
+        language="en",
+        creativity_level=60,
+        pairing_mode="match_key",
+        from_date=date(2026, 8, 1),
+        to_date=date(2026, 8, 1),
+    )
+
+    created_songs = batch_repo.create_songs.await_args.args[0]
+    assert [song.structure_id for song in created_songs] == [None, None, None]
+    prompt_service.list_structures_workspace.assert_not_awaited()
+
+
 def test_derive_batch_status_processing_when_drafts_done_before_suno() -> None:
     batch = Batch(song_count=2, auto_gsuno=True)
     counters = {

@@ -89,7 +89,7 @@ class DraftGenerationRequest(BaseModel):
     description_id: str | None = None
     structure_id: str | None = None
     mood_id: str | None = None
-    structure_mode: str = Field(default="template", pattern=r"^(template|ai_free)$")
+    structure_mode: str = Field(default="template", pattern=r"^(template|ai_free|suno)$")
     avoid_titles: list[str] = Field(default_factory=list, max_length=200)
     avoid_albums: list[str] = Field(default_factory=list, max_length=200)
     avoid_openings: list[str] = Field(default_factory=list, max_length=200)
@@ -113,7 +113,7 @@ class BatchCreateRequest(BaseModel):
     description_id: str | None = None
     structure_id: str | None = None
     mood_id: str | None = None
-    structure_mode: str = Field(default="template", pattern=r"^(template|ai_free)$")
+    structure_mode: str = Field(default="template", pattern=r"^(template|ai_free|suno)$")
     shuffle_structure: bool = False
     shuffle_mood: bool = False
     auto_gen_image: bool = False

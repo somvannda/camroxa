@@ -131,3 +131,41 @@ def test_build_suno_lyrics_prompt_respects_200_char_limit() -> None:
     )
     assert len(prompt) <= 200
     assert "English" in prompt
+
+
+def test_build_suno_lyrics_prompt_modes() -> None:
+    from platform_api.services.generation_service import (
+        STRUCTURE_MODE_AI_FREE,
+        STRUCTURE_MODE_SUNO,
+        STRUCTURE_MODE_TEMPLATE,
+    )
+
+    template = build_suno_lyrics_prompt(
+        title="Neon Harbor",
+        mood="late-night",
+        structure="[Intro]\n[Verse]\n[Chorus]\n[Bridge]",
+        language="en",
+        structure_mode=STRUCTURE_MODE_TEMPLATE,
+    )
+    assert "Intro" in template
+    assert "use your own section headers" not in template
+
+    ai_free = build_suno_lyrics_prompt(
+        title="Neon Harbor",
+        mood="late-night",
+        structure="[Intro]\n[Verse]\n[Chorus]\n[Bridge]",
+        language="en",
+        structure_mode=STRUCTURE_MODE_AI_FREE,
+    )
+    assert "prefer Intro-Verse-Chorus-Bridge" in ai_free
+
+    suno = build_suno_lyrics_prompt(
+        title="Neon Harbor",
+        mood="late-night",
+        structure="[Intro]\n[Verse]\n[Chorus]\n[Bridge]",
+        language="en",
+        structure_mode=STRUCTURE_MODE_SUNO,
+    )
+    assert "use your own section headers" in suno
+    assert "prefer " not in suno
+    assert "Intro, Verse" not in suno

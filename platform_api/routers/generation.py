@@ -349,14 +349,14 @@ async def generate_draft(
         )
 
     from platform_api.services.generation_service import (
-        STRUCTURE_MODE_AI_FREE,
+        is_free_structure_mode,
         extract_structure_header_lines,
     )
 
-    if structure_mode == STRUCTURE_MODE_AI_FREE:
+    if is_free_structure_mode(structure_mode):
         if request.structure_id is not None:
             raise ValidationError(
-                "structure_id must be null when structure_mode is ai_free.",
+                f"structure_id must be null when structure_mode is {structure_mode}.",
                 details={"field": "structure_id"},
             )
         structure_text = ""
@@ -391,6 +391,8 @@ async def generate_draft(
     )
 
     preferred_structure_layout = None
+    from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE
+
     if structure_mode == STRUCTURE_MODE_AI_FREE:
         from platform_api.services.ai_structure_diversity import choose_ai_structure_seed
 

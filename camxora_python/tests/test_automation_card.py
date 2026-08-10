@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from features.music.widgets.automation_card import AutomationCard
+from features.music.widgets.automation_card import (
+    AI_STRUCTURE_SENTINEL,
+    AutomationCard,
+    SUNO_STRUCTURE_SENTINEL,
+)
 
 
 @pytest.fixture(scope="session")
@@ -36,3 +40,62 @@ def test_plan_summary_under_generate(qapp: QApplication) -> None:
     assert "40 songs" in card._plan.text()
     card.set_plan_lines("")
     assert card._plan_box.isHidden()
+
+
+def test_suno_structure_mode_and_shuffle(qapp: QApplication) -> None:
+    card = AutomationCard()
+    card.set_options(
+        descriptions=[("d1", "Desc")],
+        structures=[("s1", "Pop Template")],
+        moods=[("m1", "Mood")],
+    )
+    assert card._structure.findData(AI_STRUCTURE_SENTINEL) == 0
+    assert card._structure.findData(SUNO_STRUCTURE_SENTINEL) == 1
+    assert card._structure.findData("s1") == 2
+
+    card.set_selected_options("d1", SUNO_STRUCTURE_SENTINEL, "m1")
+    assert card.is_suno_structure_selected()
+    assert card.selected_structure_mode() == "suno"
+    assert card.selected_structure_id() == ""
+    assert not card._shuffle_structure.isEnabled()
+    assert not card.shuffle_structure()
+
+    card.set_selected_options("d1", AI_STRUCTURE_SENTINEL, "m1")
+    assert card.selected_structure_mode() == "ai_free"
+    assert not card._shuffle_structure.isEnabled()
+    assert not card.shuffle_structure()
+
+    card.set_selected_options("d1", "s1", "m1")
+    assert card.selected_structure_mode() == "template"
+    assert card.selected_structure_id() == "s1"
+    assert card._shuffle_structure.isEnabled()
+
+
+def test_set_shuffle_structure_ignored_while_suno_or_ai_selected(qapp: QApplication) -> None:
+    card = AutomationCard()
+    card.set_options(
+        descriptions=[("d1", "Desc")],
+        structures=[("s1", "Pop Template")],
+        moods=[("m1", "Mood")],
+    )
+    card.set_selected_options("d1", "s1", "m1")
+    card.set_shuffle_structure(True)
+    assert card.shuffle_structure()
+
+    # Settings restore must not re-check Shuffle under free structure modes.
+    card.set_selected_options("d1", SUNO_STRUCTURE_SENTINEL, "m1")
+    card.set_shuffle_structure(True)
+    assert not card._shuffle_structure.isEnabled()
+    assert not card._shuffle_structure.isChecked()
+    assert not card.shuffle_structure()
+
+    card.set_selected_options("d1", AI_STRUCTURE_SENTINEL, "m1")
+    card.set_shuffle_structure(True)
+    assert not card._shuffle_structure.isEnabled()
+    assert not card.shuffle_structure()
+
+    # Returning to a template re-enables Shuffle; preference can be set again.
+    card.set_selected_options("d1", "s1", "m1")
+    assert card._shuffle_structure.isEnabled()
+    card.set_shuffle_structure(True)
+    assert card.shuffle_structure()
