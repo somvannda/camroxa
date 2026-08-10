@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from visualizer.composition_effects.audio_mapping import (
+from visualizer_studio.composition_effects.audio_mapping import (
     apply_mapping_levels,
     normalize_audio_mapping,
     resolve_bus_levels,
 )
-from visualizer.presets import (
+from visualizer_studio.presets import (
     ANIMATION_BEHAVIOR_COUNT,
     ATMOSPHERE_COUNT,
     AUDIO_BUS_COUNT,
@@ -22,9 +22,9 @@ from visualizer.presets import (
     SPECTRUM_MATERIAL_COUNT,
     SPECTRUM_SHAPE_COUNT,
 )
-from visualizer.scene import default_document, load_scene
-from visualizer.scene.compile import compile_scene
-from visualizer.template_runtime import normalize_renderer_template
+from visualizer_studio.scene import default_document, load_scene
+from visualizer_studio.scene.compile import compile_scene
+from visualizer_studio.template_runtime import normalize_renderer_template
 
 
 def test_p0_p11_catalog_counts() -> None:

@@ -15,8 +15,8 @@ from features.video.lib.text_domain_registry import (
 from features.video.lib.text_domain_runtime import expand_text_domains_to_overlays
 from features.video.lib.video_template_draft import build_background_settings_state
 from features.video.lib.video_template_save import build_background_template_patch
-from visualizer.gpu_render import _render_text_rgba
-from visualizer.template_runtime import normalize_renderer_template
+from visualizer_video.gpu_render import _render_text_rgba
+from visualizer_video.template_runtime import normalize_renderer_template
 
 
 def test_ten_text_presets_exist() -> None:

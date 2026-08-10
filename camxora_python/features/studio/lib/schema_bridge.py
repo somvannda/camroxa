@@ -12,7 +12,7 @@ from typing import Any
 from uuid import uuid4
 
 from features.studio.lib.scene_document import normalize_studio_document
-from visualizer.scene import NONE, default_document
+from visualizer_studio.scene import NONE, default_document
 
 
 def composition_to_project(doc: dict[str, Any]) -> dict[str, Any]:

@@ -5,36 +5,36 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from visualizer.composition_effects.audio_mapping import normalize_audio_mapping
-from visualizer.presets.animations import (
+from visualizer_studio.composition_effects.audio_mapping import normalize_audio_mapping
+from visualizer_studio.presets.animations import (
     list_animation_behavior_options,
     normalize_animation_behavior_id,
 )
-from visualizer.presets.atmosphere import list_atmosphere_options, normalize_atmosphere_id
-from visualizer.presets.audio_buses import (
+from visualizer_studio.presets.atmosphere import list_atmosphere_options, normalize_atmosphere_id
+from visualizer_studio.presets.audio_buses import (
     list_audio_bus_options,
     list_audio_mapping_target_options,
 )
-from visualizer.presets.background_motion import (
+from visualizer_studio.presets.background_motion import (
     list_background_motion_options,
     normalize_background_motion_id,
 )
-from visualizer.presets.camera import list_camera_behavior_options, normalize_camera_behavior_id
-from visualizer.presets.lighting import (
+from visualizer_studio.presets.camera import list_camera_behavior_options, normalize_camera_behavior_id
+from visualizer_studio.presets.lighting import (
     list_lighting_effect_options,
     list_lighting_trigger_options,
     normalize_lighting_effect_id,
     normalize_lighting_trigger_id,
 )
-from visualizer.presets.materials import (
+from visualizer_studio.presets.materials import (
     list_spectrum_material_options,
     normalize_spectrum_material_id,
 )
-from visualizer.presets.palettes import list_color_palette_options, normalize_color_palette_id
-from visualizer.presets.particles import list_particle_type_options, normalize_particle_type_id
-from visualizer.presets.post import list_post_effect_options, normalize_post_effects_list
-from visualizer.presets.shapes import list_spectrum_shape_options, normalize_spectrum_shape_id
-from visualizer.scene import NONE, default_document, normalize_assets, normalize_composition
+from visualizer_studio.presets.palettes import list_color_palette_options, normalize_color_palette_id
+from visualizer_studio.presets.particles import list_particle_type_options, normalize_particle_type_id
+from visualizer_studio.presets.post import list_post_effect_options, normalize_post_effects_list
+from visualizer_studio.presets.shapes import list_spectrum_shape_options, normalize_spectrum_shape_id
+from visualizer_studio.scene import NONE, default_document, normalize_assets, normalize_composition
 
 
 SCENE_TREE_NODES: tuple[tuple[str, str], ...] = (
@@ -231,6 +231,13 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
     if "compositionSpectrumShape" in patch:
         shape = normalize_spectrum_shape_id(patch.get("compositionSpectrumShape"))
         comp["spectrum"]["shape"] = shape or NONE
+        # Manual shape changes leave Custom look so we don't keep fighting the stack.
+        if "compositionSpectrumLook" not in patch:
+            comp["spectrum"]["look"] = None
+    if "compositionSpectrumLook" in patch:
+        from features.studio.lib.spectrum_looks import normalize_spectrum_look_id
+
+        comp["spectrum"]["look"] = normalize_spectrum_look_id(patch.get("compositionSpectrumLook"))
     if "compositionSpectrumMaterial" in patch:
         material = normalize_spectrum_material_id(patch.get("compositionSpectrumMaterial"))
         comp["spectrum"]["material"] = material or NONE
@@ -297,7 +304,7 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
         if raw_g in (None, "", "none", "auto"):
             comp["spectrum"]["gravity"] = None
         else:
-            from visualizer._spectrum_fast import normalize_spectrum_gravity
+            from visualizer_studio._spectrum_fast import normalize_spectrum_gravity
 
             comp["spectrum"]["gravity"] = normalize_spectrum_gravity(raw_g)
     if "compositionSpectrumPeakCaps" in patch:
@@ -319,7 +326,7 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
         elif raw_stops in (None, [], "none", "clear"):
             comp["spectrum"]["gradientColors"] = None
 
-    from visualizer.scene.spectrum_layers import (
+    from visualizer_studio.scene.spectrum_layers import (
         default_spectrum_layer,
         normalize_spectrum_layers,
         spectrum_layer_defaults_from_comp,
@@ -454,7 +461,7 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
         comp["logo"]["fitToShape"] = bool(patch.get("compositionLogoFitToShape"))
     if "compositionLogoMaskShape" in patch:
         try:
-            from visualizer.logo_mask import normalize_logo_mask_shape_id
+            from visualizer_studio.logo_mask import normalize_logo_mask_shape_id
 
             comp["logo"]["maskShape"] = normalize_logo_mask_shape_id(
                 patch.get("compositionLogoMaskShape")
@@ -702,6 +709,7 @@ def inspector_bind_state(doc: dict[str, Any]) -> dict[str, Any]:
         "compositionBackgroundAtmosphereOpacity": float(comp["background"].get("atmosphereOpacity") or 1.0),
         "compositionBackgroundAtmosphereWind": float(comp["background"].get("atmosphereWind") or 1.0),
         "compositionSpectrumShape": comp["spectrum"]["shape"],
+        "compositionSpectrumLook": comp["spectrum"].get("look") or "none",
         "compositionSpectrumMaterial": comp["spectrum"]["material"],
         "compositionSpectrumAnimation": comp["spectrum"]["animation"],
         "compositionSpectrumBarHeight": float(comp["spectrum"].get("barHeight") or 1.0),

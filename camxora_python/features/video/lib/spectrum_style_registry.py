@@ -19,7 +19,7 @@ from features.video.lib.spectrum_color_engine import (
     spectrum_gradient_preset_colors,
 )
 from features.video.lib.video_template_draft import normalize_spectrum_preset_key
-from visualizer.template_runtime import normalize_renderer_template
+from visualizer_video.template_runtime import normalize_renderer_template
 
 PACK_PRESET_PREFIX = "pack:"
 

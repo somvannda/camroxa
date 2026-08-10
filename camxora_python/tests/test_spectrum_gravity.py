@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from features.video.widgets.spectrum_layer_editor import GRAVITY_OPTIONS
-from visualizer._spectrum_fast import (
+from visualizer_video._spectrum_fast import (
     clamp_spectrum_bar_count,
     generate_points_curved,
     generate_points_linear,
@@ -16,7 +16,7 @@ from visualizer._spectrum_fast import (
     resolve_curved_spectrum_basis,
     resolve_spectrum_growth_direction,
 )
-from visualizer.template_runtime import normalize_renderer_template
+from visualizer_video.template_runtime import normalize_renderer_template
 
 
 def test_gravity_options_include_radial_spikes() -> None:
@@ -187,7 +187,7 @@ def test_bar_count_clamp_and_fft_resample() -> None:
 
 
 def test_raise_angle_overrides_uniform_direction() -> None:
-    from visualizer._spectrum_fast import (
+    from visualizer_video._spectrum_fast import (
         apply_raise_angle_override,
         normalize_raise_angle_deg,
         raise_angle_direction,
@@ -207,7 +207,7 @@ def test_raise_angle_overrides_uniform_direction() -> None:
     assert abs(up[0]) < 1e-6
     assert abs(up[1] - 1.0) < 1e-6
 
-    from visualizer._spectrum_fast import apply_bar_height_overrides, scroll_spectrum_heights
+    from visualizer_video._spectrum_fast import apply_bar_height_overrides, scroll_spectrum_heights
 
     base = np.linspace(0.1, 1.0, 16, dtype=np.float32)
     scrolled = scroll_spectrum_heights(base, 0.25)

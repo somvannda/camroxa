@@ -32,7 +32,7 @@ from features.video.services.export_job import ExportJob, ExportSettings  # noqa
 from shared.lib.export_codec import export_video_codec_label  # noqa: E402
 from shared.lib.export_tiers import resolve_export_tier_settings  # noqa: E402
 from shared.lib.ffmpeg_paths import resolve_ffmpeg_path  # noqa: E402
-from visualizer.audio import probe_audio_duration_sec  # noqa: E402
+from visualizer_video.audio import probe_audio_duration_sec  # noqa: E402
 
 BENCHMARK_CONTRACT_VERSION = "1.0"
 REFERENCE_GPU = "NVIDIA GTX 1050 Ti"

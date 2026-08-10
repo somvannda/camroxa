@@ -15,8 +15,8 @@ from features.studio.services.ai_designer import AiDesignerEngine
 from features.studio.services.marketplace_cloud import MarketplaceCloudService
 from features.studio.services.template_library import StudioTemplateLibrary
 from features.studio.lib.schema_bridge import composition_to_project
-from visualizer.composition_effects.camera_gpu import camera_view_offset_px
-from visualizer.composition_renderer import document_to_renderer_dict
+from visualizer_studio.composition_effects.camera_gpu import camera_view_offset_px
+from visualizer_studio.composition_renderer import document_to_renderer_dict
 
 
 def test_p1_camera_and_overlay_bridge() -> None:
@@ -118,7 +118,7 @@ def test_expert_tuning_and_video_plate_bridge() -> None:
 
 
 def test_video_path_helper() -> None:
-    from visualizer.composition_effects.video_background import is_video_path
+    from visualizer_studio.composition_effects.video_background import is_video_path
 
     assert is_video_path("clip.mp4")
     assert is_video_path("plate.MOV")
@@ -188,7 +188,7 @@ def test_spectrum_material_and_animation_stay_distinct() -> None:
 
 
 def test_live_motion_updates_camera_over_time() -> None:
-    from visualizer.composition_effects.live_motion import apply_live_composition_motion
+    from visualizer_studio.composition_effects.live_motion import apply_live_composition_motion
 
     doc = apply_axis_patch(
         blank_studio_document(),
@@ -210,8 +210,8 @@ def test_live_motion_updates_camera_over_time() -> None:
 
 def test_live_motion_syncs_spectrum_animation_into_instances() -> None:
     """Preview paints spectrumInstances layers; live motion must update those copies."""
-    from visualizer.composition_effects.live_motion import apply_live_composition_motion
-    from visualizer.template_runtime import normalize_renderer_template
+    from visualizer_studio.composition_effects.live_motion import apply_live_composition_motion
+    from visualizer_studio.template_runtime import normalize_renderer_template
 
     doc = apply_axis_patch(
         blank_studio_document(),
@@ -238,7 +238,7 @@ def test_live_motion_syncs_spectrum_animation_into_instances() -> None:
 
 def test_rain_atmosphere_falls_downward() -> None:
     """Rain streaks must travel toward -Y in NDC (down), not fly upward."""
-    from visualizer.composition_effects.atmosphere_gpu import atmosphere_weather_segments
+    from visualizer_studio.composition_effects.atmosphere_gpu import atmosphere_weather_segments
 
     a = atmosphere_weather_segments(
         kind="rain", density=0.8, speed=1.4, tint="#bfdbfe", time_sec=0.0, width=1920, height=1080
@@ -254,7 +254,7 @@ def test_rain_atmosphere_falls_downward() -> None:
 
 
 def test_atmosphere_styles_have_unique_draw_kinds() -> None:
-    from visualizer.composition_effects.atmosphere import build_atmosphere_pass
+    from visualizer_studio.composition_effects.atmosphere import build_atmosphere_pass
     from features.studio.lib.scene_document import catalog_options
 
     kinds: dict[str, str] = {}
@@ -274,7 +274,7 @@ def test_atmosphere_styles_have_unique_draw_kinds() -> None:
     off = build_atmosphere_pass("rain", density_scale=0.0)
     assert off is not None
     assert off["enabled"] is False
-    from visualizer.composition_effects.atmosphere_gpu import (
+    from visualizer_studio.composition_effects.atmosphere_gpu import (
         atmosphere_weather_segments,
         build_atmosphere_draw,
     )
@@ -292,7 +292,7 @@ def test_atmosphere_styles_have_unique_draw_kinds() -> None:
 
 
 def test_motion_expert_scales_change_offsets() -> None:
-    from visualizer.composition_effects.background_motion import evaluate_background_motion
+    from visualizer_studio.composition_effects.background_motion import evaluate_background_motion
 
     mild = evaluate_background_motion("ken_burns", time_sec=1.2, speed=1.0, amplitude=0.5, zoom_amount=0.5)
     wild = evaluate_background_motion("ken_burns", time_sec=1.2, speed=1.0, amplitude=2.5, zoom_amount=2.5)
@@ -301,7 +301,7 @@ def test_motion_expert_scales_change_offsets() -> None:
 
 
 def test_background_motions_have_distinct_live_signatures() -> None:
-    from visualizer.composition_effects.live_motion import apply_live_composition_motion
+    from visualizer_studio.composition_effects.live_motion import apply_live_composition_motion
 
     signatures: dict[str, tuple[float, float, float, str]] = {}
     for motion in ("static", "ken_burns", "floating", "rotate", "warp", "energy_wave"):
@@ -326,8 +326,8 @@ def test_background_motions_have_distinct_live_signatures() -> None:
 
 
 def test_spectrum_layers_and_size_scale_compile() -> None:
-    from visualizer.composition_renderer import document_to_renderer_dict
-    from visualizer.scene.spectrum_layers import normalize_spectrum_layers
+    from visualizer_studio.composition_renderer import document_to_renderer_dict
+    from visualizer_studio.scene.spectrum_layers import normalize_spectrum_layers
 
     blank = blank_studio_document()
     layers = normalize_spectrum_layers(blank["composition"]["spectrum"].get("layers"))
@@ -360,7 +360,7 @@ def test_spectrum_layers_and_size_scale_compile() -> None:
 
 
 def test_background_motion_tuning_ui_is_contextual() -> None:
-    from visualizer.presets.background_motion import (
+    from visualizer_studio.presets.background_motion import (
         BACKGROUND_MOTION_IDS,
         background_motion_tuning_ui,
     )
@@ -514,8 +514,8 @@ def test_overlay_dust_differs_from_film_grain() -> None:
 
 def test_live_motion_retints_palette_on_instances() -> None:
     """Palette must win on spectrumInstances even after normalize deep-copy."""
-    from visualizer.composition_effects.live_motion import apply_live_composition_motion
-    from visualizer.template_runtime import normalize_renderer_template
+    from visualizer_studio.composition_effects.live_motion import apply_live_composition_motion
+    from visualizer_studio.template_runtime import normalize_renderer_template
 
     doc = apply_axis_patch(
         blank_studio_document(),
@@ -616,7 +616,7 @@ def test_spectrum_bar_controls_reach_layers() -> None:
 
 
 def test_layer_audio_bus_shapes_fft_bins() -> None:
-    from visualizer.composition_effects.bus_fft import apply_layer_audio_bus, bus_bin_weights
+    from visualizer_studio.composition_effects.bus_fft import apply_layer_audio_bus, bus_bin_weights
 
     n = 64
     flat = np.ones(n, dtype=np.float32)

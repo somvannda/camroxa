@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from visualizer.export_gpu_tier import clear_export_gpu_tier_cache
-from visualizer.gpu_render import (
+from visualizer_video.export_gpu_tier import clear_export_gpu_tier_cache
+from visualizer_video.gpu_render import (
     export_glow_pass_limit,
     export_particle_caps,
     normalize_export_speed_mode,

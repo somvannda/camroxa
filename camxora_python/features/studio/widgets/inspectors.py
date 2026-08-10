@@ -30,8 +30,8 @@ from features.video.widgets.inspector_fields import build_color_field
 from shared.icons.lucide_icons import lucide_pixmap
 from shared.themes.deep_blue import SETTINGS_FORM_ROW_ID, SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import SettingsPanel
-from visualizer.logo_mask import CENTER_IMAGE_MASK_OPTIONS
-from visualizer.presets.background_motion import background_motion_tuning_ui
+from visualizer_studio.logo_mask import CENTER_IMAGE_MASK_OPTIONS
+from visualizer_studio.presets.background_motion import background_motion_tuning_ui
 
 _LAYER_ICON_COLOR = "#c4b5fd"
 _LAYER_ICON_DANGER = "#fda4af"
@@ -64,7 +64,7 @@ def _compact_dial(parent, *, tooltip: str, on_changed) -> QDial:
 def _center_mask_for_spectrum_shape(shape: str | None) -> str:
     """Map spectrum shape → center-image mask so the image sits inside the path."""
     try:
-        from visualizer.presets.shapes import normalize_spectrum_shape_id
+        from visualizer_studio.presets.shapes import normalize_spectrum_shape_id
 
         key = normalize_spectrum_shape_id(shape)
     except Exception:
@@ -728,8 +728,17 @@ class SpectrumInspector(_AxisPanel):
         self._section.add_widget(self._glow)
         self._section.add_widget(self._blur)
 
-        # Shape card — shared shape only
+        # Shape card — look recipe + shared shape
         self._shape_card = _compact_panel(SettingsPanel("Shape", subtitle="", fill_available_height=False))
+        self._look = QComboBox()
+        from features.studio.lib.spectrum_looks import list_spectrum_look_options
+
+        populate_combo(self._look, list_spectrum_look_options(), include_none=False)
+        self._look.setToolTip(
+            "Multi-layer looks. Prism Core Glow = soft rainbow aura + rainbow body + white core."
+        )
+        self._look.currentIndexChanged.connect(self._on_look_changed)
+        self._shape_card.add_widget(stacked_field("Look", self._look))
         self._shape = QComboBox()
         populate_combo(self._shape, opts["shapes"])
         self._shape.currentIndexChanged.connect(self._on_shape_changed)
@@ -870,6 +879,14 @@ class SpectrumInspector(_AxisPanel):
         self._image_rot_label.setText(f"Image rotation ({deg}°)")
         self._emit({"compositionLogoRotationDeg": float(deg)})
 
+    def _on_look_changed(self, *_args) -> None:
+        if self._binding:
+            return
+        from features.studio.lib.spectrum_looks import spectrum_look_axis_patch
+
+        look = str(self._look.currentData() or "none")
+        self._emit(spectrum_look_axis_patch(look))
+
     def _on_shape_changed(self, *_args) -> None:
         if self._binding:
             return
@@ -877,6 +894,7 @@ class SpectrumInspector(_AxisPanel):
         mask = _center_mask_for_spectrum_shape(shape)
         self._emit(
             {
+                "compositionSpectrumLook": None,
                 "compositionSpectrumShape": shape,
                 "compositionLogoMaskShape": mask,
                 "compositionLogoFitToShape": True,
@@ -969,7 +987,7 @@ class SpectrumInspector(_AxisPanel):
         self._emit({"compositionSpectrumColorPalette": pal_id})
         # Seed editable stops from the chosen catalog so users can tweak them.
         try:
-            from visualizer.presets.palettes import get_palette
+            from visualizer_studio.presets.palettes import get_palette
 
             pal = get_palette(None if pal_id in ("", "none") else str(pal_id))
             stops = list((pal or {}).get("stops") or [])
@@ -1158,7 +1176,7 @@ class SpectrumInspector(_AxisPanel):
             self._raise_angle_dial.blockSignals(False)
             self._raise_angle_label.setText(f"Raise angle ({raise_deg}°)")
         try:
-            from visualizer._spectrum_fast import clamp_frequency_scroll
+            from visualizer_studio._spectrum_fast import clamp_frequency_scroll
 
             self._path_phase.set_float(float(clamp_frequency_scroll(layer.get("frequencyScroll"), 0.0)))
         except Exception:
@@ -1183,6 +1201,8 @@ class SpectrumInspector(_AxisPanel):
         self._center_opacity.set_float(float(state.get("compositionLogoOpacity") or 1.0))
         self._center_react.set_float(float(state.get("compositionLogoReactivity") or 0.0))
         set_combo_data(self._shape, str(state.get("compositionSpectrumShape") or "none"))
+        look = str(state.get("compositionSpectrumLook") or "none")
+        set_combo_data(self._look, look if look and look != "None" else "none", fallback="none")
         try:
             rot = int(round(float(state.get("compositionSpectrumRotationDeg") or 0.0))) % 360
         except (TypeError, ValueError):

@@ -150,7 +150,7 @@ class ExportJob:
             cmd = [
                 sys.executable,
                 "-m",
-                "visualizer.main",
+                "visualizer_video.main",
                 str(self.mp3_path),
                 "unused_template.json",
                 "--templateB64",
@@ -183,7 +183,7 @@ class ExportJob:
         # Propagate GPU tier so each worker skips a visible nvidia-smi console probe.
         if not str(env.get("CAMXORA_GPU_TIER") or "").strip():
             try:
-                from visualizer.export_gpu_tier import detect_export_gpu_tier
+                from visualizer_video.export_gpu_tier import detect_export_gpu_tier
 
                 env["CAMXORA_GPU_TIER"] = str(detect_export_gpu_tier())
             except Exception:

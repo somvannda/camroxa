@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from visualizer.preview_widget import VideoSpectrumPreview
+from visualizer_video.preview_widget import VideoSpectrumPreview
 
 
 def test_apply_preview_patch_mutates_particles_without_normalize(monkeypatch) -> None:
@@ -13,7 +13,7 @@ def test_apply_preview_patch_mutates_particles_without_normalize(monkeypatch) ->
         return tpl
 
     monkeypatch.setattr(
-        "visualizer.preview_widget.normalize_renderer_template",
+        "visualizer_video.preview_widget.normalize_renderer_template",
         _fake_normalize,
     )
     widget = VideoSpectrumPreview.__new__(VideoSpectrumPreview)
@@ -35,7 +35,7 @@ def test_apply_preview_patch_mutates_particles_without_normalize(monkeypatch) ->
 
 def test_apply_preview_patch_updates_layer_glow(monkeypatch) -> None:
     monkeypatch.setattr(
-        "visualizer.preview_widget.normalize_renderer_template",
+        "visualizer_video.preview_widget.normalize_renderer_template",
         lambda tpl: tpl,
     )
     widget = VideoSpectrumPreview.__new__(VideoSpectrumPreview)
@@ -60,7 +60,7 @@ def test_apply_preview_patch_updates_layer_glow(monkeypatch) -> None:
 
 def test_apply_preview_patch_rejects_unknown_keys(monkeypatch) -> None:
     monkeypatch.setattr(
-        "visualizer.preview_widget.normalize_renderer_template",
+        "visualizer_video.preview_widget.normalize_renderer_template",
         lambda tpl: tpl,
     )
     widget = VideoSpectrumPreview.__new__(VideoSpectrumPreview)

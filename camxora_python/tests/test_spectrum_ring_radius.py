@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from visualizer.gpu_render import _resolve_spectrum_layer_radius
+from visualizer_video.gpu_render import _resolve_spectrum_layer_radius
 
 
 def test_bar_width_does_not_expand_ring_radius() -> None:

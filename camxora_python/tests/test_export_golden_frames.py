@@ -161,7 +161,7 @@ def _compare_images(preview_path: Path, export_path: Path) -> tuple[float, int]:
 
 
 def _build_gpu_options(bundle: dict[str, Path], tmp_path: Path):
-    from visualizer.gpu_render import GpuOptions
+    from visualizer_video.gpu_render import GpuOptions
 
     return GpuOptions(
         mp3_path=str(bundle["mp3"]),
@@ -186,7 +186,7 @@ def _render_pair(
     preview_png: Path,
     export_png: Path,
 ) -> None:
-    from visualizer.gpu_render import render_export_png, render_preview_png
+    from visualizer_video.gpu_render import render_export_png, render_preview_png
 
     render_preview_png(
         opts,

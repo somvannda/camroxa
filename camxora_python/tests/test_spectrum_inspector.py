@@ -17,7 +17,7 @@ from features.video.lib.spectrum_style_registry import (
     normalize_spectrum_preset_key_for_apply,
 )
 from features.video.lib.video_template_draft import clone_layer_records, normalize_spectrum_preset_key
-from visualizer.gpu_render import _resolve_export_spectrum_style
+from visualizer_video.gpu_render import _resolve_export_spectrum_style
 
 
 def test_spectrum_audio_dial_round_trip() -> None:

@@ -225,7 +225,7 @@ class PipelineAutomationService(QObject):
             fps=tier.fps,
         )
         workers_raw = self._settings.get("videoExportWorkers", self._settings.get("perfExportWorkers", 1))
-        from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+        from visualizer_video.export_gpu_tier import resolve_pipeline_export_workers
 
         worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from features.video.services.visualizer_daemon import VisualizerDaemonClient, _visualizer_daemon_enabled
-from visualizer.main import normalize_visualizer_job_argv
+from visualizer_video.main import normalize_visualizer_job_argv
 
 
 def test_normalize_strips_frozen_visualizer_flag() -> None:
@@ -26,12 +26,12 @@ def test_normalize_strips_dev_module_invocation() -> None:
     argv = [
         r"C:\Python\python.exe",
         "-m",
-        "visualizer.main",
+        "visualizer_video.main",
         r"C:\music\song.mp3",
         r"C:\templates\viz.json",
     ]
     normalized = normalize_visualizer_job_argv(argv)
-    assert normalized[0] == "visualizer.main"
+    assert normalized[0] == "visualizer_video.main"
     assert normalized[1] == r"C:\music\song.mp3"
 
 
@@ -62,7 +62,7 @@ def test_daemon_disabled_by_env_returns_none(monkeypatch) -> None:
     client = VisualizerDaemonClient()
     assert (
         client.run_command(
-            ["python.exe", "-m", "visualizer.main", "song.mp3", "tpl.json"],
+            ["python.exe", "-m", "visualizer_video.main", "song.mp3", "tpl.json"],
             cwd=os.getcwd(),
             env=os.environ.copy(),
             on_event=None,

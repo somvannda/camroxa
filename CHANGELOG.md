@@ -9,6 +9,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Prism Core Glow spectrum look.** Trap Nation-style multi-layer ring in
+  Composition Studio only (Video presets untouched). See
+  `docs/changelog/2026-08-10-prism-core-glow-look.md`.
+
 ### Fixed
 
 - **Shape rotation vs image + preview drag.** Shape rotation spins path/mask only

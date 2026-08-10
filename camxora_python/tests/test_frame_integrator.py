@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 
-from visualizer.frame_integrator import (
+from visualizer_video.frame_integrator import (
 
     BgVibrateConfig,
 
@@ -285,7 +285,7 @@ def test_camera_shake_disabled_resets_state() -> None:
 
 
 def test_camera_shake_enabled_moves_toward_target(monkeypatch) -> None:
-    import visualizer.frame_integrator as fi
+    import visualizer_video.frame_integrator as fi
 
     monkeypatch.setattr(fi.time, "time", lambda: 0.0)
     state = CameraShakeState()

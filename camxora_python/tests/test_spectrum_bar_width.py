@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from visualizer._spectrum_fast import (
+from visualizer_video._spectrum_fast import (
     _BAR_MIN_GAP_PX,
     _BAR_SLOT_MAX_FILL,
     _MAX_BAR_COUNT,
     clamp_spectrum_bar_count,
     resolve_bar_pixel_width,
 )
-from visualizer.gpu_render import _audio_bar_height_mult
+from visualizer_video.gpu_render import _audio_bar_height_mult
 
 
 def test_resolve_bar_pixel_width_uses_slider_value_when_no_slot() -> None:
@@ -54,7 +54,7 @@ def test_classic_bars_tip_taper_control() -> None:
     """Tip taper 0 = equal width; tip taper 1 = narrower tip."""
     import numpy as np
 
-    from visualizer._spectrum_fast import build_bar_vertices
+    from visualizer_video._spectrum_fast import build_bar_vertices
 
     n = 4
     px = np.zeros(n, dtype=np.float32)

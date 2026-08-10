@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from visualizer.gpu_render import _smooth_env
+from visualizer_video.gpu_render import _smooth_env
 
 
 def test_smooth_env_dt_scales_retention_for_lower_export_fps() -> None:

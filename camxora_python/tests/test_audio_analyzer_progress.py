@@ -7,7 +7,7 @@ import struct
 import wave
 from pathlib import Path
 
-from visualizer.audio import ANALYSIS_SAMPLE_RATE, AudioAnalyzer
+from visualizer_video.audio import ANALYSIS_SAMPLE_RATE, AudioAnalyzer
 
 
 def _write_test_wav(path: Path, *, duration_sec: float = 1.0, sample_rate: int = 44100) -> None:

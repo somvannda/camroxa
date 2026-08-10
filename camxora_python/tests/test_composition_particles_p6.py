@@ -17,7 +17,7 @@ from features.video.lib.composition_particles import (
     normalize_particle_type_id,
 )
 from features.video.lib.composition_scene_contract import ensure_composition_on_template
-from visualizer.particles import ParticleConfig, ParticleSystem
+from visualizer_studio.particles import ParticleConfig, ParticleSystem
 
 CANONICAL_13 = (
     "dust",

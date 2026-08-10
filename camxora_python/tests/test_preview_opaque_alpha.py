@@ -10,7 +10,7 @@ from features.video.lib.lightning_render import (
     _blend_rgb_additive_opaque_alpha,
     _blend_rgb_normal_opaque_alpha,
 )
-from visualizer.gpu_render import (
+from visualizer_video.gpu_render import (
     blend_rgb_additive_opaque_alpha,
     blend_rgb_normal_opaque_alpha,
 )

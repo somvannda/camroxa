@@ -6,8 +6,8 @@ import numpy as np
 
 from features.video.lib.video_template_draft import build_particle_settings_state
 from features.video.lib.video_template_save import build_particles_template_patch
-from visualizer.particles import ParticleConfig, ParticleSystem, clamp_particle_trail_length
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video.particles import ParticleConfig, ParticleSystem, clamp_particle_trail_length
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def _cfg(**overrides) -> ParticleConfig:

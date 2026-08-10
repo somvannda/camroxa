@@ -20,8 +20,8 @@ from features.studio.services.studio_export import (
     studio_export_readiness,
 )
 from features.studio.services.studio_store import StudioStore
-from visualizer.composition_renderer import document_to_renderer_dict
-from visualizer.presets import (
+from visualizer_studio.composition_renderer import document_to_renderer_dict
+from visualizer_studio.presets import (
     ATMOSPHERE_COUNT,
     AUDIO_BUS_COUNT,
     BACKGROUND_MOTION_COUNT,
@@ -80,7 +80,7 @@ def test_spectrum_center_image_patch_sets_path_and_attach() -> None:
 
 
 def test_composition_shape_radius_independent_of_logo_size() -> None:
-    from visualizer.gpu_render import _composition_spectrum_base_radius_px
+    from visualizer_studio.gpu_render import _composition_spectrum_base_radius_px
 
     tpl = {
         "composition": {
@@ -121,7 +121,7 @@ def test_composition_shape_radius_independent_of_logo_size() -> None:
 
 
 def test_logo_contain_in_shape_clamp() -> None:
-    from visualizer.gpu_render import (
+    from visualizer_studio.gpu_render import (
         _clamp_logo_size_inside_shape,
         _composition_spectrum_base_radius_px,
         _logo_contain_in_shape_enabled,
@@ -196,7 +196,7 @@ def test_spectrum_layer_path_phase_and_bar_overrides_patch() -> None:
     assert abs(float(layer.get("frequencyScroll") or 0.0) - 0.35) < 1e-6
     overrides = layer.get("barHeightOverrides") or {}
     assert abs(float(overrides.get("2")) - 1.5) < 1e-6
-    from visualizer.composition_renderer import document_to_renderer_dict
+    from visualizer_studio.composition_renderer import document_to_renderer_dict
 
     rendered = document_to_renderer_dict(doc)
     rings = rendered.get("layers") or []
@@ -214,7 +214,7 @@ def test_spectrum_shape_rotation_dial_patch() -> None:
         },
     )
     assert float(doc["composition"]["spectrum"]["rotationDeg"]) == 90.0
-    from visualizer.composition_renderer import document_to_renderer_dict
+    from visualizer_studio.composition_renderer import document_to_renderer_dict
 
     rendered = document_to_renderer_dict(doc)
     layers = rendered.get("layers") or []
@@ -235,7 +235,7 @@ def test_logo_image_rotation_independent_of_shape() -> None:
     )
     assert float(doc["composition"]["spectrum"]["rotationDeg"]) == 45.0
     assert float(doc["composition"]["logo"]["rotationDeg"]) == 90.0
-    from visualizer.composition_renderer import document_to_renderer_dict
+    from visualizer_studio.composition_renderer import document_to_renderer_dict
 
     rendered = document_to_renderer_dict(doc)
     ls = rendered.get("logoSettings") or {}
@@ -253,7 +253,7 @@ def test_stay_inside_shape_keeps_image_rotation_independent() -> None:
             "compositionLogoContainInShape": True,
         },
     )
-    from visualizer.composition_renderer import document_to_renderer_dict
+    from visualizer_studio.composition_renderer import document_to_renderer_dict
 
     rendered = document_to_renderer_dict(doc)
     ls = rendered.get("logoSettings") or {}
@@ -265,7 +265,7 @@ def test_stay_inside_shape_keeps_image_rotation_independent() -> None:
 
 def test_logo_mask_rotation_uniform_matches_spectrum_convention() -> None:
     """Mask radians must match spectrum rotate_spectrum_bases (no Y flip)."""
-    from visualizer.logo_mask import apply_logo_rotation_uniforms
+    from visualizer_studio.logo_mask import apply_logo_rotation_uniforms
 
     class _U:
         def __init__(self) -> None:
@@ -283,7 +283,7 @@ def test_logo_mask_rotation_uniform_matches_spectrum_convention() -> None:
 
 
 def test_logo_mask_mode_follows_spectrum_shape() -> None:
-    from visualizer.logo_mask import (
+    from visualizer_studio.logo_mask import (
         LOGO_MASK_CIRCLE,
         LOGO_MASK_DIAMOND,
         LOGO_MASK_HEART,
@@ -437,7 +437,7 @@ def test_normalize_preserves_studio_extras() -> None:
 
 
 def test_gpu_bridge_wires_lighting_camera_atmosphere() -> None:
-    from visualizer.composition_renderer import document_to_renderer_dict
+    from visualizer_studio.composition_renderer import document_to_renderer_dict
 
     doc = apply_axis_patch(
         blank_studio_document(),
@@ -463,11 +463,11 @@ def test_gpu_bridge_wires_lighting_camera_atmosphere() -> None:
 
 
 def test_atmosphere_weather_draw_descriptor() -> None:
-    from visualizer.composition_effects.atmosphere_gpu import (
+    from visualizer_studio.composition_effects.atmosphere_gpu import (
         atmosphere_weather_segments,
         build_atmosphere_draw,
     )
-    from visualizer.composition_renderer import document_to_renderer_dict
+    from visualizer_studio.composition_renderer import document_to_renderer_dict
 
     doc = apply_axis_patch(
         blank_studio_document(),

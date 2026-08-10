@@ -8,7 +8,7 @@ from features.video.lib.particle_settings import (
     build_particle_motion_preset_patch,
     is_particle_preset_active,
 )
-from visualizer.particles import ParticleConfig, ParticleSystem
+from visualizer_video.particles import ParticleConfig, ParticleSystem
 
 
 def test_bottom_spawn_with_rise_travels_toward_top_of_frame() -> None:

@@ -58,7 +58,7 @@ def format_track_duration(seconds: float) -> str:
 
 def probe_track_durations(track_paths: list[str] | None) -> list[float]:
     """Best-effort duration list aligned with track_paths (0.0 when unknown)."""
-    from visualizer.audio import probe_audio_duration_sec
+    from visualizer_video.audio import probe_audio_duration_sec
 
     out: list[float] = []
     for path in track_paths or []:

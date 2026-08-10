@@ -15,7 +15,7 @@ from shared.widgets.settings_ui import SettingsPanel
 from features.video.widgets.text_drag_overlay import TextDragOverlay
 
 try:
-    from visualizer.preview_widget import AspectRatioBox, VideoSpectrumPreview
+    from visualizer_video.preview_widget import AspectRatioBox, VideoSpectrumPreview
 
     _GPU_PREVIEW_AVAILABLE = True
     _GPU_PREVIEW_IMPORT_ERROR = ""

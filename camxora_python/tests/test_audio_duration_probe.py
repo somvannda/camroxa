@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from visualizer.audio import probe_audio_duration_sec
+from visualizer_video.audio import probe_audio_duration_sec
 
 
 def test_probe_audio_duration_sec_reads_wav_metadata(tmp_path: Path) -> None:

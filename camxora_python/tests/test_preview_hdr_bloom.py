@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from visualizer.hdr_bloom import (
+from visualizer_video.hdr_bloom import (
     ENV_FLAG,
     bloom_params_from_template,
     preview_hdr_bloom_enabled,

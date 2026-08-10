@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from visualizer._spectrum_fast import clamp_frequency_scroll, scroll_spectrum_heights
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video._spectrum_fast import clamp_frequency_scroll, scroll_spectrum_heights
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_clamp_frequency_scroll_wraps() -> None:
@@ -40,7 +40,7 @@ def test_normalize_keeps_frequency_scroll() -> None:
 
 def test_gpu_render_binds_scroll_spectrum_heights() -> None:
     """Ship-cut reverts must not drop the import while leaving call sites (1.0.19 NameError)."""
-    import visualizer.gpu_render as gpu_render
+    import visualizer_video.gpu_render as gpu_render
 
     assert hasattr(gpu_render, "scroll_spectrum_heights")
     assert callable(gpu_render.scroll_spectrum_heights)

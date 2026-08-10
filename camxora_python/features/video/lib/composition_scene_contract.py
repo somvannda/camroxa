@@ -318,7 +318,7 @@ def strip_composition_for_renderer(template: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(template, dict):
         return {}
     if not isinstance(template.get("composition"), dict) or not template.get("composition"):
-        from visualizer.scene import CompositionContractError
+        from visualizer_video.scene import CompositionContractError
 
         raise CompositionContractError("strip_composition_for_renderer refused — composition is required")
     return dict(template)

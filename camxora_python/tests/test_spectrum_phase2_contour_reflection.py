@@ -10,13 +10,13 @@ from features.video.lib.spectrum_style_registry import (
     is_contour_spectrum_style,
     normalize_spectrum_preset_key_for_apply,
 )
-from visualizer._spectrum_fast import (
+from visualizer_video._spectrum_fast import (
     build_contour_wave_strips,
     generate_points_curved,
     mirror_spectrum_points_vertical,
     resolve_curved_spectrum_basis,
 )
-from visualizer.template_runtime import normalize_renderer_template
+from visualizer_video.template_runtime import normalize_renderer_template
 
 
 def test_contour_waves_registered() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from visualizer.preview_diag import (
+from visualizer_video.preview_diag import (
     format_gl_context_info,
     preview_gl_diag_log_path,
     write_preview_gl_diag,

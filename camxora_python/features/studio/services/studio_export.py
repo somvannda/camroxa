@@ -16,7 +16,7 @@ from features.video.lib.render_scene_request import (
     normalize_export_fps,
 )
 from shared.lib.export_codec import normalize_export_speed_mode
-from visualizer.composition_renderer import document_to_renderer_dict
+from visualizer_studio.composition_renderer import document_to_renderer_dict
 
 
 def export_project_json(doc: dict[str, Any], path: str | Path) -> Path:

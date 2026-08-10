@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from visualizer.particles import ParticleConfig, ParticleSystem
-from visualizer.preview_widget import VideoSpectrumPreview
+from visualizer_video.particles import ParticleConfig, ParticleSystem
+from visualizer_video.preview_widget import VideoSpectrumPreview
 
 
 def test_reactive_only_preview_idle_spawn_rate() -> None:

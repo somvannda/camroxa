@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from visualizer.encode_pipeline import (
+from visualizer_video.encode_pipeline import (
     PipelinedEncodeWriter,
     _percentile,
     pipelined_encode_enabled,

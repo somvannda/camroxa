@@ -5,13 +5,13 @@ from __future__ import annotations
 import numpy as np
 
 from features.video.lib.logo_spectrum_bindings import LogoBounds, build_logo_bounds, normalize_logo_shape
-from visualizer._spectrum_fast import (
+from visualizer_video._spectrum_fast import (
     generate_points_rect,
     generate_spectrum_layer_geometry,
     normalize_spectrum_path_mode,
     resolve_spectrum_path_mode,
 )
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_normalize_path_mode_aliases() -> None:

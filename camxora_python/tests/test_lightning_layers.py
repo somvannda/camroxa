@@ -20,7 +20,7 @@ from features.video.lib.lightning_style_registry import (
     normalize_lightning_style,
     normalize_lightning_trigger,
 )
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_ten_lightning_styles_registered() -> None:

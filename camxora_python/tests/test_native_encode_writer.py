@@ -6,7 +6,7 @@ from __future__ import annotations
 
 
 
-from visualizer.native_encode_writer import (
+from visualizer_video.native_encode_writer import (
 
     native_encode_dims_ok,
 

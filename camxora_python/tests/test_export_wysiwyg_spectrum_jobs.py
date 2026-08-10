@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from features.video.lib.spectrum_instance_registry import default_spectrum_instance
 from features.video.services.template_normalizer import TemplateNormalizer
-from visualizer.gpu_render import _gpu_spectrum_layer_key, _spectrum_draw_jobs
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video.gpu_render import _gpu_spectrum_layer_key, _spectrum_draw_jobs
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_gpu_spectrum_layer_key_unique_per_instance() -> None:

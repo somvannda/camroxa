@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from visualizer.readback import (
+from visualizer_video.readback import (
     PipeFramePacker,
     flip_rgba_bytes_vertical,
     nv12_color_range,
@@ -18,7 +18,7 @@ from visualizer.readback import (
 
 
 def test_resolve_pipe_pix_fmt_fast_uses_yuv420p(monkeypatch) -> None:
-    from visualizer.export_gpu_tier import clear_export_gpu_tier_cache
+    from visualizer_video.export_gpu_tier import clear_export_gpu_tier_cache
 
     monkeypatch.setenv("CAMXORA_GPU_TIER", "high")
     clear_export_gpu_tier_cache()

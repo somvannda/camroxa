@@ -12,7 +12,7 @@ from features.studio.lib.scene_document import normalize_studio_document
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 
 try:
-    from visualizer.preview_widget import AspectRatioBox, VideoSpectrumPreview
+    from visualizer_studio.preview_widget import AspectRatioBox, VideoSpectrumPreview
 
     _GPU_OK = True
 except Exception:  # pragma: no cover
@@ -118,7 +118,7 @@ class StudioPreviewStage(QWidget):
         return self._preview
 
     def apply_document(self, doc: dict[str, Any]) -> None:
-        from visualizer.composition_renderer import document_to_renderer_dict
+        from visualizer_studio.composition_renderer import document_to_renderer_dict
 
         scene = normalize_studio_document(doc)
         try:

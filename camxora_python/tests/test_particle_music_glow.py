@@ -6,8 +6,8 @@ from features.video.lib.particle_music_icons import MUSIC_ICON_COUNT, build_musi
 from features.video.lib.particle_settings import PARTICLE_STYLE_OPTIONS
 from features.video.lib.video_template_draft import build_particle_settings_state
 from features.video.lib.video_template_save import build_particles_template_patch
-from visualizer.gpu_render import _resolve_particle_style_index
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video.gpu_render import _resolve_particle_style_index
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_music_style_registered() -> None:

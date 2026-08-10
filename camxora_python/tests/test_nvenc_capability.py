@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from visualizer.nvenc_capability import (
+from visualizer_video.nvenc_capability import (
     clear_nvenc_probe_cache,
     mark_nvenc_unavailable,
     nvenc_error_indicates_unavailable,
@@ -71,7 +71,7 @@ def test_force_x264_skips_probe(monkeypatch: pytest.MonkeyPatch) -> None:
         called["n"] += 1
         raise AssertionError("probe should not spawn ffmpeg")
 
-    monkeypatch.setattr("visualizer.nvenc_capability.run_hidden", _boom)
+    monkeypatch.setattr("visualizer_video.nvenc_capability.run_hidden", _boom)
     assert probe_h264_nvenc("ffmpeg") is False
     assert called["n"] == 0
 
@@ -88,11 +88,11 @@ def test_probe_caches_false_on_driver_error(monkeypatch: pytest.MonkeyPatch) -> 
             ),
         )
 
-    monkeypatch.setattr("visualizer.nvenc_capability.run_hidden", _fake_run)
+    monkeypatch.setattr("visualizer_video.nvenc_capability.run_hidden", _fake_run)
     assert probe_h264_nvenc("C:/fake/ffmpeg.exe") is False
     # Cached — second call must not re-invoke run_hidden.
     monkeypatch.setattr(
-        "visualizer.nvenc_capability.run_hidden",
+        "visualizer_video.nvenc_capability.run_hidden",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should use cache")),
     )
     assert probe_h264_nvenc("C:/fake/ffmpeg.exe") is False
@@ -101,7 +101,7 @@ def test_probe_caches_false_on_driver_error(monkeypatch: pytest.MonkeyPatch) -> 
 def test_mark_nvenc_unavailable_blocks_later_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CAMXORA_FORCE_X264", raising=False)
     monkeypatch.setattr(
-        "visualizer.nvenc_capability.run_hidden",
+        "visualizer_video.nvenc_capability.run_hidden",
         lambda *_a, **_k: SimpleNamespace(returncode=0, stderr=""),
     )
     assert probe_h264_nvenc("ffmpeg") is True

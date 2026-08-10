@@ -12,7 +12,7 @@ from features.video.lib.spectrum_instance_registry import (
 )
 from features.video.lib.video_template_draft import build_video_template_draft
 from features.video.lib.video_template_save import build_video_workspace_template_save_patch
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_legacy_template_migrates_to_one_instance() -> None:
@@ -210,7 +210,7 @@ def test_save_prefers_live_instances_over_stale_catalog_snapshot() -> None:
 def test_magma_ridge_style_syncs_onto_instance() -> None:
     """Preset apply must push style into the instance or preview keeps drawing bars."""
     from features.video.lib.spectrum_style_registry import build_spectrum_preset_template
-    from visualizer.gpu_render import _resolve_export_spectrum_style
+    from visualizer_video.gpu_render import _resolve_export_spectrum_style
 
     base = {
         "style": "orbit-spikes",

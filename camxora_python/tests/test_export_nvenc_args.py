@@ -6,9 +6,9 @@ from __future__ import annotations
 
 
 
-from visualizer.gpu_render import build_nvenc_export_args
+from visualizer_video.gpu_render import build_nvenc_export_args
 
-from visualizer.readback import nv12_color_range
+from visualizer_video.readback import nv12_color_range
 
 
 

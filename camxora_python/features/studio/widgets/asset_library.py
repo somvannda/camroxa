@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
-from visualizer.presets.metadata import ASSET_CATEGORIES, AssetMetadata, search_assets
+from visualizer_studio.presets.metadata import ASSET_CATEGORIES, AssetMetadata, search_assets
 
 # Map Asset Library apply → composition axis patch keys.
 _APPLY_PATCH_KEYS: dict[str, str] = {

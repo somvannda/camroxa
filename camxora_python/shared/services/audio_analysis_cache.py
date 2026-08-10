@@ -15,7 +15,7 @@ import numpy as np
 from shared.lib.app_paths import get_user_data_dir
 
 if TYPE_CHECKING:
-    from visualizer.audio import AudioAnalyzer
+    from visualizer_video.audio import AudioAnalyzer
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ def get_audio_analysis_cache(
         ):
             return None
         data = np.load(npz_path, allow_pickle=False)
-        from visualizer.audio import AudioAnalyzer
+        from visualizer_video.audio import AudioAnalyzer
 
         analyzer = AudioAnalyzer.from_cached_arrays(
             fps=key.fps,
@@ -184,7 +184,7 @@ def load_audio_analyzer(
         cached = get_audio_analysis_cache(mp3_path, fps=fps, point_count=point_count, n_fft=n_fft)
         if cached is not None:
             return cached, True
-    from visualizer.audio import AudioAnalyzer
+    from visualizer_video.audio import AudioAnalyzer
 
     analyzer = AudioAnalyzer(mp3_path, fps=fps, point_count=point_count, n_fft=n_fft)
     if use_cache:

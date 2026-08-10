@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from visualizer._spectrum_fast import _BINS
-from visualizer.spectrum_gpu import (
+from visualizer_video._spectrum_fast import _BINS
+from visualizer_video.spectrum_gpu import (
     SPECIAL_BAR_STYLES_GPU_READY,
     SPECIAL_BAR_STYLES_SLICE2,
     WAVEFORM_SPECTRUM_STYLES,
@@ -125,8 +125,8 @@ def test_register_layer_accepts_bar_count_below_bins() -> None:
     try:
         glfw.make_context_current(window)
         ctx = moderngl.create_context()
-        from visualizer._spectrum_fast import generate_points_linear
-        from visualizer.spectrum_gpu import SpectrumGpuRenderer
+        from visualizer_video._spectrum_fast import generate_points_linear
+        from visualizer_video.spectrum_gpu import SpectrumGpuRenderer
 
         bar_count = 16
         px, py, dx, dy = generate_points_linear(bar_count, 800.0, "top")

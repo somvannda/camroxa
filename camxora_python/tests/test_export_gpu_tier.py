@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from visualizer.export_gpu_tier import (
+from visualizer_video.export_gpu_tier import (
     classify_export_gpu_tier,
     clear_export_gpu_tier_cache,
     detect_export_gpu_tier,
 )
-from visualizer.gpu_render import export_particle_caps
-from visualizer.readback import resolve_pipe_pix_fmt
+from visualizer_video.gpu_render import export_particle_caps
+from visualizer_video.readback import resolve_pipe_pix_fmt
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +78,7 @@ def test_high_tier_quality_pipe_stays_rgba(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_resolve_pipeline_export_workers_forces_one_on_low(monkeypatch: pytest.MonkeyPatch) -> None:
-    from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+    from visualizer_video.export_gpu_tier import resolve_pipeline_export_workers
 
     monkeypatch.setenv("CAMXORA_GPU_TIER", "low")
     clear_export_gpu_tier_cache()
@@ -92,7 +92,7 @@ def test_resolve_pipeline_export_workers_forces_one_on_low(monkeypatch: pytest.M
 def test_resolve_pipeline_export_workers_honors_prefs_when_frozen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+    from visualizer_video.export_gpu_tier import resolve_pipeline_export_workers
 
     monkeypatch.setenv("CAMXORA_GPU_TIER", "high")
     clear_export_gpu_tier_cache()

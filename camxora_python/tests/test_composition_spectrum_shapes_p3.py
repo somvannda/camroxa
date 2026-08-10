@@ -13,7 +13,7 @@ from features.video.lib.composition_spectrum_shapes import (
     normalize_spectrum_shape_id,
     spectrum_shape_layer_recipe,
 )
-from visualizer._spectrum_fast import (
+from visualizer_studio._spectrum_fast import (
     generate_spectrum_layer_geometry,
     normalize_spectrum_path_mode,
     resolve_spectrum_path_mode,

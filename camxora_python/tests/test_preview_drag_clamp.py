@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from visualizer.preview_widget import clamp_template_offset_to_preview
+from visualizer_video.preview_widget import clamp_template_offset_to_preview
 
 
 def test_clamp_center_anchor_rejects_far_offsets() -> None:

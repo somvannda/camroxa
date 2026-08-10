@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from visualizer._spectrum_fast import clamp_linear_span, generate_spectrum_layer_geometry
-from visualizer.preview_widget import clamp_template_offset_to_preview
-from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_video._spectrum_fast import clamp_linear_span, generate_spectrum_layer_geometry
+from visualizer_video.preview_widget import clamp_template_offset_to_preview
+from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_clamp_linear_span_bounds() -> None:

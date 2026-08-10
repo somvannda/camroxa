@@ -33,7 +33,7 @@ from shared.services.action_feedback import notify_action
 from shared.services.platform_api import PlatformApi
 from shared.services.workspace_cache import WorkspaceCache
 from shared.themes.deep_blue import VIDEO_WORKSPACE_ID
-from visualizer.scene import NONE
+from visualizer_studio.scene import NONE
 
 
 class StudioView(QWidget):

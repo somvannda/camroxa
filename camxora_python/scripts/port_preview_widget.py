@@ -11,12 +11,12 @@ DST = ROOT / "visualizer" / "preview_widget.py"
 replacements = [
     ('from PyQt6.', 'from PySide6.'),
     ("pyqtSignal", "Signal"),
-    ("from ...visualizer.gpu_render", "from visualizer.gpu_render"),
-    ("from ...visualizer.audio", "from visualizer.audio"),
-    ("from ...visualizer.contracts", "from visualizer.contracts"),
+    ("from ...visualizer.gpu_render", "from visualizer_video.gpu_render"),
+    ("from ...visualizer.audio", "from visualizer_video.audio"),
+    ("from ...visualizer.contracts", "from visualizer_video.contracts"),
     (
         "from ...models.spectrum_model import default_template, normalize_template",
-        "from visualizer.template_runtime import default_renderer_template, normalize_renderer_template",
+        "from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template",
     ),
     ("from ..helpers.style_helper import make_runtime_font", ""),
     ("default_template()", "default_renderer_template()"),

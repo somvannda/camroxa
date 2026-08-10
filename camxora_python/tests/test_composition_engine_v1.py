@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from visualizer.composition_effects.particles import build_particle_emitter, emitters_visibly_distinct
-from visualizer.presets import (
+from visualizer_studio.composition_effects.particles import build_particle_emitter, emitters_visibly_distinct
+from visualizer_studio.presets import (
     ANIMATION_BEHAVIOR_COUNT,
     COLOR_PALETTE_COUNT,
     PARTICLE_TYPE_COUNT,
     SPECTRUM_MATERIAL_COUNT,
     SPECTRUM_SHAPE_COUNT,
 )
-from visualizer.composition_renderer import CompositionContractError, document_to_renderer_dict
-from visualizer.scene import default_document, load_scene
-from visualizer.scene.compile import compile_scene
+from visualizer_studio.composition_renderer import CompositionContractError, document_to_renderer_dict
+from visualizer_studio.scene import default_document, load_scene
+from visualizer_studio.scene.compile import compile_scene
 
 
 def _scene(

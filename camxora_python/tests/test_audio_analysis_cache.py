@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from shared.services import audio_analysis_cache as cache_mod
-from visualizer.audio import AudioAnalyzer
+from visualizer_video.audio import AudioAnalyzer
 
 
 def _write_test_wav(path: Path, *, duration_sec: float = 0.75, sample_rate: int = 22050) -> None:

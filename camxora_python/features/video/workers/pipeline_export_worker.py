@@ -74,7 +74,7 @@ class VideoPipelineExportWorker(QThread):
             return
 
         workers_raw = request.settings.get("videoExportWorkers", request.settings.get("perfExportWorkers", 1))
-        from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+        from visualizer_video.export_gpu_tier import resolve_pipeline_export_workers
 
         worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
         worker_count = min(worker_limit, len(mp3_paths))

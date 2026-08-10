@@ -215,7 +215,7 @@ def test_layout_side_patch_snaps_split_positions() -> None:
 
 
 def test_render_panel_rgba_smoke() -> None:
-    from visualizer.gpu_render import _render_panel_rgba
+    from visualizer_video.gpu_render import _render_panel_rgba
 
     arr, w, h = _render_panel_rgba(
         200,

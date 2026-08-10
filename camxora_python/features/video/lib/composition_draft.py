@@ -5,31 +5,31 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from visualizer.composition_effects.audio_mapping import normalize_audio_mapping
-from visualizer.presets.animations import list_animation_behavior_options, normalize_animation_behavior_id
-from visualizer.presets.atmosphere import list_atmosphere_options, normalize_atmosphere_id
-from visualizer.presets.audio_buses import (
+from visualizer_video.composition_effects.audio_mapping import normalize_audio_mapping
+from visualizer_video.presets.animations import list_animation_behavior_options, normalize_animation_behavior_id
+from visualizer_video.presets.atmosphere import list_atmosphere_options, normalize_atmosphere_id
+from visualizer_video.presets.audio_buses import (
     list_audio_bus_options,
     list_audio_mapping_target_options,
     normalize_audio_bus_id,
 )
-from visualizer.presets.background_motion import (
+from visualizer_video.presets.background_motion import (
     list_background_motion_options,
     normalize_background_motion_id,
 )
-from visualizer.presets.camera import list_camera_behavior_options, normalize_camera_behavior_id
-from visualizer.presets.lighting import (
+from visualizer_video.presets.camera import list_camera_behavior_options, normalize_camera_behavior_id
+from visualizer_video.presets.lighting import (
     list_lighting_effect_options,
     list_lighting_trigger_options,
     normalize_lighting_effect_id,
     normalize_lighting_trigger_id,
 )
-from visualizer.presets.materials import list_spectrum_material_options, normalize_spectrum_material_id
-from visualizer.presets.palettes import list_color_palette_options, normalize_color_palette_id
-from visualizer.presets.particles import list_particle_type_options, normalize_particle_type_id
-from visualizer.presets.post import list_post_effect_options, normalize_post_effects_list
-from visualizer.presets.shapes import list_spectrum_shape_options, normalize_spectrum_shape_id
-from visualizer.scene import NONE, default_document, normalize_composition
+from visualizer_video.presets.materials import list_spectrum_material_options, normalize_spectrum_material_id
+from visualizer_video.presets.palettes import list_color_palette_options, normalize_color_palette_id
+from visualizer_video.presets.particles import list_particle_type_options, normalize_particle_type_id
+from visualizer_video.presets.post import list_post_effect_options, normalize_post_effects_list
+from visualizer_video.presets.shapes import list_spectrum_shape_options, normalize_spectrum_shape_id
+from visualizer_video.scene import NONE, default_document, normalize_composition
 
 
 COMPOSITION_DRAFT_KEYS: tuple[str, ...] = (

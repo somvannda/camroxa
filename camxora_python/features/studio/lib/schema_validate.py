@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from features.studio.lib.scene_document import normalize_studio_document
-from visualizer.scene import NONE
+from visualizer_studio.scene import NONE
 
 
 def validate_composition_document(doc: Any) -> list[str]:

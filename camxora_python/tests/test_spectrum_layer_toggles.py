@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from visualizer._spectrum_fast import mirror_spectrum_points_vertical
+from visualizer_video._spectrum_fast import mirror_spectrum_points_vertical
 
 
 def test_floor_reflection_shifts_below_circle() -> None:

@@ -245,7 +245,7 @@ class VisualizerDaemonClient:
         if is_frozen_runtime():
             daemon_cmd = [cmd[0], "--visualizer-daemon"]
         else:
-            daemon_cmd = [sys.executable, "-m", "visualizer.daemon"]
+            daemon_cmd = [sys.executable, "-m", "visualizer_video.daemon"]
         try:
             proc = popen_hidden(
                 daemon_cmd,

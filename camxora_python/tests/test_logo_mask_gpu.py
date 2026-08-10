@@ -9,8 +9,8 @@ def test_logo_triangle_mask_keeps_center_pixels() -> None:
     import moderngl
     from PIL import Image
 
-    from visualizer.gpu_render import _compile, _quad_vao
-    from visualizer.logo_mask import (
+    from visualizer_studio.gpu_render import _compile, _quad_vao
+    from visualizer_studio.logo_mask import (
         LOGO_MASK_TRIANGLE,
         apply_logo_frame_size_uniform,
         apply_logo_mask_uniform,
@@ -74,8 +74,8 @@ def test_logo_image_larger_than_frame_still_crops_to_frame() -> None:
     import moderngl
     from PIL import Image
 
-    from visualizer.gpu_render import _compile, _quad_vao
-    from visualizer.logo_mask import (
+    from visualizer_studio.gpu_render import _compile, _quad_vao
+    from visualizer_studio.logo_mask import (
         LOGO_MASK_CIRCLE,
         apply_logo_frame_size_uniform,
         apply_logo_mask_uniform,

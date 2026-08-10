@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from visualizer.preview_diag import preview_gl_diag_log_path
+from visualizer_video.preview_diag import preview_gl_diag_log_path
 
 
 def test_preview_gl_diag_path_documented_for_support() -> None:
