@@ -74,6 +74,7 @@ def default_composition() -> dict[str, Any]:
             "offsetX": 0.0,
             "offsetY": 0.0,
             "colorPalette": None,
+            "gradientColors": None,  # custom stops; None = use palette catalog
             "barCount": 64,
             "tipTaper": 0.0,
             "animationSpeed": 1.0,
@@ -210,6 +211,16 @@ def normalize_composition(raw: Any) -> dict[str, Any]:
     from visualizer.scene.spectrum_layers import normalize_spectrum_layers
 
     out["spectrum"]["colorPalette"] = normalize_color_palette_id(spec.get("colorPalette"))
+    raw_stops = spec.get("gradientColors")
+    if isinstance(raw_stops, list) and len(raw_stops) >= 2:
+        from features.video.lib.spectrum_color_engine import normalize_spectrum_gradient_colors
+
+        out["spectrum"]["gradientColors"] = normalize_spectrum_gradient_colors(
+            [str(c) for c in raw_stops],
+            "#ff4fd8",
+        )
+    else:
+        out["spectrum"]["gradientColors"] = None
     try:
         out["spectrum"]["barCount"] = int(round(max(24, min(160, float(spec.get("barCount") or 64)))))
     except (TypeError, ValueError):

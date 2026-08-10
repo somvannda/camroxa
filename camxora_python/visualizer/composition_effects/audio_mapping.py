@@ -12,7 +12,7 @@ from visualizer.presets.audio_buses import (
 from visualizer.scene import NONE
 
 # Mapping target keys on composition.audio.mapping
-MAPPING_TARGETS: tuple[str, ...] = ("lighting", "particles", "camera", "logo")
+MAPPING_TARGETS: tuple[str, ...] = ("spectrum", "lighting", "particles", "camera", "logo")
 
 
 def normalize_audio_mapping(raw: Any) -> dict[str, str]:

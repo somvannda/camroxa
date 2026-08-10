@@ -300,6 +300,17 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
     if "compositionSpectrumColorPalette" in patch:
         pal = normalize_color_palette_id(patch.get("compositionSpectrumColorPalette"))
         comp["spectrum"]["colorPalette"] = pal  # None = inherit global palette
+    if "compositionSpectrumGradientColors" in patch:
+        raw_stops = patch.get("compositionSpectrumGradientColors")
+        if isinstance(raw_stops, list) and len(raw_stops) >= 2:
+            from features.video.lib.spectrum_color_engine import normalize_spectrum_gradient_colors
+
+            comp["spectrum"]["gradientColors"] = normalize_spectrum_gradient_colors(
+                [str(c) for c in raw_stops],
+                "#ff4fd8",
+            )
+        elif raw_stops in (None, [], "none", "clear"):
+            comp["spectrum"]["gradientColors"] = None
 
     from visualizer.scene.spectrum_layers import (
         default_spectrum_layer,
@@ -712,6 +723,7 @@ def inspector_bind_state(doc: dict[str, Any]) -> dict[str, Any]:
         "compositionSpectrumOffsetX": float(comp["spectrum"].get("offsetX") or 0.0),
         "compositionSpectrumOffsetY": float(comp["spectrum"].get("offsetY") or 0.0),
         "compositionSpectrumColorPalette": comp["spectrum"].get("colorPalette") or NONE,
+        "compositionSpectrumGradientColors": list(comp["spectrum"].get("gradientColors") or []),
         "compositionSpectrumBarCount": int(comp["spectrum"].get("barCount") or 64),
         "compositionSpectrumMirrored": (
             "auto"

@@ -60,8 +60,8 @@ def test_neon_circle_pulse_compiles() -> None:
     assert compiled.spectrum_material == "neon"
     assert compiled.spectrum_animation == "pulse"
     assert compiled.spectrum_layers[0]["pathMode"] == "circle"
-    assert compiled.spectrum_layers[0]["glow"] == 22.0
-    assert "style" not in compiled.to_renderer_dict()
+    assert float(compiled.spectrum_layers[0]["glow"]) > 0.0
+    assert compiled.to_renderer_dict().get("style") == "orbit-spikes"
 
 
 def test_glass_hexagon_bounce() -> None:

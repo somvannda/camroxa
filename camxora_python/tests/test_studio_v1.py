@@ -78,7 +78,7 @@ def test_blank_document_compiles() -> None:
     assert rendered["engine"]["compiled"] is True
     assert rendered["engine"]["spectrum"]["shape"] == "circle"
     assert rendered["engine"]["lighting"] == "lightning"
-    assert "style" not in rendered
+    assert rendered.get("style") == "orbit-spikes"
 
 
 def test_catalog_counts_available() -> None:

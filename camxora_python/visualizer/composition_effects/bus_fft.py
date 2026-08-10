@@ -15,17 +15,18 @@ def bus_bin_weights(n: int, bus_id: str | None) -> np.ndarray:
     if key is None:
         return np.ones(count, dtype=np.float32)
     if key == "bass":
-        w = np.clip(1.35 - t * 1.7, 0.04, 1.4)
+        # Strong low-end focus — high bins nearly silent.
+        w = np.clip(1.55 - t * 2.35, 0.02, 1.55) ** 1.35
     elif key == "treble":
-        w = np.clip(0.08 + t * 1.55, 0.04, 1.4)
+        w = np.clip(0.02 + t * 1.85, 0.02, 1.55) ** 1.25
     elif key in ("melody", "vocals"):
         # Mid / presence focus
-        center = 0.42 if key == "melody" else 0.62
-        w = np.clip(1.15 - np.abs(t - center) * 2.4, 0.06, 1.3)
+        center = 0.38 if key == "melody" else 0.66
+        w = np.clip(1.35 - np.abs(t - center) * 3.2, 0.03, 1.4) ** 1.2
     elif key in ("kick", "beat"):
-        w = np.clip(1.25 - t * 1.1, 0.12, 1.35)
+        w = np.clip(1.45 - t * 1.55, 0.06, 1.5) ** 1.3
     elif key == "snare":
-        w = np.clip(1.1 - np.abs(t - 0.55) * 2.0, 0.08, 1.3)
+        w = np.clip(1.25 - np.abs(t - 0.55) * 2.8, 0.04, 1.4) ** 1.2
     elif key == "overall_loudness":
         w = np.ones(count, dtype=np.float32)
     else:
@@ -63,6 +64,8 @@ def apply_layer_audio_bus(
     drive = float(levels.get(key, 0.0) or 0.0)
     drive = max(0.0, min(1.0, drive))
     # Strong mute when bus is quiet — otherwise every bus looks the same.
-    amp = (0.04 + 0.96 * drive) * gain
+    # Curve drive so mid levels still leave headroom for weight contrast.
+    drive_curved = drive ** 0.85
+    amp = (0.02 + 0.98 * drive_curved) * gain
     weights = bus_bin_weights(int(arr.shape[0]), key)
     return np.clip(arr * weights * amp, 0.0, 3.5).astype(np.float32)

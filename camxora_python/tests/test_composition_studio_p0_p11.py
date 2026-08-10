@@ -81,7 +81,8 @@ def test_golden_full_composition_compiles() -> None:
     assert compiled.audio_mapping["mapping"]["logo"] == "vocals"
     rendered = compiled.to_renderer_dict()
     assert rendered["engine"]["compiled"] is True
-    assert "style" not in rendered
+    assert rendered.get("style") == "orbit-spikes"
+    assert rendered["particlesSettings"]["style"] in ("dot", "bokeh", "ring", "glow", "spark")
     assert rendered["lightingSettings"]["effectId"] == "lightning"
     assert "bloom" in rendered["effects"]
 

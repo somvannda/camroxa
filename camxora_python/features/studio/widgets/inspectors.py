@@ -21,6 +21,11 @@ from PySide6.QtWidgets import (
 from features.studio.lib.scene_document import catalog_options
 from features.studio.widgets.axis_combo import populate_combo, set_combo_data
 from features.studio.widgets.expert_slider import ExpertFloatSlider
+from features.video.lib.spectrum_color_engine import (
+    MAX_GRADIENT_COLOR_STOPS,
+    normalize_spectrum_gradient_colors,
+)
+from features.video.widgets.inspector_fields import build_color_field
 from shared.icons.lucide_icons import lucide_pixmap
 from shared.themes.deep_blue import SETTINGS_FORM_ROW_ID, SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import SettingsPanel
@@ -488,6 +493,10 @@ class SpectrumInspector(_AxisPanel):
         self._layer_opacity.float_changed.connect(lambda v: self._layer_patch(opacity=float(v)))
         self._layer_audio_bus = QComboBox()
         populate_combo(self._layer_audio_bus, opts["audio_buses"], none_label="Overall (shared)")
+        self._layer_audio_bus.setToolTip(
+            "Which frequency band drives this layer. Bass moves low bars; Treble moves high bars. "
+            "Overall follows Audio Mapping → Spectrum reaction when set."
+        )
         self._layer_audio_bus.currentIndexChanged.connect(self._on_layer_audio_bus)
         self._layer_audio_gain = _expert_slider(
             "Audio gain", minimum=0.0, maximum=3.0, step=0.05, value=1.0
@@ -597,7 +606,35 @@ class SpectrumInspector(_AxisPanel):
         self._palette.currentIndexChanged.connect(self._on_spectrum_palette_changed)
         self._palette_row = stacked_field("Palette", self._palette)
         self._material_card.add_widget(self._palette_row)
-        self._material_note = QLabel("Glow / blur / opacity are per layer.")
+        self._stops_host = QWidget()
+        self._stops_layout = QVBoxLayout(self._stops_host)
+        self._stops_layout.setContentsMargins(0, 0, 0, 0)
+        self._stops_layout.setSpacing(6)
+        self._stop_setters: list = []
+        self._gradient_colors: list[str] = ["#ff4fd8", "#22d3ee"]
+        stop_actions = QHBoxLayout()
+        stop_actions.setContentsMargins(0, 0, 0, 0)
+        stop_actions.setSpacing(6)
+        add_stop = QPushButton("Add color")
+        add_stop.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        add_stop.clicked.connect(self._add_gradient_stop)
+        remove_stop = QPushButton("Remove")
+        remove_stop.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        remove_stop.clicked.connect(self._remove_gradient_stop)
+        reset_stops = QPushButton("Use palette")
+        reset_stops.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        reset_stops.setToolTip("Clear custom stops and follow the selected palette")
+        reset_stops.clicked.connect(self._clear_custom_stops)
+        stop_actions.addWidget(add_stop)
+        stop_actions.addWidget(remove_stop)
+        stop_actions.addWidget(reset_stops)
+        stop_actions.addStretch(1)
+        stop_actions_host = QWidget()
+        stop_actions_host.setLayout(stop_actions)
+        self._material_card.add_widget(stop_actions_host)
+        self._material_card.add_widget(self._stops_host)
+        self._rebuild_gradient_stops(self._gradient_colors)
+        self._material_note = QLabel("Edit stops to customize this spectrum palette.")
         self._material_note.setObjectName(SUBTITLE_LABEL_ID)
         self._material_note.setWordWrap(True)
         self._material_card.add_widget(self._material_note)
@@ -679,7 +716,81 @@ class SpectrumInspector(_AxisPanel):
         self._sync_axis_visibility()
 
     def _on_spectrum_palette_changed(self, *_args) -> None:
-        self._emit({"compositionSpectrumColorPalette": self._palette.currentData() or "none"})
+        if self._binding:
+            return
+        pal_id = self._palette.currentData() or "none"
+        self._emit({"compositionSpectrumColorPalette": pal_id})
+        # Seed editable stops from the chosen catalog so users can tweak them.
+        try:
+            from visualizer.presets.palettes import get_palette
+
+            pal = get_palette(None if pal_id in ("", "none") else str(pal_id))
+            stops = list((pal or {}).get("stops") or [])
+            if len(stops) >= 2:
+                self._emit_gradient_colors([str(c) for c in stops])
+                self._rebuild_gradient_stops(self._gradient_colors)
+        except Exception:
+            pass
+
+    def _emit_gradient_colors(self, colors: list[str]) -> None:
+        normalized = normalize_spectrum_gradient_colors(colors, "#ff4fd8")
+        self._gradient_colors = list(normalized)
+        self._emit({"compositionSpectrumGradientColors": list(normalized)})
+
+    def _rebuild_gradient_stops(self, colors: list[str]) -> None:
+        while self._stops_layout.count():
+            item = self._stops_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._stop_setters.clear()
+        usable = list(colors) if colors else ["#ff4fd8", "#22d3ee"]
+        for index, color in enumerate(usable):
+            row, setter = build_color_field(
+                f"Stop {index + 1}",
+                value=str(color),
+                on_change=lambda value, stop_index=index: self._patch_gradient_stop(stop_index, value),
+                parent=self,
+            )
+            self._stop_setters.append(setter)
+            self._stops_layout.addWidget(row)
+
+    def _patch_gradient_stop(self, stop_index: int, value: str) -> None:
+        if self._binding:
+            return
+        colors = list(self._gradient_colors)
+        if stop_index >= len(colors):
+            return
+        colors[stop_index] = value
+        self._emit_gradient_colors(colors)
+        self._rebuild_gradient_stops(self._gradient_colors)
+
+    def _add_gradient_stop(self) -> None:
+        if self._binding:
+            return
+        colors = list(self._gradient_colors)
+        if len(colors) >= MAX_GRADIENT_COLOR_STOPS:
+            return
+        colors.append(colors[-1] if colors else "#22d3ee")
+        self._emit_gradient_colors(colors)
+        self._rebuild_gradient_stops(self._gradient_colors)
+
+    def _remove_gradient_stop(self) -> None:
+        if self._binding:
+            return
+        colors = list(self._gradient_colors)
+        if len(colors) <= 2:
+            return
+        colors = colors[:-1]
+        self._emit_gradient_colors(colors)
+        self._rebuild_gradient_stops(self._gradient_colors)
+
+    def _clear_custom_stops(self) -> None:
+        if self._binding:
+            return
+        self._emit({"compositionSpectrumGradientColors": None})
+        self._gradient_colors = ["#ff4fd8", "#22d3ee"]
+        self._rebuild_gradient_stops(self._gradient_colors)
 
     def _layer_patch(self, **fields) -> None:
         if self._binding or not fields:
@@ -793,6 +904,14 @@ class SpectrumInspector(_AxisPanel):
         smooth_raw = state.get("compositionSpectrumAnimationSmoothing")
         self._anim_smooth.set_float(0.65 if smooth_raw is None else float(smooth_raw))
         set_combo_data(self._palette, str(state.get("compositionSpectrumColorPalette") or "none"))
+        raw_stops = state.get("compositionSpectrumGradientColors")
+        if isinstance(raw_stops, list) and len(raw_stops) >= 2:
+            self._gradient_colors = normalize_spectrum_gradient_colors(
+                [str(c) for c in raw_stops], "#ff4fd8"
+            )
+        else:
+            self._gradient_colors = ["#ff4fd8", "#22d3ee"]
+        self._rebuild_gradient_stops(self._gradient_colors)
         layers = state.get("compositionSpectrumLayers") if isinstance(state.get("compositionSpectrumLayers"), list) else []
         self._layers_cache = [dict(x) for x in layers if isinstance(x, dict)]
         self._layer_combo.clear()
@@ -1208,7 +1327,7 @@ class AudioMappingInspector(_AxisPanel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             "Audio Mapping",
-            subtitle="Vocals / Melody / Snare are v1 FFT heuristics.",
+            subtitle="Spectrum reaction drives rings with Overall bus. Per-layer Audio bus overrides it. Vocals / Melody / Snare are FFT heuristics.",
         )
         self._audio_path = QLineEdit()
         self._audio_path.setReadOnly(True)

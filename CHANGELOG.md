@@ -9,6 +9,17 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Spectrum shapes, color stops, and audio buses.** Wave/heart/ribbon use continuous
+  waveform styles with spatial color melt; editable palette stops in Studio; stronger
+  per-bus FFT weighting + Audio Mapping → Spectrum reaction. See
+  `docs/changelog/2026-08-10-spectrum-shapes-color-audio.md`.
+- **Solid Graph gradient seam.** Solid Graph now melts palette colors by screen
+  position (same as Fill Circle) instead of bar index, so closed rings no longer
+  show a hard first/last color joint. See
+  `docs/changelog/2026-08-10-solid-graph-spatial-melt.md`.
+
 ### Added
 
 - **Studio Spectrum per-layer controls + animation dials.** Each layer owns bar /

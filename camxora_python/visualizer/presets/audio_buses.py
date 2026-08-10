@@ -28,6 +28,7 @@ HEURISTIC_AUDIO_BUS_IDS: frozenset[str] = frozenset(
 
 # Mapping targets (architecture tree objects that can be driven by a bus).
 AUDIO_MAPPING_TARGETS: tuple[tuple[str, str], ...] = (
+    ("spectrum", "Spectrum reaction"),
     ("lighting", "Lighting trigger"),
     ("particles", "Particles emit"),
     ("camera", "Camera"),

@@ -124,14 +124,17 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
         )
         return [layer]
     if key == "wave":
+        # Continuous ribbon on a closed ring — heartbeat / ECG-style motion.
         layer.update(
             {
                 "curved": True,
                 "mirrored": True,
-                "gravity": "center",
-                "pathMode": "auto",
+                "gravity": "outward",
+                "pathMode": "circle",
                 "barWidth": 2.4,
                 "thickness": 48.0,
+                "stylePreset": "aurora-ribbon",
+                "fillCircle": False,
             }
         )
         return [layer]
@@ -145,6 +148,7 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
                 "barWidth": 1.8,
                 "thickness": 26.0,
                 "radiusOffset": 12.0,
+                "stylePreset": "soft-waveform",
                 "fillCircle": False,
             }
         )
@@ -234,14 +238,19 @@ def build_shape_layers(shape_id: str) -> list[dict[str, Any]]:
         "tunnel": "tunnel",
     }
     path = path_map.get(key, "circle")
+    # Closed organic paths use a continuous ribbon so joins melt instead of
+    # discrete bar gaps (heart / infinity read as one graphic).
+    ribbon = key in ("heart", "infinity", "spiral", "tunnel")
     layer.update(
         {
             "curved": True,
             "mirrored": True,
             "gravity": "outward",
             "pathMode": path,
-            "barWidth": 3.5,
-            "thickness": 32.0,
+            "barWidth": 2.2 if ribbon else 3.5,
+            "thickness": 36.0 if ribbon else 32.0,
+            "stylePreset": "soft-waveform" if ribbon else "orbit-spikes",
+            "fillCircle": False,
         }
     )
     return [layer]

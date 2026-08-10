@@ -116,7 +116,7 @@ class CompiledFrame:
 
         particles = deepcopy(self.particles) if self.particles else {"enabled": False}
 
-        style = str(particles.get("style") or "dot")
+        particle_style = str(particles.get("style") or "dot")
 
         variant = {
 
@@ -130,7 +130,18 @@ class CompiledFrame:
 
             "dot": "classic",
 
-        }.get(style, "classic")
+        }.get(particle_style, "classic")
+
+        try:
+            from features.video.lib.composition_spectrum_shapes import legacy_style_alias_for_shape
+
+            spectrum_style = (
+                legacy_style_alias_for_shape(self.spectrum_shape)
+                if self.spectrum_shape not in (None, "", NONE)
+                else "orbit-spikes"
+            )
+        except Exception:
+            spectrum_style = "orbit-spikes"
 
 
 
@@ -153,6 +164,8 @@ class CompiledFrame:
             "assets": deepcopy(assets),
 
             "spectrumEnabled": self.spectrum_shape != NONE,
+
+            "style": spectrum_style,
 
             "layers": deepcopy(self.spectrum_layers),
 
@@ -230,7 +243,7 @@ class CompiledFrame:
 
                 "reactColor": particles.get("reactColor") or "#ffffff",
 
-                "style": style,
+                "style": particle_style,
 
                 "variant": variant,
 
@@ -394,6 +407,16 @@ def compile_scene(
     spectrum_stops = (
         list(spectrum_palette["stops"]) if spectrum_palette else list(stops)
     )
+    custom_stops = (comp.get("spectrum") or {}).get("gradientColors")
+    if isinstance(custom_stops, list) and len(custom_stops) >= 2:
+        from features.video.lib.spectrum_color_engine import normalize_spectrum_gradient_colors
+
+        spectrum_stops = normalize_spectrum_gradient_colors(
+            [str(c) for c in custom_stops],
+            spectrum_solid,
+        )
+        spectrum_solid = str(spectrum_stops[0])
+        spectrum_accent = str(spectrum_stops[min(1, len(spectrum_stops) - 1)])
     if not spectrum_stops:
         spectrum_stops = [spectrum_solid, spectrum_accent, "#ffffff"]
 

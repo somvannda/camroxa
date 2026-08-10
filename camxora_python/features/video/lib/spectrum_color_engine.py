@@ -210,6 +210,63 @@ def build_spectrum_vertex_rgba(
     return np.tile(np.array([base[0], base[1], base[2], a], dtype=np.float32)[None, :], (n, 1))
 
 
+def build_spectrum_spatial_edge_rgba(
+    *,
+    xs_ndc: np.ndarray,
+    ys_ndc: np.ndarray,
+    mode: str,
+    solid_color: str,
+    gradient_colors: list[str] | None,
+    alpha: float,
+    gradient_direction: str = "left-to-right",
+    close_loop: bool = False,
+) -> np.ndarray:
+    """Per-edge RGBA by screen position (smooth melt, no index wrap seam).
+
+    Colors sample the palette by NDC position instead of bar index, so a closed
+    ring does not put first-stop against last-stop at the join.
+    """
+    xs = np.asarray(xs_ndc, dtype=np.float32).reshape(-1)
+    ys = np.asarray(ys_ndc, dtype=np.float32).reshape(-1)
+    tip_n = int(xs.shape[0])
+    a = float(max(0.0, min(1.0, alpha)))
+    if tip_n <= 0:
+        return np.zeros((0, 4), dtype=np.float32)
+
+    if str(mode or "solid").lower().strip() != "gradient":
+        base = _hex_to_rgb01(solid_color)
+        row = np.array([base[0], base[1], base[2], a], dtype=np.float32)
+        return np.tile(row[None, :], (tip_n, 1))
+
+    direction = str(gradient_direction or "left-to-right").lower().strip()
+    if direction in ("radial", "circular"):
+        direction = "left-to-right"
+
+    stops_raw = [str(c).strip() for c in (gradient_colors or []) if str(c or "").strip()]
+    stops_raw = normalize_spectrum_gradient_colors(stops_raw, solid_color or GRADIENT_FALLBACK_COLOR)
+    stops = np.stack([_hex_to_rgb01(c) for c in stops_raw], axis=0).astype(np.float32)
+    stops_lin = _srgb_to_linear(stops)
+
+    if direction == "top-to-bottom":
+        t_edge = (1.0 - (ys + 1.0) * 0.5).astype(np.float32)
+    elif direction == "diagonal":
+        t_edge = ((xs + 1.0) * 0.5 * 0.55 + (1.0 - (ys + 1.0) * 0.5) * 0.45).astype(np.float32)
+    else:
+        t_edge = ((xs + 1.0) * 0.5).astype(np.float32)
+    t_edge = np.clip(t_edge, 0.0, 1.0)
+    # Widen the melt zone slightly so two-stop palettes don't read as a hard cut.
+    t_edge = _smoothstep01(t_edge)
+
+    if close_loop and tip_n >= 2:
+        rgb_core = _sample_gradient_rgb(stops_lin, t_edge[: tip_n - 1])
+        rgb_edge = np.concatenate([rgb_core, rgb_core[:1]], axis=0)
+    else:
+        rgb_edge = _sample_gradient_rgb(stops_lin, t_edge)
+
+    alpha_col = np.full((tip_n, 1), a, dtype=np.float32)
+    return np.concatenate([rgb_edge.astype(np.float32), alpha_col], axis=1)
+
+
 def build_spectrum_fill_fan_rgba(
     *,
     xs_ndc: np.ndarray,
@@ -229,51 +286,63 @@ def build_spectrum_fill_fan_rgba(
     reuses the first edge color (no wrap seam).
     """
     xs = np.asarray(xs_ndc, dtype=np.float32).reshape(-1)
-    ys = np.asarray(ys_ndc, dtype=np.float32).reshape(-1)
     tip_n = int(xs.shape[0])
     a = float(max(0.0, min(1.0, alpha)))
     if tip_n <= 0:
         return np.zeros((1, 4), dtype=np.float32)
 
-    direction = str(gradient_direction or "left-to-right").lower().strip()
-    if direction in ("radial", "circular"):
-        direction = "left-to-right"
-
+    edge = build_spectrum_spatial_edge_rgba(
+        xs_ndc=xs_ndc,
+        ys_ndc=ys_ndc,
+        mode=mode,
+        solid_color=solid_color,
+        gradient_colors=gradient_colors,
+        alpha=alpha,
+        gradient_direction=gradient_direction,
+        close_loop=close_loop,
+    )
     if str(mode or "solid").lower().strip() != "gradient":
-        base = _hex_to_rgb01(solid_color)
-        row = np.array([base[0], base[1], base[2], a], dtype=np.float32)
-        return np.tile(row[None, :], (tip_n + 1, 1))
+        return np.concatenate([edge[:1], edge], axis=0)
 
     stops_raw = [str(c).strip() for c in (gradient_colors or []) if str(c or "").strip()]
     stops_raw = normalize_spectrum_gradient_colors(stops_raw, solid_color or GRADIENT_FALLBACK_COLOR)
     stops = np.stack([_hex_to_rgb01(c) for c in stops_raw], axis=0).astype(np.float32)
     stops_lin = _srgb_to_linear(stops)
-
-    # Spatial factor from edge positions (NDC −1…1 → 0…1).
-    if direction == "top-to-bottom":
-        t_edge = (1.0 - (ys + 1.0) * 0.5).astype(np.float32)
-    elif direction == "diagonal":
-        t_edge = ((xs + 1.0) * 0.5 * 0.55 + (1.0 - (ys + 1.0) * 0.5) * 0.45).astype(np.float32)
-    else:
-        t_edge = ((xs + 1.0) * 0.5).astype(np.float32)
-    t_edge = np.clip(t_edge, 0.0, 1.0)
-
-    # Widen the melt zone slightly so two-stop palettes don't read as a hard cut.
-    t_edge = _smoothstep01(t_edge)
-
-    edge_n = tip_n - 1 if close_loop and tip_n >= 2 else tip_n
-    if close_loop and tip_n >= 2:
-        rgb_core = _sample_gradient_rgb(stops_lin, t_edge[:edge_n])
-        rgb_edge = np.concatenate([rgb_core, rgb_core[:1]], axis=0)
-    else:
-        rgb_edge = _sample_gradient_rgb(stops_lin, t_edge)
-
     # Center = true mid palette (melts both sides together, no single-stop pie).
     mid_rgb = _sample_gradient_rgb(stops_lin, np.asarray([0.5], dtype=np.float32))[0]
-    alpha_col = np.full((tip_n, 1), a, dtype=np.float32)
-    edge = np.concatenate([rgb_edge.astype(np.float32), alpha_col], axis=1)
     center = np.array([[mid_rgb[0], mid_rgb[1], mid_rgb[2], a]], dtype=np.float32)
     return np.concatenate([center, edge], axis=0)
+
+
+def build_spectrum_solid_graph_strip_rgba(
+    *,
+    tip_xs_ndc: np.ndarray,
+    tip_ys_ndc: np.ndarray,
+    mode: str,
+    solid_color: str,
+    gradient_colors: list[str] | None,
+    alpha: float,
+    gradient_direction: str = "left-to-right",
+    close_loop: bool = False,
+) -> np.ndarray:
+    """RGBA for a solid-graph TRIANGLE_STRIP (tip, base, tip, base, …).
+
+    Tip and base of each sample share one spatial edge color so the filled band
+    melts the same way as Fill Circle instead of showing an index wrap seam.
+    """
+    edge = build_spectrum_spatial_edge_rgba(
+        xs_ndc=tip_xs_ndc,
+        ys_ndc=tip_ys_ndc,
+        mode=mode,
+        solid_color=solid_color,
+        gradient_colors=gradient_colors,
+        alpha=alpha,
+        gradient_direction=gradient_direction,
+        close_loop=close_loop,
+    )
+    if edge.shape[0] == 0:
+        return np.zeros((0, 4), dtype=np.float32)
+    return np.repeat(edge, 2, axis=0)
 
 
 def build_spectrum_bar_quad_rgba(

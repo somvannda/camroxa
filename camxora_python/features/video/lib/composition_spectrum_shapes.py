@@ -150,12 +150,14 @@ def spectrum_shape_layer_recipe(shape_id: str) -> list[dict[str, Any]]:
     if key == "wave":
         layer.update(
             {
-                "curved": False,
-                "mirrored": False,
-                "gravity": "top",
-                "pathMode": "auto",
-                "barWidth": 3.0,
-                "thickness": 28.0,
+                "curved": True,
+                "mirrored": True,
+                "gravity": "outward",
+                "pathMode": "circle",
+                "barWidth": 2.4,
+                "thickness": 48.0,
+                "stylePreset": "aurora-ribbon",
+                "fillCircle": False,
             }
         )
         return [layer]
@@ -166,8 +168,10 @@ def spectrum_shape_layer_recipe(shape_id: str) -> list[dict[str, Any]]:
                 "mirrored": True,
                 "gravity": "outward",
                 "pathMode": "circle",
-                "barWidth": 2.5,
-                "thickness": 22.0,
+                "barWidth": 1.8,
+                "thickness": 26.0,
+                "stylePreset": "soft-waveform",
+                "fillCircle": False,
             }
         )
         return [layer]
@@ -249,14 +253,17 @@ def spectrum_shape_layer_recipe(shape_id: str) -> list[dict[str, Any]]:
         "tunnel": "tunnel",
     }
     path = path_map.get(key, "circle")
+    ribbon = key in ("heart", "infinity", "spiral", "tunnel")
     layer.update(
         {
             "curved": True,
             "mirrored": True,
             "gravity": "outward",
             "pathMode": path,
-            "barWidth": 3.5,
-            "thickness": 32.0,
+            "barWidth": 2.2 if ribbon else 3.5,
+            "thickness": 36.0 if ribbon else 32.0,
+            "stylePreset": "soft-waveform" if ribbon else "orbit-spikes",
+            "fillCircle": False,
         }
     )
     return [layer]
@@ -265,11 +272,15 @@ def spectrum_shape_layer_recipe(shape_id: str) -> list[dict[str, Any]]:
 def legacy_style_alias_for_shape(shape_id: str) -> str:
     """Map geometry id → a legacy ``style`` the GPU already understands for draw mode."""
     key = normalize_spectrum_shape_id(shape_id) or "bars"
-    if key in ("wave", "audio_ribbon"):
+    if key == "wave":
         return "aurora-ribbon"
-    if key in ("circle", "double_circle", "ring", "starburst"):
-        return "orbit-spikes"
-    if key in ("hexagon", "diamond", "triangle", "heart", "infinity", "spiral", "tunnel"):
+    if key == "audio_ribbon":
+        return "soft-waveform"
+    if key in ("heart", "infinity", "spiral", "tunnel"):
+        return "soft-waveform"
+    if key == "soft_eq":
+        return "soft-eq"
+    if key in ("circle", "double_circle", "ring", "starburst", "hexagon", "diamond", "triangle"):
         return "orbit-spikes"
     return "orbit-spikes"
 

@@ -94,6 +94,8 @@ from features.video.lib.particle_color_engine import (
 from features.video.lib.spectrum_color_engine import (
     build_spectrum_bar_quad_rgba,
     build_spectrum_fill_fan_rgba,
+    build_spectrum_solid_graph_strip_rgba,
+    build_spectrum_spatial_edge_rgba,
     build_spectrum_vertex_rgba,
     dampen_spectrum_glow_rgba,
 )
@@ -3019,10 +3021,15 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     from visualizer.composition_effects.audio_mapping import resolve_bus_levels
 
                     treble_v = float(feats.get("treble", feats.get("high", 0.0)) or 0.0)
-                    kick_v = float(feats.get("kick", feats.get("beat", 0.0)) or 0.0)
+                    kick_v = float(
+                        feats.get("kick", feats.get("onset", feats.get("beat", 0.0))) or 0.0
+                    )
                     beat_v = float(feats.get("beat", 0.0) or 0.0)
                     onset_v = float(feats.get("onset", 0.0) or 0.0)
                     mid_v = float(feats.get("mid", 0.0) or 0.0) if feats.get("mid") is not None else (bass + treble_v) * 0.5
+                    # Prefer distinct kick proxy when analyzer has no dedicated kick.
+                    if feats.get("kick") is None:
+                        kick_v = max(kick_v, onset_v, float(bass) * beat_v)
                     layer_bus_levels = resolve_bus_levels(
                         bass=bass,
                         treble=treble_v,
@@ -3103,6 +3110,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     # (Multiplying radius by animScale made circles permanently zoom in/out.)
                     sampled_fft = resample_fft_bins(render_fft, bar_count)
                     # Per-layer audio bus: frequency weights + drive (Bass≠Treble).
+                    # Layer override wins; else Audio Mapping → Spectrum reaction.
                     _apply_bus = None
                     layer_bus = None
                     layer_gain = 1.0
@@ -3111,9 +3119,33 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         from visualizer.presets.audio_buses import normalize_audio_bus_id
 
                         layer_bus = normalize_audio_bus_id(sl.get("audioBus"))
+                        if layer_bus is None:
+                            mapped = (
+                                (self.template.get("audioMapping") or {}).get("mapping")
+                                if isinstance(self.template.get("audioMapping"), dict)
+                                else {}
+                            )
+                            if isinstance(mapped, dict):
+                                layer_bus = normalize_audio_bus_id(mapped.get("spectrum"))
                         layer_gain = float(
                             sl.get("audioGain") if sl.get("audioGain") is not None else 1.0
                         )
+                        # Composition-wide gain / bass emphasis.
+                        audio_comp = (
+                            (self.template.get("composition") or {}).get("audio")
+                            if isinstance(self.template.get("composition"), dict)
+                            else {}
+                        )
+                        if isinstance(audio_comp, dict):
+                            try:
+                                layer_gain *= float(audio_comp.get("gain") or 1.0)
+                            except (TypeError, ValueError):
+                                pass
+                            if layer_bus == "bass":
+                                try:
+                                    layer_gain *= float(audio_comp.get("bassEmphasis") or 1.0)
+                                except (TypeError, ValueError):
+                                    pass
                     except Exception:
                         _apply_bus = None
                         layer_bus = None
@@ -3233,13 +3265,53 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         half_t = float(max(1.0, pass_bar_width_px)) * 0.5
 
                         def mk_col_array(nn0: int):
-                            cols0 = build_spectrum_vertex_rgba(
-                                mode=col_mode,
-                                solid_color=solid_hex,
-                                gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
-                                count=nn0,
-                                alpha=pass_alpha,
+                            # Closed rings: color by screen position so first/last
+                            # stops melt instead of hard-joining at the seam.
+                            closed = bool(curved and mirrored) or str(
+                                sl.get("pathMode") or ""
+                            ).lower().strip() in (
+                                "heart",
+                                "infinity",
+                                "hexagon",
+                                "diamond",
+                                "triangle",
+                                "circle",
                             )
+                            if (
+                                closed
+                                and col_mode == "gradient"
+                                and nn0 > 1
+                                and int(px_arr.shape[0]) >= nn0
+                            ):
+                                tip = np.maximum(1.0, np.asarray(val_arr[:nn0], dtype=np.float32))
+                                xs_ndc = (
+                                    (float(cx) + px_arr[:nn0] + dx_arr[:nn0] * tip) / float(max(1, w)) * 2.0
+                                    - 1.0
+                                ).astype(np.float32)
+                                ys_ndc = (
+                                    (float(cy) + py_arr[:nn0] + dy_arr[:nn0] * tip) / float(max(1, h)) * 2.0
+                                    - 1.0
+                                ).astype(np.float32)
+                                cols0 = build_spectrum_spatial_edge_rgba(
+                                    xs_ndc=xs_ndc,
+                                    ys_ndc=ys_ndc,
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols)
+                                    if isinstance(grad_cols, list)
+                                    else None,
+                                    alpha=pass_alpha,
+                                    gradient_direction=grad_dir,
+                                    close_loop=True,
+                                )
+                            else:
+                                cols0 = build_spectrum_vertex_rgba(
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    count=nn0,
+                                    alpha=pass_alpha,
+                                )
                             if pass_cfg["is_glow"]:
                                 return dampen_spectrum_glow_rgba(cols0, strength=0.38)
                             return cols0
@@ -3260,17 +3332,17 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                 h=int(h),
                             )
                             if graph_pos.shape[0]:
-                                graph_nn = int(max(1, graph_pos.shape[0] // 2))
-                                graph_cols = np.repeat(
-                                    build_spectrum_vertex_rgba(
-                                        mode=col_mode,
-                                        solid_color=solid_hex,
-                                        gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
-                                        count=graph_nn,
-                                        alpha=pass_alpha,
-                                    ),
-                                    2,
-                                    axis=0,
+                                tip_xs = graph_pos[0::2, 0]
+                                tip_ys = graph_pos[0::2, 1]
+                                graph_cols = build_spectrum_solid_graph_strip_rgba(
+                                    tip_xs_ndc=tip_xs,
+                                    tip_ys_ndc=tip_ys,
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    alpha=pass_alpha,
+                                    gradient_direction=grad_dir,
+                                    close_loop=bool(curved and mirrored),
                                 )
                                 if pass_cfg["is_glow"]:
                                     graph_cols = dampen_spectrum_glow_rgba(graph_cols, strength=0.38)
@@ -3289,16 +3361,17 @@ class VideoSpectrumPreview(QOpenGLWidget):
                             for strip_i, strip_pos in enumerate(strips):
                                 strip_nn = int(strip_pos.shape[0] // 2)
                                 strip_alpha = float(max(0.0, min(1.0, pass_alpha * (0.45 + 0.55 * ((strip_i + 1) / max(1, len(strips)))))))
-                                strip_cols = np.repeat(
-                                    build_spectrum_vertex_rgba(
-                                        mode=col_mode,
-                                        solid_color=solid_hex,
-                                        gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
-                                        count=strip_nn,
-                                        alpha=strip_alpha,
-                                    ),
-                                    2,
-                                    axis=0,
+                                tip_xs = strip_pos[0::2, 0]
+                                tip_ys = strip_pos[0::2, 1]
+                                strip_cols = build_spectrum_solid_graph_strip_rgba(
+                                    tip_xs_ndc=tip_xs,
+                                    tip_ys_ndc=tip_ys,
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    alpha=strip_alpha,
+                                    gradient_direction=grad_dir,
+                                    close_loop=bool(curved and mirrored),
                                 )
                                 if pass_cfg["is_glow"]:
                                     strip_cols = dampen_spectrum_glow_rgba(strip_cols, strength=0.38)
@@ -3359,7 +3432,21 @@ class VideoSpectrumPreview(QOpenGLWidget):
                             pos[0::2, 1] = ys_o
                             pos[1::2, 0] = xs_i
                             pos[1::2, 1] = ys_i
-                            colsi = np.repeat(ctx_col, 2, axis=0)
+                            if col_mode == "gradient":
+                                colsi = build_spectrum_solid_graph_strip_rgba(
+                                    tip_xs_ndc=xs_o,
+                                    tip_ys_ndc=ys_o,
+                                    mode=col_mode,
+                                    solid_color=solid_hex,
+                                    gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
+                                    alpha=pass_alpha,
+                                    gradient_direction=grad_dir,
+                                    close_loop=bool(curved and mirrored),
+                                )
+                                if pass_cfg["is_glow"]:
+                                    colsi = dampen_spectrum_glow_rgba(colsi, strength=0.38)
+                            else:
+                                colsi = np.repeat(ctx_col, 2, axis=0)
                             verts = np.column_stack([pos, colsi]).astype(np.float32)
                             self._write_vbo(self.line_vbo, verts)
                             self.vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(2 * nn))

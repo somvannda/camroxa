@@ -1,4 +1,4 @@
-"""Ensure only one Camxora desktop process runs at a time."""
+"""Ensure only one Camxora desktop process runs at a time per build env."""
 
 from __future__ import annotations
 
@@ -7,9 +7,31 @@ from collections.abc import Callable
 from PySide6.QtCore import QObject
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
-# Stable across builds; unique enough to avoid colliding with other apps.
-_SERVER_NAME = "Camxora.DesktopStudio.SingleInstance.v1"
+# Production (and non-sandbox) lock ΓÇö keep stable so existing installs keep
+# focusing the same window. Sandbox uses a distinct suffix so it can run
+# alongside a production install for side-by-side testing.
+_PRODUCTION_SERVER_NAME = "Camxora.DesktopStudio.SingleInstance.v1"
 _ACTIVATE = b"activate\n"
+
+
+def single_instance_server_name(build_env: str | None = None) -> str:
+    """Local-server name for the single-instance lock.
+
+    Production always uses ``Camxora.DesktopStudio.SingleInstance.v1``.
+    Sandbox uses a separate name so one sandbox + one production app can run
+    at the same time. Development shares the production name.
+    """
+    env = (build_env or "").strip().lower()
+    if not env:
+        try:
+            from shared.services.build_config import build_environment
+
+            env = build_environment()
+        except Exception:
+            env = "development"
+    if env == "sandbox":
+        return f"{_PRODUCTION_SERVER_NAME}.sandbox"
+    return _PRODUCTION_SERVER_NAME
 
 
 class SingleInstanceGuard(QObject):
@@ -19,11 +41,13 @@ class SingleInstanceGuard(QObject):
         super().__init__(parent)
         self._server: QLocalServer | None = None
         self._on_activate: Callable[[], None] | None = None
+        self._server_name = single_instance_server_name()
 
     def try_become_primary(self) -> bool:
         """Return True if this process owns the instance lock."""
+        name = self._server_name
         probe = QLocalSocket(self)
-        probe.connectToServer(_SERVER_NAME)
+        probe.connectToServer(name)
         if probe.waitForConnected(200):
             probe.write(_ACTIVATE)
             probe.flush()
@@ -33,10 +57,10 @@ class SingleInstanceGuard(QObject):
                 probe.waitForDisconnected(200)
             return False
 
-        # Stale server after a crash — remove then listen.
-        QLocalServer.removeServer(_SERVER_NAME)
+        # Stale server after a crash ΓÇö remove then listen.
+        QLocalServer.removeServer(name)
         server = QLocalServer(self)
-        if not server.listen(_SERVER_NAME):
+        if not server.listen(name):
             # Another process won the race between connect and listen.
             return False
         server.newConnection.connect(self._on_new_connection)

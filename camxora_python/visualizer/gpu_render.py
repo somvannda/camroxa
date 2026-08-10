@@ -1023,6 +1023,7 @@ def _as_rgb(v: any) -> tuple[int, int, int]:
 
 def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None) -> str:
     """Resolve template/pack style ids to Camxora-native renderer keys."""
+    from features.video.lib.composition_spectrum_shapes import legacy_style_alias_for_shape
     from features.video.lib.spectrum_style_registry import normalize_spectrum_preset_key_for_apply
     from features.video.lib.video_template_draft import normalize_spectrum_preset_key
 
@@ -1039,9 +1040,42 @@ def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None)
     ):
         return "soft-eq"
 
+    # Shape catalog wins when layer carries a geometry id (Studio compile path).
+    if shape_id:
+        try:
+            aliased = legacy_style_alias_for_shape(shape_id)
+        except Exception:
+            aliased = ""
+        if aliased and aliased != "orbit-spikes":
+            return aliased
+        if layer_style in (
+            "aurora-ribbon",
+            "magma-ridge",
+            "plasma-bloom",
+            "soft-waveform",
+            "mountain",
+            "liquid",
+            "continuous-waveform",
+            "contour-waves",
+        ):
+            return layer_style
+
     # Packs that still ship flying-glow / halo-stack keep fill-aware mapping.
     if raw in ("flying-glow", "halo-stack"):
         return "plasma-bloom" if fill_circle else "magma-ridge"
+
+    if layer_style in (
+        "aurora-ribbon",
+        "magma-ridge",
+        "plasma-bloom",
+        "soft-waveform",
+        "mountain",
+        "liquid",
+        "continuous-waveform",
+        "contour-waves",
+        "soft-eq",
+    ):
+        return layer_style
 
     normalized = normalize_spectrum_preset_key_for_apply(normalize_spectrum_preset_key(raw))
     camxora_ids = {
@@ -1058,6 +1092,10 @@ def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None)
         "drift-capsules",
         "soft-eq",
         "rounded-bars",
+        "soft-waveform",
+        "mountain",
+        "liquid",
+        "continuous-waveform",
     }
     if normalized in camxora_ids:
         return normalized
@@ -3923,16 +3961,30 @@ def run_gpu_render(
                         h=int(h),
                     )
                     if band_pos.shape[0]:
-                        band_bar_count = int(max(1, band_pos.shape[0] // 2))
-                        band_cols = np.repeat(
-                            _build_spectrum_vertex_colors(
-                                color_cfg,
-                                spec_col,
-                                band_bar_count,
-                                float(max(0.0, min(1.0, op))),
-                            ),
-                            2,
-                            axis=0,
+                        from features.video.lib.spectrum_color_engine import (
+                            build_spectrum_solid_graph_strip_rgba,
+                        )
+
+                        tip_xs = band_pos[0::2, 0]
+                        tip_ys = band_pos[0::2, 1]
+                        grad_dir = str(
+                            color_cfg.get("gradientDirection", "left-to-right") or "left-to-right"
+                        )
+                        solid_hex = str(color_cfg.get("solidColor") or "#ffffff")
+                        grad_cols = (
+                            color_cfg.get("gradientColors")
+                            if isinstance(color_cfg.get("gradientColors"), list)
+                            else None
+                        )
+                        band_cols = build_spectrum_solid_graph_strip_rgba(
+                            tip_xs_ndc=tip_xs,
+                            tip_ys_ndc=tip_ys,
+                            mode=str(color_cfg.get("mode", "solid") or "solid"),
+                            solid_color=solid_hex,
+                            gradient_colors=grad_cols,
+                            alpha=float(max(0.0, min(1.0, op))),
+                            gradient_direction=grad_dir,
+                            close_loop=bool(curved and mirrored),
                         )
                         band_verts = np.column_stack([band_pos, band_cols]).astype(np.float32)
                         if band_verts.nbytes > line_vbo.size:

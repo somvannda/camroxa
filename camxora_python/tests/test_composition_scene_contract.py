@@ -135,7 +135,7 @@ def test_template_normalizer_keeps_composition_engine_v1() -> None:
     assert "composition" in out
     assert out["composition"]["spectrum"]["shape"] == "circle"
     assert out["engine"]["compiled"] is True
-    assert "style" not in out
+    assert out.get("style") == "orbit-spikes"
 
 
 def test_legacy_key_map_covers_architecture_tree() -> None:

@@ -51,6 +51,7 @@ def _apply_live_palette_colors(template: dict[str, Any], comp: dict[str, Any]) -
 
     Spectrum uses ``composition.spectrum.colorPalette`` when set; otherwise inherits
     the global ``composition.colorPalette``. Particles/lighting always use global.
+    Custom ``spectrum.gradientColors`` overrides catalog palettes.
     """
     intensity = _expert_float(comp.get("paletteIntensity"), 1.0, lo=0.0, hi=2.0)
     saturation = _expert_float(comp.get("paletteSaturation"), 1.0, lo=0.0, hi=2.0)
@@ -70,6 +71,20 @@ def _apply_live_palette_colors(template: dict[str, Any], comp: dict[str, Any]) -
         amount=0.4,
     )
     spectrum_color = _palette_color_bag(spectrum_palette)
+    custom_stops = spec_comp.get("gradientColors")
+    if isinstance(custom_stops, list) and len(custom_stops) >= 2:
+        from features.video.lib.spectrum_color_engine import normalize_spectrum_gradient_colors
+
+        stops = normalize_spectrum_gradient_colors(
+            [str(c) for c in custom_stops],
+            str((spectrum_color or {}).get("solidColor") or "#ff4fd8"),
+        )
+        spectrum_color = {
+            "mode": "gradient",
+            "solidColor": stops[0],
+            "gradientColors": stops,
+            "gradientDirection": "left-to-right",
+        }
     global_color = _palette_color_bag(global_palette)
 
     def _tint_layers(layers: list[Any], color: dict[str, Any] | None) -> list[Any]:
