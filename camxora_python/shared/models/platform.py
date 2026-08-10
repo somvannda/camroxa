@@ -415,6 +415,8 @@ class DraftGenerationRequest(BaseModel):
     structure: str | None = None
     description_id: str | None = None
     structure_id: str | None = None
+    mood_id: str | None = None
+    structure_mode: str = "template"
     avoid_titles: list[str] = Field(default_factory=list)
     avoid_albums: list[str] = Field(default_factory=list)
     avoid_openings: list[str] = Field(default_factory=list)

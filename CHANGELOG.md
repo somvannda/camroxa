@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Music Automation Structure dropdown includes **Suno Structure** (native free section layout) alongside AI Structure and Music Structure templates. Structure Shuffle is locked off for AI/Suno Structure (settings restore and saved `shuffleStructure` cannot resurrect it). See `docs/changelog/2026-08-10-suno-structure-mode.md`.
+
 ### Changed
 
 - Sandbox desktop single-instance lock is env-scoped so sandbox can run alongside production; production keeps `Camxora.DesktopStudio.SingleInstance.v1`. See `docs/changelog/2026-08-10-sandbox-dual-instance-lock.md`.

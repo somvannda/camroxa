@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Batch create with `structure_mode` `ai_free`/`suno` no longer resurrects Structure Shuffle from saved `shuffleStructure` settings after the request clears it. See `docs/changelog/2026-08-10-suno-structure-mode.md`.
 - Image prompt over the **5000**-char allowance is rejected before wallet hold / provider calls (exact API error, no truncation) and does not burn fail-absorb retries. Image-only gate (text/LLM limits unchanged). Image jobs + ledger record routed vs executed provider; profile `image_config.provider` ignored. Migration `083` drops unused OpenAI image fallback hop. See `docs/changelog/2026-08-08-image-provider-truth-prompt-limit.md`.
 
 ### Changed

@@ -225,6 +225,7 @@ async def list_music_history(
                 s.structure_id,
                 CASE
                     WHEN b.structure_mode = 'ai_free' THEN 'AI Structure'
+                    WHEN b.structure_mode = 'suno' THEN 'Suno Structure'
                     ELSE ms.name
                 END AS structure_name,
                 s.mood_id,
@@ -283,6 +284,7 @@ async def list_music_history(
                 s.structure_id,
                 CASE
                     WHEN b.structure_mode = 'ai_free' THEN 'AI Structure'
+                    WHEN b.structure_mode = 'suno' THEN 'Suno Structure'
                     ELSE ms.name
                 END AS structure_name,
                 s.mood_id,

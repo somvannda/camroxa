@@ -639,26 +639,32 @@ class BatchService:
                 details={"from_date": from_date.isoformat(), "to_date": to_date.isoformat()},
             )
 
-        from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE, STRUCTURE_MODE_TEMPLATE
+        from platform_api.services.generation_service import (
+            FREE_STRUCTURE_MODES,
+            STRUCTURE_MODE_TEMPLATE,
+            is_free_structure_mode,
+        )
 
         normalized_mode = str(structure_mode or STRUCTURE_MODE_TEMPLATE).strip()
-        if normalized_mode not in {STRUCTURE_MODE_TEMPLATE, STRUCTURE_MODE_AI_FREE}:
+        if normalized_mode not in {STRUCTURE_MODE_TEMPLATE, *FREE_STRUCTURE_MODES}:
             raise ValidationError(
-                "structure_mode must be 'template' or 'ai_free'.",
+                "structure_mode must be 'template', 'ai_free', or 'suno'.",
                 details={"structure_mode": structure_mode},
             )
-        if normalized_mode == STRUCTURE_MODE_AI_FREE:
+        if is_free_structure_mode(normalized_mode):
             if structure_id:
                 raise ValidationError(
-                    "structure_id must be null when structure_mode is ai_free.",
+                    f"structure_id must be null when structure_mode is {normalized_mode}.",
                     details={"structure_id": structure_id},
                 )
             if shuffle_structure:
                 raise ValidationError(
-                    "shuffle_structure cannot be enabled when structure_mode is ai_free.",
+                    f"shuffle_structure cannot be enabled when structure_mode is {normalized_mode}.",
                     details={"shuffle_structure": shuffle_structure},
                 )
             structure_id = None
+            # Do not resurrect shuffle from user settings after the request was rejected/cleared.
+            shuffle_structure = False
 
         user_uuid = UUID(user_id)
         ok_profile = await self._profile_repo.get_by_id_for_user(
@@ -768,13 +774,17 @@ class BatchService:
         )
 
         # Create song records (all start as 'pending')
+        effective_shuffle_structure = False
+        if not is_free_structure_mode(normalized_mode):
+            effective_shuffle_structure = shuffle_structure or _read_bool_setting(
+                settings, "shuffleStructure"
+            )
         structure_ids = await self._resolve_song_structure_ids(
             user_id=UUID(user_id),
             batch_id=batch.id,
             song_count=song_count,
             structure_id=structure_id,
-            shuffle_structure=shuffle_structure
-            or _read_bool_setting(settings, "shuffleStructure"),
+            shuffle_structure=effective_shuffle_structure,
             structure_mode=normalized_mode,
         )
         mood_ids = await self._resolve_song_mood_ids(
@@ -3867,9 +3877,9 @@ class BatchService:
         When on, structures are shuffled from the workspace catalog so songs in
         the same batch vary (seeded by batch_id; full pool before repeats).
         """
-        from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE
+        from platform_api.services.generation_service import is_free_structure_mode
 
-        if structure_mode == STRUCTURE_MODE_AI_FREE:
+        if is_free_structure_mode(structure_mode):
             return [None for _ in range(song_count)]
         fixed = UUID(structure_id) if structure_id else None
         if song_count < 1:
@@ -3933,14 +3943,14 @@ class BatchService:
             sanitize_production_description,
             vocal_profile_to_dict,
         )
-        from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE
+        from platform_api.services.generation_service import is_free_structure_mode
 
         from platform_api.services.music_genre_utils import parse_genre_list
 
         description_text = draft_request.description.strip()
         structure_text = draft_request.structure.strip()
         mood_text = str(getattr(draft_request, "mood", "") or "").strip()
-        ai_free = draft_request.structure_mode == STRUCTURE_MODE_AI_FREE
+        ai_free = is_free_structure_mode(draft_request.structure_mode)
         description_profile = parse_vocal_profile(draft_request.vocal_profile)
         description_genres = list(getattr(draft_request, "description_genres", None) or [])
 
@@ -3989,7 +3999,7 @@ class BatchService:
         batch: Batch | None = None,
     ) -> dict[str, str]:
         """Resolve mood + structure + title for lyric rewrite (same sources as draft lyric)."""
-        from platform_api.services.generation_service import STRUCTURE_MODE_AI_FREE
+        from platform_api.services.generation_service import is_free_structure_mode
 
         title = str(song.title or "").strip()
         mood_text = ""
@@ -3997,7 +4007,7 @@ class BatchService:
         structure_mode = str(
             getattr(batch, "structure_mode", "template") if batch is not None else "template"
         ) or "template"
-        ai_free = structure_mode == STRUCTURE_MODE_AI_FREE
+        ai_free = is_free_structure_mode(structure_mode)
 
         if self._prompt_service is not None:
             mood_id = getattr(song, "mood_id", None)

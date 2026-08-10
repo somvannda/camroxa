@@ -1104,6 +1104,8 @@ class DraftGenerationWorker(QThread):
                     structure=str(payload.get("structure") or ""),
                     description_id=payload.get("description_id"),
                     structure_id=payload.get("structure_id"),
+                    mood_id=payload.get("mood_id"),
+                    structure_mode=str(payload.get("structure_mode") or "template"),
                     avoid_titles=avoid_lists["titles"],
                     avoid_albums=avoid_lists["albums"],
                     avoid_openings=avoid_lists["openings"],
