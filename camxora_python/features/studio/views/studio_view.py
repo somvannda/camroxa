@@ -164,10 +164,12 @@ class StudioView(QWidget):
         except Exception:
             key = ""
         attached = bool(doc.get("spectrumAttachToLogo", False))
-        logo = key == "logo"
+        has_center = bool(str((doc.get("assets") or {}).get("logo") or "").strip())
+        # Center image is authored under Spectrum (Vizzy-style); drag when attached.
+        center_drag = key == "spectrum" and (attached or has_center)
         self._shell.set_preview_interaction_modes(
             spectrum_position=spectrum_on,
-            logo_position=logo or (key == "spectrum" and attached),
+            logo_position=center_drag,
         )
 
     def _on_export_options(self, options: dict) -> None:

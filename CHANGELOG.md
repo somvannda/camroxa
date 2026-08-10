@@ -11,6 +11,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Spectrum-owned center image (Vizzy-style).** Logo removed from Studio scene tree;
+  Spectrum loads the center image with auto-attach. See
+  `docs/changelog/2026-08-10-spectrum-center-image.md`.
 - **Spectrum shapes, color stops, and audio buses.** Wave/heart/ribbon use continuous
   waveform styles with spatial color melt; editable palette stops in Studio; stronger
   per-bus FFT weighting + Audio Mapping → Spectrum reaction. See

@@ -40,7 +40,6 @@ def test_scene_tree_has_architecture_nodes() -> None:
         "palette",
         "background",
         "spectrum",
-        "logo",
         "text",
         "overlay",
         "particles",
@@ -49,6 +48,33 @@ def test_scene_tree_has_architecture_nodes() -> None:
         "post",
         "audio_mapping",
     ]
+    assert "logo" not in keys
+
+
+def test_spectrum_center_image_patch_sets_path_and_attach() -> None:
+    doc = apply_axis_patch(
+        blank_studio_document(),
+        {
+            "compositionSpectrumShape": "circle",
+            "logoPath": "C:/tmp/center.png",
+            "logoEnabled": True,
+            "spectrumAttachToLogo": True,
+            "compositionLogoSize": 220.0,
+            "compositionLogoCircleMask": True,
+        },
+    )
+    assert doc["assets"]["logo"] == "C:/tmp/center.png"
+    assert doc["composition"]["logo"]["enabled"] is True
+    assert doc["spectrumAttachToLogo"] is True
+    assert float(doc["composition"]["logo"]["size"]) == 220.0
+    assert doc["composition"]["logo"]["circleMask"] is True
+    cleared = apply_axis_patch(
+        doc,
+        {"logoPath": "", "logoEnabled": False, "spectrumAttachToLogo": False},
+    )
+    assert cleared["assets"]["logo"] in (None, "")
+    assert cleared["composition"]["logo"]["enabled"] is False
+    assert cleared["spectrumAttachToLogo"] is False
 
 
 def test_blank_document_compiles() -> None:

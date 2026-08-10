@@ -456,6 +456,55 @@ class SpectrumInspector(_AxisPanel):
         )
         self._section.add_widget(reset)
 
+        # Center image (Vizzy-style) — sits in the hollow of the spectrum shape.
+        self._center_card = _compact_panel(
+            SettingsPanel("Center image", subtitle="", fill_available_height=False)
+        )
+        self._center_path = QLineEdit()
+        self._center_path.setReadOnly(True)
+        self._center_path.setPlaceholderText("No image selected")
+        pick_center = QPushButton("Select")
+        pick_center.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        pick_center.clicked.connect(self._pick_center_image)
+        clear_center = QPushButton("Clear")
+        clear_center.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        clear_center.clicked.connect(self._clear_center_image)
+        self._center_card.add_widget(asset_row("File", self._center_path, pick_center, clear_center))
+        self._center_circle = QCheckBox("Circle mask")
+        self._center_circle.toggled.connect(
+            lambda checked: self._emit({"compositionLogoCircleMask": bool(checked)})
+        )
+        self._center_card.add_widget(self._center_circle)
+        self._center_size = _expert_slider(
+            "Size px", minimum=64.0, maximum=512.0, step=8.0, decimals=0, value=192.0
+        )
+        self._center_size.float_changed.connect(
+            lambda v: self._emit({"compositionLogoSize": float(v)})
+        )
+        self._center_opacity = _expert_slider(
+            "Opacity", minimum=0.1, maximum=1.0, step=0.05, value=1.0
+        )
+        self._center_opacity.float_changed.connect(
+            lambda v: self._emit({"compositionLogoOpacity": float(v)})
+        )
+        self._center_react = _expert_slider(
+            "Reactivity", minimum=0.0, maximum=1.0, step=0.05, value=0.0
+        )
+        self._center_react.float_changed.connect(
+            lambda v: self._emit({"compositionLogoReactivity": float(v)})
+        )
+        self._center_card.add_widget(self._center_size)
+        self._center_card.add_widget(self._center_opacity)
+        self._center_card.add_widget(self._center_react)
+        self._center_note = QLabel(
+            "Image sits inside the spectrum (Vizzy-style). "
+            "Use Raise → Outside if bars should grow away from it."
+        )
+        self._center_note.setObjectName(SUBTITLE_LABEL_ID)
+        self._center_note.setWordWrap(True)
+        self._center_card.add_widget(self._center_note)
+        self.layout().insertWidget(1, self._center_card)
+
         # Layer stack — each selected layer has its own settings below.
         self._layer_combo = QComboBox()
         self._layer_combo.currentIndexChanged.connect(self._on_layer_selected)
@@ -591,7 +640,7 @@ class SpectrumInspector(_AxisPanel):
         self._shape_note.setObjectName(SUBTITLE_LABEL_ID)
         self._shape_note.setWordWrap(True)
         self._shape_card.add_widget(self._shape_note)
-        self.layout().insertWidget(1, self._shape_card)
+        self.layout().insertWidget(2, self._shape_card)
 
         # Material card — shared material + palette
         self._material_card = _compact_panel(
@@ -638,7 +687,7 @@ class SpectrumInspector(_AxisPanel):
         self._material_note.setObjectName(SUBTITLE_LABEL_ID)
         self._material_note.setWordWrap(True)
         self._material_card.add_widget(self._material_note)
-        self.layout().insertWidget(2, self._material_card)
+        self.layout().insertWidget(3, self._material_card)
 
         # Animation card — full motion dials
         self._animation_card = _compact_panel(
@@ -698,7 +747,7 @@ class SpectrumInspector(_AxisPanel):
         self._anim_note.setObjectName(SUBTITLE_LABEL_ID)
         self._anim_note.setWordWrap(True)
         self._animation_card.add_widget(self._anim_note)
-        self.layout().insertWidget(3, self._animation_card)
+        self.layout().insertWidget(4, self._animation_card)
 
         self._layers_cache: list[dict] = []
         self._sync_axis_visibility()
@@ -706,6 +755,35 @@ class SpectrumInspector(_AxisPanel):
     def _on_shape_changed(self, *_args) -> None:
         self._emit({"compositionSpectrumShape": self._shape.currentData() or "none"})
         self._sync_axis_visibility()
+
+    def _pick_center_image(self) -> None:
+        if self._binding:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select center image",
+            "",
+            "Images (*.png *.jpg *.jpeg *.webp *.bmp *.svg)",
+        )
+        if path:
+            self._emit(
+                {
+                    "logoPath": path,
+                    "logoEnabled": True,
+                    "spectrumAttachToLogo": True,
+                }
+            )
+
+    def _clear_center_image(self) -> None:
+        if self._binding:
+            return
+        self._emit(
+            {
+                "logoPath": "",
+                "logoEnabled": False,
+                "spectrumAttachToLogo": False,
+            }
+        )
 
     def _on_material_changed(self, *_args) -> None:
         self._emit({"compositionSpectrumMaterial": self._material.currentData() or "none"})
@@ -832,6 +910,7 @@ class SpectrumInspector(_AxisPanel):
         self._shape_note.setVisible(shape_on)
         self._palette_row.setVisible(shape_on)
         self._material_note.setVisible(shape_on)
+        self._center_card.setVisible(shape_on)
         anim_on = animation not in ("", "none")
         self._anim_note.setVisible(anim_on)
         for w in self._anim_controls:
@@ -891,6 +970,11 @@ class SpectrumInspector(_AxisPanel):
         self._binding = True
         self._enabled.setChecked(bool(state.get("spectrumEnabled")))
         self._size.set_float(float(state.get("compositionSpectrumSizeScale") or 1.0))
+        self._center_path.setText(str(state.get("logoPath") or ""))
+        self._center_circle.setChecked(bool(state.get("compositionLogoCircleMask")))
+        self._center_size.set_float(float(state.get("compositionLogoSize") or 192.0))
+        self._center_opacity.set_float(float(state.get("compositionLogoOpacity") or 1.0))
+        self._center_react.set_float(float(state.get("compositionLogoReactivity") or 0.0))
         set_combo_data(self._shape, str(state.get("compositionSpectrumShape") or "none"))
         set_combo_data(self._material, str(state.get("compositionSpectrumMaterial") or "none"))
         set_combo_data(self._animation, str(state.get("compositionSpectrumAnimation") or "none"))
@@ -1394,7 +1478,6 @@ def build_studio_inspectors() -> dict[str, _AxisPanel]:
         "palette": PaletteInspector(),
         "background": BackgroundInspector(),
         "spectrum": SpectrumInspector(),
-        "logo": LogoInspector(),
         "text": TextInspector(),
         "overlay": OverlayInspector(),
         "particles": ParticlesInspector(),

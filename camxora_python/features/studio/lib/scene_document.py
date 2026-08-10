@@ -41,7 +41,6 @@ SCENE_TREE_NODES: tuple[tuple[str, str], ...] = (
     ("palette", "Color Palette"),
     ("background", "Background"),
     ("spectrum", "Spectrum"),
-    ("logo", "Logo"),
     ("text", "Text"),
     ("overlay", "Overlay"),
     ("particles", "Particles"),

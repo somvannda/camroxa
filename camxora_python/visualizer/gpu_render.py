@@ -484,13 +484,77 @@ def _compile(ctx: moderngl.Context):
     #version 330
     uniform sampler2D tex_logo;
     uniform float logo_opacity;
-    uniform int logo_circle_mask;
+    // 0=none 1=circle 2=triangle 3=diamond 4=hexagon 5=heart
+    uniform int logo_mask_mode;
     uniform vec2 logo_px;
     uniform vec2 logo_size_px;
     uniform float logo_rot_rad;
     uniform vec2 out_size;
     in vec2 v_uv;
     out vec4 frag;
+
+    float sdCircle(vec2 p, float r) {
+        return length(p) - r;
+    }
+
+    // Regular n-gon SDF (Inigo Quilez), p centered, pointy-top when rotated.
+    float sdRegularPoly(vec2 p, float n, float r) {
+        float an = 3.14159265359 / n;
+        float en = 3.14159265359 / n;
+        vec2 acs = vec2(cos(an), sin(an));
+        vec2 ecs = vec2(cos(en), sin(en));
+        float bn = mod(atan(p.x, p.y) + 3.14159265359, 2.0 * an) - an;
+        p = length(p) * vec2(cos(bn), abs(sin(bn)));
+        p -= r * acs;
+        p += ecs * clamp(-dot(p, ecs), 0.0, r * acs.y / ecs.y);
+        return length(p) * sign(p.x);
+    }
+
+    float sdHeart(vec2 p) {
+        p.x = abs(p.x);
+        // Fit classic heart into the logo quad.
+        p = p * vec2(1.25, 1.15) + vec2(0.0, 0.12);
+        if (p.y + p.x > 1.0) {
+            return sqrt(dot(p - vec2(0.25, 0.75), p - vec2(0.25, 0.75))) - sqrt(2.0) / 4.0;
+        }
+        return sqrt(min(
+            dot(p - vec2(0.00, 1.00), p - vec2(0.00, 1.00)),
+            dot(p - 0.5 * max(p.x + p.y, 0.0), p - 0.5 * max(p.x + p.y, 0.0))
+        )) * sign(p.x - p.y);
+    }
+
+    float shapeMaskAlpha(vec2 dc) {
+        // dc in roughly [-0.5, 0.5] after rotation
+        int mode = logo_mask_mode;
+        if (mode <= 0) {
+            return 1.0;
+        }
+        float edge = 0.012;
+        float d;
+        if (mode == 1) {
+            d = sdCircle(dc, 0.49);
+        } else if (mode == 2) {
+            // Point-up triangle
+            float ca = cos(-1.5707963);
+            float sa = sin(-1.5707963);
+            vec2 q = vec2(dc.x * ca - dc.y * sa, dc.x * sa + dc.y * ca);
+            d = sdRegularPoly(q, 3.0, 0.48);
+        } else if (mode == 3) {
+            // Diamond = square rotated 45°
+            float ca = cos(0.78539816);
+            float sa = sin(0.78539816);
+            vec2 q = vec2(dc.x * ca - dc.y * sa, dc.x * sa + dc.y * ca);
+            d = sdRegularPoly(q, 4.0, 0.48);
+        } else if (mode == 4) {
+            d = sdRegularPoly(dc, 6.0, 0.48);
+        } else if (mode == 5) {
+            d = sdHeart(dc * 2.0);
+        } else {
+            d = sdCircle(dc, 0.49);
+        }
+        return 1.0 - smoothstep(-edge, edge, d);
+    }
+
     void main() {
         vec2 px = v_uv * out_size;
         vec2 center = out_size * 0.5 + logo_px;
@@ -507,8 +571,7 @@ def _compile(ctx: moderngl.Context):
         vec2 ruv = vec2(dc0.x * c - dc0.y * s, dc0.x * s + dc0.y * c) + vec2(0.5, 0.5);
         vec4 lg = texture(tex_logo, ruv);
         vec2 dc = ruv - vec2(0.5, 0.5);
-        float d = length(dc);
-        float mask = logo_circle_mask == 1 ? (1.0 - smoothstep(0.48, 0.50, d)) : 1.0;
+        float mask = shapeMaskAlpha(dc);
         float a = lg.a * mask * logo_opacity;
         frag = vec4(lg.rgb, a);
     }
@@ -2885,6 +2948,18 @@ def run_gpu_render(
     logo_raw = template.get("logoSettings", {})
     logo_enabled = bool(logo_raw.get("enabled", True))
     logo_circle_mask = bool(logo_raw.get("circleMask", True))
+    logo_fit_to_shape = bool(logo_raw.get("fitToShape", True))
+    from visualizer.logo_mask import (
+        apply_logo_mask_uniform,
+        resolve_logo_mask_mode,
+        spectrum_shape_from_template,
+    )
+
+    logo_mask_mode = resolve_logo_mask_mode(
+        spectrum_shape_from_template(template),
+        fit_to_shape=logo_fit_to_shape,
+        circle_mask=logo_circle_mask,
+    )
     logo_opacity = float(logo_raw.get("opacity", 1.0))
     logo_opacity = float(max(0.0, min(1.0, logo_opacity)))
     logo_size_base = float(logo_raw.get("size", 192.0))
@@ -3096,7 +3171,7 @@ def run_gpu_render(
             base_logo_size_px = (float(logo_size_px[0]), float(logo_size_px[1]))
             prog_logo["logo_size_px"].value = base_logo_size_px
             prog_logo["logo_opacity"].value = float(logo_opacity)
-            prog_logo["logo_circle_mask"].value = 1 if logo_circle_mask else 0
+            apply_logo_mask_uniform(prog_logo, logo_mask_mode)
             if "logo_rot_rad" in prog_logo:
                 prog_logo["logo_rot_rad"].value = 0.0
 

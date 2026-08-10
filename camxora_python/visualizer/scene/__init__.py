@@ -97,6 +97,7 @@ def default_composition() -> dict[str, Any]:
             "scale": 1.0,
             "opacity": 1.0,
             "circleMask": False,
+            "fitToShape": True,
             "reactivity": 0.0,
             "offsetX": 0.0,
             "offsetY": 0.0,
@@ -273,6 +274,11 @@ def normalize_composition(raw: Any) -> dict[str, Any]:
     out["logo"]["scale"] = _clamp_float(logo.get("scale"), 0.25, 3.0, 1.0)
     out["logo"]["opacity"] = _clamp_float(logo.get("opacity"), 0.1, 1.0, 1.0)
     out["logo"]["circleMask"] = bool(logo.get("circleMask", False))
+    if "fitToShape" in logo:
+        out["logo"]["fitToShape"] = bool(logo.get("fitToShape"))
+    else:
+        # Default on: Vizzy-style clip to spectrum geometry.
+        out["logo"]["fitToShape"] = True
     out["logo"]["reactivity"] = _clamp_float(logo.get("reactivity"), 0.0, 1.0, 0.0)
     out["logo"]["offsetX"] = _clamp_float(logo.get("offsetX"), -0.5, 0.5, 0.0)
     out["logo"]["offsetY"] = _clamp_float(logo.get("offsetY"), -0.5, 0.5, 0.0)
