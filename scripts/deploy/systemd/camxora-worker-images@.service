@@ -10,6 +10,7 @@ WorkingDirectory=/opt/camxora/repo
 Environment=PYTHONPATH=/opt/camxora/repo
 Environment=PYTHONUNBUFFERED=1
 Environment=CAMXORA_WORKER_JOB_TYPES=images
+Environment=CAMXORA_WORKER_NAME=images@%i
 EnvironmentFile=/opt/camxora/repo/platform_api/.env
 ExecStart=/opt/camxora/repo/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always

@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Job Queue** (`/job-queue`) is a live ops board: busy workers with stage/users, tabbed Running/Queued/Delayed/Failed jobs (user, batch, error), and a related image-job failure strip. See `docs/changelog/2026-08-11-job-queue-ops-board.md`.
 - Usages / User Spent / Finance show Provider and Model as separate labels (avoids GPT-named SLAI models reading as OpenAI). Pipeline image jobs show provider, prompt length, and error (over **5000** max marker). See `docs/changelog/2026-08-08-image-provider-truth-prompt-limit.md`.
 
 ### Added

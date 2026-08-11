@@ -51,6 +51,18 @@ STAGE_PRESETS: dict[str, frozenset[str]] = {
 }
 
 
+def stage_for_job_type(job_type: str) -> str:
+    """Map a job_queue.job_type to the worker stage shard label."""
+    jt = (job_type or "").strip()
+    if jt in STAGE_DRAFT_TYPES:
+        return "draft"
+    if jt in STAGE_SUNO_TYPES:
+        return "suno"
+    if jt in STAGE_IMAGES_TYPES:
+        return "images"
+    return "other"
+
+
 def resolve_worker_job_types(raw: str | None = None) -> frozenset[str]:
     """Parse CAMXORA_WORKER_JOB_TYPES (comma list or preset: draft|suno|images|all)."""
     value = (raw if raw is not None else os.environ.get("CAMXORA_WORKER_JOB_TYPES", "")).strip()

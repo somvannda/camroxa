@@ -287,8 +287,102 @@ class JobQueueRepository:
         )
         return job, True
 
+    async def list_admin_jobs(
+        self,
+        *,
+        status: str | None = None,
+        job_type: str | None = None,
+        user: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Admin ops board rows: join users for email; optional filters."""
+        from platform_api.services.job_types import stage_for_job_type
+
+        limit = max(1, min(int(limit), 200))
+        allowed_status = {"queued", "delayed", "running", "failed"}
+        clauses: list[str] = ["j.status = ANY($1::text[])"]
+        args: list[Any] = [sorted(allowed_status)]
+        arg_i = 2
+
+        if status:
+            status_norm = status.strip().lower()
+            if status_norm not in allowed_status:
+                raise ValueError(f"Unsupported status filter: {status}")
+            clauses = ["j.status = $1"]
+            args = [status_norm]
+            arg_i = 2
+
+        if job_type:
+            clauses.append(f"j.job_type = ${arg_i}")
+            args.append(job_type.strip())
+            arg_i += 1
+
+        user_q = (user or "").strip()
+        if user_q:
+            clauses.append(f"u.email ILIKE ${arg_i}")
+            args.append(f"%{user_q}%")
+            arg_i += 1
+
+        where_sql = " AND ".join(clauses)
+        # Prefer failed/running freshness; otherwise oldest claimable first for backlog.
+        order_sql = (
+            "j.updated_at DESC"
+            if status and status.strip().lower() in {"failed", "running"}
+            else "j.created_at ASC"
+        )
+        args.append(limit)
+        limit_ph = f"${arg_i}"
+
+        rows = await self._pool.fetch(
+            f"""
+            SELECT j.id, j.user_id, u.email AS user_email,
+                   j.batch_id, j.song_id, j.job_type, j.provider, j.status,
+                   j.priority, j.attempts, j.max_attempts, j.last_error,
+                   j.locked_by, j.locked_at, j.run_after, j.created_at, j.updated_at,
+                   EXTRACT(EPOCH FROM (NOW() - j.created_at))::float AS age_seconds
+            FROM job_queue j
+            JOIN users u ON u.id = j.user_id
+            WHERE {where_sql}
+            ORDER BY {order_sql}
+            LIMIT {limit_ph}
+            """,
+            *args,
+        )
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            err = row["last_error"]
+            err_s = str(err) if err else ""
+            if len(err_s) > 300:
+                err_s = err_s[:297] + "..."
+            out.append(
+                {
+                    "id": str(row["id"]),
+                    "user_id": str(row["user_id"]),
+                    "user_email": str(row["user_email"] or ""),
+                    "batch_id": str(row["batch_id"]) if row["batch_id"] else None,
+                    "song_id": str(row["song_id"]) if row["song_id"] else None,
+                    "job_type": str(row["job_type"]),
+                    "stage": stage_for_job_type(str(row["job_type"])),
+                    "provider": row["provider"],
+                    "status": str(row["status"]),
+                    "priority": int(row["priority"] or 0),
+                    "attempts": int(row["attempts"] or 0),
+                    "max_attempts": int(row["max_attempts"] or 5),
+                    "last_error": err_s or None,
+                    "locked_by": row["locked_by"],
+                    "locked_at": row["locked_at"].isoformat() if row["locked_at"] else None,
+                    "run_after": row["run_after"].isoformat() if row["run_after"] else None,
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                    "age_seconds": round(float(row["age_seconds"] or 0.0), 1),
+                }
+            )
+        return out
+
     async def get_metrics(self) -> dict[str, Any]:
         """Queue depth / busy worker snapshot for admin metrics."""
+        from platform_api.services.job_types import stage_for_job_type
+
         status_rows = await self._pool.fetch(
             """
             SELECT status, COUNT(*)::int AS count
@@ -325,16 +419,46 @@ class JobQueueRepository:
             LIMIT 1
             """
         )
-        running = await self._pool.fetch(
+        running_detail = await self._pool.fetch(
             """
-            SELECT locked_by, COUNT(*)::int AS count
-            FROM job_queue
-            WHERE status = 'running'
-              AND locked_by IS NOT NULL
-            GROUP BY locked_by
-            ORDER BY count DESC
+            SELECT j.locked_by, j.job_type, u.email AS user_email
+            FROM job_queue j
+            JOIN users u ON u.id = j.user_id
+            WHERE j.status = 'running'
+              AND j.locked_by IS NOT NULL
+            ORDER BY j.locked_by, j.job_type
             """
         )
+        busy: dict[str, dict[str, Any]] = {}
+        for row in running_detail:
+            wid = str(row["locked_by"])
+            entry = busy.setdefault(
+                wid,
+                {
+                    "worker_id": wid,
+                    "running_jobs": 0,
+                    "job_types": [],
+                    "user_emails": [],
+                    "stages": [],
+                },
+            )
+            entry["running_jobs"] = int(entry["running_jobs"]) + 1
+            jt = str(row["job_type"])
+            stage = stage_for_job_type(jt)
+            email = str(row["user_email"] or "")
+            if jt not in entry["job_types"]:
+                entry["job_types"].append(jt)
+            if stage not in entry["stages"]:
+                entry["stages"].append(stage)
+            if email and email not in entry["user_emails"]:
+                entry["user_emails"].append(email)
+
+        workers_busy = sorted(
+            busy.values(),
+            key=lambda item: int(item["running_jobs"]),
+            reverse=True,
+        )
+
         queued = int(by_status.get("queued", 0)) + int(by_status.get("delayed", 0))
         return {
             "by_status": by_status,
@@ -354,8 +478,5 @@ class JobQueueRepository:
                     else None,
                 }
             ),
-            "workers_busy": [
-                {"worker_id": str(row["locked_by"]), "running_jobs": int(row["count"])}
-                for row in running
-            ],
+            "workers_busy": workers_busy,
         }

@@ -1605,6 +1605,92 @@ async def get_job_queue_metrics(ctx: AdminDep) -> dict[str, Any]:
 
 
 @router.get(
+    "/job-queue/jobs",
+    summary="List durable job_queue rows for ops board (Admin)",
+)
+async def list_job_queue_jobs(
+    ctx: AdminDep,
+    status: str | None = Query(
+        default=None,
+        description="Filter: queued | delayed | running | failed",
+    ),
+    job_type: str | None = Query(default=None, description="Exact job_type filter"),
+    user: str | None = Query(default=None, description="User email substring"),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """Filterable job rows with user email, worker lock, and last_error."""
+    _ = ctx
+    from platform_api.dependencies import get_job_queue_repo
+    from platform_api.exceptions import ValidationError
+
+    try:
+        jobs = await get_job_queue_repo().list_admin_jobs(
+            status=status,
+            job_type=job_type,
+            user=user,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    return {"jobs": jobs, "count": len(jobs)}
+
+
+@router.get(
+    "/job-queue/image-failures",
+    summary="Recent image_jobs failures (Admin)",
+)
+async def list_recent_image_job_failures(
+    ctx: AdminDep,
+    hours: int = Query(default=24, ge=1, le=168, description="Lookback window hours"),
+    limit: int = Query(default=30, ge=1, le=100),
+) -> dict[str, Any]:
+    """Surface provider/image failures that may not appear as job_queue.failed."""
+    _ = ctx
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    rows = await pool.fetch(
+        """
+        SELECT j.id, j.user_id, u.email AS user_email, j.batch_id, j.song_id,
+               j.kind, j.channel_role, j.provider, j.status, j.attempt_count,
+               j.error, j.updated_at,
+               EXTRACT(EPOCH FROM (NOW() - j.updated_at))::float AS age_seconds
+        FROM image_jobs j
+        JOIN users u ON u.id = j.user_id
+        WHERE j.status = 'failed'
+          AND j.updated_at > NOW() - make_interval(hours => $1)
+        ORDER BY j.updated_at DESC
+        LIMIT $2
+        """,
+        int(hours),
+        int(limit),
+    )
+    failures: list[dict[str, Any]] = []
+    for row in rows:
+        err = str(row["error"] or "")
+        if len(err) > 300:
+            err = err[:297] + "..."
+        failures.append(
+            {
+                "id": str(row["id"]),
+                "user_id": str(row["user_id"]),
+                "user_email": str(row["user_email"] or ""),
+                "batch_id": str(row["batch_id"]) if row["batch_id"] else None,
+                "song_id": str(row["song_id"]) if row["song_id"] else None,
+                "kind": str(row["kind"] or ""),
+                "channel_role": str(row["channel_role"] or ""),
+                "provider": row["provider"],
+                "status": str(row["status"]),
+                "attempt_count": int(row["attempt_count"] or 0),
+                "error": err or None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                "age_seconds": round(float(row["age_seconds"] or 0.0), 1),
+            }
+        )
+    return {"failures": failures, "count": len(failures), "hours": int(hours)}
+
+
+@router.get(
     "/billing/cutluy-config",
     response_model=CutluyBillingConfigResponse,
     summary="Get CutLuy billing credentials (Admin)",

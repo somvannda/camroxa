@@ -1,3 +1,5 @@
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Activity,
   AlertTriangle,
@@ -12,6 +14,14 @@ import { StatCard } from '@/components/shared/stat-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -21,7 +31,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useJobQueueMetrics } from '@/hooks/use-job-queue';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  useJobQueueJobs,
+  useJobQueueMetrics,
+  useRecentImageFailures,
+} from '@/hooks/use-job-queue';
+import type { JobQueueStatusFilter } from '@/types/job-queue';
+import { cn } from '@/lib/utils';
 
 const ALERT_LABELS: Record<string, string> = {
   queue_depth_high: 'Queue depth high (≥50)',
@@ -29,6 +46,17 @@ const ALERT_LABELS: Record<string, string> = {
   worker_idle_with_backlog: 'Worker idle with backlog',
   progress_p95_high: '/progress p95 ≥5s',
 };
+
+const JOB_TYPE_OPTIONS = [
+  'all',
+  'execute_batch',
+  'draft',
+  'suno_submit',
+  'retry_song_draft',
+  'retry_song_suno',
+  'run_image_jobs',
+  'run_youtube_uploads',
+] as const;
 
 function formatMs(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return '—';
@@ -51,36 +79,82 @@ function statusTone(
   return 'default';
 }
 
-export default function JobQueuePage() {
-  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } =
-    useJobQueueMetrics();
+function stageBadgeClass(stage: string): string {
+  const s = stage.toLowerCase();
+  if (s === 'draft') return 'border-sky-500/40 text-sky-300';
+  if (s === 'suno') return 'border-fuchsia-500/40 text-fuchsia-300';
+  if (s === 'images') return 'border-violet-500/40 text-violet-300';
+  return 'border-slate-600 text-slate-300';
+}
 
-  const queue = data?.queue;
-  const progress = data?.progress_latency;
-  const alerts = data?.alerts ?? [];
+function shortId(id: string | null | undefined): string {
+  if (!id) return '—';
+  return id.slice(0, 8);
+}
+
+export default function JobQueuePage() {
+  const [statusTab, setStatusTab] = useState<JobQueueStatusFilter>('running');
+  const [jobType, setJobType] = useState<string>('all');
+  const [userFilter, setUserFilter] = useState('');
+  const [userQuery, setUserQuery] = useState('');
+
+  const metricsQuery = useJobQueueMetrics();
+  const jobsQuery = useJobQueueJobs({
+    status: statusTab,
+    job_type: jobType === 'all' ? undefined : jobType,
+    user: userQuery || undefined,
+    limit: 50,
+  });
+  const imageFailuresQuery = useRecentImageFailures(24);
+
+  const queue = metricsQuery.data?.queue;
+  const progress = metricsQuery.data?.progress_latency;
+  const alerts = metricsQuery.data?.alerts ?? [];
   const byTypeRows = Object.entries(queue?.by_type ?? {}).sort(([a], [b]) =>
     a.localeCompare(b),
   );
+  const jobs = jobsQuery.data?.jobs ?? [];
+  const imageFailures = imageFailuresQuery.data?.failures ?? [];
+
+  const isFetching =
+    metricsQuery.isFetching ||
+    jobsQuery.isFetching ||
+    imageFailuresQuery.isFetching;
+
+  const dataUpdatedAt = Math.max(
+    metricsQuery.dataUpdatedAt || 0,
+    jobsQuery.dataUpdatedAt || 0,
+    imageFailuresQuery.dataUpdatedAt || 0,
+  );
+
+  const failedCountHint = useMemo(() => {
+    const n = queue?.failed ?? 0;
+    return n > 0 ? `${n} terminal failed rows` : 'terminal failed rows';
+  }, [queue?.failed]);
 
   return (
     <div className="space-y-6 p-6">
       <PageHeader
         title="Job Queue"
-        description="Live depth for camxora-worker, busy locks, and /progress latency samples from this API process."
+        description="Live durable workers: who is running what, which stage pool is busy, and why jobs failed (including image provider failures)."
         actions={
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate-500">
               {dataUpdatedAt
                 ? `Updated ${new Date(dataUpdatedAt).toLocaleTimeString()}`
-                : 'Auto-refresh 15s'}
+                : 'Auto-refresh ~8s'}
             </span>
             <Button
               variant="outline"
-              onClick={() => refetch()}
+              onClick={() => {
+                void metricsQuery.refetch();
+                void jobsQuery.refetch();
+                void imageFailuresQuery.refetch();
+              }}
               disabled={isFetching}
             >
               <RefreshCw
-                className={`mr-2 h-4 w-4 ${isFetching ? 'animate-spin' : ''}`}
+                className={cn('mr-2 h-4 w-4', isFetching && 'animate-spin')}
               />
               Refresh
             </Button>
@@ -88,7 +162,7 @@ export default function JobQueuePage() {
         }
       />
 
-      {isLoading ? (
+      {metricsQuery.isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
             <Skeleton key={index} className="h-28 w-full" />
@@ -96,21 +170,21 @@ export default function JobQueuePage() {
         </div>
       ) : null}
 
-      {isError ? (
+      {metricsQuery.isError ? (
         <Card className="border-red-500/30 bg-red-500/5">
           <CardContent className="space-y-3 p-6">
             <p className="text-sm text-red-300">
               Unable to load job-queue metrics. Confirm the API is up and your
               admin session is valid.
             </p>
-            <Button variant="outline" onClick={() => refetch()}>
+            <Button variant="outline" onClick={() => void metricsQuery.refetch()}>
               Retry
             </Button>
           </CardContent>
         </Card>
       ) : null}
 
-      {data && queue && progress ? (
+      {metricsQuery.data && queue && progress ? (
         <>
           {alerts.length > 0 ? (
             <Card className="border-amber-500/30 bg-amber-500/5">
@@ -147,7 +221,13 @@ export default function JobQueuePage() {
               value={queue.queued_depth}
               hint="queued + delayed claimable"
               icon={ListOrdered}
-              tone={queue.queued_depth >= 50 ? 'danger' : queue.queued_depth > 0 ? 'warning' : 'success'}
+              tone={
+                queue.queued_depth >= 50
+                  ? 'danger'
+                  : queue.queued_depth > 0
+                    ? 'warning'
+                    : 'success'
+              }
             />
             <StatCard
               label="Running"
@@ -163,7 +243,7 @@ export default function JobQueuePage() {
             <StatCard
               label="Failed"
               value={queue.failed}
-              hint="terminal failed rows"
+              hint={failedCountHint}
               icon={AlertTriangle}
               tone={queue.failed > 0 ? 'danger' : 'default'}
             />
@@ -181,6 +261,203 @@ export default function JobQueuePage() {
               }
             />
           </div>
+
+          <Card className="border-slate-800 bg-slate-900/40">
+            <CardHeader>
+              <CardTitle className="text-base text-slate-100">
+                Busy workers
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {queue.workers_busy.length === 0 ? (
+                <p className="text-sm text-slate-500">No running locks.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Worker</TableHead>
+                      <TableHead>Stage</TableHead>
+                      <TableHead>Job types</TableHead>
+                      <TableHead>Users</TableHead>
+                      <TableHead className="text-right">Running</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {queue.workers_busy.map((worker) => (
+                      <TableRow key={worker.worker_id}>
+                        <TableCell className="max-w-[220px] truncate font-mono text-xs">
+                          {worker.worker_id}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {(worker.stages?.length
+                              ? worker.stages
+                              : ['—']
+                            ).map((stage) => (
+                              <Badge
+                                key={`${worker.worker_id}-${stage}`}
+                                variant="outline"
+                                className={stageBadgeClass(stage)}
+                              >
+                                {stage}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-slate-300">
+                          {(worker.job_types ?? []).join(', ') || '—'}
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-300">
+                          {(worker.user_emails ?? []).slice(0, 3).join(', ') ||
+                            '—'}
+                          {(worker.user_emails?.length ?? 0) > 3
+                            ? ` +${(worker.user_emails?.length ?? 0) - 3}`
+                            : ''}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {worker.running_jobs}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900/40">
+            <CardHeader className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <CardTitle className="text-base text-slate-100">
+                  Jobs
+                </CardTitle>
+                <Tabs
+                  value={statusTab}
+                  onValueChange={(value) =>
+                    setStatusTab(value as JobQueueStatusFilter)
+                  }
+                >
+                  <TabsList>
+                    <TabsTrigger value="running">Running</TabsTrigger>
+                    <TabsTrigger value="queued">Queued</TabsTrigger>
+                    <TabsTrigger value="delayed">Delayed</TabsTrigger>
+                    <TabsTrigger value="failed">Failed</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Select value={jobType} onValueChange={setJobType}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Job type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {JOB_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option === 'all' ? 'All job types' : option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <form
+                  className="flex gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    setUserQuery(userFilter.trim());
+                  }}
+                >
+                  <Input
+                    value={userFilter}
+                    onChange={(event) => setUserFilter(event.target.value)}
+                    placeholder="Filter by user email"
+                    className="w-[240px]"
+                  />
+                  <Button type="submit" variant="outline">
+                    Apply
+                  </Button>
+                </form>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {jobsQuery.isLoading ? (
+                <Skeleton className="h-40 w-full" />
+              ) : jobsQuery.isError ? (
+                <p className="text-sm text-red-300">
+                  Failed to load jobs. Try refresh.
+                </p>
+              ) : jobs.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No {statusTab} jobs match the filters.
+                </p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Age</TableHead>
+                      <TableHead>Stage</TableHead>
+                      <TableHead>Job type</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Batch</TableHead>
+                      <TableHead>Worker</TableHead>
+                      <TableHead>Attempts</TableHead>
+                      <TableHead>Error</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {jobs.map((job) => (
+                      <TableRow key={job.id}>
+                        <TableCell className="whitespace-nowrap text-xs text-slate-400">
+                          {formatAge(job.age_seconds)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={stageBadgeClass(job.stage)}
+                          >
+                            {job.stage}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {job.job_type}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <Link
+                            to={`/users/${job.user_id}`}
+                            className="text-violet-300 hover:underline"
+                          >
+                            {job.user_email || shortId(job.user_id)}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {job.batch_id ? (
+                            <Link
+                              to={`/batches/${job.batch_id}`}
+                              className="text-sky-300 hover:underline"
+                            >
+                              {shortId(job.batch_id)}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="max-w-[160px] truncate font-mono text-xs text-slate-400">
+                          {job.locked_by || '—'}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {job.attempts}/{job.max_attempts}
+                        </TableCell>
+                        <TableCell
+                          className="max-w-[280px] truncate text-xs text-red-300"
+                          title={job.last_error ?? undefined}
+                        >
+                          {job.last_error || '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="border-slate-800 bg-slate-900/40">
@@ -219,26 +496,43 @@ export default function JobQueuePage() {
             <Card className="border-slate-800 bg-slate-900/40">
               <CardHeader>
                 <CardTitle className="text-base text-slate-100">
-                  Oldest claimable
+                  By job type
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm text-slate-300">
-                {queue.oldest_claimable ? (
-                  <>
-                    <div>
-                      <span className="text-slate-500">Type · </span>
-                      {queue.oldest_claimable.job_type}
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Age · </span>
-                      {formatAge(queue.oldest_claimable.age_seconds)}
-                    </div>
-                    <div className="font-mono text-xs text-slate-500">
-                      {queue.oldest_claimable.id}
-                    </div>
-                  </>
+              <CardContent>
+                {byTypeRows.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    No queued, delayed, or running jobs.
+                  </p>
                 ) : (
-                  <p className="text-slate-500">Queue is empty.</p>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Job type</TableHead>
+                        <TableHead className="text-right">Queued</TableHead>
+                        <TableHead className="text-right">Delayed</TableHead>
+                        <TableHead className="text-right">Running</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {byTypeRows.map(([type, counts]) => (
+                        <TableRow key={type}>
+                          <TableCell className="font-mono text-xs">
+                            {type}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {counts.queued ?? 0}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {counts.delayed ?? 0}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {counts.running ?? 0}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 )}
               </CardContent>
             </Card>
@@ -247,38 +541,67 @@ export default function JobQueuePage() {
           <Card className="border-slate-800 bg-slate-900/40">
             <CardHeader>
               <CardTitle className="text-base text-slate-100">
-                By job type
+                Related: image job failures (24h)
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {byTypeRows.length === 0 ? (
+              {imageFailuresQuery.isLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : imageFailures.length === 0 ? (
                 <p className="text-sm text-slate-500">
-                  No queued, delayed, or running jobs.
+                  No failed image_jobs in the last 24 hours. Provider failures
+                  show here even when the queue orchestrator finished.
                 </p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Job type</TableHead>
-                      <TableHead className="text-right">Queued</TableHead>
-                      <TableHead className="text-right">Delayed</TableHead>
-                      <TableHead className="text-right">Running</TableHead>
+                      <TableHead>Age</TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Kind</TableHead>
+                      <TableHead>Provider</TableHead>
+                      <TableHead>Batch</TableHead>
+                      <TableHead>Error</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {byTypeRows.map(([jobType, counts]) => (
-                      <TableRow key={jobType}>
+                    {imageFailures.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="whitespace-nowrap text-xs text-slate-400">
+                          {formatAge(row.age_seconds)}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <Link
+                            to={`/users/${row.user_id}`}
+                            className="text-violet-300 hover:underline"
+                          >
+                            {row.user_email || shortId(row.user_id)}
+                          </Link>
+                        </TableCell>
                         <TableCell className="font-mono text-xs">
-                          {jobType}
+                          {row.kind}
+                          {row.channel_role ? `/${row.channel_role}` : ''}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {counts.queued ?? 0}
+                        <TableCell className="text-xs">
+                          {row.provider || '—'}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {counts.delayed ?? 0}
+                        <TableCell className="font-mono text-xs">
+                          {row.batch_id ? (
+                            <Link
+                              to={`/batches/${row.batch_id}`}
+                              className="text-sky-300 hover:underline"
+                            >
+                              {shortId(row.batch_id)}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {counts.running ?? 0}
+                        <TableCell
+                          className="max-w-[320px] truncate text-xs text-red-300"
+                          title={row.error ?? undefined}
+                        >
+                          {row.error || '—'}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -288,42 +611,8 @@ export default function JobQueuePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-800 bg-slate-900/40">
-            <CardHeader>
-              <CardTitle className="text-base text-slate-100">
-                Busy workers
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {queue.workers_busy.length === 0 ? (
-                <p className="text-sm text-slate-500">No running locks.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Worker id</TableHead>
-                      <TableHead className="text-right">Running jobs</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {queue.workers_busy.map((worker) => (
-                      <TableRow key={worker.worker_id}>
-                        <TableCell className="font-mono text-xs">
-                          {worker.worker_id}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {worker.running_jobs}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {data.note ? (
-            <p className="text-xs text-slate-500">{data.note}</p>
+          {metricsQuery.data.note ? (
+            <p className="text-xs text-slate-500">{metricsQuery.data.note}</p>
           ) : null}
         </>
       ) : null}
