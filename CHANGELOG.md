@@ -9,6 +9,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-08-11
+
 ### Added
 
 - Manual export hard-gates on live preview vs export renderer JSON (focus keys);
@@ -19,6 +21,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Desktop version stamp **1.2.2** / installer `CamxoraSetup-1.2.2.exe`. Publish with
+  **Force update** (mandatory) in Admin → Software Updates so **1.2.1** clients upgrade.
+  Requires matching `platform_api` with `structure_mode=suno`. Detail:
+  `docs/changelog/2026-08-11-desktop-1.2.2.md`.
 - Sandbox desktop single-instance lock is env-scoped so sandbox can run alongside production; production keeps `Camxora.DesktopStudio.SingleInstance.v1`. See `docs/changelog/2026-08-10-sandbox-dual-instance-lock.md`.
 - Lightning layer stack capped at **10 bolts** (Add/Dup disabled at the cap;
   templates normalize to at most 10). Preview and export both keep every layer

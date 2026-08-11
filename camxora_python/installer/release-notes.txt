@@ -1,37 +1,35 @@
-﻿Camxora 1.2.1
-Image regenerate, Suno paths, prompt cap & on-open force update
-August 8, 2026
+﻿Camxora 1.2.2
+Suno Structure, video WYSIWYG, lightning cap & sandbox dual-instance
+August 11, 2026
 
 What's new
 ----------
-• Force update only when opening the app — before login or the studio.
-  Mid-session: a green update icon appears in the header (left of
-  notifications) so you can update when ready.
-• Image Regenerate Background / Thumbnail replaces the previous local
-  PNG instead of keeping a stale file when the server reuses the path.
-• Preferences Local Paths keeps FFmpeg + Suno output dir only; saving
-  Preferences no longer overwrites your Suno root with a stale AppData
-  path from account settings.
-• Image page Background / Thumbnail prompts show a live current / 5000
-  counter and hard-cap at 5000 characters (matches the API gate).
-• Startup splash no longer flashes as if Camxora closed/reopened when
-  Video workspace prewarm mounts the GPU preview.
+• Music Automation Structure adds Suno Structure (native free section
+  layout) beside AI Structure and Music Structure templates. Structure
+  Shuffle stays off for AI/Suno free modes (restore and saved settings
+  cannot turn it back on).
+• Manual Export hard-gates when live preview renderer JSON diverges from
+  export — spectrum glow / Raise Scroll / Row Width and lightning sampling
+  match the stage (WYSIWYG).
+• Lightning layer stack capped at 10 bolts (Add/Dup locked at the cap).
+• Video export Resolution / FPS / Speed / Workers saves no longer crash
+  when edited rapidly (coalesced PatchSettingsWorker + local prefs mirror).
+• Sandbox builds can run beside a production install (separate single-
+  instance lock). Production lock name is unchanged.
 
-Also included from 1.2.0
+Also included from 1.2.1
 ------------------------
-• Progress run-folder remapping, Download missing MP3s, export Quality /
-  Best Quality + Recommended bitrate, lossless merge gate.
-• Cleaner ConnectError copy; Image source UI Category + Prompt only.
+• On-open-only force update + header update icon.
+• Image regenerate overwrites stale local PNGs; prompt 5000-char cap.
+• Preferences Local Paths: FFmpeg + Suno output dir only; splash OpenGL fix.
 
 Requirements
 ------------
-• Production API already deployed for album/run-dir lock, Alt CDN heal,
-  relative run keys, null sample-path guard, and image prompt modes.
-• Installer: CamxoraSetup-1.2.1.exe
+• Matching platform_api with Suno Structure (`structure_mode=suno`) must
+  be deployed — older APIs reject the new dropdown value.
+• Installer: CamxoraSetup-1.2.2.exe
 • Publish this release in Admin → Software Updates with Force update
-  (mandatory) enabled. Clients on 1.2.1+ pick up the next mandatory
-  release on app open; 1.2.0 users need this installer once (manual or
-  prior push behavior).
+  (mandatory) enabled so 1.2.1 clients pick it up on app open.
 
 Coming later
 ------------
