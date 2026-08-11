@@ -333,25 +333,47 @@ def _frozen_analysis_lock() -> Iterator[None]:
                 pass
 
 
-def _spectrum_mag_frozen(y: np.ndarray, *, n_fft: int, hop_length: int) -> np.ndarray:
-    """STFT magnitude without librosa/OpenBLAS — safe under parallel frozen workers."""
-    from scipy import signal
-
+def _spectrum_mag_numpy(y: np.ndarray, *, n_fft: int, hop_length: int) -> np.ndarray:
+    """Hann-windowed STFT magnitude using NumPy only (no SciPy)."""
     mono = np.asarray(y, dtype=np.float32).reshape(-1)
     n_fft_i = int(max(16, n_fft))
     hop_i = int(max(1, hop_length))
-    noverlap = int(max(0, n_fft_i - hop_i))
-    _freqs, _times, zxx = signal.stft(
-        mono,
-        fs=1.0,
-        window="hann",
-        nperseg=n_fft_i,
-        noverlap=noverlap,
-        nfft=n_fft_i,
-        boundary=None,
-        padded=False,
-    )
-    return np.abs(zxx).astype(np.float32)
+    if mono.size < n_fft_i:
+        mono = np.pad(mono, (0, int(n_fft_i - mono.size)))
+    window = np.hanning(n_fft_i).astype(np.float32)
+    frames = 1 + max(0, (int(mono.size) - n_fft_i) // hop_i)
+    if frames <= 0:
+        return np.zeros((n_fft_i // 2 + 1, 0), dtype=np.float32)
+    # Shape (frames, n_fft) then rfft → (n_fft//2+1, frames)
+    idx = (np.arange(n_fft_i, dtype=np.int64)[None, :] + (np.arange(frames, dtype=np.int64) * hop_i)[:, None])
+    framed = mono[idx] * window[None, :]
+    spec = np.fft.rfft(framed, n=n_fft_i, axis=1)
+    return np.abs(spec).astype(np.float32).T
+
+
+def _spectrum_mag_frozen(y: np.ndarray, *, n_fft: int, hop_length: int) -> np.ndarray:
+    """STFT magnitude without librosa/OpenBLAS — safe under parallel frozen workers."""
+    try:
+        from scipy import signal
+
+        mono = np.asarray(y, dtype=np.float32).reshape(-1)
+        n_fft_i = int(max(16, n_fft))
+        hop_i = int(max(1, hop_length))
+        noverlap = int(max(0, n_fft_i - hop_i))
+        _freqs, _times, zxx = signal.stft(
+            mono,
+            fs=1.0,
+            window="hann",
+            nperseg=n_fft_i,
+            noverlap=noverlap,
+            nfft=n_fft_i,
+            boundary=None,
+            padded=False,
+        )
+        return np.abs(zxx).astype(np.float32)
+    except Exception as exc:
+        _audio_diag(f"scipy STFT unavailable ({type(exc).__name__}: {exc}); using NumPy STFT")
+        return _spectrum_mag_numpy(y, n_fft=n_fft, hop_length=hop_length)
 
 
 def _onset_from_mag(mag: np.ndarray) -> np.ndarray:

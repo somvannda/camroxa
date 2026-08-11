@@ -40,6 +40,11 @@ def verify_dist(dist_dir: Path) -> list[str]:
     if not certifi_hits:
         missing.append("_internal/**/cacert.pem")
 
+    # SciPy 1.17+ needs numpy._core in frozen installs (compat package on NumPy 1.26).
+    numpy_core = dist_dir / "_internal" / "numpy" / "_core"
+    if not numpy_core.is_dir():
+        missing.append("_internal/numpy/_core/")
+
     # GPU / OpenGL stack markers (presence means packaging pulled them in).
     internal = dist_dir / "_internal"
     if internal.is_dir():

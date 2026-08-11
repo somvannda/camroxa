@@ -9,8 +9,20 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-08-11
+
+### Fixed
+
+- **Frozen Manual Export:** `ImportError: numpy._core.multiarray failed to
+  import` when SciPy 1.17 loaded in the PyInstaller build (NumPy 1.26’s
+  `_core` compat package was omitted). Bundle `numpy`/`scipy` fully and add a
+  NumPy-only STFT fallback. See
+  `docs/changelog/2026-08-11-frozen-numpy-core-export.md`.
+
 ### Changed
 
+- Desktop version stamp **1.2.5** / installer `CamxoraSetup-1.2.5.exe`. Publish
+  with **Force update** so **1.2.4** clients upgrade.
 - **Software update gate UI:** Simplified centered card with Camxora logo and
   compact Install CTA (no What’s new section). Preview with
   `CAMXORA_PREVIEW_UPDATE_GATE=1`. See
