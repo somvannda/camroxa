@@ -51,3 +51,15 @@ def test_gpu_render_binds_scroll_spectrum_heights() -> None:
     # Local import inside run_gpu_render is what the frame loop resolves first.
     assert "scroll_spectrum_heights," in text or "scroll_spectrum_heights\n" in text
     assert "scroll_spectrum_heights(render_fft" in text
+
+
+def test_preview_widget_binds_scroll_and_linear_span() -> None:
+    """Live preview must honor Raise Scroll + Row Width like export."""
+    import visualizer.preview_widget as preview_widget
+
+    src = preview_widget.__file__ or ""
+    assert src
+    text = open(src, encoding="utf-8").read()
+    assert "scroll_spectrum_heights" in text
+    assert "scroll_spectrum_heights(render_fft" in text
+    assert 'linear_span=float(sl.get("linearSpan"' in text or "linear_span=float(sl.get('linearSpan'" in text

@@ -33,8 +33,9 @@ def test_normalize_export_speed_mode() -> None:
 def test_export_glow_pass_limit_by_tier() -> None:
     assert export_glow_pass_limit("very_fast") == 0
     assert export_glow_pass_limit("draft") == 0
-    assert export_glow_pass_limit("fast") == 0
-    assert export_glow_pass_limit("balanced") == 0
+    # Fast/Balance must keep dual glow so spectrum wings match live preview.
+    assert export_glow_pass_limit("fast") == 2
+    assert export_glow_pass_limit("balanced") == 2
     assert export_glow_pass_limit("quality") == 2
     assert export_glow_pass_limit("best_quality") == 2
     assert export_glow_pass_limit("master") == 2

@@ -11,11 +11,36 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Manual export hard-gates on live preview vs export renderer JSON (focus keys);
+  mismatch blocks the track, notifies, and writes a parity report under client
+  logs. Lightning export samples ~60 Hz per-layer peaks so encode FPS timing
+  matches preview. See `docs/changelog/2026-08-11-preview-export-parity-gate.md`.
 - Music Automation Structure dropdown includes **Suno Structure** (native free section layout) alongside AI Structure and Music Structure templates. Structure Shuffle is locked off for AI/Suno Structure (settings restore and saved `shuffleStructure` cannot resurrect it). See `docs/changelog/2026-08-10-suno-structure-mode.md`.
 
 ### Changed
 
 - Sandbox desktop single-instance lock is env-scoped so sandbox can run alongside production; production keeps `Camxora.DesktopStudio.SingleInstance.v1`. See `docs/changelog/2026-08-10-sandbox-dual-instance-lock.md`.
+
+### Fixed
+
+- Live preview now applies layer **Raise Scroll** (`frequencyScroll`) and **Row Width**
+  (`linearSpan`) from renderer JSON — previously only export honored them.
+  See spectrum UI↔JSON audit below.
+- Preview FFT envelope now matches export: catch up on seek, and do **not** keep
+  re-smoothing the same analysis frame while paused (that made scrubbed 0:24 look
+  colder/tighter than export). Shared `fft_to_log_bins` + `smooth_and_mirror`.
+- Export spectrum reactivity now uses **60 Hz** audio analysis like live preview
+  (was 30 Hz). See `docs/changelog/2026-08-11-export-spectrum-60hz-analysis.md`.
+- Fast/Balance export now draws the same dual spectrum **glow** passes as live
+  preview (was skipped for speed), so Bass Drive wings match the stage.
+  See `docs/changelog/2026-08-11-export-spectrum-glow-wysiwyg.md`.
+- Spectrum **Glow Strength / Softness** export used full `ONE,ONE` additive
+  blending while preview used alpha-weighted additive — export wings looked
+  much larger with glow on. Export now matches preview blend + shared pass
+  specs. See `docs/changelog/2026-08-11-spectrum-glow-blend-parity.md`.
+- Export no longer injects factory default spectrum rings when an instance has
+  empty layers (uses top-level `layers` only). See
+  `docs/changelog/2026-08-11-preview-export-parity-gate.md`.
 
 ## [1.2.1] - 2026-08-08
 

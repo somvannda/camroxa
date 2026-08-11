@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import moderngl
@@ -67,14 +68,37 @@ def peak_lightning_flash(
     audio_env: float | None = None,
 ) -> float:
     """Max per-layer flash (0..1) for this frame — used to sync BG/vignette with strikes."""
+    peaks = peak_lightning_flash_by_layer(
+        template,
+        time_sec=time_sec,
+        bass=bass,
+        kick=kick,
+        beat=beat,
+        onset=onset,
+        audio_env=audio_env,
+    )
+    return float(max(peaks.values()) if peaks else 0.0)
+
+
+def peak_lightning_flash_by_layer(
+    template: dict,
+    *,
+    time_sec: float,
+    bass: float = 0.0,
+    kick: float = 0.0,
+    beat: float = 0.0,
+    onset: float = 0.0,
+    audio_env: float | None = None,
+) -> dict[int, float]:
+    """Per-layer flash (0..1) at ``time_sec`` — keyed by layer index."""
     if not bool(template.get("lightningEnabled", False)):
-        return 0.0
+        return {}
     raw_layers = template.get("lightningLayers")
     if not isinstance(raw_layers, list) or not raw_layers:
-        return 0.0
+        return {}
     layers = normalize_lightning_layers(raw_layers)
     env = float(audio_env) if audio_env is not None else float(max(bass, kick, 0.0))
-    peak = 0.0
+    out: dict[int, float] = {}
     for layer_idx, layer in enumerate(layers):
         if not bool(layer.get("enabled", True)):
             continue
@@ -99,9 +123,54 @@ def peak_lightning_flash(
         )
         intensity = _layer_float(layer, "intensity", 0.72)
         flash = float(max(0.0, min(1.0, flash * (0.35 + 0.65 * intensity) * opacity)))
-        if flash > peak:
-            peak = flash
-    return float(peak)
+        if flash > 0.0:
+            out[layer_idx] = flash
+    return out
+
+
+def sample_lightning_layer_peaks_over_interval(
+    template: dict,
+    *,
+    time_sec: float,
+    encode_dt: float,
+    bass: float = 0.0,
+    kick: float = 0.0,
+    beat: float = 0.0,
+    onset: float = 0.0,
+    audio_env: float | None = None,
+    sample_hz: float = 60.0,
+) -> tuple[float, dict[int, float]]:
+    """Peak per-layer flash inside ``[time_sec, time_sec + encode_dt)`` at ~60 Hz.
+
+    Returns ``(global_peak, {layer_index: peak})`` so export can lift only the
+    layers that actually struck (preview-like), not every bolt.
+    """
+    dt = float(max(0.0, encode_dt))
+    hz = float(max(1.0, sample_hz))
+    step = 1.0 / hz
+    samples = max(1, int(math.ceil(dt * hz)) if dt > 0.0 else 1)
+    peaks: dict[int, float] = {}
+    global_peak = 0.0
+    for sample_i in range(samples):
+        t = float(time_sec) + float(sample_i) * step
+        if dt > 0.0 and t >= float(time_sec) + dt and sample_i > 0:
+            break
+        sample_peaks = peak_lightning_flash_by_layer(
+            template,
+            time_sec=t,
+            bass=bass,
+            kick=kick,
+            beat=beat,
+            onset=onset,
+            audio_env=audio_env,
+        )
+        for layer_idx, flash in sample_peaks.items():
+            prev = peaks.get(layer_idx, 0.0)
+            if flash > prev:
+                peaks[layer_idx] = flash
+            if flash > global_peak:
+                global_peak = flash
+    return float(global_peak), peaks
 
 
 def apply_vignette_reactivity(
@@ -137,13 +206,15 @@ def render_lightning_layers_gl(
     onset: float = 0.0,
     audio_env: float | None = None,
     flash_override: float | None = None,
+    flash_overrides_by_layer: dict[int, float] | None = None,
     opaque_framebuffer_alpha: bool = True,
 ) -> None:
     """Draw lightning over background / under spectrum+logo. No-op when disabled.
 
-    ``flash_override`` (0..1) is the peak flash sampled over an encode interval
-    (export at <60 fps). When set, each layer's envelope is raised to at least
-    that peak so short strikes are not missed between encode frames.
+    ``flash_overrides_by_layer`` maps layer index → peak flash (0..1) sampled over
+    an encode interval (export at <60 fps). Only those layers are raised, matching
+    preview per-bolt timing. Legacy ``flash_override`` (global peak) is ignored when
+    the per-layer map is provided.
 
     When ``opaque_framebuffer_alpha`` is True (preview default), RGB blends
     normally/additively while destination alpha stays 1 so Qt translucent
@@ -157,12 +228,23 @@ def render_lightning_layers_gl(
 
     layers = normalize_lightning_layers(raw_layers)
     env = float(audio_env) if audio_env is not None else float(max(bass, kick, 0.0))
-    peak_floor = 0.0
-    if flash_override is not None:
+    per_layer_floor: dict[int, float] = {}
+    if isinstance(flash_overrides_by_layer, dict):
+        for key, value in flash_overrides_by_layer.items():
+            try:
+                idx = int(key)
+                per_layer_floor[idx] = float(max(0.0, min(1.0, float(value))))
+            except (TypeError, ValueError):
+                continue
+    elif flash_override is not None:
+        # Legacy global floor — keep for older call sites, but prefer per-layer.
         try:
-            peak_floor = float(max(0.0, min(1.0, float(flash_override))))
+            legacy = float(max(0.0, min(1.0, float(flash_override))))
         except (TypeError, ValueError):
-            peak_floor = 0.0
+            legacy = 0.0
+        if legacy > 0.0:
+            for layer_idx in range(len(layers)):
+                per_layer_floor[layer_idx] = legacy
 
     for layer_idx, layer in enumerate(layers):
         if not bool(layer.get("enabled", True)):
@@ -192,8 +274,9 @@ def render_lightning_layers_gl(
         )
         intensity = _layer_float(layer, "intensity", 0.72)
         flash = float(max(0.0, min(1.0, flash * (0.35 + 0.65 * intensity))))
+        peak_floor = float(per_layer_floor.get(layer_idx, 0.0))
         if peak_floor > flash:
-            # Keep strike visible when export undersamples the 60 Hz envelope.
+            # Keep this layer's strike visible when export undersamples the 60 Hz envelope.
             flash = float(max(flash, peak_floor * (0.35 + 0.65 * intensity) * opacity_base))
             flash = float(max(0.0, min(1.0, flash)))
         if flash <= 0.02:

@@ -77,6 +77,63 @@ def smooth_fft_envelope(prev: np.ndarray, target: np.ndarray, smoothing: float) 
     return (prev * s + target * (1.0 - s)).astype(np.float32)
 
 
+def build_spectrum_glow_pass_specs(
+    *,
+    glow_strength: float,
+    glow_softness: float,
+    layer_opacity: float,
+    bar_width_px: float,
+    spike_height_px: float,
+    sf: float,
+    fill_circle: bool,
+    glow_pass_limit: int = 2,
+) -> list[dict]:
+    """Shared Glow Strength/Softness pass list for preview + export (WYSIWYG).
+
+    ``glow_strength`` is 0..1 (UI 0..100 / 100). ``glow_softness`` is blur 0..30.
+    Spike/bar extras scale with ``sf`` the same way on both paths.
+    """
+    strength = float(max(0.0, min(1.0, glow_strength)))
+    softness = float(max(0.0, min(30.0, glow_softness)))
+    opacity = float(max(0.0, min(1.0, layer_opacity)))
+    scale = float(sf)
+    limit = int(max(0, glow_pass_limit))
+    specs: list[dict] = []
+    if strength > 0.0 and limit >= 1:
+        specs.append(
+            {
+                "is_glow": True,
+                "alpha": opacity * (0.14 + strength * 0.22),
+                "bar_width": float(bar_width_px) + ((softness * 1.8) + (strength * 18.0)) * scale,
+                "spike_height": float(spike_height_px) + ((softness * 2.2) + (strength * 22.0)) * scale,
+                "thickness": float(spike_height_px) + ((softness * 2.2) + (strength * 22.0)) * scale,
+                "fill_circle": False,
+            }
+        )
+        if limit >= 2:
+            specs.append(
+                {
+                    "is_glow": True,
+                    "alpha": opacity * (0.08 + strength * 0.15),
+                    "bar_width": float(bar_width_px) + ((softness * 3.0) + (strength * 32.0)) * scale,
+                    "spike_height": float(spike_height_px) + ((softness * 3.4) + (strength * 34.0)) * scale,
+                    "thickness": float(spike_height_px) + ((softness * 3.4) + (strength * 34.0)) * scale,
+                    "fill_circle": False,
+                }
+            )
+    specs.append(
+        {
+            "is_glow": False,
+            "alpha": opacity,
+            "bar_width": float(bar_width_px),
+            "spike_height": float(spike_height_px),
+            "thickness": float(spike_height_px),
+            "fill_circle": bool(fill_circle),
+        }
+    )
+    return specs
+
+
 def smooth_and_mirror(fft_s: np.ndarray, mirrored: bool) -> np.ndarray:
     """Apply 5-tap smoothing and optional mirroring (vectorized).
     

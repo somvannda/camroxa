@@ -13,6 +13,7 @@ from typing import Any, Callable
 import glfw
 import moderngl
 from ._spectrum_fast import (
+    build_spectrum_glow_pass_specs,
     normalize_spectrum_gravity,
     resolve_bar_pixel_width,
     scroll_spectrum_heights,
@@ -32,6 +33,41 @@ def _audio_bar_height_mult(template: dict) -> float:
     return _audio_bar_height_mult_from_audio(audio)
 
 
+def resolve_export_analysis_fps(
+    *,
+    env: dict[str, str] | None = None,
+    existing_analyzer_fps: int | None = None,
+) -> int:
+    """Analysis STFT rate for export — must match preview (60) for spectrum wing parity."""
+    if existing_analyzer_fps is not None:
+        try:
+            return int(max(1, min(60, int(existing_analyzer_fps))))
+        except (TypeError, ValueError):
+            pass
+    raw_env = (env if env is not None else os.environ).get("CAMXORA_EXPORT_ANALYSIS_FPS", "60")
+    try:
+        value = int(str(raw_env or "60").strip())
+    except (TypeError, ValueError):
+        value = 60
+    return int(max(15, min(60, value)))
+
+
+def resolve_template_react_gain(audio_settings: dict | None) -> float:
+    """Match preview_widget: prefer inputGain, then sensitivity."""
+    src = audio_settings if isinstance(audio_settings, dict) else {}
+    try:
+        value = float(
+            src.get("inputGain", src.get("sensitivity", 1.0))
+            if src.get("inputGain", src.get("sensitivity", None)) is not None
+            else 1.0
+        )
+    except (TypeError, ValueError):
+        value = 1.0
+    if not value:
+        value = 1.0
+    return float(value)
+
+
 def _gpu_spectrum_layer_key(inst_idx: int, layer_idx: int) -> int:
     return int(inst_idx) * 256 + int(layer_idx)
 
@@ -46,13 +82,33 @@ def blend_rgb_normal_opaque_alpha(ctx: moderngl.Context) -> None:
 
 
 def blend_rgb_additive_opaque_alpha(ctx: moderngl.Context) -> None:
-    """RGB additive bloom; keep framebuffer alpha opaque (Qt translucent window)."""
+    """RGB additive bloom; keep framebuffer alpha opaque (Qt translucent window).
+
+    Must stay ``SRC_ALPHA, ONE`` — **not** ``moderngl.ADDITIVE_BLENDING``
+    (``ONE, ONE``). Spectrum Glow Strength/Softness passes use low alpha; full
+    ``ONE, ONE`` additive ignores that alpha and makes export wings much larger
+    / hotter than live preview (which uses this same alpha-weighted blend).
+    """
     ctx.blend_func = (
         moderngl.SRC_ALPHA,
         moderngl.ONE,
         moderngl.ZERO,
         moderngl.ONE,
     )
+
+
+def apply_spectrum_pass_blend(
+    ctx: moderngl.Context,
+    *,
+    is_glow: bool,
+    blend_mode: str = "normal",
+) -> None:
+    """Match preview_widget ``_blend_additive`` / ``_blend_normal`` for spectrum."""
+    mode = str(blend_mode or "normal").lower().strip()
+    if is_glow or mode in ("screen", "add", "lighten"):
+        blend_rgb_additive_opaque_alpha(ctx)
+    else:
+        blend_rgb_normal_opaque_alpha(ctx)
 
 
 def _compose_scene_post_to_out(
@@ -2221,14 +2277,15 @@ def export_glow_pass_limit(speed_mode: str | None) -> int:
     """How many spectrum bloom/glow passes to draw during export.
 
     Preview always draws up to two additive glow layers under the main pass.
-    Heavy templates (e.g. Bass Drive liquid + glow=100) pay that cost every
-    frame on the CPU waveform path. Speed tiers trade glow for throughput:
+    Export must match that for WYSIWYG — skipping glow on Balance/Fast made
+    spectrum "wings" read shorter/tighter than live preview even when FFT and
+    JSON matched. Only the emergency draft tiers may drop glow for throughput:
 
-    - ``very_fast`` / ``draft`` / ``fast`` / ``balanced``: skip glow (0)
-    - ``quality`` / ``best_quality``: full dual glow (2)
+    - ``very_fast`` / ``draft``: skip glow (0)
+    - ``fast`` / ``balanced`` / ``quality`` / ``best_quality``: full dual glow (2)
     """
     mode = normalize_export_speed_mode(speed_mode)
-    if mode in {"very_fast", "draft", "fast", "balanced"}:
+    if mode in {"very_fast", "draft"}:
         return 0
     return 2
 
@@ -2598,9 +2655,11 @@ def run_gpu_render(
     fps = int(max(1, min(60, int(opts.fps))))
     if fps <= 0:
         fps = 30
-    # Export analysis rate: 30 keeps spectrum reactive enough and avoids multi-minute
-    # librosa.stft stalls on long tracks in frozen builds (fps=60 hop is far denser).
-    ANALYSIS_FPS = 30
+    # Match live preview analysis rate (preview_widget load_audio_analyzer fps=60).
+    # 30 Hz STFT + half as many smooth_fft_envelope steps made spectrum "wings"
+    # open wider / hotter than preview. Override with CAMXORA_EXPORT_ANALYSIS_FPS
+    # only when deliberately trading WYSIWYG for faster cold analysis.
+    ANALYSIS_FPS = resolve_export_analysis_fps()
     export_speed_mode = normalize_export_speed_mode(getattr(opts, "speed_mode", "balanced"))
     glow_pass_limit = export_glow_pass_limit(export_speed_mode)
 
@@ -2632,6 +2691,9 @@ def run_gpu_render(
     _emit_event({"status": "running", "message": "Loading audio analysis...", "progress": 0.08})
     if existing_analyzer is not None:
         analyzer = existing_analyzer
+        ANALYSIS_FPS = resolve_export_analysis_fps(
+            existing_analyzer_fps=getattr(analyzer, "fps", None),
+        )
         _emit_event(
             {
                 "status": "running",
@@ -3137,7 +3199,9 @@ def run_gpu_render(
     _fft_idx1, _fft_idx2, _fft_frac = precompute_fft_mapping(point_count)
     # Pre-compute frame-invariant template lookups
     _tpl_style_preset = str(template.get("style", "orbit-spikes")).lower().strip()
-    _tpl_react_gain = float(template.get("audioSettings", {}).get("sensitivity", 1.0))
+    # Prefer inputGain like preview_widget; sensitivity is legacy fallback only.
+    _tpl_audio = template.get("audioSettings") if isinstance(template.get("audioSettings"), dict) else {}
+    _tpl_react_gain = resolve_template_react_gain(_tpl_audio)
     _tpl_position = template.get("position", {}) if isinstance(template.get("position"), dict) else {}
     _tpl_anchor_val = _tpl_position.get("anchor", "center")
     _tpl_off_x = float(_tpl_position.get("x", 0.0)) * sf
@@ -3223,29 +3287,15 @@ def run_gpu_render(
                     frame_h=h,
                     linear_span=float(sl_pre.get("linearSpan", 1.0) or 1.0),
                 )
-                pass_specs_pre: list[dict] = []
-                if glow_strength_pre > 0.0 and glow_pass_limit >= 1:
-                    pass_specs_pre.append(
-                        {
-                            "alpha": op_pre * (0.14 + glow_strength_pre * 0.22),
-                            "bar_width": bar_width_pre + ((glow_softness_pre * 1.8) + (glow_strength_pre * 18.0)) * sf,
-                            "thickness": thickness_pre + ((glow_softness_pre * 2.2) + (glow_strength_pre * 22.0)) * sf,
-                        }
-                    )
-                    if glow_pass_limit >= 2:
-                        pass_specs_pre.append(
-                            {
-                                "alpha": op_pre * (0.08 + glow_strength_pre * 0.15),
-                                "bar_width": bar_width_pre + ((glow_softness_pre * 3.0) + (glow_strength_pre * 32.0)) * sf,
-                                "thickness": thickness_pre + ((glow_softness_pre * 3.4) + (glow_strength_pre * 34.0)) * sf,
-                            }
-                        )
-                pass_specs_pre.append(
-                    {
-                        "alpha": op_pre,
-                        "bar_width": bar_width_pre,
-                        "thickness": thickness_pre,
-                    }
+                pass_specs_pre = build_spectrum_glow_pass_specs(
+                    glow_strength=glow_strength_pre,
+                    glow_softness=glow_softness_pre,
+                    layer_opacity=op_pre,
+                    bar_width_px=bar_width_pre,
+                    spike_height_px=thickness_pre,
+                    sf=sf,
+                    fill_circle=False,
+                    glow_pass_limit=int(glow_pass_limit),
                 )
                 pass_colors_pre: list[np.ndarray] = []
                 for pass_i_pre, pass_cfg_pre in enumerate(pass_specs_pre):
@@ -3419,20 +3469,26 @@ def run_gpu_render(
         vig = fx.get("vignette") if isinstance(fx.get("vignette"), dict) else {}
         sm = fx.get("smoke") if isinstance(fx.get("smoke"), dict) else {}
         try:
-            from features.video.lib.lightning_render import apply_vignette_reactivity, peak_lightning_flash
+            from features.video.lib.lightning_render import (
+                apply_vignette_reactivity,
+                sample_lightning_layer_peaks_over_interval,
+            )
 
-            lightning_flash = peak_lightning_flash(
+            lightning_flash, lightning_layer_peaks = sample_lightning_layer_peaks_over_interval(
                 template if isinstance(template, dict) else {},
                 time_sec=float(time_sec),
+                encode_dt=float(encode_dt),
                 bass=float(bass),
                 kick=float(kick_pow),
                 beat=float(feats.get("beat", 0.0) or 0.0),
                 onset=float(feats.get("onset", 0.0) or 0.0),
                 audio_env=float(max(bass, kick_pow, bg_audio_env)),
+                sample_hz=60.0,
             )
         except Exception:
             apply_vignette_reactivity = None  # type: ignore[assignment]
             lightning_flash = 0.0
+            lightning_layer_peaks = {}
         flash_env = float(max(bg_audio_env, lightning_flash))
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
         vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
@@ -3514,7 +3570,7 @@ def run_gpu_render(
                 beat=float(feats.get("beat", 0.0) or 0.0),
                 onset=float(feats.get("onset", 0.0) or 0.0),
                 audio_env=float(max(bass, kick_pow, bg_audio_env)),
-                flash_override=float(lightning_flash) if lightning_flash > 0.0 else None,
+                flash_overrides_by_layer=lightning_layer_peaks if lightning_layer_peaks else None,
             )
         except Exception as _lightning_exc:
             if not getattr(run_gpu_render, "_lightning_err_logged", False):
@@ -3532,13 +3588,10 @@ def run_gpu_render(
         for inst_idx, spectrum_job in enumerate(spectrum_jobs):
             spectrum_layers = [sl for sl in (spectrum_job.get("layers") or []) if isinstance(sl, dict)]
             if not spectrum_layers:
-                try:
-                    from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
-
-                    fallback = normalize_renderer_template(default_renderer_template()).get("layers") or []
-                    spectrum_layers = [dict(x) for x in fallback if isinstance(x, dict)]
-                except Exception:
-                    spectrum_layers = []
+                # Match preview: heal empty instance rings from top-level layers only.
+                # Never inject default_renderer_template rings (that looks like a different style).
+                fallback_layers = template.get("layers") if isinstance(template.get("layers"), list) else []
+                spectrum_layers = [dict(x) for x in fallback_layers if isinstance(x, dict)]
             if not spectrum_layers:
                 continue
 
@@ -3671,36 +3724,15 @@ def run_gpu_render(
                 main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
                 base_total_length = total_length
                 prog_lines["clip_enabled"].value = 0
-                pass_specs: list[dict] = []
-                if glow_strength > 0.0 and glow_pass_limit >= 1:
-                    pass_specs.append(
-                        {
-                            "is_glow": True,
-                            "alpha": op * (0.14 + glow_strength * 0.22),
-                            "bar_width": bar_width + ((glow_softness * 1.8) + (glow_strength * 18.0)) * sf,
-                            "thickness": thickness + ((glow_softness * 2.2) + (glow_strength * 22.0)) * sf,
-                            "fill_circle": False,
-                        }
-                    )
-                    if glow_pass_limit >= 2:
-                        pass_specs.append(
-                            {
-                                "is_glow": True,
-                                "alpha": op * (0.08 + glow_strength * 0.15),
-                                "bar_width": bar_width + ((glow_softness * 3.0) + (glow_strength * 32.0)) * sf,
-                                "thickness": thickness + ((glow_softness * 3.4) + (glow_strength * 34.0)) * sf,
-                                "fill_circle": False,
-                            }
-                        )
-                allow_fill_circle = bool(sl.get("fillCircle", False))
-                pass_specs.append(
-                    {
-                        "is_glow": False,
-                        "alpha": op,
-                        "bar_width": bar_width,
-                        "thickness": thickness,
-                        "fill_circle": allow_fill_circle,
-                    }
+                pass_specs = build_spectrum_glow_pass_specs(
+                    glow_strength=glow_strength,
+                    glow_softness=glow_softness,
+                    layer_opacity=op,
+                    bar_width_px=bar_width,
+                    spike_height_px=thickness,
+                    sf=sf,
+                    fill_circle=bool(sl.get("fillCircle", False)),
+                    glow_pass_limit=int(glow_pass_limit),
                 )
 
                 for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
@@ -3708,12 +3740,12 @@ def run_gpu_render(
                   for pass_i, pass_cfg in enumerate(pass_specs):
                     if pass_cfg["is_glow"] and v_alpha_mul < 0.999:
                         continue
-                    if pass_cfg["is_glow"]:
-                        ctx.blend_func = moderngl.ADDITIVE_BLENDING
-                    elif blend_mode in ("screen", "add", "lighten"):
-                        ctx.blend_func = moderngl.ADDITIVE_BLENDING
-                    else:
-                        ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+                    # WYSIWYG: same alpha-weighted additive as preview (not ONE,ONE).
+                    apply_spectrum_pass_blend(
+                        ctx,
+                        is_glow=bool(pass_cfg["is_glow"]),
+                        blend_mode=blend_mode,
+                    )
 
                     pass_alpha = float(max(0.0, min(1.0, float(pass_cfg["alpha"]) * float(v_alpha_mul))))
                     pass_bar_width = float(pass_cfg["bar_width"])
@@ -3819,9 +3851,10 @@ def run_gpu_render(
                         line_vbo.write(verts.tobytes())
                         vao_lines.render(mode=moderngl.TRIANGLE_STRIP, vertices=int(2 * nn))
                     elif gpu_spectrum is not None and _gpu_spectrum_layer_key(inst_idx, layer_idx) in gpu_layer_keys:
+                        # Use resampled heights (same as CPU/preview), not raw 64-bin render_fft.
                         gpu_fft = quantize_fft_for_gpu_bar_style(
                             style_preset,
-                            render_fft,
+                            sampled_fft,
                             thickness=pass_thickness,
                             sf=sf,
                         )
@@ -4887,10 +4920,7 @@ def render_preview_png(
                 spec_col = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op))))
 
             blend_mode = str(sl.get("blend_mode", "normal")).lower().strip()
-            if blend_mode in ("screen", "add", "lighten"):
-                ctx.blend_func = moderngl.ADDITIVE_BLENDING
-            else:
-                ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            apply_spectrum_pass_blend(ctx, is_glow=False, blend_mode=blend_mode)
 
             # 2) 5-Tap Moving Average Smoothing & Mirroring
             render_fft = np.zeros(BINS, dtype=np.float32)
@@ -6008,10 +6038,7 @@ def run_live_preview(opts: GpuOptions) -> int:
                 spec_col = (1.0, 1.0, 1.0, float(max(0.0, min(1.0, op))))
 
             blend_mode = str(sl.get("blend_mode", "normal")).lower().strip()
-            if blend_mode in ("screen", "add", "lighten"):
-                ctx.blend_func = moderngl.ADDITIVE_BLENDING
-            else:
-                ctx.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
+            apply_spectrum_pass_blend(ctx, is_glow=False, blend_mode=blend_mode)
 
             render_fft = np.zeros(BINS, dtype=np.float32)
             if mirrored:
