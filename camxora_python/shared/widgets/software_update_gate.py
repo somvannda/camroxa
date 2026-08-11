@@ -19,8 +19,28 @@ from PySide6.QtWidgets import (
 from shared.constants.app_version import get_app_version
 from shared.icons.chrome_assets import CHROME_SVG_BY_NAME
 from shared.lib.resource_paths import get_resource_path
-from shared.lib.software_update_copy import format_update_summary, format_whats_new
+from shared.lib.software_update_copy import (
+    BUTTON_INSTALL,
+    BUTTON_RETRY,
+    STATUS_CLOSING,
+    STATUS_FAILED_DEFAULT,
+    STATUS_FINISHING,
+    STATUS_PREPARING,
+    TITLE_AVAILABLE,
+    TITLE_DOWNLOADING,
+    TITLE_FINISHING,
+    TITLE_INSTALLING,
+    TITLE_REQUIRED,
+    TITLE_STARTING_INSTALLER,
+    format_update_summary,
+    format_version_row,
+)
 from shared.services.software_update_service import SoftwareUpdateOffer, SoftwareUpdateService
+
+_CARD_WIDTH = 480
+_PROGRESS_WIDTH = 280
+_BUTTON_WIDTH = 200
+_LOGO_SIZE = 56
 
 
 def _load_logo_pixmap(size: int) -> QPixmap:
@@ -64,24 +84,20 @@ class SoftwareUpdateGateOverlay(QFrame):
 
         self._card = QFrame()
         self._card.setObjectName("software_update_card")
-        self._card.setFixedWidth(440)
+        self._card.setFixedWidth(_CARD_WIDTH)
         card_layout = QVBoxLayout(self._card)
-        card_layout.setContentsMargins(32, 32, 32, 28)
-        card_layout.setSpacing(14)
+        card_layout.setContentsMargins(32, 28, 32, 28)
+        card_layout.setSpacing(12)
 
         logo = QLabel()
         logo.setObjectName("software_update_logo")
-        logo.setPixmap(_load_logo_pixmap(48))
-        logo.setFixedSize(48, 48)
+        logo.setPixmap(_load_logo_pixmap(_LOGO_SIZE))
+        logo.setFixedSize(_LOGO_SIZE, _LOGO_SIZE)
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(logo, alignment=Qt.AlignmentFlag.AlignHCenter)
+        card_layout.addSpacing(4)
 
-        brand = QLabel("Camxora")
-        brand.setObjectName("software_update_brand")
-        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.addWidget(brand)
-
-        self._title = QLabel("Update required")
+        self._title = QLabel(TITLE_REQUIRED)
         self._title.setObjectName("software_update_title")
         self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self._title)
@@ -89,7 +105,7 @@ class SoftwareUpdateGateOverlay(QFrame):
         self._message = QLabel("")
         self._message.setObjectName("software_update_body")
         self._message.setWordWrap(True)
-        self._message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._message.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         card_layout.addWidget(self._message)
 
         self._version_row = QLabel("")
@@ -97,24 +113,11 @@ class SoftwareUpdateGateOverlay(QFrame):
         self._version_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self._version_row)
 
-        self._whats_new_label = QLabel("What’s new")
-        self._whats_new_label.setObjectName("software_update_section")
-        self._whats_new_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self._whats_new_label.hide()
-        card_layout.addWidget(self._whats_new_label)
-
-        self._whats_new = QLabel("")
-        self._whats_new.setObjectName("software_update_whats_new")
-        self._whats_new.setWordWrap(True)
-        self._whats_new.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self._whats_new.hide()
-        card_layout.addWidget(self._whats_new)
-
         self._progress_wrap = QWidget()
         self._progress_wrap.setObjectName("software_update_progress_wrap")
         progress_layout = QVBoxLayout(self._progress_wrap)
-        progress_layout.setContentsMargins(0, 8, 0, 0)
-        progress_layout.setSpacing(8)
+        progress_layout.setContentsMargins(0, 4, 0, 0)
+        progress_layout.setSpacing(6)
 
         self._progress = QProgressBar()
         self._progress.setObjectName("software_update_progress")
@@ -122,7 +125,8 @@ class SoftwareUpdateGateOverlay(QFrame):
         self._progress.setValue(0)
         self._progress.setTextVisible(False)
         self._progress.setFixedHeight(8)
-        progress_layout.addWidget(self._progress)
+        self._progress.setFixedWidth(_PROGRESS_WIDTH)
+        progress_layout.addWidget(self._progress, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         self._status = QLabel("")
         self._status.setObjectName("software_update_status")
@@ -133,13 +137,15 @@ class SoftwareUpdateGateOverlay(QFrame):
         self._progress_wrap.hide()
         card_layout.addWidget(self._progress_wrap)
 
-        self._update_button = QPushButton("Update now")
+        card_layout.addSpacing(4)
+        self._update_button = QPushButton(BUTTON_INSTALL)
         self._update_button.setObjectName("software_update_primary")
         self._update_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._update_button.setMinimumHeight(40)
-        self._update_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._update_button.setFixedWidth(_BUTTON_WIDTH)
+        self._update_button.setFixedHeight(36)
+        self._update_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._update_button.clicked.connect(self.update_requested.emit)
-        card_layout.addWidget(self._update_button)
+        card_layout.addWidget(self._update_button, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         center_row.addWidget(self._card)
         center_row.addStretch(1)
@@ -171,28 +177,23 @@ class SoftwareUpdateGateOverlay(QFrame):
             return
 
         current = get_app_version()
-        self._title.setText("Update required" if offer.mandatory else "Update available")
+        self._title.setText(TITLE_REQUIRED if offer.mandatory else TITLE_AVAILABLE)
         self._message.setText(
             format_update_summary(required_version=offer.version, current_version=current)
         )
-        label = "Required" if offer.mandatory else "Available"
-        self._version_row.setText(f"{label}  v{offer.version}    ·    Current  v{current}")
-
-        bullets = format_whats_new(offer.release_notes)
-        if bullets:
-            self._whats_new.setText("\n".join(f"•  {item}" for item in bullets))
-            self._whats_new_label.show()
-            self._whats_new.show()
-        else:
-            self._whats_new.clear()
-            self._whats_new_label.hide()
-            self._whats_new.hide()
+        self._version_row.setText(
+            format_version_row(
+                required_version=offer.version,
+                current_version=current,
+                mandatory=offer.mandatory,
+            )
+        )
 
         self._progress_wrap.hide()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._status.setText("")
-        self._update_button.setText("Update now")
+        self._update_button.setText(BUTTON_INSTALL)
         self._update_button.setEnabled(True)
         self._update_button.show()
         self.show()
@@ -208,8 +209,8 @@ class SoftwareUpdateGateOverlay(QFrame):
         self._progress_wrap.show()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
-        self._status.setText("Preparing update…")
-        self._title.setText("Updating Camxora")
+        self._status.setText(STATUS_PREPARING)
+        self._title.setText(TITLE_INSTALLING)
         self.show()
         self.raise_()
 
@@ -220,14 +221,16 @@ class SoftwareUpdateGateOverlay(QFrame):
         if text:
             self._status.setText(text)
             lower = text.lower()
-            if "download" in lower:
-                self._title.setText("Downloading update")
-            elif "closing" in lower or "setup" in lower:
-                self._title.setText("Starting Setup")
-            elif "install" in lower or "preparing installer" in lower:
-                self._title.setText("Installing update")
-            elif "restart" in lower:
-                self._title.setText("Starting Setup")
+            if "closing" in lower:
+                self._title.setText(TITLE_STARTING_INSTALLER)
+            elif "download complete" in lower or "starting installer" in lower:
+                self._title.setText(TITLE_STARTING_INSTALLER)
+            elif "download" in lower:
+                self._title.setText(TITLE_DOWNLOADING)
+            elif "preparing" in lower or "installing update" in lower:
+                self._title.setText(TITLE_INSTALLING)
+            elif "install" in lower or "restart" in lower:
+                self._title.setText(TITLE_INSTALLING)
         if percent is None or int(percent) < 0:
             # Indeterminate install / unknown download size
             if self._progress.maximum() != 0:
@@ -243,15 +246,12 @@ class SoftwareUpdateGateOverlay(QFrame):
         if self._progress.maximum() == 0:
             self._progress.setRange(0, 100)
         self._progress.setValue(100)
-        self._title.setText("Starting Setup")
-        self._status.setText(
-            "Closing Camxora so Setup can update files. "
-            "Wait for the Setup progress window to finish — this can take a few minutes."
-        )
+        self._title.setText(TITLE_STARTING_INSTALLER)
+        self._status.setText(STATUS_CLOSING)
 
     def _on_install_finishing(self) -> None:
         if not self.isVisible():
-            # Ensure mandatory gate is visible while Setup may still be running.
+            # Ensure mandatory gate is visible while installer may still be running.
             service = SoftwareUpdateService.instance()
             if service.should_block_app():
                 self.show()
@@ -259,19 +259,16 @@ class SoftwareUpdateGateOverlay(QFrame):
         self._progress_wrap.show()
         self._update_button.hide()
         self._progress.setRange(0, 0)
-        self._title.setText("Finishing update")
-        self._status.setText(
-            "Setup is still installing. Keep waiting for the Setup window to finish, "
-            "or leave Camxora closed until it relaunches."
-        )
+        self._title.setText(TITLE_FINISHING)
+        self._status.setText(STATUS_FINISHING)
 
     def _on_install_failed(self, message: str) -> None:
         self._progress_wrap.show()
         if self._progress.maximum() == 0:
             self._progress.setRange(0, 100)
-        self._title.setText("Update required")
-        self._status.setText(str(message or "Unable to install update."))
-        self._update_button.setText("Try again")
+        self._title.setText(TITLE_REQUIRED)
+        self._status.setText(str(message or STATUS_FAILED_DEFAULT))
+        self._update_button.setText(BUTTON_RETRY)
         self._update_button.setEnabled(True)
         self._update_button.show()
 

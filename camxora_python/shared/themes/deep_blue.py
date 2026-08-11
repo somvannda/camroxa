@@ -223,19 +223,10 @@ QLabel#software_update_logo {
     border: none;
 }
 
-QLabel#software_update_brand {
-    background: transparent;
-    border: none;
-    color: #e2e8f0;
-    font-size: 11pt;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-}
-
 QLabel#software_update_title {
     background: transparent;
     border: none;
-    color: #4ac0ff;
+    color: #e2e8f0;
     font-size: 16pt;
     font-weight: 700;
 }
@@ -245,29 +236,13 @@ QLabel#software_update_body {
     border: none;
     color: #94a3b8;
     font-size: 10pt;
-    line-height: 1.35;
+    line-height: 1.4;
 }
 
 QLabel#software_update_versions {
     background: transparent;
     border: none;
     color: #64748b;
-    font-size: 9pt;
-}
-
-QLabel#software_update_section {
-    background: transparent;
-    border: none;
-    color: #cbd5e1;
-    font-size: 9pt;
-    font-weight: 600;
-    margin-top: 4px;
-}
-
-QLabel#software_update_whats_new {
-    background: transparent;
-    border: none;
-    color: #94a3b8;
     font-size: 9pt;
 }
 
@@ -278,8 +253,13 @@ QLabel#software_update_status {
     font-size: 9pt;
 }
 
+QWidget#software_update_progress_wrap {
+    background: transparent;
+    border: none;
+}
+
 QProgressBar#software_update_progress {
-    background-color: transparent;
+    background-color: rgba(148, 163, 184, 0.18);
     border: none;
     border-radius: 4px;
     min-height: 8px;
@@ -297,22 +277,35 @@ QProgressBar#software_update_progress::chunk {
 }
 
 QPushButton#software_update_primary {
-    background-color: #1a6afe;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #7466F1,
+        stop: 1 #A259FF
+    );
     color: #ffffff;
     border: none;
     border-radius: 8px;
-    padding: 10px 16px;
+    padding: 6px 14px;
     font-size: 10pt;
     font-weight: 600;
-    min-height: 40px;
+    min-height: 36px;
+    max-height: 36px;
 }
 
 QPushButton#software_update_primary:hover {
-    background-color: #2a7aff;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #8577F5,
+        stop: 1 #B06BFF
+    );
 }
 
 QPushButton#software_update_primary:pressed {
-    background-color: #1558d6;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #6355E0,
+        stop: 1 #9146E8
+    );
 }
 
 QPushButton#software_update_primary:disabled {

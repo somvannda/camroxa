@@ -16,6 +16,13 @@ from shared.lib.software_update_persistence import (
     load_update_status,
     save_pending_update,
 )
+from shared.lib.software_update_copy import (
+    STATUS_FAILED_DEFAULT,
+    STATUS_FINISHING_SHORT,
+    STATUS_PREVIOUS_FAILED,
+    STATUS_PREVIOUS_FAILED_DETAIL,
+    STATUS_STILL_OLD_VERSION,
+)
 from shared.lib.version_compare import is_remote_version_newer
 
 
@@ -112,17 +119,14 @@ class SoftwareUpdateService(QObject):
             self._install_in_progress = False
             self._persist_pending(install_in_progress=False)
             clear_update_status()
-            message = status.error or "The previous update did not finish. Try again."
+            message = status.error or STATUS_PREVIOUS_FAILED
             self.install_failed.emit(message)
         elif persisted.install_in_progress:
             # Marker said in progress but helper status is missing/stale.
             self._install_in_progress = False
             self._persist_pending(install_in_progress=False)
             clear_update_status()
-            self.install_failed.emit(
-                "The previous update did not finish. If a Setup window is still open, "
-                "wait for it — otherwise try again."
-            )
+            self.install_failed.emit(STATUS_PREVIOUS_FAILED_DETAIL)
         return offer
 
     def apply_session_notice(self, payload: dict[str, Any]) -> SoftwareUpdateOffer | None:
@@ -263,7 +267,7 @@ class SoftwareUpdateService(QObject):
         self._install_in_progress = False
         self._persist_pending(install_in_progress=False)
         clear_update_status()
-        self.install_failed.emit(str(message or "Unable to install update."))
+        self.install_failed.emit(str(message or STATUS_FAILED_DEFAULT))
 
     def _persist_pending(self, *, install_in_progress: bool) -> None:
         if self._pending is None:
@@ -310,10 +314,7 @@ class SoftwareUpdateService(QObject):
             return
         if status.is_active:
             self._install_in_progress = True
-            self.install_progress.emit(
-                "Setup is still installing. Keep waiting for the Setup window to finish…",
-                -1,
-            )
+            self.install_progress.emit(STATUS_FINISHING_SHORT, -1)
             return
         if status.is_done:
             # New process should already be on the target version; if not, re-gate.
@@ -323,16 +324,12 @@ class SoftwareUpdateService(QObject):
                 self._install_in_progress = False
                 self._persist_pending(install_in_progress=False)
                 clear_update_status()
-                self.install_failed.emit(
-                    "Setup finished but Camxora is still on the old version. Try again."
-                )
+                self.install_failed.emit(STATUS_STILL_OLD_VERSION)
             self._stop_status_poll()
             return
         if status.is_failed:
             self._install_in_progress = False
             self._persist_pending(install_in_progress=False)
             clear_update_status()
-            self.install_failed.emit(
-                status.error or "The previous update did not finish. Try again."
-            )
+            self.install_failed.emit(status.error or STATUS_PREVIOUS_FAILED)
             self._stop_status_poll()
