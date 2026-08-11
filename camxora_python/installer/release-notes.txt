@@ -1,35 +1,27 @@
-﻿Camxora 1.2.2
-Suno Structure, video WYSIWYG, lightning cap & sandbox dual-instance
+﻿Camxora 1.2.3
+Multi-bolt lightning export fix
 August 11, 2026
 
 What's new
 ----------
-• Music Automation Structure adds Suno Structure (native free section
-  layout) beside AI Structure and Music Structure templates. Structure
-  Shuffle stays off for AI/Suno free modes (restore and saved settings
-  cannot turn it back on).
-• Manual Export hard-gates when live preview renderer JSON diverges from
-  export — spectrum glow / Raise Scroll / Row Width and lightning sampling
-  match the stage (WYSIWYG).
-• Lightning layer stack capped at 10 bolts (Add/Dup locked at the cap).
-• Video export Resolution / FPS / Speed / Workers saves no longer crash
-  when edited rapidly (coalesced PatchSettingsWorker + local prefs mirror).
-• Sandbox builds can run beside a production install (separate single-
-  instance lock). Production lock name is unchanged.
+• Export again lights all enabled lightning bolts when any strike lands
+  in an encode frame (4–5 positioned layers stay visible). 1.2.2 sparse
+  per-layer floors often left only one bolt in the MP4.
+• Flash floor math no longer double-scales mid-interval peaks away.
+• Adding / moving lightning layers refreshes the live preview immediately.
 
-Also included from 1.2.1
+Also included from 1.2.2
 ------------------------
-• On-open-only force update + header update icon.
-• Image regenerate overwrites stale local PNGs; prompt 5000-char cap.
-• Preferences Local Paths: FFmpeg + Suno output dir only; splash OpenGL fix.
+• Suno Structure + Shuffle hardening (needs matching API).
+• Preview/export spectrum WYSIWYG + parity gate.
+• Lightning max 10 layers; export settings save harden.
+• Sandbox dual-instance lock.
 
 Requirements
 ------------
-• Matching platform_api with Suno Structure (`structure_mode=suno`) must
-  be deployed — older APIs reject the new dropdown value.
-• Installer: CamxoraSetup-1.2.2.exe
-• Publish this release in Admin → Software Updates with Force update
-  (mandatory) enabled so 1.2.1 clients pick it up on app open.
+• Installer: CamxoraSetup-1.2.3.exe
+• Publish with Force update so 1.2.2 clients upgrade on app open.
+• Suno Structure still needs platform_api with structure_mode=suno.
 
 Coming later
 ------------

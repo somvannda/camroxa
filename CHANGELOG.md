@@ -9,6 +9,23 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-08-11
+
+### Fixed
+
+- **Multi-bolt lightning export:** Manual Export again raises all enabled
+  lightning layers when any bolt peaks in the encode window (restores pre-1.2.2
+  multi-bolt density). Sparse per-layer floors in 1.2.2 often left only one
+  bolt visible. Flash floor no longer double-scales sampler peaks. Lightning
+  Add/Dup/position updates schedule a live preview refresh. See
+  `docs/changelog/2026-08-11-lightning-multibolt-export.md`.
+
+### Changed
+
+- Desktop version stamp **1.2.3** / installer `CamxoraSetup-1.2.3.exe`. Publish
+  with **Force update** so **1.2.2** clients upgrade. Detail:
+  `docs/changelog/2026-08-11-desktop-1.2.3.md`.
+
 ## [1.2.2] - 2026-08-11
 
 ### Added
