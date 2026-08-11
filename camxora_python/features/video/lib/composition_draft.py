@@ -1,35 +1,50 @@
-"""UI/draft helpers for composition-only scene editing (engine v1 / studio P0–P11)."""
+"""UI/draft helpers for Video composition axes (Video-local catalogs; classic GPU)."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 from typing import Any
 
-from visualizer_video.composition_effects.audio_mapping import normalize_audio_mapping
-from visualizer_video.presets.animations import list_animation_behavior_options, normalize_animation_behavior_id
-from visualizer_video.presets.atmosphere import list_atmosphere_options, normalize_atmosphere_id
-from visualizer_video.presets.audio_buses import (
+from features.video.lib.composition_animations import (
+    list_animation_behavior_options,
+    normalize_animation_behavior_id,
+)
+from features.video.lib.composition_atmosphere import list_atmosphere_options, normalize_atmosphere_id
+from features.video.lib.composition_audio_buses import (
     list_audio_bus_options,
     list_audio_mapping_target_options,
-    normalize_audio_bus_id,
 )
-from visualizer_video.presets.background_motion import (
+from features.video.lib.composition_audio_mapping import normalize_audio_mapping
+from features.video.lib.composition_background_motion import (
     list_background_motion_options,
     normalize_background_motion_id,
 )
-from visualizer_video.presets.camera import list_camera_behavior_options, normalize_camera_behavior_id
-from visualizer_video.presets.lighting import (
+from features.video.lib.composition_camera import list_camera_behavior_options, normalize_camera_behavior_id
+from features.video.lib.composition_color_palettes import (
+    list_color_palette_options,
+    normalize_color_palette_id,
+)
+from features.video.lib.composition_lighting import (
     list_lighting_effect_options,
     list_lighting_trigger_options,
     normalize_lighting_effect_id,
     normalize_lighting_trigger_id,
 )
-from visualizer_video.presets.materials import list_spectrum_material_options, normalize_spectrum_material_id
-from visualizer_video.presets.palettes import list_color_palette_options, normalize_color_palette_id
-from visualizer_video.presets.particles import list_particle_type_options, normalize_particle_type_id
-from visualizer_video.presets.post import list_post_effect_options, normalize_post_effects_list
-from visualizer_video.presets.shapes import list_spectrum_shape_options, normalize_spectrum_shape_id
-from visualizer_video.scene import NONE, default_document, normalize_composition
+from features.video.lib.composition_materials import (
+    list_spectrum_material_options,
+    normalize_spectrum_material_id,
+)
+from features.video.lib.composition_particles import list_particle_type_options, normalize_particle_type_id
+from features.video.lib.composition_post import list_post_effect_options, normalize_post_effects_list
+from features.video.lib.composition_scene_contract import (
+    NONE,
+    default_composition_document,
+    normalize_composition_scene,
+)
+from features.video.lib.composition_spectrum_shapes import (
+    list_spectrum_shape_options,
+    normalize_spectrum_shape_id,
+)
 
 
 COMPOSITION_DRAFT_KEYS: tuple[str, ...] = (
@@ -72,7 +87,7 @@ def composition_axis_options() -> dict[str, tuple[tuple[str, str], ...]]:
 
 
 def draft_from_composition(composition: dict[str, Any] | None) -> dict[str, Any]:
-    scene = normalize_composition(composition)
+    scene = normalize_composition_scene(composition)
     return {
         "compositionSpectrumShape": scene["spectrum"]["shape"],
         "compositionSpectrumMaterial": scene["spectrum"]["material"],
@@ -105,7 +120,7 @@ def apply_draft_axes_to_composition(
     composition: dict[str, Any] | None,
     draft: dict[str, Any],
 ) -> dict[str, Any]:
-    scene = normalize_composition(composition)
+    scene = normalize_composition_scene(composition)
     shape = normalize_spectrum_shape_id(draft.get("compositionSpectrumShape"))
     material = normalize_spectrum_material_id(draft.get("compositionSpectrumMaterial"))
     animation = normalize_animation_behavior_id(draft.get("compositionSpectrumAnimation"))
@@ -163,8 +178,8 @@ def build_composition_save_document(
     assets: dict[str, Any] | None = None,
     draft: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    doc = default_document()
-    scene = normalize_composition(composition)
+    doc = default_composition_document()
+    scene = normalize_composition_scene(composition)
     if draft:
         scene = apply_draft_axes_to_composition(scene, draft)
     doc["composition"] = scene
@@ -178,7 +193,7 @@ def build_composition_save_document(
 
 
 def new_blank_composition_template(*, name: str = "New Composition") -> dict[str, Any]:
-    doc = default_document()
+    doc = default_composition_document()
     doc["templateName"] = name
     return doc
 

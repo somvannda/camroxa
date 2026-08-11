@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from visualizer_video._spectrum_fast import clamp_frequency_scroll, scroll_spectrum_heights
-from visualizer_video.template_runtime import default_renderer_template, normalize_renderer_template
+from visualizer_studio.template_runtime import default_renderer_template, normalize_renderer_template
 
 
 def test_clamp_frequency_scroll_wraps() -> None:

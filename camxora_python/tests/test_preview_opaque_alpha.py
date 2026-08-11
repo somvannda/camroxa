@@ -50,7 +50,7 @@ def test_lightning_blend_helpers_match_preview_alpha_lock() -> None:
 
 def test_preview_spectrum_paint_uses_blend_helpers_not_raw_additive() -> None:
     """REQ-P0.1: spectrum glow call sites must not assign ADDITIVE_BLENDING."""
-    src = Path(__file__).resolve().parents[1] / "visualizer" / "preview_widget.py"
+    src = Path(__file__).resolve().parents[1] / "visualizer_video" / "preview_widget.py"
     text = src.read_text(encoding="utf-8")
     # Narrow to the spectrum pass blend selection block.
     marker = "if pass_cfg['is_glow']:"
@@ -63,7 +63,7 @@ def test_preview_spectrum_paint_uses_blend_helpers_not_raw_additive() -> None:
 
 
 def test_particle_quad_path_uses_opaque_alpha_helpers() -> None:
-    src = Path(__file__).resolve().parents[1] / "visualizer" / "gpu_render.py"
+    src = Path(__file__).resolve().parents[1] / "visualizer_video" / "gpu_render.py"
     text = src.read_text(encoding="utf-8")
     # Particle styled quads section.
     idx = text.find("Neon bloom reads better with additive when glow is on.")
@@ -76,7 +76,7 @@ def test_particle_quad_path_uses_opaque_alpha_helpers() -> None:
 
 def test_force_opaque_alpha_does_not_use_moderngl_masked_clear() -> None:
     """moderngl Context.clear ignores color_mask and wiped RGB → black preview."""
-    src = Path(__file__).resolve().parents[1] / "visualizer" / "preview_widget.py"
+    src = Path(__file__).resolve().parents[1] / "visualizer_video" / "preview_widget.py"
     text = src.read_text(encoding="utf-8")
     start = text.find("def _force_framebuffer_opaque_alpha")
     assert start > 0

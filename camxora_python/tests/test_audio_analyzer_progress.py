@@ -43,7 +43,7 @@ def test_audio_analyzer_emits_progress_and_resamples(tmp_path: Path) -> None:
 
 
 def test_frozen_beat_path_uses_onset_peaks(tmp_path: Path, monkeypatch) -> None:
-    from visualizer import audio as audio_mod
+    from visualizer_video import audio as audio_mod
 
     wav_path = tmp_path / "tone.wav"
     _write_test_wav(wav_path, duration_sec=1.5)

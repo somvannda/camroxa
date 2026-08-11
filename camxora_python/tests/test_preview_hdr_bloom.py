@@ -50,7 +50,7 @@ def test_bloom_params_respects_disabled_template_bloom() -> None:
 
 
 def test_preview_widget_wires_hdr_bloom_path() -> None:
-    src = Path(__file__).resolve().parents[1] / "visualizer" / "preview_widget.py"
+    src = Path(__file__).resolve().parents[1] / "visualizer_video" / "preview_widget.py"
     text = src.read_text(encoding="utf-8")
     assert "PreviewHdrBloomPass" in text
     assert "preview_hdr_bloom_enabled" in text
@@ -61,7 +61,7 @@ def test_preview_widget_wires_hdr_bloom_path() -> None:
 
 
 def test_export_uses_shared_compose_helper() -> None:
-    src = Path(__file__).resolve().parents[1] / "visualizer" / "gpu_render.py"
+    src = Path(__file__).resolve().parents[1] / "visualizer_video" / "gpu_render.py"
     text = src.read_text(encoding="utf-8")
     assert "def _compose_scene_post_to_out" in text
     assert "_compose_scene_post_to_out(" in text
@@ -70,7 +70,7 @@ def test_export_uses_shared_compose_helper() -> None:
 
 
 def test_tonemap_shader_forces_opaque_alpha() -> None:
-    src = Path(__file__).resolve().parents[1] / "visualizer" / "hdr_bloom.py"
+    src = Path(__file__).resolve().parents[1] / "visualizer_video" / "hdr_bloom.py"
     text = src.read_text(encoding="utf-8")
     assert "frag = vec4(clamp(sdr, 0.0, 1.0), 1.0);" in text
     assert ENV_FLAG in text

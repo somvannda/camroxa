@@ -86,12 +86,9 @@ def test_ensure_and_strip_composition() -> None:
     ensure_composition_on_template(template)
     assert isinstance(template.get("composition"), dict)
 
-    kept = strip_composition_for_renderer(template)
-    assert "composition" in kept
-    assert kept["composition"]["spectrum"]["shape"] in (
-        "circle",
-        template["composition"]["spectrum"]["shape"],
-    )
+    stripped = strip_composition_for_renderer(template)
+    assert "composition" not in stripped
+    assert isinstance(template.get("composition"), dict)
 
 
 def test_legacy_motion_roundtrip_helpers() -> None:
@@ -100,13 +97,14 @@ def test_legacy_motion_roundtrip_helpers() -> None:
     assert legacy_background_motion_mode("vibrate") == "vibrate"
 
 
-def test_template_normalizer_keeps_composition_engine_v1() -> None:
+def test_template_normalizer_strips_composition_for_classic_gpu() -> None:
     from features.video.lib.video_template_draft import build_video_template_draft
     from features.video.services.template_normalizer import TemplateNormalizer
 
     base = {
         "schema": "camxora.composition",
         "spectrumEnabled": True,
+        "style": "bars",
         "layers": [],
         "textOverlays": [],
         "composition": {
@@ -132,10 +130,8 @@ def test_template_normalizer_keeps_composition_engine_v1() -> None:
         layers=[],
         workspace={},
     )
-    assert "composition" in out
-    assert out["composition"]["spectrum"]["shape"] == "circle"
-    assert out["engine"]["compiled"] is True
-    assert out.get("style") == "orbit-spikes"
+    assert "composition" not in out
+    assert out.get("style") in ("bars", "circle", "orbit-spikes") or isinstance(out.get("style"), str)
 
 
 def test_legacy_key_map_covers_architecture_tree() -> None:

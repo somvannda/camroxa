@@ -18,6 +18,12 @@ from copy import deepcopy
 from typing import Any
 
 COMPOSITION_SCHEMA_VERSION = 1
+COMPOSITION_SCHEMA_ID = "camxora.composition"
+
+
+class CompositionContractError(ValueError):
+    """Raised when a Video composition contract invariant is violated."""
+
 
 # Layer 1 — scene objects (never change)
 SCENE_OBJECTS: tuple[str, ...] = (
@@ -111,6 +117,22 @@ def default_composition_scene() -> dict[str, Any]:
         },
         "audio": {
             "mapping": {},
+        },
+    }
+
+
+def default_composition_document() -> dict[str, Any]:
+    """Blank Video composition document (authoring layer; classic GPU strips this)."""
+    return {
+        "schema": COMPOSITION_SCHEMA_ID,
+        "version": COMPOSITION_SCHEMA_VERSION,
+        "composition": default_composition_scene(),
+        "assets": {
+            "backgroundImage": None,
+            "backgroundVideo": None,
+            "logo": None,
+            "audio": None,
+            "audioTracks": [],
         },
     }
 
@@ -314,14 +336,12 @@ def ensure_composition_on_template(template: dict[str, Any]) -> dict[str, Any]:
 
 
 def strip_composition_for_renderer(template: dict[str, Any]) -> dict[str, Any]:
-    """Engine v1: composition must stay. Raises if missing; otherwise returns copy with composition kept."""
+    """Return a shallow copy without ``composition`` (classic GPU ignores authoring tree)."""
     if not isinstance(template, dict):
         return {}
-    if not isinstance(template.get("composition"), dict) or not template.get("composition"):
-        from visualizer_video.scene import CompositionContractError
-
-        raise CompositionContractError("strip_composition_for_renderer refused — composition is required")
-    return dict(template)
+    out = dict(template)
+    out.pop("composition", None)
+    return out
 
 
 def legacy_background_motion_mode(composition_motion: str | None) -> str:

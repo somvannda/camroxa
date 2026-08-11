@@ -335,6 +335,25 @@ def apply_axis_patch(doc: dict[str, Any], patch: dict[str, Any]) -> dict[str, An
     def _norm_layers(raw: object) -> list:
         return normalize_spectrum_layers(raw, defaults=comp["spectrum"])
 
+    # Global spectrum knobs (inspector) push onto every ring unless a later
+    # compositionSpectrumLayerPatch overrides a single layer.
+    _spectrum_to_layer: dict[str, str] = {
+        "compositionSpectrumBarCount": "barCount",
+        "compositionSpectrumTipTaper": "tipTaper",
+        "compositionSpectrumBarWidthScale": "barWidthScale",
+        "compositionSpectrumThicknessScale": "thicknessScale",
+        "compositionSpectrumBarHeight": "barHeight",
+        "compositionSpectrumPeakCaps": "peakCapsEnabled",
+        "compositionSpectrumSolidBand": "solidBand",
+    }
+    if any(key in patch for key in _spectrum_to_layer):
+        layers = _norm_layers(comp["spectrum"].get("layers"))
+        for layer in layers:
+            for patch_key, layer_key in _spectrum_to_layer.items():
+                if patch_key in patch and layer_key in comp["spectrum"]:
+                    layer[layer_key] = comp["spectrum"][layer_key]
+        comp["spectrum"]["layers"] = layers
+
     if "compositionSpectrumLayers" in patch:
         comp["spectrum"]["layers"] = _norm_layers(patch.get("compositionSpectrumLayers"))
     if "compositionSpectrumLayerIndex" in patch:
