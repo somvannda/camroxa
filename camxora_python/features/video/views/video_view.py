@@ -99,6 +99,10 @@ from features.video.lib.video_template_draft import (
     draft_snapshot,
 )
 from features.video.lib.video_template_save import build_video_workspace_template_save_patch
+from features.video.lib.preview_export_parity import (
+    PreviewExportParityReport,
+    diff_renderer_templates,
+)
 from features.video.lib.effect_pack_draft_state import (
     apply_particle_pack_as_preset,
     apply_spectrum_pack_as_preset,
@@ -1361,10 +1365,43 @@ class VideoView(QWidget):
             notify_action("No MP3 files were found in the selected run directory.", tone="warning")
             return
         track_paths = [item.path for item in mp3_list]
+        # Flush deferred preview edits before building pipeline export JSON.
+        if self._preview_update_timer.isActive():
+            self._preview_update_timer.stop()
+        self._flush_active_spectrum_instance_layers()
+        self._flush_preview_update()
         template = self._build_pipeline_export_template(track_paths=track_paths)
         if not template:
             notify_action("No active video template is loaded.", tone="warning")
             return
+
+        # When a warm GPU preview exists, hard-gate pipeline export the same way as manual.
+        preview = self._stage.preview_widget() if self._stage.gpu_preview_available() else None
+        if preview is not None and bool(getattr(preview, "_gl_ready", False)):
+            mismatch = diff_renderer_templates(getattr(preview, "template", None), template)
+            if not mismatch.equal:
+                try:
+                    preview.set_template(template, clear_peak_cache=False)
+                except Exception:
+                    pass
+                mismatch = diff_renderer_templates(getattr(preview, "template", None), template)
+            if not mismatch.equal:
+                report_path = self._write_parity_mismatch_report(
+                    mismatch,
+                    audio_path=mp3_list[0].path,
+                    export_template=dict(template),
+                    preview_template=getattr(preview, "template", None)
+                    if isinstance(getattr(preview, "template", None), dict)
+                    else None,
+                )
+                detail = mismatch.summary(limit=6)
+                if report_path is not None:
+                    detail = f"{detail} (report: {report_path})"
+                notify_action(
+                    f"Pipeline export blocked: preview/export JSON mismatch. {detail}",
+                    tone="error",
+                )
+                return
 
         scene = build_pipeline_render_scene_request(
             template=template,
@@ -1985,6 +2022,90 @@ class VideoView(QWidget):
             fps=tier.fps,
         )
 
+    def _write_parity_mismatch_report(
+        self,
+        report: PreviewExportParityReport,
+        *,
+        audio_path: str,
+        export_template: dict,
+        preview_template: dict | None,
+    ) -> Path | None:
+        try:
+            from shared.lib.app_paths import get_client_logs_dir
+
+            logs_dir = Path(get_client_logs_dir()) / "video_parity"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            stem = Path(audio_path).stem or "track"
+            out_path = logs_dir / f"parity-mismatch-{stem}-{stamp}.json"
+            payload = {
+                "summary": report.summary(limit=40),
+                "report": report.to_dict(),
+                "previewTemplateFocus": preview_template,
+                "exportTemplate": export_template,
+            }
+            out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+            return out_path
+        except Exception:
+            return None
+
+    def _ensure_preview_export_parity(self, scene) -> PreviewExportParityReport | None:
+        """Hard gate: live preview JSON must match export JSON before encode.
+
+        Returns a mismatch report to block export, or ``None`` when export may proceed.
+        """
+        if scene is None:
+            return PreviewExportParityReport(
+                equal=False,
+                changed=["scene"],
+            )
+        # Flush deferred UI → preview so scrub/drag land before compare.
+        if self._preview_update_timer.isActive():
+            self._preview_update_timer.stop()
+        self._flush_active_spectrum_instance_layers()
+        self._flush_preview_update()
+
+        export_tpl = dict(scene.template) if isinstance(getattr(scene, "template", None), dict) else {}
+        preview = None
+        if self._stage.gpu_preview_available():
+            preview = self._stage.preview_widget()
+
+        if preview is None or not bool(getattr(preview, "_gl_ready", False)):
+            # Prefer one full preview rebuild when the stage exists but GL is cold.
+            try:
+                self._update_preview()
+            except Exception:
+                pass
+            preview = self._stage.preview_widget() if self._stage.gpu_preview_available() else None
+            if preview is None or not bool(getattr(preview, "_gl_ready", False)):
+                notify_action(
+                    "Preview GPU not ready — exporting from draft JSON without live compare.",
+                    tone="warning",
+                )
+                return None
+
+        preview_tpl = getattr(preview, "template", None)
+        report = diff_renderer_templates(
+            preview_tpl if isinstance(preview_tpl, dict) else {},
+            export_tpl,
+        )
+        if report.equal:
+            return None
+
+        # One automatic resync: push export dict into preview, then re-compare.
+        try:
+            preview.set_template(export_tpl, clear_peak_cache=False)
+        except Exception:
+            pass
+        preview_tpl = getattr(preview, "template", None)
+        retry = diff_renderer_templates(
+            preview_tpl if isinstance(preview_tpl, dict) else {},
+            export_tpl,
+        )
+        if retry.equal:
+            return None
+        return retry
+
     def _start_manual_export(self) -> None:
         # python_app behavior: export the whole track list as one batch.
         if self._export_worker is not None and self._export_worker.isRunning():
@@ -2172,9 +2293,33 @@ class VideoView(QWidget):
         if not self._batch_queue:
             return
         audio_path = self._batch_queue.pop(0)
+
+        # Flush deferred preview/spectrum edits, then rebuild export from view state.
+        if self._preview_update_timer.isActive():
+            self._preview_update_timer.stop()
+        self._flush_active_spectrum_instance_layers()
+        self._flush_preview_update()
+
         scene = self._build_manual_export_scene(audio_path=audio_path)
         if scene is None:
             self._on_export_failed("The live preview scene is not ready yet.")
+            self._on_export_worker_finished()
+            return
+
+        mismatch = self._ensure_preview_export_parity(scene)
+        if mismatch is not None and not mismatch.equal:
+            preview = self._stage.preview_widget() if self._stage.gpu_preview_available() else None
+            preview_tpl = getattr(preview, "template", None) if preview is not None else None
+            report_path = self._write_parity_mismatch_report(
+                mismatch,
+                audio_path=audio_path,
+                export_template=dict(scene.template) if isinstance(scene.template, dict) else {},
+                preview_template=preview_tpl if isinstance(preview_tpl, dict) else None,
+            )
+            detail = mismatch.summary(limit=6)
+            if report_path is not None:
+                detail = f"{detail} (report: {report_path})"
+            self._on_export_failed(f"Preview/export JSON mismatch — export blocked. {detail}")
             self._on_export_worker_finished()
             return
 

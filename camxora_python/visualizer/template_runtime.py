@@ -16,6 +16,20 @@ def _normalize_layer_path_mode(value: Any) -> str:
     return "auto"
 
 
+def _clamp_frequency_scroll_value(value: Any, default: float = 0.0) -> float:
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        amount = float(default)
+    if amount != amount:  # NaN
+        amount = float(default)
+    # Match visualizer._spectrum_fast.clamp_frequency_scroll → [0, 1).
+    wrapped = amount % 1.0
+    if wrapped < 0.0:
+        wrapped += 1.0
+    return float(wrapped)
+
+
 def default_renderer_template() -> dict:
     return {
         "templateName": "New Template",
@@ -52,6 +66,8 @@ def default_renderer_template() -> dict:
                 "peakCapThickness": 3.0,
                 "peakCapDecay": 0.92,
                 "pathMode": "auto",
+                "linearSpan": 1.0,
+                "frequencyScroll": 0.0,
             }
         ],
         "globalColor": {
@@ -552,6 +568,27 @@ def normalize_renderer_template(input_template: Any) -> dict:
                 ),
                 "pathMode": _normalize_layer_path_mode(
                     layer_in.get("pathMode", fallback_layer.get("pathMode", "auto"))
+                ),
+                "linearSpan": float(
+                    max(
+                        0.1,
+                        min(
+                            1.0,
+                            float(
+                                layer_in.get(
+                                    "linearSpan",
+                                    fallback_layer.get("linearSpan", 1.0),
+                                )
+                                or 1.0
+                            ),
+                        ),
+                    )
+                ),
+                "frequencyScroll": _clamp_frequency_scroll_value(
+                    layer_in.get(
+                        "frequencyScroll",
+                        fallback_layer.get("frequencyScroll", 0.0),
+                    )
                 ),
             }
         )
