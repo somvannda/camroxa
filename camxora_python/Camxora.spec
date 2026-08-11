@@ -101,6 +101,35 @@ def _bundle_package_dir(package_name: str) -> None:
 # librosa/soundfile paths hang. Prefer collect_all for this subsystem.
 from PyInstaller.utils.hooks import collect_all  # noqa: E402
 
+# SciPy 1.17+ extensions import ``numpy._core.multiarray``. NumPy 1.26 still
+# ships that as a compatibility package on disk, but PyInstaller often omits
+# ``numpy._core`` when only ``numpy`` is listed — frozen export then crashes with
+# ``ImportError: numpy._core.multiarray failed to import``.
+for _package_name in ("numpy", "scipy"):
+    try:
+        _pkg_datas, _pkg_binaries, _pkg_hidden = collect_all(_package_name)
+        datas += _pkg_datas
+        binaries += _pkg_binaries
+        hiddenimports += _pkg_hidden
+    except Exception:
+        pass
+    _bundle_package_dir(_package_name)
+    try:
+        hiddenimports += collect_submodules(_package_name)
+    except Exception:
+        pass
+
+hiddenimports += [
+    "numpy._core",
+    "numpy._core.multiarray",
+    "numpy._core._multiarray_umath",
+    "numpy.core",
+    "numpy.core.multiarray",
+    "scipy.signal",
+    "scipy.signal._signal_api",
+    "scipy.signal._support_alternative_backends",
+]
+
 _AUDIO_STACK = (
     "soundfile",
     "_soundfile_data",
