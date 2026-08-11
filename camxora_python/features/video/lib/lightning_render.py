@@ -188,6 +188,28 @@ def apply_vignette_reactivity(
     )
 
 
+def apply_lightning_flash_floor(
+    flash: float,
+    *,
+    peak_floor: float,
+    opacity_base: float,
+) -> float:
+    """Raise pre-opacity flash using a sampler peak that already includes opacity.
+
+    Sampler peaks (``peak_lightning_flash_by_layer`` / interval global peak) bake
+    ``envelope * intensity_factor * opacity``. Render keeps flash in pre-opacity
+    space (``envelope * intensity_factor``) and applies opacity later. Convert the
+    floor into that space — never multiply intensity/opacity a second time.
+    """
+    flash_v = float(max(0.0, min(1.0, float(flash))))
+    floor_v = float(max(0.0, min(1.0, float(peak_floor))))
+    opacity_v = float(max(0.0, min(1.0, float(opacity_base))))
+    if floor_v <= 0.0 or opacity_v <= 1e-6:
+        return flash_v
+    floor_flash = float(min(1.0, floor_v / opacity_v))
+    return float(max(flash_v, floor_flash))
+
+
 def render_lightning_layers_gl(
     ctx: moderngl.Context,
     *,
@@ -211,10 +233,10 @@ def render_lightning_layers_gl(
 ) -> None:
     """Draw lightning over background / under spectrum+logo. No-op when disabled.
 
-    ``flash_overrides_by_layer`` maps layer index → peak flash (0..1) sampled over
-    an encode interval (export at <60 fps). Only those layers are raised, matching
-    preview per-bolt timing. Legacy ``flash_override`` (global peak) is ignored when
-    the per-layer map is provided.
+    ``flash_overrides_by_layer`` maps layer index → sampler peak (already includes
+    intensity×opacity). Only those layers are raised — matching preview per-bolt
+    timing. Legacy ``flash_override`` (global peak applied to every layer) is used
+    only when the per-layer map is omitted; prefer the per-layer map for export.
 
     When ``opaque_framebuffer_alpha`` is True (preview default), RGB blends
     normally/additively while destination alpha stays 1 so Qt translucent
@@ -275,10 +297,12 @@ def render_lightning_layers_gl(
         intensity = _layer_float(layer, "intensity", 0.72)
         flash = float(max(0.0, min(1.0, flash * (0.35 + 0.65 * intensity))))
         peak_floor = float(per_layer_floor.get(layer_idx, 0.0))
-        if peak_floor > flash:
-            # Keep this layer's strike visible when export undersamples the 60 Hz envelope.
-            flash = float(max(flash, peak_floor * (0.35 + 0.65 * intensity) * opacity_base))
-            flash = float(max(0.0, min(1.0, flash)))
+        # Keep strikes visible when export undersamples the 60 Hz envelope.
+        flash = apply_lightning_flash_floor(
+            flash,
+            peak_floor=peak_floor,
+            opacity_base=opacity_base,
+        )
         if flash <= 0.02:
             continue
 

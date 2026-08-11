@@ -3554,6 +3554,9 @@ def run_gpu_render(
         try:
             from features.video.lib.lightning_render import render_lightning_layers_gl
 
+            # Per-layer floors (parity-branch timing): raise only bolts that actually
+            # peaked in the encode window. apply_lightning_flash_floor avoids the
+            # double-scale bug that made sparse floors look like a single bolt.
             render_lightning_layers_gl(
                 ctx,
                 line_vbo=line_vbo,

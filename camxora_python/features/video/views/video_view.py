@@ -3862,6 +3862,7 @@ class VideoView(QWidget):
         self._selected_lightning_layer_index = selected_index
         self._update_inspectors(defer_rebind=defer_rebind)
         self._schedule_dirty_state_update()
+        self._schedule_preview_update()
 
     def _select_lightning_layer(self, index: int) -> None:
         self._selected_lightning_layer_index = max(0, index)
