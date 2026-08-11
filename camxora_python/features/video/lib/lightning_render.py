@@ -233,11 +233,10 @@ def render_lightning_layers_gl(
 ) -> None:
     """Draw lightning over background / under spectrum+logo. No-op when disabled.
 
-    ``flash_override`` (0..1) is a sampler peak that already includes intensity and
-    opacity. When set (and ``flash_overrides_by_layer`` is not), every enabled layer
-    is raised to that peak so multi-bolt export keeps all positioned bolts lit when
-    any strike lands in the encode window. ``flash_overrides_by_layer`` maps layer
-    index → peak for sparse per-bolt floors (preview-like timing experiments).
+    ``flash_overrides_by_layer`` maps layer index → sampler peak (already includes
+    intensity×opacity). Only those layers are raised — matching preview per-bolt
+    timing. Legacy ``flash_override`` (global peak applied to every layer) is used
+    only when the per-layer map is omitted; prefer the per-layer map for export.
 
     When ``opaque_framebuffer_alpha`` is True (preview default), RGB blends
     normally/additively while destination alpha stays 1 so Qt translucent

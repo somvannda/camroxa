@@ -9,6 +9,21 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-08-11
+
+### Fixed
+
+- **Lightning export timing:** Restore per-layer flash floors from the
+  preview-export-parity work so each bolt keeps its own strike timing.
+  1.2.3’s global floor made all layers visible but synchronized them.
+  Visibility still uses the corrected floor math (no double-scale) so
+  mid-interval peaks stay drawable. See
+  `docs/changelog/2026-08-11-lightning-export-timing.md`.
+
+### Changed
+
+- Desktop version stamp **1.2.4** / installer `CamxoraSetup-1.2.4.exe`.
+
 ## [1.2.3] - 2026-08-11
 
 ### Fixed

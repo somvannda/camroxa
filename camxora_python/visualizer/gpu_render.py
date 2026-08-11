@@ -3474,7 +3474,7 @@ def run_gpu_render(
                 sample_lightning_layer_peaks_over_interval,
             )
 
-            lightning_flash, _lightning_layer_peaks = sample_lightning_layer_peaks_over_interval(
+            lightning_flash, lightning_layer_peaks = sample_lightning_layer_peaks_over_interval(
                 template if isinstance(template, dict) else {},
                 time_sec=float(time_sec),
                 encode_dt=float(encode_dt),
@@ -3488,7 +3488,7 @@ def run_gpu_render(
         except Exception:
             apply_vignette_reactivity = None  # type: ignore[assignment]
             lightning_flash = 0.0
-            _lightning_layer_peaks = {}
+            lightning_layer_peaks = {}
         flash_env = float(max(bg_audio_env, lightning_flash))
         prog_scene["vignette_enabled"].value = 1 if bool(vig.get("enabled", False)) else 0
         vig_strength = float(max(0.0, min(1.0, float(vig.get("strength", 0.35) or 0.35))))
@@ -3554,9 +3554,9 @@ def run_gpu_render(
         try:
             from features.video.lib.lightning_render import render_lightning_layers_gl
 
-            # Global floor: when any bolt peaked in the encode window, raise every
-            # enabled layer (multi-bolt export density). Keep 60 Hz sampling so short
-            # strikes are not missed between encode frames.
+            # Per-layer floors (parity-branch timing): raise only bolts that actually
+            # peaked in the encode window. apply_lightning_flash_floor avoids the
+            # double-scale bug that made sparse floors look like a single bolt.
             render_lightning_layers_gl(
                 ctx,
                 line_vbo=line_vbo,
@@ -3573,7 +3573,7 @@ def run_gpu_render(
                 beat=float(feats.get("beat", 0.0) or 0.0),
                 onset=float(feats.get("onset", 0.0) or 0.0),
                 audio_env=float(max(bass, kick_pow, bg_audio_env)),
-                flash_override=float(lightning_flash) if float(lightning_flash) > 0.0 else None,
+                flash_overrides_by_layer=lightning_layer_peaks if lightning_layer_peaks else None,
             )
         except Exception as _lightning_exc:
             if not getattr(run_gpu_render, "_lightning_err_logged", False):
