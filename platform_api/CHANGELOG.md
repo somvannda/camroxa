@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Admin Job Queue ops board APIs: list durable jobs with user/error/worker, recent `image_jobs` failures, and enriched busy-worker metrics. Worker ids include stage label (`CAMXORA_WORKER_NAME`). See `docs/changelog/2026-08-11-job-queue-ops-board.md`.
+
 ### Fixed
 
 - Batch create with `structure_mode` `ai_free`/`suno` no longer resurrects Structure Shuffle from saved `shuffleStructure` settings after the request clears it. See `docs/changelog/2026-08-10-suno-structure-mode.md`.

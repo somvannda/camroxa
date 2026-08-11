@@ -34,8 +34,24 @@ from platform_api.services.job_types import (
 logger = logging.getLogger("platform_api.worker")
 
 
+def _worker_label() -> str:
+    """Prefer CAMXORA_WORKER_NAME (e.g. images@1); else stage preset from job types."""
+    named = (os.environ.get("CAMXORA_WORKER_NAME") or "").strip()
+    if named:
+        return named
+    raw = (os.environ.get("CAMXORA_WORKER_JOB_TYPES") or "").strip().lower()
+    if raw in {"draft", "suno", "images", "all"}:
+        return raw
+    return ""
+
+
 def _worker_id() -> str:
-    return f"{socket.gethostname()}:{os.getpid()}"
+    host = socket.gethostname()
+    pid = os.getpid()
+    label = _worker_label()
+    if label:
+        return f"{host}:{label}:{pid}"
+    return f"{host}:{pid}"
 
 
 async def _bootstrap_connections() -> None:
