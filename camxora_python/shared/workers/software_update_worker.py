@@ -9,6 +9,16 @@ from urllib.parse import urlparse
 import httpx
 from PySide6.QtCore import QThread, Signal
 
+from shared.lib.software_update_copy import (
+    STATUS_CLOSING,
+    STATUS_DOWNLOAD_COMPLETE,
+    STATUS_FAILED_DEFAULT,
+    STATUS_INSTALLING,
+    STATUS_PREPARING_INSTALLER,
+    STATUS_STARTING_DOWNLOAD,
+    STATUS_STARTING_INSTALLER,
+    format_download_progress,
+)
 from shared.services.software_update_installer import (
     SoftwareUpdateInstallError,
     SoftwareUpdateInstaller,
@@ -19,11 +29,6 @@ _CHUNK_SIZE = 256 * 1024
 # Leave headroom on the progress bar for install + restart phases.
 _DOWNLOAD_PROGRESS_CAP = 85
 
-_CLOSING_MESSAGE = (
-    "Closing Camxora so Setup can update files. "
-    "Wait for the Setup progress window to finish — this can take a few minutes."
-)
-
 
 class SoftwareUpdateInstallWorker(QThread):
     """Background download + launch visible-progress installer.
@@ -31,7 +36,7 @@ class SoftwareUpdateInstallWorker(QThread):
     ``progress`` emits ``(message, percent)`` where percent is ``0–100`` for
     determinate download/install phases, or ``-1`` for indeterminate work.
 
-    ``succeeded`` means the Setup helper was launched successfully — not that
+    ``succeeded`` means the installer helper was launched successfully — not that
     the new version is already installed.
     """
 
@@ -52,11 +57,11 @@ class SoftwareUpdateInstallWorker(QThread):
         try:
             self._download(package_path)
             kind = detect_package_kind(package_path, self._download_url)
-            self.progress.emit("Preparing installer…", 88)
+            self.progress.emit(STATUS_PREPARING_INSTALLER, 88)
             if kind == "exe":
-                self.progress.emit("Starting Setup…", 92)
+                self.progress.emit(STATUS_STARTING_INSTALLER, 92)
             else:
-                self.progress.emit("Installing update…", 92)
+                self.progress.emit(STATUS_INSTALLING, 92)
 
             SoftwareUpdateInstaller().apply(
                 package_path,
@@ -64,12 +69,12 @@ class SoftwareUpdateInstallWorker(QThread):
                 parent_pid=os.getpid(),
                 target_version=self._target_version,
             )
-            self.progress.emit(_CLOSING_MESSAGE, 100)
+            self.progress.emit(STATUS_CLOSING, 100)
             self.succeeded.emit(package_path)
         except SoftwareUpdateInstallError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:
-            self.failed.emit(str(exc) or "Unable to install update.")
+            self.failed.emit(str(exc) or STATUS_FAILED_DEFAULT)
         finally:
             try:
                 if os.path.isfile(package_path):
@@ -78,7 +83,7 @@ class SoftwareUpdateInstallWorker(QThread):
                 pass
 
     def _download(self, package_path: str) -> None:
-        self.progress.emit("Starting download…", 0)
+        self.progress.emit(STATUS_STARTING_DOWNLOAD, 0)
         with httpx.stream("GET", self._download_url, timeout=300.0, follow_redirects=True) as response:
             response.raise_for_status()
             total = int(response.headers.get("content-length") or 0)
@@ -95,11 +100,11 @@ class SoftwareUpdateInstallWorker(QThread):
                         pct = min(_DOWNLOAD_PROGRESS_CAP, int(downloaded * _DOWNLOAD_PROGRESS_CAP / total))
                         if pct != last_pct:
                             last_pct = pct
-                            self.progress.emit(f"Downloading update… {raw_pct}%", pct)
+                            self.progress.emit(format_download_progress(percent=raw_pct), pct)
                     else:
                         mb = downloaded / (1024 * 1024)
-                        self.progress.emit(f"Downloading update… {mb:.1f} MB", -1)
-        self.progress.emit("Download complete — starting Setup…", _DOWNLOAD_PROGRESS_CAP)
+                        self.progress.emit(format_download_progress(megabytes=mb), -1)
+        self.progress.emit(STATUS_DOWNLOAD_COMPLETE, _DOWNLOAD_PROGRESS_CAP)
 
     @staticmethod
     def _guess_suffix(url: str) -> str:

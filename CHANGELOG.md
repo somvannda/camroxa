@@ -9,6 +9,15 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Software update gate UI:** Simplified centered card with Camxora logo and
+  compact Install CTA (no What’s new section). Preview with
+  `CAMXORA_PREVIEW_UPDATE_GATE=1`. See
+  `docs/changelog/2026-08-11-software-update-gate-ui.md`.
+- **Software update copy:** Professional installer-focused wording across gate,
+  progress, and failure states.
+
 ## [1.2.4] - 2026-08-11
 
 ### Fixed

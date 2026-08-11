@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QVBoxLayout, QWidget
@@ -11,8 +13,10 @@ from features.account.views.auth_view import AuthView
 from features.account.views.startup_view import StartupView
 from features.onboarding.views.onboarding_views import OnboardingWelcomeView, OnboardingWizardView
 from shared.constants.auth import REGISTRATION_ENABLED
+from shared.constants.app_version import get_app_version
 from shared.lib.app_icon import apply_app_window_icon
 from shared.lib.opengl_startup import prime_opengl_on_window
+from shared.lib.version_compare import parse_version
 from shared.lib.window_chrome import (
     center_window_on_screen,
     configure_rounded_window,
@@ -97,6 +101,7 @@ class RootWindow(QMainWindow):
         self._software_update_gate.update_requested.connect(self._start_software_update_install)
         # Restore a mandatory update left over if Setup was still running / failed.
         SoftwareUpdateService.instance().restore_from_disk()
+        self._maybe_preview_software_update_gate()
         self._sync_software_update_gate_geometry()
 
     def _connect_signals(self) -> None:
@@ -513,6 +518,27 @@ class RootWindow(QMainWindow):
         self._software_update_gate.setGeometry(self._window_surface.rect())
         if SoftwareUpdateService.instance().should_block_app():
             self._software_update_gate.raise_()
+
+    def _maybe_preview_software_update_gate(self) -> None:
+        """Dev-only: force the blocking update dialog without publishing a release.
+
+        Set ``CAMXORA_PREVIEW_UPDATE_GATE=1`` before launching the desktop app.
+        """
+        flag = os.environ.get("CAMXORA_PREVIEW_UPDATE_GATE", "").strip().lower()
+        if flag not in {"1", "true", "yes"}:
+            return
+        major, minor, patch = parse_version(get_app_version())
+        preview_version = f"{major}.{minor}.{patch + 1}"
+        SoftwareUpdateService.instance().apply_push_payload(
+            {
+                "version": preview_version,
+                "download_url": "https://example.invalid/CamxoraSetup-preview.exe",
+                "mandatory": True,
+                "release_notes": "",
+                "notification_id": "preview-software-update-gate",
+            }
+        )
+        self._sync_software_update_gate_geometry()
 
     def _start_software_update_install(self) -> None:
         SoftwareUpdateService.instance().start_install(parent=self)
