@@ -24,6 +24,7 @@ from features.video.lib.lightning_style_registry import (
     LIGHTNING_SPAWN_OPTIONS,
     LIGHTNING_STYLE_OPTIONS,
     LIGHTNING_TRIGGER_OPTIONS,
+    MAX_LIGHTNING_LAYERS,
     normalize_lightning_blend,
     normalize_lightning_direction,
     normalize_lightning_spawn,
@@ -47,7 +48,10 @@ class LightningLayerEditor(InspectorSection):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             "Lightning Layers",
-            subtitle="Add as many bolts as you want — each layer is one lightning. Style and position are per bolt.",
+            subtitle=(
+                f"Add up to {MAX_LIGHTNING_LAYERS} bolts — each layer is one lightning. "
+                "Style and position are per bolt."
+            ),
             parent=parent,
         )
         self._binding = False
@@ -73,7 +77,11 @@ class LightningLayerEditor(InspectorSection):
             btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
             btn.clicked.connect(slot)
             actions.addWidget(btn)
-            if label == "Del":
+            if label == "Add":
+                self._add_btn = btn
+            elif label == "Dup":
+                self._dup_btn = btn
+            elif label == "Del":
                 self._delete_btn = btn
             elif label == "Up":
                 self._up_btn = btn
@@ -118,7 +126,7 @@ class LightningLayerEditor(InspectorSection):
                 "Random on screen = new full-frame position every strike. "
                 "Rotation wheel spins the bolt 0–360° on top of Direction. "
                 "Branchiness = side twigs on this one bolt (0 = clean stroke, 1 = up to 2 forks). "
-                "Use Add for more independent bolts. "
+                f"Use Add for more independent bolts (max {MAX_LIGHTNING_LAYERS}). "
                 "Strike Motion Speed / React Motion Speed control timing feel — not bolt length. "
                 "Length React (optional) is the only control that lets volume stretch reach. "
                 "Thickness Taper: thin at the start → thicker toward the tip. "
@@ -300,6 +308,9 @@ class LightningLayerEditor(InspectorSection):
                 self._layer_combo.setCurrentIndex(self._selected_index)
             self._layer_combo.blockSignals(False)
 
+            can_add = len(layers) < MAX_LIGHTNING_LAYERS
+            self._add_btn.setEnabled(can_add)
+            self._dup_btn.setEnabled(can_add)
             self._delete_btn.setEnabled(len(layers) >= 2)
             self._up_btn.setEnabled(len(layers) >= 2 and self._selected_index > 0)
             self._down_btn.setEnabled(len(layers) >= 2 and self._selected_index < len(layers) - 1)

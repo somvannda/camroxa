@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+# Hard cap for preview + export (one layer = one bolt). Matches product budget.
+MAX_LIGHTNING_LAYERS = 10
+
 LIGHTNING_STYLE_OPTIONS: tuple[tuple[str, str], ...] = (
     ("fork", "Fork (classic branched)"),
     ("sheet", "Sheet (wide flash)"),
@@ -191,7 +194,11 @@ def normalize_lightning_layer(layer: Any, *, index: int = 0) -> dict[str, Any]:
 def normalize_lightning_layers(raw: Any) -> list[dict[str, Any]]:
     if not isinstance(raw, list) or not raw:
         return [normalize_lightning_layer(default_lightning_layer(index=1), index=0)]
-    out = [normalize_lightning_layer(item, index=i) for i, item in enumerate(raw) if isinstance(item, dict)]
+    out = [
+        normalize_lightning_layer(item, index=i)
+        for i, item in enumerate(raw)
+        if isinstance(item, dict)
+    ][:MAX_LIGHTNING_LAYERS]
     return out if out else [normalize_lightning_layer(default_lightning_layer(index=1), index=0)]
 
 

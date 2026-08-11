@@ -263,3 +263,29 @@ def test_set_mp3_order_subset_excludes_removed_tracks(
         "2. Second.mp3",
         "3. Third.mp3",
     ]
+
+def test_merge_export_prefs_prefer_local_over_cloud() -> None:
+    merged = video_local_store._merge_export_prefs(
+        {"videoExportFps": 24, "videoExportWorkers": 1, "videoExportSpeedMode": "fast"},
+        {"videoExportFps": 60, "videoExportWorkers": 4, "videoExportSpeedMode": "quality"},
+    )
+    assert merged["videoExportFps"] == 60
+    assert merged["videoExportWorkers"] == 4
+    assert merged["videoExportSpeedMode"] == "quality"
+
+
+def test_read_workspace_state_uses_local_export_prefs(isolated_video_store: VideoLocalStore) -> None:
+    prefs = isolated_video_store.read_prefs()
+    prefs.update(
+        {
+            "videoExportFps": 48,
+            "videoExportWorkers": 3,
+            "videoExportSpeedMode": "balanced",
+        }
+    )
+    isolated_video_store.write_prefs(prefs)
+    workspace = isolated_video_store.read_workspace_state(
+        {"videoExportFps": 24, "videoExportWorkers": 1, "videoExportSpeedMode": "fast"}
+    )
+    assert workspace.export.fps == 48
+    assert workspace.export.workers == 3

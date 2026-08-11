@@ -303,6 +303,9 @@ class VideoView(QWidget):
         self._video_billing_charge: dict[str, object] = {}
         self._merge_billing_charge: dict[str, object] = {}
         self._settings_patch_worker: PatchSettingsWorker | None = None
+        self._pending_settings_patch: dict[str, object] = {}
+        self._pending_settings_status = "Export settings updated."
+        self._pending_resolution_save = False
         self._pending_manual_billing: dict[str, object] | None = None
         self._resolution_save_pending = False
         self._export_start_pending = False
@@ -355,6 +358,12 @@ class VideoView(QWidget):
         self._draft_persist_timer.setSingleShot(True)
         self._draft_persist_timer.setInterval(200)
         self._draft_persist_timer.timeout.connect(self._persist_local_draft_snapshot)
+        # Coalesce Resolution/FPS/Speed/Workers patches — never replace a live
+        # PatchSettingsWorker (QThread: Destroyed while thread is still running).
+        self._settings_patch_timer = QTimer(self)
+        self._settings_patch_timer.setSingleShot(True)
+        self._settings_patch_timer.setInterval(250)
+        self._settings_patch_timer.timeout.connect(self._flush_pending_settings_patch)
         self._hydrated_template_id = ""
 
         root = QVBoxLayout(self)
@@ -837,6 +846,9 @@ class VideoView(QWidget):
         if self._draft_persist_timer.isActive():
             self._draft_persist_timer.stop()
             self._persist_local_draft_snapshot()
+        if self._settings_patch_timer.isActive():
+            self._settings_patch_timer.stop()
+            self._flush_pending_settings_patch()
         if self._diagnostics_timer is not None:
             self._diagnostics_timer.stop()
         restore_shell_status()
@@ -1860,16 +1872,94 @@ class VideoView(QWidget):
             notify_action("Track order updated.", tone="success")
 
     def _patch_export_setting(self, patch: dict[str, object], status: str) -> None:
-        """Persist an export option like python_app's _persist_setting_patch."""
+        """Queue an export-option PATCH; coalesce rapid Resolution/FPS/Speed/Workers edits."""
+        if not patch:
+            return
         self._settings.update(patch)
-        # parent=None so closing Video mid-save cannot destroy a live QThread.
-        worker = PatchSettingsWorker(self._api, dict(patch), parent=None)
-        worker.succeeded.connect(lambda *_: notify_action(status, tone="success"))
-        worker.failed.connect(
-            lambda message: notify_action(message or "Unable to save export settings.", tone="error")
+        self._mirror_export_settings_to_local_prefs(patch)
+        self._pending_settings_patch.update(dict(patch))
+        self._pending_settings_status = status
+        # Debounce so spinning FPS/workers/speed doesn't spawn overlapping QThreads.
+        self._settings_patch_timer.start()
+
+    def _mirror_export_settings_to_local_prefs(self, patch: dict[str, object]) -> None:
+        """Persist export options locally so a failed/interrupted API patch still reloads."""
+        prefs_keys = (
+            "outputResolution",
+            "imageResolution",
+            "videoExportFps",
+            "videoExportWorkers",
+            "videoExportSpeedMode",
+            "videoExportTier",
+            "autoMergeAfterVideo",
+            "videoShuffleMerge",
         )
-        self._settings_patch_worker = worker
-        worker.start()
+        local_patch = {key: patch[key] for key in prefs_keys if key in patch}
+        if not local_patch:
+            return
+        try:
+            prefs = self._store.read_prefs()
+            prefs.update(local_patch)
+            self._store.write_prefs(prefs)
+        except Exception:
+            pass
+        if self._cache is not None and self._workspace is not None:
+            self._cache.apply_video_workspace(self._workspace, self._settings)
+
+    def _flush_pending_settings_patch(self) -> None:
+        if not self._pending_settings_patch:
+            return
+        worker = self._settings_patch_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    # Keep coalescing; retry when the in-flight worker finishes.
+                    self._settings_patch_timer.start()
+                    return
+            except RuntimeError:
+                self._settings_patch_worker = None
+
+        patch = dict(self._pending_settings_patch)
+        status = self._pending_settings_status
+        was_resolution = bool(self._pending_resolution_save)
+        self._pending_settings_patch.clear()
+        self._pending_resolution_save = False
+        # parent=None so closing Video mid-save cannot destroy a live QThread.
+        next_worker = PatchSettingsWorker(self._api, patch, parent=None)
+        next_worker.succeeded.connect(
+            lambda _payload, s=status, res=was_resolution: self._on_export_settings_saved(s, resolution=res)
+        )
+        next_worker.failed.connect(
+            lambda message, res=was_resolution: self._on_export_settings_save_failed(message, resolution=res)
+        )
+        next_worker.finished.connect(self._on_settings_patch_worker_finished)
+        self._settings_patch_worker = next_worker
+        next_worker.start()
+
+    def _on_export_settings_saved(self, status: str, *, resolution: bool = False) -> None:
+        if resolution:
+            self._resolution_save_pending = False
+            if self._workspace:
+                self._update_stage_summary()
+        notify_action(status, tone="success")
+
+    def _on_export_settings_save_failed(self, message: str, *, resolution: bool = False) -> None:
+        if resolution:
+            self._resolution_save_pending = False
+            if self._workspace:
+                self._update_stage_summary()
+        notify_action(message or "Unable to save export settings.", tone="error")
+
+    def _on_settings_patch_worker_finished(self) -> None:
+        worker = self._settings_patch_worker
+        self._settings_patch_worker = None
+        if worker is not None:
+            try:
+                worker.deleteLater()
+            except RuntimeError:
+                pass
+        if self._pending_settings_patch:
+            self._settings_patch_timer.start(0)
 
     def _set_auto_merge(self, enabled: bool) -> None:
         if not self._workspace:
@@ -3200,10 +3290,9 @@ class VideoView(QWidget):
         normalized = str(resolution or "").strip()
         if not normalized or normalized == self._workspace.output_resolution:
             return
-        if self._settings_patch_worker is not None and self._settings_patch_worker.isRunning():
-            return
 
         self._resolution_save_pending = True
+        self._pending_resolution_save = True
         notify_action("Saving output resolution…", tone="neutral")
         self._workspace = self._store.set_output_resolution(normalized, settings=self._settings)
         self._settings["outputResolution"] = normalized
@@ -3216,31 +3305,9 @@ class VideoView(QWidget):
             self._settings["videoExportTier"] = "standard"
             patch["videoExportTier"] = "standard"
         self._update_stage_summary()
-        self._update_preview()
+        self._schedule_preview_update()
         self._update_export_panel()
-
-        worker = PatchSettingsWorker(
-            self._api,
-            patch,
-            parent=None,
-        )
-        worker.succeeded.connect(self._on_output_resolution_saved)
-        worker.failed.connect(self._on_output_resolution_save_failed)
-        worker.finished.connect(lambda: setattr(self, "_settings_patch_worker", None))
-        self._settings_patch_worker = worker
-        worker.start()
-
-    def _on_output_resolution_saved(self, _payload: object) -> None:
-        self._resolution_save_pending = False
-        if self._workspace:
-            self._update_stage_summary()
-        notify_action("Output resolution updated.", tone="success")
-
-    def _on_output_resolution_save_failed(self, message: str) -> None:
-        self._resolution_save_pending = False
-        if self._workspace:
-            self._update_stage_summary()
-        notify_action(message or "Unable to update output resolution right now.", tone="error")
+        self._patch_export_setting(patch, "Output resolution updated.")
 
     def _issue_preview_playback_command(self, command: str) -> None:
         self._stage.issue_playback_command(command)
@@ -3835,17 +3902,28 @@ class VideoView(QWidget):
         self._patch_selected_lightning_layer(dict(patch))
 
     def _add_lightning_layer(self) -> None:
-        from features.video.lib.lightning_style_registry import default_lightning_layer
+        from features.video.lib.lightning_style_registry import (
+            MAX_LIGHTNING_LAYERS,
+            default_lightning_layer,
+        )
 
         layers = clone_layer_records(self._lightning_layers)
+        if len(layers) >= MAX_LIGHTNING_LAYERS:
+            notify_action(f"Maximum of {MAX_LIGHTNING_LAYERS} lightning layers.", tone="warning")
+            return
         next_index = len(layers) + 1
         layers.append(default_lightning_layer(index=next_index))
         self._set_lightning_layers(layers, selected_index=len(layers) - 1)
 
     def _duplicate_lightning_layer(self) -> None:
+        from features.video.lib.lightning_style_registry import MAX_LIGHTNING_LAYERS
+
         layers = clone_layer_records(self._lightning_layers)
         if not layers:
             self._add_lightning_layer()
+            return
+        if len(layers) >= MAX_LIGHTNING_LAYERS:
+            notify_action(f"Maximum of {MAX_LIGHTNING_LAYERS} lightning layers.", tone="warning")
             return
         index = max(0, min(self._selected_lightning_layer_index, len(layers) - 1))
         copy = dict(layers[index])

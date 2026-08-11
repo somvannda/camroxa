@@ -20,9 +20,16 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Sandbox desktop single-instance lock is env-scoped so sandbox can run alongside production; production keeps `Camxora.DesktopStudio.SingleInstance.v1`. See `docs/changelog/2026-08-10-sandbox-dual-instance-lock.md`.
+- Lightning layer stack capped at **10 bolts** (Add/Dup disabled at the cap;
+  templates normalize to at most 10). Preview and export both keep every layer
+  up to that limit. See `docs/changelog/2026-08-09-lightning-max-10-layers.md`.
 
 ### Fixed
 
+- Video export Resolution / FPS / Speed / Workers no longer crash with
+  `PatchSettingsWorker` destroyed while running; saves are coalesced and also
+  mirrored to local prefs. See
+  `docs/changelog/2026-08-11-video-export-settings-patch-harden.md`.
 - Live preview now applies layer **Raise Scroll** (`frequencyScroll`) and **Row Width**
   (`linearSpan`) from renderer JSON — previously only export honored them.
   See spectrum UI↔JSON audit below.

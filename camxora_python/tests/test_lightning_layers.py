@@ -13,6 +13,7 @@ from features.video.lib.lightning_style_registry import (
     LIGHTNING_PRESET_OPTIONS,
     LIGHTNING_STYLE_OPTIONS,
     LIGHTNING_TRIGGER_OPTIONS,
+    MAX_LIGHTNING_LAYERS,
     build_lightning_preset_layer_patch,
     default_lightning_layer,
     is_lightning_preset_key,
@@ -20,6 +21,8 @@ from features.video.lib.lightning_style_registry import (
     normalize_lightning_style,
     normalize_lightning_trigger,
 )
+from features.video.lib.video_template_draft import build_video_template_draft
+from features.video.services.template_normalizer import TemplateNormalizer
 from visualizer.template_runtime import default_renderer_template, normalize_renderer_template
 
 
@@ -34,6 +37,44 @@ def test_normalize_layers_defaults() -> None:
     assert len(layers) == 1
     assert layers[0]["style"] == "fork"
     assert normalize_lightning_style("NOPE") == "fork"
+
+
+def test_max_lightning_layers_is_ten() -> None:
+    assert MAX_LIGHTNING_LAYERS == 10
+
+
+def test_normalize_lightning_layers_caps_at_max() -> None:
+    raw = [default_lightning_layer(index=i) for i in range(1, MAX_LIGHTNING_LAYERS + 4)]
+    layers = normalize_lightning_layers(raw)
+    assert len(layers) == MAX_LIGHTNING_LAYERS
+    assert layers[-1]["id"] == f"lightning-{MAX_LIGHTNING_LAYERS}"
+
+
+def test_export_normalizer_keeps_ten_lightning_layers() -> None:
+    bolts = [default_lightning_layer(index=i) for i in range(1, MAX_LIGHTNING_LAYERS + 1)]
+    for i, bolt in enumerate(bolts):
+        bolt["x"] = float(i * 25)
+        bolt["enabled"] = True
+    base = {
+        "templateName": "ten-bolts",
+        "style": "orbit-spikes",
+        "lightningEnabled": True,
+        "lightningLayers": [default_lightning_layer(index=1)],
+        "spectrumEnabled": True,
+        "layers": [{"opacity": 1.0, "glow": 0.5}],
+    }
+    draft = build_video_template_draft(base, logo_path="", background_path="")
+    draft["lightningEnabled"] = True
+    out = TemplateNormalizer().to_renderer_dict(
+        base=base,
+        draft=draft,
+        layers=base["layers"],
+        workspace={},
+        lightning_layers=bolts,
+    )
+    assert out["lightningEnabled"] is True
+    assert len(out["lightningLayers"]) == MAX_LIGHTNING_LAYERS
+    assert [layer["x"] for layer in out["lightningLayers"]] == [float(i * 25) for i in range(MAX_LIGHTNING_LAYERS)]
 
 
 def test_template_includes_lightning_layers() -> None:
