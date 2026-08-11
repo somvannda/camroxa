@@ -68,6 +68,28 @@ def _export_fps_from_settings(settings: dict[str, Any]) -> int:
     return normalize_export_fps(settings.get("videoExportFps", 24))
 
 
+def _merge_export_prefs(settings: dict[str, Any], prefs: dict[str, Any]) -> dict[str, Any]:
+    """Local video prefs win for export options so rapid UI saves survive API races."""
+    merged = dict(settings or {})
+    for key in (
+        "videoExportFps",
+        "videoExportWorkers",
+        "videoExportSpeedMode",
+        "videoExportTier",
+        "autoMergeAfterVideo",
+        "videoShuffleMerge",
+    ):
+        if key not in prefs:
+            continue
+        value = prefs.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        merged[key] = value
+    return merged
+
+
 def _parse_resolution(resolution: str) -> PreviewAspectRatio:
     match = re.match(r"^(\d+)\s*x\s*(\d+)$", str(resolution or "").strip(), re.IGNORECASE)
     if not match:
@@ -248,9 +270,9 @@ class VideoLocalStore:
         schedule_workspace_prefs_push()
 
     def read_workspace_state(self, settings: dict[str, Any] | None = None) -> VideoWorkspaceState:
-        settings = settings or {}
-        templates = self.read_templates()
         prefs = self.read_prefs()
+        settings = _merge_export_prefs(settings or {}, prefs)
+        templates = self.read_templates()
         export_registry = get_video_workspace_service().get_workspace_state()
         export_state = export_registry.export if export_registry else VideoExportState()
 
