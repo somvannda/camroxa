@@ -86,6 +86,37 @@ def classify_export_gpu_tier(*, name: str | None = None, memory_mib: float | Non
     return "mid"
 
 
+# Quality / Best Quality are GPU-heavy (RGBA + glow). Cap parallel exporters by
+# detected tier; the UI still asks before going above 1 worker.
+_QUALITY_WORKER_CAPS: dict[GpuTier, int] = {
+    "low": 1,
+    "mid": 3,
+    "high": 5,
+}
+
+
+def normalize_export_gpu_speed_mode(speed_mode: object = None) -> str:
+    mode = str(speed_mode or "").strip().lower()
+    if mode in {"master", "best"}:
+        return "best_quality"
+    return mode
+
+
+def is_quality_export_speed(speed_mode: object = None) -> bool:
+    return normalize_export_gpu_speed_mode(speed_mode) in {"best_quality", "quality"}
+
+
+def quality_export_worker_cap(*, tier: GpuTier | None = None) -> int:
+    """Max parallel workers allowed for Quality / Best Quality on this GPU."""
+    resolved: GpuTier = tier or "mid"
+    if tier is None:
+        try:
+            resolved = detect_export_gpu_tier()
+        except Exception:
+            resolved = "mid"
+    return int(_QUALITY_WORKER_CAPS.get(resolved, 3))
+
+
 def resolve_pipeline_export_workers(
     requested: object,
     *,
@@ -97,8 +128,8 @@ def resolve_pipeline_export_workers(
     """Clamp Preferences workers for GPU safety.
 
     - Low-VRAM GPUs: force 1
-    - Quality / Best Quality: force 1 (RGBA + glow saturates the GPU)
-    - QHD/4K with Balance+: max 2
+    - Quality / Best Quality: tier cap (low=1, mid=3, high=5)
+    - QHD/4K with non-quality speeds: max 2
     """
     try:
         limit = max(1, min(10, int(requested)))  # type: ignore[arg-type]
@@ -110,11 +141,9 @@ def resolve_pipeline_export_workers(
     except Exception:
         pass
 
-    mode = str(speed_mode or "").strip().lower()
-    if mode in {"master", "best"}:
-        mode = "best_quality"
-    if mode in {"best_quality", "quality"}:
-        return 1
+    mode = normalize_export_gpu_speed_mode(speed_mode)
+    if is_quality_export_speed(mode):
+        return min(limit, quality_export_worker_cap())
 
     pixels = 0
     if width is not None and height is not None:

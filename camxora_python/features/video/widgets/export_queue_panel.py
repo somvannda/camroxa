@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QSizePolicy,
@@ -37,7 +38,11 @@ from shared.themes.deep_blue import (
     SUBTITLE_LABEL_ID,
 )
 from shared.widgets.window_title_bar import _load_icon_pixmap
-
+from visualizer.export_gpu_tier import (
+    is_quality_export_speed,
+    quality_export_worker_cap,
+    resolve_pipeline_export_workers,
+)
 
 class _TrackRemoveDelegate(QStyledItemDelegate):
     """Paint chrome close × on the right; keep theme blue selection (no red focus)."""
@@ -171,6 +176,7 @@ class ExportQueuePanel(QWidget):
         super().__init__(parent)
         self._binding_tracks = False
         self._binding_options = False
+        self._accepted_workers = 1
         self._track_paths: list[str] = []
         self._export_running = False
         self._track_remove_pressed_row = -1
@@ -330,10 +336,11 @@ class ExportQueuePanel(QWidget):
         self._workers_spin = QSpinBox()
         self._workers_spin.setRange(1, 10)
         self._workers_spin.setToolTip(
-            "Parallel export jobs. Quality / Best Quality always use 1 worker "
-            "(multi-worker freezes the GPU on QHD+)."
+            "Parallel export jobs. Quality / Best Quality cap workers by GPU "
+            "(low=1, mid=3, high=5) and ask before using more than 1."
         )
         self._workers_spin.valueChanged.connect(self._on_workers_changed)
+        self._sync_workers_spin_limits()
 
         # Row 1: Resolution + Speed · Row 2: FPS + Workers
         self._place_export_field(fields_grid, 0, 0, "Resolution", self._resolution_combo)
@@ -455,6 +462,7 @@ class ExportQueuePanel(QWidget):
             self.shuffle_merge_toggled.emit(bool(checked))
 
     def _on_resolution_changed(self, _index: int) -> None:
+        self._sync_workers_spin_limits()
         self._refresh_speed_tooltip()
         if self._binding_options:
             return
@@ -462,28 +470,62 @@ class ExportQueuePanel(QWidget):
         if resolution:
             self.export_resolution_changed.emit(resolution)
 
+    def _quality_speed_locks_workers(self) -> bool:
+        return is_quality_export_speed(self._speed_combo.currentData())
+
+    def _workers_spin_maximum(self) -> int:
+        width, height = self._parse_resolution_wh()
+        mode = str(self._speed_combo.currentData() or "fast")
+        return resolve_pipeline_export_workers(
+            10,
+            speed_mode=mode,
+            width=width,
+            height=height,
+        )
+
+    def _sync_workers_spin_limits(self) -> None:
+        """Cap the spinbox by GPU/speed rules (Quality mid=3, high=5, low=1)."""
+        maximum = max(1, int(self._workers_spin_maximum()))
+        if self._workers_spin.maximum() != maximum:
+            self._workers_spin.setMaximum(maximum)
+        if int(self._workers_spin.value()) > maximum:
+            was_binding = self._binding_options
+            self._binding_options = True
+            try:
+                self._workers_spin.setValue(maximum)
+            finally:
+                self._binding_options = was_binding
+            self._accepted_workers = maximum
+
+    def _confirm_quality_multi_workers(self, workers: int) -> bool:
+        cap = quality_export_worker_cap()
+        confirm = QMessageBox.warning(
+            self,
+            "Multiple export workers",
+            (
+                f"Are you sure your PC can run {workers} workers at the same time "
+                "on Quality / Best Quality?\n\n"
+                "Those modes are GPU-heavy. Too many parallel exports can freeze "
+                f"the GPU or crash Camxora.\n\nRecommended max on this PC: {cap}."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return confirm == QMessageBox.StandardButton.Yes
+
     def _on_speed_changed(self, _index: int) -> None:
-        self._clamp_workers_for_speed()
-        self._refresh_speed_tooltip()
         if self._binding_options:
             return
+        # Emit speed first so settings see the new mode before any workers clamp.
         mode = str(self._speed_combo.currentData() or "fast")
         self.speed_mode_changed.emit(mode)
-
-    def _clamp_workers_for_speed(self) -> None:
-        mode = str(self._speed_combo.currentData() or "fast")
-        if mode not in {"best_quality", "quality"}:
-            return
-        if int(self._workers_spin.value()) <= 1:
-            return
-        was_binding = self._binding_options
-        self._binding_options = True
-        try:
-            self._workers_spin.setValue(1)
-        finally:
-            self._binding_options = was_binding
-        if not was_binding:
-            self.workers_changed.emit(1)
+        previous_workers = int(self._workers_spin.value())
+        self._sync_workers_spin_limits()
+        clamped = int(self._workers_spin.value())
+        if clamped != previous_workers:
+            self._accepted_workers = clamped
+            self.workers_changed.emit(clamped)
+        self._refresh_speed_tooltip()
 
     def _on_fps_changed(self, _index: int) -> None:
         self._refresh_speed_tooltip()
@@ -493,8 +535,29 @@ class ExportQueuePanel(QWidget):
         self.fps_changed.emit(fps)
 
     def _on_workers_changed(self, value: int) -> None:
-        if not self._binding_options:
-            self.workers_changed.emit(max(1, min(10, int(value))))
+        if self._binding_options:
+            return
+        workers = max(1, min(int(self._workers_spin.maximum()), int(value)))
+        if workers != int(value):
+            self._binding_options = True
+            try:
+                self._workers_spin.setValue(workers)
+            finally:
+                self._binding_options = False
+        if (
+            self._quality_speed_locks_workers()
+            and workers > 1
+            and workers > int(self._accepted_workers)
+        ):
+            if not self._confirm_quality_multi_workers(workers):
+                self._binding_options = True
+                try:
+                    self._workers_spin.setValue(max(1, int(self._accepted_workers)))
+                finally:
+                    self._binding_options = False
+                return
+        self._accepted_workers = workers
+        self.workers_changed.emit(workers)
 
     def _on_track_row_changed(self, row: int) -> None:
         if self._binding_tracks or row < 0:
@@ -703,8 +766,16 @@ class ExportQueuePanel(QWidget):
             self._speed_combo.setCurrentIndex(speed_index if speed_index >= 0 else 0)
             fps_index = self._fps_combo.findData(int(export.fps or 24))
             self._fps_combo.setCurrentIndex(fps_index if fps_index >= 0 else 0)
-            self._workers_spin.setValue(max(1, min(10, int(export.workers or 1))))
-            self._clamp_workers_for_speed()
+            self._sync_workers_spin_limits()
+            workers_value = resolve_pipeline_export_workers(
+                export.workers or 1,
+                speed_mode=str(speed_mode or self._speed_combo.currentData() or "fast"),
+                width=self._parse_resolution_wh()[0],
+                height=self._parse_resolution_wh()[1],
+            )
+            if int(self._workers_spin.value()) != workers_value:
+                self._workers_spin.setValue(workers_value)
+            self._accepted_workers = workers_value
             self._auto_merge_toggle.setEnabled(not running)
             self._shuffle_merge_toggle.setEnabled(not running)
             self._resolution_combo.setEnabled(not running)

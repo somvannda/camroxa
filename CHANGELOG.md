@@ -9,6 +9,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Export Workers on Quality / Best Quality:** Spinning Workers no longer
+  fights a hard lock of 1 via publish→rebind→clamp (could crash the app).
+  Workers are capped by GPU tier (low=1, mid=3, high=5) and ask for
+  confirmation before using more than 1. See
+  `docs/changelog/2026-08-12-quality-workers-spin-crash.md`.
+
 ## [1.2.5] - 2026-08-11
 
 ### Fixed

@@ -1989,7 +1989,51 @@ class VideoView(QWidget):
 
     def _set_export_speed_mode(self, mode: str) -> None:
         normalized = normalize_export_speed_mode(mode)
-        self._patch_export_setting({"videoExportSpeedMode": normalized}, "Export speed updated.")
+        patch: dict[str, object] = {"videoExportSpeedMode": normalized}
+        status = "Export speed updated."
+        from visualizer.export_gpu_tier import (
+            is_quality_export_speed,
+            quality_export_worker_cap,
+            resolve_pipeline_export_workers,
+        )
+
+        current_workers = 1
+        if self._workspace:
+            current_workers = max(1, int(self._workspace.export.workers or 1))
+        else:
+            try:
+                current_workers = max(1, int(self._settings.get("videoExportWorkers") or 1))
+            except (TypeError, ValueError):
+                current_workers = 1
+        width = height = None
+        if self._workspace and str(self._workspace.output_resolution or "").strip():
+            try:
+                parts = str(self._workspace.output_resolution).lower().split("x", 1)
+                width, height = int(parts[0]), int(parts[1])
+            except (TypeError, ValueError, IndexError):
+                width = height = None
+        capped = resolve_pipeline_export_workers(
+            current_workers,
+            speed_mode=normalized,
+            width=width,
+            height=height,
+        )
+        if capped != current_workers:
+            patch["videoExportWorkers"] = capped
+            if is_quality_export_speed(normalized):
+                status = (
+                    f"Export speed updated (Workers limited to {capped} "
+                    f"for Quality on this GPU; max {quality_export_worker_cap()})."
+                )
+            else:
+                status = f"Export speed updated (Workers limited to {capped})."
+            if self._workspace:
+                # Update model only — do not rebind the panel mid-combo change.
+                self._workspace = self._workspace.model_copy(
+                    update={"export": self._workspace.export.model_copy(update={"workers": capped})}
+                )
+                get_video_workspace_service().set_workspace_state(self._workspace)
+        self._patch_export_setting(patch, status)
 
     def _set_export_resolution(self, resolution: str) -> None:
         """Manual export Resolution = same OUTPUT_RESOLUTION_OPTIONS list as the stage."""
@@ -2048,13 +2092,39 @@ class VideoView(QWidget):
         )
 
     def _set_export_workers(self, value: int) -> None:
-        workers = max(1, min(10, int(value or 1)))
+        from visualizer.export_gpu_tier import resolve_pipeline_export_workers
+
+        speed_mode = normalize_export_speed_mode(self._settings.get("videoExportSpeedMode"))
+        width = height = None
+        if self._workspace and str(self._workspace.output_resolution or "").strip():
+            try:
+                parts = str(self._workspace.output_resolution).lower().split("x", 1)
+                width, height = int(parts[0]), int(parts[1])
+            except (TypeError, ValueError, IndexError):
+                width = height = None
+        workers = resolve_pipeline_export_workers(
+            value,
+            speed_mode=speed_mode,
+            width=width,
+            height=height,
+        )
+        current = 0
         if self._workspace:
-            self._publish_workspace(
-                self._workspace.model_copy(
-                    update={"export": self._workspace.export.model_copy(update={"workers": workers})}
-                )
+            current = max(1, int(self._workspace.export.workers or 1))
+        settings_workers = current
+        try:
+            settings_workers = max(1, int(self._settings.get("videoExportWorkers") or 1))
+        except (TypeError, ValueError):
+            settings_workers = current or 1
+        if current == workers and settings_workers == workers:
+            return
+        if self._workspace and current != workers:
+            # Avoid _publish_workspace → bind_workspace while the spinbox is
+            # still handling valueChanged (rebind/clamp feedback crashed Qt).
+            self._workspace = self._workspace.model_copy(
+                update={"export": self._workspace.export.model_copy(update={"workers": workers})}
             )
+            get_video_workspace_service().set_workspace_state(self._workspace)
         self._patch_export_setting({"videoExportWorkers": workers}, "Export workers updated.")
 
     def _pick_preview_mp3(self) -> None:
