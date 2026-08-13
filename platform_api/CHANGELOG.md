@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Opening Software Updates clears a leftover draft when its installer file is
+  gone (e.g. 1.2.6 settings after `Camxora-1.2.6.exe` was deleted). Draft
+  resets to the live release instead of showing a download URL with no row in
+  Uploaded installers. See
+  `docs/changelog/2026-08-13-stale-draft-missing-installer.md`.
 - Draft / Unpublish / delete of a desktop release no longer leave that version
   public. Live snapshot is separate from draft; rollback restores the previous
   live version and unpublishes matching Release notes. See

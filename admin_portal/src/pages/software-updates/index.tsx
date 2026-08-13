@@ -20,6 +20,8 @@ import { ReleaseStatusCard } from '@/components/software-updates/release-status-
 
 import {
 
+  useDesktopInstallers,
+
   useSoftwareUpdateConfig,
 
   useUnpublishSoftwareUpdate,
@@ -103,6 +105,8 @@ function configToInitialValues(
 export function SoftwareUpdatesPanel() {
 
   const { data: softwareUpdate, isLoading: softwareLoading } = useSoftwareUpdateConfig();
+
+  const { data: installerList } = useDesktopInstallers();
 
   const unpublishSoftwareUpdate = useUnpublishSoftwareUpdate();
 
@@ -267,6 +271,8 @@ export function SoftwareUpdatesPanel() {
                 liveMandatory={Boolean(softwareUpdate?.live_mandatory)}
 
                 livePublishedAt={softwareUpdate?.live_published_at ?? null}
+
+                installerFilenames={(installerList?.items ?? []).map((item) => item.filename)}
 
               />
 

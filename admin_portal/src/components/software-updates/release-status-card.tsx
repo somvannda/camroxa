@@ -9,7 +9,19 @@ type ReleaseStatusCardProps = {
   liveDownloadUrl?: string;
   liveMandatory?: boolean;
   livePublishedAt?: string | null;
+  installerFilenames?: string[];
 };
+
+function filenameFromUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  try {
+    const path = new URL(trimmed, 'https://camxora.local').pathname;
+    return decodeURIComponent(path.split('/').filter(Boolean).pop() || '');
+  } catch {
+    return trimmed.split('/').filter(Boolean).pop() || '';
+  }
+}
 
 function UrlRow({ label, url }: { label: string; url: string }) {
   if (!url.trim()) {
@@ -31,8 +43,15 @@ export function ReleaseStatusCard({
   liveDownloadUrl = '',
   liveMandatory = false,
   livePublishedAt = null,
+  installerFilenames = [],
 }: ReleaseStatusCardProps) {
   const hasLive = Boolean(liveVersion.trim());
+  const draftFilename = filenameFromUrl(downloadUrl);
+  const knownFiles = new Set(installerFilenames.map((name) => name.trim().toLowerCase()));
+  const draftFileMissing =
+    Boolean(draftFilename) &&
+    knownFiles.size > 0 &&
+    !knownFiles.has(draftFilename.toLowerCase());
   const draftDiffersFromLive = hasLive && !isPublished;
 
   return (
@@ -71,7 +90,13 @@ export function ReleaseStatusCard({
         </p>
       )}
 
-      {draftDiffersFromLive ? (
+      {draftFileMissing ? (
+        <div className="rounded-md border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-100/80">
+          Draft {version || '—'} is leftover settings. {draftFilename} is not in Uploaded
+          installers (the file was deleted). Website, changelog, and force update stay on live{' '}
+          {liveVersion || 'the current live release'}.
+        </div>
+      ) : draftDiffersFromLive ? (
         <div className="rounded-md border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-100/80">
           Draft {version || '—'} is not public. Website, changelog, and force update stay on live{' '}
           {liveVersion}.
@@ -88,18 +113,24 @@ export function ReleaseStatusCard({
           <p>
             <span className="text-slate-500">Status:</span>{' '}
             <span className="text-slate-200">
-              {isPublished
-                ? publishedAt
-                  ? `Same as live · ${new Date(publishedAt).toLocaleString()}`
-                  : 'Same as live'
-                : 'Not published'}
+              {draftFileMissing
+                ? 'Installer missing'
+                : isPublished
+                  ? publishedAt
+                    ? `Same as live · ${new Date(publishedAt).toLocaleString()}`
+                    : 'Same as live'
+                  : 'Not published'}
             </span>
           </p>
         </div>
-        <UrlRow
-          label="Draft download URL"
-          url={draftDiffersFromLive || !hasLive ? downloadUrl : downloadUrl || liveDownloadUrl}
-        />
+        {draftFileMissing ? (
+          <p className="text-xs text-amber-400/90">No draft download URL on disk.</p>
+        ) : (
+          <UrlRow
+            label="Draft download URL"
+            url={draftDiffersFromLive || !hasLive ? downloadUrl : downloadUrl || liveDownloadUrl}
+          />
+        )}
       </div>
     </div>
   );
