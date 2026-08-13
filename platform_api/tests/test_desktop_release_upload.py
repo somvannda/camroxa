@@ -120,9 +120,14 @@ def test_public_download_route_serves_uploaded_file(
 
 
 class _FakeSettingsPool:
-    settings: dict[str, str] = {}
+    def __init__(self) -> None:
+        self.settings: dict[str, str] = {}
 
-    async def fetchrow(self, query: str, key: str):
+    async def fetchrow(self, query: str, *args):
+        q = " ".join(query.split()).lower()
+        if "from blog_posts" in q:
+            return None
+        key = str(args[0]) if args else ""
         value = self.settings.get(key)
         if value is None:
             return None

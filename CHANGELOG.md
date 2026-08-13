@@ -11,6 +11,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Force update after draft/delete:** On app open the client rechecks the live
+  public release. If that version was moved back to draft, unpublished, or
+  deleted, the blocking gate clears (404/non-mandatory live). A network error
+  still keeps a persisted required update. See
+  `docs/changelog/2026-08-13-force-update-draft-restore.md`.
+
 - **Spectrum ring color seam:** Full-circle gradients melt across the first/last
   stop (no hard cyan|magenta cut at 12-o'clock). Applies to preview, Manual
   Export, and Auto-Video. See

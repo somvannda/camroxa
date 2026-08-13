@@ -2146,6 +2146,11 @@ class SoftwareUpdateConfigResponse(BaseModel):
     release_notes: str
     published_at: str | None = None
     is_published: bool = False
+    live_version: str = ""
+    live_download_url: str = ""
+    live_mandatory: bool = False
+    live_release_notes: str = ""
+    live_published_at: str | None = None
 
 
 class PublishSoftwareUpdateRequest(BaseModel):
@@ -2178,6 +2183,9 @@ class UpdateSoftwareUpdateConfigRequest(BaseModel):
 class UnpublishSoftwareUpdateResponse(BaseModel):
     version: str
     is_published: bool = False
+    unpublished_version: str = ""
+    restored_live_version: str | None = None
+    live_version: str = ""
 
 
 class UploadDesktopSoftwareUpdateResponse(BaseModel):
@@ -2198,6 +2206,18 @@ class DesktopInstallerFileResponse(BaseModel):
 
 class DesktopInstallerListResponse(BaseModel):
     items: list[DesktopInstallerFileResponse]
+
+
+class DeleteDesktopInstallerResponse(BaseModel):
+    status: str
+    filename: str
+    unpublished_version: str = ""
+    restored_live_version: str | None = None
+
+
+class DraftInstallerResponse(SoftwareUpdateConfigResponse):
+    unpublished_version: str = ""
+    restored_live_version: str | None = None
 
 
 class SendPushNotificationRequest(BaseModel):
@@ -2224,6 +2244,40 @@ class PushNotificationHistoryResponse(BaseModel):
     items: list[PushNotificationHistoryEntry]
 
 
+def _software_update_config_response(config) -> SoftwareUpdateConfigResponse:
+    live_version = str(getattr(config, "live_version", "") or "").strip()
+    draft_is_live = bool((config.published_at or "").strip()) and bool(live_version)
+    return SoftwareUpdateConfigResponse(
+        version=config.version,
+        download_url=config.download_url,
+        mandatory=config.mandatory,
+        release_notes=config.release_notes,
+        published_at=config.published_at,
+        is_published=draft_is_live,
+        live_version=live_version,
+        live_download_url=str(getattr(config, "live_download_url", "") or ""),
+        live_mandatory=bool(getattr(config, "live_mandatory", False)),
+        live_release_notes=str(getattr(config, "live_release_notes", "") or ""),
+        live_published_at=getattr(config, "live_published_at", None),
+    )
+
+
+def _installer_candidates_from_service(service) -> list:
+    from platform_api.services.desktop_notification_admin_service import InstallerCandidate
+    from platform_api.services.desktop_release_upload_service import extract_version_from_installer_filename
+
+    items: list[InstallerCandidate] = []
+    for record in service.list_installers():
+        items.append(
+            InstallerCandidate(
+                version=extract_version_from_installer_filename(record.filename) or "",
+                download_url=record.download_url,
+                filename=record.filename,
+            )
+        )
+    return items
+
+
 @router.get(
     "/desktop/software-update",
     response_model=SoftwareUpdateConfigResponse,
@@ -2234,14 +2288,7 @@ async def get_desktop_software_update_config(ctx: AdminDep) -> SoftwareUpdateCon
     from platform_api.services.desktop_notification_admin_service import get_software_update_config
 
     config = await get_software_update_config(get_db_pool())
-    return SoftwareUpdateConfigResponse(
-        version=config.version,
-        download_url=config.download_url,
-        mandatory=config.mandatory,
-        release_notes=config.release_notes,
-        published_at=config.published_at,
-        is_published=bool((config.published_at or "").strip()),
-    )
+    return _software_update_config_response(config)
 
 
 @router.put(
@@ -2263,14 +2310,7 @@ async def update_desktop_software_update_config(
         mandatory=request.mandatory,
         release_notes=request.release_notes.strip(),
     )
-    return SoftwareUpdateConfigResponse(
-        version=config.version,
-        download_url=config.download_url,
-        mandatory=config.mandatory,
-        release_notes=config.release_notes,
-        published_at=config.published_at,
-        is_published=bool((config.published_at or "").strip()),
-    )
+    return _software_update_config_response(config)
 
 
 @router.post(
@@ -2347,19 +2387,40 @@ async def list_desktop_installers(ctx: AdminDep, request: Request) -> DesktopIns
 
 @router.delete(
     "/desktop/software-update/installers/{filename}",
+    response_model=DeleteDesktopInstallerResponse,
     summary="Delete an uploaded desktop installer file (Admin)",
 )
-async def delete_desktop_installer(ctx: AdminDep, filename: str, request: Request) -> dict[str, str]:
+async def delete_desktop_installer(
+    ctx: AdminDep, filename: str, request: Request
+) -> DeleteDesktopInstallerResponse:
     from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
     from platform_api.exceptions import ValidationError
+    from platform_api.services.desktop_notification_admin_service import sync_after_installer_delete
+    from platform_api.services.desktop_release_upload_service import extract_version_from_installer_filename
 
     pool = get_db_pool()
     service = await get_desktop_release_upload_service_resolved(pool, request)
+    record = next((item for item in service.list_installers() if item.filename == filename), None)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Installer file not found.")
+    remaining = [item for item in _installer_candidates_from_service(service) if item.filename != filename]
     try:
         service.delete_installer(filename)
     except ValidationError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"status": "deleted", "filename": filename}
+    result = await sync_after_installer_delete(
+        pool,
+        filename=filename,
+        download_url=record.download_url,
+        version=extract_version_from_installer_filename(filename) or "",
+        installer_candidates=remaining,
+    )
+    return DeleteDesktopInstallerResponse(
+        status="deleted",
+        filename=filename,
+        unpublished_version=result.unpublished_version,
+        restored_live_version=result.restored_live_version,
+    )
 
 
 @router.post(
@@ -2395,14 +2456,62 @@ async def publish_desktop_software_update(
 @router.post(
     "/desktop/software-update/unpublish",
     response_model=UnpublishSoftwareUpdateResponse,
-    summary="Unpublish desktop release (hide public download; keep draft config)",
+    summary="Unpublish desktop release (restore previous live version)",
 )
-async def unpublish_desktop_software_update(ctx: AdminDep) -> UnpublishSoftwareUpdateResponse:
-    from platform_api.dependencies import get_db_pool
+async def unpublish_desktop_software_update(
+    ctx: AdminDep, request: Request
+) -> UnpublishSoftwareUpdateResponse:
+    from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
     from platform_api.services.desktop_notification_admin_service import unpublish_software_update
 
-    config = await unpublish_software_update(get_db_pool())
-    return UnpublishSoftwareUpdateResponse(version=config.version, is_published=False)
+    pool = get_db_pool()
+    service = await get_desktop_release_upload_service_resolved(pool, request)
+    result = await unpublish_software_update(
+        pool,
+        installer_candidates=_installer_candidates_from_service(service),
+    )
+    return UnpublishSoftwareUpdateResponse(
+        version=result.draft.version,
+        is_published=False,
+        unpublished_version=result.unpublished_version,
+        restored_live_version=result.restored_live_version,
+        live_version=result.draft.live_version,
+    )
+
+
+@router.post(
+    "/desktop/software-update/installers/{filename}/draft",
+    response_model=DraftInstallerResponse,
+    summary="Set an installer as the working draft; if it is live, restore the previous live release",
+)
+async def draft_desktop_installer(
+    ctx: AdminDep,
+    filename: str,
+    http_request: Request,
+) -> DraftInstallerResponse:
+    from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
+    from platform_api.services.desktop_notification_admin_service import move_installer_to_draft
+    from platform_api.services.desktop_release_upload_service import extract_version_from_installer_filename
+
+    pool = get_db_pool()
+    service = await get_desktop_release_upload_service_resolved(pool, http_request)
+    record = next((item for item in service.list_installers() if item.filename == filename), None)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Installer file not found.")
+
+    result = await move_installer_to_draft(
+        pool,
+        version=extract_version_from_installer_filename(record.filename) or "",
+        download_url=record.download_url,
+        filename=record.filename,
+        installer_candidates=_installer_candidates_from_service(service),
+    )
+    payload = _software_update_config_response(result.draft)
+    return DraftInstallerResponse(
+        **payload.model_dump(),
+        unpublished_version=result.unpublished_version,
+        restored_live_version=result.restored_live_version,
+    )
 
 
 @router.post(

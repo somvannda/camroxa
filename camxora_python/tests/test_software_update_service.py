@@ -196,3 +196,121 @@ def test_restore_clears_when_already_on_target(
     assert load_pending_update() is None
     assert load_update_status() is None
     clear_all_update_markers()
+
+
+def test_apply_server_release_404_clears_persisted_force_update(
+    monkeypatch: pytest.MonkeyPatch,
+    updates_dir: Path,
+) -> None:
+    monkeypatch.setattr(
+        "shared.services.software_update_service.get_app_version",
+        lambda: "1.2.5",
+    )
+    service = SoftwareUpdateService()
+    service.apply_push_payload(
+        {
+            "version": "1.2.6",
+            "download_url": "https://example.com/CamxoraSetup-1.2.6.exe",
+            "mandatory": True,
+            "notification_id": "startup-desktop-release",
+        }
+    )
+    assert service.should_block_app()
+    from shared.services.desktop_release_client import DesktopReleaseFetchResult
+
+    service.apply_server_release(DesktopReleaseFetchResult(status="not_found"))
+    assert not service.should_block_app()
+    assert load_pending_update() is None
+
+
+def test_apply_server_release_older_live_clears_withdrawn_force_update(
+    monkeypatch: pytest.MonkeyPatch,
+    updates_dir: Path,
+) -> None:
+    monkeypatch.setattr(
+        "shared.services.software_update_service.get_app_version",
+        lambda: "1.2.5",
+    )
+    service = SoftwareUpdateService()
+    service.apply_push_payload(
+        {
+            "version": "1.2.6",
+            "download_url": "https://example.com/CamxoraSetup-1.2.6.exe",
+            "mandatory": True,
+            "notification_id": "startup-desktop-release",
+        }
+    )
+    from shared.services.desktop_release_client import (
+        DesktopReleaseFetchResult,
+        PublishedDesktopRelease,
+    )
+
+    service.apply_server_release(
+        DesktopReleaseFetchResult(
+            status="ok",
+            release=PublishedDesktopRelease(
+                version="1.2.5",
+                download_url="https://example.com/CamxoraSetup-1.2.5.exe",
+                release_notes="",
+                mandatory=False,
+            ),
+        )
+    )
+    assert not service.should_block_app()
+    assert load_pending_update() is None
+
+
+def test_apply_server_release_unreachable_keeps_persisted_force_update(
+    monkeypatch: pytest.MonkeyPatch,
+    updates_dir: Path,
+) -> None:
+    monkeypatch.setattr(
+        "shared.services.software_update_service.get_app_version",
+        lambda: "1.2.5",
+    )
+    service = SoftwareUpdateService()
+    service.apply_push_payload(
+        {
+            "version": "1.2.6",
+            "download_url": "https://example.com/CamxoraSetup-1.2.6.exe",
+            "mandatory": True,
+            "notification_id": "startup-desktop-release",
+        }
+    )
+    from shared.services.desktop_release_client import DesktopReleaseFetchResult
+
+    service.apply_server_release(DesktopReleaseFetchResult(status="unreachable"))
+    assert service.should_block_app()
+    pending = load_pending_update()
+    assert pending is not None
+    assert pending.version == "1.2.6"
+
+
+def test_withdrawn_download_clears_force_update(
+    monkeypatch: pytest.MonkeyPatch,
+    updates_dir: Path,
+) -> None:
+    from shared.lib.software_update_copy import (
+        STATUS_UPDATE_WITHDRAWN,
+        UPDATE_WITHDRAWN_SENTINEL,
+    )
+
+    monkeypatch.setattr(
+        "shared.services.software_update_service.get_app_version",
+        lambda: "1.2.5",
+    )
+    service = SoftwareUpdateService()
+    service.apply_push_payload(
+        {
+            "version": "1.2.6",
+            "download_url": "https://example.com/CamxoraSetup-1.2.6.exe",
+            "mandatory": True,
+            "notification_id": "n-withdrawn",
+        }
+    )
+    failures: list[str] = []
+    service.install_failed.connect(failures.append)
+    service._on_install_failed(UPDATE_WITHDRAWN_SENTINEL)
+    assert not service.should_block_app()
+    assert load_pending_update() is None
+    assert failures == [STATUS_UPDATE_WITHDRAWN]
