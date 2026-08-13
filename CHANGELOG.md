@@ -9,6 +9,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-08-13
+
 ### Fixed
 
 - **Spectrum ring color seam:** Full-circle gradients melt across the first/last
@@ -25,6 +27,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
   Workers are capped by GPU tier (low=1, mid=3, high=5) and ask for
   confirmation before using more than 1. See
   `docs/changelog/2026-08-12-quality-workers-spin-crash.md`.
+
+### Changed
+
+- Desktop version stamp **1.2.6** / installer `CamxoraSetup-1.2.6.exe`. Publish
+  with **Force update** so **1.2.5** clients upgrade. Detail:
+  `docs/changelog/2026-08-13-desktop-1.2.6.md`.
 
 ## [1.2.5] - 2026-08-11
 
