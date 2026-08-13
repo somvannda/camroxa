@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Software Updates status card lists **Live** and **Draft** as separate blocks,
+  each with its own version and download URL (no longer shows the live 1.2.5
+  installer under draft 1.2.6).
 - Software Updates: Draft, Unpublish, and deleting the live installer restore
   the previous public version (website + force update) instead of leaving the
   newest build live. Status card shows live vs draft. See
