@@ -11,6 +11,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Pipeline Auto-Video vs Manual Export:** Saved-template auto-export no longer
+  drops multi-bolt lightning / spectrum instances (or silent Draft 720p encode).
+  Headless pipeline now builds the same renderer domains as Manual Export and
+  uses Standard encode defaults so spectrum glow melt and lightning density
+  match. See `docs/changelog/2026-08-12-pipeline-export-wysiwyg.md`.
 - **Export Workers on Quality / Best Quality:** Spinning Workers no longer
   fights a hard lock of 1 via publish→rebind→clamp (could crash the app).
   Workers are capped by GPU tier (low=1, mid=3, high=5) and ask for
