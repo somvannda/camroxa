@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Draft / Unpublish / delete of a desktop release no longer leave that version
+  public. Live snapshot is separate from draft; rollback restores the previous
+  live version and unpublishes matching Release notes. See
+  `docs/changelog/2026-08-13-force-update-draft-restore.md`.
+
 ### Added
 
 - Admin Job Queue ops board APIs: list durable jobs with user/error/worker, recent `image_jobs` failures, and enriched busy-worker metrics. Worker ids include stage label (`CAMXORA_WORKER_NAME`). See `docs/changelog/2026-08-11-job-queue-ops-board.md`.

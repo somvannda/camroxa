@@ -254,7 +254,12 @@ class RootWindow(QMainWindow):
 
     def _run_mandatory_update_check(self, *, on_clear) -> None:
         """Block login/shell until a published mandatory update is resolved."""
-        if SoftwareUpdateService.instance().should_block_app():
+        from shared.lib.software_update_persistence import load_update_status
+
+        service = SoftwareUpdateService.instance()
+        helper_status = load_update_status()
+        helper_active = helper_status is not None and helper_status.is_active
+        if service.install_in_progress and service.should_block_app() and helper_active:
             self._sync_software_update_gate_geometry()
             return
 
@@ -267,26 +272,27 @@ class RootWindow(QMainWindow):
         )
         worker = SoftwareUpdateCheckWorker(self._session.get_api_base_url(), parent=self)
         worker.finished_with_offer.connect(
-            lambda offer, cont=on_clear: self._on_mandatory_update_check_finished(offer, cont)
+            lambda result, cont=on_clear: self._on_mandatory_update_check_finished(result, cont)
         )
         self._worker = worker
         worker.start()
 
-    def _on_mandatory_update_check_finished(self, offer: object, on_clear) -> None:
+    def _on_mandatory_update_check_finished(self, result: object, on_clear) -> None:
         self._worker = None
-        if isinstance(offer, SoftwareUpdateOffer) and offer.mandatory:
-            SoftwareUpdateService.instance().apply_push_payload(
+        service = SoftwareUpdateService.instance()
+        if isinstance(result, SoftwareUpdateOffer) and result.mandatory:
+            service.apply_push_payload(
                 {
-                    "version": offer.version,
-                    "download_url": offer.download_url,
+                    "version": result.version,
+                    "download_url": result.download_url,
                     "mandatory": True,
-                    "release_notes": offer.release_notes,
-                    "notification_id": offer.notification_id or "startup-desktop-release",
+                    "release_notes": result.release_notes,
+                    "notification_id": result.notification_id or "startup-desktop-release",
                 }
             )
-            self._sync_software_update_gate_geometry()
-            return
-        if SoftwareUpdateService.instance().should_block_app():
+        else:
+            service.apply_server_release(result)
+        if service.should_block_app():
             self._sync_software_update_gate_geometry()
             return
         on_clear()

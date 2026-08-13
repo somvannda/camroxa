@@ -22,6 +22,8 @@ from shared.lib.software_update_copy import (
     STATUS_PREVIOUS_FAILED,
     STATUS_PREVIOUS_FAILED_DETAIL,
     STATUS_STILL_OLD_VERSION,
+    STATUS_UPDATE_WITHDRAWN,
+    UPDATE_WITHDRAWN_SENTINEL,
 )
 from shared.lib.version_compare import is_remote_version_newer
 
@@ -127,6 +129,49 @@ class SoftwareUpdateService(QObject):
             self._persist_pending(install_in_progress=False)
             clear_update_status()
             self.install_failed.emit(STATUS_PREVIOUS_FAILED_DETAIL)
+        return offer
+
+    def apply_server_release(self, result: object) -> SoftwareUpdateOffer | None:
+        """Reconcile local force-update state with the live public release.
+
+        Confirmed withdrawal (404) or a live release that is not a newer
+        mandatory update clears any persisted gate. Network failure keeps a
+        previously persisted mandatory update so a real outage cannot skip
+        an in-progress required install.
+        """
+        from shared.services.desktop_release_client import DesktopReleaseFetchResult
+
+        if not isinstance(result, DesktopReleaseFetchResult):
+            return self._pending
+
+        if result.status == "unreachable":
+            return self._pending
+
+        helper_status = load_update_status()
+        helper_active = helper_status is not None and helper_status.is_active
+        if self._install_in_progress and helper_active:
+            return self._pending
+
+        if result.status == "not_found" or result.release is None:
+            self.clear_pending()
+            return None
+
+        release = result.release
+        payload = release.as_update_payload()
+        if not release.mandatory:
+            self.clear_pending()
+            return self.apply_session_notice(payload)
+
+        offer = SoftwareUpdateOffer.from_payload(payload)
+        if offer is None:
+            self.clear_pending()
+            return None
+        return self._replace_pending(offer)
+
+    def _replace_pending(self, offer: SoftwareUpdateOffer) -> SoftwareUpdateOffer:
+        self._pending = offer
+        self._persist_pending(install_in_progress=self._install_in_progress and offer.mandatory)
+        self.update_changed.emit(offer)
         return offer
 
     def apply_session_notice(self, payload: dict[str, Any]) -> SoftwareUpdateOffer | None:
@@ -264,10 +309,15 @@ class SoftwareUpdateService(QObject):
         QTimer.singleShot(1800, _quit_for_setup)
 
     def _on_install_failed(self, message: str) -> None:
+        text = str(message or STATUS_FAILED_DEFAULT)
+        if UPDATE_WITHDRAWN_SENTINEL in text:
+            self.clear_pending()
+            self.install_failed.emit(STATUS_UPDATE_WITHDRAWN)
+            return
         self._install_in_progress = False
         self._persist_pending(install_in_progress=False)
         clear_update_status()
-        self.install_failed.emit(str(message or STATUS_FAILED_DEFAULT))
+        self.install_failed.emit(text or STATUS_FAILED_DEFAULT)
 
     def _persist_pending(self, *, install_in_progress: bool) -> None:
         if self._pending is None:

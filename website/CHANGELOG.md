@@ -10,6 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `/download` and `/changelog` follow the live desktop release. Moving a version
+  back to draft (or deleting it) restores the previous live version and hides
+  that version’s Release notes post. See
+  `docs/changelog/2026-08-13-force-update-draft-restore.md`.
+
 ### Added
 
 - `/compare` conversion landing: stack vs Camxora, dual/multi-channel, AI routing, monetization-path refund, marketplace templates (one-click setup; free + premium).

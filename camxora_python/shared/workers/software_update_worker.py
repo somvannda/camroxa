@@ -17,6 +17,7 @@ from shared.lib.software_update_copy import (
     STATUS_PREPARING_INSTALLER,
     STATUS_STARTING_DOWNLOAD,
     STATUS_STARTING_INSTALLER,
+    UPDATE_WITHDRAWN_SENTINEL,
     format_download_progress,
 )
 from shared.services.software_update_installer import (
@@ -84,26 +85,34 @@ class SoftwareUpdateInstallWorker(QThread):
 
     def _download(self, package_path: str) -> None:
         self.progress.emit(STATUS_STARTING_DOWNLOAD, 0)
-        with httpx.stream("GET", self._download_url, timeout=300.0, follow_redirects=True) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("content-length") or 0)
-            downloaded = 0
-            last_pct = -1
-            with open(package_path, "wb") as handle:
-                for chunk in response.iter_bytes(chunk_size=_CHUNK_SIZE):
-                    if not chunk:
-                        continue
-                    handle.write(chunk)
-                    downloaded += len(chunk)
-                    if total > 0:
-                        raw_pct = min(100, int(downloaded * 100 / total))
-                        pct = min(_DOWNLOAD_PROGRESS_CAP, int(downloaded * _DOWNLOAD_PROGRESS_CAP / total))
-                        if pct != last_pct:
-                            last_pct = pct
-                            self.progress.emit(format_download_progress(percent=raw_pct), pct)
-                    else:
-                        mb = downloaded / (1024 * 1024)
-                        self.progress.emit(format_download_progress(megabytes=mb), -1)
+        try:
+            with httpx.stream("GET", self._download_url, timeout=300.0, follow_redirects=True) as response:
+                if response.status_code in {404, 410}:
+                    raise SoftwareUpdateInstallError(UPDATE_WITHDRAWN_SENTINEL)
+                response.raise_for_status()
+                total = int(response.headers.get("content-length") or 0)
+                downloaded = 0
+                last_pct = -1
+                with open(package_path, "wb") as handle:
+                    for chunk in response.iter_bytes(chunk_size=_CHUNK_SIZE):
+                        if not chunk:
+                            continue
+                        handle.write(chunk)
+                        downloaded += len(chunk)
+                        if total > 0:
+                            raw_pct = min(100, int(downloaded * 100 / total))
+                            pct = min(_DOWNLOAD_PROGRESS_CAP, int(downloaded * _DOWNLOAD_PROGRESS_CAP / total))
+                            if pct != last_pct:
+                                last_pct = pct
+                                self.progress.emit(format_download_progress(percent=raw_pct), pct)
+                        else:
+                            mb = downloaded / (1024 * 1024)
+                            self.progress.emit(format_download_progress(megabytes=mb), -1)
+        except httpx.HTTPStatusError as exc:
+            status = int(getattr(getattr(exc, "response", None), "status_code", 0) or 0)
+            if status in {404, 410}:
+                raise SoftwareUpdateInstallError(UPDATE_WITHDRAWN_SENTINEL) from exc
+            raise
         self.progress.emit(STATUS_DOWNLOAD_COMPLETE, _DOWNLOAD_PROGRESS_CAP)
 
     @staticmethod

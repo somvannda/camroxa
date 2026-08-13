@@ -50,6 +50,10 @@ STATUS_STARTING_INSTALLER = "Starting installer…"
 STATUS_INSTALLING = "Installing update…"
 STATUS_DOWNLOAD_COMPLETE = "Download complete. Starting installer…"
 STATUS_FAILED_DEFAULT = "The update could not be installed. Please try again."
+STATUS_UPDATE_WITHDRAWN = (
+    "This update is no longer available. You can continue with the current version."
+)
+UPDATE_WITHDRAWN_SENTINEL = "UPDATE_WITHDRAWN"
 STATUS_PREVIOUS_FAILED = "The previous update did not finish. Please try again."
 STATUS_PREVIOUS_FAILED_DETAIL = (
     "The previous update did not finish. If an installer window is still open, "
