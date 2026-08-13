@@ -1118,10 +1118,12 @@ def _build_spectrum_vertex_colors(
     alpha: float,
     *,
     glow: bool = False,
+    wrap_seamless: bool = False,
 ) -> np.ndarray:
     from features.video.lib.spectrum_color_engine import (
         build_spectrum_vertex_rgba,
         dampen_spectrum_glow_rgba,
+        spectrum_gradient_should_wrap,
     )
 
     mode = str(color_cfg.get("mode", "solid") or "solid").lower().strip()
@@ -1134,12 +1136,16 @@ def _build_spectrum_vertex_colors(
             int(max(0, min(255, round(float(spec_col[2]) * 255.0)))),
         )
     gradient_colors = color_cfg.get("gradientColors") if isinstance(color_cfg.get("gradientColors"), list) else None
+    grad_dir = str(color_cfg.get("gradientDirection", "left-to-right") or "left-to-right")
+    # Call sites pass wrap from curved+mirrored; circular alone still wraps.
+    wrap = bool(wrap_seamless) or spectrum_gradient_should_wrap(gradient_direction=grad_dir)
     colors = build_spectrum_vertex_rgba(
         mode=mode,
         solid_color=str(solid),
         gradient_colors=gradient_colors,
         count=count,
         alpha=alpha,
+        wrap_seamless=wrap,
     )
     if glow:
         return dampen_spectrum_glow_rgba(colors, strength=0.38)
@@ -1151,6 +1157,10 @@ def _build_spectrum_bar_quad_colors(
     spec_col: tuple[float, float, float, float] | tuple[float, float, float],
     count: int,
     alpha: float,
+    *,
+    wrap_seamless: bool = False,
+    curved: bool = False,
+    mirrored: bool = False,
 ) -> np.ndarray:
     from features.video.lib.spectrum_color_engine import build_spectrum_bar_quad_rgba
 
@@ -1171,6 +1181,9 @@ def _build_spectrum_bar_quad_colors(
         count=count,
         alpha=alpha,
         gradient_direction=gradient_direction,
+        wrap_seamless=wrap_seamless,
+        curved=curved,
+        mirrored=mirrored,
     )
 
 def _hex_to_rgba(hex_color: str, alpha: int = 255) -> tuple[int, int, int, int]:
@@ -3301,6 +3314,8 @@ def run_gpu_render(
                 for pass_i_pre, pass_cfg_pre in enumerate(pass_specs_pre):
                     pass_alpha_pre = float(max(0.0, min(1.0, float(pass_cfg_pre["alpha"]))))
                     is_glow_pre = pass_i_pre < (len(pass_specs_pre) - 1)
+                    from features.video.lib.spectrum_color_engine import spectrum_gradient_should_wrap
+
                     pass_colors_pre.append(
                         _build_spectrum_vertex_colors(
                             color_cfg_pre,
@@ -3308,6 +3323,11 @@ def run_gpu_render(
                             n_pre,
                             pass_alpha_pre,
                             glow=is_glow_pre,
+                            wrap_seamless=spectrum_gradient_should_wrap(
+                                gradient_direction=dir_pre,
+                                curved=curved_pre,
+                                mirrored=mirrored_pre,
+                            ),
                         )
                     )
                     bw_pre = resolve_bar_pixel_width(
@@ -3658,6 +3678,15 @@ def run_gpu_render(
                 )
             
                 color_cfg = sl.get("color", {})
+                if not isinstance(color_cfg, dict):
+                    color_cfg = {}
+                from features.video.lib.spectrum_color_engine import spectrum_gradient_should_wrap
+
+                wrap_seamless = spectrum_gradient_should_wrap(
+                    gradient_direction=str(color_cfg.get("gradientDirection", "left-to-right") or "left-to-right"),
+                    curved=curved,
+                    mirrored=mirrored,
+                )
                 mode = color_cfg.get("mode", "solid")
                 c = color_cfg.get("solidColor", "#ffffff")
                 if isinstance(c, str) and c.startswith("#"):
@@ -3763,6 +3792,7 @@ def run_gpu_render(
                         n,
                         pass_alpha,
                         glow=bool(pass_cfg["is_glow"]),
+                        wrap_seamless=wrap_seamless,
                     )
 
                     bw = resolve_bar_pixel_width(pass_bar_width, base_total_length / max(1, n))
@@ -3795,6 +3825,7 @@ def run_gpu_render(
                                     strip_nn,
                                     strip_alpha,
                                     glow=bool(pass_cfg["is_glow"]),
+                                    wrap_seamless=wrap_seamless,
                                 ),
                                 2,
                                 axis=0,
@@ -3887,7 +3918,15 @@ def run_gpu_render(
                             pos = bar_out
                             colsi = np.repeat(cols, 6, axis=0)
                         if colsi.shape[0] == n * 6:
-                            colsi = _build_spectrum_bar_quad_colors(color_cfg, spec_col, n, pass_alpha)
+                            colsi = _build_spectrum_bar_quad_colors(
+                                color_cfg,
+                                spec_col,
+                                n,
+                                pass_alpha,
+                                wrap_seamless=wrap_seamless,
+                                curved=curved,
+                                mirrored=mirrored,
+                            )
 
                         verts = np.column_stack([pos, colsi]).astype(np.float32)
                         if verts.nbytes > line_vbo.size:
@@ -3909,7 +3948,9 @@ def run_gpu_render(
                             pos_fill[0, 1] = cy_ndc
                             pos_fill[1:, 0] = xs_o
                             pos_fill[1:, 1] = ys_o
-                            cols_edge = _build_spectrum_vertex_colors(color_cfg, spec_col, tip_n, pass_alpha)
+                            cols_edge = _build_spectrum_vertex_colors(
+                                color_cfg, spec_col, tip_n, pass_alpha, wrap_seamless=wrap_seamless
+                            )
                             cols_center = cols_edge[:1].copy()
                             cols_fill = np.concatenate([cols_center, cols_edge], axis=0)
                             verts_fill = np.column_stack([pos_fill, cols_fill]).astype(np.float32)
@@ -3940,6 +3981,7 @@ def run_gpu_render(
                                 spec_col,
                                 band_bar_count,
                                 float(max(0.0, min(1.0, op * 0.6))),
+                                wrap_seamless=wrap_seamless,
                             ),
                             2,
                             axis=0,

@@ -83,7 +83,7 @@ def test_build_spectrum_vertex_rgba_uses_all_gradient_stops() -> None:
 
 
 def test_build_spectrum_vertex_rgba_keeps_stops_crystal_clear() -> None:
-    """Stops stay readable — no neighbor wash that muddies dark palettes."""
+    """Open (non-wrap) gradients keep readable end stops."""
     from features.video.lib.spectrum_color_engine import build_spectrum_vertex_rgba
 
     rgba = build_spectrum_vertex_rgba(
@@ -92,12 +92,66 @@ def test_build_spectrum_vertex_rgba_keeps_stops_crystal_clear() -> None:
         gradient_colors=["#9f1239", "#1e3a8a", "#0f766e"],
         count=9,
         alpha=1.0,
+        wrap_seamless=False,
     )
     # First stop stays deep red-dominant; last stays teal-dominant.
     assert float(rgba[0, 0]) > float(rgba[0, 2])
     assert float(rgba[8, 1]) > float(rgba[8, 0]) * 0.5
     # Mid stop near blue.
     assert float(rgba[4, 2]) > float(rgba[4, 0])
+
+
+def test_all_gradient_directions_melt_on_closed_ring() -> None:
+    """Every UI Gradient option melts the seam on full-circle rings."""
+    from features.video.lib.spectrum_color_engine import (
+        build_spectrum_bar_quad_rgba,
+        build_spectrum_vertex_rgba,
+        spectrum_gradient_should_wrap,
+    )
+    from features.video.widgets.spectrum_layer_editor import GRADIENT_DIRECTION_OPTIONS
+
+    stops = ["#22d3ee", "#a78bfa", "#ff4fd8"]
+    assert len(GRADIENT_DIRECTION_OPTIONS) == 5
+    for key, _label in GRADIENT_DIRECTION_OPTIONS:
+        assert spectrum_gradient_should_wrap(
+            gradient_direction=key, curved=True, mirrored=True
+        ), key
+        around = build_spectrum_vertex_rgba(
+            mode="gradient",
+            solid_color="#ffffff",
+            gradient_colors=stops,
+            count=48,
+            alpha=1.0,
+            wrap_seamless=True,
+        )
+        seam = abs(float(around[0, 0]) - float(around[-1, 0])) + abs(
+            float(around[0, 2]) - float(around[-1, 2])
+        )
+        assert seam < 0.25, f"{key} around-ring seam too hard: {seam}"
+
+        rows = build_spectrum_bar_quad_rgba(
+            mode="gradient",
+            solid_color="#ffffff",
+            gradient_colors=stops,
+            count=32,
+            alpha=1.0,
+            gradient_direction=key,
+            wrap_seamless=True,
+            curved=True,
+            mirrored=True,
+        )
+        assert rows.shape == (32 * 6, 4), key
+        # Base verts of first vs last bar should not hard-cut on around-ring modes.
+        if key in {"left-to-right", "circular", "diagonal"}:
+            base0 = rows[0, :3]
+            base_last = rows[(31 * 6), :3]
+            bar_seam = float(abs(base0 - base_last).sum())
+            assert bar_seam < 0.35, f"{key} bar seam {bar_seam}"
+        # Base→tip modes keep distinct base vs tip (soft melt, not a flat wash).
+        if key in {"top-to-bottom", "radial"}:
+            base_rgb = rows[0, :3]
+            tip_rgb = rows[2, :3]
+            assert float(abs(base_rgb - tip_rgb).sum()) > 0.15, f"{key} lost base/tip melt"
 
 
 def test_build_spectrum_bar_quad_rgba_uses_vertical_gradient_for_top_to_bottom() -> None:

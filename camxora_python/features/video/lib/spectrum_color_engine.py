@@ -147,19 +147,43 @@ def _smoothstep01(t: np.ndarray) -> np.ndarray:
     return (x * x * (3.0 - 2.0 * x)).astype(np.float32)
 
 
-def _mix_neighbor_rgb(rgb: np.ndarray, *, strength: float = 0.35) -> np.ndarray:
+def _mix_neighbor_rgb(rgb: np.ndarray, *, strength: float = 0.35, wrap: bool = False) -> np.ndarray:
     """Soft-mix adjacent bar colors so around-ring hues join as a continuous wash.
 
-    Edges are clamped (no wrap) so linear left→right gradients keep true end stops.
+    When ``wrap`` is False, edges are clamped (linear left→right keeps end stops).
+    When ``wrap`` is True, first/last bars mix across the ring seam.
     """
     n = int(rgb.shape[0])
     if n < 3 or strength <= 0.0:
         return rgb
     s = float(max(0.0, min(0.5, strength)))
-    prev_idx = np.concatenate(([0], np.arange(0, n - 1, dtype=np.int32)))
-    next_idx = np.concatenate((np.arange(1, n, dtype=np.int32), [n - 1]))
+    idx = np.arange(n, dtype=np.int32)
+    if wrap:
+        prev_idx = (idx - 1) % n
+        next_idx = (idx + 1) % n
+    else:
+        prev_idx = np.concatenate(([0], np.arange(0, n - 1, dtype=np.int32)))
+        next_idx = np.concatenate((np.arange(1, n, dtype=np.int32), [n - 1]))
     mixed = rgb * (1.0 - 2.0 * s) + rgb[prev_idx] * s + rgb[next_idx] * s
     return mixed.astype(np.float32)
+
+
+def spectrum_gradient_should_wrap(
+    *,
+    gradient_direction: str | None = None,
+    curved: bool = False,
+    mirrored: bool = False,
+) -> bool:
+    """True when the spectrum path is a closed ring — melt the first/last color seam.
+
+    Full circles (curved + mirrored) always wrap, including Bass Drive's
+    ``diagonal`` / ``radial`` directions — otherwise the 12-o'clock seam stays
+    a hard cut between the first and last gradient stops.
+    """
+    if bool(curved) and bool(mirrored):
+        return True
+    direction = str(gradient_direction or "left-to-right").lower().strip()
+    return direction == "circular"
 
 
 def build_spectrum_vertex_rgba(
@@ -169,11 +193,13 @@ def build_spectrum_vertex_rgba(
     gradient_colors: list[str] | None,
     count: int,
     alpha: float,
+    wrap_seamless: bool = False,
 ) -> np.ndarray:
     """Build per-bar RGBA colors for preview/export spectrum draws.
 
-    Multi-stop gradients interpolate through every stop (not first→last only)
-    for crystal-clear hue bands (no soft wash / neighbor blur).
+    Multi-stop gradients interpolate through every stop (not first→last only).
+    When ``wrap_seamless`` is True (closed circular rings), the gradient also
+    blends last→first so the ring seam melts instead of a hard cut.
     """
     n = int(max(1, count))
     a = float(max(0.0, min(1.0, alpha)))
@@ -183,21 +209,50 @@ def build_spectrum_vertex_rgba(
         stops = np.stack([_hex_to_rgb01(c) for c in stops_raw], axis=0).astype(np.float32)
         stops_lin = _srgb_to_linear(stops)
         if stops.shape[0] >= 2:
-            t = np.linspace(0.0, 1.0, n, dtype=np.float32)
-            segment_count = int(stops.shape[0] - 1)
-            scaled = t * float(segment_count)
-            seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
-            # Mild smoothstep only — keep stops readable (no neighbor wash).
-            local_t = _smoothstep01(scaled - seg_idx.astype(np.float32)).reshape((n, 1))
-            c1 = stops_lin[seg_idx]
-            c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
+            if wrap_seamless:
+                # Close the loop: … → last → first, so cyan/magenta at the seam wash together.
+                stops_lin_loop = np.vstack([stops_lin, stops_lin[0:1]])
+                segment_count = int(stops_lin_loop.shape[0] - 1)
+                # endpoint=False: one sample per bar around the ring (no duplicate seam).
+                t = (np.arange(n, dtype=np.float32) / float(max(1, n))).astype(np.float32)
+                scaled = t * float(segment_count)
+                seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
+                local_t = _smoothstep01(scaled - seg_idx.astype(np.float32)).reshape((n, 1))
+                c1 = stops_lin_loop[seg_idx]
+                c2 = stops_lin_loop[np.minimum(seg_idx + 1, stops_lin_loop.shape[0] - 1)]
+            else:
+                segment_count = int(stops.shape[0] - 1)
+                t = np.linspace(0.0, 1.0, n, dtype=np.float32)
+                scaled = t * float(segment_count)
+                seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
+                local_t = _smoothstep01(scaled - seg_idx.astype(np.float32)).reshape((n, 1))
+                c1 = stops_lin[seg_idx]
+                c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
             rgb_lin = c1 * (1.0 - local_t) + c2 * local_t
             rgb = _linear_to_srgb(rgb_lin)
+            # Stronger wash on closed rings so stops melt into one continuous band.
+            if wrap_seamless:
+                rgb = _mix_neighbor_rgb(rgb, strength=0.32, wrap=True)
+                rgb = _mix_neighbor_rgb(rgb, strength=0.22, wrap=True)
             alpha_col = np.full((n, 1), a, dtype=np.float32)
             return np.concatenate([rgb.astype(np.float32), alpha_col], axis=1)
 
     base = _hex_to_rgb01(solid_color)
     return np.tile(np.array([base[0], base[1], base[2], a], dtype=np.float32)[None, :], (n, 1))
+
+
+def _sample_gradient_stops_lin(stops_lin: np.ndarray, t: float) -> np.ndarray:
+    """Sample multi-stop linear-space RGB at ``t`` in [0, 1] with smoothstep."""
+    tt = float(max(0.0, min(1.0, t)))
+    if stops_lin.shape[0] == 1:
+        return stops_lin[0].astype(np.float32)
+    segment_count = int(stops_lin.shape[0] - 1)
+    scaled = tt * float(segment_count)
+    seg_idx = int(min(segment_count - 1, np.floor(scaled)))
+    local_t = float(_smoothstep01(np.array([scaled - float(seg_idx)], dtype=np.float32))[0])
+    c1 = stops_lin[seg_idx]
+    c2 = stops_lin[min(seg_idx + 1, stops_lin.shape[0] - 1)]
+    return (c1 * (1.0 - local_t) + c2 * local_t).astype(np.float32)
 
 
 def build_spectrum_bar_quad_rgba(
@@ -208,26 +263,45 @@ def build_spectrum_bar_quad_rgba(
     count: int,
     alpha: float,
     gradient_direction: str,
+    wrap_seamless: bool | None = None,
+    curved: bool = False,
+    mirrored: bool = False,
 ) -> np.ndarray:
     """Build per-vertex RGBA rows for TRIANGLES bar quads.
 
-    Default behavior follows ring/index interpolation. For ``top-to-bottom`` /
-    ``radial``, bars use base->tip vertical gradient from first->last stop.
-    ``diagonal`` blends around-ring color with tip color on tip vertices.
-    ``circular`` follows around-ring stops (same as left-to-right).
+    Directions (UI labels):
+    - ``left-to-right`` — Around Ring
+    - ``top-to-bottom`` — Base to Tip
+    - ``radial`` — Radial (Base to Tip) → same as top-to-bottom
+    - ``circular`` — Circular (Around Ring) → same as left-to-right
+    - ``diagonal`` — Diagonal (Around + Tip)
+
+    Closed rings melt the around-ring seam for every direction.
     """
     n = int(max(1, count))
-    direction = str(gradient_direction or "left-to-right").lower().strip()
+    raw_direction = str(gradient_direction or "left-to-right").lower().strip()
+    direction = raw_direction
     if direction == "radial":
         direction = "top-to-bottom"
     if direction == "circular":
         direction = "left-to-right"
+    wrap = (
+        bool(wrap_seamless)
+        if wrap_seamless is not None
+        else spectrum_gradient_should_wrap(
+            gradient_direction=raw_direction,
+            curved=curved,
+            mirrored=mirrored,
+        )
+    )
+    # Around-ring base colors (used by Around Ring / Circular / Diagonal).
     per_bar = build_spectrum_vertex_rgba(
         mode=mode,
         solid_color=solid_color,
         gradient_colors=gradient_colors,
         count=n,
         alpha=alpha,
+        wrap_seamless=bool(wrap),
     )
     if str(mode or "solid").lower().strip() != "gradient":
         return np.repeat(per_bar, 6, axis=0).astype(np.float32)
@@ -236,9 +310,17 @@ def build_spectrum_bar_quad_rgba(
 
     stops_raw = [str(c).strip() for c in (gradient_colors or []) if str(c or "").strip()]
     stops_raw = normalize_spectrum_gradient_colors(stops_raw, solid_color or GRADIENT_FALLBACK_COLOR)
-    base_rgb = _hex_to_rgb01(stops_raw[0])
-    tip_rgb = _hex_to_rgb01(stops_raw[-1])
+    stops = np.stack([_hex_to_rgb01(c) for c in stops_raw], axis=0).astype(np.float32)
+    stops_lin = _srgb_to_linear(stops)
     a = float(max(0.0, min(1.0, alpha)))
+    # Multi-stop base→tip (not first/last only) so Base to Tip / Radial melt through the palette.
+    base_rgb = _linear_to_srgb(_sample_gradient_stops_lin(stops_lin, 0.0).reshape(1, 3))[0]
+    tip_rgb = _linear_to_srgb(_sample_gradient_stops_lin(stops_lin, 1.0).reshape(1, 3))[0]
+    # Soften ends toward mid stops so base/tip don't read as hard slabs.
+    if stops_lin.shape[0] >= 3:
+        mid_rgb = _linear_to_srgb(_sample_gradient_stops_lin(stops_lin, 0.5).reshape(1, 3))[0]
+        base_rgb = (base_rgb * 0.82 + mid_rgb * 0.18).astype(np.float32)
+        tip_rgb = (tip_rgb * 0.82 + mid_rgb * 0.18).astype(np.float32)
     base = np.array([base_rgb[0], base_rgb[1], base_rgb[2], a], dtype=np.float32)
     tip = np.array([tip_rgb[0], tip_rgb[1], tip_rgb[2], a], dtype=np.float32)
     rows = np.empty((n * 6, 4), dtype=np.float32)
@@ -253,8 +335,8 @@ def build_spectrum_bar_quad_rgba(
         rows[5::6] = tip
         return rows
 
-    # diagonal: keep around-ring hue on base, blend toward tip color on tips
-    tip_mix = (per_bar * 0.45 + tip.reshape(1, 4) * 0.55).astype(np.float32)
+    # diagonal: around-ring hue on base (seam-melted), soft blend toward tip on tips
+    tip_mix = (per_bar * 0.58 + tip.reshape(1, 4) * 0.42).astype(np.float32)
     rows[0::6] = per_bar
     rows[1::6] = per_bar
     rows[2::6] = tip_mix

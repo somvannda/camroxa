@@ -11,6 +11,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Spectrum ring color seam:** Full-circle gradients melt across the first/last
+  stop (no hard cyan|magenta cut at 12-o'clock). Applies to preview, Manual
+  Export, and Auto-Video. See
+  `docs/changelog/2026-08-13-spectrum-ring-color-melt.md`.
 - **Pipeline Auto-Video vs Manual Export:** Saved-template auto-export no longer
   drops multi-bolt lightning / spectrum instances (or silent Draft 720p encode).
   Headless pipeline now builds the same renderer domains as Manual Export and

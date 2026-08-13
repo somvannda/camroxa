@@ -58,6 +58,7 @@ from features.video.lib.spectrum_color_engine import (
     build_spectrum_bar_quad_rgba,
     build_spectrum_vertex_rgba,
     dampen_spectrum_glow_rgba,
+    spectrum_gradient_should_wrap,
 )
 from visualizer.audio import AudioAnalyzer
 from visualizer.automation import apply_automations
@@ -2614,6 +2615,11 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         grad_cols = [solid_hex, '#22d3ee']
                     # Prefer vivid gradient stops; if mode is solid, still use solid_hex.
                     blend_mode = str(sl.get('blend_mode', 'normal')).lower().strip()
+                    wrap_seamless = spectrum_gradient_should_wrap(
+                        gradient_direction=grad_dir,
+                        curved=curved,
+                        mirrored=mirrored,
+                    )
                     glow_strength = float(max(0.0, min(100.0, float(sl.get('glow', 0.0))))) / 100.0
                     glow_softness = float(max(0.0, min(30.0, float(sl.get('blur', 0.0)))))
                     bar_count = clamp_spectrum_bar_count(sl.get("barCount", 64))
@@ -2719,6 +2725,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                 gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
                                 count=nn0,
                                 alpha=pass_alpha,
+                                wrap_seamless=wrap_seamless,
                             )
                             if pass_cfg["is_glow"]:
                                 return dampen_spectrum_glow_rgba(cols0, strength=0.38)
@@ -2742,6 +2749,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                         gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
                                         count=strip_nn,
                                         alpha=strip_alpha,
+                                        wrap_seamless=wrap_seamless,
                                     ),
                                     2,
                                     axis=0,
@@ -2814,11 +2822,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                 pos = bar_out
                                 colsi = np.repeat(ctx_col[:BINS], 6, axis=0)
                             if pos.shape[0]:
-                                if (
-                                    col_mode == "gradient"
-                                    and str(grad_dir).lower().strip() == "top-to-bottom"
-                                    and colsi.shape[0] == n * 6
-                                ):
+                                # Match export: all Gradient directions use bar-quad colors
+                                # (Around Ring / Circular / Diagonal seam melt + Base/Radial tip).
+                                if col_mode == "gradient" and colsi.shape[0] == n * 6:
                                     colsi = build_spectrum_bar_quad_rgba(
                                         mode=col_mode,
                                         solid_color=solid_hex,
@@ -2826,6 +2832,9 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                         count=n,
                                         alpha=pass_alpha,
                                         gradient_direction=grad_dir,
+                                        wrap_seamless=wrap_seamless,
+                                        curved=curved,
+                                        mirrored=mirrored,
                                     )
                                 verts = np.column_stack([pos, colsi]).astype(np.float32)
                                 self._write_vbo(self.line_vbo, verts)
@@ -2879,6 +2888,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                                     gradient_colors=list(grad_cols) if isinstance(grad_cols, list) else None,
                                     count=band_bar_count,
                                     alpha=float(max(0.0, min(1.0, layer_op * 0.6))),
+                                    wrap_seamless=wrap_seamless,
                                 ),
                                 2,
                                 axis=0,
