@@ -6,6 +6,7 @@ from typing import Any
 
 from features.video.lib.merge_records import merge_records
 from features.video.lib.text_domain_runtime import inject_text_domains_into_template
+from features.video.lib.video_template_draft import build_video_template_draft, clone_layer_records
 from features.video.lib.video_template_save import build_video_workspace_template_save_patch
 
 
@@ -24,6 +25,52 @@ def _apply_renderer_audio_aliases(merged: dict[str, Any]) -> None:
             audio["smoothing"] = float(max(0.0, min(0.99, float(audio.get("motionSmoothing")))))
         except (TypeError, ValueError):
             audio["smoothing"] = float(audio.get("smoothing", 0.8) or 0.8)
+
+
+def build_saved_workspace_renderer_dict(
+    *,
+    normalizer: "TemplateNormalizer",
+    template: dict[str, Any],
+    logo_path: str = "",
+    track_paths: list[str] | None = None,
+    pipeline_album: str = "",
+    active_track_path: str | None = None,
+    clear_preview_background: bool = True,
+) -> dict[str, Any]:
+    """Build a Manual-parity renderer dict from a saved workspace template.
+
+    Passes layers, lightningLayers, and spectrumInstances so headless Auto-Video
+    matches Manual Export for a saved template (spectrum melt, multi-bolt, etc.).
+    When ``clear_preview_background`` is True (pipeline default), preview bg is
+    cleared so the AI run background is used instead of the Video-page preview.
+    """
+    base = dict(template) if isinstance(template, dict) else {}
+    if not base:
+        return {}
+    draft = build_video_template_draft(
+        base,
+        logo_path=str(logo_path or ""),
+        background_path="" if clear_preview_background else str(
+            base.get("previewBackground") or base.get("backgroundPath") or ""
+        ),
+    )
+    paths = [str(p) for p in (track_paths or []) if str(p or "").strip()]
+    spectrum_instances = clone_layer_records(base.get("spectrumInstances") or [])
+    return normalizer.to_renderer_dict(
+        base=base,
+        draft=draft,
+        layers=clone_layer_records(base.get("layers") or []),
+        lightning_layers=clone_layer_records(base.get("lightningLayers") or []),
+        spectrum_instances=spectrum_instances or None,
+        workspace={
+            "logoPath": str(logo_path or ""),
+            "trackPaths": paths,
+            "pipelineAlbum": str(pipeline_album or ""),
+            "selectedMp3Path": str(active_track_path or ""),
+        },
+        track_paths=paths,
+        active_track_path=active_track_path,
+    )
 
 
 class TemplateNormalizer:
@@ -75,4 +122,24 @@ class TemplateNormalizer:
             track_paths=paths,
             pipeline_album=album,
             active_track_path=active or None,
+        )
+
+    def from_saved_workspace(
+        self,
+        template: dict[str, Any],
+        *,
+        logo_path: str = "",
+        track_paths: list[str] | None = None,
+        pipeline_album: str = "",
+        active_track_path: str | None = None,
+        clear_preview_background: bool = True,
+    ) -> dict[str, Any]:
+        return build_saved_workspace_renderer_dict(
+            normalizer=self,
+            template=template,
+            logo_path=logo_path,
+            track_paths=track_paths,
+            pipeline_album=pipeline_album,
+            active_track_path=active_track_path,
+            clear_preview_background=clear_preview_background,
         )

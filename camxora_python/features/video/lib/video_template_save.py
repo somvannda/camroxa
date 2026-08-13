@@ -242,6 +242,12 @@ def build_video_workspace_template_save_patch(
 
     effect_packs = draft.get("effectPacks") if isinstance(draft.get("effectPacks"), dict) else {}
     pack_entry = lambda domain: effect_packs.get(domain) if isinstance(effect_packs.get(domain), dict) else None
+    # None means "keep saved template bolts"; explicit [] still normalizes to one default.
+    lightning_src = (
+        lightning_layers
+        if lightning_layers is not None
+        else template.get("lightningLayers")
+    )
     patch: dict[str, Any] = {
         "templateName": template_name.strip(),
         "effectPacks": {
@@ -257,7 +263,7 @@ def build_video_workspace_template_save_patch(
         **build_atmosphere_template_patch(template, draft),
         **build_logo_template_patch(template, draft),
         **build_particles_template_patch(template, draft),
-        **build_lightning_template_patch(draft, list(lightning_layers or [])),
+        **build_lightning_template_patch(draft, list(lightning_src or [])),
         **build_album_template_patch(draft),
         **build_title_template_patch(draft),
         **build_text_template_patch(draft),

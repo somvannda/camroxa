@@ -24,7 +24,6 @@ from features.video.lib.render_scene_request import (
     build_pipeline_render_scene_request,
     normalize_export_fps,
 )
-from features.video.lib.video_template_draft import build_video_template_draft, clone_layer_records
 from features.video.services.template_normalizer import TemplateNormalizer
 from features.video.services.video_local_store import VideoLocalStore
 from features.video.workers.pipeline_export_worker import PipelineExportRequest, VideoPipelineExportWorker
@@ -32,7 +31,7 @@ from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, V
 from shared.models.desktop import VideoExportState, VideoWorkspaceState
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
-from shared.lib.export_codec import format_export_status_message
+from shared.lib.export_codec import format_export_status_message, normalize_export_speed_mode
 from shared.lib.export_tiers import resolve_export_tier_settings
 from shared.services.shell_status import emit_shell_status
 from shared.services.video_pipeline_activity import (
@@ -207,10 +206,22 @@ class PipelineAutomationService(QObject):
             return False
 
         branch = "reel" if candidate.branch == "reel" else "long"
-        tier = resolve_export_tier_settings(self._settings, pipeline=True)
+        # Match Manual Export encode defaults (Standard), not silent Draft 720p.
+        tier = resolve_export_tier_settings(self._settings, pipeline=False)
         from features.video.lib.render_scene_request import REEL_EXPORT_RESOLUTION
 
-        output_resolution = REEL_EXPORT_RESOLUTION if branch == "reel" else tier.resolution
+        workspace_resolution = str(workspace.output_resolution or "").strip()
+        long_resolution = workspace_resolution or tier.resolution
+        output_resolution = REEL_EXPORT_RESOLUTION if branch == "reel" else long_resolution
+        export_fps = self._resolve_export_fps(workspace)
+        speed_mode = normalize_export_speed_mode(
+            self._settings.get("videoExportSpeedMode"),
+            default=tier.speed_mode,
+        )
+        # Preview always draws glow melt. Manual Standard keeps dual glow.
+        # Only an explicit Draft tier may skip glow (very_fast/draft → 0 passes).
+        if tier.tier != "draft" and speed_mode in {"very_fast", "draft"}:
+            speed_mode = "balanced"
         scene = build_pipeline_render_scene_request(
             template=template,
             workspace={
@@ -225,12 +236,18 @@ class PipelineAutomationService(QObject):
             batch_id=candidate.batch_id,
             role=candidate.role,
             selected_mp3_path=mp3_list[0].path,
-            fps=tier.fps,
+            fps=export_fps,
         )
         workers_raw = self._settings.get("videoExportWorkers", self._settings.get("perfExportWorkers", 1))
         from visualizer.export_gpu_tier import resolve_pipeline_export_workers
 
-        worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
+        worker_limit = resolve_pipeline_export_workers(
+            workers_raw,
+            default=1,
+            speed_mode=speed_mode,
+            width=int(scene.output.width),
+            height=int(scene.output.height),
+        )
 
         auto_merge = (
             bool(auto_merge)
@@ -273,9 +290,9 @@ class PipelineAutomationService(QObject):
         encode = resolve_merge_encode_settings(
             self._settings,
             branch=branch,
-            pipeline=True,
-            fps=tier.fps,
-            speed_mode=tier.speed_mode,
+            pipeline=False,
+            fps=export_fps,
+            speed_mode=speed_mode,
         )
         self._merge_context = {
             "run_dir": run_dir,
@@ -302,7 +319,7 @@ class PipelineAutomationService(QObject):
             running=True,
             branch=branch_label,
             workers=worker_limit,
-            fps=tier.fps,
+            fps=export_fps,
             auto_merge=auto_merge,
             shuffle_merge=shuffle_merge,
             current_status=f"Starting {branch_label} auto-export ({tier.label})…",
@@ -329,7 +346,7 @@ class PipelineAutomationService(QObject):
                 width=int(scene.output.width),
                 height=int(scene.output.height),
                 fps=int(scene.output.fps),
-                speed_mode=tier.speed_mode,
+                speed_mode=speed_mode,
             ),
             parent=None,
         )
@@ -351,27 +368,17 @@ class PipelineAutomationService(QObject):
     ) -> dict | None:
         if not dict(workspace.template):
             return None
-        template = dict(workspace.template)
-        saved_draft = build_video_template_draft(
-            template,
-            logo_path=workspace.logo_path,
-            # Template previewBackground is for Video-page design only.
-            background_path="",
-        )
-        layers = clone_layer_records(template.get("layers") or [])
-        return self._normalizer.to_renderer_dict(
-            base=template,
-            draft=saved_draft,
-            layers=layers,
-            workspace={
-                "logoPath": workspace.logo_path,
-                "trackPaths": track_paths,
-                "pipelineAlbum": str(
-                    self._settings.get("lastAlbumName") or self._settings.get("album") or ""
-                ),
-            },
+        # Same domains as Manual Export from a saved template (lightning, spectrum
+        # instances/glow melt, particles, logo, effects, text, …).
+        return self._normalizer.from_saved_workspace(
+            dict(workspace.template),
+            logo_path=str(workspace.logo_path or ""),
             track_paths=track_paths,
+            pipeline_album=str(
+                self._settings.get("lastAlbumName") or self._settings.get("album") or ""
+            ),
             active_track_path=None,
+            clear_preview_background=True,
         )
 
     def _resolve_export_fps(self, workspace: VideoWorkspaceState) -> int:
