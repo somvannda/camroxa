@@ -294,6 +294,64 @@ def _draft_matches_live(draft: dict[str, Any], live: dict[str, Any] | None) -> b
     )
 
 
+def _hosted_installer_url(url: str) -> bool:
+    path = unquote(urlparse(str(url or "")).path).lower()
+    return "/desktop-release/files/" in path
+
+
+def _draft_installer_is_missing(
+    draft: dict[str, Any],
+    live: dict[str, Any] | None,
+    installer_candidates: list[InstallerCandidate],
+) -> bool:
+    """True when draft points at a Camxora installer that is no longer on disk."""
+    if _draft_matches_live(draft, live):
+        return False
+    version = str(draft.get("version") or "").strip()
+    url = str(draft.get("download_url") or "").strip()
+    if not version and not url:
+        return False
+    for candidate in installer_candidates:
+        if _same_installer(
+            url,
+            candidate.download_url,
+            left_version=version,
+            right_version=candidate.version,
+            filename=candidate.filename,
+        ):
+            return False
+    if url:
+        return _hosted_installer_url(url)
+    return bool(version)
+
+
+async def _copy_live_into_draft(pool: Any, live: dict[str, Any] | None) -> None:
+    """Make the working draft match live, or clear it when nothing is published."""
+    if _snapshot_is_valid(live):
+        await _upsert_system_setting(
+            pool, key=SOFTWARE_UPDATE_VERSION_KEY, value=str((live or {}).get("version") or "").strip()
+        )
+        await _upsert_system_setting(
+            pool,
+            key=SOFTWARE_UPDATE_DOWNLOAD_URL_KEY,
+            value=str((live or {}).get("download_url") or "").strip(),
+        )
+        await _upsert_system_setting(
+            pool,
+            key=SOFTWARE_UPDATE_MANDATORY_KEY,
+            value="true" if bool((live or {}).get("mandatory")) else "false",
+            value_type="boolean",
+        )
+        await _upsert_system_setting(
+            pool,
+            key=SOFTWARE_UPDATE_RELEASE_NOTES_KEY,
+            value=str((live or {}).get("release_notes") or "").strip(),
+        )
+        return
+    await _upsert_system_setting(pool, key=SOFTWARE_UPDATE_VERSION_KEY, value="")
+    await _upsert_system_setting(pool, key=SOFTWARE_UPDATE_DOWNLOAD_URL_KEY, value="")
+
+
 async def list_active_user_ids(pool: Any) -> list[str]:
     rows = await pool.fetch(
         """
@@ -306,10 +364,18 @@ async def list_active_user_ids(pool: Any) -> list[str]:
     return [str(row["user_id"]) for row in rows]
 
 
-async def get_software_update_config(pool: Any) -> SoftwareUpdateConfig:
+async def get_software_update_config(
+    pool: Any,
+    *,
+    installer_candidates: list[InstallerCandidate] | None = None,
+) -> SoftwareUpdateConfig:
     await ensure_live_snapshot(pool)
-    draft = await _read_draft_fields(pool)
     live = await _load_live_snapshot(pool)
+    if installer_candidates:
+        draft = await _read_draft_fields(pool)
+        if _draft_installer_is_missing(draft, live, installer_candidates):
+            await _copy_live_into_draft(pool, live)
+    draft = await _read_draft_fields(pool)
     draft_is_live = _draft_matches_live(draft, live)
     live_version = str((live or {}).get("version") or "").strip() if _snapshot_is_valid(live) else ""
     live_download_url = str((live or {}).get("download_url") or "").strip() if live_version else ""
@@ -772,6 +838,7 @@ async def sync_after_installer_delete(
         unpublished_version = result.unpublished_version
         restored_live_version = result.restored_live_version
 
+    live = await _load_live_snapshot(pool)
     draft = await _read_draft_fields(pool)
     if _same_installer(
         str(draft.get("download_url") or ""),
@@ -779,8 +846,8 @@ async def sync_after_installer_delete(
         left_version=str(draft.get("version") or ""),
         right_version=version,
         filename=filename,
-    ):
-        await _upsert_system_setting(pool, key=SOFTWARE_UPDATE_DOWNLOAD_URL_KEY, value="")
+    ) or _draft_installer_is_missing(draft, live, installer_candidates or []):
+        await _copy_live_into_draft(pool, live)
 
     config = await get_software_update_config(pool)
     return UnpublishResult(

@@ -363,7 +363,109 @@ async def test_delete_live_installer_restores_previous_and_clears_draft_url() ->
     assert public is not None
     assert public.version == "1.2.5"
     draft = await get_software_update_config(pool)
-    assert draft.download_url == ""
+    assert draft.version == "1.2.5"
+    assert draft.download_url.endswith("CamxoraSetup-1.2.5.exe")
+
+
+@pytest.mark.asyncio
+async def test_get_config_resets_draft_when_installer_file_is_gone() -> None:
+    live_url = "https://api.example.com/api/v1/public/desktop-release/files/Camxora-1.2.5.exe"
+    pool = _FakePool(
+        {
+            SOFTWARE_UPDATE_VERSION_KEY: "1.2.6",
+            SOFTWARE_UPDATE_DOWNLOAD_URL_KEY: (
+                "https://api.example.com/api/v1/public/desktop-release/files/Camxora-1.2.6.exe"
+            ),
+            SOFTWARE_UPDATE_MANDATORY_KEY: "false",
+            SOFTWARE_UPDATE_LIVE_KEY: json.dumps(
+                {
+                    "version": "1.2.5",
+                    "download_url": live_url,
+                    "mandatory": False,
+                    "release_notes": "live notes",
+                    "published_at": "2026-08-13T00:00:00+00:00",
+                }
+            ),
+        }
+    )
+    candidates = [
+        InstallerCandidate(version="1.2.5", download_url=live_url, filename="Camxora-1.2.5.exe"),
+        InstallerCandidate(
+            version="1.2.4",
+            download_url="https://api.example.com/api/v1/public/desktop-release/files/Camxora-1.2.4.exe",
+            filename="Camxora-1.2.4.exe",
+        ),
+    ]
+    config = await get_software_update_config(pool, installer_candidates=candidates)
+    assert config.version == "1.2.5"
+    assert config.download_url == live_url
+    assert config.live_version == "1.2.5"
+    assert config.published_at is not None
+
+
+@pytest.mark.asyncio
+async def test_get_config_keeps_external_draft_download_url() -> None:
+    live_url = "https://api.example.com/api/v1/public/desktop-release/files/Camxora-1.2.5.exe"
+    pool = _FakePool(
+        {
+            SOFTWARE_UPDATE_VERSION_KEY: "1.2.6",
+            SOFTWARE_UPDATE_DOWNLOAD_URL_KEY: "https://cdn.example.com/custom-build.exe",
+            SOFTWARE_UPDATE_MANDATORY_KEY: "false",
+            SOFTWARE_UPDATE_LIVE_KEY: json.dumps(
+                {
+                    "version": "1.2.5",
+                    "download_url": live_url,
+                    "mandatory": False,
+                    "release_notes": "live notes",
+                    "published_at": "2026-08-13T00:00:00+00:00",
+                }
+            ),
+        }
+    )
+    candidates = [
+        InstallerCandidate(version="1.2.5", download_url=live_url, filename="Camxora-1.2.5.exe"),
+    ]
+    config = await get_software_update_config(pool, installer_candidates=candidates)
+    assert config.version == "1.2.6"
+    assert config.download_url == "https://cdn.example.com/custom-build.exe"
+
+
+@pytest.mark.asyncio
+async def test_delete_draft_installer_resets_draft_to_live() -> None:
+    live_url = "https://example.com/Camxora-1.2.5.exe"
+    pool = _FakePool(
+        {
+            SOFTWARE_UPDATE_VERSION_KEY: "1.2.6",
+            SOFTWARE_UPDATE_DOWNLOAD_URL_KEY: "https://example.com/Camxora-1.2.6.exe",
+            SOFTWARE_UPDATE_MANDATORY_KEY: "false",
+            SOFTWARE_UPDATE_LIVE_KEY: json.dumps(
+                {
+                    "version": "1.2.5",
+                    "download_url": live_url,
+                    "mandatory": False,
+                    "release_notes": "live notes",
+                    "published_at": "2026-08-13T00:00:00+00:00",
+                }
+            ),
+        }
+    )
+    remaining = [
+        InstallerCandidate(version="1.2.5", download_url=live_url, filename="Camxora-1.2.5.exe"),
+    ]
+    result = await sync_after_installer_delete(
+        pool,
+        filename="Camxora-1.2.6.exe",
+        download_url="https://example.com/Camxora-1.2.6.exe",
+        version="1.2.6",
+        installer_candidates=remaining,
+    )
+    assert result.unpublished_version == ""
+    public = await get_published_desktop_release(pool)
+    assert public is not None
+    assert public.version == "1.2.5"
+    draft = await get_software_update_config(pool)
+    assert draft.version == "1.2.5"
+    assert draft.download_url == live_url
 
 
 @pytest.mark.asyncio

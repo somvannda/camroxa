@@ -2283,11 +2283,20 @@ def _installer_candidates_from_service(service) -> list:
     response_model=SoftwareUpdateConfigResponse,
     summary="Get desktop software update configuration (Admin)",
 )
-async def get_desktop_software_update_config(ctx: AdminDep) -> SoftwareUpdateConfigResponse:
-    from platform_api.dependencies import get_db_pool
+async def get_desktop_software_update_config(
+    ctx: AdminDep, request: Request
+) -> SoftwareUpdateConfigResponse:
+    from platform_api.dependencies import get_db_pool, get_desktop_release_upload_service_resolved
     from platform_api.services.desktop_notification_admin_service import get_software_update_config
 
-    config = await get_software_update_config(get_db_pool())
+    pool = get_db_pool()
+    candidates = []
+    try:
+        service = await get_desktop_release_upload_service_resolved(pool, request)
+        candidates = _installer_candidates_from_service(service)
+    except Exception:
+        candidates = []
+    config = await get_software_update_config(pool, installer_candidates=candidates or None)
     return _software_update_config_response(config)
 
 
