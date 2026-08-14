@@ -64,6 +64,22 @@ def test_inspect_video_run_entries_classifies_mp4_outputs() -> None:
     assert len(inspection.merged_reel_paths) == 1
 
 
+def test_inspect_skips_tiny_on_disk_mp4s(tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "stub.mp4").write_bytes(b"x" * 20)
+    (run_dir / "good.mp4").write_bytes(b"x" * 60_000)
+    inspection = inspect_video_run_entries(
+        str(run_dir),
+        [
+            DirectoryEntry(name="stub.mp4", is_directory=False),
+            DirectoryEntry(name="good.mp4", is_directory=False),
+        ],
+    )
+    assert len(inspection.long_output_paths) == 1
+    assert inspection.long_output_paths[0].endswith("good.mp4")
+
+
 def test_resolve_runtime_marks_export_in_progress_from_incomplete_local_outputs() -> None:
     row = _base_row()
     inspection = inspect_video_run_entries(

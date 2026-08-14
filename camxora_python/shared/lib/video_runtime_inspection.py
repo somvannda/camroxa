@@ -9,6 +9,10 @@ from shared.models.desktop import VideoWorkspaceState
 from shared.models.platform import ProgressRow
 from shared.services.file_service import DirectoryEntry, list_directory_entries
 
+# Same floor as pipeline export (MIN_VALID_EXPORT_BYTES). Keep local so Progress
+# listing does not import the video feature package.
+_MIN_USABLE_EXPORT_BYTES = 50_000
+
 # Standard pipeline status vocabulary (Progress + Workflow surfaces).
 STATUS_NOT_STARTED = "Not started"
 STATUS_PENDING = "Pending"
@@ -55,6 +59,19 @@ def _normalize_path(value: str | None) -> str:
 def _join_windows_path(directory: str, name: str) -> str:
     base = str(directory or "").strip().rstrip("\\/")
     return f"{base}\\{name}" if base else name
+
+
+def _is_tiny_on_disk_export(directory: str, name: str) -> bool:
+    """True only when the file exists locally and is smaller than a valid export."""
+    from pathlib import Path
+
+    try:
+        path = Path(str(directory or "").strip()) / name
+        if not path.is_file():
+            return False
+        return path.stat().st_size < _MIN_USABLE_EXPORT_BYTES
+    except OSError:
+        return False
 
 
 def _normalize_stage_key(stage: str) -> str:
@@ -168,6 +185,8 @@ def inspect_video_run_entries(directory: str, entries: list[DirectoryEntry]) -> 
         name = str(entry.name or "").strip()
         lower = name.lower()
         if not lower.endswith(".mp4"):
+            continue
+        if _is_tiny_on_disk_export(inspection.directory, name):
             continue
         full_path = _join_windows_path(inspection.directory, name)
         if lower.startswith("merged_reel_"):

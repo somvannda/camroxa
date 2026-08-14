@@ -198,6 +198,10 @@ class PipelineAutomationService(QObject):
         if not background_path or not Path(background_path).is_file():
             emit_shell_status("Auto-video skipped: branch background image is missing.")
             return False
+        branch = "reel" if candidate.branch == "reel" else "long"
+        nested_dir = resolve_merge_run_dir(run_dir, branch)
+        if nested_dir:
+            run_dir = nested_dir
 
         mp3_list = self._store.list_mp3_files(run_dir)
         if not mp3_list:
@@ -216,7 +220,6 @@ class PipelineAutomationService(QObject):
             emit_shell_status("Auto-video skipped: no video template is loaded.")
             return False
 
-        branch = "reel" if candidate.branch == "reel" else "long"
         # Match Manual Export encode defaults (Standard), not silent Draft 720p.
         tier = resolve_export_tier_settings(self._settings, pipeline=False)
         from features.video.lib.render_scene_request import REEL_EXPORT_RESOLUTION
@@ -311,20 +314,23 @@ class PipelineAutomationService(QObject):
         partial_export = len(track_paths) < len(available_paths)
         profile_id = str(getattr(candidate, "profile_id", None) or "").strip() or None
         ref_base = f"{candidate.batch_id}:{candidate.role}:{branch}"
+        video_ref_id = f"video:{ref_base}"
+        if repair_unhealthy or partial_export or force_selected:
+            video_ref_id = f"video:{ref_base}:repair:{len(track_paths)}"
         try:
             video_bill = consume_video_operation(
                 self._api,
                 operation_type="video",
                 count=len(track_paths),
                 channel_profile_id=profile_id,
-                ref_id=f"video:{ref_base}",
+                ref_id=video_ref_id,
             )
             self._video_charge = {
                 "operation_type": "video",
                 "count": len(track_paths),
                 "charged_credit_units": video_bill.charged_credit_units,
                 "channel_profile_id": profile_id,
-                "ref_id": f"video:{ref_base}",
+                "ref_id": video_ref_id,
             }
         except PlatformApiError as exc:
             if exc.status == 401:

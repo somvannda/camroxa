@@ -184,7 +184,11 @@ class VideoPipelineCoordinator(QObject):
         if (self._cooldown_until.get(cooldown_key) or 0) > time.time():
             return
 
-        started = self._automation.start(candidate, settings=payload.settings)
+        started = self._automation.start(
+            candidate,
+            settings=payload.settings,
+            repair_unhealthy=True,
+        )
         if started:
             self._cooldown_until[cooldown_key] = time.time() + 4.0
         elif self._automation.auth_blocked():

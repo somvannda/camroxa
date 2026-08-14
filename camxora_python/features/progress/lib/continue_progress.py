@@ -180,6 +180,21 @@ def _repair_unhealthy_exports_plan(
             row=entry.row,
             batch_id=batch_id,
         )
+    expected = int(meta.expected or 0)
+    on_disk = 0
+    try:
+        from features.video.lib.export_track_health import list_run_mp3_paths
+
+        on_disk = len(list_run_mp3_paths(resolved))
+    except Exception:
+        on_disk = 0
+    if expected > 1 and on_disk > 0 and on_disk < expected:
+        return ContinueProgressPlan(
+            action="none",
+            label=f"Download missing MP3s first ({on_disk}/{expected} on disk)",
+            row=entry.row,
+            batch_id=batch_id,
+        )
     return None
 
 

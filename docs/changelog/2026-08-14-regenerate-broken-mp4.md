@@ -28,6 +28,9 @@ platform_api re-encode endpoint.
   **Download missing MP3s** instead of billing an export.
 - Start Export on a half-finished album no longer bills the tracks that already
   have a usable MP4.
+- Progress Long `N/N` ignores on-disk stubs under 50KB so a 0KB file does not
+  look finished. Auto-video re-exports only unhealthy tracks. Nested run
+  folders are used for repair the same way as merge.
 
 ## Technical impact
 

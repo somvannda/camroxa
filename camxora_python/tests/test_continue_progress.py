@@ -185,3 +185,26 @@ def test_continue_merges_when_all_mp4s_usable(tmp_path, monkeypatch) -> None:
         )
     )
     assert plan.action == "start_merge"
+
+
+def test_continue_asks_to_download_when_album_is_short_of_expected(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.resolve_ffprobe_path",
+        lambda *_args, **_kwargs: "",
+    )
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    for index in range(1, 3):
+        (run_dir / f"{index}. Track_OK.mp3").write_bytes(b"id3")
+        (run_dir / f"{index}. Track_OK.mp4").write_bytes(b"0" * 60_000)
+    plan = resolve_continue_progress(
+        _entry(
+            stage="merge",
+            converter="long 2/3 completed",
+            run_dir=str(run_dir),
+            long_ready=True,
+            expected=3,
+        )
+    )
+    assert plan.action == "none"
+    assert "Download missing MP3s" in plan.label

@@ -18,6 +18,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
   images. **Regenerate one track** targets a specific MP3. Start Merging and
   Continue Progress repair those files first, then concat. Billing charges the
   repaired tracks only. See `docs/changelog/2026-08-14-regenerate-broken-mp4.md`.
+- Progress Long `N/N` no longer counts stub MP4s under 50KB as finished.
+  Auto-video re-exports only unhealthy tracks; nested run folders are used for
+  repair the same way as merge.
 
 ### Fixed
 
