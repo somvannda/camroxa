@@ -11,6 +11,7 @@ from features.video.lib.pipeline_merge import (
     build_merged_output_path,
     collect_verified_merge_inputs,
     merge_video_outputs,
+    merged_output_ready,
 )
 
 
@@ -104,7 +105,7 @@ class VideoPipelineMergeWorker(QThread):
 
         completed = int(request.completed)
         total = int(request.total)
-        if merged_path:
+        if merged_path and merged_output_ready(merged_path):
             self.succeeded.emit(
                 {
                     "mergedOutputPath": merged_path,

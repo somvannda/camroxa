@@ -131,7 +131,9 @@ from features.video.lib.pipeline_merge import (
     collect_verified_merge_inputs,
     is_auto_merge_enabled_for_branch,
     merge_encode_settings_from_context,
+    merged_output_ready,
     resolve_merge_encode_settings,
+    resolve_merge_run_dir,
 )
 from features.video.lib.video_billing import consume_video_operation, refund_video_operation
 from features.video.lib.export_telemetry import collect_hardware_hints, report_video_telemetry_async
@@ -2885,8 +2887,11 @@ class VideoView(QWidget):
 
     def _start_pipeline_merge(self) -> None:
         context = dict(self._pipeline_merge_context or {})
-        run_dir = str(context.get("run_dir") or "").strip()
         branch = str(context.get("branch") or "long").strip()
+        run_dir = resolve_merge_run_dir(str(context.get("run_dir") or "").strip(), branch)
+        if run_dir:
+            context["run_dir"] = run_dir
+            self._pipeline_merge_context = context
         if not run_dir:
             self._on_pipeline_merge_failed("Pipeline merge context is missing a run directory.")
             return
@@ -2999,7 +3004,7 @@ class VideoView(QWidget):
             return
         merged_output = str(payload.get("mergedOutputPath") or "").strip() or None
         message = str(payload.get("message") or "Pipeline merge completed.")
-        if not merged_output:
+        if not merged_output or not merged_output_ready(merged_output):
             self._on_pipeline_merge_failed(message or "Merge did not produce a file.")
             return
         self._clear_merge_billing_charge()

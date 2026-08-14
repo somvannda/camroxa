@@ -17,6 +17,7 @@ from shared.services.secure_storage import LAST_USER_ID_KEY, SecureStorage
 
 _active_user_id: str | None = None
 _active_context: LocalWorkspaceContext | None = None
+_last_activated_user_id: str | None = None
 
 _LEGACY_FILES = (
     "camxora-music-workspace.json",
@@ -42,18 +43,28 @@ def get_active_user_id() -> str | None:
     return _active_user_id
 
 
+def get_last_activated_user_id() -> str | None:
+    """Last signed-in account on this process — kept after logout.
+
+    Device media paths must not fall back to the Camxora AppData root just
+    because a warmup/persist ran after ``deactivate_local_user_scope``.
+    """
+    return _last_activated_user_id
+
+
 def get_active_workspace_context() -> LocalWorkspaceContext | None:
     return _active_context
 
 
 def set_active_user_id(user_id: str | None) -> None:
-    global _active_user_id, _active_context
+    global _active_user_id, _active_context, _last_activated_user_id
     if user_id is None:
         _active_user_id = None
         _active_context = None
         return
     normalized = _normalize_user_id(user_id)
     _active_user_id = normalized
+    _last_activated_user_id = normalized
     _active_context = LocalWorkspaceContext(user_id=normalized)
 
 
@@ -146,10 +157,14 @@ def deactivate_local_user_scope() -> None:
 
 def forget_local_user_data(user_id: str, storage: SecureStorage | None = None) -> None:
     """Delete all on-disk workspace files for one account on this machine."""
+    global _last_activated_user_id
     from shared.services.account_token_store import remove_saved_account
 
-    scoped = get_user_workspace_dir(user_id)
+    normalized = _normalize_user_id(user_id)
+    scoped = get_user_workspace_dir(normalized)
     if scoped.is_dir():
         shutil.rmtree(scoped, ignore_errors=True)
+    if _last_activated_user_id == normalized:
+        _last_activated_user_id = None
     if storage is not None:
         remove_saved_account(storage, user_id)

@@ -369,3 +369,39 @@ def test_startup_persist_does_not_replace_custom_suno_with_default(
     persist_device_paths_from_settings({"sunoOutputDir": defaults["sunoOutputDir"]})
     assert load_device_workspace_paths()["sunoOutputDir"] == defaults["sunoOutputDir"]
     deactivate_local_user_scope()
+
+
+def test_load_recovers_custom_suno_from_backup_when_primary_is_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    custom = tmp_path / "D-Suno-Generated"
+    custom.mkdir()
+    persist_device_paths_from_settings({"sunoOutputDir": str(custom)})
+    defaults = default_workspace_paths()
+    primary = tmp_path / "users" / "user-a" / "device-workspace-paths.json"
+    primary.write_text(json.dumps({"sunoOutputDir": defaults["sunoOutputDir"]}), encoding="utf-8")
+
+    loaded = load_device_workspace_paths()
+    assert loaded["sunoOutputDir"] == str(custom)
+    stored = json.loads(primary.read_text(encoding="utf-8"))
+    assert stored["sunoOutputDir"] == str(custom)
+    deactivate_local_user_scope()
+
+
+def test_persist_after_logout_stays_on_last_user_not_appdata_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    custom = tmp_path / "Suno-Generated"
+    custom.mkdir()
+    persist_device_paths_from_settings({"sunoOutputDir": str(custom)})
+    deactivate_local_user_scope()
+
+    persist_device_paths_from_settings({"sunoOutputDir": str(custom)})
+    assert not (tmp_path / "device-workspace-paths.json").exists()
+    scoped = tmp_path / "users" / "user-a" / "device-workspace-paths.json"
+    assert json.loads(scoped.read_text(encoding="utf-8"))["sunoOutputDir"] == str(custom)
+    assert load_device_workspace_paths()["sunoOutputDir"] == str(custom)

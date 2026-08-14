@@ -15,7 +15,9 @@ from features.video.lib.pipeline_merge import (
     is_auto_merge_enabled_for_branch,
     list_branch_export_outputs,
     merge_encode_settings_from_context,
+    merged_output_ready,
     resolve_merge_encode_settings,
+    resolve_merge_run_dir,
 )
 from features.video.lib.video_billing import consume_video_operation, refund_video_operation
 from features.video.lib.render_scene_request import (
@@ -494,8 +496,11 @@ class PipelineAutomationService(QObject):
             self._busy = False
             return
         context = dict(self._merge_context)
-        run_dir = str(context.get("run_dir") or "").strip()
         branch = str(context.get("branch") or "long").strip()
+        run_dir = resolve_merge_run_dir(str(context.get("run_dir") or "").strip(), branch)
+        if run_dir:
+            context["run_dir"] = run_dir
+            self._merge_context = context
         if not run_dir:
             self._on_merge_failed("Auto-merge skipped: run directory is missing.")
             return
@@ -702,7 +707,7 @@ class PipelineAutomationService(QObject):
             self._on_merge_failed("Video merge failed.")
             return
         merged_output = str(payload.get("mergedOutputPath") or "").strip() or None
-        if not merged_output:
+        if not merged_output or not merged_output_ready(merged_output):
             self._on_merge_failed(
                 str(payload.get("message") or "").strip()
                 or "Merge did not produce a file."
@@ -835,7 +840,7 @@ class PipelineAutomationService(QObject):
         self._auth_blocked = False
         self._settings = dict(settings or {})
         branch = "reel" if candidate.branch == "reel" else "long"
-        run_dir = str(candidate.run_dir or "").strip()
+        run_dir = resolve_merge_run_dir(str(candidate.run_dir or "").strip(), branch)
         if not run_dir or not Path(run_dir).is_dir():
             emit_shell_status("Merge skipped: run directory is missing.")
             return False

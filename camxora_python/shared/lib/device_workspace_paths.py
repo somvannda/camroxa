@@ -24,7 +24,11 @@ from shared.lib.workspace_defaults import (
     is_usable_workspace_path,
     workspace_paths_equivalent,
 )
-from shared.services.local_user_scope import get_user_workspace_dir
+from shared.services.local_user_scope import (
+    get_active_user_id,
+    get_last_activated_user_id,
+    get_user_workspace_dir,
+)
 
 # Imported lazily in hydrate to avoid cycles with workspace_defaults_sync.
 
@@ -39,6 +43,7 @@ DEVICE_MEDIA_PATH_KEYS = (
 )
 
 _STORE_NAME = "device-workspace-paths.json"
+_STORE_BACKUP_NAME = "device-workspace-paths.bak.json"
 
 
 def _normalize_stored_path(value: str) -> str:
@@ -72,7 +77,12 @@ def _read_device_workspace_payload(path: Path) -> dict[str, str]:
 
 
 def get_device_workspace_paths_path(user_id: str | None = None) -> Path:
-    return get_user_workspace_dir(user_id) / _STORE_NAME
+    uid = str(user_id or "").strip() or get_active_user_id() or get_last_activated_user_id()
+    return get_user_workspace_dir(uid) / _STORE_NAME
+
+
+def get_device_workspace_paths_backup_path(user_id: str | None = None) -> Path:
+    return get_device_workspace_paths_path(user_id).with_name(_STORE_BACKUP_NAME)
 
 
 def get_legacy_device_workspace_paths_path() -> Path:
@@ -85,16 +95,23 @@ def get_legacy_device_workspace_paths_path() -> Path:
 def load_device_workspace_paths(user_id: str | None = None) -> dict[str, str]:
     path = get_device_workspace_paths_path(user_id)
     loaded = _read_device_workspace_payload(path)
-    if loaded:
-        return loaded
-    legacy = get_legacy_device_workspace_paths_path()
-    try:
-        if legacy.resolve() != path.resolve():
-            return _read_device_workspace_payload(legacy)
-    except OSError:
-        if str(legacy) != str(path):
-            return _read_device_workspace_payload(legacy)
-    return {}
+    backup = _read_device_workspace_payload(get_device_workspace_paths_backup_path(user_id))
+    merged = _prefer_custom_device_paths(loaded, backup) if (loaded or backup) else {}
+    if not merged:
+        legacy = get_legacy_device_workspace_paths_path()
+        try:
+            same = legacy.resolve() == path.resolve()
+        except OSError:
+            same = str(legacy) == str(path)
+        if not same:
+            merged = _read_device_workspace_payload(legacy)
+    if merged and merged != loaded:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+    return merged
 
 
 def _prefer_custom_device_paths(primary: dict[str, str], fallback: dict[str, str]) -> dict[str, str]:
@@ -177,9 +194,12 @@ def save_device_workspace_paths(
     if not payload:
         return {}
     target = get_device_workspace_paths_path(user_id)
+    encoded = json.dumps(payload, indent=2)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        target.write_text(encoded, encoding="utf-8")
+        backup = get_device_workspace_paths_backup_path(user_id)
+        backup.write_text(encoded, encoding="utf-8")
     except OSError:
         return payload
     return payload

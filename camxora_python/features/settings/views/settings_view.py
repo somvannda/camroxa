@@ -1149,7 +1149,9 @@ class SettingsView(QWidget):
         paths_panel.add_widget(
             note_box(
                 "Batch folders are created as {channel}/{date_album} under this root. "
-                "Downloads, merges, and images use the same tree (or app defaults)."
+                "Downloads, merges, and images use the same tree (or app defaults). "
+                "This folder is stored on this PC and is kept across updates — "
+                "Camxora will not reset it to AppData if the drive is offline."
             )
         )
 

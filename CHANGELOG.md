@@ -21,6 +21,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
   startup self-heal, and a leftover root `device-workspace-paths.json` is
   merged into the signed-in account folder. See
   `docs/changelog/2026-08-14-suno-dir-reset-on-upgrade.md`.
+- **Merge + Suno path hardening:** Merge succeeds only with a real
+  `MERGED_*.mp4` on disk, nested run folders are found, stale merged files are
+  rebuilt, and a device-path backup recovers a custom Suno folder if the
+  primary store was reset. See
+  `docs/changelog/2026-08-14-merge-and-suno-path-hardening.md`.
 
 ## [1.2.6] - 2026-08-13
 

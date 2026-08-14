@@ -330,3 +330,148 @@ def test_is_file_stable_accepts_unchanged_size(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setattr("features.video.lib.pipeline_merge.time.sleep", lambda _seconds: None)
     assert _is_file_stable(str(target)) is True
 
+
+def test_resolve_merge_run_dir_prefers_nested_duplicate_album(tmp_path: Path, monkeypatch) -> None:
+    from features.video.lib.pipeline_merge import resolve_merge_run_dir
+
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.resolve_ffprobe_path",
+        lambda *_args, **_kwargs: "",
+    )
+    outer = tmp_path / "trendrush-audio" / "2026-08-11_album"
+    nested = outer / "trendrush-audio" / "2026-08-11_album"
+    nested.mkdir(parents=True)
+    for name in ("a.mp4", "b.mp4"):
+        (nested / name).write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 1))
+    (outer / "leftover.mp4").write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 1))
+
+    assert resolve_merge_run_dir(str(outer), "long") == str(nested)
+
+
+def test_collect_verified_falls_back_when_export_specs_mismatch(tmp_path: Path, monkeypatch) -> None:
+    from features.video.lib.pipeline_merge import collect_verified_merge_inputs
+
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.resolve_ffprobe_path",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.export_matches_batch_specs",
+        lambda *_args, **_kwargs: False,
+    )
+    paths = []
+    for name in ("a.mp4", "b.mp4"):
+        target = tmp_path / name
+        target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 1))
+        paths.append(str(target))
+
+    verified = collect_verified_merge_inputs(
+        paths,
+        run_dir=str(tmp_path),
+        branch="long",
+        ffmpeg_path="ffmpeg",
+        expected_width=1920,
+        expected_height=1080,
+        expected_fps=30,
+    )
+    assert verified == paths
+
+
+def test_merge_video_outputs_raises_when_fewer_than_two_requested(tmp_path: Path) -> None:
+    from features.video.lib.pipeline_merge import merge_video_outputs
+
+    try:
+        merge_video_outputs(
+            ffmpeg_path="ffmpeg",
+            mp4_paths=[str(tmp_path / "only.mp4")],
+            target_path=str(tmp_path / "MERGED_PRIMARY_batch.mp4"),
+            shuffle=False,
+        )
+        raise AssertionError("expected merge to fail")
+    except RuntimeError as exc:
+        assert "did not produce a file" in str(exc)
+
+
+def test_merge_video_outputs_does_not_reuse_stale_merged_file(tmp_path: Path, monkeypatch) -> None:
+    from features.video.lib.pipeline_merge import merge_video_outputs
+
+    merged_target = tmp_path / "MERGED_PRIMARY_batch.mp4"
+    merged_target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+    paths: list[str] = []
+    for index in range(2):
+        target = tmp_path / f"track-{index}.mp4"
+        target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+        paths.append(str(target))
+    older = merged_target.stat().st_mtime - 120
+    os_utime = __import__("os").utime
+    os_utime(merged_target, (older, older))
+
+    monkeypatch.setattr("features.video.lib.pipeline_merge._is_file_stable", lambda _path: True)
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffmpeg_from_path_hint", lambda _hint: "ffmpeg")
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffprobe_from_path_hint", lambda _hint: "")
+    monkeypatch.setattr(
+        "features.video.lib.pipeline_merge.assert_concat_copy_compatible",
+        lambda *_a, **_k: None,
+    )
+    calls: list[str] = []
+
+    def _fake_run_ffmpeg_with_progress(*, ffmpeg_path, args, total_duration_sec, emit, cancel):
+        calls.append("ran")
+        Path(args[-1]).write_bytes(b"y" * (MIN_VALID_EXPORT_BYTES + 64))
+        emit("Merging… 100%", 100)
+
+    monkeypatch.setattr(
+        "features.video.lib.pipeline_merge._run_ffmpeg_with_progress",
+        _fake_run_ffmpeg_with_progress,
+    )
+
+    result = merge_video_outputs(
+        ffmpeg_path="ffmpeg",
+        mp4_paths=paths,
+        target_path=str(merged_target),
+        shuffle=False,
+    )
+    assert result == str(merged_target)
+    assert calls == ["ran"]
+
+
+def test_merge_video_outputs_reuses_current_merged_file(tmp_path: Path, monkeypatch) -> None:
+    from features.video.lib.pipeline_merge import merge_video_outputs
+
+    paths: list[str] = []
+    for index in range(2):
+        target = tmp_path / f"track-{index}.mp4"
+        target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+        paths.append(str(target))
+    merged_target = tmp_path / "MERGED_PRIMARY_batch.mp4"
+    merged_target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+
+    def _should_not_run(**_kwargs):
+        raise AssertionError("should reuse existing merged file")
+
+    monkeypatch.setattr(
+        "features.video.lib.pipeline_merge._run_ffmpeg_with_progress",
+        _should_not_run,
+    )
+    result = merge_video_outputs(
+        ffmpeg_path="ffmpeg",
+        mp4_paths=paths,
+        target_path=str(merged_target),
+        shuffle=False,
+    )
+    assert result == str(merged_target)
+
+
+def test_merged_output_ready_rejects_missing_and_tiny(tmp_path: Path) -> None:
+    from features.video.lib.pipeline_merge import merged_output_ready
+
+    missing = tmp_path / "MERGED_PRIMARY.mp4"
+    tiny = tmp_path / "tiny.mp4"
+    tiny.write_bytes(b"x")
+    ready = tmp_path / "ready.mp4"
+    ready.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 1))
+    assert merged_output_ready(str(missing)) is False
+    assert merged_output_ready(str(tiny)) is False
+    assert merged_output_ready(str(ready)) is True
+    assert merged_output_ready("") is False
+

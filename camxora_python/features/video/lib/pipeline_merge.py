@@ -241,6 +241,83 @@ def list_branch_export_outputs(output_dir: str, branch: str) -> list[str]:
     return sorted(results)
 
 
+def resolve_merge_run_dir(run_dir: str, branch: str = "long") -> str:
+    """Use the folder that actually holds branch exports (nested duplicate trees).
+
+    Seen in the wild: ``…/channel/album/channel/album`` after a remapped download
+    nested inside the original run folder. Merge looking at the outer album
+    found no (or fewer) MP4s and produced nothing.
+    """
+    text = str(run_dir or "").strip()
+    if not text:
+        return text
+    root = Path(text)
+    try:
+        if not root.is_dir():
+            return text
+    except OSError:
+        return text
+
+    def _count(path: Path) -> int:
+        return len(list_branch_export_outputs(str(path), branch))
+
+    best = root
+    best_count = _count(root)
+    candidates: list[Path] = [root / root.name]
+    parent_name = root.parent.name if root.parent != root else ""
+    if parent_name:
+        candidates.append(root / parent_name / root.name)
+    if best_count == 0:
+        try:
+            for child in root.iterdir():
+                if not child.is_dir():
+                    continue
+                candidates.append(child)
+                candidates.append(child / root.name)
+                if parent_name:
+                    candidates.append(child / parent_name / root.name)
+        except OSError:
+            pass
+    seen = {str(root)}
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            if not candidate.is_dir():
+                continue
+        except OSError:
+            continue
+        count = _count(candidate)
+        if count > best_count:
+            best = candidate
+            best_count = count
+    return str(best)
+
+
+def merged_output_ready(path: str) -> bool:
+    """True when a merge output exists on disk and is large enough to be a real video."""
+    return is_valid_export_output(path)
+
+
+def _existing_merge_is_current(target_path: str, input_paths: list[str]) -> bool:
+    """Reuse MERGED_*.mp4 only when it is valid and not older than the inputs."""
+    if not is_valid_export_output(target_path):
+        return False
+    try:
+        target_mtime = Path(target_path).stat().st_mtime
+    except OSError:
+        return False
+    for item in input_paths:
+        try:
+            if Path(item).stat().st_mtime > target_mtime + 1.0:
+                return False
+        except OSError:
+            continue
+    return True
+
+
 def find_ffprobe_from_path_hint(ffmpeg_path: str) -> str:
     from shared.lib.ffmpeg_paths import resolve_ffprobe_path
 
@@ -291,6 +368,8 @@ def collect_verified_merge_inputs(
     """Rebuild merge inputs from verified outputs only (never trust expected paths blindly)."""
     from features.video.lib.export_output_validity import export_matches_batch_specs
 
+    run_dir = resolve_merge_run_dir(str(run_dir or "").strip(), branch)
+
     def _accept(path: str) -> bool:
         if expected_width and expected_height:
             return export_matches_batch_specs(
@@ -310,23 +389,34 @@ def collect_verified_merge_inputs(
     if len(verified) >= 2:
         return verified
     # Fall back to scanning the run folder when explicit paths were stale/mismatched.
-    scanned = list_branch_export_outputs(str(run_dir or "").strip(), branch)
+    scanned = list_branch_export_outputs(run_dir, branch)
     if not scanned:
-        return verified
-    scanned_set = {Path(path).resolve(): path for path in scanned if _accept(path)}
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for path in requested:
-        key = Path(path).resolve()
-        match = scanned_set.get(key)
-        if match and match not in seen:
-            ordered.append(match)
-            seen.add(match)
-    for path in scanned_set.values():
-        if path not in seen:
-            ordered.append(path)
-            seen.add(path)
-    return ordered
+        ordered: list[str] = list(verified)
+    else:
+        scanned_set = {Path(path).resolve(): path for path in scanned if _accept(path)}
+        ordered = []
+        seen: set[str] = set()
+        for path in requested:
+            key = Path(path).resolve()
+            match = scanned_set.get(key)
+            if match and match not in seen:
+                ordered.append(match)
+                seen.add(match)
+        for path in scanned_set.values():
+            if path not in seen:
+                ordered.append(path)
+                seen.add(path)
+    if len(ordered) >= 2:
+        return ordered
+    # Today's export FPS/size must not hide already-exported albums that match each other.
+    if expected_width or expected_height or expected_fps:
+        return collect_verified_merge_inputs(
+            mp4_paths,
+            run_dir=run_dir,
+            branch=branch,
+            ffmpeg_path=ffmpeg_path,
+        )
+    return ordered or verified
 
 
 def _write_merge_order_log(target_path: str, original_order: list[str], shuffled_order: list[str]) -> None:
@@ -476,8 +566,12 @@ def merge_video_outputs(
 ) -> str | None:
     requested = [str(path).strip() for path in mp4_paths if str(path).strip()]
     if len(requested) < 2:
-        return None
-    if is_valid_export_output(target_path):
+        raise RuntimeError(
+            "Merge did not produce a file — need at least two usable MP4 files "
+            f"(found {len(requested)}). Open the run folder and confirm the exported "
+            "videos play, then Merge again."
+        )
+    if _existing_merge_is_current(target_path, requested):
         return target_path
 
     emit = on_progress or (lambda _message, _percent=None: None)
