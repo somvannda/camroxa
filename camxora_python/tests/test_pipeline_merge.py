@@ -245,3 +245,88 @@ def test_merge_video_outputs_validates_paths_without_stat_is_file(tmp_path: Path
     )
 
     assert result == str(merged_target)
+
+
+def test_merge_video_outputs_raises_when_usable_inputs_drop_below_two(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from features.video.lib.pipeline_merge import merge_video_outputs
+
+    paths: list[str] = []
+    for index in range(2):
+        target = tmp_path / f"track-{index}.mp4"
+        target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+        paths.append(str(target))
+
+    monkeypatch.setattr("features.video.lib.pipeline_merge._is_file_stable", lambda _path: False)
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffmpeg_from_path_hint", lambda _hint: "ffmpeg")
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffprobe_from_path_hint", lambda _hint: "")
+
+    try:
+        merge_video_outputs(
+            ffmpeg_path="ffmpeg",
+            mp4_paths=paths,
+            target_path=str(tmp_path / "MERGED_PRIMARY_batch.mp4"),
+            shuffle=False,
+        )
+        raise AssertionError("expected merge to fail instead of returning None")
+    except RuntimeError as exc:
+        assert "did not produce a file" in str(exc)
+
+
+def test_merge_video_outputs_does_not_require_current_export_specs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from features.video.lib.pipeline_merge import MergeEncodeSettings, merge_video_outputs
+
+    paths: list[str] = []
+    for index in range(2):
+        target = tmp_path / f"track-{index}.mp4"
+        target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+        paths.append(str(target))
+
+    monkeypatch.setattr("features.video.lib.pipeline_merge._is_file_stable", lambda _path: True)
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffmpeg_from_path_hint", lambda _hint: "ffmpeg")
+    monkeypatch.setattr("features.video.lib.pipeline_merge.find_ffprobe_from_path_hint", lambda _hint: "")
+    seen: dict[str, object] = {}
+
+    def _capture_compat(*_args, **kwargs):
+        seen["expected_width"] = kwargs.get("expected_width")
+        seen["expected_fps"] = kwargs.get("expected_fps")
+        return None
+
+    monkeypatch.setattr(
+        "features.video.lib.pipeline_merge.assert_concat_copy_compatible",
+        _capture_compat,
+    )
+
+    def _fake_run_ffmpeg_with_progress(*, ffmpeg_path, args, total_duration_sec, emit, cancel):
+        Path(args[-1]).write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+        emit("Merging… 100%", 100)
+
+    monkeypatch.setattr(
+        "features.video.lib.pipeline_merge._run_ffmpeg_with_progress",
+        _fake_run_ffmpeg_with_progress,
+    )
+
+    result = merge_video_outputs(
+        ffmpeg_path="ffmpeg",
+        mp4_paths=paths,
+        target_path=str(tmp_path / "MERGED_PRIMARY_batch.mp4"),
+        shuffle=False,
+        encode=MergeEncodeSettings(width=1920, height=1080, fps=30),
+        match_export_specs=False,
+    )
+    assert result is not None
+    assert seen["expected_width"] is None
+    assert seen["expected_fps"] is None
+
+
+def test_is_file_stable_accepts_unchanged_size(tmp_path: Path, monkeypatch) -> None:
+    from features.video.lib.pipeline_merge import _is_file_stable
+
+    target = tmp_path / "track.mp4"
+    target.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 64))
+    monkeypatch.setattr("features.video.lib.pipeline_merge.time.sleep", lambda _seconds: None)
+    assert _is_file_stable(str(target)) is True
+

@@ -500,15 +500,21 @@ class PipelineAutomationService(QObject):
             self._on_merge_failed("Auto-merge skipped: run directory is missing.")
             return
         ffmpeg_path = str(self._settings.get("ffmpegPath") or "ffmpeg")
+        encode = merge_encode_settings_from_context(context, pipeline=True)
+        match_specs = bool(context.get("match_export_specs", context.get("auto_merge")))
         verified_paths = collect_verified_merge_inputs(
             [str(path) for path in (context.get("mp4_paths") or []) if str(path).strip()],
             run_dir=run_dir,
             branch=branch,
             ffmpeg_path=ffmpeg_path,
+            expected_width=int(encode.width) if match_specs else None,
+            expected_height=int(encode.height) if match_specs else None,
+            expected_fps=int(encode.fps) if match_specs else None,
         )
         if len(verified_paths) < 2:
             self._on_merge_failed(
-                f"Auto-merge skipped — need at least two usable MP4 files (found {len(verified_paths)})."
+                "Merge did not produce a file — need at least two usable MP4 files in the "
+                f"run folder (found {len(verified_paths)})."
             )
             return
         context["mp4_paths"] = verified_paths
@@ -587,6 +593,7 @@ class PipelineAutomationService(QObject):
                 mp4_paths=tuple(verified_paths),
                 shuffle=bool(context.get("shuffle", True)),
                 encode=encode,
+                match_export_specs=match_specs,
             ),
             parent=None,
         )
@@ -691,31 +698,49 @@ class PipelineAutomationService(QObject):
         )
 
     def _on_merge_succeeded(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            self._on_merge_failed("Video merge failed.")
+            return
+        merged_output = str(payload.get("mergedOutputPath") or "").strip() or None
+        if not merged_output:
+            self._on_merge_failed(
+                str(payload.get("message") or "").strip()
+                or "Merge did not produce a file."
+            )
+            return
         workspace = self._current_workspace()
         self._busy = False
         self._video_charge = {}
         self._merge_charge = {}
-        if not isinstance(payload, dict) or workspace is None:
-            return
         message = str(payload.get("message") or "Auto-merge completed.")
-        merged_output = str(payload.get("mergedOutputPath") or "").strip() or None
-        self._publish_workspace(
-            workspace.model_copy(
-                update={
-                    "export": workspace.export.model_copy(
-                        update={
-                            "running": False,
-                            "merge_running": False,
-                            "merge_progress_percent": None,
-                            "current_status": message,
-                            "last_merged_output_path": merged_output,
-                            "progress_percent": 100,
-                        }
-                    )
-                }
+        if workspace is not None:
+            self._publish_workspace(
+                workspace.model_copy(
+                    update={
+                        "export": workspace.export.model_copy(
+                            update={
+                                "running": False,
+                                "merge_running": False,
+                                "merge_progress_percent": None,
+                                "current_status": message,
+                                "last_merged_output_path": merged_output,
+                                "progress_percent": 100,
+                            }
+                        )
+                    }
+                )
             )
-        )
         emit_shell_status(message)
+        context = dict(self._merge_context or {})
+        from shared.lib.pipeline_completion import mark_desktop_pipeline_complete
+
+        mark_desktop_pipeline_complete(
+            self._api,
+            batch_id=str(context.get("batch_id") or ""),
+            profile_id=str(context.get("profile_id") or ""),
+            role=str(context.get("role") or "OK"),
+            run_dir=str(context.get("run_dir") or ""),
+        )
         self._schedule_progress_local_sync()
 
     def _on_merge_failed(self, message: str) -> None:
@@ -838,6 +863,7 @@ class PipelineAutomationService(QObject):
             "encode_fps": int(encode.fps),
             "encode_speed_mode": str(encode.speed_mode),
             "settings": dict(self._settings),
+            "match_export_specs": False,
         }
         workspace = self._store.read_workspace_state(self._settings)
         branch_label = "Reel" if branch == "reel" else "Long"

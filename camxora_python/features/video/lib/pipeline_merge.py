@@ -253,25 +253,28 @@ def _escape_ffconcat_path(target_path: str) -> str:
 
 
 def _is_file_stable(target_path: str) -> bool:
+    """True when size has stopped growing. Ignore mtime — Windows AV/indexer can touch it."""
     path = Path(target_path)
     try:
         if not path.is_file():
             return False
         previous = path.stat()
+        if previous.st_size < MIN_VALID_EXPORT_BYTES:
+            return False
         with path.open("rb") as handle:
             handle.read(1)
     except OSError:
         return False
 
-    for _ in range(10):
-        time.sleep(0.4)
+    for _ in range(3):
+        time.sleep(0.25)
         try:
             current = path.stat()
-            if previous.st_size == current.st_size and previous.st_mtime_ns == current.st_mtime_ns:
-                return True
-            previous = current
         except OSError:
             return False
+        if current.st_size == previous.st_size and current.st_size >= MIN_VALID_EXPORT_BYTES:
+            return True
+        previous = current
     return False
 
 
@@ -469,6 +472,7 @@ def merge_video_outputs(
     cancel_check: Callable[[], bool] | None = None,
     shuffle: bool = True,
     encode: MergeEncodeSettings | None = None,
+    match_export_specs: bool = False,
 ) -> str | None:
     requested = [str(path).strip() for path in mp4_paths if str(path).strip()]
     if len(requested) < 2:
@@ -520,15 +524,22 @@ def merge_video_outputs(
         emit(f"Skipping {len(skipped_paths)} incomplete MP4 file(s): {shown}{extra}", 2)
 
     if len(valid_paths) < 2:
-        return None
+        shown = ", ".join(Path(path).name for path in skipped_paths[:8])
+        extra = f" (+{len(skipped_paths) - 8} more)" if len(skipped_paths) > 8 else ""
+        raise RuntimeError(
+            "Merge did not produce a file — fewer than two MP4s were usable after checks "
+            f"(found {len(valid_paths)} usable, skipped {len(skipped_paths)}"
+            + (f": {shown}{extra}" if skipped_paths else "")
+            + "). Open the run folder and confirm the exported videos play, then Merge again."
+        )
 
     emit("Checking stream compatibility…", 4)
     assert_concat_copy_compatible(
         valid_paths,
         ffmpeg_path=resolved_ffmpeg,
-        expected_width=int(encode_settings.width),
-        expected_height=int(encode_settings.height),
-        expected_fps=int(encode_settings.fps),
+        expected_width=int(encode_settings.width) if match_export_specs else None,
+        expected_height=int(encode_settings.height) if match_export_specs else None,
+        expected_fps=int(encode_settings.fps) if match_export_specs else None,
     )
 
     original_order = [Path(path).name for path in valid_paths]

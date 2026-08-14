@@ -9,6 +9,13 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Progress Merge wrote no file:** Start Merging could show “Merging…” and finish
+  without a `MERGED_*.mp4`. Skip is now a real error, merge-only no longer
+  requires today’s export FPS/48 kHz, and a successful merge marks the row
+  complete. See `docs/changelog/2026-08-14-progress-merge-no-output.md`.
+
 ## [1.2.6] - 2026-08-13
 
 ### Fixed

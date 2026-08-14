@@ -27,6 +27,7 @@ class PipelineMergeRequest:
     mp4_paths: tuple[str, ...] = ()
     shuffle: bool = True
     encode: MergeEncodeSettings | None = None
+    match_export_specs: bool = False
 
 
 class VideoPipelineMergeWorker(QThread):
@@ -56,15 +57,23 @@ class VideoPipelineMergeWorker(QThread):
 
         emit_progress(f"Merging {branch_label} video outputs…", 0)
         encode = request.encode
+        match_specs = bool(request.match_export_specs)
         branch_outputs = collect_verified_merge_inputs(
             list(request.mp4_paths) if request.mp4_paths else [],
             run_dir=request.run_dir,
             branch=branch,
             ffmpeg_path=request.ffmpeg_path,
-            expected_width=int(encode.width) if encode else None,
-            expected_height=int(encode.height) if encode else None,
-            expected_fps=int(encode.fps) if encode else None,
+            expected_width=int(encode.width) if match_specs and encode else None,
+            expected_height=int(encode.height) if match_specs and encode else None,
+            expected_fps=int(encode.fps) if match_specs and encode else None,
         )
+        if len(branch_outputs) < 2:
+            self.failed.emit(
+                "Merge did not produce a file — need at least two usable MP4 files in the "
+                f"run folder (found {len(branch_outputs)}). Open the run folder and confirm "
+                "the exported videos play, then Merge again."
+            )
+            return
         merged_target_path = build_merged_output_path(
             output_dir=request.run_dir,
             batch_id=request.batch_id,
@@ -80,6 +89,7 @@ class VideoPipelineMergeWorker(QThread):
                 cancel_check=lambda: self._cancel_requested,
                 shuffle=request.shuffle,
                 encode=request.encode,
+                match_export_specs=match_specs,
             )
         except Exception as exc:
             if self._cancel_requested:
@@ -108,15 +118,6 @@ class VideoPipelineMergeWorker(QThread):
             )
             return
 
-        self.succeeded.emit(
-            {
-                "mergedOutputPath": None,
-                "completed": completed,
-                "total": total,
-                "branch": branch,
-                "message": (
-                    f"Export complete · {completed}/{total} {branch_label} video(s). "
-                    "Merge skipped because at least two valid MP4 files are required."
-                ),
-            }
+        self.failed.emit(
+            "Merge did not produce a file — need at least two usable MP4 files in the run folder."
         )

@@ -2944,6 +2944,7 @@ class VideoView(QWidget):
         # Manual batches stash pipeline=False encode fields; prefer context values either way.
         if str(context.get("batch_id") or "").startswith("manual-"):
             encode = merge_encode_settings_from_context(context, pipeline=False)
+        match_specs = bool(context.get("match_export_specs", context.get("auto_merge")))
         worker = VideoPipelineMergeWorker(
             PipelineMergeRequest(
                 run_dir=run_dir,
@@ -2956,6 +2957,7 @@ class VideoView(QWidget):
                 mp4_paths=mp4_paths,
                 shuffle=bool(context.get("shuffle", True)),
                 encode=encode,
+                match_export_specs=match_specs,
             ),
             parent=None,
         )
@@ -2992,11 +2994,15 @@ class VideoView(QWidget):
 
     def _on_pipeline_merge_succeeded(self, payload: object) -> None:
         self._stop_export_pending = False
-        self._clear_merge_billing_charge()
         if not isinstance(payload, dict) or not self._workspace:
+            self._clear_merge_billing_charge()
             return
-        message = str(payload.get("message") or "Pipeline merge completed.")
         merged_output = str(payload.get("mergedOutputPath") or "").strip() or None
+        message = str(payload.get("message") or "Pipeline merge completed.")
+        if not merged_output:
+            self._on_pipeline_merge_failed(message or "Merge did not produce a file.")
+            return
+        self._clear_merge_billing_charge()
         completed = int(payload.get("completed") or self._workspace.export.completed_jobs or 0)
         total = int(payload.get("total") or self._workspace.export.total_jobs or completed)
         self._publish_workspace(
