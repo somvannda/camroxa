@@ -106,6 +106,8 @@ class OperationalRowsCard(QFrame):
     retry_suno_requested = Signal(str, list)
     force_export_regenerate_requested = Signal(object)
     rebuild_export_requested = Signal(object)
+    repair_export_requested = Signal(object)
+    regenerate_track_requested = Signal(object, str)
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
     change_run_folder_requested = Signal(object)
@@ -481,11 +483,18 @@ class OperationalRowsCard(QFrame):
         # Explicit rebuild — allowed on finished rows; Continue/Stop stay hidden above.
         if self._can_start_video_export(entry):
             action = menu.addAction("Force Regenerate MP4")
+            action.setToolTip(
+                "Delete every exported MP4 for this branch and re-export all tracks."
+            )
             action.triggered.connect(
                 partial(self.force_export_regenerate_requested.emit, entry.row)
             )
-            action = menu.addAction("Rebuild MP4")
-            action.triggered.connect(partial(self.rebuild_export_requested.emit, entry.row))
+            action = menu.addAction("Regenerate missing/broken MP4s")
+            action.setToolTip(
+                "Re-export only tracks whose MP4 is missing, tiny, corrupt, or truncated."
+            )
+            action.triggered.connect(partial(self.repair_export_requested.emit, entry.row))
+            self._add_regenerate_one_track_menu(menu, entry)
             menu.addSeparator()
 
         copy_action = menu.addAction("Copy Batch ID")
@@ -581,6 +590,29 @@ class OperationalRowsCard(QFrame):
 
         if menu.actions():
             menu.exec(self._table.viewport().mapToGlobal(position))
+
+    def _add_regenerate_one_track_menu(self, menu: QMenu, entry: EffectiveProgressRow) -> None:
+        run_dir = str(entry.row.meta.run_dir or "").strip()
+        if not run_dir:
+            return
+        try:
+            from features.video.lib.export_track_health import list_run_mp3_paths
+            from features.video.lib.pipeline_merge import resolve_merge_run_dir
+        except Exception:
+            return
+        resolved = resolve_merge_run_dir(run_dir, "long") or run_dir
+        mp3_paths = list_run_mp3_paths(resolved) or list_run_mp3_paths(run_dir)
+        if not mp3_paths:
+            return
+        track_menu = menu.addMenu("Regenerate one track")
+        track_menu.setToolTip("Delete and re-export a specific track from its MP3.")
+        for mp3_path in mp3_paths[:40]:
+            from pathlib import Path
+
+            action = track_menu.addAction(Path(mp3_path).name)
+            action.triggered.connect(
+                partial(self.regenerate_track_requested.emit, entry.row, mp3_path)
+            )
 
     def _set_start_export_button(self, row_index: int, row: ProgressRow) -> None:
         self._table.removeCellWidget(row_index, _COL_EXPORT)

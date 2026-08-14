@@ -280,10 +280,18 @@ class ProgressView(PollablePageMixin, QScrollArea):
             lambda row: self._run_video_pipeline_action(row, "force_export")
         )
         self._rows_card.rebuild_export_requested.connect(
-            lambda row: self._run_video_pipeline_action(row, "rebuild_export")
+            lambda row: self._run_video_pipeline_action(row, "repair_export")
+        )
+        self._rows_card.repair_export_requested.connect(
+            lambda row: self._run_video_pipeline_action(row, "repair_export")
+        )
+        self._rows_card.regenerate_track_requested.connect(
+            lambda row, mp3_path: self._run_video_pipeline_action(
+                row, "force_export", mp3_paths=[mp3_path]
+            )
         )
         self._rows_card.start_export_requested.connect(
-            lambda row: self._run_video_pipeline_action(row, "rebuild_export")
+            lambda row: self._run_video_pipeline_action(row, "repair_export")
         )
         self._rows_card.start_merge_requested.connect(
             lambda row: self._run_video_pipeline_action(row, "merge")
@@ -1183,7 +1191,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         elif plan.action == "sync_manual":
             self._sync_manual_assets(plan.batch_id)
         elif plan.action == "start_export":
-            self._run_video_pipeline_action(plan.row, "rebuild_export")
+            self._run_video_pipeline_action(plan.row, "repair_export")
         elif plan.action == "start_merge":
             self._run_video_pipeline_action(plan.row, "merge")
 
@@ -1212,7 +1220,13 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._pending_continue_attempts = 0
         self._dispatch_continue_plan(plan)
 
-    def _run_video_pipeline_action(self, row: ProgressRow | None, action: str) -> None:
+    def _run_video_pipeline_action(
+        self,
+        row: ProgressRow | None,
+        action: str,
+        *,
+        mp3_paths: list[str] | None = None,
+    ) -> None:
         if row is None:
             self._show_retry_notice("Select a run before starting video work.", tone="warning")
             return
@@ -1242,16 +1256,21 @@ class ProgressView(PollablePageMixin, QScrollArea):
                 return
             from pathlib import Path
 
-            from features.video.lib.pipeline_merge import list_branch_export_outputs
+            from features.video.lib.export_track_health import list_run_mp3_paths
+            from features.video.lib.pipeline_merge import list_branch_export_outputs, resolve_merge_run_dir
 
             if not Path(run_dir).is_dir():
                 self._show_retry_notice(f"Merge not ready: run folder does not exist:\n{run_dir}", tone="warning")
                 return
-            if not list_branch_export_outputs(run_dir, "long") and not list_branch_export_outputs(
-                run_dir, "reel"
-            ):
+            resolved = resolve_merge_run_dir(run_dir, "long") or run_dir
+            has_mp4 = bool(
+                list_branch_export_outputs(resolved, "long")
+                or list_branch_export_outputs(resolved, "reel")
+            )
+            has_mp3 = bool(list_run_mp3_paths(resolved) or list_run_mp3_paths(run_dir))
+            if not has_mp4 and not has_mp3:
                 self._show_retry_notice(
-                    "Merge not ready: no exported MP4 files found in the run folder.",
+                    "Merge not ready: no MP3 or exported MP4 files found in the run folder.",
                     tone="warning",
                 )
                 return
@@ -1268,10 +1287,15 @@ class ProgressView(PollablePageMixin, QScrollArea):
             )
             return
         labels = {
-            "force_export": "Force regenerating MP4 exports…",
+            "force_export": (
+                "Force regenerating selected MP4…"
+                if mp3_paths
+                else "Force regenerating MP4 exports…"
+            ),
             "rebuild_export": "Rebuilding missing MP4 exports…",
+            "repair_export": "Regenerating missing/broken MP4s…",
             "merge": "Starting video merge…",
         }
         self._show_retry_notice(labels.get(action, "Starting video action…"), tone="neutral")
-        coordinator.run_manual_action(row, action)  # type: ignore[arg-type]
+        coordinator.run_manual_action(row, action, mp3_paths=mp3_paths)  # type: ignore[arg-type]
         self.refresh_data()

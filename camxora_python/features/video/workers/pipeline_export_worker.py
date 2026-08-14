@@ -44,6 +44,7 @@ class PipelineExportRequest:
     height: int
     fps: int = 30
     speed_mode: str = "fast"
+    album_mp3_paths: list[str] | None = None
 
 
 class VideoPipelineExportWorker(QThread):
@@ -69,6 +70,11 @@ class VideoPipelineExportWorker(QThread):
     def run(self) -> None:
         request = self._request
         mp3_paths = [str(path).strip() for path in request.mp3_paths if str(path).strip()]
+        album_mp3_paths = [
+            str(path).strip()
+            for path in (request.album_mp3_paths or mp3_paths)
+            if str(path).strip()
+        ]
         if not mp3_paths:
             self.failed.emit("No MP3 files were found in the selected run directory.")
             return
@@ -182,7 +188,7 @@ class VideoPipelineExportWorker(QThread):
                 # Highlight the song being rendered in the title list for this job.
                 job_template = inject_text_domains_into_template(
                     dict(request.template),
-                    track_paths=list(mp3_paths),
+                    track_paths=list(album_mp3_paths),
                     active_track_path=mp3_path,
                 )
                 export_request = PipelineCoordinatorExportRequest(

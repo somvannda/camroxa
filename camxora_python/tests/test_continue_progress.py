@@ -19,6 +19,7 @@ def _entry(
     long_ready: bool = True,
     run_dir: str = r"E:\runs\demo",
     converter: str = "pending",
+    expected: int = 0,
 ) -> EffectiveProgressRow:
     row = ProgressRow(
         run_date="2026-07-20",
@@ -45,6 +46,7 @@ def _entry(
             th_total=th_total,
             long_ready=long_ready,
             reel_ready=False,
+            expected=expected,
         ),
     )
     return EffectiveProgressRow(
@@ -88,12 +90,16 @@ def test_continue_starts_merge_on_merge_stage() -> None:
     assert plan.action == "start_merge"
 
 
-def test_continue_starts_merge_when_exports_complete(tmp_path) -> None:
+def test_continue_starts_merge_when_exports_complete(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.resolve_ffprobe_path",
+        lambda *_args, **_kwargs: "",
+    )
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     for i in range(3):
-        path = run_dir / f"{i}. track_OK.mp4"
-        path.write_bytes(b"0" * 60_000)
+        (run_dir / f"{i}. track_OK.mp3").write_bytes(b"id3")
+        (run_dir / f"{i}. track_OK.mp4").write_bytes(b"0" * 60_000)
     plan = resolve_continue_progress(
         _entry(
             stage="export",
@@ -101,6 +107,7 @@ def test_continue_starts_merge_when_exports_complete(tmp_path) -> None:
             converter="long 3/3 completed",
             run_dir=str(run_dir),
             long_ready=True,
+            expected=3,
         )
     )
     assert plan.action == "start_merge"
@@ -109,3 +116,72 @@ def test_continue_starts_merge_when_exports_complete(tmp_path) -> None:
 def test_continue_none_when_done() -> None:
     plan = resolve_continue_progress(_entry(stage="done", long_ready=True))
     assert plan.action == "none"
+
+
+def _album_with_gap(tmp_path, *, missing_last: bool = True, tiny_last: bool = False):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    for index in range(1, 4):
+        mp3 = run_dir / f"{index}. Track_OK.mp3"
+        mp3.write_bytes(b"id3")
+        if index == 3 and missing_last:
+            continue
+        size = 20 if (tiny_last and index == 3) else 60_000
+        (run_dir / f"{index}. Track_OK.mp4").write_bytes(b"0" * size)
+    return run_dir
+
+
+def test_continue_repairs_missing_mp4_instead_of_merging(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.resolve_ffprobe_path",
+        lambda *_args, **_kwargs: "",
+    )
+    run_dir = _album_with_gap(tmp_path)
+    plan = resolve_continue_progress(
+        _entry(
+            stage="export",
+            converter="long 2/3 completed",
+            run_dir=str(run_dir),
+            long_ready=True,
+            expected=3,
+        )
+    )
+    assert plan.action == "start_export"
+    assert "Regenerate missing/broken" in plan.label
+
+
+def test_continue_repairs_tiny_mp4_on_merge_stage(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.resolve_ffprobe_path",
+        lambda *_args, **_kwargs: "",
+    )
+    run_dir = _album_with_gap(tmp_path, missing_last=False, tiny_last=True)
+    plan = resolve_continue_progress(
+        _entry(
+            stage="merge",
+            converter="long 3/3 completed",
+            run_dir=str(run_dir),
+            long_ready=True,
+            expected=3,
+        )
+    )
+    assert plan.action == "start_export"
+    assert "Regenerate missing/broken" in plan.label
+
+
+def test_continue_merges_when_all_mp4s_usable(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "features.video.lib.export_output_validity.resolve_ffprobe_path",
+        lambda *_args, **_kwargs: "",
+    )
+    run_dir = _album_with_gap(tmp_path, missing_last=False)
+    plan = resolve_continue_progress(
+        _entry(
+            stage="merge",
+            converter="long 3/3 completed",
+            run_dir=str(run_dir),
+            long_ready=True,
+            expected=3,
+        )
+    )
+    assert plan.action == "start_merge"

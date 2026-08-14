@@ -167,12 +167,15 @@ class PipelineAutomationService(QObject):
         settings: dict[str, Any],
         force_regenerate: bool = False,
         auto_merge: bool | None = None,
+        mp3_paths: list[str] | None = None,
+        repair_unhealthy: bool = False,
+        force_selected: bool = False,
     ) -> bool:
         if is_app_quitting():
             return False
         if self.is_busy():
             return False
-        if force_regenerate:
+        if force_regenerate and not mp3_paths and not repair_unhealthy:
             self._clear_branch_exports(
                 candidate.run_dir,
                 candidate.batch_id,
@@ -201,8 +204,14 @@ class PipelineAutomationService(QObject):
             emit_shell_status("Auto-video skipped: no MP3 files in run directory.")
             return False
 
-        track_paths = [item.path for item in mp3_list]
-        template = self._build_renderer_template(workspace, track_paths=track_paths)
+        available_paths = [item.path for item in mp3_list]
+        from features.video.lib.export_track_health import select_export_mp3_paths, unlink_track_export
+
+        track_paths = select_export_mp3_paths(available_paths, requested=mp3_paths)
+        if not track_paths:
+            emit_shell_status("Auto-video skipped: none of the requested MP3 files are in the run folder.")
+            return False
+        template = self._build_renderer_template(workspace, track_paths=available_paths)
         if not template:
             emit_shell_status("Auto-video skipped: no video template is loaded.")
             return False
@@ -256,24 +265,63 @@ class PipelineAutomationService(QObject):
             if auto_merge is not None
             else is_auto_merge_enabled_for_branch(self._settings, branch)
         )
+        if repair_unhealthy:
+            from features.video.lib.export_track_health import (
+                inspect_run_export_health,
+                summarize_export_health,
+                tracks_missing_mp3,
+                tracks_needing_export,
+            )
+
+            health = inspect_run_export_health(
+                run_dir,
+                branch,
+                ffmpeg_path=str(self._settings.get("ffmpegPath") or "ffmpeg"),
+                mp3_paths=track_paths,
+            )
+            missing_audio = tracks_missing_mp3(health)
+            track_paths = tracks_needing_export(health)
+            if not track_paths:
+                if missing_audio:
+                    emit_shell_status(
+                        "Cannot regenerate MP4s — download missing MP3s first "
+                        f"({summarize_export_health(health)})."
+                    )
+                    return False
+                emit_shell_status(
+                    f"No missing/broken MP4s to regenerate ({summarize_export_health(health)})."
+                )
+                if auto_merge:
+                    return self.start_manual_merge(
+                        candidate,
+                        settings=self._settings,
+                        skip_repair=True,
+                    )
+                return False
+
+        if force_selected or (force_regenerate and mp3_paths):
+            for path in track_paths:
+                unlink_track_export(run_dir, path, branch)
+
         shuffle_merge = bool(self._settings.get("videoShuffleMerge", False))
         ordered_mp4s = [
             build_pipeline_export_output_path(mp3_path=item.path, output_dir=run_dir, branch=branch)
             for item in mp3_list
         ]
+        partial_export = len(track_paths) < len(available_paths)
         profile_id = str(getattr(candidate, "profile_id", None) or "").strip() or None
         ref_base = f"{candidate.batch_id}:{candidate.role}:{branch}"
         try:
             video_bill = consume_video_operation(
                 self._api,
                 operation_type="video",
-                count=len(mp3_list),
+                count=len(track_paths),
                 channel_profile_id=profile_id,
                 ref_id=f"video:{ref_base}",
             )
             self._video_charge = {
                 "operation_type": "video",
-                "count": len(mp3_list),
+                "count": len(track_paths),
                 "charged_credit_units": video_bill.charged_credit_units,
                 "channel_profile_id": profile_id,
                 "ref_id": f"video:{ref_base}",
@@ -313,6 +361,7 @@ class PipelineAutomationService(QObject):
             "encode_fps": int(encode.fps),
             "encode_speed_mode": str(encode.speed_mode),
             "settings": dict(self._settings),
+            "match_export_specs": bool(auto_merge) and not partial_export and not repair_unhealthy,
         }
 
         branch_label = "Reel" if branch == "reel" else "Long"
@@ -326,7 +375,7 @@ class PipelineAutomationService(QObject):
             shuffle_merge=shuffle_merge,
             current_status=f"Starting {branch_label} auto-export ({tier.label})…",
             output_dir=run_dir,
-            total_jobs=len(mp3_list),
+            total_jobs=len(track_paths),
             completed_jobs=0,
             progress_percent=0,
             started_at_ms=started_at_ms,
@@ -344,6 +393,7 @@ class PipelineAutomationService(QObject):
                 role=candidate.role,
                 template=template,
                 mp3_paths=track_paths,
+                album_mp3_paths=available_paths,
                 settings=self._settings,
                 width=int(scene.output.width),
                 height=int(scene.output.height),
@@ -359,7 +409,12 @@ class PipelineAutomationService(QObject):
         self._export_worker = worker
         track_video_pipeline_thread(worker)
         worker.start()
-        emit_shell_status(f"Auto-video started {branch_label.lower()} export for {Path(run_dir).name}.")
+        if repair_unhealthy or (mp3_paths and len(track_paths) < len(available_paths)):
+            emit_shell_status(
+                f"Regenerating {len(track_paths)} MP4(s) for {Path(run_dir).name}."
+            )
+        else:
+            emit_shell_status(f"Auto-video started {branch_label.lower()} export for {Path(run_dir).name}.")
         return True
 
     def _build_renderer_template(
@@ -831,6 +886,7 @@ class PipelineAutomationService(QObject):
         candidate: AutoVideoCandidate,
         *,
         settings: dict[str, Any],
+        skip_repair: bool = False,
     ) -> bool:
         if is_app_quitting():
             return False
@@ -844,6 +900,40 @@ class PipelineAutomationService(QObject):
         if not run_dir or not Path(run_dir).is_dir():
             emit_shell_status("Merge skipped: run directory is missing.")
             return False
+
+        from features.video.lib.export_track_health import (
+            decide_merge_prep,
+            inspect_run_export_health,
+            summarize_export_health,
+            tracks_needing_export,
+        )
+
+        health = inspect_run_export_health(
+            run_dir,
+            branch,
+            ffmpeg_path=str(self._settings.get("ffmpegPath") or "ffmpeg"),
+        )
+        prep = decide_merge_prep(health, skip_repair=skip_repair)
+        if prep == "repair":
+            repair_paths = tracks_needing_export(health)
+            emit_shell_status(
+                f"Regenerating {len(repair_paths)} missing/broken MP4(s), then merging "
+                f"({summarize_export_health(health)})."
+            )
+            return self.start(
+                candidate,
+                settings=self._settings,
+                mp3_paths=repair_paths,
+                repair_unhealthy=True,
+                auto_merge=True,
+            )
+        if prep == "missing_audio":
+            emit_shell_status(
+                "Cannot merge — download missing MP3s first "
+                f"({summarize_export_health(health)})."
+            )
+            return False
+
         mp4_paths = list_branch_export_outputs(run_dir, branch)
         if not mp4_paths:
             emit_shell_status("Merge skipped: no exported MP4 files were found in the run folder.")

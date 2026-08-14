@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, QTimer
 from features.video.lib.desktop_video_automation import (
     select_next_auto_video_candidate,
 )
+from features.video.lib.export_track_health import manual_pipeline_start_kwargs
 from features.video.services.pipeline_automation_service import PipelineAutomationService
 from shared.lib.qt_signals import disconnect_quietly
 from shared.models.desktop import VideoWorkspaceState
@@ -19,7 +20,7 @@ from shared.services.platform_api import PlatformApi
 from shared.services.video_workspace_service import get_video_workspace_service
 from shared.workers.data_workers import VideoPipelineOrchestrationPayload, VideoPipelineOrchestrationWorker
 
-ManualPipelineAction = Literal["rebuild_export", "force_export", "merge"]
+ManualPipelineAction = Literal["rebuild_export", "force_export", "merge", "repair_export"]
 
 _bound_coordinator: "VideoPipelineCoordinator | None" = None
 
@@ -45,7 +46,7 @@ class VideoPipelineCoordinator(QObject):
         self._automation = PipelineAutomationService(self._api, self)
         self._cooldown_until: dict[str, float] = {}
         self._active = False
-        self._pending_manual: tuple[ProgressRow, ManualPipelineAction, str] | None = None
+        self._pending_manual: tuple[ProgressRow, ManualPipelineAction, str, tuple[str, ...]] | None = None
         self._last_poll_error_at = 0.0
         self._last_poll_error_message = ""
         self._api_outage = False
@@ -211,6 +212,7 @@ class VideoPipelineCoordinator(QObject):
         action: ManualPipelineAction,
         *,
         branch: str = "long",
+        mp3_paths: list[str] | tuple[str, ...] | None = None,
     ) -> None:
         from shared.services.auto_pipeline_pause import resume_auto_pipeline
         from shared.services.shell_status import emit_shell_status
@@ -225,7 +227,8 @@ class VideoPipelineCoordinator(QObject):
         # Keep pending_manual set BEFORE any poll completes so auto-export cannot steal.
         resume_auto_pipeline()
         self._user_cancel_until = 0.0
-        self._pending_manual = (row, action, branch)
+        selected = tuple(str(path).strip() for path in (mp3_paths or []) if str(path).strip())
+        self._pending_manual = (row, action, branch, selected)
 
         if self._worker is not None and self._worker.isRunning():
             # Reuse the in-flight settings load — _on_payload_ready routes to merge/export.
@@ -254,7 +257,8 @@ class VideoPipelineCoordinator(QObject):
         pending = getattr(self, "_pending_manual", None)
         if pending is None:
             return
-        row, action, branch = pending
+        row, action, branch, *rest = pending
+        selected_mp3s = tuple(rest[0]) if rest else ()
         self._pending_manual = None
         if not isinstance(payload, VideoPipelineOrchestrationPayload):
             return
@@ -319,13 +323,13 @@ class VideoPipelineCoordinator(QObject):
             )
             return
 
-        force_regenerate = action == "force_export"
+        force_kwargs = manual_pipeline_start_kwargs(action, selected_mp3s)
         # Same as auto-video: honor Music → Auto Merge so rebuild/force continues
         # export → merge instead of stopping after MP4 jobs.
         self._automation.start(
             candidate,
             settings=payload.settings,
-            force_regenerate=force_regenerate,
+            **force_kwargs,
         )
 
     def _on_manual_action_failed(self, message: str) -> None:

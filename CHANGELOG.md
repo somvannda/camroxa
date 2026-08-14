@@ -9,7 +9,15 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.2.7] - 2026-08-14
+## [1.3.0] - 2026-08-14
+
+### Added
+
+- **Regenerate missing/broken MP4s:** Progress can re-export only tracks whose
+  MP4 is missing, tiny, corrupt, or truncated — without restarting music or
+  images. **Regenerate one track** targets a specific MP3. Start Merging and
+  Continue Progress repair those files first, then concat. Billing charges the
+  repaired tracks only. See `docs/changelog/2026-08-14-regenerate-broken-mp4.md`.
 
 ### Fixed
 
@@ -31,9 +39,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Desktop version stamp **1.2.7** / installer `CamxoraSetup-1.2.7.exe`. Publish
-  with **Force update** so **1.2.6** clients upgrade. Detail:
-  `docs/changelog/2026-08-14-desktop-1.2.7.md`.
+- Desktop version stamp **1.3.0** / installer `CamxoraSetup-1.3.0.exe`. Publish
+  with **Force update** so **1.2.6** clients upgrade. **1.2.7 was not published.**
+  Detail: `docs/changelog/2026-08-14-desktop-1.3.0.md`.
 
 ## [1.2.6] - 2026-08-13
 

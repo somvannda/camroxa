@@ -95,6 +95,10 @@ def resolve_continue_progress(
                 batch_id=batch_id,
             )
 
+    repair_plan = _repair_unhealthy_exports_plan(entry, batch_id=batch_id)
+    if repair_plan is not None:
+        return repair_plan
+
     if _prefer_merge_over_export(entry):
         return ContinueProgressPlan(
             action="start_merge",
@@ -133,6 +137,50 @@ def resolve_continue_progress(
         row=row,
         batch_id=batch_id,
     )
+
+
+def _repair_unhealthy_exports_plan(
+    entry: EffectiveProgressRow,
+    *,
+    batch_id: str,
+) -> ContinueProgressPlan | None:
+    """If any MP4 is missing/broken, Continue regenerates those tracks — not merge."""
+    meta = entry.row.meta
+    run_dir = str(meta.run_dir or "").strip()
+    if not run_dir:
+        return None
+    stage = entry.effective_stage.strip().lower()
+    if stage in {"youtube", "done", "completed", "error"}:
+        return None
+    try:
+        from features.video.lib.export_track_health import (
+            inspect_run_export_health,
+            summarize_export_health,
+            tracks_missing_mp3,
+            tracks_needing_export,
+        )
+        from features.video.lib.pipeline_merge import resolve_merge_run_dir
+    except Exception:
+        return None
+    resolved = resolve_merge_run_dir(run_dir, "long") or run_dir
+    health = inspect_run_export_health(resolved, "long")
+    needing = tracks_needing_export(health)
+    if needing:
+        return ContinueProgressPlan(
+            action="start_export",
+            label=f"Regenerate missing/broken MP4s ({summarize_export_health(health)})",
+            row=entry.row,
+            batch_id=batch_id,
+        )
+    missing_audio = tracks_missing_mp3(health)
+    if missing_audio:
+        return ContinueProgressPlan(
+            action="none",
+            label="Download missing MP3s before regenerating MP4s",
+            row=entry.row,
+            batch_id=batch_id,
+        )
+    return None
 
 
 def _prefer_merge_over_export(entry: EffectiveProgressRow) -> bool:
