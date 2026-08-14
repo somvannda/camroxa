@@ -98,3 +98,29 @@ Every new UI element MUST use the master template factory methods from `python_a
 - Use React Query for data fetching
 - Use shadcn/ui components (Button, Input, Dialog, Table, etc.)
 - Tailwind for styling — no inline styles
+
+## Cursor Cloud specific instructions
+
+Scope that runs in the Linux cloud VM is the **web stack**: `platform_api` (FastAPI :8000) + `admin_portal` (Vite :5173) on PostgreSQL + Redis. The desktop app `camxora_python` / legacy `python_app` are **Windows-only** (PySide/PyQt + NVENC) per `docs/MACBOOK_DEV_SETUP.md` and are out of scope here.
+
+### Services & how to start them
+- PostgreSQL and Redis are installed as system packages but there is **no systemd/init** in this VM, so they are **not auto-started** on boot. Start them at the beginning of a session if not already running:
+  - `sudo pg_ctlcluster 16 main start` (Postgres 16, user `postgres` / password `postgres`, DB `platform_db`)
+  - `sudo redis-server --daemonize yes`
+  - Verify: `pg_isready` and `redis-cli ping`.
+- The Postgres data dir (`platform_db`, applied migrations, seeded admin) persists in the VM snapshot; you normally only need to (re)start the process, not re-create the DB.
+- Backend runs in a dedicated venv at `platform_api/.venv` (created by the update script). Run Python/alembic/pytest via `platform_api/.venv/bin/...` with `PYTHONPATH=/workspace`.
+- Start both services (from `/workspace`), each in its own long-lived terminal:
+  - API: `PYTHONPATH=/workspace platform_api/.venv/bin/python -m uvicorn platform_api.main:app --host 0.0.0.0 --port 8000` (`--reload` optional). On startup the app **auto-runs `alembic upgrade heads`** against `platform_db`.
+  - Admin portal: `npm --prefix admin_portal run dev` (Vite on :5173, proxies `/api` → `127.0.0.1:8000`; use `127.0.0.1`, not `localhost`, to match `strictPort`).
+- `./start-dev.sh` is macOS-oriented (hard-codes Homebrew/darwin PATHs); prefer the explicit commands above on Linux.
+- Config lives in `platform_api/.env` (git-ignored). A working dev `.env` uses `PLATFORM_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/platform_db`, `PLATFORM_REDIS_URL=redis://localhost:6379/0`, `PLATFORM_DEBUG=true`, and `PLATFORM_ENCRYPTION_MASTER_KEY` set to any non-empty string.
+
+### Auth for local testing
+- Seed/refresh a local admin: `PYTHONPATH=/workspace PLATFORM_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/platform_db platform_api/.venv/bin/python -m platform_api.scripts.seed_admin`.
+- Default seeded admin: `admin@mgfaceless.com` / `112233aB!!@@`. Signup is `invite_only`, so use the seeded admin (or `platform_api/scripts/seed_admin.py`) rather than self-registration.
+
+### Lint / test / build gotchas
+- Backend tests: `PYTHONPATH=/workspace platform_api/.venv/bin/pytest tests/` (run from `platform_api/`). The bulk pass, but a set of failures are **pre-existing and environmental**, not regressions: Windows-path tests (e.g. `test_run_directory_planner.py`) fail on Linux, some tests use a stale `Plan(...)` signature, and a few router tests need the app lifespan/DB pool. Judge changes by the tests relevant to your change, not a green full suite.
+- Admin portal: `npm --prefix admin_portal test` (vitest) works. **`npm run lint` is broken** — `eslint` is referenced by the script but not declared in `devDependencies`, so it errors with "eslint: not found". Don't treat that as your regression.
+- External AI providers (Suno/Fal/SLAI/DeepSeek) have no keys in dev, so `GET /health` reports `degraded` and provider pools show `critical` — this is expected, the DB check is what matters (`database: true`).
