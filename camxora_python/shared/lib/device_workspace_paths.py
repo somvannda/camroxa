@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Any
 
 from shared.lib.path_locality import is_foreign_windows_profile_path
-from shared.lib.workspace_defaults import default_workspace_paths, is_usable_workspace_path
+from shared.lib.workspace_defaults import (
+    default_workspace_paths,
+    is_usable_workspace_path,
+    workspace_paths_equivalent,
+)
 from shared.services.local_user_scope import get_user_workspace_dir
 
 # Imported lazily in hydrate to avoid cycles with workspace_defaults_sync.
@@ -50,12 +54,7 @@ def _normalize_stored_path(value: str) -> str:
         return text.replace("/", "\\")
 
 
-def get_device_workspace_paths_path(user_id: str | None = None) -> Path:
-    return get_user_workspace_dir(user_id) / _STORE_NAME
-
-
-def load_device_workspace_paths(user_id: str | None = None) -> dict[str, str]:
-    path = get_device_workspace_paths_path(user_id)
+def _read_device_workspace_payload(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
     try:
@@ -72,17 +71,106 @@ def load_device_workspace_paths(user_id: str | None = None) -> dict[str, str]:
     return out
 
 
+def get_device_workspace_paths_path(user_id: str | None = None) -> Path:
+    return get_user_workspace_dir(user_id) / _STORE_NAME
+
+
+def get_legacy_device_workspace_paths_path() -> Path:
+    """Pre-login / pre-scoping store at ``%LOCALAPPDATA%\\Camxora\\``."""
+    from shared.lib.app_paths import get_user_data_dir
+
+    return get_user_data_dir() / _STORE_NAME
+
+
+def load_device_workspace_paths(user_id: str | None = None) -> dict[str, str]:
+    path = get_device_workspace_paths_path(user_id)
+    loaded = _read_device_workspace_payload(path)
+    if loaded:
+        return loaded
+    legacy = get_legacy_device_workspace_paths_path()
+    try:
+        if legacy.resolve() != path.resolve():
+            return _read_device_workspace_payload(legacy)
+    except OSError:
+        if str(legacy) != str(path):
+            return _read_device_workspace_payload(legacy)
+    return {}
+
+
+def _prefer_custom_device_paths(primary: dict[str, str], fallback: dict[str, str]) -> dict[str, str]:
+    """Merge stores; a saved custom folder beats a machine-default AppData path."""
+    defaults = default_workspace_paths()
+    out = dict(primary)
+    for key in DEVICE_MEDIA_PATH_KEYS:
+        current = str(out.get(key) or "").strip()
+        extra = str(fallback.get(key) or "").strip()
+        if not extra:
+            continue
+        if not current:
+            out[key] = extra
+            continue
+        default = str(defaults.get(key) or "")
+        if workspace_paths_equivalent(current, default) and not workspace_paths_equivalent(extra, default):
+            out[key] = extra
+    return out
+
+
+def migrate_legacy_device_workspace_paths(user_id: str | None = None) -> None:
+    """Move/merge root ``device-workspace-paths.json`` into the signed-in user folder.
+
+    Account scoping stores this file under ``users/{userId}/``. If it was written
+    while no user was active (or left at the Camxora root after an upgrade),
+    login used to skip it whenever the scoped folder already had other files —
+    then startup seeded AppData ``Media\\Suno`` and overwrote Preferences.
+    """
+    scoped_path = get_device_workspace_paths_path(user_id)
+    legacy_path = get_legacy_device_workspace_paths_path()
+    try:
+        if legacy_path.resolve() == scoped_path.resolve():
+            return
+    except OSError:
+        if str(legacy_path) == str(scoped_path):
+            return
+    if not legacy_path.is_file():
+        return
+    merged = _prefer_custom_device_paths(
+        _read_device_workspace_payload(scoped_path),
+        _read_device_workspace_payload(legacy_path),
+    )
+    if not merged:
+        return
+    try:
+        scoped_path.parent.mkdir(parents=True, exist_ok=True)
+        scoped_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+        legacy_path.unlink()
+    except OSError:
+        return
+
+
 def save_device_workspace_paths(
     paths: dict[str, Any] | None,
     user_id: str | None = None,
+    *,
+    replace_machine_defaults: bool = True,
 ) -> dict[str, str]:
     """Persist media path keys from ``paths`` into the local device store."""
     payload: dict[str, str] = {}
     source = dict(paths or {})
     existing = load_device_workspace_paths(user_id)
+    defaults = default_workspace_paths()
     for key in DEVICE_MEDIA_PATH_KEYS:
         value = _normalize_stored_path(str(source.get(key) or ""))
         if value:
+            saved = str(existing.get(key) or "").strip()
+            default = str(defaults.get(key) or "")
+            if (
+                not replace_machine_defaults
+                and saved
+                and workspace_paths_equivalent(value, default)
+                and not workspace_paths_equivalent(saved, default)
+            ):
+                payload[key] = _normalize_stored_path(saved) or saved
+                continue
             payload[key] = value
         elif key in existing:
             payload[key] = _normalize_stored_path(existing[key]) or existing[key]
@@ -117,8 +205,12 @@ def overlay_device_paths(
 def persist_device_paths_from_settings(
     settings: dict[str, Any] | None,
     user_id: str | None = None,
+    *,
+    replace_machine_defaults: bool = True,
 ) -> dict[str, str]:
-    return save_device_workspace_paths(settings, user_id)
+    return save_device_workspace_paths(
+        settings, user_id, replace_machine_defaults=replace_machine_defaults
+    )
 
 
 def device_path_patch_against_cloud(
@@ -156,7 +248,9 @@ def resolve_local_suno_output_dir(
             return cloud_val
 
     default = default_workspace_paths()["sunoOutputDir"]
-    persist_device_paths_from_settings({"sunoOutputDir": default}, user_id)
+    persist_device_paths_from_settings(
+        {"sunoOutputDir": default}, user_id, replace_machine_defaults=False
+    )
     return default
 
 
@@ -186,7 +280,7 @@ def hydrate_local_suno_output_dir(
     from shared.lib.workspace_defaults import apply_workspace_path_defaults
 
     merged, heal_patch = apply_workspace_path_defaults(cloud)
-    persist_device_paths_from_settings(merged, user_id)
+    persist_device_paths_from_settings(merged, user_id, replace_machine_defaults=False)
     # Do not push this PC's absolute media roots into account settings.
     # Run planning uses portable relative keys on the API.
     cloud_patch = {key: value for key, value in heal_patch.items() if key not in DEVICE_MEDIA_PATH_KEYS}

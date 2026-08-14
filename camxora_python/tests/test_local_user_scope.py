@@ -81,3 +81,29 @@ def test_second_user_does_not_inherit_first_user_files(tmp_path: Path, monkeypat
     user_b_music = get_music_workspace_prefs_path()
     assert user_b_music != user_a_music
     assert not user_b_music.is_file()
+
+
+def test_legacy_device_workspace_paths_migrate_when_scoped_already_has_files(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("shared.lib.app_paths.get_user_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("shared.services.local_user_scope.get_user_data_dir", lambda: tmp_path)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    storage = _MemoryStorage()
+    activate_local_user_scope("account-1", storage)
+    scoped_music = tmp_path / "users" / "account-1" / "camxora-music-workspace.json"
+    scoped_music.parent.mkdir(parents=True, exist_ok=True)
+    scoped_music.write_text(json.dumps({"version": 1}), encoding="utf-8")
+
+    (tmp_path / "device-workspace-paths.json").write_text(
+        json.dumps({"sunoOutputDir": r"D:\Suno Generated"}),
+        encoding="utf-8",
+    )
+
+    activate_local_user_scope("account-1", storage)
+    migrated = tmp_path / "users" / "account-1" / "device-workspace-paths.json"
+    assert migrated.is_file()
+    assert json.loads(migrated.read_text(encoding="utf-8"))["sunoOutputDir"] == r"D:\Suno Generated"
+    assert not (tmp_path / "device-workspace-paths.json").exists()
+    deactivate_local_user_scope()

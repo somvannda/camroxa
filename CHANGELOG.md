@@ -15,6 +15,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
   without a `MERGED_*.mp4`. Skip is now a real error, merge-only no longer
   requires today’s export FPS/48 kHz, and a successful merge marks the row
   complete. See `docs/changelog/2026-08-14-progress-merge-no-output.md`.
+- **Suno folder reset after installer:** A Preferences Suno directory (for
+  example `D:\Suno Generated`) could revert to AppData `Media\Suno` on first
+  launch after a new build. Saved device paths are no longer overwritten by
+  startup self-heal, and a leftover root `device-workspace-paths.json` is
+  merged into the signed-in account folder. See
+  `docs/changelog/2026-08-14-suno-dir-reset-on-upgrade.md`.
 
 ## [1.2.6] - 2026-08-13
 

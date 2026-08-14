@@ -128,6 +128,9 @@ def activate_local_user_scope(user_id: str, storage: SecureStorage | None = None
     """Point all local workspace stores at this account's directory."""
     normalized = _normalize_user_id(user_id)
     _migrate_legacy_workspace_if_needed(normalized)
+    from shared.lib.device_workspace_paths import migrate_legacy_device_workspace_paths
+
+    migrate_legacy_device_workspace_paths(normalized)
     set_active_user_id(normalized)
     if storage is not None:
         storage.set(LAST_USER_ID_KEY, normalized)

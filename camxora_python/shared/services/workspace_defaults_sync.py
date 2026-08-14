@@ -25,7 +25,7 @@ def ensure_workspace_defaults(
     """
     cloud = dict(settings_raw or {})
     merged, patch = apply_workspace_path_defaults(cloud)
-    persist_device_paths_from_settings(merged)
+    persist_device_paths_from_settings(merged, replace_machine_defaults=False)
     if cache is not None and (patch or merged != cloud):
         connections, _ = cache.snapshot_settings_extras()
         cache.apply_settings_workspace(settings_raw=merged, youtube_connections=connections)

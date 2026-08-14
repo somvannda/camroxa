@@ -13,6 +13,7 @@ the local store only.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,20 @@ def default_workspace_paths() -> dict[str, str]:
         "imageThumbnailSamplesDir": str(root / "Samples" / "Thumbnail"),
         "imageOutputDir": str(root / "Images"),
     }
+
+
+def workspace_paths_equivalent(left: str, right: str) -> bool:
+    """True when two folder strings name the same location (Windows-insensitive)."""
+    a = str(left or "").strip()
+    b = str(right or "").strip()
+    if not a or not b:
+        return False
+    try:
+        a = os.path.normpath(a)
+        b = os.path.normpath(b)
+    except (OSError, ValueError):
+        pass
+    return a.rstrip("\\/").casefold() == b.rstrip("\\/").casefold()
 
 
 def is_usable_workspace_path(path: str) -> bool:
@@ -121,16 +136,42 @@ def ensure_directory(path: str) -> str:
     return normalized
 
 
+def _keep_saved_device_path(
+    key: str,
+    existing: str,
+    stored_paths: dict[str, str],
+    default_path: str,
+) -> bool:
+    """True when ``existing`` is this PC's saved preference, not a cloud leftover.
+
+    Startup used to replace a Preferences folder with AppData ``Media\\Suno``
+    whenever mkdir failed, the drive was missing, or free space was under
+    200 MB — then persist that default and wipe the user's choice. Keep the
+    saved path instead; warn so the operator can free space / reconnect D:.
+    """
+    saved = str(stored_paths.get(key) or "").strip()
+    if not saved or not existing:
+        return False
+    if not workspace_paths_equivalent(saved, existing):
+        return False
+    if workspace_paths_equivalent(saved, default_path):
+        return False
+    if is_foreign_windows_profile_path(saved):
+        return False
+    return True
+
+
 def apply_workspace_path_defaults(settings: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, object]]:
     """Fill empty path settings and create folders.
 
     Returns (merged_settings, patch_for_api) where patch only contains newly
     applied keys so callers can persist without overwriting user choices.
     """
-    from shared.lib.device_workspace_paths import overlay_device_paths
+    from shared.lib.device_workspace_paths import load_device_workspace_paths, overlay_device_paths
 
     # This machine's stored roots win over account-cloud leftovers.
     current = overlay_device_paths(settings)
+    stored_paths = load_device_workspace_paths()
     defaults = default_workspace_paths()
     patch: dict[str, object] = {}
 
@@ -148,13 +189,28 @@ def apply_workspace_path_defaults(settings: dict[str, Any] | None) -> tuple[dict
                 # a Rufus boot stick with a few KB free). mkdir()/is_dir()
                 # both succeed there, but every download/export into it
                 # silently produces 0-byte files. Self-heal the same as an
-                # uncreatable cross-machine path.
+                # uncreatable cross-machine path — unless this folder is the
+                # user's saved Preferences path on this PC.
                 from shared.services.app_logger import log_warn
 
+                if _keep_saved_device_path(key, existing, stored_paths, default_path):
+                    log_warn(
+                        f"Workspace path has too little free space; keeping saved folder: {existing}",
+                        category="workspace",
+                    )
+                    continue
                 log_warn(
                     f"Workspace path has too little free space, switching to local default: {existing}",
                     category="workspace",
                 )
+            elif _keep_saved_device_path(key, existing, stored_paths, default_path):
+                from shared.services.app_logger import log_warn
+
+                log_warn(
+                    f"Workspace path is not usable right now; keeping saved folder: {existing}",
+                    category="workspace",
+                )
+                continue
             # Path was creatable in principle but isn't a usable directory
             # here (missing parents, permission, etc.) — fall through and
             # self-heal to this machine's own default.

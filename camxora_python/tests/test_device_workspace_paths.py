@@ -9,6 +9,7 @@ from shared.lib.device_workspace_paths import (
     album_leaf_relative,
     device_path_patch_against_cloud,
     load_device_workspace_paths,
+    migrate_legacy_device_workspace_paths,
     overlay_device_paths,
     path_is_under_base,
     persist_device_paths_from_settings,
@@ -255,4 +256,116 @@ def test_empty_device_store_still_seeds_defaults(tmp_path: Path, monkeypatch) ->
     defaults = default_workspace_paths()
     assert settings["sunoOutputDir"] == defaults["sunoOutputDir"]
     assert "sunoOutputDir" in patch
+    deactivate_local_user_scope()
+
+
+def test_load_falls_back_to_root_device_store(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    (tmp_path / "device-workspace-paths.json").write_text(
+        json.dumps({"sunoOutputDir": r"D:\Suno Generated"}),
+        encoding="utf-8",
+    )
+    loaded = load_device_workspace_paths()
+    assert loaded["sunoOutputDir"] == r"D:\Suno Generated"
+    deactivate_local_user_scope()
+
+
+def test_migrate_device_paths_when_scoped_already_has_workspace(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    scoped_dir = tmp_path / "users" / "user-a"
+    scoped_dir.mkdir(parents=True, exist_ok=True)
+    (scoped_dir / "camxora-music-workspace.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "device-workspace-paths.json").write_text(
+        json.dumps({"sunoOutputDir": r"D:\Suno Generated"}),
+        encoding="utf-8",
+    )
+
+    migrate_legacy_device_workspace_paths("user-a")
+    activate_local_user_scope("user-a", _MemoryStorage())
+
+    scoped = scoped_dir / "device-workspace-paths.json"
+    assert json.loads(scoped.read_text(encoding="utf-8"))["sunoOutputDir"] == r"D:\Suno Generated"
+    assert not (tmp_path / "device-workspace-paths.json").exists()
+    deactivate_local_user_scope()
+
+
+def test_migrate_restores_custom_suno_over_healed_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    defaults = default_workspace_paths()
+    persist_device_paths_from_settings({"sunoOutputDir": defaults["sunoOutputDir"]})
+    (tmp_path / "device-workspace-paths.json").write_text(
+        json.dumps({"sunoOutputDir": r"D:\Suno Generated"}),
+        encoding="utf-8",
+    )
+
+    activate_local_user_scope("user-a", _MemoryStorage())
+    stored = load_device_workspace_paths()
+    assert stored["sunoOutputDir"] == r"D:\Suno Generated"
+    assert not (tmp_path / "device-workspace-paths.json").exists()
+    deactivate_local_user_scope()
+
+
+def test_apply_defaults_keeps_saved_suno_when_folder_missing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    blocker = tmp_path / "missing-drive"
+    blocker.write_text("not a directory", encoding="utf-8")
+    custom = str(blocker / "Suno Generated")
+    persist_device_paths_from_settings({"sunoOutputDir": custom})
+
+    settings, patch = apply_workspace_path_defaults({})
+    assert settings["sunoOutputDir"] == custom
+    assert "sunoOutputDir" not in patch
+
+    merged = ensure_workspace_defaults(settings_raw={}, persist=True)
+    assert merged["sunoOutputDir"] == custom
+    stored = json.loads(
+        (tmp_path / "users" / "user-a" / "device-workspace-paths.json").read_text(encoding="utf-8")
+    )
+    assert stored["sunoOutputDir"] == custom
+    deactivate_local_user_scope()
+
+
+def test_apply_defaults_keeps_saved_suno_on_low_disk(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    custom = tmp_path / "D-Suno-Generated"
+    custom.mkdir()
+    persist_device_paths_from_settings({"sunoOutputDir": str(custom)})
+
+    import shared.lib.workspace_defaults as workspace_defaults_module
+
+    monkeypatch.setattr(
+        workspace_defaults_module,
+        "has_sufficient_free_space",
+        lambda _path, minimum_bytes=0: False,
+    )
+
+    settings, patch = apply_workspace_path_defaults({})
+    assert settings["sunoOutputDir"] == str(custom)
+    assert "sunoOutputDir" not in patch
+    deactivate_local_user_scope()
+
+
+def test_startup_persist_does_not_replace_custom_suno_with_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    _scope_user(tmp_path, monkeypatch)
+    custom = tmp_path / "E-SUNO"
+    custom.mkdir()
+    persist_device_paths_from_settings({"sunoOutputDir": str(custom)})
+    defaults = default_workspace_paths()
+
+    persist_device_paths_from_settings(
+        {"sunoOutputDir": defaults["sunoOutputDir"]},
+        replace_machine_defaults=False,
+    )
+    assert load_device_workspace_paths()["sunoOutputDir"] == str(custom)
+
+    persist_device_paths_from_settings({"sunoOutputDir": defaults["sunoOutputDir"]})
+    assert load_device_workspace_paths()["sunoOutputDir"] == defaults["sunoOutputDir"]
     deactivate_local_user_scope()
