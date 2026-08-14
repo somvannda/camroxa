@@ -39,6 +39,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
   rebuilt, and a device-path backup recovers a custom Suno folder if the
   primary store was reset. See
   `docs/changelog/2026-08-14-merge-and-suno-path-hardening.md`.
+- **Software update gate:** Includes latest `main` fixes so a leftover draft or
+  missing installer file does not keep blocking the app after the live release
+  is restored. See `docs/changelog/2026-08-13-force-update-draft-restore.md`.
 
 ### Changed
 
