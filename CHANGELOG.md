@@ -9,6 +9,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-08-14
+
 ### Fixed
 
 - **Progress Merge wrote no file:** Start Merging could show “Merging…” and finish
@@ -26,6 +28,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
   rebuilt, and a device-path backup recovers a custom Suno folder if the
   primary store was reset. See
   `docs/changelog/2026-08-14-merge-and-suno-path-hardening.md`.
+
+### Changed
+
+- Desktop version stamp **1.2.7** / installer `CamxoraSetup-1.2.7.exe`. Publish
+  with **Force update** so **1.2.6** clients upgrade. Detail:
+  `docs/changelog/2026-08-14-desktop-1.2.7.md`.
 
 ## [1.2.6] - 2026-08-13
 

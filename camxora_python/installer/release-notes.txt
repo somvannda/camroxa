@@ -1,28 +1,29 @@
-﻿Camxora 1.2.6
-Spectrum ring melt + Auto-Video WYSIWYG + Quality workers
-August 13, 2026
+﻿Camxora 1.2.7
+Progress Merge writes MERGED file + Suno folder kept across updates
+August 14, 2026
 
 What's new
 ----------
-• Spectrum closed-ring color melt: full-circle gradients no longer hard-cut
-  at 12-o'clock (Around Ring, Base to Tip, Radial, Circular, Diagonal).
-  Preview, Manual Export, and Auto-Video match.
-• Auto-Video saved-template WYSIWYG: pipeline export keeps multi-bolt
-  lightning and spectrum instances, and uses Standard encode defaults
-  (no silent Draft 720p) so results match Manual Export / preview.
-• Quality / Best Quality Workers: spinning Workers no longer fights a hard
-  lock of 1 (could crash). Workers are GPU-tier capped and ask before
-  using more than 1.
+• Progress Merge: Start Merging either writes MERGED_*.mp4 in the run
+  folder or shows an error. It no longer finishes “successfully” with no
+  file. Older exported albums can merge if the tracks match each other
+  (not only today’s FPS / 48 kHz). Nested run folders are found; a stale
+  MERGED file is rebuilt if tracks were re-exported.
+• Preferences Suno output dir: a saved folder (for example D:\Suno
+  Generated) is kept across installer upgrades. The app no longer resets
+  it to AppData Media\Suno if the drive is offline or a leftover path
+  file was left at the Camxora root.
 
-Also included from 1.2.5
+Also included from 1.2.6
 ------------------------
-• Frozen Manual Export numpy._core / SciPy packaging fix.
-• Software update gate UI polish.
+• Spectrum closed-ring color melt.
+• Auto-Video saved-template WYSIWYG.
+• Quality / Best Quality Workers spin crash fix.
 
 Requirements
 ------------
-• Installer: CamxoraSetup-1.2.6.exe
-• Publish with Force update so 1.2.5 (and older) clients upgrade on app open.
+• Installer: CamxoraSetup-1.2.7.exe
+• Publish with Force update so 1.2.6 (and older) clients upgrade on app open.
 
 Coming later
 ------------
