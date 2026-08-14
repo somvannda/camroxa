@@ -20,6 +20,8 @@ import { ReleaseStatusCard } from '@/components/software-updates/release-status-
 
 import {
 
+  useDesktopInstallers,
+
   useSoftwareUpdateConfig,
 
   useUnpublishSoftwareUpdate,
@@ -104,6 +106,8 @@ export function SoftwareUpdatesPanel() {
 
   const { data: softwareUpdate, isLoading: softwareLoading } = useSoftwareUpdateConfig();
 
+  const { data: installerList } = useDesktopInstallers();
+
   const unpublishSoftwareUpdate = useUnpublishSoftwareUpdate();
 
 
@@ -115,6 +119,8 @@ export function SoftwareUpdatesPanel() {
 
 
   const isPublished = Boolean(softwareUpdate?.is_published ?? softwareUpdate?.published_at);
+
+  const hasLiveRelease = Boolean(softwareUpdate?.live_version?.trim() || isPublished);
 
   const showEditDraft = hasDraftConfig(softwareUpdate);
 
@@ -174,7 +180,13 @@ export function SoftwareUpdatesPanel() {
 
     unpublishSoftwareUpdate.mutate(undefined, {
 
-      onSuccess: () => toast({ title: 'Release unpublished', description: 'Hidden from public /download.' }),
+      onSuccess: (result) =>
+        toast({
+          title: 'Live release moved to draft',
+          description: result.restored_live_version
+            ? `Website, changelog, and force update reverted to ${result.restored_live_version}.`
+            : 'No previous live release was available to restore.',
+        }),
 
       onError: (error: Error) =>
 
@@ -252,6 +264,16 @@ export function SoftwareUpdatesPanel() {
 
                 publishedAt={softwareUpdate?.published_at ?? null}
 
+                liveVersion={softwareUpdate?.live_version ?? ''}
+
+                liveDownloadUrl={softwareUpdate?.live_download_url ?? ''}
+
+                liveMandatory={Boolean(softwareUpdate?.live_mandatory)}
+
+                livePublishedAt={softwareUpdate?.live_published_at ?? null}
+
+                installerFilenames={(installerList?.items ?? []).map((item) => item.filename)}
+
               />
 
 
@@ -282,7 +304,7 @@ export function SoftwareUpdatesPanel() {
 
 
 
-              {isPublished ? (
+              {hasLiveRelease ? (
 
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-800 px-4 py-3">
 
@@ -292,7 +314,7 @@ export function SoftwareUpdatesPanel() {
 
                     <p className="text-xs text-slate-500">
 
-                      Unpublish to hide the public download page and in-app update prompts.
+                      Move the live version back to draft. Website, changelog, and force update revert to the previous live release.
 
                     </p>
 

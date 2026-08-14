@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from shared.services.desktop_release_client import (
+    DesktopReleaseFetchResult,
     PublishedDesktopRelease,
     desktop_release_url_for_api_base,
     fetch_published_desktop_release,
+    fetch_published_desktop_release_result,
 )
-from shared.services.software_update_service import SoftwareUpdateOffer
 from shared.workers.software_update_check_worker import SoftwareUpdateCheckWorker
 
 
@@ -58,13 +59,24 @@ def test_fetch_published_desktop_release_404(monkeypatch) -> None:
         lambda *args, **kwargs: _FakeResponse(404),
     )
     assert fetch_published_desktop_release("https://api.camxora.com/api/v1") is None
+    result = fetch_published_desktop_release_result("https://api.camxora.com/api/v1")
+    assert result.status == "not_found"
+    assert result.withdrawn is True
 
 
-def test_software_update_check_worker_emits_mandatory_offer(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "shared.services.software_update_service.get_app_version",
-        lambda: "1.2.0",
-    )
+def test_fetch_published_desktop_release_network_error(monkeypatch) -> None:
+    import httpx
+
+    def fake_get(url: str, timeout: float = 8.0):
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr("shared.services.desktop_release_client.httpx.get", fake_get)
+    result = fetch_published_desktop_release_result("https://api.camxora.com/api/v1")
+    assert result.status == "unreachable"
+    assert result.withdrawn is False
+
+
+def test_software_update_check_worker_emits_fetch_result(monkeypatch) -> None:
     release = PublishedDesktopRelease(
         version="1.2.1",
         download_url="https://example.com/a.exe",
@@ -72,31 +84,26 @@ def test_software_update_check_worker_emits_mandatory_offer(monkeypatch) -> None
         mandatory=True,
     )
     monkeypatch.setattr(
-        "shared.workers.software_update_check_worker.fetch_published_desktop_release",
-        lambda _url: release,
+        "shared.workers.software_update_check_worker.fetch_published_desktop_release_result",
+        lambda _url: DesktopReleaseFetchResult(status="ok", release=release),
     )
     worker = SoftwareUpdateCheckWorker("https://api.camxora.com/api/v1")
     seen: list[object] = []
     worker.finished_with_offer.connect(seen.append)
     worker.run()
     assert len(seen) == 1
-    assert isinstance(seen[0], SoftwareUpdateOffer)
-    assert seen[0].version == "1.2.1"
+    assert isinstance(seen[0], DesktopReleaseFetchResult)
+    assert seen[0].release is not None
+    assert seen[0].release.version == "1.2.1"
 
 
-def test_software_update_check_worker_skips_optional(monkeypatch) -> None:
-    release = PublishedDesktopRelease(
-        version="9.9.9",
-        download_url="https://example.com/a.exe",
-        release_notes="",
-        mandatory=False,
-    )
+def test_software_update_check_worker_emits_not_found(monkeypatch) -> None:
     monkeypatch.setattr(
-        "shared.workers.software_update_check_worker.fetch_published_desktop_release",
-        lambda _url: release,
+        "shared.workers.software_update_check_worker.fetch_published_desktop_release_result",
+        lambda _url: DesktopReleaseFetchResult(status="not_found"),
     )
     worker = SoftwareUpdateCheckWorker("https://api.camxora.com/api/v1")
     seen: list[object] = []
     worker.finished_with_offer.connect(seen.append)
     worker.run()
-    assert seen == [None]
+    assert seen == [DesktopReleaseFetchResult(status="not_found")]

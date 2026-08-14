@@ -16,6 +16,31 @@ export type SoftwareUpdateConfig = {
   release_notes: string;
   published_at: string | null;
   is_published?: boolean;
+  live_version?: string;
+  live_download_url?: string;
+  live_mandatory?: boolean;
+  live_release_notes?: string;
+  live_published_at?: string | null;
+};
+
+export type UnpublishSoftwareUpdateResponse = {
+  version: string;
+  is_published: boolean;
+  unpublished_version?: string;
+  restored_live_version?: string | null;
+  live_version?: string;
+};
+
+export type DeleteDesktopInstallerResponse = {
+  status: string;
+  filename: string;
+  unpublished_version?: string;
+  restored_live_version?: string | null;
+};
+
+export type DraftInstallerResponse = SoftwareUpdateConfig & {
+  unpublished_version?: string;
+  restored_live_version?: string | null;
 };
 
 export type PublishSoftwareUpdateInput = {
@@ -112,11 +137,28 @@ export function useUnpublishSoftwareUpdate() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      httpClient.post<{ version: string; is_published: boolean }>(
+      httpClient.post<UnpublishSoftwareUpdateResponse>(
         '/api/v1/admin/desktop/software-update/unpublish',
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+      queryClient.invalidateQueries({ queryKey: ['desktop-installers'] });
+      queryClient.invalidateQueries({ queryKey: ['blog-posts'] });
+    },
+  });
+}
+
+export function useDraftDesktopInstaller() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (filename: string) =>
+      httpClient.post<DraftInstallerResponse>(
+        `/api/v1/admin/desktop/software-update/installers/${encodeURIComponent(filename)}/draft`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+      queryClient.invalidateQueries({ queryKey: ['desktop-installers'] });
+      queryClient.invalidateQueries({ queryKey: ['blog-posts'] });
     },
   });
 }
@@ -172,11 +214,13 @@ export function useDeleteDesktopInstaller() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (filename: string) =>
-      httpClient.delete<{ status: string; filename: string }>(
+      httpClient.delete<DeleteDesktopInstallerResponse>(
         `/api/v1/admin/desktop/software-update/installers/${encodeURIComponent(filename)}`,
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-installers'] });
+      queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
+      queryClient.invalidateQueries({ queryKey: ['blog-posts'] });
     },
   });
 }

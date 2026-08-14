@@ -38,17 +38,32 @@ flowchart LR
 
 ## Storage (system_settings)
 
-All software-update metadata is stored in `system_settings` via `platform_api/services/desktop_notification_admin_service.py`:
+All software-update metadata is stored in `system_settings` via `platform_api/services/desktop_notification_admin_service.py`.
+
+**Draft** (admin working copy — never public by itself):
 
 | Key | Purpose |
 |-----|---------|
-| `desktop.software_update.version` | Semver string shown to users |
-| `desktop.software_update.download_url` | HTTPS link to hosted installer |
-| `desktop.software_update.mandatory` | `true` / `false` — in-app gate treats mandatory updates as blocking |
-| `desktop.software_update.release_notes` | Short plain-text notes on `/download` and in push payload |
-| `desktop.software_update.published_at` | ISO timestamp set on publish; required for public visibility |
+| `desktop.software_update.version` | Draft semver |
+| `desktop.software_update.download_url` | Draft installer URL |
+| `desktop.software_update.mandatory` | Draft force-update flag |
+| `desktop.software_update.release_notes` | Draft notes |
+| `desktop.software_update.published_at` | Mirrored from the live snapshot for compatibility |
 
-**Public visibility rule:** a release is exposed only when **version is non-empty** and **published_at is set** (i.e. an admin clicked Publish at least once).
+**Live** (what `/public/desktop-release`, website `/download`, and in-app force update use):
+
+| Key | Purpose |
+|-----|---------|
+| `desktop.software_update.live` | JSON snapshot of the current public release |
+| `desktop.software_update.live_history` | JSON stack of previously live releases (for rollback) |
+
+**Public visibility rule:** clients see only the **live snapshot**. Saving a draft, uploading an installer, or checking Force update on a draft does **not** change `/download` or force update until **Publish**.
+
+Moving the live release back to **Draft**, clicking **Unpublish**, or **deleting** the live installer:
+
+1. Hides that version from `/download` and stops force update for it.
+2. Unpublishes matching website **Release notes** blog posts for that version.
+3. Restores the previous live release (from history, or the next-oldest uploaded installer) so website version/changelog return to what was live before.
 
 ## Admin steps
 
@@ -68,7 +83,10 @@ Admin API (authenticated):
 | `GET` | `/api/v1/admin/desktop/software-update` | Read current config |
 | `PUT` | `/api/v1/admin/desktop/software-update` | Save draft config |
 | `POST` | `/api/v1/admin/desktop/software-update/upload` | Upload installer; returns `download_url` |
-| `POST` | `/api/v1/admin/desktop/software-update/publish` | Publish + notify |
+| `POST` | `/api/v1/admin/desktop/software-update/publish` | Publish draft as live + optional notify/changelog |
+| `POST` | `/api/v1/admin/desktop/software-update/unpublish` | Move live back to draft; restore previous live |
+| `POST` | `/api/v1/admin/desktop/software-update/installers/{filename}/draft` | Set installer as draft; rollback if it was live |
+| `DELETE` | `/api/v1/admin/desktop/software-update/installers/{filename}` | Delete file; rollback live if that file was public |
 
 ### Installer upload storage (env)
 
@@ -127,16 +145,23 @@ This keeps one canonical download experience tied to the public API.
 
 Mandatory updates are enforced **when the user opens the app**, not mid-session:
 
-1. Admin **Save Draft** (version, download URL, mandatory, notes) then **Publish** (sets `published_at` and public visibility).
+1. Admin **Save Draft** (does not change public live) then **Publish** (writes the live snapshot).
 2. On next desktop launch — **before login, relogin, or entering the studio** — the client calls `GET /api/v1/public/desktop-release`.
-3. If the published version is newer and `mandatory` is true, the blocking update gate appears; login/shell stay unreachable until install.
+3. If the **live** version is newer and `mandatory` is true, the blocking update gate appears; login/shell stay unreachable until install.
 4. Install flow downloads from `download_url` and runs the Windows installer (`software_update_installer.py`).
 5. Live WebSocket `software_update.available` pushes never open the blocking gate.
    While the user is already in the studio, a green update icon appears in the
    header (left of notifications); click installs when convenient. Mandatory still
    force-gates on the next app open.
+6. On every app open the client **revalidates** the live release. A confirmed 404
+   or a live version that is no longer a newer mandatory update **clears** a
+   persisted force-update gate. Network failure keeps a previously persisted gate
+   so a real outage cannot skip an in-progress required install. A 404/410 when
+   downloading the installer is treated as withdrawn and also clears the gate.
 
-Fail-open: if the public release endpoint is unreachable or 404, startup continues (unless a prior mandatory update is still persisted on disk).
+Draft / Unpublish / delete of the live installer restore the previous live
+release. Website `/download` and `/changelog` follow that restored live version
+(the rolled-back version's Release notes post is unpublished).
 
 ## Changelog content strategy
 
@@ -151,13 +176,15 @@ Create release-note articles in **Admin Portal → Blog** with category exactly 
 
 ## Manual verification checklist
 
-1. **API — unpublished:** `GET /api/v1/public/desktop-release` → `404`.
+1. **API — unpublished:** `GET /api/v1/public/desktop-release` → `404` when no live snapshot exists.
 2. **Admin save:** set version + URL, Save → admin GET shows draft without changing public API.
 3. **Admin publish:** Publish → public GET returns `200` with `published_at`.
 4. **Website:** open `/download` → version, download button, release notes.
 5. **Changelog:** publish a blog post with category `Release notes` → appears on `/changelog`.
 6. **User portal:** footer/marketing **Download** links → `/download` on the website.
 7. **Desktop:** publish a version newer than the running build → update prompt appears; mandatory blocks UI.
+8. **Draft rollback:** Publish vNext with Force update, then Draft/Unpublish → public API, `/download`, and `/changelog` return to the previous live version; desktop must not keep forcing vNext.
+9. **Delete live installer:** public API restores the previous live version (or 404 if none).
 
 ## Tests
 

@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Software Updates status card lists **Live** and **Draft** as separate blocks,
+  each with its own version and download URL (no longer shows the live 1.2.5
+  installer under draft 1.2.6). If the draft installer was deleted, the card
+  says the file is missing instead of linking a dead URL.
+- Software Updates: Draft, Unpublish, and deleting the live installer restore
+  the previous public version (website + force update) instead of leaving the
+  newest build live. Status card shows live vs draft. See
+  `docs/changelog/2026-08-13-force-update-draft-restore.md`.
+
 ### Changed
 
 - **Job Queue** (`/job-queue`) is a live ops board: busy workers with stage/users, tabbed Running/Queued/Delayed/Failed jobs (user, batch, error), and a related image-job failure strip. See `docs/changelog/2026-08-11-job-queue-ops-board.md`.
