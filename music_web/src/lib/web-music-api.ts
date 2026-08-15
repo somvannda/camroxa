@@ -73,6 +73,11 @@ export async function generateWebMusic(input: {
   prompt?: string;
   instrumental?: boolean;
   model?: 'V5' | 'V5_5';
+  negative_tags?: string;
+  vocal_gender?: 'm' | 'f';
+  style_weight?: number;
+  weirdness_constraint?: number;
+  audio_weight?: number;
 }): Promise<{ task_id: string; status: string; title: string; style: string; quota: WebMusicQuota }> {
   return musicFetch('/api/v1/web-music/generate', {
     method: 'POST',

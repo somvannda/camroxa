@@ -16,6 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `/explore`, Simple/Advanced Create (two clips, play, MP3 via sunoapi.org),
   music_web-tagged signup. **5 free songs**, then Create shows Upgrade to Pro.
   See `docs/changelog/2026-08-15-music-web-suno-create.md`.
+- Create page advanced options: V5/V5.5 model selector, collapsible Advanced
+  Options panel (negative tags, vocal gender, style weight, weirdness/creativity,
+  audio weight), and auto-generate lyrics & title button. See
+  `docs/changelog/2026-08-15-music-web-suno-advanced-options.md`.
 - Music-native sign-in/up, session via same-origin `/api` cookies; `/library` + `/profile` shells
 - Track/album play counts on album pages and track rows
 - Player seek scrubber, volume/mute, album queue prev/next + auto-advance

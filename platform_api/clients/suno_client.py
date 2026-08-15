@@ -443,6 +443,11 @@ class SunoClient:
         instrumental: bool = False,
         callback_url: str | None = None,
         api_key: str | None = None,
+        negative_tags: str | None = None,
+        vocal_gender: str | None = None,
+        style_weight: float | None = None,
+        weirdness_constraint: float | None = None,
+        audio_weight: float | None = None,
     ) -> dict[str, Any]:
         """Submit a music generation task to Suno.
 
@@ -453,6 +458,11 @@ class SunoClient:
             style: Music style/genre descriptor.
             instrumental: Whether to generate an instrumental track.
             callback_url: URL for Suno to notify on completion.
+            negative_tags: Comma-separated styles to avoid.
+            vocal_gender: Preferred vocal gender ('m' or 'f').
+            style_weight: Style adherence weight (0.0-1.0).
+            weirdness_constraint: Creativity/novelty constraint (0.0-1.0).
+            audio_weight: Audio consistency weight (0.0-1.0).
 
         Returns:
             Response dict from Suno containing the task ID and status.
@@ -499,6 +509,17 @@ class SunoClient:
             "customMode": True,
             "callBackUrl": callback,
         }
+
+        if negative_tags:
+            payload["negativeTags"] = str(negative_tags).strip()
+        if vocal_gender and vocal_gender.lower() in ("m", "f"):
+            payload["vocalGender"] = vocal_gender.lower()
+        if style_weight is not None and 0 <= style_weight <= 1:
+            payload["styleWeight"] = round(float(style_weight), 2)
+        if weirdness_constraint is not None and 0 <= weirdness_constraint <= 1:
+            payload["weirdnessConstraint"] = round(float(weirdness_constraint), 2)
+        if audio_weight is not None and 0 <= audio_weight <= 1:
+            payload["audioWeight"] = round(float(audio_weight), 2)
 
         client = self._build_client(api_key)
         try:

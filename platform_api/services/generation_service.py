@@ -164,6 +164,11 @@ class SunoClientProtocol(Protocol):
         style: str,
         instrumental: bool,
         callback_url: str | None,
+        negative_tags: str | None = None,
+        vocal_gender: str | None = None,
+        style_weight: float | None = None,
+        weirdness_constraint: float | None = None,
+        audio_weight: float | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -2796,6 +2801,11 @@ class GenerationService:
                 style=safe_style,
                 instrumental=request.instrumental,
                 callback_url=None,  # Client uses configured callback URL
+                negative_tags=request.negative_tags,
+                vocal_gender=request.vocal_gender,
+                style_weight=request.style_weight,
+                weirdness_constraint=request.weirdness_constraint,
+                audio_weight=request.audio_weight,
             )
         except ExternalServiceError as exc:
             # Delivery failure — refund credits (Req 7.6)
@@ -3512,6 +3522,11 @@ class GenerationService:
         style: str,
         instrumental: bool,
         callback_url: str | None,
+        negative_tags: str | None = None,
+        vocal_gender: str | None = None,
+        style_weight: float | None = None,
+        weirdness_constraint: float | None = None,
+        audio_weight: float | None = None,
     ) -> dict[str, Any]:
         wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
         return await wrapper.execute(
@@ -3523,6 +3538,11 @@ class GenerationService:
                 instrumental=instrumental,
                 callback_url=callback_url,
                 api_key=api_key,
+                negative_tags=negative_tags,
+                vocal_gender=vocal_gender,
+                style_weight=style_weight,
+                weirdness_constraint=weirdness_constraint,
+                audio_weight=audio_weight,
             )
         )
 
