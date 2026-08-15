@@ -18,6 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Music-web product tag (`users.products`) and `/api/v1/web-music` generate /
+  list / status / MP3 download. Auth-only (no desktop license or channel
+  profile); **5 free songs** then Upgrade to Pro (`web_music_free_daily_limit`,
+  default 5, lifetime). Create polls sunoapi.org record-info if the callback
+  is slow. See `docs/changelog/2026-08-15-music-web-suno-create.md`.
+
 ### Fixed
 
 - Opening Software Updates clears a leftover draft when its installer file is

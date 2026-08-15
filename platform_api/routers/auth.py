@@ -25,6 +25,7 @@ from platform_api.exceptions import (
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.models.domain import User
 from platform_api.models.enums import UserRole, UserStatus
+from platform_api.models.products import PRODUCT_MUSIC_WEB, normalize_signup_product
 from platform_api.models.schemas import LoginRequest, TokenResponse
 from platform_api.services.auth_service import AuthService
 from platform_api.services.invitation_code_service import InvitationCodeService
@@ -59,6 +60,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=200)
     display_name: str = Field(..., min_length=1, max_length=200)
     invitation_code: str | None = Field(default=None, min_length=1, max_length=64)
+    product: str | None = Field(default=None, max_length=32)
 
 
 class SignupModeResponse(BaseModel):
@@ -375,6 +377,9 @@ async def register(
             details={"fields": errors},
         )
 
+    header_product = http_request.headers.get("X-Signup-Product")
+    signup_product = normalize_signup_product(request.product or header_product)
+
     signup_mode = await invitation_code_service.get_signup_mode()
     normalized_invitation_code = (
         request.invitation_code.strip().upper()
@@ -382,7 +387,11 @@ async def register(
         else None
     )
 
-    if signup_mode == "invite_only" and not normalized_invitation_code:
+    if (
+        signup_product != PRODUCT_MUSIC_WEB
+        and signup_mode == "invite_only"
+        and not normalized_invitation_code
+    ):
         raise ValidationError(
             message="Invitation code is required.",
             details={"fields": [{"field": "invitation_code", "message": "Invitation code is required."}]},
@@ -430,6 +439,9 @@ async def register(
             display_name=request.display_name or "there",
         )
         refreshed_user = await auth_service._user_repo.get_by_email(request.email)
+        add_product = getattr(auth_service._user_repo, "add_product", None)
+        if callable(add_product):
+            await add_product(existing_user.id, signup_product)
         if refreshed_user is not None:
             await _set_session_for_user(auth_service, refreshed_user, response, http_request)
         return UserResponse(
@@ -446,20 +458,28 @@ async def register(
         display_name=request.display_name,
         role=UserRole.USER,
         status=UserStatus.ACTIVE,
+        products=[signup_product],
     )
 
     from platform_api.dependencies import get_db_pool
 
-    pool = get_db_pool()
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            created_user = await auth_service._user_repo.create(user, conn=conn)
-            if signup_mode == "invite_only" and normalized_invitation_code:
+    needs_invite_consume = (
+        signup_product != PRODUCT_MUSIC_WEB
+        and signup_mode == "invite_only"
+        and bool(normalized_invitation_code)
+    )
+    if needs_invite_consume:
+        pool = get_db_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                created_user = await auth_service._user_repo.create(user, conn=conn)
                 await invitation_code_service.consume_invitation_code(
                     conn=conn,
                     code=normalized_invitation_code,
                     user_id=created_user.id,
                 )
+    else:
+        created_user = await auth_service._user_repo.create(user)
 
     await _set_session_for_user(auth_service, created_user, response, http_request)
     return UserResponse(

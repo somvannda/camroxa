@@ -33,8 +33,8 @@ export default function ProfilePage() {
         <h1 className="mt-2 font-display text-4xl font-semibold text-white">{user.display_name}</h1>
         <p className="mt-2 text-slate-300/75">{user.email}</p>
         <p className="mt-4 text-sm text-slate-300/60">
-          This is your Music Streaming profile. Studio channels, billing, and onboarding stay in the
-          user portal — listening, playlists, and likes stay here.
+          This is your Camxora Music profile. Studio channel onboarding stays in the
+          user portal if you later use the desktop app.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link

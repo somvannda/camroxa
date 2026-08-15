@@ -586,3 +586,13 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[streaming_public_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_admin_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_library_catalog] = real_streaming_catalog_service
+
+    from platform_api.routers.web_music import _get_web_music_service as web_music_get_svc
+    from platform_api.services.web_music_service import WebMusicService
+
+    async def real_web_music_service() -> WebMusicService:
+        from platform_api.dependencies import get_db_pool
+
+        return WebMusicService(get_db_pool(), get_generation_service())
+
+    app.dependency_overrides[web_music_get_svc] = real_web_music_service

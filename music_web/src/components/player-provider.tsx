@@ -131,26 +131,33 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(0);
       setDuration(track.duration_seconds ?? 0);
 
-      const payload = await getPlayUrl(track.id);
+      let url = track.play_url ?? '';
+      let nextTrack: StreamTrack = track;
+      if (!url) {
+        const payload = await getPlayUrl(track.id);
+        if (token !== loadTokenRef.current) return;
+        url = payload.url;
+        nextTrack = {
+          ...track,
+          title: payload.title ?? track.title,
+          album_id: payload.album_id ?? track.album_id,
+          album_name: payload.album_name ?? track.album_name,
+          user_id: payload.user_id ?? track.user_id,
+          artist_name: payload.artist_name ?? track.artist_name,
+          cover_url: payload.cover_url ?? track.cover_url,
+          duration_seconds: payload.duration_seconds ?? track.duration_seconds,
+          play_count: payload.play_count ?? track.play_count,
+          genre: payload.genre ?? track.genre,
+          lyrics: payload.lyrics ?? track.lyrics,
+        };
+      }
       if (token !== loadTokenRef.current) return;
 
-      const nextTrack: StreamTrack = {
-        ...track,
-        title: payload.title ?? track.title,
-        album_id: payload.album_id ?? track.album_id,
-        album_name: payload.album_name ?? track.album_name,
-        user_id: payload.user_id ?? track.user_id,
-        artist_name: payload.artist_name ?? track.artist_name,
-        cover_url: payload.cover_url ?? track.cover_url,
-        duration_seconds: payload.duration_seconds ?? track.duration_seconds,
-        play_count: payload.play_count ?? track.play_count,
-        genre: payload.genre ?? track.genre,
-        lyrics: payload.lyrics ?? track.lyrics,
-      };
       setCurrent(nextTrack);
 
       const audio = ensureAudio();
-      audio.src = payload.url;
+      audio.crossOrigin = 'use-credentials';
+      audio.src = url;
       audio.volume = muted ? 0 : volume;
       try {
         await audio.play();

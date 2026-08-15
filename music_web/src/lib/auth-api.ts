@@ -5,6 +5,8 @@ export type MusicUser = {
   email: string;
   display_name: string;
   email_confirmed?: boolean;
+  products?: string[];
+  plan_name?: string | null;
 };
 
 export type TokenResponse = {
@@ -55,7 +57,6 @@ export async function registerMusicUser(input: {
   email: string;
   password: string;
   display_name: string;
-  invitation_code?: string;
 }): Promise<void> {
   const response = await fetch(apiPath('/api/v1/auth/register'), {
     method: 'POST',
@@ -63,8 +64,9 @@ export async function registerMusicUser(input: {
     headers: {
       'Content-Type': 'application/json',
       'X-Portal-Context': 'user',
+      'X-Signup-Product': 'music_web',
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, product: 'music_web' }),
   });
   if (!response.ok) {
     throw new Error(await readError(response, `Sign up failed (${response.status})`));
@@ -87,6 +89,8 @@ export async function fetchMusicUser(): Promise<MusicUser | null> {
     email: data.email,
     display_name: data.display_name || data.email,
     email_confirmed: data.email_confirmed,
+    products: Array.isArray((data as MusicUser).products) ? (data as MusicUser).products : [],
+    plan_name: (data as MusicUser).plan_name ?? null,
   };
 }
 

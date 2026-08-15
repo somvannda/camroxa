@@ -7,8 +7,8 @@ import { FormEvent, Suspense, useState } from 'react';
 import { useAuth } from '@/components/auth-provider';
 
 function safeNextPath(raw: string | null): string {
-  if (!raw) return '/library';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/library';
+  if (!raw) return '/create';
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/create';
   return raw;
 }
 
@@ -20,7 +20,6 @@ function RegisterForm() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [invitationCode, setInvitationCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -33,7 +32,6 @@ function RegisterForm() {
         email: email.trim(),
         password,
         display_name: displayName.trim(),
-        ...(invitationCode.trim() ? { invitation_code: invitationCode.trim() } : {}),
       });
       router.replace(next);
     } catch (err) {
@@ -47,8 +45,7 @@ function RegisterForm() {
     <div className="mx-auto w-full max-w-md rounded-3xl border border-white/8 bg-[rgba(8,10,20,0.72)] p-8 backdrop-blur">
       <h1 className="font-display text-3xl font-semibold text-white">Join Camxora Music</h1>
       <p className="mt-2 text-sm text-slate-300/70">
-        One Camxora account. After sign-up you stay here for listening, playlists, and your music
-        profile.
+        Create a music account. You will not go through studio channel onboarding.
       </p>
       <form className="mt-8 space-y-4" onSubmit={onSubmit}>
         <label className="block space-y-2 text-sm text-slate-200">
@@ -81,14 +78,6 @@ function RegisterForm() {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-white outline-none focus:border-violet-400/50"
-          />
-        </label>
-        <label className="block space-y-2 text-sm text-slate-200">
-          <span>Invitation code (if required)</span>
-          <input
-            value={invitationCode}
-            onChange={(e) => setInvitationCode(e.target.value)}
             className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-white outline-none focus:border-violet-400/50"
           />
         </label>

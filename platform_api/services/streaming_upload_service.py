@@ -49,6 +49,10 @@ class StreamingUploadService:
             context = await self._repo.get_suno_stream_context(suno_task_id)
             if not context:
                 return
+            if str(context.get("source") or "").strip().lower() == "web_music":
+                return
+            if not context.get("song_id"):
+                return
 
             refreshed = await self._refresh_task_download_urls(context)
             audio_ok = normalize_http_download_url(

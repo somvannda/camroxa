@@ -27,7 +27,6 @@ type AuthState = {
     email: string;
     password: string;
     display_name: string;
-    invitation_code?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
 };

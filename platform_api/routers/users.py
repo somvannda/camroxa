@@ -58,6 +58,7 @@ class UserProfileResponse(BaseModel):
     effective_quota_channels: int | None = None
     channel_profile_count: int = 0
     onboarding_paid: bool = False
+    products: list[str] = Field(default_factory=list)
     pending_verification_code: str | None = None
     verification_code_expires_at: datetime | None = None
     created_at: datetime
@@ -261,6 +262,7 @@ def _user_to_response(
     effective_quota_channels: int | None = None,
     channel_profile_count: int = 0,
     onboarding_paid: bool = False,
+    products: list[str] | None = None,
     pending_verification_code: str | None = None,
     verification_code_expires_at: datetime | None = None,
 ) -> UserProfileResponse:
@@ -287,6 +289,7 @@ def _user_to_response(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
+        products=list(products or getattr(user, "products", None) or []),
         pending_verification_code=pending_verification_code,
         verification_code_expires_at=verification_code_expires_at,
         created_at=user.created_at,

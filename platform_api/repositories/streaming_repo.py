@@ -1085,6 +1085,7 @@ class StreamingRepository:
                    st.audio_id_ok,
                    st.audio_id_alt,
                    st.style AS suno_style,
+                   st.source AS source,
                    s.title AS song_title,
                    s.album AS song_album,
                    s.lyrics AS song_lyrics,

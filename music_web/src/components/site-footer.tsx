@@ -19,13 +19,12 @@ export default function SiteFooter() {
                 Camxora Music
               </div>
               <div className="text-[11px] uppercase tracking-[0.22em] text-fuchsia-100/54">
-                Music Streaming
+                Music
               </div>
             </div>
           </div>
           <p className="mt-4 leading-7 text-slate-200/60">
-            Listen to music published by Camxora creators. One account powers studio, portal, and
-            streaming.
+            Listen and create AI music on Camxora. One account can later unlock the studio app.
           </p>
         </div>
 
@@ -33,10 +32,9 @@ export default function SiteFooter() {
           title="Discover"
           items={[
             { href: '/', label: 'Home' },
-            { href: '/albums', label: 'Albums' },
-            { href: '/artists', label: 'Artists' },
-            { href: '/genres', label: 'Genres' },
-            { href: '/search', label: 'Search' },
+            { href: '/explore', label: 'Explore' },
+            { href: '/create', label: 'Create' },
+            { href: '/library', label: 'Library' },
           ]}
         />
         <FooterColumn
