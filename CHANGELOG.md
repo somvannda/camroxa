@@ -11,6 +11,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [1.3.0] - 2026-08-14
 
+Installer rebuilt **2026-08-15** (same **1.3.0** stamp): real Suno MP3 downloads
+and Opus-in-MP4 export no longer hang the queue.
+
 ### Added
 
 - **Regenerate missing/broken MP4s:** Progress can re-export only tracks whose
@@ -24,6 +27,16 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Suno `.m4a` downloads saved as `.mp3`:** Suno’s CDN often returns
+  `{id}.m4a` (Opus) while `{id}.mp3` is the real MPEG file. Downloads now use
+  the `.mp3` URL, refuse to save non-MPEG bytes, and retry later instead of
+  keeping a fake MP3. See `docs/changelog/2026-08-15-suno-prefer-real-mp3.md`.
+- **Opus-in-MP4 named `.mp3` hung the whole export queue:** Some Suno files are
+  real audio (Opus in an MP4 container) saved with a `.mp3` name. Windows plays
+  them; mpg123/librosa could hang forever and block every other Start Export.
+  Export now decodes those files with ffmpeg, retries a track 3 times, then
+  skips it and continues the album / next run. See
+  `docs/changelog/2026-08-15-opus-mp4-export-hang.md`.
 - **Progress Merge wrote no file:** Start Merging could show “Merging…” and finish
   without a `MERGED_*.mp4`. Skip is now a real error, merge-only no longer
   requires today’s export FPS/48 kHz, and a successful merge marks the row

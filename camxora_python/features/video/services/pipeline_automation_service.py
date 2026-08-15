@@ -60,6 +60,7 @@ class PipelineAutomationService(QObject):
         self._merge_charge: dict[str, Any] = {}
         self._api = api
         self._auth_blocked = False
+        self._active_run_key = ""
 
     def auth_blocked(self) -> bool:
         return self._auth_blocked
@@ -183,6 +184,7 @@ class PipelineAutomationService(QObject):
                 candidate.branch,
             )
         self._auth_blocked = False
+        self._active_run_key = str(candidate.key or "").strip()
         self._settings = dict(settings or {})
         workspace = self._store.set_template(candidate.template_id)
         if candidate.branch == "long" and candidate.output_resolution:
@@ -498,7 +500,10 @@ class PipelineAutomationService(QObject):
         merge_context = dict(self._merge_context)
         merge_context["completed"] = completed
         merge_context["total"] = total
+        skipped = int(payload.get("skipped") or 0)
         self._merge_context = merge_context
+        if skipped > 0:
+            self._defer_active_run()
 
         if merge_context.get("auto_merge"):
             branch_label = "reel" if str(merge_context.get("branch") or "") == "reel" else "long"
@@ -837,6 +842,8 @@ class PipelineAutomationService(QObject):
         from shared.services.app_logger import log_error
 
         user_stop = self._is_user_initiated_stop(message)
+        if not user_stop:
+            self._defer_active_run()
         self._apply_video_refund_for_outcome(message or "", user_stop=user_stop)
         workspace = self._current_workspace()
         self._busy = False
@@ -861,6 +868,18 @@ class PipelineAutomationService(QObject):
                 )
             )
         emit_shell_status(status_text.splitlines()[0].strip() or status_text)
+
+    def _defer_active_run(self) -> None:
+        key = str(self._active_run_key or "").strip()
+        if not key:
+            return
+        from features.video.lib.export_run_defer import defer_export_run
+
+        defer_export_run(key)
+        emit_shell_status(
+            "This album will wait — starting the next export-ready run.",
+            tone="warning",
+        )
 
     def _on_export_finished(self) -> None:
         self._export_worker = None

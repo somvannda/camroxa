@@ -7,6 +7,7 @@ from typing import Any
 
 from shared.lib.channel_asset_paths import count_channel_mp3_files
 from shared.lib.device_workspace_paths import local_run_dir_for_disk
+from shared.lib.suno_mp3_download import file_looks_like_mpeg_audio
 from shared.models.platform import ProgressRow
 from shared.services.file_service import sanitize_local_path
 
@@ -61,8 +62,7 @@ def target_path_is_present(target_path: str) -> bool:
     if not text:
         return False
     try:
-        path = Path(text)
-        return path.is_file() and path.stat().st_size > 0
+        return file_looks_like_mpeg_audio(text)
     except OSError:
         return False
 

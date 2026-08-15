@@ -38,7 +38,7 @@ def test_missing_mp3_worker_skips_present_and_downloads_missing(
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     present = run_dir / "1. Present_OK.mp3"
-    present.write_bytes(b"already")
+    present.write_bytes(b"ID3" + b"\x00" * 300)
     missing = run_dir / "2. Missing_OK.mp3"
 
     api = MagicMock()

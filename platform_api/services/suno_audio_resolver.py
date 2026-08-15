@@ -16,6 +16,8 @@ from platform_api.clients.suno_client import (
     cdn_url_for_suno_audio_id,
     coerce_suno_download_url,
     parse_suno_generate_poll,
+    payload_is_mpeg_audio,
+    prefer_suno_mpeg_cdn_url,
 )
 from platform_api.services.storage_service import StorageServiceError
 
@@ -60,11 +62,14 @@ class SunoTaskDownloadUrls:
 
 
 def build_download_url_candidates(*urls: str | None) -> list[str]:
-    """Return unique non-empty download URL candidates in priority order."""
+    """Return unique non-empty download URL candidates in priority order.
+
+    Suno CDN ``.m4a`` (Opus) links are rewritten to the sibling ``.mp3``.
+    """
     seen: set[str] = set()
     candidates: list[str] = []
     for raw in urls:
-        url = normalize_http_download_url(raw)
+        url = prefer_suno_mpeg_cdn_url(normalize_http_download_url(raw))
         if not url or url in seen:
             continue
         seen.add(url)
@@ -299,11 +304,16 @@ async def download_suno_mp3_bytes(url: str, *, fallback_urls: list[str] | None =
         for attempt in range(1, 4):
             try:
                 data = await _download_once(candidate)
-                if len(data) >= _MIN_MP3_BYTES:
+                if len(data) >= _MIN_MP3_BYTES and payload_is_mpeg_audio(data):
                     return data
-                last_error = StorageServiceError(
-                    f"Suno download returned empty body ({len(data)} bytes) for {candidate[:120]}"
-                )
+                if len(data) >= _MIN_MP3_BYTES:
+                    last_error = StorageServiceError(
+                        f"Suno download was not MPEG audio for {candidate[:120]}"
+                    )
+                else:
+                    last_error = StorageServiceError(
+                        f"Suno download returned empty body ({len(data)} bytes) for {candidate[:120]}"
+                    )
             except Exception as exc:
                 last_error = exc
             if attempt < 3:

@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Suno CDN `{id}.m4a` (Opus-in-MP4) URLs are rewritten to `{id}.mp3` before
+  persist / pending download / streaming fetch. Non-MPEG bodies are not stored
+  as MP3. See `docs/changelog/2026-08-15-suno-prefer-real-mp3.md`.
 - Opening Software Updates clears a leftover draft when its installer file is
   gone (e.g. 1.2.6 settings after `Camxora-1.2.6.exe` was deleted). Draft
   resets to the live release instead of showing a download URL with no row in

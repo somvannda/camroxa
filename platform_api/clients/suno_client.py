@@ -185,6 +185,7 @@ def parse_suno_lyrics_poll(response: dict[str, Any]) -> SunoLyricsPollResult:
 
 def _extract_clip_download_url(clip: dict[str, Any]) -> str:
     """Return the best URL for downloading a finished MP3 (not stream preview)."""
+    audio_id = _extract_clip_audio_id(clip)
     for key in (
         "source_audio_url",
         "sourceAudioUrl",
@@ -193,7 +194,7 @@ def _extract_clip_download_url(clip: dict[str, Any]) -> str:
     ):
         url = str(clip.get(key, "")).strip()
         if url:
-            return url
+            return prefer_suno_mpeg_cdn_url(url, audio_id)
     return ""
 
 
@@ -251,15 +252,68 @@ def cdn_url_for_suno_audio_id(audio_id: str | None) -> str:
     if not value:
         return ""
     if value.startswith(("http://", "https://")):
-        return value
+        return prefer_suno_mpeg_cdn_url(value)
     return f"https://cdn1.suno.ai/{value}.mp3"
 
 
+_SUNO_CDN_HOST_MARKERS = ("cdn1.suno.ai", "cdn2.suno.ai", "cdn.suno.ai")
+_NON_MPEG_CDN_SUFFIXES = (".m4a", ".mp4", ".webm", ".opus", ".aac")
+
+
+def prefer_suno_mpeg_cdn_url(url: str, audio_id: str | None = None) -> str:
+    """Suno now often returns ``{id}.m4a`` (Opus) while ``{id}.mp3`` is the MPEG file.
+
+    Studio download always wants the MP3. Same clip id; no extra generate.
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    text = str(url or "").strip()
+    if not text.startswith(("http://", "https://")):
+        return cdn_url_for_suno_audio_id(audio_id) if audio_id else ""
+    lower = text.lower()
+    if lower.endswith(".mp3") or ".mp3?" in lower:
+        return text
+    parts = urlsplit(text)
+    host = (parts.netloc or "").lower()
+    if not any(marker in host for marker in _SUNO_CDN_HOST_MARKERS):
+        return text
+    path = parts.path or ""
+    path_lower = path.lower()
+    for suffix in _NON_MPEG_CDN_SUFFIXES:
+        if path_lower.endswith(suffix):
+            new_path = path[: -len(suffix)] + ".mp3"
+            return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
+    clip_id = str(audio_id or "").strip()
+    if clip_id and not clip_id.startswith(("http://", "https://")):
+        return cdn_url_for_suno_audio_id(clip_id)
+    return text
+
+
+_MIN_MPEG_SNIFF_BYTES = 256
+
+
+def payload_is_mpeg_audio(content: bytes) -> bool:
+    """True when bytes look like MP3 (ID3 or MPEG frame), not MP4/M4A/Opus."""
+    if not content or len(content) < _MIN_MPEG_SNIFF_BYTES:
+        return False
+    if content[4:8] == b"ftyp":
+        return False
+    if content[:3] == b"ID3":
+        return True
+    if content[0] == 0xFF and (content[1] & 0xE0) == 0xE0 and (content[1] & 0xF6) != 0xF0:
+        return True
+    return False
+
+
 def coerce_suno_download_url(*, url: str | None = None, audio_id: str | None = None) -> str:
-    """Prefer an explicit http(s) URL; otherwise synthesize CDN from audio id."""
+    """Prefer an explicit http(s) URL; otherwise synthesize CDN from audio id.
+
+    Suno CDN ``.m4a`` links are rewritten to ``.mp3`` so the desktop never
+    saves Opus-in-MP4 under an ``*_OK.mp3`` name.
+    """
     text = str(url or "").strip()
     if text.startswith(("http://", "https://")):
-        return text
+        return prefer_suno_mpeg_cdn_url(text, audio_id)
     return cdn_url_for_suno_audio_id(audio_id)
 
 

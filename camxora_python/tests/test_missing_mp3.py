@@ -84,14 +84,18 @@ def test_count_missing_uses_expected_when_api_url_count_matches_disk(tmp_path: P
 
 def test_filter_missing_redownload_items(tmp_path: Path) -> None:
     present = tmp_path / "1. A_OK.mp3"
-    present.write_bytes(b"x")
+    present.write_bytes(b"ID3" + b"\x00" * 300)
     missing = tmp_path / "2. B_OK.mp3"
+    opus = tmp_path / "3. C_OK.mp3"
+    opus.write_bytes(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 300)
     items = [
         SimpleNamespace(target_path=str(present), task_id="t1"),
         SimpleNamespace(target_path=str(missing), task_id="t2"),
         SimpleNamespace(target_path="", task_id="t3"),
+        SimpleNamespace(target_path=str(opus), task_id="t4"),
     ]
     filtered = filter_missing_redownload_items(items)
-    assert [i.task_id for i in filtered] == ["t2", "t3"]
+    assert [i.task_id for i in filtered] == ["t2", "t3", "t4"]
     assert target_path_is_present(str(present)) is True
     assert target_path_is_present(str(missing)) is False
+    assert target_path_is_present(str(opus)) is False

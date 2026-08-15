@@ -41,7 +41,7 @@ def _workspace() -> VideoWorkspaceState:
     )
 
 
-def _row(*, run_dir: str) -> ProgressRow:
+def _row(*, run_dir: str, batch_id: str = "batch-1") -> ProgressRow:
     return ProgressRow(
         batch="Batch 1",
         run_date="2026-06-29",
@@ -56,7 +56,7 @@ def _row(*, run_dir: str) -> ProgressRow:
         notes="",
         updated="2026-06-29 12:00:00",
         meta=ProgressRowMeta(
-            batch_id="batch-1",
+            batch_id=batch_id,
             profile_id="profile-1",
             role="OK",
             run_dir=run_dir,
@@ -223,3 +223,39 @@ def test_build_merge_candidate_does_not_require_background(tmp_path) -> None:
     assert candidate is not None
     assert candidate.run_dir == str(run_dir)
     assert candidate.role == "ALT"
+
+
+def test_select_next_auto_video_candidate_skips_deferred_run(tmp_path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    _seed_run_folder(first)
+    _seed_run_folder(second)
+    row_a = _row(run_dir=str(first), batch_id="batch-1")
+    row_b = _row(run_dir=str(second), batch_id="batch-2")
+    candidate = select_next_auto_video_candidate(
+        rows=[row_a, row_b],
+        profiles=[_profile()],
+        settings={"autoVideoAfterSuno": True},
+        inspections={
+            "batch-1:profile-1:OK": VideoRunInspection(
+                directory=str(first),
+                long_output_paths=(),
+                reel_output_paths=(),
+                merged_long_paths=(),
+                merged_reel_paths=(),
+            ),
+            "batch-2:profile-1:OK": VideoRunInspection(
+                directory=str(second),
+                long_output_paths=(),
+                reel_output_paths=(),
+                merged_long_paths=(),
+                merged_reel_paths=(),
+            ),
+        },
+        runtime_by_key={},
+        workspace=_workspace(),
+        skip_keys={"batch-1:profile-1:OK"},
+    )
+    assert candidate is not None
+    assert candidate.batch_id == "batch-2"
+    assert candidate.run_dir == str(second)
