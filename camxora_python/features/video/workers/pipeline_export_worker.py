@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import QThread, Signal
 
@@ -28,6 +29,8 @@ from features.video.services.export_coordinator import (
 from features.video.services.export_job import ExportJob, ExportSettings, find_ffmpeg_from_path_hint
 from shared.services.app_logger import log_error, log_info
 
+TRACK_EXPORT_MAX_ATTEMPTS = 3
+
 
 @dataclass(frozen=True)
 class PipelineExportRequest:
@@ -45,6 +48,41 @@ class PipelineExportRequest:
     fps: int = 30
     speed_mode: str = "fast"
     album_mp3_paths: list[str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TrackExportAttemptResult:
+    output_path: str | None
+    attempts: int
+    error: str = ""
+    skipped: bool = False
+
+
+def export_one_track_with_retries(
+    mp3_path: str,
+    *,
+    export_one: Callable[[str], str],
+    max_attempts: int = TRACK_EXPORT_MAX_ATTEMPTS,
+    should_stop: Callable[[], bool] | None = None,
+    on_retry: Callable[[int, int, str], None] | None = None,
+) -> TrackExportAttemptResult:
+    """Run one track up to ``max_attempts`` times, then skip instead of aborting the album."""
+    last_error = ""
+    attempts = max(1, int(max_attempts))
+    for attempt in range(1, attempts + 1):
+        if should_stop is not None and should_stop():
+            return TrackExportAttemptResult(None, attempt - 1, "Video export stopped.", skipped=False)
+        try:
+            output_path = export_one(mp3_path)
+        except Exception as exc:
+            last_error = str(exc) or "Video export failed."
+            if attempt < attempts:
+                if on_retry is not None:
+                    on_retry(attempt, attempts, last_error)
+                continue
+            return TrackExportAttemptResult(None, attempt, last_error, skipped=True)
+        return TrackExportAttemptResult(output_path, attempt, skipped=False)
+    return TrackExportAttemptResult(None, attempts, last_error, skipped=True)
 
 
 class VideoPipelineExportWorker(QThread):
@@ -98,7 +136,8 @@ class VideoPipelineExportWorker(QThread):
         total = len(mp3_paths)
         completed = 0
         last_output_path: str | None = None
-        failures: list[str] = []
+        skipped: list[str] = []
+        skipped_errors: list[str] = []
         progress_lock = threading.Lock()
         queue: list[str] = list(mp3_paths)
         queue_lock = threading.Lock()
@@ -291,7 +330,7 @@ class VideoPipelineExportWorker(QThread):
 
         def worker_loop() -> None:
             nonlocal completed, last_output_path
-            while not self._cancel_requested and not failures:
+            while not self._cancel_requested:
                 with queue_lock:
                     if not queue:
                         return
@@ -306,23 +345,52 @@ class VideoPipelineExportWorker(QThread):
                     ),
                     current_path=mp3_path,
                 )
-                try:
-                    output_path = run_single_job(mp3_path)
-                except Exception as exc:
-                    if self._cancel_requested:
-                        return
-                    with progress_lock:
-                        failures.append(str(exc) or "Video export failed.")
+
+                def _on_retry(attempt: int, attempts: int, error: str, path: str = mp3_path) -> None:
+                    log_error(
+                        f"Retry {attempt}/{attempts} · {Path(path).name}: {error}",
+                        category="export",
+                    )
+                    emit_progress(
+                        message=f"Retry {attempt}/{attempts} · {Path(path).name}",
+                        current_path=path,
+                    )
+
+                result = export_one_track_with_retries(
+                    mp3_path,
+                    export_one=run_single_job,
+                    should_stop=lambda: self._cancel_requested,
+                    on_retry=_on_retry,
+                )
+                if self._cancel_requested:
                     return
+                if result.skipped or not result.output_path:
+                    with progress_lock:
+                        skipped.append(mp3_path)
+                        if result.error:
+                            skipped_errors.append(f"{Path(mp3_path).name}: {result.error}")
+                    log_error(
+                        f"Skipped after {result.attempts} attempt(s) · {Path(mp3_path).name}: "
+                        f"{result.error or 'Video export failed.'}",
+                        category="export",
+                    )
+                    emit_progress(
+                        message=(
+                            f"Skipped {Path(mp3_path).name} after {result.attempts} attempt(s) — "
+                            "continuing album."
+                        ),
+                        current_path=mp3_path,
+                    )
+                    continue
 
                 with progress_lock:
                     completed += 1
-                    last_output_path = output_path
+                    last_output_path = result.output_path
                 branch_label = "long" if request.branch == "long" else "reel"
                 emit_progress(
                     message=f"Exported {completed}/{total} {branch_label} video(s).",
                     current_path=mp3_path,
-                    output_path=output_path,
+                    output_path=result.output_path,
                 )
 
         started_at = time.time()
@@ -341,19 +409,27 @@ class VideoPipelineExportWorker(QThread):
         if self._cancel_requested:
             self.failed.emit("Video export stopped.")
             return
-        if failures:
-            self.failed.emit(failures[0])
+        if completed <= 0:
+            detail = skipped_errors[0] if skipped_errors else "Video export failed."
+            self.failed.emit(
+                f"Album export failed after {TRACK_EXPORT_MAX_ATTEMPTS} attempt(s) per track. {detail}"
+            )
             return
 
         elapsed = max(0.0, time.time() - started_at)
         branch_label = "long" if request.branch == "long" else "reel"
+        skipped_note = f" · {len(skipped)} skipped" if skipped else ""
         self.succeeded.emit(
             {
                 "completed": completed,
                 "total": total,
+                "skipped": len(skipped),
+                "skippedPaths": list(skipped),
                 "lastOutputPath": last_output_path,
                 "branch": request.branch,
                 "elapsedSec": elapsed,
-                "message": f"Export complete · {completed}/{total} {branch_label} video(s).",
+                "message": (
+                    f"Export complete · {completed}/{total} {branch_label} video(s){skipped_note}."
+                ),
             }
         )

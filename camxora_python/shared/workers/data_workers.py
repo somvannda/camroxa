@@ -254,7 +254,9 @@ class MusicDownloadSyncWorker(QThread):
 
                         target_file = Path(sanitize_local_path(str(target.target_path)))
                         target_path = str(target_file)
-                        if target_file.is_file() and target_file.stat().st_size > 0:
+                        from shared.lib.suno_mp3_download import file_looks_like_mpeg_audio
+
+                        if file_looks_like_mpeg_audio(target_file):
                             downloaded = True
                         else:
                             downloaded = self._download_file(target.download_url, target_path)
@@ -304,6 +306,7 @@ class MusicDownloadSyncWorker(QThread):
 
         import httpx
 
+        from shared.lib.suno_mp3_download import payload_is_mpeg_audio, prefer_suno_mpeg_cdn_url
         from shared.services.app_logger import log_error
         from shared.services.file_service import sanitize_local_path
 
@@ -315,17 +318,28 @@ class MusicDownloadSyncWorker(QThread):
                 category="music",
             )
             return False
+
+        requested = str(url or "").strip()
+        candidate = prefer_suno_mpeg_cdn_url(requested) or requested
+        if not candidate:
+            return False
         try:
             with httpx.Client(timeout=60.0, follow_redirects=True) as client:
-                response = client.get(url)
+                response = client.get(candidate)
                 response.raise_for_status()
                 content = response.content
-                if not content:
-                    log_error(f"MP3 download returned an empty response body: {url}", category="music")
-                    return False
-                path.write_bytes(content)
+            if not content:
+                log_error(f"MP3 download returned an empty response body: {candidate}", category="music")
+                return False
+            if not payload_is_mpeg_audio(content):
+                log_error(
+                    "Suno download was not MP3 (likely m4a/Opus). Waiting for MPEG URL.",
+                    category="music",
+                )
+                return False
+            path.write_bytes(content)
         except (OSError, httpx.HTTPError) as exc:
-            log_error(f"MP3 download failed: {url}", category="music", exc=exc)
+            log_error(f"MP3 download failed: {candidate}", category="music", exc=exc)
             MusicDownloadSyncWorker._discard_empty_file(path)
             return False
 

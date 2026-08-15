@@ -70,6 +70,29 @@ def test_parse_suno_generate_poll_uses_download_urls() -> None:
     assert parsed.audio_url_alt == "https://cdn.example.com/alt.mp3"
 
 
+def test_parse_suno_generate_poll_rewrites_suno_m4a_to_mp3() -> None:
+    clip_id = "441cb4bf-f013-4c88-8ea1-9d17499b1762"
+    parsed = parse_suno_generate_poll(
+        {
+            "code": 200,
+            "data": {
+                "status": "SUCCESS",
+                "response": {
+                    "data": [
+                        {
+                            "id": clip_id,
+                            "source_audio_url": f"https://cdn1.suno.ai/{clip_id}.m4a",
+                        }
+                    ]
+                },
+            },
+        }
+    )
+    assert parsed.state == "success"
+    assert parsed.audio_url_ok == f"https://cdn1.suno.ai/{clip_id}.mp3"
+    assert parsed.audio_id_ok == clip_id
+
+
 def test_parse_suno_generate_poll_extracts_clip_metadata() -> None:
     parsed = parse_suno_generate_poll(
         {
@@ -159,6 +182,39 @@ def test_cdn_url_for_suno_audio_id() -> None:
     assert coerce_suno_download_url(url="https://cdn.example.com/x.mp3", audio_id="abc") == (
         "https://cdn.example.com/x.mp3"
     )
+
+
+def test_coerce_suno_download_url_rewrites_cdn_m4a_to_mp3() -> None:
+    from platform_api.clients.suno_client import coerce_suno_download_url, prefer_suno_mpeg_cdn_url
+
+    m4a = "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.m4a"
+    mp3 = "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.mp3"
+    assert prefer_suno_mpeg_cdn_url(m4a) == mp3
+    assert coerce_suno_download_url(url=m4a) == mp3
+    assert coerce_suno_download_url(url=mp3) == mp3
+    assert coerce_suno_download_url(url="https://cdn.example.com/clip.m4a") == (
+        "https://cdn.example.com/clip.m4a"
+    )
+
+
+def test_extract_clip_download_url_rewrites_suno_m4a() -> None:
+    clip = {
+        "id": "441cb4bf-f013-4c88-8ea1-9d17499b1762",
+        "source_audio_url": "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.m4a",
+        "audio_url": "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.mp3",
+    }
+    assert (
+        _extract_clip_download_url(clip)
+        == "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.mp3"
+    )
+
+
+def test_payload_is_mpeg_audio_rejects_iso_bmff() -> None:
+    from platform_api.clients.suno_client import payload_is_mpeg_audio
+
+    assert payload_is_mpeg_audio(b"ID3" + b"\x00" * 300) is True
+    assert payload_is_mpeg_audio(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 300) is False
+    assert payload_is_mpeg_audio(b"ID3") is False
 
 
 def test_callback_indicates_success_for_complete_callback_type() -> None:

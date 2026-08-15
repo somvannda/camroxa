@@ -86,6 +86,7 @@ def select_next_auto_video_candidate(
     inspections: dict[str, VideoRunInspection],
     runtime_by_key: dict[str, ProgressRuntimePresentation],
     workspace: VideoWorkspaceState | None,
+    skip_keys: set[str] | frozenset[str] | None = None,
 ) -> AutoVideoCandidate | None:
     if not read_boolean_setting(settings, "autoVideoAfterSuno", False):
         return None
@@ -94,9 +95,12 @@ def select_next_auto_video_candidate(
 
     profiles_by_id = {profile.id: profile for profile in profiles}
     auto_reel_enabled = read_boolean_setting(settings, "autoReelAfterVideo", False)
+    skipped = {str(key).strip() for key in (skip_keys or ()) if str(key).strip()}
 
     for row in rows:
         key = build_video_pipeline_run_key(row)
+        if key in skipped:
+            continue
         runtime = runtime_by_key.get(key)
         effective_stage = runtime.stage if runtime is not None else row.stage
         if _is_terminal_stage(effective_stage):

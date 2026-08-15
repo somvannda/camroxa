@@ -244,6 +244,76 @@ def test_download_file_rejects_empty_response_body(tmp_path, monkeypatch) -> Non
     assert not target.exists()
 
 
+def test_download_file_rewrites_suno_m4a_and_saves_mpeg(tmp_path, monkeypatch) -> None:
+    mpeg = b"ID3" + b"\x00" * 300
+    m4a = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 300
+    requested: list[str] = []
+
+    class _FakeResponse:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self) -> "_FakeClient":
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+        def get(self, url: str) -> _FakeResponse:
+            requested.append(url)
+            if url.endswith(".mp3"):
+                return _FakeResponse(mpeg)
+            return _FakeResponse(m4a)
+
+    monkeypatch.setattr("httpx.Client", _FakeClient)
+
+    target = tmp_path / "track_OK.mp3"
+    ok = MusicDownloadSyncWorker._download_file(
+        "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.m4a",
+        str(target),
+    )
+
+    assert ok is True
+    assert requested == ["https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.mp3"]
+    assert target.read_bytes() == mpeg
+
+
+def test_download_file_rejects_opus_mp4_payload(tmp_path, monkeypatch) -> None:
+    class _FakeResponse:
+        content = b"\x00\x00\x00\x20ftypisom" + b"\x00" * 300
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self) -> "_FakeClient":
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+        def get(self, _url: str) -> _FakeResponse:
+            return _FakeResponse()
+
+    monkeypatch.setattr("httpx.Client", _FakeClient)
+
+    target = tmp_path / "opus.mp3"
+    ok = MusicDownloadSyncWorker._download_file("https://example.test/clip.mp3", str(target))
+
+    assert ok is False
+    assert not target.exists()
+
+
 def test_download_file_rejects_when_disk_has_too_little_space(tmp_path, monkeypatch) -> None:
     import shared.workers.data_workers as data_workers_module
 

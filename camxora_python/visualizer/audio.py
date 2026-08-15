@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 import traceback
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 # Cap BLAS before numpy/librosa load OpenBLAS (env alone is not enough later).
 _BLAS_THREAD_CAP = 1 if bool(getattr(sys, "frozen", False)) else 4
@@ -28,8 +31,64 @@ import numpy as np
 # Fixed analysis rate — native 44.1/48 kHz makes STFT/beat_track extremely heavy
 # on dual-socket Xeon boxes (OpenBLAS oversubscription → appears hung forever).
 ANALYSIS_SAMPLE_RATE = 22050
+FFMPEG_DECODE_TIMEOUT_SEC = 90.0
+LIBROSA_LOAD_TIMEOUT_SEC = 45.0
+
+AudioContainerKind = Literal[
+    "mpeg",
+    "iso_bmff",
+    "wav",
+    "ogg",
+    "flac",
+    "webm",
+    "aac_adts",
+    "too_small",
+    "unknown",
+]
+
+# mpg123 / librosa-audioread can hang or mis-read these even when a player works.
+_FFMPEG_FIRST_CONTAINERS = frozenset({"iso_bmff", "webm", "aac_adts"})
+_MIN_AUDIO_BYTES = 256
 
 ProgressCallback = Callable[[str], None]
+
+
+def sniff_audio_container(path: str) -> AudioContainerKind:
+    """Classify the on-disk container from magic bytes, ignoring the file extension.
+
+    Suno (and some CDNs) sometimes deliver Opus/AAC inside an MP4/M4A body
+    saved as ``.mp3``. Windows will still play that file; mpg123/soundfile will
+    not, and librosa/audioread can hang indefinitely on it.
+    """
+    text = str(path or "").strip()
+    if not text:
+        return "unknown"
+    try:
+        size = Path(text).stat().st_size
+        with Path(text).open("rb") as handle:
+            head = handle.read(16)
+    except OSError:
+        return "unknown"
+    if size < _MIN_AUDIO_BYTES or len(head) < 8:
+        return "too_small"
+    if head[4:8] == b"ftyp":
+        return "iso_bmff"
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return "wav"
+    if head[:4] == b"OggS":
+        return "ogg"
+    if head[:4] == b"fLaC":
+        return "flac"
+    if head[:4] == b"\x1aE\xdf\xa3":
+        return "webm"
+    if head[:3] == b"ID3":
+        return "mpeg"
+    # AAC ADTS uses 12-bit 0xFFF sync; MP3 frames are typically 0xFFEx (not 0xFFF0+).
+    if len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xF6) == 0xF0:
+        return "aac_adts"
+    if head[0] == 0xFF and (head[1] & 0xE0) == 0xE0:
+        return "mpeg"
+    return "unknown"
 
 
 @dataclass(frozen=True)
@@ -122,6 +181,68 @@ def _resample_mono(y: np.ndarray, *, orig_sr: int, target_sr: int) -> tuple[np.n
     return np.asarray(out, dtype=np.float32).reshape(-1), "librosa"
 
 
+def _ffmpeg_bin() -> str:
+    from shared.lib.ffmpeg_paths import resolve_ffmpeg_path
+
+    return resolve_ffmpeg_path()
+
+
+def _ffprobe_bin() -> str:
+    from shared.lib.ffmpeg_paths import resolve_ffprobe_path
+
+    return resolve_ffprobe_path()
+
+
+def _load_via_ffmpeg(path_text: str, *, target_sr: int, timeout_sec: float = FFMPEG_DECODE_TIMEOUT_SEC) -> np.ndarray:
+    """Decode any ffmpeg-readable audio (Opus/AAC in MP4, MP3, WAV) to mono float32."""
+    ffmpeg = _ffmpeg_bin()
+    cmd = [
+        ffmpeg,
+        "-hide_banner",
+        "-nostdin",
+        "-v",
+        "error",
+        "-i",
+        path_text,
+        "-ac",
+        "1",
+        "-ar",
+        str(int(target_sr)),
+        "-f",
+        "f32le",
+        "pipe:1",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=float(timeout_sec),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Audio decode timed out after {int(timeout_sec)}s (ffmpeg). The file may be unreadable."
+        ) from exc
+    if proc.returncode != 0 or not proc.stdout:
+        detail = (proc.stderr or b"").decode("utf-8", errors="replace").strip()[:400]
+        raise RuntimeError(detail or "ffmpeg could not decode this audio file.")
+    y = np.frombuffer(proc.stdout, dtype=np.float32)
+    if y.size < int(target_sr) * 0.2:
+        raise RuntimeError("ffmpeg produced too little audio to export.")
+    return y
+
+
+def _load_via_librosa(path_text: str, *, target_sr: int, timeout_sec: float = LIBROSA_LOAD_TIMEOUT_SEC):
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(librosa.load, path_text, sr=int(target_sr), mono=True)
+        try:
+            return future.result(timeout=float(timeout_sec))
+        except FuturesTimeoutError as exc:
+            raise RuntimeError(
+                f"Audio decode timed out after {int(timeout_sec)}s (librosa). Skipping this track."
+            ) from exc
+
+
 def _load_mono_waveform(path: str, *, target_sr: int, on_progress: ProgressCallback | None = None) -> tuple[np.ndarray, int, str]:
     """Decode mono PCM for analysis. Prefer soundfile (reliable in frozen installs)."""
 
@@ -136,8 +257,26 @@ def _load_mono_waveform(path: str, *, target_sr: int, on_progress: ProgressCallb
 
     target = int(max(8000, int(target_sr)))
     path_text = str(path or "").strip()
-    _audio_diag(f"load_mono begin path={path_text!r} target_sr={target} exists={Path(path_text).is_file()}")
+    kind = sniff_audio_container(path_text)
+    _audio_diag(
+        f"load_mono begin path={path_text!r} target_sr={target} "
+        f"exists={Path(path_text).is_file()} container={kind}"
+    )
     _audio_diag(_probe_decode_backends())
+
+    if kind == "too_small":
+        raise RuntimeError("Audio file is too small to be a real track.")
+
+    # ISO-BMFF / WebM / raw AAC: skip mpg123/librosa — they hang or mis-read.
+    if kind in _FFMPEG_FIRST_CONTAINERS:
+        _progress("Loading audio (ffmpeg)...")
+        t0 = time.perf_counter()
+        y = _load_via_ffmpeg(path_text, target_sr=target)
+        _audio_diag(
+            f"ffmpeg.decode ok container={kind} duration={len(y) / max(1, target):.2f}s "
+            f"took_s={time.perf_counter() - t0:.2f}"
+        )
+        return np.asarray(y, dtype=np.float32), target, "ffmpeg"
 
     # 1) Prefer soundfile — avoids librosa backend discovery hangs in PyInstaller.
     try:
@@ -169,11 +308,24 @@ def _load_mono_waveform(path: str, *, target_sr: int, on_progress: ProgressCallb
         _audio_diag(f"soundfile path failed: {type(exc).__name__}: {exc}")
         _audio_diag(traceback.format_exc())
 
-    # 2) Fallback: librosa.load (audioread / other backends)
+    # 2) ffmpeg — handles MP3 that soundfile rejected, plus any leftover containers.
+    try:
+        _progress("Loading audio (ffmpeg)...")
+        t1 = time.perf_counter()
+        y = _load_via_ffmpeg(path_text, target_sr=target)
+        _audio_diag(
+            f"ffmpeg.decode ok duration={len(y) / max(1, target):.2f}s "
+            f"took_s={time.perf_counter() - t1:.2f}"
+        )
+        return np.asarray(y, dtype=np.float32), target, "ffmpeg"
+    except Exception as exc:
+        _audio_diag(f"ffmpeg path failed: {type(exc).__name__}: {exc}")
+
+    # 3) Last resort: librosa, but never block the export queue forever.
     _progress("Loading audio (librosa)...")
     t2 = time.perf_counter()
     try:
-        y, sr = librosa.load(path_text, sr=target, mono=True)
+        y, sr = _load_via_librosa(path_text, target_sr=target)
     except Exception as exc:
         _audio_diag(f"librosa.load FAILED after {time.perf_counter() - t2:.2f}s: {type(exc).__name__}: {exc}")
         _audio_diag(traceback.format_exc())
@@ -187,15 +339,45 @@ def _load_mono_waveform(path: str, *, target_sr: int, on_progress: ProgressCallb
     return np.asarray(y, dtype=np.float32), int(sr), "librosa"
 
 
+def _ffprobe_duration_sec(path_text: str) -> float:
+    probe = _ffprobe_bin()
+    cmd = [
+        probe,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        path_text,
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=20.0, check=False, text=True)
+    except (OSError, subprocess.TimeoutExpired):
+        return 0.0
+    if proc.returncode != 0:
+        return 0.0
+    try:
+        return max(0.0, float((proc.stdout or "").strip()))
+    except ValueError:
+        return 0.0
+
+
 def probe_audio_duration_sec(path: str) -> float:
     """Fast duration probe without building the full STFT analyzer.
 
     Used so first-play transport (seek bar / total time) works before FFT analysis
-    finishes. Prefer soundfile metadata; fall back to librosa path duration.
+    finishes. Prefer soundfile metadata; fall back to ffmpeg/ffprobe, never librosa
+    on ISO-BMFF (Opus-in-MP4) files that hang audioread.
     """
     text = str(path or "").strip()
     if not text or not Path(text).is_file():
         return 0.0
+    kind = sniff_audio_container(text)
+    if kind == "too_small":
+        return 0.0
+    if kind in _FFMPEG_FIRST_CONTAINERS:
+        return _ffprobe_duration_sec(text)
     try:
         import soundfile as sf
 
@@ -205,6 +387,9 @@ def probe_audio_duration_sec(path: str) -> float:
             return duration
     except Exception:
         pass
+    probed = _ffprobe_duration_sec(text)
+    if probed > 0:
+        return probed
     try:
         duration = float(librosa.get_duration(path=text))
         return max(0.0, duration)

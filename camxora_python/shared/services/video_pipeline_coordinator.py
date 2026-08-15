@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, QTimer
 from features.video.lib.desktop_video_automation import (
     select_next_auto_video_candidate,
 )
+from features.video.lib.export_run_defer import deferred_export_run_keys
 from features.video.lib.export_track_health import manual_pipeline_start_kwargs
 from features.video.services.pipeline_automation_service import PipelineAutomationService
 from shared.lib.qt_signals import disconnect_quietly
@@ -166,6 +167,7 @@ class VideoPipelineCoordinator(QObject):
             inspections=payload.inspections,
             runtime_by_key=payload.runtime_by_key,
             workspace=workspace,
+            skip_keys=deferred_export_run_keys(),
         )
         if candidate is None:
             if recovered_from_outage:
