@@ -14,7 +14,7 @@ from platform_api.main import create_app
 from platform_api.models.domain import User
 from platform_api.models.enums import UserRole, UserStatus
 from platform_api.ports.auth_port import TokenPair, TokenPayload
-from platform_api.routers.auth import _get_auth_service, _get_lockout, _get_current_user_id
+from platform_api.routers.auth import _get_auth_service, _get_invitation_code_service, _get_lockout, _get_current_user_id
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +37,7 @@ def mock_auth_service() -> AsyncMock:
             status=UserStatus.ACTIVE,
         )
     )
+    service._user_repo.add_product = AsyncMock(return_value=None)
     service.authenticate = AsyncMock(
         return_value=TokenPair(
             access_token="access.token.here",
@@ -53,6 +54,13 @@ def mock_auth_service() -> AsyncMock:
     )
     service.revoke_tokens = AsyncMock(return_value=None)
     service.hash_password = lambda pwd: f"hashed_{pwd}"
+    service.issue_token_pair_for_user = AsyncMock(
+        return_value=TokenPair(
+            access_token="access.token.here",
+            refresh_token="refresh.token.here",
+            expires_in=1800,
+        )
+    )
     return service
 
 
@@ -67,11 +75,20 @@ def mock_lockout() -> AsyncMock:
 
 
 @pytest.fixture
-def app(mock_auth_service: AsyncMock, mock_lockout: AsyncMock):
+def mock_invitation() -> AsyncMock:
+    service = AsyncMock()
+    service.get_signup_mode = AsyncMock(return_value="open")
+    service.consume_invitation_code = AsyncMock(return_value=None)
+    return service
+
+
+@pytest.fixture
+def app(mock_auth_service: AsyncMock, mock_lockout: AsyncMock, mock_invitation: AsyncMock):
     """Create a test app with dependency overrides."""
     application = create_app()
     application.dependency_overrides[_get_auth_service] = lambda: mock_auth_service
     application.dependency_overrides[_get_lockout] = lambda: mock_lockout
+    application.dependency_overrides[_get_invitation_code_service] = lambda: mock_invitation
     application.dependency_overrides[_get_current_user_id] = lambda: "user-123"
     yield application
     application.dependency_overrides.clear()
@@ -168,6 +185,45 @@ class TestRegister:
         assert data["email"] == "new@example.com"
         assert data["display_name"] == "New User"
         assert "id" in data
+        created_user = mock_auth_service._user_repo.create.await_args.args[0]
+        assert created_user.products == ["studio"]
+
+    async def test_register_music_web_skips_invite(
+        self,
+        client: AsyncClient,
+        mock_auth_service: AsyncMock,
+        mock_invitation: AsyncMock,
+    ) -> None:
+        mock_invitation.get_signup_mode = AsyncMock(return_value="invite_only")
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "listener@example.com",
+                "password": "ValidPass1",
+                "display_name": "Listener",
+                "product": "music_web",
+            },
+        )
+        assert response.status_code == 201
+        mock_invitation.consume_invitation_code.assert_not_awaited()
+        created_user = mock_auth_service._user_repo.create.await_args.args[0]
+        assert created_user.products == ["music_web"]
+
+    async def test_register_studio_invite_only_requires_code(
+        self,
+        client: AsyncClient,
+        mock_invitation: AsyncMock,
+    ) -> None:
+        mock_invitation.get_signup_mode = AsyncMock(return_value="invite_only")
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "studio@example.com",
+                "password": "ValidPass1",
+                "display_name": "Studio User",
+            },
+        )
+        assert response.status_code == 422
 
     async def test_register_duplicate_email(
         self, client: AsyncClient, mock_auth_service: AsyncMock

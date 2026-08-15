@@ -518,6 +518,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(streaming_admin.router, prefix=settings.api_v1_prefix)
     app.include_router(streaming_library.router, prefix=settings.api_v1_prefix)
 
+    from platform_api.routers import web_music
+
+    app.include_router(web_music.router, prefix=settings.api_v1_prefix)
+
     return app
 
 

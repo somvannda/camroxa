@@ -44,6 +44,7 @@ class User:
     suspension_reason: str | None = None
     deleted_at: datetime | None = None
     token_version: int = 0
+    products: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 
@@ -290,6 +291,7 @@ class SunoTask:
     downloaded_ok: bool = False
     downloaded_alt: bool = False
     error_message: str | None = None
+    source: str = "studio"
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 

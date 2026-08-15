@@ -2691,6 +2691,7 @@ class GenerationService:
         request: SunoRequest,
         *,
         skip_pricing: bool = False,
+        source: str = "studio",
     ) -> str:
         """Submit a music generation request to Suno.
 
@@ -2740,9 +2741,9 @@ class GenerationService:
             instrumental=request.instrumental,
         )
 
-        # Check for existing task with same hash
+        # Check for existing task with same hash (studio only — web Create is a new request each time)
         existing_task = await self._task_repo.find_by_hash(user_uuid, request_hash)
-        if existing_task is not None:
+        if existing_task is not None and str(source or "studio").strip().lower() != "web_music":
             logger.info(
                 "Duplicate Suno request detected for user %s (hash=%s). "
                 "Returning existing task %s",
@@ -2836,6 +2837,7 @@ class GenerationService:
             instrumental=request.instrumental,
             external_task_id=external_task_id,
             status=TaskStatus.PENDING,
+            source=str(source or "studio"),
         )
         await self._task_repo.create(task)
 
@@ -3533,6 +3535,18 @@ class GenerationService:
             lambda api_key: self._suno_client.check_status(external_task_id, api_key=api_key)
         )
         return parse_suno_generate_poll(response)
+
+    async def generate_suno_lyrics(self, prompt: str) -> tuple[str, str]:
+        """Generate lyrics (and optional title) via Suno for web Simple mode."""
+        wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
+
+        async def _run_with_key(api_key: str) -> tuple[str, str]:
+            return await self._suno_client.generate_lyrics_blocking(
+                prompt=prompt,
+                api_key=api_key,
+            )
+
+        return await wrapper.execute(_run_with_key)
 
     async def _call_suno_lyrics(self, *, prompt: str) -> str:
         """Generate lyrics via Suno API (submit + poll on the same pool key)."""

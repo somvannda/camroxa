@@ -17,10 +17,10 @@ export default function SiteHeader() {
     event.preventDefault();
     const value = query.trim();
     if (!value) {
-      router.push('/search');
+      router.push('/explore');
       return;
     }
-    router.push(`/search?q=${encodeURIComponent(value)}`);
+    router.push(`/explore?q=${encodeURIComponent(value)}`);
   }
 
   return (
@@ -40,7 +40,7 @@ export default function SiteHeader() {
                 Camxora
               </div>
               <div className="text-[10px] uppercase tracking-[0.22em] text-fuchsia-100/58">
-                Music Streaming
+                Music
               </div>
             </div>
           </Link>
@@ -57,7 +57,7 @@ export default function SiteHeader() {
 
           <div className="ml-auto flex items-center gap-2">
             <Link
-              href="/search"
+              href="/explore"
               className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-slate-200 md:hidden"
               aria-label="Search"
             >

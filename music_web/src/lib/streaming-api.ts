@@ -44,6 +44,7 @@ export type StreamTrack = {
   duration_seconds?: number | null;
   play_count?: number;
   lyrics?: string | null;
+  play_url?: string | null;
 };
 
 export type StreamAlbum = {

@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Camxora Music Phase 1: guest marketing home, login-gated `/create` and
+  `/explore`, Simple/Advanced Create (two clips, play, MP3 via sunoapi.org),
+  music_web-tagged signup. **5 free songs**, then Create shows Upgrade to Pro.
+  See `docs/changelog/2026-08-15-music-web-suno-create.md`.
 - Music-native sign-in/up, session via same-origin `/api` cookies; `/library` + `/profile` shells
 - Track/album play counts on album pages and track rows
 - Player seek scrubber, volume/mute, album queue prev/next + auto-advance

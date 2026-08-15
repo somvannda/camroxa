@@ -9,6 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Studio register sends `product: studio` / `X-Signup-Product` so music-web
+  signups stay a separate product tag on the same email. Completing channel
+  onboarding still adds `studio`. See
+  `docs/changelog/2026-08-15-music-web-suno-create.md`.
+
 ### Added
 
 - **Guides** presentation (`/dashboard/guides`): full walkthrough (intro → monetization → onboarding → YouTube → using CAMXORA → growth → coming soon → thank you); nav pinned above Sign out separator; slide footer callouts. See `docs/changelog/2026-08-03-user-portal-guides-deck.md`.
