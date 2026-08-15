@@ -61,7 +61,15 @@ export default function CreatePageClient() {
   const [style, setStyle] = useState('');
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [model, setModel] = useState<'V5' | 'V5_5'>('V5');
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [negativeTags, setNegativeTags] = useState('');
+  const [vocalGender, setVocalGender] = useState<'m' | 'f' | ''>('');
+  const [styleWeight, setStyleWeight] = useState<number | undefined>(undefined);
+  const [weirdnessConstraint, setWeirdnessConstraint] = useState<number | undefined>(undefined);
+  const [audioWeight, setAudioWeight] = useState<number | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [generatingDraft, setGeneratingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quota, setQuota] = useState<WebMusicQuota | null>(null);
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
@@ -126,7 +134,12 @@ export default function CreatePageClient() {
         style,
         title,
         prompt,
-        model: 'V5',
+        model,
+        negative_tags: negativeTags || undefined,
+        vocal_gender: vocalGender || undefined,
+        style_weight: styleWeight,
+        weirdness_constraint: weirdnessConstraint,
+        audio_weight: audioWeight,
       });
       setQuota(created.quota);
       const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
@@ -176,7 +189,14 @@ export default function CreatePageClient() {
               </button>
             ))}
           </div>
-          <span className="text-xs text-slate-500">V5</span>
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value as 'V5' | 'V5_5')}
+            className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white outline-none"
+          >
+            <option value="V5">V5</option>
+            <option value="V5_5">V5.5</option>
+          </select>
         </div>
 
         <div className="mb-4 flex flex-wrap gap-2">
@@ -261,9 +281,110 @@ export default function CreatePageClient() {
           </div>
         )}
 
-        <button type="button" disabled className="mt-4 text-left text-sm text-slate-500">
-          More Options
+        {mode === 'advanced' && (
+          <button
+            type="button"
+            disabled={generatingDraft}
+            onClick={async () => {
+              setGeneratingDraft(true);
+              setError(null);
+              try {
+                const response = await fetch('/api/v1/web-music/generate-draft', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'X-Portal-Context': 'user',
+                  },
+                  body: JSON.stringify({ prompt: style || 'Create a song' }),
+                });
+                if (!response.ok) throw new Error('Failed to generate draft');
+                const data = await response.json();
+                if (data.lyrics) setLyrics(data.lyrics);
+                if (data.title) setTitle(data.title);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Draft generation failed');
+              } finally {
+                setGeneratingDraft(false);
+              }
+            }}
+            className="mt-4 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-white disabled:opacity-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            {generatingDraft ? 'Generating...' : 'Auto-generate lyrics & title'}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+          className="mt-4 text-left text-sm text-slate-400 hover:text-white"
+        >
+          {showAdvancedOptions ? '− Hide' : '+'} Advanced Options
         </button>
+        {showAdvancedOptions && (
+          <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+            <label className="block space-y-1 text-sm">
+              <span className="text-slate-300">Negative Tags</span>
+              <input
+                value={negativeTags}
+                onChange={(e) => setNegativeTags(e.target.value)}
+                placeholder="choir, backing vocals, falsetto"
+                className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-white outline-none focus:border-violet-400/50"
+              />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-slate-300">Vocal Gender</span>
+              <select
+                value={vocalGender}
+                onChange={(e) => setVocalGender(e.target.value as 'm' | 'f' | '')}
+                className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-white outline-none focus:border-violet-400/50"
+              >
+                <option value="">Auto</option>
+                <option value="m">Male</option>
+                <option value="f">Female</option>
+              </select>
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-slate-300">Style Weight (0-1)</span>
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.01"
+                value={styleWeight ?? ''}
+                onChange={(e) => setStyleWeight(e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="0.65"
+                className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-white outline-none focus:border-violet-400/50"
+              />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-slate-300">Weirdness/Creativity (0-1)</span>
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.01"
+                value={weirdnessConstraint ?? ''}
+                onChange={(e) => setWeirdnessConstraint(e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="0.65"
+                className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-white outline-none focus:border-violet-400/50"
+              />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-slate-300">Audio Weight (0-1)</span>
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.01"
+                value={audioWeight ?? ''}
+                onChange={(e) => setAudioWeight(e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="0.65"
+                className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 text-white outline-none focus:border-violet-400/50"
+              />
+            </label>
+          </div>
+        )}
         <p className="mt-2 text-xs text-slate-500">Save to… My Workspace</p>
 
         <div className="mt-6 flex items-center justify-between gap-3">

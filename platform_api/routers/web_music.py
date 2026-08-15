@@ -11,7 +11,9 @@ from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
+from platform_api.middleware.abuse_detection import track_generation_attempt, track_quota_exceeded
 from platform_api.services.web_music_service import WebMusicService, content_disposition
+from platform_api.exceptions import QuotaExceededError
 
 router = APIRouter(prefix="/web-music", tags=["web-music"])
 
@@ -27,12 +29,17 @@ WebMusicServiceDep = Annotated[WebMusicService, Depends(_get_web_music_service)]
 
 class WebMusicGenerateRequest(BaseModel):
     mode: Literal["simple", "advanced"] = "advanced"
-    lyrics: str = ""
-    style: str = ""
-    title: str = ""
-    prompt: str = ""
+    lyrics: str = Field(default="", max_length=5000)
+    style: str = Field(default="", max_length=1000)
+    title: str = Field(default="", max_length=200)
+    prompt: str = Field(default="", max_length=500)
     instrumental: bool = False
     model: str = Field(default="V5", pattern=r"^(V5|V5_5)$")
+    negative_tags: str | None = Field(default=None, max_length=500)
+    vocal_gender: Literal["m", "f"] | None = None
+    style_weight: float | None = Field(default=None, ge=0.0, le=1.0)
+    weirdness_constraint: float | None = Field(default=None, ge=0.0, le=1.0)
+    audio_weight: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class WebMusicClipResponse(BaseModel):
@@ -96,9 +103,30 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
     )
 
 
+class WebMusicDraftRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=500)
+
+
+class WebMusicDraftResponse(BaseModel):
+    lyrics: str
+    title: str
+
+
 @router.get("/quota", response_model=WebMusicQuotaResponse)
 async def get_quota(ctx: CurrentUserDep, service: WebMusicServiceDep) -> WebMusicQuotaResponse:
     return WebMusicQuotaResponse(**await service.usage_today(UUID(ctx.user_id)))
+
+
+@router.post("/generate-draft", response_model=WebMusicDraftResponse)
+async def generate_draft(
+    body: WebMusicDraftRequest,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicDraftResponse:
+    await enforce_rate_limit(http_request, ctx.user_id)
+    lyrics, title = await service.generate_draft(body.prompt)
+    return WebMusicDraftResponse(lyrics=lyrics, title=title)
 
 
 @router.post("/generate", response_model=WebMusicGenerateResponse, status_code=202)
@@ -109,16 +137,29 @@ async def generate(
     service: WebMusicServiceDep,
 ) -> WebMusicGenerateResponse:
     await enforce_rate_limit(http_request, ctx.user_id)
-    payload = await service.generate(
-        UUID(ctx.user_id),
-        mode=body.mode,
-        lyrics=body.lyrics,
-        style=body.style,
-        title=body.title,
-        instrumental=body.instrumental,
-        model=body.model,
-        prompt=body.prompt,
-    )
+    await track_generation_attempt(http_request, ctx.user_id)
+    
+    try:
+        payload = await service.generate(
+            UUID(ctx.user_id),
+            mode=body.mode,
+            lyrics=body.lyrics,
+            style=body.style,
+            title=body.title,
+            instrumental=body.instrumental,
+            model=body.model,
+            prompt=body.prompt,
+            negative_tags=body.negative_tags,
+            vocal_gender=body.vocal_gender,
+            style_weight=body.style_weight,
+            weirdness_constraint=body.weirdness_constraint,
+            audio_weight=body.audio_weight,
+        )
+    except QuotaExceededError as exc:
+        # Track quota exceeded for abuse detection
+        await track_quota_exceeded(http_request, ctx.user_id)
+        raise
+    
     return WebMusicGenerateResponse(
         task_id=str(payload["task_id"]),
         status=str(payload["status"]),

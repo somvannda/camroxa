@@ -25,6 +25,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   profile); **5 free songs** then Upgrade to Pro (`web_music_free_daily_limit`,
   default 5, lifetime). Create polls sunoapi.org record-info if the callback
   is slow. See `docs/changelog/2026-08-15-music-web-suno-create.md`.
+- Music-web Suno advanced options: V5/V5.5 model selector, negative tags, vocal
+  gender, style weight, weirdness constraint, audio weight. Added
+  `POST /api/v1/web-music/generate-draft` for auto-generating lyrics and title.
+  See `docs/changelog/2026-08-15-music-web-suno-advanced-options.md`.
+- Music-web security hardening: IP-based abuse detection, rate limiting on all
+  endpoints, strict input validation, atomic quota enforcement, comprehensive
+  logging. Prevents account cycling, quota bypass, and API key theft.
+  See `docs/changelog/2026-08-15-music-web-security-hardening.md`.
+- Music-web geo-restrictions & daily limits: Changed to 5 songs **per day**
+  (was lifetime), added per-IP daily limits (5/day), Cambodia-only access,
+  VPN/proxy blocking. Enforces daily reset, prevents multi-account abuse.
+  See `docs/changelog/2026-08-15-music-web-geo-vpn-daily-limits.md`.
 
 ### Fixed
 

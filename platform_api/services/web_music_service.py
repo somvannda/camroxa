@@ -70,15 +70,18 @@ class WebMusicService:
         )
         return row is not None
 
-    async def _used_count(self, user_id: UUID) -> int:
+    async def _used_count(self, user_id: UUID, *, usage_date: date | None = None) -> int:
+        """Get generation count for user on a specific date (default today)."""
+        day = usage_date or billing_today()
         return int(
             await self._pool.fetchval(
                 """
-                SELECT COALESCE(SUM(generation_count), 0)::int
+                SELECT COALESCE(generation_count, 0)::int
                 FROM web_music_daily_usage
-                WHERE user_id = $1
+                WHERE user_id = $1 AND usage_date = $2
                 """,
                 user_id,
+                day,
             )
             or 0
         )
@@ -101,40 +104,46 @@ class WebMusicService:
         }
 
     async def usage_today(self, user_id: UUID, *, usage_date: date | None = None) -> dict[str, Any]:
-        del usage_date
+        day = usage_date or billing_today()
         limit = await self.daily_limit()
         is_pro = await self._has_pro(user_id)
-        used = await self._used_count(user_id)
+        used = await self._used_count(user_id, usage_date=day)
         return self._quota_payload(limit=limit, used=used, is_pro=is_pro)
+
+    async def generate_draft(self, prompt: str) -> tuple[str, str]:
+        """Generate lyrics and title using Suno lyrics API."""
+        return await self._generation.generate_suno_lyrics(prompt)
 
     async def _reserve_daily_slot(self, user_id: UUID) -> dict[str, Any]:
         limit = await self.daily_limit()
         is_pro = await self._has_pro(user_id)
+        day = billing_today()
+        
         if is_pro:
-            used = await self._used_count(user_id)
+            used = await self._used_count(user_id, usage_date=day)
+            logger.info(f"Pro user {user_id} generated song today, used: {used}")
             return self._quota_payload(limit=limit, used=used, is_pro=True)
         if limit <= 0:
+            logger.warning(f"User {user_id} attempted generation with 0 limit")
             raise QuotaExceededError(
                 "Upgrade to Pro to create songs.",
                 details={"limit": 0, "used": 0, "requires_upgrade": True},
             )
-        day = billing_today()
+        
+        # Atomic quota check and increment with PostgreSQL transaction
+        # Check ONLY today's usage (daily reset), not lifetime
         row = await self._pool.fetchrow(
             """
             INSERT INTO web_music_daily_usage (user_id, usage_date, generation_count)
             SELECT $1, $2, 1
             WHERE (
-                SELECT COALESCE(SUM(generation_count), 0)
+                SELECT COALESCE(generation_count, 0)
                 FROM web_music_daily_usage
-                WHERE user_id = $1
+                WHERE user_id = $1 AND usage_date = $2
             ) < $3
             ON CONFLICT (user_id, usage_date)
             DO UPDATE SET generation_count = web_music_daily_usage.generation_count + 1
-            WHERE (
-                SELECT COALESCE(SUM(generation_count), 0)
-                FROM web_music_daily_usage
-                WHERE user_id = $1
-            ) < $3
+            WHERE web_music_daily_usage.generation_count < $3
             RETURNING generation_count
             """,
             user_id,
@@ -142,12 +151,16 @@ class WebMusicService:
             limit,
         )
         if row is None:
-            used = await self._used_count(user_id)
+            used = await self._used_count(user_id, usage_date=day)
+            logger.warning(
+                f"User {user_id} hit daily quota limit: {used}/{limit} (quota exhausted for today)"
+            )
             raise QuotaExceededError(
-                f"You've used your {limit} free songs. Upgrade to Pro to keep creating.",
+                f"You've used your {limit} free songs today. Try again tomorrow or upgrade to Pro.",
                 details={"limit": limit, "used": used, "requires_upgrade": True},
             )
-        used = await self._used_count(user_id)
+        used = await self._used_count(user_id, usage_date=day)
+        logger.info(f"User {user_id} reserved slot today: {used}/{limit} songs used")
         return self._quota_payload(limit=limit, used=used, is_pro=False)
 
     async def _release_daily_slot(self, user_id: UUID) -> None:
@@ -173,6 +186,11 @@ class WebMusicService:
         instrumental: bool,
         model: str,
         prompt: str,
+        negative_tags: str | None = None,
+        vocal_gender: str | None = None,
+        style_weight: float | None = None,
+        weirdness_constraint: float | None = None,
+        audio_weight: float | None = None,
     ) -> dict[str, Any]:
         normalized_model = str(model or "V5").strip().upper()
         if normalized_model not in _VALID_MODELS:
@@ -211,15 +229,22 @@ class WebMusicService:
 
         quota = await self._reserve_daily_slot(user_id)
         try:
+            suno_request = SunoRequest(
+                model=normalized_model,
+                title=safe_title,
+                lyrics=safe_lyrics if not instrumental else (safe_lyrics or "Instrumental"),
+                style=safe_style,
+                instrumental=instrumental,
+                negative_tags=str(negative_tags).strip() if negative_tags else None,
+                vocal_gender=vocal_gender.lower() if vocal_gender and vocal_gender.lower() in ("m", "f") else None,
+                style_weight=float(style_weight) if style_weight is not None and 0 <= style_weight <= 1 else None,
+                weirdness_constraint=float(weirdness_constraint) if weirdness_constraint is not None and 0 <= weirdness_constraint <= 1 else None,
+                audio_weight=float(audio_weight) if audio_weight is not None and 0 <= audio_weight <= 1 else None,
+            )
+            
             task_id = await self._generation.submit_suno(
                 str(user_id),
-                SunoRequest(
-                    model=normalized_model,
-                    title=safe_title,
-                    lyrics=safe_lyrics if not instrumental else (safe_lyrics or "Instrumental"),
-                    style=safe_style,
-                    instrumental=instrumental,
-                ),
+                suno_request,
                 skip_pricing=True,
                 source=SUNO_TASK_SOURCE_WEB_MUSIC,
             )
