@@ -17,6 +17,7 @@ from platform_api.repositories.credit_repo import (
     CreditRepository,
     DEFAULT_PAGE_SIZE,
     MAX_WALLET_BALANCE,
+    meter_bucket_for_operation,
 )
 
 
@@ -577,3 +578,14 @@ class TestRecordLedgerEntry:
     ) -> None:
         with pytest.raises(ValidationError):
             await repo.record_ledger_entry(user_id, -1, "debit", "bad")
+
+
+def test_meter_bucket_maps_music_to_song_not_music_key() -> None:
+    """User Spent chips read meters['song']; usage_tracking stores 'music'."""
+    assert meter_bucket_for_operation("music") == "song"
+    assert meter_bucket_for_operation("draft") == "draft"
+    assert meter_bucket_for_operation("background_image") == "image"
+    assert meter_bucket_for_operation("thumbnail_image") == "image"
+    assert meter_bucket_for_operation("video") == "video"
+    assert meter_bucket_for_operation("video_manual") == "video"
+    assert meter_bucket_for_operation("video_merge") == "merge"

@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Admin User Spent Song chip (`S`) was always 0% because usage is stored as
+  `music` and the page reads `song`. Also fold `video_manual` into the Video
+  meter. See `docs/changelog/2026-08-16-user-spent-song-meter.md`.
+
 - Pipeline Ops no longer treats leftover streaming-archive 403s (expired
   `cdn1.suno.ai` MP3 URLs) as a live pipeline Error. Those stay on the
   streaming chip; music+image complete rows promote to Done. Desktop Progress

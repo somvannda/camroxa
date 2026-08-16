@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **User Spent** Song allowance (`S`) no longer stuck at 0%. API now maps
+  tracked `music` usage onto the song meter. See
+  `docs/changelog/2026-08-16-user-spent-song-meter.md`.
+
 - **Pipeline Ops**: leftover catalog-archive 403s no longer fill the board as
   live Error rows with a 1s age. Streaming chip still shows `Failed X/Y`. See
   `docs/changelog/2026-08-16-pipeline-stale-streaming-error.md`.
