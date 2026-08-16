@@ -248,24 +248,37 @@ class MembershipCard(QFrame):
         profile_used = me.channel_profile_count or len(profiles)
         self._profiles_bar.set_metric(allowance, percent_of(profile_used, profile_allowance))
 
-        song_quota = max(
-            (license_info.monthly_song_quota if license_info else None) or stats.songs_quota or 0,
-            1,
-        )
-        songs_remaining = (
-            license_info.songs_remaining
-            if license_info and license_info.songs_remaining is not None
-            else stats.songs_remaining
-            if stats.songs_remaining is not None
-            else 0
-        )
-        songs_used = max(song_quota - songs_remaining, 0)
-        songs_value = (
-            f"{songs_remaining} remaining"
-            if license_info and license_info.songs_remaining is not None
-            else "Not provided"
-        )
-        self._songs_bar.set_metric(songs_value, percent_of(songs_used, song_quota))
+        quota = data.quota
+        song_quota = None
+        for candidate in (
+            quota.songs_quota if quota is not None else None,
+            stats.songs_quota,
+            license_info.monthly_song_quota if license_info else None,
+        ):
+            if candidate is not None:
+                song_quota = int(candidate)
+                break
+        songs_remaining = None
+        for candidate in (
+            quota.songs_remaining if quota is not None else None,
+            stats.songs_remaining,
+            license_info.songs_remaining if license_info else None,
+        ):
+            if candidate is not None:
+                songs_remaining = int(candidate)
+                break
+        if song_quota is None:
+            songs_used = 0
+            songs_value = "Not on plan"
+            songs_pct = 0
+        else:
+            rem = 0 if songs_remaining is None else max(0, songs_remaining)
+            songs_used = max(0, song_quota - rem)
+            songs_value = (
+                f"{format_compact_number(songs_used)} / {format_compact_number(song_quota)}"
+            )
+            songs_pct = percent_of(songs_used, max(song_quota, 1))
+        self._songs_bar.set_metric(songs_value, songs_pct)
 
         wallet = (
             license_info.wallet_balance
@@ -275,9 +288,7 @@ class MembershipCard(QFrame):
         self._plan.set_value(me.plan_name or "No active plan")
         self._credits.set_value(format_compact_number(wallet))
         self._song_quota.set_value(
-            str(license_info.monthly_song_quota)
-            if license_info and license_info.monthly_song_quota is not None
-            else "Not provided"
+            format_compact_number(song_quota) if song_quota is not None else "Not provided"
         )
         expiry = license_info.expiration_date if license_info else None
         self._expiry.set_value(format_friendly_expiry(expiry))
