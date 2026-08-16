@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Admin period quota top-ups (image/song/draft/etc.) are now honored by
+  subscription coverage. Previously the admin UI showed remaining allowance
+  but generation still demanded wallet credits. See
+  `docs/changelog/2026-08-16-image-topup-plan-cover.md`.
+
 - Admin User Spent Song chip (`S`) was always 0% because usage is stored as
   `music` and the page reads `song`. Also fold `video_manual` into the Video
   meter. See `docs/changelog/2026-08-16-user-spent-song-meter.md`.

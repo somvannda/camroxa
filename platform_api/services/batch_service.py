@@ -471,6 +471,9 @@ class BatchService:
 
                 period_start = self._enforcement_service._period_start(ctx, billing_today())
                 if ctx and ctx.plan is not None:
+                    extras = await self._enforcement_service.period_quota_topup_extras(
+                        user_uuid, period_start
+                    )
                     covered_by_subscription = await subscription_covers_batch(
                         plan=ctx.plan,
                         user_id=user_uuid,
@@ -480,6 +483,7 @@ class BatchService:
                         image_jobs=total_image_jobs,
                         draft_ops=total_draft_ops,
                         addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
+                        topup_extras=extras,
                     )
                 if not covered_by_subscription and wallet_balance < total_wallet_cost:
                     required_credits = units_to_credits(total_wallet_cost)

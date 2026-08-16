@@ -409,11 +409,10 @@ class UsageEnforcementService:
         if (
             plan is not None
             and not wallet_daily_overage
-            and await subscription_covers_operation(
+            and await self._subscription_covers_operation(
                 plan=plan,
                 user_id=user_id,
                 operation_type=operation_type,
-                usage_repo=self._usage_repo,
                 period_start=period_start,
                 addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
             )
@@ -559,11 +558,10 @@ class UsageEnforcementService:
         if (
             plan is not None
             and not wallet_daily_overage
-            and await subscription_covers_operation(
+            and await self._subscription_covers_operation(
                 plan=plan,
                 user_id=user_id,
                 operation_type=operation_type,
-                usage_repo=self._usage_repo,
                 period_start=period_start,
                 addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
             )
@@ -699,6 +697,7 @@ class UsageEnforcementService:
                 subscription_context=ctx,
             )
 
+        extras = await self.period_quota_topup_extras(user_id, period_start)
         if plan is not None and await subscription_covers_batch(
             plan=plan,
             user_id=user_id,
@@ -708,6 +707,7 @@ class UsageEnforcementService:
             image_jobs=image_jobs,
             draft_ops=estimated_drafts,
             addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
+            topup_extras=extras,
         ):
             credit_log.log_subscription_quota(
                 user_id=user_id,
@@ -1168,11 +1168,10 @@ class UsageEnforcementService:
         plan = ctx.plan if ctx else None
         period_start = self._period_start(ctx, billing_today())
 
-        if plan is not None and await subscription_covers_operation(
+        if plan is not None and await self._subscription_covers_operation(
             plan=plan,
             user_id=user_id,
             operation_type=operation_type,
-            usage_repo=self._usage_repo,
             period_start=period_start,
             after_reservation=True,
             addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
@@ -1258,11 +1257,10 @@ class UsageEnforcementService:
         plan = ctx.plan if ctx else None
         period_start = self._period_start(ctx, billing_today())
 
-        if plan is not None and await subscription_covers_operation(
+        if plan is not None and await self._subscription_covers_operation(
             plan=plan,
             user_id=user_id,
             operation_type=operation_type,
-            usage_repo=self._usage_repo,
             period_start=period_start,
             after_reservation=True,
             addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
@@ -1450,11 +1448,10 @@ class UsageEnforcementService:
         if (
             plan is not None
             and not wallet_daily_overage
-            and await subscription_covers_operation(
+            and await self._subscription_covers_operation(
                 plan=plan,
                 user_id=user_id,
                 operation_type=operation_type,
-                usage_repo=self._usage_repo,
                 period_start=period_start,
                 addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
             )
@@ -2024,6 +2021,56 @@ class UsageEnforcementService:
         Per-channel song/image/draft limits are unchanged (capacity grows via channels).
         """
         return effective_daily_limit_for_operation(plan, addon_slots, operation_type)
+
+    async def period_quota_topup_extras(
+        self, user_id: UUID, period_start: date
+    ) -> dict[str, int]:
+        """Admin period quota bumps keyed by quota_kind."""
+        svc = self._quota_topup_service
+        if svc is None:
+            return {}
+        getter = getattr(svc, "extras_for_period", None)
+        if getter is None:
+            return {}
+        return dict(await getter(user_id, period_start) or {})
+
+    async def _topup_extra_for_operation(
+        self,
+        user_id: UUID,
+        period_start: date,
+        operation_type: str,
+    ) -> int:
+        from platform_api.services.quota_topup_service import quota_kind_for_operation
+
+        kind = quota_kind_for_operation(operation_type)
+        if kind is None:
+            return 0
+        extras = await self.period_quota_topup_extras(user_id, period_start)
+        return int(extras.get(kind, 0) or 0)
+
+    async def _subscription_covers_operation(
+        self,
+        *,
+        plan: Plan,
+        user_id: UUID,
+        operation_type: str,
+        period_start: date,
+        addon_slots: int,
+        after_reservation: bool = False,
+    ) -> bool:
+        extra = await self._topup_extra_for_operation(
+            user_id, period_start, operation_type
+        )
+        return await subscription_covers_operation(
+            plan=plan,
+            user_id=user_id,
+            operation_type=operation_type,
+            usage_repo=self._usage_repo,
+            period_start=period_start,
+            after_reservation=after_reservation,
+            addon_slots=addon_slots,
+            topup_extra=extra,
+        )
 
     async def _monthly_limit_with_topup(
         self,

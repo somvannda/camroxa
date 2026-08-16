@@ -210,6 +210,14 @@ class QuotaTopupService:
             await self._topup_repo.sum_extra_units(user_id, period_start, kind) or 0
         )
 
+    async def extras_for_period(
+        self,
+        user_id: UUID,
+        period_start: date,
+    ) -> dict[str, int]:
+        """All quota-kind extras for one billing period."""
+        return await self._topup_repo.sum_extras_for_period(user_id, period_start)
+
     async def effective_monthly_limit_with_topup(
         self,
         *,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from typing import Any, Protocol
 from uuid import UUID
@@ -177,6 +178,13 @@ def monthly_limit_for_operation(
     )
 
 
+def apply_topup_extra(limit: int | None, extra: int | None) -> int | None:
+    """Add an admin period top-up onto a scaled monthly limit."""
+    if limit is None:
+        return None
+    return int(limit) + max(0, int(extra or 0))
+
+
 async def subscription_covers_operation(
     *,
     plan: Plan,
@@ -186,6 +194,7 @@ async def subscription_covers_operation(
     period_start: date,
     after_reservation: bool = False,
     addon_slots: int = 0,
+    topup_extra: int = 0,
 ) -> bool:
     """Return True when an active subscriber should not be charged from wallet.
 
@@ -195,14 +204,16 @@ async def subscription_covers_operation(
     Soft monthly overage (count past limit) still returns False → wallet.
 
     ``addon_slots`` scales monthly limits the same way as quota enforcement /
-    entitlement display (profile add-ons).
+    entitlement display (profile add-ons). ``topup_extra`` is the admin period
+    bump for this quota kind (must match ``_enforce_plan_quotas``).
     """
     if not is_subscription_plan(plan):
         return False
 
     quota_op = quota_operation_type(operation_type)
-    monthly_limit = monthly_limit_for_operation(
-        plan, operation_type, addon_slots=addon_slots
+    monthly_limit = apply_topup_extra(
+        monthly_limit_for_operation(plan, operation_type, addon_slots=addon_slots),
+        topup_extra,
     )
     if monthly_limit is None:
         return True
@@ -250,6 +261,7 @@ async def subscription_covers_batch(
     image_jobs: int = 0,
     draft_ops: int | None = None,
     addon_slots: int = 0,
+    topup_extras: Mapping[str, int] | None = None,
 ) -> bool:
     """Return True when a batch fits entirely within subscription quotas.
 
@@ -260,14 +272,23 @@ async def subscription_covers_batch(
     Monthly limits are scaled by ``addon_slots`` (same multiplier as
     entitlement / ``_enforce_plan_quotas``). Without this, add-on accounts
     falsely fall through to wallet when base-plan meters look full.
+
+    ``topup_extras`` is ``quota_kind`` → extra units for the current period
+    (``draft`` / ``music`` / ``image`` / ``video`` / ``merge``).
     """
     if not is_subscription_plan(plan):
         return False
 
+    extras = topup_extras or {}
+
+    def _extra(kind: str) -> int:
+        return max(0, int(extras.get(kind, 0) or 0))
+
     estimated_drafts = draft_ops if draft_ops is not None else max(0, song_count * 2 + 1)
     if estimated_drafts > 0:
-        draft_limit = monthly_limit_for_operation(
-            plan, "draft", addon_slots=addon_slots
+        draft_limit = apply_topup_extra(
+            monthly_limit_for_operation(plan, "draft", addon_slots=addon_slots),
+            _extra("draft"),
         )
         if draft_limit is not None:
             draft_count = await usage_repo.get_monthly_count(
@@ -277,8 +298,9 @@ async def subscription_covers_batch(
                 return False
 
     if song_count > 0:
-        song_limit = monthly_limit_for_operation(
-            plan, "music", addon_slots=addon_slots
+        song_limit = apply_topup_extra(
+            monthly_limit_for_operation(plan, "music", addon_slots=addon_slots),
+            _extra("music"),
         )
         if song_limit is not None:
             music_count = await usage_repo.get_monthly_count(
@@ -288,8 +310,11 @@ async def subscription_covers_batch(
                 return False
 
     if image_jobs > 0:
-        image_limit = monthly_limit_for_operation(
-            plan, "background_image", addon_slots=addon_slots
+        image_limit = apply_topup_extra(
+            monthly_limit_for_operation(
+                plan, "background_image", addon_slots=addon_slots
+            ),
+            _extra("image"),
         )
         if image_limit is not None:
             image_count = await usage_repo.get_monthly_count(
