@@ -9,7 +9,12 @@ from features.profile.views.profile_view import ProfileView
 from features.profile.widgets.membership_metric_bar import MembershipMetricBar
 from features.profile.widgets.profile_cards import EMPTY_PROFILES, LOADING_PROFILES
 from shared.models.auth import ProfileResponse, UserMeResponse
-from shared.models.platform import DashboardOverview, DashboardStatsResponse, ValidateLicenseResponse
+from shared.models.platform import (
+    DashboardOverview,
+    DashboardStatsResponse,
+    QuotaStatusResponse,
+    ValidateLicenseResponse,
+)
 from shared.services.platform_api import PlatformApi
 
 
@@ -64,6 +69,10 @@ def _sample_overview(*, profiles: list[ProfileResponse] | None = None) -> Dashbo
             images_generated=19,
             videos_generated=3,
         ),
+        quota=QuotaStatusResponse(
+            songs_remaining=76,
+            songs_quota=120,
+        ),
     )
 
 
@@ -96,7 +105,7 @@ def test_success_bind_membership_activity_and_profiles(qapp: QApplication) -> No
     assert view._membership._song_quota._value.text() == "120"
     assert "2026" in view._membership._expiry._value.text()
     assert "Dec" in view._membership._expiry._value.text()
-    assert view._membership._songs_bar._value.text() == "76 remaining"
+    assert view._membership._songs_bar._value.text() == "44 / 120"
     assert view._profiles._table.item(0, 0).text() == "OK Channel"
     assert view._profiles._table.item(0, 3).text() == "Background + Thumbnail"
     assert view._profiles._table.item(0, 4).text() == "public"
@@ -111,7 +120,22 @@ def test_empty_profiles(qapp: QApplication) -> None:
 
 def test_membership_metric_bar_layout(qapp: QApplication) -> None:
     bar = MembershipMetricBar("Monthly songs", bar_color="sky")
-    bar.set_metric("76 remaining", 37)
-    assert bar._value.text() == "76 remaining"
+    bar.set_metric("44 / 120", 37)
+    assert bar._value.text() == "44 / 120"
     assert bar._bar.value() == 37
     assert "MONTHLY SONGS" in bar._label.text().upper()
+
+
+def test_membership_uses_scaled_song_quota(qapp: QApplication) -> None:
+    overview = _sample_overview()
+    overview.license.monthly_song_quota = 300
+    overview.license.songs_remaining = 467
+    overview.stats.songs_quota = 1500
+    overview.stats.songs_remaining = 467
+    overview.quota.songs_quota = 1500
+    overview.quota.songs_remaining = 467
+
+    view = ProfileView(PlatformApi())
+    view._apply_overview(overview)
+    assert view._membership._songs_bar._value.text() == "1,033 / 1,500"
+    assert view._membership._song_quota._value.text() == "1,500"

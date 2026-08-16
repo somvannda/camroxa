@@ -161,9 +161,10 @@ class AppShellWidget(QWidget):
         credits = f"{user.credit_balance:,} credits"
         self._sidebar.set_account_summary(display_name, user.plan_name, credits)
         profile_count = user.channel_profile_count
+        profile_cap = user.effective_profile_allowance or user.profile_allowance
         allowance = (
-            f"{profile_count} / {user.profile_allowance} profiles"
-            if user.profile_allowance is not None
+            f"{profile_count} / {profile_cap} profiles"
+            if profile_cap is not None
             else f"{profile_count} profiles"
         )
         self._status_bar.set_summary(credits=credits, allowance=allowance)

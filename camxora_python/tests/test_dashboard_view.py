@@ -57,6 +57,8 @@ def _sample_overview() -> DashboardOverview:
             songs_remaining=30,
             songs_quota=40,
             images_generated=3,
+            studio_exports=0,
+            manual_exports=2,
             videos_generated=2,
             usage_by_day=[
                 DailyUsage(date="2026-07-01", songs=1, images=0, videos=0),
@@ -134,6 +136,55 @@ def test_songs_bar_value_total_format(qapp: QApplication) -> None:
     row.set_amounts(30, 40)
     assert row._amount.text() == "30 / 40"
     assert row._percent.text() == "75%"
+
+
+def test_remaining_card_shows_used_over_quota(qapp: QApplication) -> None:
+    view = DashboardView(PlatformApi())
+    view._apply_overview(_sample_overview())
+    # 40 quota, 30 remaining → 10 used
+    assert view._remaining._songs._amount.text() == "10 / 40"
+    assert view._remaining._songs._percent.text() == "25%"
+    assert view._remaining._song_quota._value.text() == "10 of 40 used"
+    assert view._remaining._credits._amount.text() == "25 / 100"
+
+
+def test_remaining_card_uses_scaled_quota_not_base_plan(qapp: QApplication) -> None:
+    overview = _sample_overview()
+    overview.license.monthly_song_quota = 300
+    overview.license.songs_remaining = 467
+    overview.license.monthly_image_quota = 120
+    overview.license.images_remaining = 189
+    overview.quota.songs_quota = 1500
+    overview.quota.songs_remaining = 467
+    overview.quota.images_quota = 600
+    overview.quota.images_remaining = 189
+    overview.quota.drafts_quota = 6300
+    overview.quota.drafts_remaining = 4086
+    overview.stats.songs_quota = 1500
+    overview.stats.songs_remaining = 467
+
+    view = DashboardView(PlatformApi())
+    view._apply_overview(overview)
+    assert view._remaining._songs._amount.text() == "1,033 / 1,500"
+    assert view._remaining._images._amount.text() == "411 / 600"
+    assert view._remaining._drafts._amount.text() == "2,214 / 6,300"
+    assert view._remaining._song_quota._value.text() == "1,033 of 1,500 used"
+
+
+def test_remaining_card_exhausted_quota_reads_as_used(qapp: QApplication) -> None:
+    overview = _sample_overview()
+    overview.license.monthly_song_quota = 300
+    overview.license.songs_remaining = 0
+    overview.quota.songs_quota = 300
+    overview.quota.songs_remaining = 0
+    overview.stats.songs_quota = 300
+    overview.stats.songs_remaining = 0
+
+    view = DashboardView(PlatformApi())
+    view._apply_overview(overview)
+    assert view._remaining._songs._amount.text() == "300 / 300"
+    assert view._remaining._songs._percent.text() == "100%"
+    assert view._remaining._song_quota._value.text() == "300 of 300 used"
 
 
 def test_activity_loading_and_empty(qapp: QApplication) -> None:

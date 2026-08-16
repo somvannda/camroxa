@@ -1,4 +1,4 @@
-"""Remaining This Month card."""
+"""Usage This Month card."""
 
 from __future__ import annotations
 
@@ -10,13 +10,29 @@ from shared.models.platform import DashboardOverview
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 
 
-def _xy(remaining: int | None, quota: int | None) -> str:
-    if remaining is None and quota is None:
-        return "Not on plan"
-    left = format_compact_number(remaining if remaining is not None else 0)
+def _first_int(*values: int | None) -> int | None:
+    for value in values:
+        if value is not None:
+            return int(value)
+    return None
+
+
+def _used_of_quota(remaining: int | None, quota: int | None) -> tuple[int, int | None]:
+    """Return (used, quota) so meters read consumed / allowance."""
     if quota is None:
-        return f"{left} left"
-    return f"{left} of {format_compact_number(quota)} left"
+        return 0, None
+    rem = 0 if remaining is None else max(0, int(remaining))
+    used = max(0, int(quota) - rem)
+    return used, int(quota)
+
+
+def _xy_used(used: int | None, quota: int | None) -> str:
+    if used is None and quota is None:
+        return "Not on plan"
+    amount = format_compact_number(used if used is not None else 0)
+    if quota is None:
+        return f"{amount} used"
+    return f"{amount} of {format_compact_number(quota)} used"
 
 
 class RemainingMonthCard(QFrame):
@@ -28,11 +44,11 @@ class RemainingMonthCard(QFrame):
         root.setContentsMargins(14, 12, 14, 12)
         root.setSpacing(6)
 
-        title = QLabel("REMAINING THIS MONTH")
+        title = QLabel("USAGE THIS MONTH")
         title.setObjectName(SUBTITLE_LABEL_ID)
         root.addWidget(title)
 
-        hint = QLabel("How much of your plan allowance is still available.")
+        hint = QLabel("Used vs your plan allowance this billing period.")
         hint.setObjectName(SUBTITLE_LABEL_ID)
         hint.setWordWrap(True)
         root.addWidget(hint)
@@ -93,72 +109,76 @@ class RemainingMonthCard(QFrame):
         quota = data.quota
 
         credits_total = max(stats.credits_total, 1)
-        self._credits.set_amounts(stats.credits_remaining, credits_total)
+        self._credits.set_amounts(int(stats.credits_spent), credits_total)
 
-        draft_quota = (quota.drafts_quota if quota else None) or stats.drafts_quota
-        drafts_value = (
-            quota.drafts_remaining
-            if quota and quota.drafts_remaining is not None
-            else stats.drafts_remaining
-            if stats.drafts_remaining is not None
-            else 0
+        draft_quota = _first_int(
+            quota.drafts_quota if quota else None,
+            stats.drafts_quota,
         )
-        self._drafts.set_amounts(drafts_value, max(draft_quota or 0, 1))
+        drafts_remaining = _first_int(
+            quota.drafts_remaining if quota else None,
+            stats.drafts_remaining,
+        )
+        drafts_used, draft_quota = _used_of_quota(drafts_remaining, draft_quota)
+        self._drafts.set_amounts(drafts_used, max(draft_quota or 0, 1))
 
-        song_quota = (license_info.monthly_song_quota if license_info else None) or stats.songs_quota
-        songs_value = (
-            license_info.songs_remaining
-            if license_info and license_info.songs_remaining is not None
-            else stats.songs_remaining
-            if stats.songs_remaining is not None
-            else 0
+        # Prefer /quota-status (add-on scaled) over /licenses/validate (base plan).
+        song_quota = _first_int(
+            quota.songs_quota if quota else None,
+            stats.songs_quota,
+            license_info.monthly_song_quota if license_info else None,
         )
-        self._songs.set_amounts(songs_value, max(song_quota or 0, 1))
+        songs_remaining = _first_int(
+            quota.songs_remaining if quota else None,
+            stats.songs_remaining,
+            license_info.songs_remaining if license_info else None,
+        )
+        songs_used, song_quota = _used_of_quota(songs_remaining, song_quota)
+        self._songs.set_amounts(songs_used, max(song_quota or 0, 1))
 
-        image_quota = (
-            (license_info.monthly_image_quota if license_info else None)
-            or (quota.images_quota if quota else None)
-            or stats.images_quota
+        image_quota = _first_int(
+            quota.images_quota if quota else None,
+            stats.images_quota,
+            license_info.monthly_image_quota if license_info else None,
         )
-        images_value = (
-            license_info.images_remaining
-            if license_info and license_info.images_remaining is not None
-            else quota.images_remaining
-            if quota and quota.images_remaining is not None
-            else stats.images_remaining
-            if stats.images_remaining is not None
-            else 0
+        images_remaining = _first_int(
+            quota.images_remaining if quota else None,
+            stats.images_remaining,
+            license_info.images_remaining if license_info else None,
         )
-        self._images.set_amounts(images_value, max(image_quota or 0, 1))
+        images_used, image_quota = _used_of_quota(images_remaining, image_quota)
+        self._images.set_amounts(images_used, max(image_quota or 0, 1))
 
         video_quota = quota.videos_quota if quota else None
-        videos_value = (
-            quota.videos_remaining if quota and quota.videos_remaining is not None else 0
+        videos_remaining = (
+            quota.videos_remaining if quota and quota.videos_remaining is not None else None
         )
-        if video_quota is not None:
-            self._videos.set_amounts(videos_value, max(video_quota, 1))
-            self._videos.show()
-        else:
-            self._videos.set_amounts(0, 1)
-            self._videos.show()
+        videos_used, video_quota = _used_of_quota(videos_remaining, video_quota)
+        self._videos.set_amounts(videos_used, max(video_quota or 0, 1))
+        self._videos.show()
 
         merge_quota = quota.merges_quota if quota else None
-        merges_value = (
-            quota.merges_remaining if quota and quota.merges_remaining is not None else 0
+        merges_remaining = (
+            quota.merges_remaining if quota and quota.merges_remaining is not None else None
         )
-        if merge_quota is not None:
-            self._merges.set_amounts(merges_value, max(merge_quota, 1))
-            self._merges.show()
-        else:
-            self._merges.set_amounts(0, 1)
-            self._merges.show()
+        merges_used, merge_quota = _used_of_quota(merges_remaining, merge_quota)
+        self._merges.set_amounts(merges_used, max(merge_quota or 0, 1))
+        self._merges.show()
 
-        daily_videos_rem = quota.daily_videos_remaining if quota else None
         daily_videos_lim = quota.daily_videos_limit if quota else None
-        daily_merges_rem = quota.daily_merges_remaining if quota else None
+        daily_videos_rem = quota.daily_videos_remaining if quota else None
         daily_merges_lim = quota.daily_merges_limit if quota else None
-        self._daily_videos.set_value(_xy(daily_videos_rem, daily_videos_lim))
-        self._daily_merges.set_value(_xy(daily_merges_rem, daily_merges_lim))
+        daily_merges_rem = quota.daily_merges_remaining if quota else None
+        daily_videos_used, daily_videos_lim = _used_of_quota(daily_videos_rem, daily_videos_lim)
+        daily_merges_used, daily_merges_lim = _used_of_quota(daily_merges_rem, daily_merges_lim)
+        self._daily_videos.set_value(_xy_used(
+            daily_videos_used if daily_videos_lim is not None else None,
+            daily_videos_lim,
+        ))
+        self._daily_merges.set_value(_xy_used(
+            daily_merges_used if daily_merges_lim is not None else None,
+            daily_merges_lim,
+        ))
 
         wallet = (
             license_info.wallet_balance
@@ -166,15 +186,21 @@ class RemainingMonthCard(QFrame):
             else data.me.credit_balance
         )
         self._wallet.set_value(format_compact_number(wallet))
-        self._draft_quota.set_value(_xy(drafts_value if draft_quota is not None else None, draft_quota))
-        self._song_quota.set_value(_xy(songs_value if song_quota is not None else None, song_quota))
-        self._image_quota.set_value(_xy(images_value if image_quota is not None else None, image_quota))
-        self._video_quota.set_value(
-            _xy(videos_value if video_quota is not None else None, video_quota)
-        )
-        self._merge_quota.set_value(
-            _xy(merges_value if merge_quota is not None else None, merge_quota)
-        )
+        self._draft_quota.set_value(_xy_used(
+            drafts_used if draft_quota is not None else None, draft_quota
+        ))
+        self._song_quota.set_value(_xy_used(
+            songs_used if song_quota is not None else None, song_quota
+        ))
+        self._image_quota.set_value(_xy_used(
+            images_used if image_quota is not None else None, image_quota
+        ))
+        self._video_quota.set_value(_xy_used(
+            videos_used if video_quota is not None else None, video_quota
+        ))
+        self._merge_quota.set_value(_xy_used(
+            merges_used if merge_quota is not None else None, merge_quota
+        ))
 
 
 class _SummaryLine(QFrame):
