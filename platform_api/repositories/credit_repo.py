@@ -26,6 +26,31 @@ logger = logging.getLogger(__name__)
 MAX_WALLET_BALANCE = MAX_CREDIT_UNITS
 DEFAULT_PAGE_SIZE = 50
 
+# usage_tracking.operation_type values rolled into User Spent meter chips.
+USER_SPEND_METER_OPS = (
+    "music",
+    "draft",
+    "background_image",
+    "thumbnail_image",
+    "video",
+    "video_manual",
+    "video_merge",
+)
+
+
+def meter_bucket_for_operation(operation_type: str) -> str:
+    """Map usage_tracking keys onto User Spent meter chips (song/draft/image/video/merge)."""
+    op = str(operation_type or "").strip().lower()
+    if op == "music":
+        return "song"
+    if op in ("background_image", "thumbnail_image"):
+        return "image"
+    if op == "video_merge":
+        return "merge"
+    if op == "video_manual":
+        return "video"
+    return op
+
 
 class AsyncPGPool(Protocol):
     """Minimal protocol for an asyncpg connection pool."""
@@ -913,20 +938,15 @@ class CreditRepository:
             """,
             user_ids,
             period_start,
-            ["music", "draft", "background_image", "thumbnail_image", "video", "video_merge"],
+            list(USER_SPEND_METER_OPS),
         )
         out: dict[UUID, dict[str, int]] = {uid: {} for uid in user_ids}
         for row in rows:
             uid = row["user_id"]
-            op = str(row["operation_type"])
             used = int(row["used"] or 0)
+            key = meter_bucket_for_operation(str(row["operation_type"]))
             bucket = out.setdefault(uid, {})
-            if op == "background_image" or op == "thumbnail_image":
-                bucket["image"] = int(bucket.get("image") or 0) + used
-            elif op == "video_merge":
-                bucket["merge"] = used
-            else:
-                bucket[op] = used
+            bucket[key] = int(bucket.get(key) or 0) + used
         return out
 
     async def sum_fulfilled_subscription_revenue(
