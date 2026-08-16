@@ -127,6 +127,37 @@ def test_quota_kind_for_operation_maps_draft_ops() -> None:
 
 
 @pytest.mark.asyncio
+async def test_extras_for_period_sums_current_period() -> None:
+    user_id = uuid4()
+    repo = FakeTopupRepo()
+    service = QuotaTopupService(
+        topup_repo=repo,
+        plan_repo=FakePlanRepo(None),
+    )
+    period = date(2026, 8, 2)
+    await repo.add_topup(
+        user_id=user_id,
+        license_id=None,
+        period_start=period,
+        quota_kind="image",
+        extra_units=10,
+        reason="first Batch",
+        created_by=uuid4(),
+    )
+    await repo.add_topup(
+        user_id=user_id,
+        license_id=None,
+        period_start=date(2026, 7, 3),
+        quota_kind="image",
+        extra_units=99,
+        reason="old period",
+        created_by=uuid4(),
+    )
+    extras = await service.extras_for_period(user_id, period)
+    assert extras == {"image": 10}
+
+
+@pytest.mark.asyncio
 async def test_grant_adds_extra_for_current_period_only() -> None:
     user_id = uuid4()
     admin_id = uuid4()

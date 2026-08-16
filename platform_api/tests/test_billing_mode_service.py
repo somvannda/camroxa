@@ -255,6 +255,81 @@ async def test_subscription_covers_after_reservation_includes_last_unit() -> Non
 
 
 @pytest.mark.asyncio
+async def test_subscription_covers_operation_includes_image_topup() -> None:
+    """Admin period image top-up must cover past the base monthly cap."""
+    user_id = uuid4()
+    repo = FakeUsageRepo()
+    plan = _plan(monthly_image_limit=120)
+    period = date.today().replace(day=1)
+    repo.set_monthly(user_id, "background_image", period, 120)
+
+    assert not await subscription_covers_operation(
+        plan=plan,
+        user_id=user_id,
+        operation_type="background_image",
+        usage_repo=repo,
+        period_start=period,
+    )
+    assert await subscription_covers_operation(
+        plan=plan,
+        user_id=user_id,
+        operation_type="background_image",
+        usage_repo=repo,
+        period_start=period,
+        topup_extra=10,
+    )
+    repo.set_monthly(user_id, "background_image", period, 121)
+    assert await subscription_covers_operation(
+        plan=plan,
+        user_id=user_id,
+        operation_type="background_image",
+        usage_repo=repo,
+        period_start=period,
+        after_reservation=True,
+        topup_extra=10,
+    )
+    repo.set_monthly(user_id, "background_image", period, 131)
+    assert not await subscription_covers_operation(
+        plan=plan,
+        user_id=user_id,
+        operation_type="background_image",
+        usage_repo=repo,
+        period_start=period,
+        after_reservation=True,
+        topup_extra=10,
+    )
+
+
+@pytest.mark.asyncio
+async def test_subscription_covers_batch_includes_image_topup() -> None:
+    user_id = uuid4()
+    repo = FakeUsageRepo()
+    plan = _plan(monthly_image_limit=120, monthly_song_limit=300)
+    period = date.today().replace(day=1)
+    repo.set_monthly(user_id, "background_image", period, 120)
+
+    assert not await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=0,
+        usage_repo=repo,
+        period_start=period,
+        image_jobs=4,
+        draft_ops=0,
+    )
+    assert await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=0,
+        usage_repo=repo,
+        period_start=period,
+        image_jobs=4,
+        draft_ops=0,
+        topup_extras={"image": 10},
+    )
+
+
+@pytest.mark.asyncio
 async def test_grant_included_wallet_credits_lifetime_only() -> None:
     user_id = uuid4()
     license_id = uuid4()
