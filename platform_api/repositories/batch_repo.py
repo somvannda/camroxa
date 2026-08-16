@@ -452,6 +452,9 @@ class BatchRepository:
     async def update_batch_status(self, batch_id: UUID, status: str) -> None:
         """Update the status of a batch.
 
+        No-ops (including `updated_at`) when the stored status is already
+        `$2`, so desktop Progress sync heartbeats do not look like live work.
+
         Args:
             batch_id: The UUID of the batch to update.
             status: The new status value.
@@ -460,6 +463,7 @@ class BatchRepository:
             """
             UPDATE batches SET status = $2, updated_at = NOW()
             WHERE id = $1
+              AND status IS DISTINCT FROM $2
             """,
             batch_id,
             status,

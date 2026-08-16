@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Pipeline Ops no longer treats leftover streaming-archive 403s (expired
+  `cdn1.suno.ai` MP3 URLs) as a live pipeline Error. Those stay on the
+  streaming chip; music+image complete rows promote to Done. Desktop Progress
+  sync no longer bumps `batches.updated_at` when status is unchanged. See
+  `docs/changelog/2026-08-16-pipeline-stale-streaming-error.md`.
+
 - Suno CDN `{id}.m4a` (Opus-in-MP4) URLs are rewritten to `{id}.mp3` before
   persist / pending download / streaming fetch. Non-MPEG bodies are not stored
   as MP3. See `docs/changelog/2026-08-15-suno-prefer-real-mp3.md`.
