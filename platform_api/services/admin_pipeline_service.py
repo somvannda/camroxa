@@ -118,6 +118,18 @@ def _format_streaming_chip(group: dict[str, Any] | None) -> str:
     return f"{success}/{total}"
 
 
+_ADMIN_DONE_STAGES = {
+    "image",
+    "converter",
+    "export",
+    "merge",
+    "merger",
+    "streaming",
+    "done",
+    "completed",
+}
+
+
 def _promote_admin_stage(
     *,
     stage: str,
@@ -127,25 +139,28 @@ def _promote_admin_stage(
     music_done: bool,
     image_done: bool,
 ) -> tuple[str, str, str]:
-    """Adjust desktop-centric stages for the admin board (no local MP4 inspection)."""
+    """Adjust desktop-centric stages for the admin board (no local MP4 inspection).
+
+    Catalog archive failures (expired Suno CDN 403s, etc.) stay on the
+    streaming chip. They must not paint the whole row as a live pipeline Error.
+    """
     stream_total = int((stream_group or {}).get("total", 0) or 0)
     stream_success = int((stream_group or {}).get("success", 0) or 0)
     stream_pending = int((stream_group or {}).get("pending", 0) or 0)
     stream_failed = int((stream_group or {}).get("failed", 0) or 0)
     stage_l = stage.strip().lower()
 
-    if stream_total > 0 and stream_failed > 0 and stream_pending <= 0:
-        return "Error", "Failed", "Streaming upload failed."
     if stream_total > 0 and stream_pending > 0:
         return "Streaming", "Uploading", "Streaming upload is in progress."
-    if (
-        music_done
-        and image_done
-        and stream_total > 0
-        and stream_success >= stream_total
-        and stage_l in {"image", "converter", "export", "merge", "merger", "streaming", "done", "completed"}
-    ):
-        return "Done", "Done", "Music, images, and streaming uploads are complete."
+    if music_done and image_done and stream_total > 0 and stage_l in _ADMIN_DONE_STAGES:
+        if stream_failed > 0:
+            return (
+                "Done",
+                "Done",
+                "Music and images are complete. Some streaming archive uploads failed.",
+            )
+        if stream_success >= stream_total:
+            return "Done", "Done", "Music, images, and streaming uploads are complete."
     if music_done and image_done and stage_l in {"image"}:
         return (
             "Converter",
@@ -625,10 +640,12 @@ async def list_admin_pipeline_board(
             error_snippet = (
                 image_errors.get(key)
                 or youtube_errors.get(key)
-                or streaming_errors.get(stream_key)
                 or suno_errors.get(batch_key)
                 or None
             )
+            # Keep catalog-archive 403s on the streaming chip for Done rows.
+            if stage_name.strip().lower() not in {"done", "completed"}:
+                error_snippet = error_snippet or streaming_errors.get(stream_key)
             if str(progress_status).lower() == "failed" and not error_snippet:
                 error_snippet = progress_notes
 
