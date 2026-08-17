@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Web-music checkout/top-up fulfill only the bound CutLuy payment, allowlist return/checkout URLs, and rate-limit purchase + status poll. See `docs/changelog/2026-08-17-music-web-checkout-security.md`.
 - Web-music CutLuy payments no longer attach the portal `payment_link_id`. Status poll endpoints fulfill subscription and top-up credits if the webhook has not already run. See `docs/changelog/2026-08-17-music-web-owned-checkout.md`.
 
 ### Added

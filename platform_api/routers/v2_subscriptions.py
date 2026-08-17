@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
+from platform_api.services.v2.payment_security import sanitize_music_web_return_url
 from platform_api.services.v2.subscription_service import SubscriptionService
 from platform_api.exceptions import NotFoundError, ValidationError
 
@@ -71,9 +72,9 @@ class SubscriptionResponse(BaseModel):
 
 
 class PurchaseSubscriptionRequest(BaseModel):
-    plan_id: str = Field(..., description="Plan UUID to subscribe to")
-    success_url: str = Field(..., description="URL to redirect after successful payment")
-    cancel_url: str = Field(..., description="URL to redirect after cancelled payment")
+    plan_id: UUID = Field(..., description="Plan UUID to subscribe to")
+    success_url: str = Field(default="", max_length=500, description="Ignored unless a music-web origin")
+    cancel_url: str = Field(default="", max_length=500, description="Ignored unless a music-web origin")
 
 
 class PurchaseSubscriptionResponse(BaseModel):
@@ -113,7 +114,7 @@ async def list_plans(service: SubscriptionServiceDep) -> PlansListResponse:
     
     Returns public plans sorted by display_order.
     """
-    plans = await service.get_plans()
+    plans = await service.get_plans(is_public=True)
     
     def format_features(features_dict: dict | None) -> list[str]:
         """Convert features dict to user-friendly list."""
@@ -204,9 +205,9 @@ async def purchase_subscription(
     try:
         payment = await service.create_subscription_by_plan_id(
             user_id=str(ctx.user_id),
-            plan_id=body.plan_id,
-            success_url=body.success_url,
-            cancel_url=body.cancel_url
+            plan_id=str(body.plan_id),
+            success_url=sanitize_music_web_return_url(body.success_url),
+            cancel_url=sanitize_music_web_return_url(body.cancel_url),
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
@@ -221,10 +222,12 @@ async def purchase_subscription(
 @router.get("/payments/{payment_id}", response_model=CheckoutStatusResponse)
 async def get_subscription_payment_status(
     payment_id: str,
+    http_request: Request,
     ctx: CurrentUserDep,
     service: SubscriptionServiceDep,
 ) -> CheckoutStatusResponse:
     """Poll CutLuy and fulfill a music-web subscription checkout for the caller."""
+    await enforce_rate_limit(http_request, ctx.user_id)
     try:
         result = await service.get_checkout_status(str(ctx.user_id), payment_id)
     except LookupError as exc:

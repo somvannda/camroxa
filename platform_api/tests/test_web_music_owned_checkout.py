@@ -88,11 +88,12 @@ async def test_subscription_status_fulfills_when_cutluy_paid() -> None:
             "status": "pending",
             "monthly_credits_granted": 500,
             "plan_name": "starter_monthly",
+            "price_cents": 900,
         }
     )
     db.execute = AsyncMock()
     cutluy = AsyncMock()
-    cutluy.get_payment_status = AsyncMock(return_value={"status": "paid"})
+    cutluy.get_payment_status = AsyncMock(return_value={"status": "paid", "amount": 9.0})
 
     service = SubscriptionService(db, cutluy=cutluy)
     result = await service.get_checkout_status("user-1", "pay_1")
@@ -177,11 +178,12 @@ async def test_topup_status_fulfills_when_cutluy_paid() -> None:
             "payment_status": "pending",
             "credits_purchased": 200,
             "pack_name": "Medium",
+            "amount_paid_cents": 400,
         }
     )
     db.execute = AsyncMock()
     cutluy = AsyncMock()
-    cutluy.get_payment_status = AsyncMock(return_value={"status": "completed"})
+    cutluy.get_payment_status = AsyncMock(return_value={"status": "completed", "amount": 4.0})
 
     service = TopupService(db, cutluy=cutluy)
     result = await service.get_checkout_status("user-1", "pay_2")
@@ -190,3 +192,172 @@ async def test_topup_status_fulfills_when_cutluy_paid() -> None:
     assert result["fulfilled"] is True
     assert result["pack_name"] == "Medium"
     db.execute.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_checkout_status_rejects_unsafe_payment_id() -> None:
+    db = AsyncMock()
+    cutluy = AsyncMock()
+    service = SubscriptionService(db, cutluy=cutluy)
+
+    with pytest.raises(LookupError):
+        await service.get_checkout_status("user-1", "../etc/passwd")
+
+    db.fetch_one.assert_not_called()
+    cutluy.get_payment_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_subscription_status_refuses_amount_mismatch() -> None:
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(
+        return_value={
+            "id": "sub-1",
+            "status": "pending",
+            "monthly_credits_granted": 5000,
+            "plan_name": "pro_monthly",
+            "price_cents": 2900,
+        }
+    )
+    db.execute = AsyncMock()
+    cutluy = AsyncMock()
+    cutluy.get_payment_status = AsyncMock(return_value={"status": "paid", "amount": 9.0})
+
+    service = SubscriptionService(db, cutluy=cutluy)
+    result = await service.get_checkout_status("user-1", "pay_cheap")
+
+    assert result["status"] == "pending"
+    assert result["fulfilled"] is False
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_private_plan_cannot_be_purchased() -> None:
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(
+        return_value={
+            "id": "plan-hidden",
+            "name": "staff_comp",
+            "plan_type": "web_music",
+            "price_cents": 100,
+            "billing_cycle_days": 30,
+            "monthly_credits": 99999,
+            "monthly_song_quota": None,
+            "features": {},
+            "is_public": False,
+            "display_order": 99,
+        }
+    )
+    cutluy = AsyncMock()
+    service = SubscriptionService(db, cutluy=cutluy)
+
+    with pytest.raises(ValueError, match="not available"):
+        await service.create_subscription_by_plan_id(
+            user_id="user-1",
+            plan_id="plan-hidden",
+            success_url="https://evil.example/phish",
+            cancel_url="https://evil.example/phish",
+        )
+    cutluy.create_subscription_payment.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_webhook_ignores_stale_payment_after_plan_swap() -> None:
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(return_value=None)
+    db.execute = AsyncMock()
+    cutluy = AsyncMock()
+    cutluy.verify_webhook_signature_async = AsyncMock(return_value=True)
+
+    service = SubscriptionService(db, cutluy=cutluy)
+    result = await service.handle_cutluy_webhook(
+        event_type="payment.completed",
+        payload={
+            "id": "pay_old_cheap",
+            "amount": 9.0,
+            "metadata": {"subscription_id": "sub-1", "user_id": "user-1", "type": "subscription"},
+        },
+        signature="t=1,v1=abc",
+        raw_body=b"{}",
+    )
+
+    assert result["processed"] is True
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_webhook_fulfills_only_bound_payment() -> None:
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(
+        return_value={
+            "id": "sub-1",
+            "user_id": "user-1",
+            "status": "pending",
+            "price_cents": 900,
+        }
+    )
+    db.execute = AsyncMock()
+    cutluy = AsyncMock()
+    cutluy.verify_webhook_signature_async = AsyncMock(return_value=True)
+
+    service = SubscriptionService(db, cutluy=cutluy)
+    await service.handle_cutluy_webhook(
+        event_type="payment.completed",
+        payload={
+            "id": "pay_current",
+            "amount": 9.0,
+            "metadata": {"subscription_id": "sub-1", "user_id": "user-1", "type": "subscription"},
+        },
+        signature="t=1,v1=abc",
+        raw_body=b"{}",
+    )
+
+    db.execute.assert_awaited()
+    sql = db.execute.await_args.args[0]
+    assert "status = 'pending'" in sql
+    assert "external_subscription_id" in sql
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_sanitizes_return_urls() -> None:
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(
+        side_effect=[
+            None,
+            {
+                "id": "plan-1",
+                "name": "starter_monthly",
+                "plan_type": "web_music",
+                "price_cents": 900,
+                "billing_cycle_days": 30,
+                "monthly_credits": 500,
+                "monthly_song_quota": None,
+                "features": {},
+                "is_public": True,
+                "display_order": 1,
+            },
+        ]
+    )
+    db.fetch_val = AsyncMock(return_value="sub-new")
+    db.execute = AsyncMock()
+    cutluy = AsyncMock()
+    cutluy.create_subscription_payment = AsyncMock(
+        return_value={
+            "checkout_url": "https://cutluy.com/pay/x",
+            "payment_id": "pay_new",
+            "expires_at": "",
+        }
+    )
+
+    service = SubscriptionService(db, cutluy=cutluy)
+    await service.create_subscription(
+        user_id="user-1",
+        plan_name="starter_monthly",
+        billing_cycle="monthly",
+        success_url="https://evil.example/steal",
+        cancel_url="https://evil.example/steal",
+    )
+
+    kwargs = cutluy.create_subscription_payment.await_args.kwargs
+    assert kwargs["success_url"] == "https://music.camxora.com/create"
+    assert kwargs["cancel_url"] == "https://music.camxora.com/create"

@@ -9,6 +9,10 @@ from uuid import uuid4
 import httpx
 
 from platform_api.services.cutluy_webhook import verify_cutluy_webhook_signature
+from platform_api.services.v2.payment_security import (
+    require_cutluy_checkout_url,
+    validate_payment_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,13 +121,14 @@ class CutLuyService:
             logger.error("CutLuy unexpected error: %s", exc)
             raise
 
-        checkout_url = payment.get("checkout_url") or payment.get("url")
-        if not checkout_url:
-            raise ValueError("CutLuy did not return a checkout URL")
+        checkout_url = require_cutluy_checkout_url(
+            payment.get("checkout_url") or payment.get("url")
+        )
+        payment_id = validate_payment_id(str(payment.get("id") or ""))
 
         return {
             "checkout_url": checkout_url,
-            "payment_id": payment.get("id"),
+            "payment_id": payment_id,
             "expires_at": payment.get("expires_at"),
         }
 
@@ -188,24 +193,48 @@ class CutLuyService:
         )
 
     def verify_webhook_signature(self, body: bytes, signature: str) -> bool:
-        if not self._webhook_secret:
+        return self._verify_with_secret(body, signature, self._webhook_secret)
+
+    async def verify_webhook_signature_async(
+        self,
+        body: bytes,
+        signature: str,
+        db: Any | None = None,
+    ) -> bool:
+        secret = self._webhook_secret
+        if db is not None:
+            try:
+                from platform_api.services.billing_config_service import resolve_cutluy_config
+
+                pool = getattr(db, "_pool", db)
+                cutluy = await resolve_cutluy_config(pool)
+                db_secret = (cutluy.webhook_secret or "").strip()
+                if db_secret:
+                    secret = db_secret
+            except Exception:
+                logger.exception("Failed to resolve CutLuy webhook secret")
+        return self._verify_with_secret(body, signature, secret)
+
+    def _verify_with_secret(self, body: bytes, signature: str, secret: str) -> bool:
+        if not secret:
             logger.error("Cannot verify webhook - secret not configured")
             return False
 
         return verify_cutluy_webhook_signature(
             raw_body=body,
             signature_header=signature,
-            secret=self._webhook_secret,
+            secret=secret,
             max_age_seconds=300,
         )
 
     async def get_payment_status(self, payment_id: str, db: Any | None = None) -> dict[str, Any]:
+        safe_payment_id = validate_payment_id(payment_id)
         api_base_url, api_key, _payment_link_id = await self._resolve_config(db)
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    f"{api_base_url}/v1/payments/{payment_id}",
+                    f"{api_base_url}/v1/payments/{safe_payment_id}",
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
                 response.raise_for_status()

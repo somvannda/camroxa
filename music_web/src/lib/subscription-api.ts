@@ -204,6 +204,18 @@ export type CheckoutStatus = {
   credits: number;
 };
 
+export function isAllowedCutluyCheckoutUrl(url: string | null | undefined): boolean {
+  try {
+    const parsed = new URL(String(url || ''));
+    if (parsed.protocol !== 'https:') return false;
+    if (parsed.username || parsed.password) return false;
+    const host = parsed.hostname.toLowerCase();
+    return host === 'cutluy.com' || host.endsWith('.cutluy.com');
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchSubscriptionCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
   return apiFetch(`/api/v1/v2/subscriptions/payments/${encodeURIComponent(paymentId)}`);
 }

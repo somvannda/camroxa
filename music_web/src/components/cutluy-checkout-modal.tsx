@@ -8,6 +8,7 @@ import {
   fetchSubscriptionCheckoutStatus,
   fetchTopupCheckoutStatus,
   formatPlanDisplayName,
+  isAllowedCutluyCheckoutUrl,
   type CheckoutStatus,
 } from '@/lib/subscription-api';
 
@@ -77,6 +78,8 @@ export default function CutluyCheckoutModal({
       window.clearInterval(timer);
     };
   }, [isOpen, paymentId, kind]);
+
+  const safeCheckoutUrl = isAllowedCutluyCheckoutUrl(checkoutUrl) ? checkoutUrl : null;
 
   if (!mounted || !isOpen || !checkoutUrl) return null;
 
@@ -187,26 +190,36 @@ export default function CutluyCheckoutModal({
         ) : (
           <>
             <div className="bg-white/[0.02] px-4 py-3 sm:px-5">
-              <div className="relative mx-auto h-[320px] w-full max-w-[320px] overflow-hidden rounded-2xl border border-white/10 bg-white shadow-inner">
-                <iframe
-                  title="CutLuy KHQR checkout"
-                  src={checkoutUrl}
-                  className="pointer-events-auto absolute left-1/2 top-0 h-[580px] w-[390px] -translate-x-1/2 origin-top scale-[0.55] border-0 bg-white"
-                  scrolling="no"
-                />
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-3 text-xs sm:text-sm">
-                <p className="text-slate-400">Secure payment via CutLuy</p>
-                <a
-                  href={checkoutUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex shrink-0 items-center gap-1 text-fuchsia-200 hover:text-white"
-                >
-                  Open full page
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
+              {safeCheckoutUrl ? (
+                <>
+                  <div className="relative mx-auto h-[320px] w-full max-w-[320px] overflow-hidden rounded-2xl border border-white/10 bg-white shadow-inner">
+                    <iframe
+                      title="CutLuy KHQR checkout"
+                      src={safeCheckoutUrl}
+                      className="pointer-events-auto absolute left-1/2 top-0 h-[580px] w-[390px] -translate-x-1/2 origin-top scale-[0.55] border-0 bg-white"
+                      scrolling="no"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-xs sm:text-sm">
+                    <p className="text-slate-400">Secure payment via CutLuy</p>
+                    <a
+                      href={safeCheckoutUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex shrink-0 items-center gap-1 text-fuchsia-200 hover:text-white"
+                    >
+                      Open full page
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <p className="px-2 py-8 text-center text-sm text-slate-300">
+                  Checkout URL was rejected. Close and try again.
+                </p>
+              )}
             </div>
             <div className="border-t border-white/10 px-4 py-3 text-center sm:px-5">
               <div className="inline-flex items-center gap-2 text-xs text-slate-400 sm:text-sm">

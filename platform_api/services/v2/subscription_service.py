@@ -13,6 +13,12 @@ from platform_api.services.shared.cutluy_service import (
     get_cutluy_service,
     normalize_cutluy_payment_status,
 )
+from platform_api.services.v2.payment_security import (
+    paid_amount_matches,
+    sanitize_music_web_return_url,
+    validate_payment_id,
+    webhook_user_matches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -363,6 +369,9 @@ class SubscriptionService:
         plan = await self.get_plan_by_name(plan_name)
         if not plan:
             raise ValueError(f"Plan not found: {plan_name}")
+        self._assert_purchasable_plan(plan)
+        success_url = sanitize_music_web_return_url(success_url)
+        cancel_url = sanitize_music_web_return_url(cancel_url)
 
         # Validate billing cycle matches plan
         expected_cycle = "yearly" if plan.billing_cycle_days >= 365 else "monthly"
@@ -445,6 +454,7 @@ class SubscriptionService:
         plan = await self.get_plan_by_id(plan_id)
         if not plan:
             raise ValueError(f"Plan not found: {plan_id}")
+        self._assert_purchasable_plan(plan)
 
         billing_cycle = "yearly" if plan.billing_cycle_days >= 365 else "monthly"
         return await self.create_subscription(
@@ -455,11 +465,22 @@ class SubscriptionService:
             cancel_url=cancel_url,
         )
 
+    def _assert_purchasable_plan(self, plan: Plan) -> None:
+        if plan.plan_type != "web_music" or not plan.is_public:
+            raise ValueError("Plan not available for purchase")
+        if int(plan.price_cents or 0) < 1:
+            raise ValueError("Plan is not purchasable")
+
     async def get_checkout_status(self, user_id: str, payment_id: str) -> dict[str, Any]:
         """Poll CutLuy and fulfill a web-music subscription checkout for this user."""
+        try:
+            payment_id = validate_payment_id(payment_id)
+        except ValueError as exc:
+            raise LookupError("Payment not found") from exc
         row = await self._db.fetch_one(
             """
-            SELECT ws.id, ws.status, ws.monthly_credits_granted, p.name AS plan_name
+            SELECT ws.id, ws.status, ws.monthly_credits_granted,
+                   p.name AS plan_name, p.price_cents
             FROM web_subscriptions ws
             JOIN plans p ON ws.plan_id = p.id
             WHERE ws.user_id = $1
@@ -505,6 +526,17 @@ class SubscriptionService:
 
         remote = normalize_cutluy_payment_status(payload.get("status"))
         if remote == "paid":
+            if not paid_amount_matches(int(row["price_cents"] or 0), payload):
+                logger.error(
+                    "Refusing subscription fulfill: amount mismatch for payment %s",
+                    payment_id,
+                )
+                return {
+                    "status": "pending",
+                    "fulfilled": False,
+                    "plan_name": plan_name,
+                    "credits": credits,
+                }
             await self._fulfill_subscription_payment(
                 payment_id=payment_id,
                 subscription_id=str(row["id"]),
@@ -544,13 +576,13 @@ class SubscriptionService:
             """
             UPDATE web_subscriptions
             SET status = 'active',
-                external_subscription_id = $1,
                 last_payment_at = NOW()
-            WHERE id = $2
-              AND status <> 'active'
+            WHERE id = $1
+              AND status = 'pending'
+              AND external_subscription_id = $2
             """,
-            payment_id,
             subscription_id,
+            payment_id,
         )
         logger.info("Activated subscription %s from payment %s", subscription_id, payment_id)
 
@@ -835,7 +867,12 @@ class SubscriptionService:
         raw_body: bytes,
     ) -> dict:
         """Verify and process a CutLuy webhook event."""
-        if not self._cutluy.verify_webhook_signature(raw_body, signature or ""):
+        verified = await self._cutluy.verify_webhook_signature_async(
+            raw_body,
+            signature or "",
+            db=self._db,
+        )
+        if not verified:
             logger.error("CutLuy webhook signature verification failed")
             return {"processed": False, "message": "Invalid webhook signature"}
 
@@ -880,17 +917,39 @@ class SubscriptionService:
             return False
     
     async def _handle_payment_completed(self, data: dict):
-        """Handle payment.completed webhook."""
-        payment_id = data.get("id")
-        subscription_id = data.get("metadata", {}).get("subscription_id")
-        
-        if not subscription_id:
-            logger.error("No subscription_id in payment metadata")
+        """Handle payment.completed webhook.
+
+        Bind only to the current CutLuy payment id stored on the pending row.
+        Metadata subscription_id alone must not activate a swapped plan.
+        """
+        try:
+            payment_id = validate_payment_id(str(data.get("id") or data.get("payment_id") or ""))
+        except ValueError:
+            logger.error("CutLuy webhook missing a valid payment id")
+            return
+
+        row = await self._db.fetch_one(
+            """
+            SELECT ws.id, ws.user_id, ws.status, p.price_cents
+            FROM web_subscriptions ws
+            JOIN plans p ON ws.plan_id = p.id
+            WHERE ws.external_subscription_id = $1
+            """,
+            payment_id,
+        )
+        if not row:
+            logger.warning("No subscription bound to CutLuy payment %s", payment_id)
+            return
+        if not webhook_user_matches(str(row["user_id"]), data):
+            logger.error("CutLuy webhook user mismatch for payment %s", payment_id)
+            return
+        if not paid_amount_matches(int(row["price_cents"] or 0), data):
+            logger.error("CutLuy webhook amount mismatch for payment %s", payment_id)
             return
 
         await self._fulfill_subscription_payment(
-            payment_id=str(payment_id or ""),
-            subscription_id=str(subscription_id),
+            payment_id=payment_id,
+            subscription_id=str(row["id"]),
         )
     
     async def _handle_subscription_renewed(self, data: dict):
@@ -932,15 +991,25 @@ class SubscriptionService:
     
     async def _handle_payment_failed(self, data: dict):
         """Handle payment.failed webhook."""
-        external_id = data.get("subscription_id")
-        
-        await self._db.execute("""
+        try:
+            payment_id = validate_payment_id(
+                str(data.get("id") or data.get("payment_id") or data.get("subscription_id") or "")
+            )
+        except ValueError:
+            logger.error("CutLuy failed webhook missing a valid payment id")
+            return
+
+        await self._db.execute(
+            """
             UPDATE web_subscriptions
             SET status = 'past_due'
             WHERE external_subscription_id = $1
-        """, external_id)
+              AND status = 'pending'
+            """,
+            payment_id,
+        )
         
-        logger.warning(f"Payment failed for subscription: {external_id}")
+        logger.warning("Payment failed for subscription payment %s", payment_id)
 
 
 # Singleton (will be replaced by dependency injection)
