@@ -8,6 +8,7 @@ import { LoaderCircle, Shield } from 'lucide-react';
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
 import TurnstileWidget from '@/components/turnstile-widget';
+import { fetchMusicUser } from '@/lib/auth-api';
 
 function safeNextPath(raw: string | null): string {
   if (!raw) return '/create';
@@ -42,6 +43,13 @@ function LoginForm() {
     setError(null);
     try {
       await login(email.trim(), password, turnstileToken);
+      const me = await fetchMusicUser();
+      if (me && me.email_confirmed === false) {
+        router.replace(
+          `/verify-email?email=${encodeURIComponent(me.email)}&next=${encodeURIComponent(next)}`,
+        );
+        return;
+      }
       router.replace(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed');
