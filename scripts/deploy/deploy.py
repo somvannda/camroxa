@@ -283,6 +283,40 @@ def ssh_connect(host: str, user: str, key_path: Path, password: str | None = Non
         return client
 
 
+# After a full platform_api tarball extract, delete revision files that are
+# not in the archive. `tar -xzf` overwrites but never removes leftovers, which
+# is how a retired 084_* file can become a second Alembic head and hang API
+# startup. Refuse to prune if the archive has no versions/*.py.
+PRUNE_LEFTOVER_ALEMBIC_REMOTE = r"""
+python3 - <<'PY'
+from pathlib import Path
+import tarfile
+import sys
+
+keep = set()
+with tarfile.open("/tmp/camxora-src.tar.gz") as tar:
+    for member in tar.getmembers():
+        name = member.name.replace("\\", "/")
+        prefix = "platform_api/migrations/versions/"
+        if member.isfile() and name.startswith(prefix) and name.endswith(".py"):
+            keep.add(Path(name).name)
+if not keep:
+    print("REFUSING to prune Alembic versions: tarball has no versions/*.py")
+    sys.exit(1)
+remote = Path("/opt/camxora/repo/platform_api/migrations/versions")
+removed = []
+for path in sorted(remote.glob("*.py")):
+    if path.name not in keep:
+        path.unlink()
+        removed.append(path.name)
+if removed:
+    print("PRUNED leftover Alembic files: " + ", ".join(removed))
+else:
+    print("No leftover Alembic files to prune")
+PY
+"""
+
+
 def tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
     parts = Path(tarinfo.name).parts
     if any(part in SKIP_NAMES for part in parts):

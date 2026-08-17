@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Startup Alembic runner skips leftover sibling heads (retired `084_*` files) and time-boxes upgrades so a hung migration cannot leave the catalog on `Database pool not initialized`. See `docs/changelog/2026-08-17-alembic-skip-leftover-heads.md`.
+
 ### Fixed
 
 - Admin period quota top-ups (image/song/draft/etc.) are now honored by
