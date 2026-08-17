@@ -44,14 +44,61 @@ class StreamingUploadService:
     def schedule_suno_streaming_upload(self, *, suno_task_id: UUID) -> None:
         asyncio.create_task(self._run_suno_streaming_upload(suno_task_id))
 
+    def schedule_web_music_b2_backfill(self, *, suno_task_id: UUID, variant: str | None = None) -> None:
+        """Retry Backblaze upload when playback/download hits Suno fallback."""
+        asyncio.create_task(self._run_web_music_b2_backfill(suno_task_id, variant))
+
+    async def _run_web_music_b2_backfill(self, suno_task_id: UUID, variant: str | None) -> None:
+        try:
+            context = await self._repo.get_suno_stream_context(suno_task_id)
+            if not context or str(context.get("source") or "").strip().lower() != "web_music":
+                return
+            row = await self._pool.fetchrow(
+                """
+                SELECT b2_storage_key_ok, b2_storage_key_alt
+                FROM suno_tasks
+                WHERE id = $1
+                """,
+                suno_task_id,
+            )
+            if row is None:
+                return
+            refreshed = await self._refresh_task_download_urls(context)
+            variants: list[str] = []
+            if variant in {"ok", "alt"}:
+                variants = [variant]
+            else:
+                variants = ["ok", "alt"]
+            for key in variants:
+                b2_col = "b2_storage_key_ok" if key == "ok" else "b2_storage_key_alt"
+                if row.get(b2_col):
+                    continue
+                source = normalize_http_download_url(
+                    refreshed.audio_url_ok if key == "ok" else refreshed.audio_url_alt
+                ) or normalize_http_download_url(
+                    context.get("audio_url_ok") if key == "ok" else context.get("audio_url_alt")
+                )
+                if not source:
+                    continue
+                await self._upload_web_music_variant(
+                    context=context,
+                    variant=key,
+                    source_url=source,
+                    refreshed=refreshed,
+                )
+        except Exception as exc:
+            logger.warning("Web music B2 backfill failed task=%s: %s", suno_task_id, exc)
+
     async def _run_suno_streaming_upload(self, suno_task_id: UUID) -> None:
         try:
             context = await self._repo.get_suno_stream_context(suno_task_id)
             if not context:
                 return
-            if str(context.get("source") or "").strip().lower() == "web_music":
-                return
-            if not context.get("song_id"):
+
+            source = str(context.get("source") or "").strip().lower()
+            is_web_music = source == "web_music"
+
+            if not is_web_music and not context.get("song_id"):
                 return
 
             refreshed = await self._refresh_task_download_urls(context)
@@ -67,19 +114,35 @@ class StreamingUploadService:
                     refreshed=refreshed,
                 )
             if audio_ok:
-                await self._upload_mp3_variant(
-                    context=context,
-                    variant="ok",
-                    source_url=audio_ok,
-                    refreshed=refreshed,
-                )
+                if is_web_music:
+                    await self._upload_web_music_variant(
+                        context=context,
+                        variant="ok",
+                        source_url=audio_ok,
+                        refreshed=refreshed,
+                    )
+                else:
+                    await self._upload_mp3_variant(
+                        context=context,
+                        variant="ok",
+                        source_url=audio_ok,
+                        refreshed=refreshed,
+                    )
             if audio_alt:
-                await self._upload_mp3_variant(
-                    context=context,
-                    variant="alt",
-                    source_url=audio_alt,
-                    refreshed=refreshed,
-                )
+                if is_web_music:
+                    await self._upload_web_music_variant(
+                        context=context,
+                        variant="alt",
+                        source_url=audio_alt,
+                        refreshed=refreshed,
+                    )
+                else:
+                    await self._upload_mp3_variant(
+                        context=context,
+                        variant="alt",
+                        source_url=audio_alt,
+                        refreshed=refreshed,
+                    )
         except Exception as exc:
             logger.exception("Streaming upload failed for suno_task_id=%s: %s", suno_task_id, exc)
 
@@ -270,6 +333,385 @@ class StreamingUploadService:
         except Exception as exc:
             await self._repo.mark_upload_job(job_id, status="failed", error=str(exc)[:500])
             logger.warning("MP3 streaming upload failed job=%s: %s", job_id, exc)
+
+    async def _upload_web_music_variant(
+        self,
+        *,
+        context: dict[str, Any],
+        variant: str,
+        source_url: str,
+        refreshed: SunoTaskDownloadUrls | None = None,
+    ) -> None:
+        """Upload web music MP3 to Backblaze with simplified structure (no albums)."""
+        user_id = UUID(str(context["user_id"]))
+        suno_task_id = UUID(str(context["suno_task_id"]))
+        title = str(context.get("song_title") or "Untitled").strip() or "Untitled"
+        song_slug = slugify(title, fallback="track")
+        storage_key = f"web-music/{user_id}/{song_slug}-{variant}.mp3"
+
+        try:
+            config = await resolve_streaming_storage_config(self._pool)
+            if not config.configured:
+                logger.warning("Streaming storage not configured, skipping web music upload for task=%s", suno_task_id)
+                return
+
+            candidates = variant_url_candidates(
+                variant=variant,
+                stored_ok=normalize_http_download_url(context.get("audio_url_ok")),
+                stored_alt=normalize_http_download_url(context.get("audio_url_alt")),
+                refreshed=refreshed,
+            )
+            primary_url = candidates[0] if candidates else normalize_http_download_url(source_url)
+            fallback_urls = candidates[1:] if len(candidates) > 1 else []
+            if not primary_url:
+                logger.warning("No valid Suno download URL for web music task=%s variant=%s", suno_task_id, variant)
+                return
+
+            data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
+
+            if variant == "ok":
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET b2_storage_key_ok = $2,
+                        b2_uploaded_at_ok = NOW(),
+                        updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    suno_task_id,
+                    storage_key,
+                )
+            else:
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET b2_storage_key_alt = $2,
+                        b2_uploaded_at_alt = NOW(),
+                        updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    suno_task_id,
+                    storage_key,
+                )
+
+            logger.info("Web music MP3 uploaded to B2: task=%s variant=%s key=%s size=%d", 
+                       suno_task_id, variant, storage_key, len(data))
+            
+            asyncio.create_task(self._upload_web_music_lrc(
+                context=context,
+                variant=variant,
+                suno_task_id=suno_task_id,
+                song_slug=song_slug,
+                user_id=user_id,
+                refreshed=refreshed,
+            ))
+            # Also upload WAV to B2
+            asyncio.create_task(self._upload_web_music_wav(
+                context=context,
+                variant=variant,
+                suno_task_id=suno_task_id,
+                song_slug=song_slug,
+                user_id=user_id,
+                storage=storage,
+            ))
+        except Exception as exc:
+            logger.warning("Web music B2 upload failed task=%s variant=%s: %s", suno_task_id, variant, exc)
+
+    async def _upload_web_music_wav(
+        self,
+        *,
+        context: dict[str, Any],
+        variant: str,
+        suno_task_id: UUID,
+        song_slug: str,
+        user_id: UUID,
+        storage: Any,
+    ) -> None:
+        """Upload web music WAV to Backblaze after MP3 upload completes."""
+        try:
+            from platform_api.clients.suno_client import SunoClient
+            
+            wav_task_id_col = "wav_task_id_ok" if variant == "ok" else "wav_task_id_alt"
+            wav_url_col = "wav_url_ok" if variant == "ok" else "wav_url_alt"
+            audio_id = context.get(f"audio_id_{variant}") or ""
+            external_task_id = str(context.get("external_task_id") or "").strip()
+            
+            if not audio_id or not external_task_id:
+                logger.info("Skipping WAV upload: missing audio_id or external_task_id for task=%s variant=%s", suno_task_id, variant)
+                return
+
+            # Check if WAV conversion already started
+            row = await self._pool.fetchrow(
+                f"""
+                SELECT {wav_task_id_col} as wav_task_id, {wav_url_col} as wav_url
+                FROM suno_tasks
+                WHERE id = $1
+                """,
+                suno_task_id,
+            )
+            
+            wav_task_id = row.get("wav_task_id") if row else None
+            wav_url = row.get("wav_url") if row else None
+            
+            # Submit WAV conversion if not started
+            if not wav_task_id:
+                suno = SunoClient()
+                try:
+                    result = await suno.submit_wav_task(
+                        task_id=external_task_id,
+                        audio_id=audio_id,
+                    )
+                    wav_task_id = suno.extract_suno_wav_task_id(result)
+                    
+                    # Update database with WAV task ID
+                    if variant == "ok":
+                        await self._pool.execute(
+                            "UPDATE suno_tasks SET wav_task_id_ok = $2 WHERE id = $1",
+                            suno_task_id,
+                            wav_task_id,
+                        )
+                    else:
+                        await self._pool.execute(
+                            "UPDATE suno_tasks SET wav_task_id_alt = $2 WHERE id = $1",
+                            suno_task_id,
+                            wav_task_id,
+                        )
+                except Exception as exc:
+                    logger.warning("Failed to submit WAV conversion for task=%s variant=%s: %s", suno_task_id, variant, exc)
+                    return
+
+            # Poll for WAV URL
+            if not wav_url and wav_task_id:
+                suno = SunoClient()
+                max_retries = 30
+                for attempt in range(max_retries):
+                    try:
+                        result = await suno.poll_wav_status(wav_task_id=wav_task_id)
+                        status, url, error = suno.parse_suno_wav_poll(result)
+                        
+                        if status == "success" and url:
+                            wav_url = url
+                            # Update database with WAV URL
+                            if variant == "ok":
+                                await self._pool.execute(
+                                    "UPDATE suno_tasks SET wav_url_ok = $2, wav_status_ok = $3 WHERE id = $1",
+                                    suno_task_id,
+                                    wav_url,
+                                    "success",
+                                )
+                            else:
+                                await self._pool.execute(
+                                    "UPDATE suno_tasks SET wav_url_alt = $2, wav_status_alt = $3 WHERE id = $1",
+                                    suno_task_id,
+                                    wav_url,
+                                    "success",
+                                )
+                            break
+                        elif status == "failed":
+                            logger.warning("WAV conversion failed for task=%s variant=%s: %s", suno_task_id, variant, error)
+                            return
+                        
+                        await asyncio.sleep(2)
+                    except Exception as exc:
+                        logger.warning("WAV poll attempt %d failed for task=%s variant=%s: %s", attempt, suno_task_id, variant, exc)
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2)
+                        else:
+                            return
+
+            # Download and upload WAV to B2
+            if wav_url:
+                import httpx
+                
+                wav_storage_key = f"web-music/{user_id}/{song_slug}-{variant}.wav"
+                
+                async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+                    response = await client.get(wav_url)
+                    response.raise_for_status()
+                    wav_data = response.content
+                
+                await storage.upload_bytes(key=wav_storage_key, data=wav_data, content_type="audio/wav")
+                
+                # Update database with B2 WAV storage key
+                if variant == "ok":
+                    await self._pool.execute(
+                        """
+                        UPDATE suno_tasks
+                        SET b2_wav_storage_key_ok = $2,
+                            b2_wav_uploaded_at_ok = NOW(),
+                            updated_at = NOW()
+                        WHERE id = $1
+                        """,
+                        suno_task_id,
+                        wav_storage_key,
+                    )
+                else:
+                    await self._pool.execute(
+                        """
+                        UPDATE suno_tasks
+                        SET b2_wav_storage_key_alt = $2,
+                            b2_wav_uploaded_at_alt = NOW(),
+                            updated_at = NOW()
+                        WHERE id = $1
+                        """,
+                        suno_task_id,
+                        wav_storage_key,
+                    )
+                
+                logger.info("Web music WAV uploaded to B2: task=%s variant=%s key=%s size=%d", 
+                           suno_task_id, variant, wav_storage_key, len(wav_data))
+        except Exception as exc:
+            logger.warning("Web music WAV B2 upload failed task=%s variant=%s: %s", suno_task_id, variant, exc)
+
+    def schedule_web_music_lrc_upload(
+        self,
+        *,
+        suno_task_id: UUID,
+        variant: str,
+        lrc_text: str | None = None,
+    ) -> None:
+        """Upload timed LRC to Backblaze (from cached text or Suno fetch)."""
+        asyncio.create_task(
+            self._run_web_music_lrc_upload(
+                suno_task_id,
+                variant,
+                lrc_text=lrc_text,
+            )
+        )
+
+    async def _run_web_music_lrc_upload(
+        self,
+        suno_task_id: UUID,
+        variant: str,
+        *,
+        lrc_text: str | None = None,
+    ) -> None:
+        try:
+            variant_key = str(variant or "ok").strip().lower()
+            if variant_key not in {"ok", "alt"}:
+                return
+            context = await self._repo.get_suno_stream_context(suno_task_id)
+            if not context or str(context.get("source") or "").strip().lower() != "web_music":
+                return
+            b2_col = "b2_lrc_storage_key_ok" if variant_key == "ok" else "b2_lrc_storage_key_alt"
+            row = await self._pool.fetchrow(
+                f"""
+                SELECT {b2_col} AS b2_lrc_key, instrumental
+                FROM suno_tasks
+                WHERE id = $1
+                """,
+                suno_task_id,
+            )
+            if row is None or row.get("b2_lrc_key") or bool(row.get("instrumental")):
+                return
+            lrc = str(lrc_text or "").strip()
+            if not looks_like_lrc(lrc):
+                external_task_id = str(context.get("external_task_id") or "").strip()
+                audio_id = str(context.get(f"audio_id_{variant_key}") or "").strip()
+                if not external_task_id or not audio_id:
+                    refreshed = await self._refresh_task_download_urls(context)
+                    audio_id = str(
+                        (refreshed.audio_id_ok if variant_key == "ok" else refreshed.audio_id_alt)
+                        or audio_id
+                    ).strip()
+                if not external_task_id or not audio_id:
+                    return
+                lrc = await fetch_timestamped_lrc_with_pool(
+                    self._pool,
+                    external_task_id=external_task_id,
+                    audio_id=audio_id,
+                )
+            if not looks_like_lrc(lrc):
+                return
+            await self._upload_web_music_lrc(
+                context=context,
+                variant=variant_key,
+                suno_task_id=suno_task_id,
+                song_slug=slugify(str(context.get("song_title") or "Untitled").strip() or "Untitled", fallback="track"),
+                user_id=UUID(str(context["user_id"])),
+                lrc_text=lrc,
+            )
+        except Exception as exc:
+            logger.warning("Web music LRC B2 upload failed task=%s variant=%s: %s", suno_task_id, variant, exc)
+
+    async def _upload_web_music_lrc(
+        self,
+        *,
+        context: dict[str, Any],
+        variant: str,
+        suno_task_id: UUID,
+        song_slug: str,
+        user_id: UUID,
+        lrc_text: str | None = None,
+        refreshed: SunoTaskDownloadUrls | None = None,
+    ) -> None:
+        """Upload web music LRC to Backblaze (SRT is derived on download)."""
+        variant_key = str(variant or "ok").strip().lower()
+        if variant_key not in {"ok", "alt"}:
+            return
+        b2_col = "b2_lrc_storage_key_ok" if variant_key == "ok" else "b2_lrc_storage_key_alt"
+        uploaded_col = "b2_lrc_uploaded_at_ok" if variant_key == "ok" else "b2_lrc_uploaded_at_alt"
+        existing = await self._pool.fetchval(
+            f"SELECT {b2_col} FROM suno_tasks WHERE id = $1",
+            suno_task_id,
+        )
+        if existing:
+            return
+        lrc = str(lrc_text or "").strip()
+        if not looks_like_lrc(lrc):
+            external_task_id = str(context.get("external_task_id") or "").strip()
+            audio_id = str(context.get(f"audio_id_{variant_key}") or "").strip()
+            if refreshed:
+                audio_id = str(
+                    (refreshed.audio_id_ok if variant_key == "ok" else refreshed.audio_id_alt)
+                    or audio_id
+                ).strip()
+            if not external_task_id or not audio_id:
+                return
+            lrc = await fetch_timestamped_lrc_with_pool(
+                self._pool,
+                external_task_id=external_task_id,
+                audio_id=audio_id,
+            )
+        if not looks_like_lrc(lrc):
+            return
+        storage_key = f"web-music/{user_id}/{song_slug}-{variant_key}.lrc"
+        try:
+            config = await resolve_streaming_storage_config(self._pool)
+            if not config.configured:
+                return
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(
+                key=storage_key,
+                data=lrc.encode("utf-8"),
+                content_type="text/plain; charset=utf-8",
+            )
+            await self._pool.execute(
+                f"""
+                UPDATE suno_tasks
+                SET {b2_col} = $2,
+                    {uploaded_col} = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1
+                """,
+                suno_task_id,
+                storage_key,
+            )
+            logger.info(
+                "Web music LRC uploaded to B2: task=%s variant=%s key=%s",
+                suno_task_id,
+                variant_key,
+                storage_key,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Web music LRC B2 upload failed task=%s variant=%s: %s",
+                suno_task_id,
+                variant_key,
+                exc,
+            )
 
     async def _maybe_upload_suno_cover(
         self,

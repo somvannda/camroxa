@@ -9,7 +9,9 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useRouter } from 'next/navigation';
 
+import { useAuth } from '@/components/auth-provider';
 import { getPlayUrl, type StreamTrack } from '@/lib/streaming-api';
 
 type PlayerState = {
@@ -52,6 +54,8 @@ function readStoredVolume(): number {
 }
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<StreamTrack[]>([]);
   const indexRef = useRef(-1);
@@ -119,8 +123,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.volume = muted ? 0 : volume;
   }, [muted, volume]);
 
+  const redirectToLogin = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const next = `${window.location.pathname}${window.location.search}`;
+    router.push(`/login?next=${encodeURIComponent(next || '/')}`);
+  }, [router]);
+
   const playFromIndex = useCallback(
     async (index: number) => {
+      if (authLoading) return;
+      if (!user) {
+        redirectToLogin();
+        return;
+      }
+
       const tracks = queueRef.current;
       const track = tracks[index];
       if (!track) return;
@@ -134,22 +150,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       let url = track.play_url ?? '';
       let nextTrack: StreamTrack = track;
       if (!url) {
-        const payload = await getPlayUrl(track.id);
-        if (token !== loadTokenRef.current) return;
-        url = payload.url;
-        nextTrack = {
-          ...track,
-          title: payload.title ?? track.title,
-          album_id: payload.album_id ?? track.album_id,
-          album_name: payload.album_name ?? track.album_name,
-          user_id: payload.user_id ?? track.user_id,
-          artist_name: payload.artist_name ?? track.artist_name,
-          cover_url: payload.cover_url ?? track.cover_url,
-          duration_seconds: payload.duration_seconds ?? track.duration_seconds,
-          play_count: payload.play_count ?? track.play_count,
-          genre: payload.genre ?? track.genre,
-          lyrics: payload.lyrics ?? track.lyrics,
-        };
+        try {
+          const payload = await getPlayUrl(track.id);
+          if (token !== loadTokenRef.current) return;
+          url = payload.url;
+          nextTrack = {
+            ...track,
+            title: payload.title ?? track.title,
+            album_id: payload.album_id ?? track.album_id,
+            album_name: payload.album_name ?? track.album_name,
+            user_id: payload.user_id ?? track.user_id,
+            artist_name: payload.artist_name ?? track.artist_name,
+            cover_url: payload.cover_url ?? track.cover_url,
+            duration_seconds: payload.duration_seconds ?? track.duration_seconds,
+            play_count: payload.play_count ?? track.play_count,
+            genre: payload.genre ?? track.genre,
+            lyrics: payload.lyrics ?? track.lyrics,
+          };
+        } catch {
+          if (token !== loadTokenRef.current) return;
+          redirectToLogin();
+          return;
+        }
       }
       if (token !== loadTokenRef.current) return;
 
@@ -166,7 +188,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (token === loadTokenRef.current) setPlaying(false);
       }
     },
-    [ensureAudio, muted, volume],
+    [authLoading, ensureAudio, muted, redirectToLogin, user, volume],
   );
 
   playFromIndexRef.current = playFromIndex;

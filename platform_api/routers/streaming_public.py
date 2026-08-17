@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from platform_api.exceptions import NotFoundError
+from platform_api.middleware.auth import AuthContext, get_current_user
+from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
 from platform_api.services.streaming_catalog_service import StreamingCatalogService
 
 router = APIRouter(prefix="/public/streaming", tags=["streaming-public"])
@@ -19,6 +21,7 @@ async def _get_catalog_service() -> StreamingCatalogService:
 
 
 CatalogServiceDep = Annotated[StreamingCatalogService, Depends(_get_catalog_service)]
+CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
 class PlayUrlResponse(BaseModel):
@@ -102,7 +105,12 @@ async def search_streaming_catalog(
 
 
 @router.get("/tracks/{track_id}/play-url", response_model=PlayUrlResponse)
-async def get_track_play_url(track_id: UUID, service: CatalogServiceDep) -> PlayUrlResponse:
+async def get_track_play_url(
+    track_id: UUID,
+    ctx: CurrentUserDep,
+    service: CatalogServiceDep,
+) -> PlayUrlResponse:
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
     payload = await service.get_play_url(track_id)
     if payload is None:
         raise NotFoundError("Track not found or streaming is not configured.")
