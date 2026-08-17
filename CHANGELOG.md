@@ -9,6 +9,18 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-17
+
+Desktop-only production installer `CamxoraSetup-1.3.1.exe` from `main`
+(through PR #57). Does **not** include music-web, admin portal, DistroKid,
+or a YouTube Done historical backfill.
+
+### Added
+
+- **Dashboard / Profile used/quota:** Usage This Month and Membership show
+  used / allowance (for example `200 / 300`) and scale add-on channel caps.
+  See `docs/changelog/2026-08-16-desktop-dashboard-used-quota.md`.
+
 ### Fixed
 
 - **Video prewarm no longer decodes preview audio** until the Video page is
@@ -32,6 +44,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
   `MERGED_*.mp4`, or a Long completed / Long merged label) is treated as
   archived, not unfinished. Explicit Rebuild / Repair / Force still regenerate.
   See `docs/changelog/2026-08-17-freeze-auto-video-after-long-completed.md`.
+
+### Changed
+
+- Desktop version stamp **1.3.1** / installer `CamxoraSetup-1.3.1.exe`.
+  Publish with **Force update** so **1.3.0** clients upgrade.
+  Detail: `docs/changelog/2026-08-17-desktop-1.3.1.md`.
 
 ## [1.3.0] - 2026-08-14
 
