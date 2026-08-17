@@ -10,6 +10,24 @@ from platform_api.services.shared.cutluy_service import CutLuyService, get_cutlu
 
 logger = logging.getLogger(__name__)
 
+# Monthly credit allowance refreshes every 30 days even on yearly billing plans.
+MONTHLY_CREDIT_RESET_DAYS = 30
+
+
+def next_credit_reset_at(
+    *,
+    billing_cycle: str,
+    current_period_end: datetime,
+    last_credit_reset: datetime,
+) -> datetime:
+    """When the subscriber's monthly credit pool next refreshes."""
+    if billing_cycle == "yearly":
+        return min(
+            last_credit_reset + timedelta(days=MONTHLY_CREDIT_RESET_DAYS),
+            current_period_end,
+        )
+    return current_period_end
+
 
 def _parse_features(value: Any) -> dict:
     if isinstance(value, dict):
@@ -60,6 +78,7 @@ class Subscription:
     monthly_credits_used: int
     topup_credits_balance: int
     external_subscription_id: Optional[str]
+    last_credit_reset: datetime | None = None
 
 
 @dataclass
@@ -164,6 +183,7 @@ class SubscriptionService:
                 ws.current_period_start, ws.current_period_end, ws.cancel_at_period_end,
                 ws.monthly_credits_granted, ws.monthly_credits_used,
                 ws.topup_credits_balance, ws.external_subscription_id,
+                ws.last_credit_reset,
                 ws.created_at, ws.cancelled_at,
                 p.name AS plan_name
             FROM web_subscriptions ws
@@ -191,6 +211,7 @@ class SubscriptionService:
             monthly_credits_used=row["monthly_credits_used"],
             topup_credits_balance=row["topup_credits_balance"],
             external_subscription_id=row.get("external_subscription_id"),
+            last_credit_reset=row.get("last_credit_reset"),
         )
 
         await self.reset_quota_if_needed(subscription)
@@ -451,103 +472,192 @@ class SubscriptionService:
             subscription["monthly_credits_granted"] - subscription["monthly_credits_used"]
         )
 
+        last_reset = subscription.get("last_credit_reset") or subscription["current_period_start"]
         return CreditBalance(
             monthly_granted=subscription["monthly_credits_granted"],
             monthly_used=subscription["monthly_credits_used"],
             monthly_remaining=monthly_remaining,
             topup_balance=subscription["topup_credits_balance"],
             total_remaining=monthly_remaining + subscription["topup_credits_balance"],
-            reset_at=subscription["current_period_end"]
+            reset_at=next_credit_reset_at(
+                billing_cycle=subscription["billing_cycle"],
+                current_period_end=subscription["current_period_end"],
+                last_credit_reset=last_reset,
+            ),
         )
     
-    async def reset_quota_if_needed(self, subscription: Subscription) -> bool:
-        """Reset monthly quota if billing period ended."""
-        if subscription.status != "active":
-            return False
-
-        now = datetime.utcnow()
-        
-        # Check if period ended
-        if subscription.current_period_end > now:
-            return False
-        
-        # Check if already cancelled
-        if subscription.cancel_at_period_end:
-            await self._db.execute("""
-                UPDATE web_subscriptions
-                SET status = 'expired'
-                WHERE id = $1
-            """, subscription.id)
-            logger.info(f"Subscription {subscription.id} expired")
-            return False
-        
-        # Calculate next period
-        plan = await self.get_plan_by_id(subscription.plan_id)
-        if not plan:
-            logger.error(f"Plan not found for subscription {subscription.id}")
-            return False
-        
-        next_period_start = subscription.current_period_end
-        next_period_end = next_period_start + timedelta(days=plan.billing_cycle_days)
-        
-        # Reset quota
-        await self._db.execute("""
-            UPDATE web_subscriptions
-            SET monthly_credits_used = 0,
-                current_period_start = $1,
-                current_period_end = $2,
-                last_credit_reset = $1
-            WHERE id = $3
-        """, next_period_start, next_period_end, subscription.id)
-        
-        # Log transaction
-        await self._db.execute("""
+    async def _log_monthly_credit_reset(
+        self,
+        *,
+        user_id: str,
+        subscription_id: str,
+        monthly_credits: int,
+    ) -> None:
+        await self._db.execute(
+            """
             INSERT INTO credit_transactions (
                 user_id, amount, direction, reason, ref_id
             ) VALUES (
                 $1, $2, 'credit', 'monthly_reset', $3
             )
-        """, subscription.user_id, plan.monthly_credits, subscription.id)
-        
-        logger.info(
-            f"Reset quota for subscription {subscription.id}: "
-            f"{plan.monthly_credits} credits"
+            """,
+            user_id,
+            monthly_credits,
+            subscription_id,
         )
-        
+
+    async def _reset_yearly_monthly_allowance(
+        self,
+        subscription: Subscription,
+        *,
+        reset_at: datetime,
+    ) -> bool:
+        """Refresh monthly credits on a yearly plan without advancing billing."""
+        await self._db.execute(
+            """
+            UPDATE web_subscriptions
+            SET monthly_credits_used = 0,
+                last_credit_reset = $1
+            WHERE id = $2
+            """,
+            reset_at,
+            subscription.id,
+        )
+        await self._log_monthly_credit_reset(
+            user_id=subscription.user_id,
+            subscription_id=subscription.id,
+            monthly_credits=subscription.monthly_credits_granted,
+        )
+        logger.info(
+            "Reset monthly allowance for yearly subscription %s at %s",
+            subscription.id,
+            reset_at.isoformat(),
+        )
         return True
+
+    async def reset_quota_if_needed(self, subscription: Subscription) -> bool:
+        """Reset monthly credits when billing period or monthly allowance is due."""
+        if subscription.status != "active":
+            return False
+
+        now = datetime.utcnow()
+        last_reset = subscription.last_credit_reset or subscription.current_period_start
+
+        if subscription.current_period_end <= now:
+            if subscription.cancel_at_period_end:
+                await self._db.execute(
+                    """
+                    UPDATE web_subscriptions
+                    SET status = 'expired'
+                    WHERE id = $1
+                    """,
+                    subscription.id,
+                )
+                logger.info("Subscription %s expired", subscription.id)
+                return False
+
+            plan = await self.get_plan_by_id(subscription.plan_id)
+            if not plan:
+                logger.error("Plan not found for subscription %s", subscription.id)
+                return False
+
+            next_period_start = subscription.current_period_end
+            next_period_end = next_period_start + timedelta(days=plan.billing_cycle_days)
+
+            await self._db.execute(
+                """
+                UPDATE web_subscriptions
+                SET monthly_credits_used = 0,
+                    current_period_start = $1,
+                    current_period_end = $2,
+                    last_credit_reset = $1
+                WHERE id = $3
+                """,
+                next_period_start,
+                next_period_end,
+                subscription.id,
+            )
+            await self._log_monthly_credit_reset(
+                user_id=subscription.user_id,
+                subscription_id=subscription.id,
+                monthly_credits=plan.monthly_credits,
+            )
+            logger.info(
+                "Renewed billing period for subscription %s: %s credits",
+                subscription.id,
+                plan.monthly_credits,
+            )
+            return True
+
+        if (
+            subscription.billing_cycle == "yearly"
+            and last_reset + timedelta(days=MONTHLY_CREDIT_RESET_DAYS) <= now
+        ):
+            return await self._reset_yearly_monthly_allowance(
+                subscription,
+                reset_at=now,
+            )
+
+        return False
     
+    def _subscription_from_row(self, row: dict) -> Subscription:
+        return Subscription(
+            id=str(row["id"]),
+            user_id=str(row["user_id"]),
+            plan_id=str(row["plan_id"]),
+            status=row["status"],
+            billing_cycle=row["billing_cycle"],
+            current_period_start=row["current_period_start"],
+            current_period_end=row["current_period_end"],
+            cancel_at_period_end=row["cancel_at_period_end"],
+            monthly_credits_granted=row["monthly_credits_granted"],
+            monthly_credits_used=row["monthly_credits_used"],
+            topup_credits_balance=row["topup_credits_balance"],
+            external_subscription_id=row.get("external_subscription_id"),
+            last_credit_reset=row.get("last_credit_reset"),
+        )
+
     async def process_due_subscriptions(self) -> int:
-        """Expire or renew all subscriptions whose billing period has ended."""
-        rows = await self._db.fetch_all(
+        """Expire, renew, or refresh monthly credits for due subscriptions."""
+        period_rows = await self._db.fetch_all(
             """
             SELECT
                 id, user_id, plan_id, status, billing_cycle,
                 current_period_start, current_period_end, cancel_at_period_end,
                 monthly_credits_granted, monthly_credits_used,
-                topup_credits_balance, external_subscription_id
+                topup_credits_balance, external_subscription_id,
+                last_credit_reset
             FROM web_subscriptions
             WHERE status = 'active'
               AND current_period_end <= NOW()
             """
         )
+        yearly_rows = await self._db.fetch_all(
+            """
+            SELECT
+                id, user_id, plan_id, status, billing_cycle,
+                current_period_start, current_period_end, cancel_at_period_end,
+                monthly_credits_granted, monthly_credits_used,
+                topup_credits_balance, external_subscription_id,
+                last_credit_reset
+            FROM web_subscriptions
+            WHERE status = 'active'
+              AND billing_cycle = 'yearly'
+              AND current_period_end > NOW()
+              AND last_credit_reset + ($1 * INTERVAL '1 day') <= NOW()
+            """,
+            MONTHLY_CREDIT_RESET_DAYS,
+        )
+
         handled = 0
-        for row in rows or []:
-            subscription = Subscription(
-                id=str(row["id"]),
-                user_id=str(row["user_id"]),
-                plan_id=str(row["plan_id"]),
-                status=row["status"],
-                billing_cycle=row["billing_cycle"],
-                current_period_start=row["current_period_start"],
-                current_period_end=row["current_period_end"],
-                cancel_at_period_end=row["cancel_at_period_end"],
-                monthly_credits_granted=row["monthly_credits_granted"],
-                monthly_credits_used=row["monthly_credits_used"],
-                topup_credits_balance=row["topup_credits_balance"],
-                external_subscription_id=row.get("external_subscription_id"),
-            )
-            await self.reset_quota_if_needed(subscription)
-            handled += 1
+        seen: set[str] = set()
+        for row in (period_rows or []) + (yearly_rows or []):
+            subscription_id = str(row["id"])
+            if subscription_id in seen:
+                continue
+            seen.add(subscription_id)
+            if await self.reset_quota_if_needed(self._subscription_from_row(row)):
+                handled += 1
         if handled:
             logger.info("Processed %s due web music subscription(s)", handled)
         return handled

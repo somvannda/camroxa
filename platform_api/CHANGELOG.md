@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web music LRC cached on Backblaze (`101_web_music_b2_lrc_storage`); playback and streaming play-url require login (free users can play). See `docs/changelog/2026-08-17-web-music-lrc-b2-login-playback.md`.
 - Web music credit hardening (P0): async Suno failure refunds, subscription period enforcement, 15-min maintenance loop, removed public `/v2/credits/consume`. See `docs/changelog/2026-08-17-web-music-credit-hardening-p0.md`.
 - Web music credit hardening (P1): refund to monthly/top-up pools from debit metadata, reservation→task debit linking, refund idempotency index, removed v2 `credit_wallets` updates. See `docs/changelog/2026-08-17-web-music-credit-hardening-p1.md`.
+- Web music credit billing polish: simple-mode Suno lyrics included in song charge (credits reserved first); yearly plans refresh monthly credits every 30 days. See `docs/changelog/2026-08-17-web-music-credit-billing-polish.md`.
 
 See `docs/changelog/2026-08-17-music-web-profile-likes-avatar.md`.
 

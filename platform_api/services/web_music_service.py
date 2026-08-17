@@ -525,10 +525,6 @@ class WebMusicService:
                     "Describe the song you want to create.",
                     details={"field": "prompt"},
                 )
-            generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(safe_prompt)
-            safe_lyrics = str(generated_lyrics or "").strip() or safe_prompt
-            if not safe_title:
-                safe_title = str(generated_title or "").strip() or safe_prompt[:80]
         else:
             if not instrumental and not safe_lyrics:
                 raise ValidationError("Lyrics are required.", details={"field": "lyrics"})
@@ -540,7 +536,21 @@ class WebMusicService:
                 safe_title = first_line[:80] or "Untitled"
 
         reservation_id = str(uuid4())
+        # Charge before simple-mode Suno lyrics so zero-credit users cannot consume API quota.
         quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
+
+        if mode_key == "simple":
+            try:
+                generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
+                    safe_prompt
+                )
+            except Exception:
+                await self._release_daily_slot(user_id, reference_id=reservation_id)
+                raise
+            safe_lyrics = str(generated_lyrics or "").strip() or safe_prompt
+            if not safe_title:
+                safe_title = str(generated_title or "").strip() or safe_prompt[:80]
+
         stored_style_weight = _normalize_slider(style_weight)
         stored_weirdness = _normalize_slider(weirdness_constraint)
         stored_audio_weight = _normalize_slider(audio_weight)

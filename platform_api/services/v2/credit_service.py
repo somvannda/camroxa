@@ -192,7 +192,10 @@ class CreditService:
                 monthly_credits_granted,
                 monthly_credits_used,
                 topup_credits_balance,
-                current_period_end
+                current_period_end,
+                billing_cycle,
+                last_credit_reset,
+                current_period_start
             FROM web_subscriptions
             WHERE {_ACTIVE_SUBSCRIPTION_SQL}
             """,
@@ -210,6 +213,12 @@ class CreditService:
                 - int(subscription["monthly_credits_used"] or 0),
             )
             topup_balance = int(subscription["topup_credits_balance"] or 0)
+            last_reset = (
+                subscription.get("last_credit_reset")
+                or subscription["current_period_start"]
+            )
+            from platform_api.services.v2.subscription_service import next_credit_reset_at
+
             return DetailedBalance(
                 has_subscription=True,
                 monthly_granted=int(subscription["monthly_credits_granted"] or 0),
@@ -220,7 +229,11 @@ class CreditService:
                 daily_free_used=daily_used,
                 daily_free_remaining=0,
                 total_available=monthly_remaining + topup_balance,
-                reset_at=subscription["current_period_end"],
+                reset_at=next_credit_reset_at(
+                    billing_cycle=subscription["billing_cycle"],
+                    current_period_end=subscription["current_period_end"],
+                    last_credit_reset=last_reset,
+                ),
             )
 
         return DetailedBalance(
