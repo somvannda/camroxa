@@ -38,7 +38,7 @@ export function LikesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!user) {
+    if (!user || user.email_confirmed === false) {
       setLikedIds(new Set());
       return;
     }

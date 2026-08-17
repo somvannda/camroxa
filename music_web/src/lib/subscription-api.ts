@@ -196,6 +196,34 @@ export async function purchaseTopup(input: {
   });
 }
 
+export type CheckoutStatus = {
+  status: 'pending' | 'paid' | 'failed' | 'expired' | string;
+  fulfilled: boolean;
+  plan_name?: string;
+  pack_name?: string;
+  credits: number;
+};
+
+export function isAllowedCutluyCheckoutUrl(url: string | null | undefined): boolean {
+  try {
+    const parsed = new URL(String(url || ''));
+    if (parsed.protocol !== 'https:') return false;
+    if (parsed.username || parsed.password) return false;
+    const host = parsed.hostname.toLowerCase();
+    return host === 'cutluy.com' || host.endsWith('.cutluy.com');
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchSubscriptionCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
+  return apiFetch(`/api/v1/v2/subscriptions/payments/${encodeURIComponent(paymentId)}`);
+}
+
+export async function fetchTopupCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
+  return apiFetch(`/api/v1/v2/topups/payments/${encodeURIComponent(paymentId)}`);
+}
+
 export async function fetchTopupHistory(
   limit = 50,
   offset = 0,
@@ -208,15 +236,24 @@ export async function fetchTopupHistory(
 // ============================================================================
 
 export function formatPlanDisplayName(planName: string): string {
-  const normalized = planName
+  const trimmed = planName.trim();
+  const prettyCycle = trimmed.match(/\((monthly|yearly)\)$/i);
+  const slugCycle = trimmed.match(/[-_\s]+(monthly|yearly)$/i);
+  const cycle = (prettyCycle?.[1] ?? slugCycle?.[1] ?? '').toLowerCase();
+  const raw = trimmed
+    .replace(/\s*\((monthly|yearly)\)$/i, '')
     .replace(/[-_\s]+(monthly|yearly)$/i, '')
     .replace(/_/g, ' ')
     .trim();
-  if (!normalized) return 'Plan';
-  return normalized
+  const title = raw
     .split(/\s+/)
+    .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
+  const label = title || 'Plan';
+  if (cycle === 'monthly') return `${label} (Monthly)`;
+  if (cycle === 'yearly') return `${label} (Yearly)`;
+  return label;
 }
 
 /**

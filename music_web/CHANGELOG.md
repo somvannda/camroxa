@@ -17,6 +17,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Catalog/Explore play uses the same Camxora stream proxy (signed B2 URLs stay server-side). See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
 - Catalog JSON no longer includes `storage_key` or `suno_audio_id`; the player only loads Camxora play/stream paths. See `docs/changelog/2026-08-17-music-web-no-origin-audio-urls.md`.
 
+### Changed
+
+- Create workspace rows show each clip’s duration before Ready (for example `3:45 · Ready`). See `docs/changelog/2026-08-17-web-music-clip-duration.md`.
+- Unconfirmed music-web sessions stay on verify-email with no Create/sidebar; `/create` redirects back. See `docs/changelog/2026-08-17-music-web-email-confirm-lock.md`.
+- Checkout iframe only loads CutLuy HTTPS URLs (sandbox + no-referrer). See `docs/changelog/2026-08-17-music-web-checkout-security.md`.
+- Music web checkout now owns the post-pay path: poll CutLuy status, fulfill credits, show a success popup, and Close returns to Create. CutLuy is used for KHQR only (no portal payment-link redirect). Plan names show as `Starter (Monthly)`. Credit meter shows remaining / total including top-up packs. See `docs/changelog/2026-08-17-music-web-owned-checkout.md`.
+
 ### Added
 
 - Public playlist discovery on Explore and Artists: recent public playlists, creators with public playlists, playlist/track counts on artist cards. See `docs/changelog/2026-08-17-web-music-explore-public-playlists.md`.

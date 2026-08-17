@@ -43,6 +43,12 @@ WEB_MUSIC_DOWNLOAD_RATE_WINDOW_SECONDS = 60
 WEB_MUSIC_PLAY_RATE_LIMIT = 120
 WEB_MUSIC_PLAY_RATE_WINDOW_SECONDS = 60
 
+WEB_MUSIC_CHECKOUT_RATE_LIMIT = 8
+WEB_MUSIC_CHECKOUT_RATE_WINDOW_SECONDS = 60
+
+WEB_MUSIC_CHECKOUT_STATUS_RATE_LIMIT = 45
+WEB_MUSIC_CHECKOUT_STATUS_RATE_WINDOW_SECONDS = 60
+
 # Redis key prefix for cached rate limit config
 CONFIG_CACHE_PREFIX = "ratelimit:config:"
 CONFIG_CACHE_TTL = 5  # seconds — Admin updates apply within this window
@@ -227,6 +233,16 @@ async def get_rate_limit_config(
             max_requests=WEB_MUSIC_PLAY_RATE_LIMIT,
             window_seconds=WEB_MUSIC_PLAY_RATE_WINDOW_SECONDS,
         )
+    elif endpoint_type == "web_music_checkout":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_CHECKOUT_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_CHECKOUT_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "web_music_checkout_status":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_CHECKOUT_STATUS_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_CHECKOUT_STATUS_RATE_WINDOW_SECONDS,
+        )
     else:
         config = RateLimitConfig(
             max_requests=DEFAULT_RATE_LIMIT,
@@ -289,6 +305,14 @@ def resolve_endpoint_type(path: str) -> str:
         or normalized.startswith("channel-setup/generate-")
     ):
         return "llm"
+
+    if normalized.endswith("v2/subscriptions/purchase") or normalized.endswith(
+        "v2/topups/purchase"
+    ):
+        return "web_music_checkout"
+
+    if "v2/subscriptions/payments/" in normalized or "v2/topups/payments/" in normalized:
+        return "web_music_checkout_status"
 
     return "default"
 

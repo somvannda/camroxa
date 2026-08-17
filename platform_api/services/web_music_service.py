@@ -144,6 +144,15 @@ def _row_value(row: Any, key: str, default: Any = None) -> Any:
         return default
 
 
+def _duration_seconds(row: Any, key: str) -> float | None:
+    raw = _row_value(row, key)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 class WebMusicService:
     def __init__(
         self,
@@ -1667,7 +1676,7 @@ class WebMusicService:
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=ok",
                     "ready": ok_ready,
                     "image_url": image_ok,
-                    "duration_seconds": float(duration_ok) if duration_ok is not None else None,
+                    "duration_seconds": _duration_seconds(row, "duration_ok"),
                 },
                 {
                     "variant": "alt",
@@ -1676,7 +1685,7 @@ class WebMusicService:
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=alt",
                     "ready": alt_ready,
                     "image_url": image_alt,
-                    "duration_seconds": float(duration_alt) if duration_alt is not None else None,
+                    "duration_seconds": _duration_seconds(row, "duration_alt"),
                 },
             ],
         }

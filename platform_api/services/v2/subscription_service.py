@@ -6,7 +6,19 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from platform_api.services.shared.cutluy_service import CutLuyService, get_cutluy_service
+import asyncpg
+
+from platform_api.services.shared.cutluy_service import (
+    CutLuyService,
+    get_cutluy_service,
+    normalize_cutluy_payment_status,
+)
+from platform_api.services.v2.payment_security import (
+    paid_amount_matches,
+    sanitize_music_web_return_url,
+    validate_payment_id,
+    webhook_user_matches,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +251,88 @@ class SubscriptionService:
         result = dict(refreshed)
         result["total_credits_available"] = monthly_remaining + refreshed["topup_credits_balance"]
         return result
+
+    async def _get_checkout_subscription_row(self, user_id: str) -> Optional[dict]:
+        """Return the user's current web_subscriptions row, including pending checkout."""
+        return await self._db.fetch_one(
+            """
+            SELECT id, status, plan_id
+            FROM web_subscriptions
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+
+    async def _upsert_pending_subscription(
+        self,
+        *,
+        user_id: str,
+        plan: Plan,
+        billing_cycle: str,
+        period_start: datetime,
+        period_end: datetime,
+        existing: dict | None,
+    ) -> str:
+        if existing and existing.get("status") == "pending":
+            subscription_id = str(existing["id"])
+            await self._db.execute(
+                """
+                UPDATE web_subscriptions
+                SET plan_id = $1,
+                    billing_cycle = $2,
+                    current_period_start = $3,
+                    current_period_end = $4,
+                    monthly_credits_granted = $5,
+                    monthly_credits_used = 0,
+                    external_subscription_id = NULL,
+                    updated_at = NOW()
+                WHERE id = $6 AND user_id = $7 AND status = 'pending'
+                """,
+                plan.id,
+                billing_cycle,
+                period_start,
+                period_end,
+                plan.monthly_credits,
+                subscription_id,
+                user_id,
+            )
+            return subscription_id
+
+        try:
+            subscription_id = await self._db.fetch_val(
+                """
+                INSERT INTO web_subscriptions (
+                    user_id, plan_id, status, billing_cycle,
+                    current_period_start, current_period_end,
+                    monthly_credits_granted, monthly_credits_used,
+                    topup_credits_balance
+                ) VALUES (
+                    $1, $2, 'pending', $3, $4, $5, $6, 0, 0
+                )
+                RETURNING id
+                """,
+                user_id,
+                plan.id,
+                billing_cycle,
+                period_start,
+                period_end,
+                plan.monthly_credits,
+            )
+            return str(subscription_id)
+        except asyncpg.UniqueViolationError:
+            reused = await self._get_checkout_subscription_row(user_id)
+            if reused is None:
+                raise
+            return await self._upsert_pending_subscription(
+                user_id=user_id,
+                plan=plan,
+                billing_cycle=billing_cycle,
+                period_start=period_start,
+                period_end=period_end,
+                existing=reused,
+            )
     
     async def create_subscription(
         self,
@@ -267,8 +361,7 @@ class SubscriptionService:
         Raises:
             ValueError: If plan not found or user already has subscription
         """
-        # Check if user already has subscription
-        existing = await self.get_user_subscription(user_id)
+        existing = await self._get_checkout_subscription_row(user_id)
         if existing and existing.get("status") == "active":
             raise ValueError("User already has an active subscription")
 
@@ -276,6 +369,9 @@ class SubscriptionService:
         plan = await self.get_plan_by_name(plan_name)
         if not plan:
             raise ValueError(f"Plan not found: {plan_name}")
+        self._assert_purchasable_plan(plan)
+        success_url = sanitize_music_web_return_url(success_url)
+        cancel_url = sanitize_music_web_return_url(cancel_url)
 
         # Validate billing cycle matches plan
         expected_cycle = "yearly" if plan.billing_cycle_days >= 365 else "monthly"
@@ -288,49 +384,14 @@ class SubscriptionService:
         period_start = datetime.utcnow()
         period_end = period_start + timedelta(days=plan.billing_cycle_days)
 
-        if existing and existing.get("status") == "pending":
-            subscription_id = str(existing["id"])
-            await self._db.execute(
-                """
-                UPDATE web_subscriptions
-                SET plan_id = $1,
-                    billing_cycle = $2,
-                    current_period_start = $3,
-                    current_period_end = $4,
-                    monthly_credits_granted = $5,
-                    monthly_credits_used = 0,
-                    external_subscription_id = NULL,
-                    updated_at = NOW()
-                WHERE id = $6 AND user_id = $7 AND status = 'pending'
-                """,
-                plan.id,
-                billing_cycle,
-                period_start,
-                period_end,
-                plan.monthly_credits,
-                subscription_id,
-                user_id,
-            )
-        else:
-            subscription_id = await self._db.fetch_val(
-                """
-                INSERT INTO web_subscriptions (
-                    user_id, plan_id, status, billing_cycle,
-                    current_period_start, current_period_end,
-                    monthly_credits_granted, monthly_credits_used,
-                    topup_credits_balance
-                ) VALUES (
-                    $1, $2, 'pending', $3, $4, $5, $6, 0, 0
-                )
-                RETURNING id
-                """,
-                user_id,
-                plan.id,
-                billing_cycle,
-                period_start,
-                period_end,
-                plan.monthly_credits,
-            )
+        subscription_id = await self._upsert_pending_subscription(
+            user_id=user_id,
+            plan=plan,
+            billing_cycle=billing_cycle,
+            period_start=period_start,
+            period_end=period_end,
+            existing=existing,
+        )
 
         # Create CutLuy payment
         try:
@@ -393,6 +454,7 @@ class SubscriptionService:
         plan = await self.get_plan_by_id(plan_id)
         if not plan:
             raise ValueError(f"Plan not found: {plan_id}")
+        self._assert_purchasable_plan(plan)
 
         billing_cycle = "yearly" if plan.billing_cycle_days >= 365 else "monthly"
         return await self.create_subscription(
@@ -401,6 +463,139 @@ class SubscriptionService:
             billing_cycle=billing_cycle,
             success_url=success_url,
             cancel_url=cancel_url,
+        )
+
+    def _assert_purchasable_plan(self, plan: Plan) -> None:
+        if plan.plan_type != "web_music" or not plan.is_public:
+            raise ValueError("Plan not available for purchase")
+        if int(plan.price_cents or 0) < 1:
+            raise ValueError("Plan is not purchasable")
+
+    async def get_checkout_status(self, user_id: str, payment_id: str) -> dict[str, Any]:
+        """Poll CutLuy and fulfill a web-music subscription checkout for this user."""
+        try:
+            payment_id = validate_payment_id(payment_id)
+        except ValueError as exc:
+            raise LookupError("Payment not found") from exc
+        row = await self._db.fetch_one(
+            """
+            SELECT ws.id, ws.status, ws.monthly_credits_granted,
+                   p.name AS plan_name, p.price_cents
+            FROM web_subscriptions ws
+            JOIN plans p ON ws.plan_id = p.id
+            WHERE ws.user_id = $1
+              AND ws.external_subscription_id = $2
+            ORDER BY ws.created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            payment_id,
+        )
+        if not row:
+            raise LookupError("Payment not found")
+
+        plan_name = row["plan_name"]
+        credits = int(row["monthly_credits_granted"] or 0)
+        local_status = str(row["status"] or "")
+
+        if local_status == "active":
+            return {
+                "status": "paid",
+                "fulfilled": True,
+                "plan_name": plan_name,
+                "credits": credits,
+            }
+        if local_status in {"past_due", "cancelled", "expired"}:
+            return {
+                "status": "failed" if local_status == "past_due" else local_status,
+                "fulfilled": False,
+                "plan_name": plan_name,
+                "credits": credits,
+            }
+
+        try:
+            payload = await self._cutluy.get_payment_status(payment_id, db=self._db)
+        except ValueError:
+            logger.exception("CutLuy status check failed for payment %s", payment_id)
+            return {
+                "status": "pending",
+                "fulfilled": False,
+                "plan_name": plan_name,
+                "credits": credits,
+            }
+
+        remote = normalize_cutluy_payment_status(payload.get("status"))
+        if remote == "paid":
+            if not paid_amount_matches(int(row["price_cents"] or 0), payload):
+                logger.error(
+                    "Refusing subscription fulfill: amount mismatch for payment %s",
+                    payment_id,
+                )
+                return {
+                    "status": "pending",
+                    "fulfilled": False,
+                    "plan_name": plan_name,
+                    "credits": credits,
+                }
+            await self._fulfill_subscription_payment(
+                payment_id=payment_id,
+                subscription_id=str(row["id"]),
+            )
+            return {
+                "status": "paid",
+                "fulfilled": True,
+                "plan_name": plan_name,
+                "credits": credits,
+            }
+        if remote == "failed":
+            await self._mark_subscription_terminal(str(row["id"]), "past_due")
+            return {
+                "status": "failed",
+                "fulfilled": False,
+                "plan_name": plan_name,
+                "credits": credits,
+            }
+        if remote == "expired":
+            await self._mark_subscription_terminal(str(row["id"]), "expired")
+            return {
+                "status": "expired",
+                "fulfilled": False,
+                "plan_name": plan_name,
+                "credits": credits,
+            }
+        return {
+            "status": "pending",
+            "fulfilled": False,
+            "plan_name": plan_name,
+            "credits": credits,
+        }
+
+    async def _fulfill_subscription_payment(self, *, payment_id: str, subscription_id: str) -> None:
+        """Activate a pending subscription after verified CutLuy payment. Idempotent."""
+        await self._db.execute(
+            """
+            UPDATE web_subscriptions
+            SET status = 'active',
+                last_payment_at = NOW()
+            WHERE id = $1
+              AND status = 'pending'
+              AND external_subscription_id = $2
+            """,
+            subscription_id,
+            payment_id,
+        )
+        logger.info("Activated subscription %s from payment %s", subscription_id, payment_id)
+
+    async def _mark_subscription_terminal(self, subscription_id: str, status: str) -> None:
+        await self._db.execute(
+            """
+            UPDATE web_subscriptions
+            SET status = $2
+            WHERE id = $1
+              AND status = 'pending'
+            """,
+            subscription_id,
+            status,
         )
 
     async def cancel_subscription(
@@ -672,7 +867,12 @@ class SubscriptionService:
         raw_body: bytes,
     ) -> dict:
         """Verify and process a CutLuy webhook event."""
-        if not self._cutluy.verify_webhook_signature(raw_body, signature or ""):
+        verified = await self._cutluy.verify_webhook_signature_async(
+            raw_body,
+            signature or "",
+            db=self._db,
+        )
+        if not verified:
             logger.error("CutLuy webhook signature verification failed")
             return {"processed": False, "message": "Invalid webhook signature"}
 
@@ -717,36 +917,40 @@ class SubscriptionService:
             return False
     
     async def _handle_payment_completed(self, data: dict):
-        """Handle payment.completed webhook."""
-        payment_id = data.get("id")
-        subscription_id = data.get("metadata", {}).get("subscription_id")
-        
-        if not subscription_id:
-            logger.error("No subscription_id in payment metadata")
+        """Handle payment.completed webhook.
+
+        Bind only to the current CutLuy payment id stored on the pending row.
+        Metadata subscription_id alone must not activate a swapped plan.
+        """
+        try:
+            payment_id = validate_payment_id(str(data.get("id") or data.get("payment_id") or ""))
+        except ValueError:
+            logger.error("CutLuy webhook missing a valid payment id")
             return
-        
-        # Activate subscription
-        await self._db.execute("""
-            UPDATE web_subscriptions
-            SET status = 'active',
-                external_subscription_id = $1,
-                last_payment_at = NOW()
-            WHERE id = $2
-        """, payment_id, subscription_id)
-        
-        # Get subscription and plan details
-        subscription = await self._db.fetch_one("""
-            SELECT ws.*, p.name as plan_name, u.email
+
+        row = await self._db.fetch_one(
+            """
+            SELECT ws.id, ws.user_id, ws.status, p.price_cents
             FROM web_subscriptions ws
             JOIN plans p ON ws.plan_id = p.id
-            JOIN users u ON ws.user_id = u.id
-            WHERE ws.id = $1
-        """, subscription_id)
-        
-        # TODO: Send confirmation email using existing email_service.py
-        # from platform_api.services.email_service import send_verification_email
-        
-        logger.info(f"Activated subscription {subscription_id}")
+            WHERE ws.external_subscription_id = $1
+            """,
+            payment_id,
+        )
+        if not row:
+            logger.warning("No subscription bound to CutLuy payment %s", payment_id)
+            return
+        if not webhook_user_matches(str(row["user_id"]), data):
+            logger.error("CutLuy webhook user mismatch for payment %s", payment_id)
+            return
+        if not paid_amount_matches(int(row["price_cents"] or 0), data):
+            logger.error("CutLuy webhook amount mismatch for payment %s", payment_id)
+            return
+
+        await self._fulfill_subscription_payment(
+            payment_id=payment_id,
+            subscription_id=str(row["id"]),
+        )
     
     async def _handle_subscription_renewed(self, data: dict):
         """Handle subscription.renewed webhook."""
@@ -787,15 +991,25 @@ class SubscriptionService:
     
     async def _handle_payment_failed(self, data: dict):
         """Handle payment.failed webhook."""
-        external_id = data.get("subscription_id")
-        
-        await self._db.execute("""
+        try:
+            payment_id = validate_payment_id(
+                str(data.get("id") or data.get("payment_id") or data.get("subscription_id") or "")
+            )
+        except ValueError:
+            logger.error("CutLuy failed webhook missing a valid payment id")
+            return
+
+        await self._db.execute(
+            """
             UPDATE web_subscriptions
             SET status = 'past_due'
             WHERE external_subscription_id = $1
-        """, external_id)
+              AND status = 'pending'
+            """,
+            payment_id,
+        )
         
-        logger.warning(f"Payment failed for subscription: {external_id}")
+        logger.warning("Payment failed for subscription payment %s", payment_id)
 
 
 # Singleton (will be replaced by dependency injection)

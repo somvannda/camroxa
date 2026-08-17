@@ -27,6 +27,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Public streaming catalog JSON omits origin audio fields (`storage_key`, `suno_audio_id`). See `docs/changelog/2026-08-17-music-web-no-origin-audio-urls.md`.
 - Startup Alembic runner skips leftover sibling heads and time-boxes upgrade so sandbox cannot hang on broken merge stubs.
 
+### Changed
+
+- Web-music generation clips include `duration_seconds` from stored Suno durations (`104_suno_task_durations`). See `docs/changelog/2026-08-17-web-music-clip-duration.md`.
+- Unconfirmed users cannot call authenticated product APIs (including web-music generate) until they verify email. See `docs/changelog/2026-08-17-music-web-email-confirm-lock.md`.
+- Web-music checkout/top-up fulfill only the bound CutLuy payment, allowlist return/checkout URLs, and rate-limit purchase + status poll. See `docs/changelog/2026-08-17-music-web-checkout-security.md`.
+- Web-music CutLuy payments no longer attach the portal `payment_link_id`. Status poll endpoints fulfill subscription and top-up credits if the webhook has not already run. See `docs/changelog/2026-08-17-music-web-owned-checkout.md`.
+
 ### Added
 
 - Web music public discovery endpoints: `/web-music/public/playlists`, `/web-music/public/artists`, `/web-music/public/artists/{user_id}`. See `docs/changelog/2026-08-17-web-music-explore-public-playlists.md`.
