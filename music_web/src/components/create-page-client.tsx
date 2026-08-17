@@ -114,28 +114,7 @@ function ClipReadyLabel({
   waitingLabel?: string;
   className?: string;
 }) {
-  const [probedSeconds, setProbedSeconds] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (clip.duration_seconds || !clip.ready || !clip.audio_url) {
-      return;
-    }
-    const audio = new Audio();
-    audio.preload = 'metadata';
-    const onLoaded = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setProbedSeconds(audio.duration);
-      }
-    };
-    audio.addEventListener('loadedmetadata', onLoaded);
-    audio.src = clip.audio_url;
-    return () => {
-      audio.removeEventListener('loadedmetadata', onLoaded);
-      audio.removeAttribute('src');
-    };
-  }, [clip.audio_url, clip.duration_seconds, clip.ready]);
-
-  const duration = formatDuration(clip.duration_seconds ?? probedSeconds);
+  const duration = formatDuration(clip.duration_seconds);
   const status = clip.ready ? 'Ready' : waitingLabel;
 
   return (

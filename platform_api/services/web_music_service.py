@@ -1024,19 +1024,15 @@ class WebMusicService:
         return refreshed or row
 
     async def _mint_owner_play_url(self, user_id: UUID, task_id: UUID, variant: str) -> str:
+        del user_id
         variant_key = str(variant or "ok").strip().lower()
-        if self._redis is None:
-            return self._safe_client_play_url(
-                f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
-            )
-        token = await create_play_token(
-            self._redis,
-            task_id=task_id,
-            variant=variant_key,
-            access="owner",
-            user_id=user_id,
+        if variant_key not in {"ok", "alt"}:
+            variant_key = "ok"
+        # Owner already sees the task id in Create. Use the unique stream path so
+        # the browser cannot reuse one media buffer across clips.
+        return self._safe_client_play_url(
+            f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
         )
-        return self._safe_client_play_url(play_url_for_token(token))
 
     async def _mint_public_play_url(self, task_id: UUID, variant: str) -> str:
         variant_key = str(variant or "ok").strip().lower()

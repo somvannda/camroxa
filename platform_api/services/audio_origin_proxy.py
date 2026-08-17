@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping
+from hashlib import sha256
 from urllib.parse import urlparse
 import re
 
@@ -48,7 +49,10 @@ def is_initial_play_range(range_header: str | None) -> bool:
 
 def _safe_response_headers(origin_headers: Mapping[str, str]) -> dict[str, str]:
     headers: dict[str, str] = {
-        "Cache-Control": "private, no-store",
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+        "Surrogate-Control": "no-store",
+        "X-Accel-Buffering": "no",
         "X-Content-Type-Options": "nosniff",
         "Content-Disposition": "inline",
         "Accept-Ranges": "bytes",
@@ -100,6 +104,7 @@ async def proxy_origin_audio(
     if not media_type or media_type == "application/octet-stream":
         media_type = "audio/mpeg"
     out_headers = _safe_response_headers(response.headers)
+    out_headers["ETag"] = f'"{sha256(url.encode("utf-8")).hexdigest()[:16]}"'
     status_code = response.status_code
 
     async def body() -> AsyncIterator[bytes]:

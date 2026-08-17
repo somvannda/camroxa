@@ -69,6 +69,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const indexRef = useRef(-1);
   const loadTokenRef = useRef(0);
   const playFromIndexRef = useRef<(index: number) => Promise<void>>(async () => undefined);
+  const unbindAudioRef = useRef<(() => void) | null>(null);
 
   const [current, setCurrent] = useState<StreamTrack | null>(null);
   const [queue, setQueue] = useState<StreamTrack[]>([]);
@@ -83,17 +84,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setVolumeState(readStoredVolume());
   }, []);
 
-  const ensureAudio = useCallback(() => {
-    if (audioRef.current) return audioRef.current;
-    const audio = new Audio();
-    audio.preload = 'metadata';
-    audioRef.current = audio;
-    return audio;
-  }, []);
-
-  useEffect(() => {
-    const audio = ensureAudio();
-
+  const bindAudio = useCallback((audio: HTMLAudioElement) => {
+    unbindAudioRef.current?.();
     const onTimeUpdate = () => setCurrentTime(audio.currentTime || 0);
     const onDuration = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     const onPlay = () => setPlaying(true);
@@ -107,15 +99,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setPlaying(false);
       setCurrentTime(0);
     };
-
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('durationchange', onDuration);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('ended', onEnded);
-
-    return () => {
+    unbindAudioRef.current = () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('durationchange', onDuration);
       audio.removeEventListener('loadedmetadata', onDuration);
@@ -123,7 +113,35 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
     };
-  }, [ensureAudio]);
+  }, []);
+
+  const replaceAudio = useCallback(() => {
+    const previous = audioRef.current;
+    if (previous) {
+      previous.pause();
+      previous.removeAttribute('src');
+      previous.load();
+    }
+    unbindAudioRef.current?.();
+    unbindAudioRef.current = null;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audioRef.current = audio;
+    bindAudio(audio);
+    return audio;
+  }, [bindAudio]);
+
+  useEffect(() => {
+    return () => {
+      unbindAudioRef.current?.();
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+      audioRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -195,13 +213,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       setCurrent(nextTrack);
 
-      const audio = ensureAudio();
+      const audio = replaceAudio();
       if (shouldUseCredentialedCors(url)) {
         audio.crossOrigin = 'use-credentials';
-      } else {
-        audio.removeAttribute('crossorigin');
       }
-      audio.src = url;
+      const playUrl = url.includes('?') ? `${url}&_=${token}` : `${url}?_=${token}`;
+      audio.src = playUrl;
       audio.volume = muted ? 0 : volume;
       try {
         await audio.play();
@@ -210,7 +227,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (token === loadTokenRef.current) setPlaying(false);
       }
     },
-    [authLoading, ensureAudio, muted, redirectToLogin, user, volume],
+    [authLoading, muted, redirectToLogin, replaceAudio, user, volume],
   );
 
   playFromIndexRef.current = playFromIndex;

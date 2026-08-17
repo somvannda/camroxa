@@ -67,3 +67,24 @@ async def test_resolve_play_token_rejects_invalid_payload() -> None:
     redis = _FakeRedis()
     redis._store["web_music:play:bad"] = json.dumps({"task_id": "", "variant": "ok", "access": "public"})
     assert await resolve_play_token(redis, "bad") is None
+
+
+@pytest.mark.asyncio
+async def test_owner_play_urls_are_unique_per_task_and_variant() -> None:
+    from unittest.mock import MagicMock
+    from uuid import uuid4
+
+    from platform_api.services.web_music_service import WebMusicService
+
+    service = WebMusicService(pool=MagicMock(), generation_service=MagicMock(), redis=MagicMock())
+    user_id = uuid4()
+    task_a = uuid4()
+    task_b = uuid4()
+    url_a = await service._mint_owner_play_url(user_id, task_a, "ok")
+    url_b = await service._mint_owner_play_url(user_id, task_b, "ok")
+    url_a_alt = await service._mint_owner_play_url(user_id, task_a, "alt")
+    assert url_a != url_b
+    assert url_a != url_a_alt
+    assert url_a == f"/api/v1/web-music/generations/{task_a}/stream?variant=ok"
+    assert url_a_alt == f"/api/v1/web-music/generations/{task_a}/stream?variant=alt"
+    assert url_b == f"/api/v1/web-music/generations/{task_b}/stream?variant=ok"

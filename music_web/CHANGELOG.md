@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Create track details show stored vocal gender and slider percents instead of default 0.50; clips are labeled Version 1/2. Play stays on Camxora URLs (no public Suno/B2 redirect). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
 - Catalog/Explore play uses the same Camxora stream proxy (signed B2 URLs stay server-side). See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
 - Catalog JSON no longer includes `storage_key` or `suno_audio_id`; the player only loads Camxora play/stream paths. See `docs/changelog/2026-08-17-music-web-no-origin-audio-urls.md`.
+- Create workspace Play no longer keeps the first clip’s audio when switching Version or song. See `docs/changelog/2026-08-17-music-web-distinct-clip-playback.md`.
 
 ### Changed
 
