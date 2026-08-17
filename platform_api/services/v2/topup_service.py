@@ -4,7 +4,11 @@ import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
-from platform_api.services.shared.cutluy_service import CutLuyService, get_cutluy_service
+from platform_api.services.shared.cutluy_service import (
+    CutLuyService,
+    get_cutluy_service,
+    normalize_cutluy_payment_status,
+)
 from platform_api.services.v2.credit_service import CreditService, get_credit_service
 
 logger = logging.getLogger(__name__)
@@ -208,6 +212,114 @@ class TopupService:
         )
         
         return payment
+
+    async def get_checkout_status(self, user_id: str, payment_id: str) -> dict[str, Any]:
+        """Poll CutLuy and fulfill a web-music top-up checkout for this user."""
+        row = await self._db.fetch_one(
+            """
+            SELECT
+                tp.id, tp.payment_status, tp.credits_purchased,
+                cp.name AS pack_name
+            FROM topup_purchases tp
+            JOIN credit_packs cp ON tp.credit_pack_id = cp.id
+            WHERE tp.user_id = $1
+              AND tp.external_payment_id = $2
+            ORDER BY tp.created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            payment_id,
+        )
+        if not row:
+            raise LookupError("Payment not found")
+
+        pack_name = row["pack_name"]
+        credits = int(row["credits_purchased"] or 0)
+        local_status = str(row["payment_status"] or "")
+
+        if local_status == "completed":
+            return {
+                "status": "paid",
+                "fulfilled": True,
+                "pack_name": pack_name,
+                "credits": credits,
+            }
+        if local_status in {"failed", "refunded"}:
+            return {
+                "status": "failed",
+                "fulfilled": False,
+                "pack_name": pack_name,
+                "credits": credits,
+            }
+
+        try:
+            payload = await self._cutluy.get_payment_status(payment_id, db=self._db)
+        except ValueError:
+            logger.exception("CutLuy status check failed for top-up %s", payment_id)
+            return {
+                "status": "pending",
+                "fulfilled": False,
+                "pack_name": pack_name,
+                "credits": credits,
+            }
+
+        remote = normalize_cutluy_payment_status(payload.get("status"))
+        if remote == "paid":
+            await self._fulfill_topup_payment(str(row["id"]))
+            return {
+                "status": "paid",
+                "fulfilled": True,
+                "pack_name": pack_name,
+                "credits": credits,
+            }
+        if remote == "failed":
+            await self._mark_topup_terminal(str(row["id"]), "failed")
+            return {
+                "status": "failed",
+                "fulfilled": False,
+                "pack_name": pack_name,
+                "credits": credits,
+            }
+        if remote == "expired":
+            await self._mark_topup_terminal(str(row["id"]), "failed")
+            return {
+                "status": "expired",
+                "fulfilled": False,
+                "pack_name": pack_name,
+                "credits": credits,
+            }
+        return {
+            "status": "pending",
+            "fulfilled": False,
+            "pack_name": pack_name,
+            "credits": credits,
+        }
+
+    async def _fulfill_topup_payment(self, topup_id: str) -> None:
+        """Mark a pending top-up completed so the DB trigger grants credits."""
+        await self._db.execute(
+            """
+            UPDATE topup_purchases
+            SET payment_status = 'completed',
+                completed_at = NOW()
+            WHERE id = $1
+              AND payment_status = 'pending'
+            """,
+            topup_id,
+        )
+        logger.info("Completed top-up %s", topup_id)
+
+    async def _mark_topup_terminal(self, topup_id: str, status: str) -> None:
+        await self._db.execute(
+            """
+            UPDATE topup_purchases
+            SET payment_status = $2
+            WHERE id = $1
+              AND payment_status = 'pending'
+            """,
+            topup_id,
+            status,
+        )
     
     # ─── Webhook Handling ───────────────────────────────────────────────
     
@@ -269,14 +381,8 @@ class TopupService:
         if not topup_id:
             logger.error("No topup_id in payment metadata")
             return
-        
-        # Update payment status (trigger will grant credits)
-        await self._db.execute("""
-            UPDATE topup_purchases
-            SET payment_status = 'completed',
-                completed_at = NOW()
-            WHERE id = $1
-        """, topup_id)
+
+        await self._fulfill_topup_payment(str(topup_id))
         
         # Get topup details
         topup = await self._db.fetch_one("""

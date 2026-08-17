@@ -12,6 +12,22 @@ from platform_api.services.cutluy_webhook import verify_cutluy_webhook_signature
 
 logger = logging.getLogger(__name__)
 
+_PAID_STATUSES = {"paid", "completed", "approved", "succeeded", "success"}
+_FAILED_STATUSES = {"failed", "cancelled", "canceled", "declined"}
+_EXPIRED_STATUSES = {"expired"}
+
+
+def normalize_cutluy_payment_status(raw: Any) -> str:
+    """Map a CutLuy payment status string onto paid | failed | expired | pending."""
+    value = str(raw or "").strip().lower()
+    if value in _PAID_STATUSES:
+        return "paid"
+    if value in _FAILED_STATUSES:
+        return "failed"
+    if value in _EXPIRED_STATUSES:
+        return "expired"
+    return "pending"
+
 
 class CutLuyService:
     """Service for CutLuy payment integration (cutluy.com).
@@ -57,28 +73,37 @@ class CutLuyService:
         reference_id: str,
         metadata: dict[str, Any],
         db: Any | None = None,
+        success_url: str | None = None,
+        cancel_url: str | None = None,
     ) -> dict[str, Any]:
-        api_base_url, api_key, payment_link_id = await self._resolve_config(db)
+        api_base_url, api_key, _payment_link_id = await self._resolve_config(db)
         payload: dict[str, Any] = {
             "amount": round(amount_cents / 100, 2),
             "reference_id": reference_id,
             "metadata": metadata,
             "idempotency_key": reference_id,
         }
-        if payment_link_id:
-            payload["payment_link_id"] = payment_link_id
+        if success_url:
+            payload["success_url"] = success_url
+        if cancel_url:
+            payload["cancel_url"] = cancel_url
+        # Web music owns the post-pay UX. Do not attach the portal/desktop
+        # payment_link_id — that hosted page redirects into onboarding.
 
         url = f"{api_base_url}/v1/payments"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                )
+                response = await client.post(url, json=payload, headers=headers)
+                if response.status_code == 400 and (
+                    "success_url" in payload or "cancel_url" in payload
+                ):
+                    payload.pop("success_url", None)
+                    payload.pop("cancel_url", None)
+                    response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 payment = response.json()
         except httpx.HTTPStatusError as exc:
@@ -128,6 +153,8 @@ class CutLuyService:
             reference_id=reference_id,
             metadata=merged_metadata,
             db=db,
+            success_url=success_url,
+            cancel_url=cancel_url,
         )
 
     async def create_topup_payment(
@@ -156,6 +183,8 @@ class CutLuyService:
             reference_id=reference_id,
             metadata=merged_metadata,
             db=db,
+            success_url=success_url,
+            cancel_url=cancel_url,
         )
 
     def verify_webhook_signature(self, body: bytes, signature: str) -> bool:
@@ -170,15 +199,14 @@ class CutLuyService:
             max_age_seconds=300,
         )
 
-    async def get_payment_status(self, payment_id: str) -> dict[str, Any]:
-        if not self._api_key:
-            raise ValueError("CutLuy API key not configured")
+    async def get_payment_status(self, payment_id: str, db: Any | None = None) -> dict[str, Any]:
+        api_base_url, api_key, _payment_link_id = await self._resolve_config(db)
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
-                    f"{self._api_url}/payments/{payment_id}",
-                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    f"{api_base_url}/v1/payments/{payment_id}",
+                    headers={"Authorization": f"Bearer {api_key}"},
                 )
                 response.raise_for_status()
                 return response.json()

@@ -82,6 +82,13 @@ class TopupHistoryResponse(BaseModel):
     offset: int
 
 
+class TopupCheckoutStatusResponse(BaseModel):
+    status: str
+    fulfilled: bool
+    pack_name: str
+    credits: int
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -153,6 +160,20 @@ async def purchase_topup(
         credits=pack.total_credits,
         amount_cents=pack.price_cents
     )
+
+
+@router.get("/payments/{payment_id}", response_model=TopupCheckoutStatusResponse)
+async def get_topup_payment_status(
+    payment_id: str,
+    ctx: CurrentUserDep,
+    service: TopupServiceDep,
+) -> TopupCheckoutStatusResponse:
+    """Poll CutLuy and fulfill a music-web top-up checkout for the caller."""
+    try:
+        result = await service.get_checkout_status(str(ctx.user_id), payment_id)
+    except LookupError as exc:
+        raise NotFoundError(str(exc)) from exc
+    return TopupCheckoutStatusResponse(**result)
 
 
 @router.get("/history", response_model=TopupHistoryResponse)

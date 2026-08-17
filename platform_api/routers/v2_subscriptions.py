@@ -95,6 +95,13 @@ class CancelSubscriptionResponse(BaseModel):
     subscription: SubscriptionResponse | None = None
 
 
+class CheckoutStatusResponse(BaseModel):
+    status: str
+    fulfilled: bool
+    plan_name: str
+    credits: int
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -209,6 +216,20 @@ async def purchase_subscription(
         payment_id=payment["payment_id"],
         expires_at=payment["expires_at"]
     )
+
+
+@router.get("/payments/{payment_id}", response_model=CheckoutStatusResponse)
+async def get_subscription_payment_status(
+    payment_id: str,
+    ctx: CurrentUserDep,
+    service: SubscriptionServiceDep,
+) -> CheckoutStatusResponse:
+    """Poll CutLuy and fulfill a music-web subscription checkout for the caller."""
+    try:
+        result = await service.get_checkout_status(str(ctx.user_id), payment_id)
+    except LookupError as exc:
+        raise NotFoundError(str(exc)) from exc
+    return CheckoutStatusResponse(**result)
 
 
 @router.post("/cancel", response_model=CancelSubscriptionResponse)

@@ -84,10 +84,11 @@ function MarketingHeader() {
 
 export default function ShellSwitcher({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const isAuthPage =
     pathname === '/login' || pathname === '/register' || pathname === '/verify-email';
   const showMarketing =
+    !loading &&
     !user &&
     (pathname === '/' || isAuthPage || pathname === '/explore' || pathname === '/create');
 
