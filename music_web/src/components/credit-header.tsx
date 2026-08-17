@@ -38,30 +38,35 @@ function computeCreditDisplay(balance: CreditBalance | null): CreditDisplay {
   }
 
   if (balance.has_subscription) {
-    const monthlyGranted = balance.monthly_credits + balance.monthly_credits_used;
-    const limit = Math.max(monthlyGranted, 1);
-    const used = balance.monthly_credits_used;
+    const remaining = Math.max(0, balance.total_credits);
+    const capacity = Math.max(
+      remaining,
+      balance.monthly_credits + balance.monthly_credits_used + balance.topup_credits,
+      1,
+    );
     return {
-      used,
-      limit,
-      remaining: balance.total_credits,
-      progressPct: Math.min(100, Math.round((used / limit) * 100)),
+      used: remaining,
+      limit: capacity,
+      remaining,
+      progressPct: Math.min(100, Math.round((remaining / capacity) * 100)),
       resetLabel: null,
-      promoText: null,
-      isLow: balance.total_credits > 0 && balance.total_credits < 30,
+      promoText:
+        balance.topup_credits > 0
+          ? `Includes ${balance.topup_credits.toLocaleString('en-US')} top-up credits`
+          : null,
+      isLow: remaining > 0 && remaining < 30,
       hasSubscription: true,
     };
   }
 
   const limit = Math.max(balance.daily_free_limit, 1);
-  const used = balance.daily_free_used;
-  const remaining = balance.daily_free_credits;
+  const remaining = Math.max(0, balance.daily_free_credits);
 
   return {
-    used,
+    used: remaining,
     limit,
     remaining,
-    progressPct: Math.min(100, Math.round((used / limit) * 100)),
+    progressPct: Math.min(100, Math.round((remaining / limit) * 100)),
     resetLabel: 'Credit reset daily',
     promoText: 'Get more credits with Pro.',
     isLow: remaining > 0 && remaining < 30,
@@ -82,11 +87,11 @@ function CreditProgressCard({
     <div className="mt-3 space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <div className="text-sm text-slate-300">
-          <span className="font-semibold text-white">{display.used.toLocaleString()}</span>
+          <span className="font-semibold text-white">{display.used.toLocaleString('en-US')}</span>
           <span className="text-slate-500"> / </span>
-          <span>{display.limit.toLocaleString()} credits</span>
+          <span>{display.limit.toLocaleString('en-US')} credits</span>
         </div>
-        <span className="text-[11px] text-slate-500">{display.remaining.toLocaleString()} left</span>
+        <span className="text-[11px] text-slate-500">{display.remaining.toLocaleString('en-US')} left</span>
       </div>
 
       <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
@@ -145,7 +150,14 @@ export default function CreditHeader({ variant = 'compact' }: CreditHeaderProps)
   useEffect(() => {
     void loadData();
     const interval = setInterval(() => void loadData(), 30000);
-    return () => clearInterval(interval);
+    const onCreditsUpdated = () => {
+      void loadData();
+    };
+    window.addEventListener('camxora:credits-updated', onCreditsUpdated);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('camxora:credits-updated', onCreditsUpdated);
+    };
   }, []);
 
   async function loadData() {

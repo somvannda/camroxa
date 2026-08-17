@@ -210,6 +210,21 @@ class TestResolveEndpointType:
         assert resolve_endpoint_type("/api/v1/channel-setup/generate-logo") == "image"
         assert resolve_endpoint_type("/api/v1/channel-setup/generate-covers") == "image"
 
+    def test_web_music_checkout_paths(self) -> None:
+        assert (
+            resolve_endpoint_type("/api/v1/v2/subscriptions/purchase")
+            == "web_music_checkout"
+        )
+        assert resolve_endpoint_type("/api/v1/v2/topups/purchase") == "web_music_checkout"
+        assert (
+            resolve_endpoint_type("/api/v1/v2/subscriptions/payments/pay_abc")
+            == "web_music_checkout_status"
+        )
+        assert (
+            resolve_endpoint_type("/api/v1/v2/topups/payments/pay_abc")
+            == "web_music_checkout_status"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Tests for check_rate_limit (core sliding window algorithm)

@@ -53,6 +53,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>(defaultBillingCycle);
   const [purchasingPlan, setPurchasingPlan] = useState<string | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<{ name: string; price: string } | null>(null);
 
   useEffect(() => {
@@ -101,8 +102,8 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
       const { purchaseSubscription } = await import('@/lib/subscription-api');
       const result = await purchaseSubscription({
         plan_id: String(plan.id),
-        success_url: `${baseUrl}/profile?payment=success`,
-        cancel_url: `${baseUrl}/profile?payment=cancelled`,
+        success_url: `${baseUrl}/create`,
+        cancel_url: `${baseUrl}/create`,
       });
 
       if (result.checkout_url) {
@@ -111,6 +112,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
           name: displayName,
           price: `${formatPrice(plan.price_cents)}/${billingCycle === 'monthly' ? 'mo' : 'yr'}`,
         });
+        setCheckoutPaymentId(result.payment_id);
         setCheckoutUrl(result.checkout_url);
         onClose();
       }
@@ -351,10 +353,13 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
       <CutluyCheckoutModal
         isOpen={Boolean(checkoutUrl)}
         checkoutUrl={checkoutUrl}
+        paymentId={checkoutPaymentId}
+        kind="subscription"
         planName={checkoutPlan?.name}
         planPrice={checkoutPlan?.price}
         onClose={() => {
           setCheckoutUrl(null);
+          setCheckoutPaymentId(null);
           setCheckoutPlan(null);
           setPurchasingPlan(null);
         }}

@@ -23,6 +23,8 @@ export default function PricingPageClient() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
+  const [checkoutPlan, setCheckoutPlan] = useState<{ name: string; price: string } | null>(null);
 
   useEffect(() => {
     loadPlans();
@@ -49,12 +51,17 @@ export default function PricingPageClient() {
 
     try {
       const currentUrl = window.location.origin;
-      const { checkout_url } = await purchaseSubscription({
+      const { checkout_url, payment_id } = await purchaseSubscription({
         plan_id: plan.id,
-        success_url: `${currentUrl}/profile?payment=success`,
-        cancel_url: `${currentUrl}/pricing?payment=cancelled`,
+        success_url: `${currentUrl}/create`,
+        cancel_url: `${currentUrl}/create`,
       });
 
+      setCheckoutPlan({
+        name: formatPlanDisplayName(plan.name),
+        price: formatPrice(plan.price_cents),
+      });
+      setCheckoutPaymentId(payment_id);
       setCheckoutUrl(checkout_url);
     } catch (err: any) {
       console.error('Purchase failed:', err);
@@ -243,8 +250,14 @@ export default function PricingPageClient() {
     <CutluyCheckoutModal
       isOpen={Boolean(checkoutUrl)}
       checkoutUrl={checkoutUrl}
+      paymentId={checkoutPaymentId}
+      kind="subscription"
+      planName={checkoutPlan?.name}
+      planPrice={checkoutPlan?.price}
       onClose={() => {
         setCheckoutUrl(null);
+        setCheckoutPaymentId(null);
+        setCheckoutPlan(null);
         setPurchasingPlanId(null);
       }}
     />

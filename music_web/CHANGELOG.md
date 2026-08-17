@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Checkout iframe only loads CutLuy HTTPS URLs (sandbox + no-referrer). See `docs/changelog/2026-08-17-music-web-checkout-security.md`.
+- Music web checkout now owns the post-pay path: poll CutLuy status, fulfill credits, show a success popup, and Close returns to Create. CutLuy is used for KHQR only (no portal payment-link redirect). Plan names show as `Starter (Monthly)`. Credit meter shows remaining / total including top-up packs. See `docs/changelog/2026-08-17-music-web-owned-checkout.md`.
+
 ### Added
 
 - Public playlist discovery on Explore and Artists: recent public playlists, creators with public playlists, playlist/track counts on artist cards. See `docs/changelog/2026-08-17-web-music-explore-public-playlists.md`.

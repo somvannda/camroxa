@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
+from platform_api.services.v2.payment_security import sanitize_music_web_return_url
 from platform_api.services.v2.topup_service import TopupService
 from platform_api.exceptions import NotFoundError, ValidationError
 
@@ -52,9 +53,13 @@ class CreditPacksListResponse(BaseModel):
 
 
 class PurchaseTopupRequest(BaseModel):
-    pack_slug: str = Field(..., description="Credit pack slug (e.g., 'small', 'medium')")
-    success_url: str = Field(..., description="URL to redirect after successful payment")
-    cancel_url: str = Field(..., description="URL to redirect after cancelled payment")
+    pack_slug: str = Field(
+        ...,
+        pattern=r"^[a-z0-9_-]{1,64}$",
+        description="Credit pack slug (e.g., 'small', 'medium')",
+    )
+    success_url: str = Field(default="", max_length=500, description="Ignored unless a music-web origin")
+    cancel_url: str = Field(default="", max_length=500, description="Ignored unless a music-web origin")
 
 
 class PurchaseTopupResponse(BaseModel):
@@ -80,6 +85,13 @@ class TopupHistoryResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class TopupCheckoutStatusResponse(BaseModel):
+    status: str
+    fulfilled: bool
+    pack_name: str
+    credits: int
 
 
 # ---------------------------------------------------------------------------
@@ -139,8 +151,8 @@ async def purchase_topup(
         payment = await service.purchase_topup(
             user_id=str(ctx.user_id),
             pack_slug=body.pack_slug,
-            success_url=body.success_url,
-            cancel_url=body.cancel_url
+            success_url=sanitize_music_web_return_url(body.success_url),
+            cancel_url=sanitize_music_web_return_url(body.cancel_url),
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
@@ -153,6 +165,22 @@ async def purchase_topup(
         credits=pack.total_credits,
         amount_cents=pack.price_cents
     )
+
+
+@router.get("/payments/{payment_id}", response_model=TopupCheckoutStatusResponse)
+async def get_topup_payment_status(
+    payment_id: str,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: TopupServiceDep,
+) -> TopupCheckoutStatusResponse:
+    """Poll CutLuy and fulfill a music-web top-up checkout for the caller."""
+    await enforce_rate_limit(http_request, ctx.user_id)
+    try:
+        result = await service.get_checkout_status(str(ctx.user_id), payment_id)
+    except LookupError as exc:
+        raise NotFoundError(str(exc)) from exc
+    return TopupCheckoutStatusResponse(**result)
 
 
 @router.get("/history", response_model=TopupHistoryResponse)
