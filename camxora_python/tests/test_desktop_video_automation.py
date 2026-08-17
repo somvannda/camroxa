@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from features.video.lib.desktop_video_automation import (
+    branch_is_conclusively_complete,
     build_merge_candidate_from_row,
     select_next_auto_video_candidate,
 )
-from shared.lib.video_runtime_inspection import VideoRunInspection
+from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, VideoRunInspection
 from shared.models.auth import ProfileResponse
 from shared.models.desktop import (
     PreviewAspectRatio,
@@ -192,6 +193,112 @@ def test_select_next_auto_video_candidate_accepts_export_pending_stage(tmp_path)
         workspace=_workspace(),
     )
     assert candidate is not None
+
+
+def _empty_inspection(run_dir: str) -> VideoRunInspection:
+    return VideoRunInspection(
+        directory=run_dir,
+        long_output_paths=(),
+        reel_output_paths=(),
+        merged_long_paths=(),
+        merged_reel_paths=(),
+    )
+
+
+def _runtime(*, merge: str, stage: str = "Merge", status: str = "Completed") -> ProgressRuntimePresentation:
+    return ProgressRuntimePresentation(
+        converter="Long 0/2",
+        merge=merge,
+        stage=stage,
+        status=status,
+        notes="",
+        converter_percent=0,
+        merge_percent=100,
+    )
+
+
+def test_select_skips_when_pipeline_complete_even_if_track_mp4s_missing(tmp_path) -> None:
+    run_dir = tmp_path / "primary"
+    _seed_run_folder(run_dir)
+    row = _row(run_dir=str(run_dir))
+    row = row.model_copy(update={"meta": row.meta.model_copy(update={"pipeline_complete": True})})
+    key = "batch-1:profile-1:OK"
+    candidate = select_next_auto_video_candidate(
+        rows=[row],
+        profiles=[_profile()],
+        settings={"autoVideoAfterSuno": True, "autoReelAfterVideo": True},
+        inspections={key: _empty_inspection(str(run_dir))},
+        runtime_by_key={},
+        workspace=_workspace(),
+    )
+    assert candidate is None
+
+
+def test_select_skips_when_long_completed_label_and_track_mp4s_missing(tmp_path) -> None:
+    run_dir = tmp_path / "primary"
+    _seed_run_folder(run_dir)
+    row = _row(run_dir=str(run_dir)).model_copy(update={"stage": "Merge", "merge": "Long completed"})
+    key = "batch-1:profile-1:OK"
+    candidate = select_next_auto_video_candidate(
+        rows=[row],
+        profiles=[_profile()],
+        settings={"autoVideoAfterSuno": True},
+        inspections={key: _empty_inspection(str(run_dir))},
+        runtime_by_key={key: _runtime(merge="Long completed")},
+        workspace=_workspace(),
+    )
+    assert candidate is None
+
+
+def test_select_skips_when_merged_file_exists_but_track_mp4s_deleted(tmp_path) -> None:
+    run_dir = tmp_path / "primary"
+    _seed_run_folder(run_dir)
+    row = _row(run_dir=str(run_dir)).model_copy(update={"stage": "Merge", "merge": "Long completed"})
+    key = "batch-1:profile-1:OK"
+    inspection = VideoRunInspection(
+        directory=str(run_dir),
+        long_output_paths=(),
+        reel_output_paths=(),
+        merged_long_paths=(f"{run_dir}\\MERGED_PRIMARY_batch.mp4",),
+        merged_reel_paths=(),
+    )
+    candidate = select_next_auto_video_candidate(
+        rows=[row],
+        profiles=[_profile()],
+        settings={"autoVideoAfterSuno": True},
+        inspections={key: inspection},
+        runtime_by_key={},
+        workspace=_workspace(),
+    )
+    assert candidate is None
+
+
+def test_select_allows_reel_after_long_completed_when_reel_pending(tmp_path) -> None:
+    run_dir = tmp_path / "primary"
+    _seed_run_folder(run_dir)
+    row = _row(run_dir=str(run_dir)).model_copy(
+        update={"stage": "Merge", "status": "In Progress", "merge": "Long completed · Reel pending"}
+    )
+    key = "batch-1:profile-1:OK"
+    candidate = select_next_auto_video_candidate(
+        rows=[row],
+        profiles=[_profile()],
+        settings={"autoVideoAfterSuno": True, "autoReelAfterVideo": True},
+        inspections={key: _empty_inspection(str(run_dir))},
+        runtime_by_key={
+            key: _runtime(merge="Long completed · Reel pending", status="In Progress"),
+        },
+        workspace=_workspace(),
+    )
+    assert candidate is not None
+    assert candidate.branch == "reel"
+
+
+def test_branch_is_conclusively_complete_from_merge_label() -> None:
+    row = _row(run_dir=r"D:\Runs\demo")
+    runtime = _runtime(merge="Long completed")
+    assert branch_is_conclusively_complete(row, "long", runtime=runtime) is True
+    assert branch_is_conclusively_complete(row, "reel", runtime=runtime) is False
 
 
 def test_build_merge_candidate_does_not_require_background(tmp_path) -> None:

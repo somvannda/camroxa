@@ -9,6 +9,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-video no longer redoes Long completed runs** when the user deletes
+  per-track MP4s or moves the folder. A known long merge (`pipeline_complete`,
+  `MERGED_*.mp4`, or a Long completed / Long merged label) is treated as
+  archived, not unfinished. Explicit Rebuild / Repair / Force still regenerate.
+  See `docs/changelog/2026-08-17-freeze-auto-video-after-long-completed.md`.
+
 ## [1.3.0] - 2026-08-14
 
 Installer rebuilt **2026-08-15** (same **1.3.0** stamp): real Suno MP3 downloads

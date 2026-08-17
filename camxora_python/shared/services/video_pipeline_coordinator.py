@@ -8,9 +8,11 @@ from typing import Literal
 from PySide6.QtCore import QObject, QTimer
 
 from features.video.lib.desktop_video_automation import (
+    branch_is_conclusively_complete,
     select_next_auto_video_candidate,
 )
 from features.video.lib.export_run_defer import deferred_export_run_keys
+from features.video.lib.pipeline_inputs import build_video_pipeline_run_key
 from features.video.lib.export_track_health import manual_pipeline_start_kwargs
 from features.video.services.pipeline_automation_service import PipelineAutomationService
 from shared.lib.qt_signals import disconnect_quietly
@@ -184,6 +186,20 @@ class VideoPipelineCoordinator(QObject):
 
         cooldown_key = f"{candidate.key}:{candidate.branch}"
         if (self._cooldown_until.get(cooldown_key) or 0) > time.time():
+            return
+
+        row = next(
+            (item for item in payload.rows if build_video_pipeline_run_key(item) == candidate.key),
+            None,
+        )
+        if row is not None and branch_is_conclusively_complete(
+            row,
+            candidate.branch,
+            runtime=payload.runtime_by_key.get(candidate.key),
+            inspection=payload.inspections.get(candidate.key),
+        ):
+            # Missing track MP4s after a known merge are archived, not unfinished.
+            # Keep repair_unhealthy for first-time / stub-MP4 rows only.
             return
 
         started = self._automation.start(

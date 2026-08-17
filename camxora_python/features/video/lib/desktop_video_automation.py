@@ -42,6 +42,41 @@ def _has_expected_outputs(paths: tuple[str, ...] | list[str] | None, expected: i
     return len(paths or ()) >= max(1, expected)
 
 
+def _merge_label(row: ProgressRow, runtime: ProgressRuntimePresentation | None) -> str:
+    return str((runtime.merge if runtime is not None else row.merge) or "").lower()
+
+
+def branch_is_conclusively_complete(
+    row: ProgressRow,
+    branch: VideoPipelineBranch,
+    *,
+    runtime: ProgressRuntimePresentation | None = None,
+    inspection: VideoRunInspection | None = None,
+) -> bool:
+    """True when auto-video must not reopen this branch even if track MP4s are gone.
+
+    "Long completed" is a merge label, not a terminal stage. Missing per-track
+    files after a known merge mean archived — not unfinished.
+    """
+    if bool(getattr(row.meta, "pipeline_complete", False)):
+        return True
+
+    merge = _merge_label(row, runtime)
+    if branch == "reel":
+        if "reel completed" in merge or "reel merged" in merge:
+            return True
+        return bool(inspection and inspection.merged_reel_paths)
+
+    if "long completed" in merge or "long merged" in merge:
+        return True
+    if inspection and inspection.merged_long_paths:
+        return True
+
+    stage = str((runtime.stage if runtime is not None else row.stage) or "").strip().lower()
+    status = str((runtime.status if runtime is not None else row.status) or "").strip().lower()
+    return stage in {"merge", "merger"} and status in {"completed", "done", "success"}
+
+
 def _workspace_has_template(workspace: VideoWorkspaceState | None, template_id: str) -> bool:
     normalized = str(template_id or "").strip()
     if not normalized:
@@ -105,6 +140,8 @@ def select_next_auto_video_candidate(
         effective_stage = runtime.stage if runtime is not None else row.stage
         if _is_terminal_stage(effective_stage):
             continue
+        if bool(getattr(row.meta, "pipeline_complete", False)):
+            continue
 
         profile = profiles_by_id.get(row.meta.profile_id)
         if profile is None:
@@ -117,11 +154,15 @@ def select_next_auto_video_candidate(
         inspection = inspections.get(key)
         long_inputs, _long_reason = _branch_is_ready(row, profile, "long", workspace=workspace)
         reel_inputs, _reel_reason = _branch_is_ready(row, profile, "reel", workspace=workspace)
-        long_outputs_ready = _has_expected_outputs(
+        long_outputs_ready = branch_is_conclusively_complete(
+            row, "long", runtime=runtime, inspection=inspection
+        ) or _has_expected_outputs(
             inspection.long_output_paths if inspection else (),
             expected,
         )
-        reel_outputs_ready = _has_expected_outputs(
+        reel_outputs_ready = branch_is_conclusively_complete(
+            row, "reel", runtime=runtime, inspection=inspection
+        ) or _has_expected_outputs(
             inspection.reel_output_paths if inspection else (),
             expected,
         )
