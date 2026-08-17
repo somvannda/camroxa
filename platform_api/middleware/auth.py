@@ -126,6 +126,31 @@ _usage_repo: UsageQuotaLookupRepository | None = None
 USER_ACCESS_TOKEN_COOKIE_NAME = "camxora_access_token"
 ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
 
+# Unconfirmed users may only read their profile and end the session.
+# Verify/resend email endpoints are public and do not use this dependency.
+_UNCONFIRMED_ALLOWED_PATHS = {
+    ("GET", "/api/v1/users/me"),
+    ("GET", "/users/me"),
+    ("GET", "/api/v1/profiles"),
+    ("GET", "/profiles"),
+    ("GET", "/api/v1/channel-setup/profiles-status"),
+    ("GET", "/channel-setup/profiles-status"),
+    ("POST", "/api/v1/auth/logout"),
+    ("POST", "/auth/logout"),
+    ("POST", "/api/v1/auth/refresh"),
+    ("POST", "/auth/refresh"),
+}
+
+
+def _normalize_request_path(path: str) -> str:
+    if not path or path == "/":
+        return path or "/"
+    return path.rstrip("/")
+
+
+def _is_unconfirmed_path_allowed(method: str, path: str) -> bool:
+    return (method.upper(), _normalize_request_path(path)) in _UNCONFIRMED_ALLOWED_PATHS
+
 
 def _resolve_access_cookie_name(request: Request | None) -> str:
     if request is None:
@@ -270,6 +295,13 @@ async def get_current_user(
 
     if status == "suspended":
         raise ForbiddenError("Account suspended")
+
+    email_confirmed = bool(auth_state.get("email_confirmed", True))
+    if not email_confirmed:
+        method = request.method if request is not None else ""
+        path = str(request.url.path) if request is not None else ""
+        if not _is_unconfirmed_path_allowed(method, path):
+            raise ForbiddenError("Confirm your email before using Camxora.")
 
     context = AuthContext(
         user_id=payload.user_id,
