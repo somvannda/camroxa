@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deploy import (  # noqa: E402
+    PRUNE_LEFTOVER_ALEMBIC_REMOTE,
     build_source_tarball,
     ensure_deploy_key,
     load_production_secrets,
@@ -51,10 +52,14 @@ def main() -> int:
         remote_file.write(units_archive.read_bytes())
     sftp.close()
 
-    cmd = r"""
+    cmd = (
+        r"""
 set -e
 REPO=/opt/camxora/repo
 tar -xzf /tmp/camxora-src.tar.gz -C $REPO platform_api
+"""
+        + PRUNE_LEFTOVER_ALEMBIC_REMOTE
+        + r"""
 mkdir -p $REPO/scripts/deploy/systemd
 tar -xzf /tmp/camxora-worker-units.tar.gz -C $REPO
 chown -R camxora:camxora $REPO/platform_api $REPO/scripts/deploy/systemd
@@ -77,6 +82,7 @@ systemctl list-units 'camxora-worker*' --type=service --state=running --no-pager
 grep -E 'CAMXORA_WORKER_NAME' /etc/systemd/system/camxora-worker-images@.service || true
 echo API_SYNC_DONE
 """
+    )
     _, stdout, stderr = client.exec_command(cmd, get_pty=True)
     out = stdout.read().decode("utf-8", errors="replace")
     err = stderr.read().decode("utf-8", errors="replace")
