@@ -1,11 +1,16 @@
+'use client';
+
 import Link from 'next/link';
+import { useState } from 'react';
 
 import { getUserPortalBaseUrl, getWebsiteBaseUrl } from '@/lib/site-urls';
+import PricingModal from '@/components/pricing-modal';
 
 export default function SiteFooter() {
   const website = getWebsiteBaseUrl();
   const portal = getUserPortalBaseUrl();
   const year = new Date().getFullYear();
+  const [showPricingModal, setShowPricingModal] = useState(false);
 
   return (
     <footer className="mt-10 border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,10,20,0.24),rgba(4,6,14,0.92))]">
@@ -43,7 +48,7 @@ export default function SiteFooter() {
             { href: website, label: 'Website', external: true },
             { href: `${website}/download`, label: 'Download app', external: true },
             { href: `${portal}/login`, label: 'User portal', external: true },
-            { href: `${website}/pricing`, label: 'Pricing', external: true },
+            { label: 'Pricing', onClick: () => setShowPricingModal(true) },
           ]}
         />
         <FooterColumn
@@ -62,6 +67,7 @@ export default function SiteFooter() {
           <div>Browse free. Sign in to listen, save, and build playlists.</div>
         </div>
       </div>
+      <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} />
     </footer>
   );
 }
@@ -71,7 +77,7 @@ function FooterColumn({
   items,
 }: {
   title: string;
-  items: Array<{ href: string; label: string; external?: boolean }>;
+  items: Array<{ href?: string; label: string; external?: boolean; onClick?: () => void }>;
 }) {
   return (
     <div>
@@ -79,17 +85,24 @@ function FooterColumn({
         {title}
       </h3>
       <ul className="space-y-2">
-        {items.map((item) => (
-          <li key={item.href + item.label}>
-            {item.external ? (
+        {items.map((item, idx) => (
+          <li key={item.href ? item.href + item.label : `${item.label}-${idx}`}>
+            {item.onClick ? (
+              <button
+                onClick={item.onClick}
+                className="transition hover:text-white"
+              >
+                {item.label}
+              </button>
+            ) : item.external && item.href ? (
               <a className="transition hover:text-white" href={item.href}>
                 {item.label}
               </a>
-            ) : (
+            ) : item.href ? (
               <Link className="transition hover:text-white" href={item.href}>
                 {item.label}
               </Link>
-            )}
+            ) : null}
           </li>
         ))}
       </ul>

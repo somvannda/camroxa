@@ -172,6 +172,40 @@ export interface Plan {
   subscriber_count: number;
   can_delete: boolean;
   plan_kind?: 'subscription' | 'profile_addon';
+  plan_type?: 'desktop_pro' | 'web_music';
+}
+
+export interface WebMusicPlan {
+  id: string;
+  name: string;
+  price_cents: number;
+  billing_cycle_days: number;
+  monthly_credits: number;
+  features: {
+    music: boolean;
+    images: boolean;
+    topup: boolean;
+  };
+  is_public: boolean;
+  display_order: number;
+  is_active: boolean;
+  subscriber_count: number;
+  can_delete: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebMusicTopupPack {
+  id: string;
+  slug: string;
+  name: string;
+  total_credits: number;
+  price_cents: number;
+  display_order: number;
+  is_active: boolean;
+  songs_equivalent: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PlanOffer {

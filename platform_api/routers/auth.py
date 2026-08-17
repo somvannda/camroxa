@@ -30,6 +30,7 @@ from platform_api.models.schemas import LoginRequest, TokenResponse
 from platform_api.services.auth_service import AuthService
 from platform_api.services.invitation_code_service import InvitationCodeService
 from platform_api.services.lockout import AccountLockout
+from platform_api.services.shared.turnstile_service import TurnstileService
 
 # ---------------------------------------------------------------------------
 # Router
@@ -61,6 +62,7 @@ class RegisterRequest(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=200)
     invitation_code: str | None = Field(default=None, min_length=1, max_length=64)
     product: str | None = Field(default=None, max_length=32)
+    cf_turnstile_response: str | None = Field(default=None, description="Cloudflare Turnstile token")
 
 
 class SignupModeResponse(BaseModel):
@@ -131,6 +133,13 @@ async def _get_invitation_code_service() -> InvitationCodeService:
     """Placeholder dependency for InvitationCodeService."""
     raise NotImplementedError(
         "InvitationCodeService dependency not configured. Wire via app.dependency_overrides."
+    )
+
+
+async def _get_turnstile_service() -> TurnstileService:
+    """Placeholder dependency for TurnstileService."""
+    raise NotImplementedError(
+        "TurnstileService dependency not configured. Wire via app.dependency_overrides."
     )
 
 
@@ -221,6 +230,7 @@ LockoutDep = Annotated[AccountLockout, Depends(_get_lockout)]
 InvitationCodeServiceDep = Annotated[
     InvitationCodeService, Depends(_get_invitation_code_service)
 ]
+TurnstileServiceDep = Annotated[TurnstileService, Depends(_get_turnstile_service)]
 CurrentUserIdDep = Annotated[str, Depends(_get_current_user_id)]
 
 
@@ -307,6 +317,7 @@ async def login(
     request: LoginRequest,
     auth_service: AuthServiceDep,
     lockout: LockoutDep,
+    turnstile: TurnstileServiceDep,
     response: Response,
     http_request: Request,
 ) -> TokenResponse:
@@ -316,28 +327,98 @@ async def login(
     - Checks lockout status before attempting authentication.
     - Records failed attempt on authentication failure.
     - Resets failure counter on successful authentication.
+    - Verifies Cloudflare Turnstile token to prevent bots.
     """
-    # Check if account is locked (raises AccountLockedError if locked)
-    await lockout.check_lockout(request.email)
-
+    import logging
+    _log = logging.getLogger("platform_api.routers.auth.login")
+    
     try:
-        token_pair = await auth_service.authenticate(request.email, request.password)
-    except AuthenticationError:
-        # Record the failed attempt (may trigger lockout)
-        await lockout.record_failed_attempt(request.email)
+        _log.info(f"Login attempt: email={request.email}, has_turnstile={bool(request.cf_turnstile_response)}")
+        
+        # Verify Cloudflare Turnstile token (if provided from web clients)
+        if request.cf_turnstile_response:
+            _log.info("Verifying Turnstile token...")
+            _log.info(f"Turnstile token (first 20 chars): {request.cf_turnstile_response[:20] if request.cf_turnstile_response else 'None'}")
+            _log.info(f"Client IP: {http_request.client.host if http_request.client else 'None'}")
+            
+            # Get expected hostnames from settings
+            settings = get_settings()
+            expected_hostnames = set(
+                h.strip() for h in settings.cloudflare_turnstile_hostnames.split(",") if h.strip()
+            )
+            _log.info(f"Expected hostnames: {expected_hostnames}")
+            
+            try:
+                result = await turnstile.verify(
+                    request.cf_turnstile_response,
+                    remote_ip=http_request.client.host if http_request.client else None
+                )
+                _log.info(f"Turnstile verification result: {result}")
+                
+                # Canonical validation: success, action, and hostname
+                if not result.get("success"):
+                    error_codes = result.get("error-codes", [])
+                    _log.error(f"Turnstile failed: success=False, error_codes={error_codes}")
+                    raise ValidationError(
+                        message=f"Bot verification failed: {', '.join(error_codes) if error_codes else 'unknown error'}",
+                        details={"field": "cf_turnstile_response", "cloudflare_errors": error_codes}
+                    )
+                
+                if result.get("action") != "login":
+                    _log.error(f"Turnstile action mismatch: expected='login', got='{result.get('action')}'")
+                    raise ValidationError(
+                        message="Bot verification failed: invalid action",
+                        details={"field": "cf_turnstile_response"}
+                    )
+                
+                if expected_hostnames and result.get("hostname") not in expected_hostnames:
+                    _log.error(f"Turnstile hostname mismatch: got='{result.get('hostname')}', expected one of {expected_hostnames}")
+                    raise ValidationError(
+                        message="Bot verification failed: invalid hostname",
+                        details={"field": "cf_turnstile_response"}
+                    )
+                
+                _log.info("Turnstile verification passed all checks")
+            except ValidationError:
+                raise
+            except Exception as e:
+                _log.error(f"Turnstile verification error: {type(e).__name__}: {e}", exc_info=True)
+                raise
+        
+        # Check if account is locked (raises AccountLockedError if locked)
+        _log.info("Checking account lockout status...")
+        await lockout.check_lockout(request.email)
+
+        _log.info("Authenticating user...")
+        try:
+            token_pair = await auth_service.authenticate(request.email, request.password)
+        except AuthenticationError as auth_err:
+            _log.warning(f"Authentication failed for {request.email}: {auth_err}")
+            # Record the failed attempt (may trigger lockout)
+            await lockout.record_failed_attempt(request.email)
+            raise
+
+        # Success — reset failure counter
+        _log.info("Authentication successful, resetting failure counter...")
+        await lockout.reset_failures(request.email)
+
+        token_response = TokenResponse(
+            access_token=token_pair.access_token,
+            refresh_token=token_pair.refresh_token,
+            token_type="bearer",
+            expires_in=token_pair.expires_in,
+        )
+        _log.info("Setting auth cookies...")
+        _set_auth_cookies(response, token_response, http_request)
+        _log.info("Login successful")
+        return token_response
+        
+    except (AuthenticationError, ValidationError, AccountLockedError):
+        # These are expected errors, just re-raise
         raise
-
-    # Success — reset failure counter
-    await lockout.reset_failures(request.email)
-
-    token_response = TokenResponse(
-        access_token=token_pair.access_token,
-        refresh_token=token_pair.refresh_token,
-        token_type="bearer",
-        expires_in=token_pair.expires_in,
-    )
-    _set_auth_cookies(response, token_response, http_request)
-    return token_response
+    except Exception as e:
+        _log.error(f"Unexpected login error: {type(e).__name__}: {e}", exc_info=True)
+        raise
 
 
 @router.post(
@@ -354,6 +435,7 @@ async def register(
     request: RegisterRequest,
     auth_service: AuthServiceDep,
     invitation_code_service: InvitationCodeServiceDep,
+    turnstile: TurnstileServiceDep,
     response: Response,
     http_request: Request,
 ) -> UserResponse:
@@ -362,11 +444,44 @@ async def register(
     Validates all fields and returns ALL validation errors at once (not just
     the first failure), per Property 4. Checks email uniqueness. On success,
     returns the created user's id, email, and display_name.
+    Verifies Cloudflare Turnstile token to prevent bot registrations.
     """
     import logging
     _log = logging.getLogger("platform_api.routers.auth.register")
     _log.warning("Register called: email=%s display_name=%s password_len=%d",
                  request.email, request.display_name, len(request.password))
+
+    # Verify Cloudflare Turnstile token (if provided from web clients)
+    if request.cf_turnstile_response:
+        settings = get_settings()
+        expected_hostnames = set(
+            h.strip() for h in settings.cloudflare_turnstile_hostnames.split(",") if h.strip()
+        )
+        
+        result = await turnstile.verify(
+            request.cf_turnstile_response,
+            remote_ip=http_request.client.host if http_request.client else None
+        )
+        
+        # Canonical validation: success, action, and hostname
+        if not result.get("success"):
+            error_codes = result.get("error-codes", [])
+            raise ValidationError(
+                message=f"Bot verification failed: {', '.join(error_codes) if error_codes else 'unknown error'}",
+                details={"field": "cf_turnstile_response", "cloudflare_errors": error_codes}
+            )
+        
+        if result.get("action") != "register":
+            raise ValidationError(
+                message="Bot verification failed: invalid action",
+                details={"field": "cf_turnstile_response"}
+            )
+        
+        if expected_hostnames and result.get("hostname") not in expected_hostnames:
+            raise ValidationError(
+                message="Bot verification failed: invalid hostname",
+                details={"field": "cf_turnstile_response"}
+            )
 
     # Validate all fields — collect all errors
     errors = _validate_registration(request)
@@ -425,8 +540,7 @@ async def register(
             existing_user.id,
         )
         code = "".join(random.choices(string.digits, k=6))
-        from datetime import datetime, timezone, timedelta
-        settings = __import__("platform_api.config", fromlist=["get_settings"]).get_settings()
+        settings = get_settings()
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.email_verification_expire_minutes)
         await pool.execute(
             """INSERT INTO email_verifications (user_id, code, purpose, expires_at)
@@ -480,6 +594,26 @@ async def register(
                 )
     else:
         created_user = await auth_service._user_repo.create(user)
+
+    # Send email verification code for new users (web music flow)
+    if signup_product == PRODUCT_MUSIC_WEB:
+        from platform_api.services.email_service import send_verification_email
+        pool = get_db_pool()
+        code = _generate_code()
+        settings = get_settings()
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.email_verification_expire_minutes)
+        
+        await pool.execute(
+            """INSERT INTO email_verifications (user_id, code, purpose, expires_at)
+               VALUES ($1, $2, 'register', $3)""",
+            created_user.id, code, expires_at,
+        )
+        
+        send_verification_email(
+            to_email=created_user.email,
+            code=code,
+            display_name=created_user.display_name or "there",
+        )
 
     await _set_session_for_user(auth_service, created_user, response, http_request)
     return UserResponse(

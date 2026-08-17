@@ -131,7 +131,20 @@ class StreamingCatalogService:
     async def list_artists(self, *, limit: int = 48, offset: int = 0) -> dict[str, Any]:
         artists = await self._repo.list_artists(limit=limit, offset=offset)
         total = await self._repo.count_artists()
-        return {"items": artists, "total": total, "limit": limit, "offset": offset}
+        items = []
+        for artist in artists:
+            user_id = str(artist.get("user_id"))
+            avatar_raw = str(artist.get("avatar_url") or "").strip()
+            items.append(
+                {
+                    "user_id": user_id,
+                    "artist_name": artist.get("artist_name"),
+                    "album_count": int(artist.get("album_count") or 0),
+                    "track_count": int(artist.get("track_count") or 0),
+                    "avatar_url": f"/api/v1/media/users/{user_id}/avatar" if avatar_raw else None,
+                }
+            )
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
 
     async def get_artist(self, user_id: UUID) -> dict[str, Any] | None:
         albums = await self._repo.list_artist_albums(user_id)

@@ -185,6 +185,8 @@ def parse_suno_lyrics_poll(response: dict[str, Any]) -> SunoLyricsPollResult:
 
 def _extract_clip_download_url(clip: dict[str, Any]) -> str:
     """Return the best URL for downloading a finished MP3 (not stream preview)."""
+    from platform_api.services.suno_audio_resolver import is_disallowed_suno_audio_url
+
     audio_id = _extract_clip_audio_id(clip)
     for key in (
         "source_audio_url",
@@ -193,7 +195,7 @@ def _extract_clip_download_url(clip: dict[str, Any]) -> str:
         "audioUrl",
     ):
         url = str(clip.get(key, "")).strip()
-        if url:
+        if url and not is_disallowed_suno_audio_url(url):
             return prefer_suno_mpeg_cdn_url(url, audio_id)
     return ""
 
@@ -426,6 +428,62 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
         state="failed",
         error=suno_task_failure_message(status=status, error_message=error_message),
     )
+
+
+def extract_suno_wav_task_id(response: dict[str, Any]) -> str:
+    """Return taskId from POST /api/v1/wav/generate response."""
+    code = int(response.get("code", 0) or 0)
+    if code != 200:
+        raise ExternalServiceError(
+            suno_submit_error_message(code=code, msg=response.get("msg", ""), context="wav_generate"),
+            is_retryable=code in {429, 430, 455, 500},
+            details={"provider": "suno", "reason": "wav_submit_failed", "code": code},
+        )
+    data = response.get("data")
+    if isinstance(data, dict):
+        task_id = _task_id_from_mapping(data)
+        if task_id:
+            return task_id
+    task_id = _coerce_task_id(response.get("taskId") or response.get("task_id"))
+    if task_id:
+        return task_id
+    raise ExternalServiceError(
+        "Suno WAV submit returned empty taskId.",
+        is_retryable=False,
+        details={"provider": "suno", "reason": "missing_wav_task_id"},
+    )
+
+
+def parse_suno_wav_poll(response: dict[str, Any]) -> tuple[str, str | None, str | None]:
+    """Parse GET /api/v1/wav/record-info response.
+
+    Returns:
+        Tuple of (status, wav_url, error_message).
+        Status is one of: pending, success, failed.
+    """
+    code = int(response.get("code", 0) or 0)
+    if code != 200:
+        return (
+            "failed",
+            None,
+            suno_task_failure_message(api_code=code, api_msg=response.get("msg", "")),
+        )
+    data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    status = str(data.get("status", "")).strip().upper()
+    error_message = str(data.get("errorMessage", "")).strip()
+    wav_url = str(data.get("audioWavUrl", "")).strip() or None
+
+    if is_suno_failure_status(status):
+        return (
+            "failed",
+            None,
+            suno_task_failure_message(status=status, error_message=error_message),
+        )
+    if is_suno_success_status(status):
+        if wav_url:
+            return ("success", wav_url, None)
+        return ("failed", None, "Suno reported WAV success but returned no URL.")
+    return ("pending", None, None)
 
 
 def _classify_error(exc: Exception, *, context: str = "") -> ExternalServiceError:
@@ -788,3 +846,108 @@ class SunoClient:
             is_retryable=True,
             details={"provider": "suno", "reason": "lyrics_timeout", "task_id": task_id},
         )
+
+    async def submit_wav_task(
+        self,
+        *,
+        task_id: str,
+        audio_id: str,
+        callback_url: str | None = None,
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit a WAV conversion task (POST /api/v1/wav/generate).
+
+        Args:
+            task_id: The original music generation task ID.
+            audio_id: The specific audio clip ID to convert.
+            callback_url: Optional callback URL for async notification.
+            api_key: Suno API key (required).
+
+        Returns:
+            Response dict containing the WAV task ID.
+
+        Raises:
+            ExternalServiceError: On timeout, HTTP error, or connection failure.
+        """
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        normalized_task = str(task_id or "").strip()
+        if not normalized_task:
+            raise ExternalServiceError(
+                "taskId is required for WAV conversion.",
+                is_retryable=False,
+                details={"provider": "suno", "reason": "missing_task_id"},
+            )
+        normalized_audio = str(audio_id or "").strip()
+        if not normalized_audio:
+            raise ExternalServiceError(
+                "audioId is required for WAV conversion.",
+                is_retryable=False,
+                details={"provider": "suno", "reason": "missing_audio_id"},
+            )
+        client = self._build_client(api_key)
+        try:
+            payload: dict[str, Any] = {
+                "taskId": normalized_task,
+                "audioId": normalized_audio,
+            }
+            if callback_url:
+                payload["callBackUrl"] = str(callback_url).strip()
+            response = await client.post("/api/v1/wav/generate", json=payload)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_error(
+                exc,
+                context=f"submit_wav_task({normalized_task}, {normalized_audio})",
+            ) from exc
+        finally:
+            await client.aclose()
+
+    async def poll_wav_status(
+        self,
+        *,
+        wav_task_id: str,
+        api_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Poll WAV conversion status (GET /api/v1/wav/record-info).
+
+        Args:
+            wav_task_id: The WAV conversion task ID.
+            api_key: Suno API key (required).
+
+        Returns:
+            Response dict containing status and audioWavUrl when ready.
+
+        Raises:
+            ExternalServiceError: On timeout, HTTP error, or connection failure.
+        """
+        if not api_key:
+            raise ExternalServiceError(
+                "Suno API key is not configured. Add a key to the Key Pool.",
+                is_retryable=False,
+                details={"provider": "suno"},
+            )
+        normalized_task = str(wav_task_id or "").strip()
+        if not normalized_task:
+            raise ExternalServiceError(
+                "wavTaskId is required for polling WAV status.",
+                is_retryable=False,
+                details={"provider": "suno", "reason": "missing_wav_task_id"},
+            )
+        client = self._build_client(api_key)
+        try:
+            response = await client.get(f"/api/v1/wav/record-info?taskId={normalized_task}")
+            response.raise_for_status()
+            return response.json()
+        except (httpx.TimeoutException, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            raise _classify_error(
+                exc,
+                context=f"poll_wav_status({normalized_task})",
+            ) from exc
+        finally:
+            await client.aclose()

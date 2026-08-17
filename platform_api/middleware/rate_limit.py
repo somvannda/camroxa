@@ -37,6 +37,12 @@ DEFAULT_RATE_WINDOW_SECONDS = 60
 SUNO_RATE_LIMIT = 20
 SUNO_RATE_WINDOW_SECONDS = 10
 
+WEB_MUSIC_DOWNLOAD_RATE_LIMIT = 30
+WEB_MUSIC_DOWNLOAD_RATE_WINDOW_SECONDS = 60
+
+WEB_MUSIC_PLAY_RATE_LIMIT = 120
+WEB_MUSIC_PLAY_RATE_WINDOW_SECONDS = 60
+
 # Redis key prefix for cached rate limit config
 CONFIG_CACHE_PREFIX = "ratelimit:config:"
 CONFIG_CACHE_TTL = 5  # seconds — Admin updates apply within this window
@@ -210,6 +216,16 @@ async def get_rate_limit_config(
         config = RateLimitConfig(
             max_requests=SUNO_RATE_LIMIT,
             window_seconds=SUNO_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "web_music_download":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_DOWNLOAD_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_DOWNLOAD_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "web_music_play":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_PLAY_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_PLAY_RATE_WINDOW_SECONDS,
         )
     else:
         config = RateLimitConfig(

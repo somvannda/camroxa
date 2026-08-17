@@ -11,17 +11,19 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.user_service import UserService
 from platform_api.services.credit_units import units_to_credits
-from platform_api.utils.upload_paths import upload_path_exists
+from platform_api.utils.upload_paths import resolve_upload_path, uploads_root
 
 # ---------------------------------------------------------------------------
 # Router
@@ -46,6 +48,7 @@ class UserProfileResponse(BaseModel):
     email: str
     email_confirmed: bool = False
     display_name: str
+    avatar_url: str | None = None
     role: str
     status: str
     suspension_reason: str | None = None
@@ -251,10 +254,35 @@ AdminUserDep = Annotated[AuthContext, Depends(require_admin)]
 # ---------------------------------------------------------------------------
 
 
+async def _fetch_avatar_url(pool, user_id: UUID) -> str | None:
+    row = await pool.fetchrow("SELECT avatar_url FROM users WHERE id = $1", user_id)
+    if not row:
+        return None
+    raw = str(row.get("avatar_url") or "").strip()
+    if not raw:
+        return None
+    return f"/api/v1/media/users/{user_id}/avatar"
+
+
+def _save_user_avatar(*, user_id: UUID, data: bytes, content_type: str) -> str:
+    ext = ".jpg"
+    lowered = str(content_type or "").lower()
+    if "png" in lowered:
+        ext = ".png"
+    elif "webp" in lowered:
+        ext = ".webp"
+    avatar_dir = (uploads_root() / "avatars").resolve()
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    avatar_path = avatar_dir / f"{user_id}{ext}"
+    avatar_path.write_bytes(data)
+    return str(Path("uploads") / "avatars" / f"{user_id}{ext}")
+
+
 def _user_to_response(
     user,
     credit_balance: int | float = 0,
     plan_name: str | None = None,
+    avatar_url: str | None = None,
     profile_allowance: int | None = None,
     profile_addon_slots: int = 0,
     profile_addon_pending: int = 0,
@@ -277,6 +305,7 @@ def _user_to_response(
         email=user.email,
         email_confirmed=bool(getattr(user, "email_confirmed", False)),
         display_name=user.display_name,
+        avatar_url=avatar_url,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         status=user.status.value if hasattr(user.status, "value") else str(user.status),
         suspension_reason=getattr(user, "suspension_reason", None),
@@ -362,11 +391,13 @@ async def get_me(
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
     onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+    avatar_url = await _fetch_avatar_url(pool, user_id)
 
     return _user_to_response(
         user,
         credit_balance=credit_balance,
         plan_name=plan_name,
+        avatar_url=avatar_url,
         profile_allowance=profile_allowance,
         profile_addon_slots=profile_addon_slots,
         profile_addon_pending=profile_addon_pending,
@@ -468,10 +499,12 @@ async def update_me(
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
     onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+    avatar_url = await _fetch_avatar_url(pool, user_id)
     return _user_to_response(
         user,
         credit_balance=credit_balance,
         plan_name=plan_name,
+        avatar_url=avatar_url,
         profile_allowance=profile_allowance,
         profile_addon_slots=profile_addon_slots,
         profile_addon_pending=profile_addon_pending,
@@ -480,6 +513,39 @@ async def update_me(
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
     )
+
+
+@router.post(
+    "/me/avatar",
+    response_model=UserProfileResponse,
+    status_code=200,
+    summary="Upload current user profile photo",
+)
+async def upload_my_avatar(
+    ctx: CurrentUserDep,
+    user_service: UserServiceDep,
+    file: UploadFile = File(...),
+) -> UserProfileResponse:
+    from platform_api.exceptions import ValidationError
+
+    content_type = str(file.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise ValidationError("Profile photo must be an image file.", details={"field": "file"})
+    data = await file.read()
+    if not data:
+        raise ValidationError("Profile photo file is empty.", details={"field": "file"})
+    if len(data) > 2 * 1024 * 1024:
+        raise ValidationError("Profile photo must be 2 MB or smaller.", details={"field": "file"})
+
+    user_id = UUID(ctx.user_id)
+    stored_path = _save_user_avatar(user_id=user_id, data=data, content_type=content_type)
+    pool = get_db_pool()
+    await pool.execute(
+        "UPDATE users SET avatar_url = $2, updated_at = NOW() WHERE id = $1",
+        user_id,
+        stored_path,
+    )
+    return await get_me(ctx, user_service)
 
 
 # ---------------------------------------------------------------------------

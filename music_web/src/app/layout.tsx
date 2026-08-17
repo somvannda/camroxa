@@ -1,25 +1,18 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Inter, Outfit } from 'next/font/google';
+
+// Self-hosted fonts (no external dependency)
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/outfit/500.css';
+import '@fontsource/outfit/600.css';
+import '@fontsource/outfit/700.css';
 
 import { PlayerProvider } from '@/components/player-provider';
 import { AuthProvider } from '@/components/auth-provider';
 import { LikesProvider } from '@/components/likes-provider';
 import ShellSwitcher from '@/components/shell-switcher';
-
-const fontSans = Inter({
-  variable: '--font-sans',
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  display: 'swap',
-});
-
-const fontDisplay = Outfit({
-  variable: '--font-display',
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: {
@@ -36,7 +29,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${fontSans.variable} ${fontDisplay.variable}`}>
+    <html lang="en">
       <body>
         <AuthProvider>
           <PlayerProvider>

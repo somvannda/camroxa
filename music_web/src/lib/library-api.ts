@@ -36,3 +36,29 @@ export async function likeTrack(trackId: string): Promise<void> {
 export async function unlikeTrack(trackId: string): Promise<void> {
   await libraryFetch(`/api/v1/streaming/library/likes/${trackId}`, { method: 'DELETE' });
 }
+
+function isWebMusicLikeKey(trackId: string): boolean {
+  const parts = trackId.split(':');
+  return parts.length === 2 && /^[0-9a-f-]{36}$/i.test(parts[0]);
+}
+
+export async function fetchWebMusicLikedKeys(): Promise<string[]> {
+  const data = await libraryFetch<{ keys: string[] }>('/api/v1/web-music/likes/keys');
+  return data.keys ?? [];
+}
+
+export async function likeWebMusicTrack(taskId: string, variant: string): Promise<void> {
+  await libraryFetch(
+    `/api/v1/web-music/generations/${encodeURIComponent(taskId)}/like?variant=${encodeURIComponent(variant)}`,
+    { method: 'PUT' },
+  );
+}
+
+export async function unlikeWebMusicTrack(taskId: string, variant: string): Promise<void> {
+  await libraryFetch(
+    `/api/v1/web-music/generations/${encodeURIComponent(taskId)}/like?variant=${encodeURIComponent(variant)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export { isWebMusicLikeKey };

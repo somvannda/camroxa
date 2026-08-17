@@ -45,6 +45,9 @@ export type StreamTrack = {
   play_count?: number;
   lyrics?: string | null;
   play_url?: string | null;
+  published_at?: string | null;
+  created_at?: string | null;
+  added_at?: string | null;
 };
 
 export type StreamAlbum = {
@@ -62,6 +65,7 @@ export type StreamAlbum = {
 export type StreamArtist = {
   user_id: string;
   artist_name?: string | null;
+  avatar_url?: string | null;
   album_count?: number;
   track_count?: number;
 };

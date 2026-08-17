@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useState } from 'react';
+import { Check, LoaderCircle } from 'lucide-react';
 
+import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
+import TurnstileWidget from '@/components/turnstile-widget';
 
 function safeNextPath(raw: string | null): string {
   if (!raw) return '/create';
@@ -22,9 +25,20 @@ function RegisterForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileKey, setTurnstileKey] = useState(0);
+
+  const handleTurnstileToken = useCallback((token: string) => {
+    setTurnstileToken(token);
+  }, []);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (!turnstileToken) {
+      setError('Please complete the security check before signing up.');
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -32,77 +46,115 @@ function RegisterForm() {
         email: email.trim(),
         password,
         display_name: displayName.trim(),
+        cf_turnstile_response: turnstileToken,
       });
-      router.replace(next);
+      router.replace(
+        `/verify-email?email=${encodeURIComponent(email.trim())}&next=${encodeURIComponent(next)}`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign up failed');
+      setTurnstileToken('');
+      setTurnstileKey((value) => value + 1);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-md rounded-3xl border border-white/8 bg-[rgba(8,10,20,0.72)] p-8 backdrop-blur">
-      <h1 className="font-display text-3xl font-semibold text-white">Join Camxora Music</h1>
-      <p className="mt-2 text-sm text-slate-300/70">
-        Create a music account. You will not go through studio channel onboarding.
-      </p>
-      <form className="mt-8 space-y-4" onSubmit={onSubmit}>
-        <label className="block space-y-2 text-sm text-slate-200">
-          <span>Display name</span>
+    <AuthFormShell
+      title="Create your account"
+      subtitle="Subscribe to a plan to get monthly credits for music generation."
+      footer={
+        <p className="text-center text-sm text-slate-400">
+          Already have an account?{' '}
+          <Link
+            href={`/login?next=${encodeURIComponent(next)}`}
+            className="font-medium text-purple-400 hover:text-purple-300"
+          >
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      <form className="space-y-4" onSubmit={onSubmit}>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-300">Display name</label>
           <input
             required
             minLength={2}
+            maxLength={50}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-white outline-none focus:border-violet-400/50"
+            placeholder="Your name"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-white placeholder:text-slate-500 outline-none transition focus:border-purple-500/50"
           />
-        </label>
-        <label className="block space-y-2 text-sm text-slate-200">
-          <span>Email</span>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-300">Email address</label>
           <input
             type="email"
             required
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-white outline-none focus:border-violet-400/50"
+            placeholder="you@example.com"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-white placeholder:text-slate-500 outline-none transition focus:border-purple-500/50"
           />
-        </label>
-        <label className="block space-y-2 text-sm text-slate-200">
-          <span>Password</span>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-300">Password</label>
           <input
             type="password"
             required
             minLength={8}
+            maxLength={128}
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-white outline-none focus:border-violet-400/50"
+            placeholder="••••••••"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-white placeholder:text-slate-500 outline-none transition focus:border-purple-500/50"
           />
-        </label>
-        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+          <p className="text-xs text-slate-500">
+            At least 8 characters with uppercase, lowercase, and a number.
+          </p>
+        </div>
+
+        <div className="flex justify-center">
+          <TurnstileWidget key={turnstileKey} action="register" onToken={handleTurnstileToken} />
+        </div>
+
+        {error ? (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+            {error}
+          </div>
+        ) : null}
+
         <button
           type="submit"
-          disabled={busy}
-          className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 text-sm font-medium text-white disabled:opacity-60"
+          disabled={busy || !turnstileToken}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? 'Creating account…' : 'Create account'}
+          {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Create account
         </button>
+
+        <p className="text-center text-xs text-slate-500">
+          By signing up, you agree to our Terms of Service and Privacy Policy.
+        </p>
       </form>
-      <p className="mt-6 text-sm text-slate-300/70">
-        Already have an account?{' '}
-        <Link className="text-white underline-offset-4 hover:underline" href={`/login?next=${encodeURIComponent(next)}`}>
-          Sign in
-        </Link>
-      </p>
-    </div>
+    </AuthFormShell>
   );
 }
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<div className="text-slate-400">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-[40vh] items-center justify-center text-slate-400">Loading…</div>
+      }
+    >
       <RegisterForm />
     </Suspense>
   );

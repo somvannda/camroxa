@@ -8,6 +8,7 @@ Requirements: 4.1, 4.3, 4.4
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Protocol
@@ -22,6 +23,18 @@ _LICENSE_SELECT = """
     profile_addon_slots, profile_addon_pending,
     pending_plan_id, pending_plan_effective_at,
     created_at
+"""
+
+_PLAN_SELECT = """
+    id, name, price_cents, billing_cycle_days, profile_allowance,
+    monthly_song_limit, monthly_image_limit, monthly_draft_limit,
+    monthly_video_limit, monthly_merge_limit,
+    daily_song_limit_per_channel, daily_image_limit_per_channel,
+    daily_draft_limit_per_channel,
+    daily_video_limit, daily_merge_limit,
+    included_wallet_credits, plan_kind,
+    plan_type, monthly_credits, features, is_public, display_order,
+    is_active, effective_from, created_at, updated_at
 """
 
 
@@ -73,6 +86,18 @@ def _row_to_license(row: Any) -> License:
     )
 
 
+def _parse_plan_features(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
 def _row_to_plan(row: Any) -> Plan:
     """Convert an asyncpg Record to a Plan domain object."""
     return Plan(
@@ -93,6 +118,11 @@ def _row_to_plan(row: Any) -> Plan:
         daily_merge_limit=int(row.get("daily_merge_limit") or 1),
         included_wallet_credits=int(row.get("included_wallet_credits") or 0),
         plan_kind=str(row.get("plan_kind") or "subscription"),
+        plan_type=str(row.get("plan_type") or "desktop_pro"),
+        monthly_credits=row.get("monthly_credits"),
+        features=_parse_plan_features(row.get("features")),
+        is_public=bool(row.get("is_public") or False),
+        display_order=int(row.get("display_order") or 0),
         is_active=row["is_active"],
         effective_from=row["effective_from"],
         created_at=row["created_at"],
@@ -668,15 +698,8 @@ class PlanRepository:
             List of Plan domain objects.
         """
         rows = await self._pool.fetch(
-            """
-            SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_limit, monthly_image_limit, monthly_draft_limit,
-                   monthly_video_limit, monthly_merge_limit,
-                   daily_song_limit_per_channel, daily_image_limit_per_channel,
-                   daily_draft_limit_per_channel,
-                   daily_video_limit, daily_merge_limit,
-                   included_wallet_credits, plan_kind,
-                   is_active, effective_from, created_at, updated_at
+            f"""
+            SELECT {_PLAN_SELECT}
             FROM plans
             ORDER BY plan_kind ASC, price_cents ASC
             """
@@ -739,14 +762,7 @@ class PlanRepository:
                                plan_kind,
                                is_active, effective_from, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, true, NOW(), NOW(), NOW())
-            RETURNING id, name, price_cents, billing_cycle_days, profile_allowance,
-                      monthly_song_limit, monthly_image_limit, monthly_draft_limit,
-                      monthly_video_limit, monthly_merge_limit,
-                      daily_song_limit_per_channel, daily_image_limit_per_channel,
-                      daily_draft_limit_per_channel,
-                      daily_video_limit, daily_merge_limit,
-                      included_wallet_credits, plan_kind,
-                      is_active, effective_from, created_at, updated_at
+            RETURNING {_PLAN_SELECT}
             """,
             name,
             price_cents,
@@ -776,15 +792,8 @@ class PlanRepository:
             The Plan domain object, or None if no matching plan exists.
         """
         row = await self._pool.fetchrow(
-            """
-            SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_limit, monthly_image_limit, monthly_draft_limit,
-                   monthly_video_limit, monthly_merge_limit,
-                   daily_song_limit_per_channel, daily_image_limit_per_channel,
-                   daily_draft_limit_per_channel,
-                   daily_video_limit, daily_merge_limit,
-                   included_wallet_credits, plan_kind,
-                   is_active, effective_from, created_at, updated_at
+            f"""
+            SELECT {_PLAN_SELECT}
             FROM plans
             WHERE id = $1
             """,
@@ -804,15 +813,8 @@ class PlanRepository:
             The Plan domain object, or None if no matching plan exists.
         """
         row = await self._pool.fetchrow(
-            """
-            SELECT id, name, price_cents, billing_cycle_days, profile_allowance,
-                   monthly_song_limit, monthly_image_limit, monthly_draft_limit,
-                   monthly_video_limit, monthly_merge_limit,
-                   daily_song_limit_per_channel, daily_image_limit_per_channel,
-                   daily_draft_limit_per_channel,
-                   daily_video_limit, daily_merge_limit,
-                   included_wallet_credits, plan_kind,
-                   is_active, effective_from, created_at, updated_at
+            f"""
+            SELECT {_PLAN_SELECT}
             FROM plans
             WHERE name = $1
             """,
@@ -857,14 +859,7 @@ class PlanRepository:
             UPDATE plans
             SET {', '.join(set_parts)}
             WHERE id = ${param_idx}
-            RETURNING id, name, price_cents, billing_cycle_days, profile_allowance,
-                      monthly_song_limit, monthly_image_limit, monthly_draft_limit,
-                      monthly_video_limit, monthly_merge_limit,
-                      daily_song_limit_per_channel, daily_image_limit_per_channel,
-                      daily_draft_limit_per_channel,
-                      daily_video_limit, daily_merge_limit,
-                      included_wallet_credits, plan_kind,
-                      is_active, effective_from, created_at, updated_at
+            RETURNING {_PLAN_SELECT}
         """
 
         row = await self._pool.fetchrow(query, *values)
@@ -914,6 +909,118 @@ class PlanRepository:
         )
         deleted_id = await self._pool.fetchval(
             "DELETE FROM plans WHERE id = $1 RETURNING id",
+            plan_id,
+        )
+        return deleted_id is not None
+
+    async def get_by_plan_type(self, plan_type: str) -> list[Plan]:
+        """Return plans filtered by plan_type ordered for admin display."""
+        rows = await self._pool.fetch(
+            f"""
+            SELECT {_PLAN_SELECT}
+            FROM plans
+            WHERE plan_type = $1
+            ORDER BY display_order ASC, billing_cycle_days ASC, name ASC
+            """,
+            plan_type,
+        )
+        return [_row_to_plan(row) for row in rows]
+
+    async def get_web_music_subscriber_counts(self, plan_ids: list[UUID]) -> dict[UUID, int]:
+        """Return active web subscription counts per plan."""
+        if not plan_ids:
+            return {}
+        rows = await self._pool.fetch(
+            """
+            SELECT plan_id, COUNT(*)::int AS subscriber_count
+            FROM web_subscriptions
+            WHERE plan_id = ANY($1::uuid[])
+              AND status IN ('active', 'past_due')
+            GROUP BY plan_id
+            """,
+            plan_ids,
+        )
+        return {
+            row["plan_id"]: int(row["subscriber_count"] or 0)
+            for row in rows
+        }
+
+    async def create_web_music(
+        self,
+        *,
+        name: str,
+        price_cents: int,
+        billing_cycle_days: int,
+        monthly_credits: int,
+        features: dict[str, Any],
+        is_public: bool,
+        display_order: int,
+    ) -> Plan:
+        """Create a web music subscription plan row."""
+        row = await self._pool.fetchrow(
+            f"""
+            INSERT INTO plans (
+                name, plan_type, price_cents, billing_cycle_days,
+                monthly_credits, profile_allowance,
+                monthly_song_limit, daily_song_limit_per_channel,
+                features, is_public, display_order,
+                plan_kind, is_active, effective_from, created_at, updated_at
+            )
+            VALUES (
+                $1, 'web_music', $2, $3,
+                $4, 1,
+                NULL, 999,
+                $5::jsonb, $6, $7,
+                'subscription', true, NOW(), NOW(), NOW()
+            )
+            RETURNING {_PLAN_SELECT}
+            """,
+            name,
+            price_cents,
+            billing_cycle_days,
+            monthly_credits,
+            json.dumps(features),
+            is_public,
+            display_order,
+        )
+        return _row_to_plan(row)
+
+    async def delete_web_music_if_no_subscribers(self, plan_id: UUID) -> bool:
+        """Delete a web music plan when it has no active web subscriptions."""
+        from platform_api.exceptions import ValidationError
+
+        existing = await self.get_by_id(plan_id)
+        if existing is None:
+            return False
+        if str(getattr(existing, "plan_type", "desktop_pro")) != "web_music":
+            raise ValidationError(
+                message="Plan is not a web music plan.",
+                details={"plan_id": str(plan_id)},
+            )
+
+        subscriber_count = int(
+            await self._pool.fetchval(
+                """
+                SELECT COUNT(*)::int
+                FROM web_subscriptions
+                WHERE plan_id = $1
+                  AND status IN ('active', 'past_due', 'cancelled')
+                """,
+                plan_id,
+            )
+            or 0
+        )
+        if subscriber_count > 0:
+            raise ValidationError(
+                message="Cannot permanently delete a web music plan that has subscribers.",
+                details={
+                    "plan_id": str(plan_id),
+                    "subscriber_count": subscriber_count,
+                },
+            )
+
+        deleted_id = await self._pool.fetchval(
+            "DELETE FROM plans WHERE id = $1 AND plan_type = 'web_music' RETURNING id",
             plan_id,
         )
         return deleted_id is not None

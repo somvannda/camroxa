@@ -4,6 +4,7 @@ export type MusicUser = {
   id: string;
   email: string;
   display_name: string;
+  avatar_url?: string | null;
   email_confirmed?: boolean;
   products?: string[];
   plan_name?: string | null;
@@ -23,10 +24,12 @@ function apiPath(path: string): string {
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
     const data = (await response.json()) as {
-      detail?: string;
-      error?: { message?: string };
+      detail?: string | { msg?: string }[];
+      error?: { message?: string; details?: { fields?: Array<{ message?: string }> } };
     };
-    if (data.detail) return data.detail;
+    if (typeof data.detail === 'string') return data.detail;
+    if (Array.isArray(data.detail) && data.detail[0]?.msg) return data.detail[0].msg;
+    if (data.error?.details?.fields?.[0]?.message) return data.error.details.fields[0].message;
     if (data.error?.message) return data.error.message;
   } catch {
     /* ignore */
@@ -37,6 +40,7 @@ async function readError(response: Response, fallback: string): Promise<string> 
 export async function loginMusicUser(input: {
   email: string;
   password: string;
+  cf_turnstile_response?: string;
 }): Promise<TokenResponse> {
   const response = await fetch(apiPath('/api/v1/auth/login'), {
     method: 'POST',
@@ -57,6 +61,7 @@ export async function registerMusicUser(input: {
   email: string;
   password: string;
   display_name: string;
+  cf_turnstile_response?: string;
 }): Promise<void> {
   const response = await fetch(apiPath('/api/v1/auth/register'), {
     method: 'POST',
@@ -71,6 +76,41 @@ export async function registerMusicUser(input: {
   if (!response.ok) {
     throw new Error(await readError(response, `Sign up failed (${response.status})`));
   }
+}
+
+export async function sendVerificationEmail(email: string): Promise<{ message: string }> {
+  const response = await fetch(apiPath('/api/v1/auth/send-verification'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Portal-Context': 'user',
+    },
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, `Could not send verification code (${response.status})`));
+  }
+  return (await response.json()) as { message: string };
+}
+
+export async function verifyEmailCode(input: {
+  email: string;
+  code: string;
+}): Promise<{ message: string; is_verified?: boolean }> {
+  const response = await fetch(apiPath('/api/v1/auth/verify-email'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Portal-Context': 'user',
+    },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, `Verification failed (${response.status})`));
+  }
+  return (await response.json()) as { message: string; is_verified?: boolean };
 }
 
 export async function fetchMusicUser(): Promise<MusicUser | null> {
@@ -88,9 +128,68 @@ export async function fetchMusicUser(): Promise<MusicUser | null> {
     id: data.id,
     email: data.email,
     display_name: data.display_name || data.email,
+    avatar_url: (data as MusicUser).avatar_url ?? null,
     email_confirmed: data.email_confirmed,
     products: Array.isArray((data as MusicUser).products) ? (data as MusicUser).products : [],
     plan_name: (data as MusicUser).plan_name ?? null,
+  };
+}
+
+export function getUserAvatarUrl(userId: string, cacheKey?: string | number | null): string {
+  const suffix = cacheKey ? `?v=${encodeURIComponent(String(cacheKey))}` : '';
+  return apiPath(`/api/v1/media/users/${encodeURIComponent(userId)}/avatar${suffix}`);
+}
+
+export async function updateMusicUserProfile(input: {
+  display_name?: string;
+}): Promise<MusicUser> {
+  const response = await fetch(apiPath('/api/v1/users/me'), {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Portal-Context': 'user',
+    },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, `Profile update failed (${response.status})`));
+  }
+  const data = (await response.json()) as MusicUser;
+  return {
+    id: data.id,
+    email: data.email,
+    display_name: data.display_name || data.email,
+    avatar_url: data.avatar_url ?? null,
+    email_confirmed: data.email_confirmed,
+    products: Array.isArray(data.products) ? data.products : [],
+    plan_name: data.plan_name ?? null,
+  };
+}
+
+export async function uploadMusicUserAvatar(file: File): Promise<MusicUser> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(apiPath('/api/v1/users/me/avatar'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'X-Portal-Context': 'user',
+    },
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, `Photo upload failed (${response.status})`));
+  }
+  const data = (await response.json()) as MusicUser;
+  return {
+    id: data.id,
+    email: data.email,
+    display_name: data.display_name || data.email,
+    avatar_url: data.avatar_url ?? null,
+    email_confirmed: data.email_confirmed,
+    products: Array.isArray(data.products) ? data.products : [],
+    plan_name: data.plan_name ?? null,
   };
 }
 

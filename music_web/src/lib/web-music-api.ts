@@ -6,6 +6,12 @@ export type WebMusicQuota = {
   remaining: number;
   is_pro?: boolean;
   requires_upgrade?: boolean;
+  credits_remaining?: number;
+  credits_per_song?: number;
+  has_subscription?: boolean;
+  can_download?: boolean;
+  daily_free_remaining?: number;
+  daily_free_limit?: number;
 };
 
 export type WebMusicClip = {
@@ -14,6 +20,7 @@ export type WebMusicClip = {
   audio_url: string;
   download_url: string;
   ready: boolean;
+  image_url?: string | null;
 };
 
 export type WebMusicGeneration = {
@@ -26,17 +33,41 @@ export type WebMusicGeneration = {
   status: string;
   error_message?: string | null;
   created_at?: string | null;
+  negative_tags?: string | null;
+  vocal_gender?: string | null;
+  style_weight?: number | null;
+  weirdness_constraint?: number | null;
+  audio_weight?: number | null;
   clips: WebMusicClip[];
+};
+
+export type WebMusicWorkspace = {
+  id: string;
+  name: string;
+  is_default?: boolean;
+  created_at?: string | null;
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
     const data = (await response.json()) as {
-      detail?: string;
-      error?: { message?: string; details?: { requires_upgrade?: boolean } };
+      detail?:
+        | string
+        | { message?: string }
+        | Array<{ msg?: string; loc?: Array<string | number> }>;
+      error?: { message?: string; code?: string; details?: { requires_upgrade?: boolean } };
+      message?: string;
     };
     if (data.error?.message) return data.error.message;
     if (typeof data.detail === 'string') return data.detail;
+    if (data.detail && typeof data.detail === 'object' && !Array.isArray(data.detail) && data.detail.message) {
+      return data.detail.message;
+    }
+    if (Array.isArray(data.detail) && data.detail.length > 0) {
+      const first = data.detail[0];
+      if (first?.msg) return first.msg;
+    }
+    if (typeof data.message === 'string') return data.message;
   } catch {
     /* ignore */
   }
@@ -65,6 +96,51 @@ export async function fetchWebMusicQuota(): Promise<WebMusicQuota> {
   return musicFetch<WebMusicQuota>('/api/v1/web-music/quota');
 }
 
+export async function listWebMusicWorkspaces(): Promise<{ items: WebMusicWorkspace[] }> {
+  return musicFetch('/api/v1/web-music/workspaces');
+}
+
+export async function createWebMusicWorkspace(name: string): Promise<WebMusicWorkspace> {
+  return musicFetch('/api/v1/web-music/workspaces', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function updateWebMusicWorkspace(
+  workspaceId: string,
+  name: string,
+): Promise<WebMusicWorkspace> {
+  return musicFetch(`/api/v1/web-music/workspaces/${encodeURIComponent(workspaceId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function generateWebMusicStyles(input: {
+  style?: string;
+  lyrics?: string;
+  title?: string;
+  description?: string;
+  prompt?: string;
+}): Promise<{ style: string; credits_charged?: number }> {
+  return musicFetch('/api/v1/web-music/generate-styles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function generateWebMusicDraft(prompt: string): Promise<{ lyrics: string; title: string }> {
+  return musicFetch('/api/v1/web-music/generate-draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+}
+
 export async function generateWebMusic(input: {
   mode: 'simple' | 'advanced';
   lyrics?: string;
@@ -74,10 +150,11 @@ export async function generateWebMusic(input: {
   instrumental?: boolean;
   model?: 'V5' | 'V5_5';
   negative_tags?: string;
-  vocal_gender?: 'm' | 'f';
+  vocal_gender?: 'm' | 'f' | 'both';
   style_weight?: number;
   weirdness_constraint?: number;
   audio_weight?: number;
+  workspace_id?: string;
 }): Promise<{ task_id: string; status: string; title: string; style: string; quota: WebMusicQuota }> {
   return musicFetch('/api/v1/web-music/generate', {
     method: 'POST',
@@ -86,9 +163,18 @@ export async function generateWebMusic(input: {
   });
 }
 
-export async function listWebMusicGenerations(limit = 40, offset = 0) {
+export async function listWebMusicGenerations(
+  limit = 40,
+  offset = 0,
+  workspaceId?: string,
+) {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (workspaceId) params.set('workspace_id', workspaceId);
   return musicFetch<{ items: WebMusicGeneration[]; total: number }>(
-    `/api/v1/web-music/generations?limit=${limit}&offset=${offset}`,
+    `/api/v1/web-music/generations?${params.toString()}`,
   );
 }
 
@@ -103,6 +189,49 @@ export async function downloadWebMusicClip(id: string, variant: string, filename
   );
   if (!response.ok) {
     throw new Error(await readError(response, 'Download failed'));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadWebMusicClipWav(id: string, variant: string, filename: string): Promise<void> {
+  const response = await fetch(
+    `/api/v1/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
+    { credentials: 'include', headers: { 'X-Portal-Context': 'user' } },
+  );
+  if (!response.ok) {
+    throw new Error(await readError(response, 'WAV download failed'));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadWebMusicTimedLyrics(
+  id: string,
+  variant: string,
+  format: 'lrc' | 'srt',
+  filename: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/v1/web-music/generations/${id}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${encodeURIComponent(format)}`,
+    { credentials: 'include', headers: { 'X-Portal-Context': 'user' } },
+  );
+  if (!response.ok) {
+    throw new Error(await readError(response, 'Timed lyrics download failed'));
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

@@ -4,7 +4,7 @@ from functools import lru_cache
 import hashlib
 import os
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Digests produced by normalize_jwt_secret for known insecure seeds.
@@ -156,6 +156,30 @@ class Settings(BaseSettings):
     cutluy_payment_link_id: str = ""
     # Signing secret from CutLuy Dashboard → Webhooks (distinct from ck_live_…).
     cutluy_webhook_secret: str = ""
+
+    # --- Cloudflare Turnstile (Bot Protection) ---
+    # These use CLOUDFLARE_* env names (not PLATFORM_*) to match Cloudflare dashboard naming.
+    cloudflare_turnstile_site_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "CLOUDFLARE_TURNSTILE_SITE_KEY",
+            "PLATFORM_CLOUDFLARE_TURNSTILE_SITE_KEY",
+        ),
+    )
+    cloudflare_turnstile_secret_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "CLOUDFLARE_TURNSTILE_SECRET_KEY",
+            "PLATFORM_CLOUDFLARE_TURNSTILE_SECRET_KEY",
+        ),
+    )
+    cloudflare_turnstile_hostnames: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "CLOUDFLARE_TURNSTILE_HOSTNAMES",
+            "PLATFORM_CLOUDFLARE_TURNSTILE_HOSTNAMES",
+        ),
+    )  # Comma-separated list of allowed frontend hostnames
 
     # --- Admin dual-control (Phase 3 / H6) ---
     # Absolute display credits; adjusts at/above this need a second admin.

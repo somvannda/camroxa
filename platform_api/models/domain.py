@@ -76,6 +76,11 @@ class Plan:
     daily_merge_limit: int = 1
     included_wallet_credits: int = 0
     plan_kind: str = "subscription"
+    plan_type: str = "desktop_pro"
+    monthly_credits: int | None = None
+    features: dict[str, bool] = field(default_factory=dict)
+    is_public: bool = False
+    display_order: int = 0
     is_active: bool = True
     effective_from: datetime = field(default_factory=datetime.utcnow)
     created_at: datetime = field(default_factory=datetime.utcnow)

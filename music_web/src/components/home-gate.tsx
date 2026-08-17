@@ -3,16 +3,19 @@
 import Link from 'next/link';
 
 import TrackRow from '@/components/track-row';
-import { AlbumCard } from '@/components/catalog-cards';
+import { AlbumCard, ArtistCard } from '@/components/catalog-cards';
 import { useAuth } from '@/components/auth-provider';
+import type { ExploreArtist } from '@/lib/explore-api';
 import type { StreamAlbum, StreamTrack } from '@/lib/streaming-api';
 
 export default function HomeGate({
   tracks,
   albums,
+  artists,
 }: {
   tracks: StreamTrack[];
   albums: StreamAlbum[];
+  artists: ExploreArtist[];
 }) {
   const { user, loading } = useAuth();
 
@@ -47,11 +50,32 @@ export default function HomeGate({
           <h2 className="font-display text-2xl font-semibold text-white">Featured from the catalog</h2>
           <div className="mt-4 space-y-1 rounded-2xl border border-white/8 bg-white/[0.02] p-2">
             {tracks.length ? (
-              tracks.slice(0, 8).map((track) => <TrackRow key={track.id} track={track} queue={tracks} />)
+              tracks.map((track) => (
+                <TrackRow key={track.id} track={track} queue={tracks} showGenre={false} />
+              ))
             ) : (
               <p className="px-3 py-6 text-sm text-slate-500">New music will appear here.</p>
             )}
           </div>
+        </section>
+        <section className="mx-auto max-w-5xl px-4 pb-16">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-display text-2xl font-semibold text-white">Top artists</h2>
+            <Link href="/artists" className="text-sm text-fuchsia-200/80 hover:text-white">
+              Show all
+            </Link>
+          </div>
+          {artists.length ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {artists.map((artist) => (
+                <ArtistCard key={artist.user_id} artist={artist} />
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-8 text-sm text-slate-500">
+              No creators yet. Published streaming artists and users with public playlists appear here.
+            </p>
+          )}
         </section>
       </div>
     );
@@ -83,11 +107,32 @@ export default function HomeGate({
         </div>
         <div className="space-y-1 rounded-2xl border border-white/8 bg-white/[0.02] p-2">
           {tracks.length ? (
-            tracks.map((track) => <TrackRow key={track.id} track={track} queue={tracks} />)
+            tracks.map((track) => (
+              <TrackRow key={track.id} track={track} queue={tracks} showGenre={false} />
+            ))
           ) : (
             <p className="px-3 py-6 text-sm text-slate-500">No published tracks yet.</p>
           )}
         </div>
+      </section>
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display text-xl font-semibold text-white">Top artists</h2>
+          <Link href="/artists" className="text-sm text-fuchsia-200/80 hover:text-white">
+            Show all
+          </Link>
+        </div>
+        {artists.length ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {artists.map((artist) => (
+              <ArtistCard key={artist.user_id} artist={artist} />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-8 text-sm text-slate-500">
+            No creators yet. Published streaming artists and users with public playlists appear here.
+          </p>
+        )}
       </section>
       <section>
         <h2 className="mb-4 font-display text-xl font-semibold text-white">Albums</h2>

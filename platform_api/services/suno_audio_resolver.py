@@ -25,9 +25,10 @@ logger = logging.getLogger(__name__)
 
 _MIN_MP3_BYTES = 4096
 _CHUNK_SIZE = 1024 * 1024
+_DISALLOWED_URL_MARKERS = (".m4a", ".aac", ".m3u8", "/m4a/", "audio/mp4", "video/mp4", "x-m4a")
 _DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
-    "Accept": "audio/mpeg,audio/*,*/*;q=0.8",
+    "Accept": "audio/mpeg,application/octet-stream,*/*;q=0.8",
 }
 _INVALID_URL_LITERALS = frozenset({"none", "null", "undefined", "n/a", "nil"})
 
@@ -61,6 +62,41 @@ class SunoTaskDownloadUrls:
     refreshed: bool = False
 
 
+def is_disallowed_suno_audio_url(url: str | None) -> bool:
+    """Reject stream previews, m4a/aac, and HLS URLs — we want finished MP3 files."""
+    text = str(url or "").strip().lower()
+    if not text:
+        return True
+    if any(marker in text for marker in _DISALLOWED_URL_MARKERS):
+        return True
+    if text.endswith(".mp3") or ".mp3?" in text:
+        return False
+    if "cdn1.suno.ai/" in text and text.endswith(".mp3"):
+        return False
+    # Suno source_audio_url should be mp3; reject unknown extensions on direct file URLs.
+    path = text.split("?", 1)[0]
+    if "." in path.rsplit("/", 1)[-1]:
+        ext = path.rsplit(".", 1)[-1]
+        if ext not in {"mp3"}:
+            return True
+    return False
+
+
+def validate_mp3_bytes(data: bytes) -> bool:
+    """True when bytes look like MP3 (ID3 tag or MPEG frame sync), not m4a/other."""
+    if len(data) < 4:
+        return False
+    if data[:3] == b"ID3":
+        return True
+    # MPEG audio frame sync: 0xFF followed by 0xE0+ (11 set bits)
+    if data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:
+        return True
+    # ftyp box => MP4/M4A container
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        return False
+    return False
+
+
 def build_download_url_candidates(*urls: str | None) -> list[str]:
     """Return unique non-empty download URL candidates in priority order.
 
@@ -70,7 +106,7 @@ def build_download_url_candidates(*urls: str | None) -> list[str]:
     candidates: list[str] = []
     for raw in urls:
         url = prefer_suno_mpeg_cdn_url(normalize_http_download_url(raw))
-        if not url or url in seen:
+        if not url or url in seen or is_disallowed_suno_audio_url(url):
             continue
         seen.add(url)
         candidates.append(url)
@@ -297,7 +333,7 @@ async def download_suno_mp3_bytes(url: str, *, fallback_urls: list[str] | None =
     """Download MP3 bytes, trying fallback URLs when the primary link is empty."""
     candidates = build_download_url_candidates(url, *(fallback_urls or []))
     if not candidates:
-        raise StorageServiceError("No Suno download URL provided.")
+        raise StorageServiceError("No valid Suno MP3 download URL provided.")
 
     last_error: Exception | None = None
     for candidate in candidates:
@@ -329,6 +365,9 @@ async def _download_once(url: str) -> bytes:
     ) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
+            content_type = str(response.headers.get("content-type") or "").lower()
+            if any(marker in content_type for marker in ("audio/mp4", "video/mp4", "x-m4a", "audio/aac")):
+                raise StorageServiceError(f"Suno returned non-MP3 content-type: {content_type}")
             chunks: list[bytes] = []
             async for chunk in response.aiter_bytes(chunk_size=_CHUNK_SIZE):
                 if chunk:
@@ -354,7 +393,10 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
 
     download_urls: list[str] = []
     audio_ids: list[str] = []
+    image_urls: list[str] = []
     for clip in clips:
+        from platform_api.clients.suno_client import _extract_clip_image_url
+
         audio_id = _extract_clip_audio_id(clip)
         url = _extract_clip_download_url(clip) or cdn_url_for_suno_audio_id(audio_id)
         if not url and not audio_id:
@@ -363,6 +405,7 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
             continue
         download_urls.append(url)
         audio_ids.append(audio_id)
+        image_urls.append(_extract_clip_image_url(clip))
     if not download_urls:
         return SunoTaskDownloadUrls()
 
@@ -371,6 +414,8 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
         audio_url_alt=download_urls[1] if len(download_urls) > 1 else "",
         audio_id_ok=audio_ids[0] if audio_ids else "",
         audio_id_alt=audio_ids[1] if len(audio_ids) > 1 else "",
+        image_url_ok=image_urls[0] if image_urls else "",
+        image_url_alt=image_urls[1] if len(image_urls) > 1 else "",
         refreshed=True,
     )
 
@@ -419,9 +464,11 @@ __all__ = [
     "extract_callback_download_urls",
     "extract_callback_task_id",
     "fetch_timestamped_lrc_with_pool",
+    "is_disallowed_suno_audio_url",
     "is_http_download_url",
     "normalize_http_download_url",
     "refresh_suno_task_download_urls",
     "urls_from_record_info_payload",
+    "validate_mp3_bytes",
     "variant_url_candidates",
 ]

@@ -134,11 +134,13 @@ sudo -u camxora bash -lc "
   cd $REPO/music_web
   rm -rf .next
   npm ci || npm install --no-audit --no-fund
+  TURNSTILE_SITE=\$(grep -m1 '^CLOUDFLARE_TURNSTILE_SITE_KEY=' $REPO/platform_api/.env | cut -d= -f2- || true)
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_API_BASE_URL=$API_URL
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com
 NEXT_PUBLIC_WEBSITE_URL=https://camxora.com
 NEXT_PUBLIC_CAMXORA_ENV=production
+NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=\$TURNSTILE_SITE
 ENVEOF
   npm run build
 "

@@ -40,6 +40,7 @@ import { ChannelPricingSection } from '@/pages/plans/channel-pricing-section';
 import { PlanLimitsFields } from '@/pages/plans/plan-limits-fields';
 import { PlanPricingPreview, SmartPlanPriceCalculator } from '@/pages/plans/plan-pricing-preview';
 import { SubscriptionPlansSection } from '@/pages/plans/subscription-plans-section';
+import { WebMusicPlansSection } from '@/pages/plans/web-music-plans-section';
 import { toast } from '@/hooks/use-toast';
 import type { Plan, PlanOffer } from '@/types/models';
 
@@ -144,7 +145,9 @@ export default function PlansPage() {
   const updatePlan = useUpdatePlan();
   const deletePlan = useDeletePlan();
   const createOffer = useCreateOffer();
-  const subscriptionPlans = plans?.filter((plan) => plan.plan_kind !== 'profile_addon') ?? [];
+  const subscriptionPlans = plans?.filter(
+    (plan) => plan.plan_kind !== 'profile_addon' && (plan.plan_type ?? 'desktop_pro') !== 'web_music',
+  ) ?? [];
   const twoChannelBasePlan = subscriptionPlans
     .filter(
       (plan) =>
@@ -377,6 +380,8 @@ export default function PlansPage() {
       <h1 className="text-2xl font-bold text-slate-100">Plans</h1>
 
       <ChannelPricingSection />
+
+      <WebMusicPlansSection />
 
       <SubscriptionPlansSection
         plans={subscriptionPlans}

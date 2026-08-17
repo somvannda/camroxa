@@ -38,7 +38,7 @@ export default function PlayerBar() {
   const canNext = queueIndex >= 0 && queueIndex < queue.length - 1;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/8 bg-[rgba(5,8,18,0.94)] px-4 py-3 backdrop-blur-xl md:px-6">
+    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/8 bg-[rgba(5,8,18,0.94)] px-4 py-3 backdrop-blur-xl md:left-72 md:px-6">
       <div className="mx-auto grid max-w-[1600px] grid-cols-1 items-center gap-3 md:grid-cols-[1.2fr_1.4fr_1fr] md:gap-4">
         <div className="flex min-w-0 items-center gap-3">
           {current?.cover_url ? (

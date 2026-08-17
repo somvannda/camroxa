@@ -1,26 +1,41 @@
 import ExplorePageClient from '@/components/explore-page-client';
-import { getGenres, getStreamingHome, listAlbums, listArtists } from '@/lib/streaming-api';
+import { mergeExploreArtists, mergeRecentTracks } from '@/lib/explore-api';
+import { listPublicArtists, listPublicPlaylists, listPublicRecentTracks } from '@/lib/playlist-api';
+import { getGenres, getStreamingHome, listArtists } from '@/lib/streaming-api';
 
 export default async function ExplorePage() {
-  let recentTracks: Awaited<ReturnType<typeof getStreamingHome>>['recent_tracks'] = [];
-  let albums: Awaited<ReturnType<typeof listAlbums>>['items'] = [];
-  let artists: Awaited<ReturnType<typeof listArtists>>['items'] = [];
+  let streamingRecent: Awaited<ReturnType<typeof getStreamingHome>>['recent_tracks'] = [];
+  let publicRecent: Awaited<ReturnType<typeof listPublicRecentTracks>>['items'] = [];
+  let publicPlaylists: Awaited<ReturnType<typeof listPublicPlaylists>>['items'] = [];
+  let streamingArtists: Awaited<ReturnType<typeof listArtists>>['items'] = [];
+  let webMusicArtists: Awaited<ReturnType<typeof listPublicArtists>>['items'] = [];
   let genres: Awaited<ReturnType<typeof getGenres>>['items'] = [];
+
   try {
     const home = await getStreamingHome();
-    recentTracks = home.recent_tracks;
+    streamingRecent = home.recent_tracks;
   } catch {
-    recentTracks = [];
+    streamingRecent = [];
   }
   try {
-    albums = (await listAlbums(8, 0)).items;
+    publicRecent = (await listPublicRecentTracks(12, 0)).items;
   } catch {
-    albums = [];
+    publicRecent = [];
   }
   try {
-    artists = (await listArtists(8, 0)).items;
+    publicPlaylists = (await listPublicPlaylists(8, 0)).items;
   } catch {
-    artists = [];
+    publicPlaylists = [];
+  }
+  try {
+    streamingArtists = (await listArtists(24, 0)).items;
+  } catch {
+    streamingArtists = [];
+  }
+  try {
+    webMusicArtists = (await listPublicArtists(24, 0)).items;
+  } catch {
+    webMusicArtists = [];
   }
   try {
     genres = (await getGenres()).items;
@@ -28,10 +43,13 @@ export default async function ExplorePage() {
     genres = [];
   }
 
+  const recentTracks = mergeRecentTracks(streamingRecent, publicRecent, 12);
+  const artists = mergeExploreArtists(streamingArtists, webMusicArtists).slice(0, 8);
+
   return (
     <ExplorePageClient
       recentTracks={recentTracks}
-      albums={albums}
+      publicPlaylists={publicPlaylists}
       artists={artists}
       genres={genres}
     />

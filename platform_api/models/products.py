@@ -14,6 +14,11 @@ SUNO_TASK_SOURCE_WEB_MUSIC = "web_music"
 WEB_MUSIC_FREE_DAILY_LIMIT_KEY = "web_music_free_daily_limit"
 WEB_MUSIC_FREE_DAILY_LIMIT_DEFAULT = 5
 
+WEB_MUSIC_FREE_DAILY_CREDITS_KEY = "web_music_free_daily_credits"
+WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT = 50
+
+WEB_MUSIC_CREDITS_PER_SONG = 10
+
 
 def normalize_signup_product(value: str | None) -> str:
     """Return music_web or studio. Empty/unknown-empty defaults to studio."""

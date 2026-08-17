@@ -217,6 +217,25 @@ def test_payload_is_mpeg_audio_rejects_iso_bmff() -> None:
     assert payload_is_mpeg_audio(b"ID3") is False
 
 
+def test_is_disallowed_suno_audio_url_rejects_m4a_and_hls() -> None:
+    from platform_api.services.suno_audio_resolver import (
+        build_download_url_candidates,
+        is_disallowed_suno_audio_url,
+        validate_mp3_bytes,
+    )
+
+    assert is_disallowed_suno_audio_url("https://cdn.example.com/track.m4a") is True
+    assert is_disallowed_suno_audio_url("https://cdn.example.com/stream.m3u8") is True
+    assert is_disallowed_suno_audio_url("https://cdn1.suno.ai/abc.mp3") is False
+    assert build_download_url_candidates(
+        "https://cdn.example.com/track.m4a",
+        "https://cdn.example.com/ok.mp3",
+    ) == ["https://cdn.example.com/ok.mp3"]
+    assert validate_mp3_bytes(b"ID3" + b"x" * 100) is True
+    assert validate_mp3_bytes(b"\xff\xfb" + b"x" * 100) is True
+    assert validate_mp3_bytes(b"\x00\x00\x00\x18ftypmp42") is False
+
+
 def test_callback_indicates_success_for_complete_callback_type() -> None:
     assert callback_indicates_success({"code": 200, "data": {"callbackType": "complete"}})
 

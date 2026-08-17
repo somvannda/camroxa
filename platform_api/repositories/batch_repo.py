@@ -995,6 +995,8 @@ class BatchRepository:
         audio_url_alt: str | None = None,
         audio_id_ok: str | None = None,
         audio_id_alt: str | None = None,
+        image_url_ok: str | None = None,
+        image_url_alt: str | None = None,
         error_message: str | None = None,
     ) -> None:
         """Compatibility update surface for the callbacks router."""
@@ -1007,6 +1009,8 @@ class BatchRepository:
                 error_message = COALESCE($5, error_message),
                 audio_id_ok = COALESCE(NULLIF(BTRIM($6), ''), audio_id_ok),
                 audio_id_alt = COALESCE(NULLIF(BTRIM($7), ''), audio_id_alt),
+                image_url_ok = COALESCE(NULLIF(BTRIM($8), ''), image_url_ok),
+                image_url_alt = COALESCE(NULLIF(BTRIM($9), ''), image_url_alt),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -1017,6 +1021,8 @@ class BatchRepository:
             error_message,
             audio_id_ok,
             audio_id_alt,
+            image_url_ok,
+            image_url_alt,
         )
 
     async def list_pending_suno_downloads(
