@@ -29,6 +29,60 @@ from platform_api.services.suno_status_messages import (
 
 logger = logging.getLogger(__name__)
 
+
+async def _refund_web_music_generation_on_failure(
+    pool: Any,
+    *,
+    user_id: str,
+    task_id: UUID,
+    prior_status: Any,
+) -> None:
+    """Return generation credits when a web music Suno task fails asynchronously."""
+    from platform_api.models.products import WEB_MUSIC_CREDITS_PER_SONG
+    from platform_api.services.v2.credit_service import get_credit_service
+
+    prior = str(
+        prior_status.value if hasattr(prior_status, "value") else prior_status or ""
+    ).upper()
+    if prior == TaskStatus.FAILED.value:
+        return
+
+    pro = await pool.fetchrow(
+        """
+        SELECT 1
+        FROM licenses
+        WHERE user_id = $1
+          AND status = 'active'
+          AND (expires_at IS NULL OR expires_at > NOW())
+        LIMIT 1
+        """,
+        UUID(user_id),
+    )
+    if pro:
+        return
+
+    try:
+        credit_service = get_credit_service(pool)
+        await credit_service.refund_credits(
+            user_id,
+            WEB_MUSIC_CREDITS_PER_SONG,
+            "web_music_generation",
+            reference_id=str(task_id),
+        )
+        logger.info(
+            "Refunded %s web music credits for failed task %s user=%s",
+            WEB_MUSIC_CREDITS_PER_SONG,
+            task_id,
+            user_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Web music credit refund failed for task %s user=%s: %s",
+            task_id,
+            user_id,
+            exc,
+        )
+
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
@@ -82,6 +136,8 @@ class SunoTaskRepository(Protocol):
         audio_url_alt: str | None = None,
         audio_id_ok: str | None = None,
         audio_id_alt: str | None = None,
+        image_url_ok: str | None = None,
+        image_url_alt: str | None = None,
         error_message: str | None = None,
     ) -> None:
         """Update a Suno task's status and audio URLs."""
@@ -542,6 +598,8 @@ async def suno_callback(
     audio_url_alt = normalize_http_download_url(
         coerce_suno_download_url(url=audio_url_alt, audio_id=audio_id_alt)
     ) or None
+    image_url_ok = normalize_http_download_url(str(parsed_urls.image_url_ok or "").strip()) or None
+    image_url_alt = normalize_http_download_url(str(parsed_urls.image_url_alt or "").strip()) or None
 
     if new_status == TaskStatus.SUCCESS and not audio_url_ok and not audio_url_alt:
         try:
@@ -562,6 +620,8 @@ async def suno_callback(
                 audio_url_alt = normalize_http_download_url(
                     coerce_suno_download_url(url=refreshed.audio_url_alt, audio_id=audio_id_alt)
                 ) or None
+                image_url_ok = image_url_ok or normalize_http_download_url(refreshed.image_url_ok) or None
+                image_url_alt = image_url_alt or normalize_http_download_url(refreshed.image_url_alt) or None
         except Exception as exc:
             logger.warning(
                 "Suno callback record-info refresh failed for task_id=%s: %s",
@@ -598,6 +658,7 @@ async def suno_callback(
     # --- Update Task Record (Req 11.3, 11.6) ---
     task_id = UUID(str(task_data["id"]))
     user_id = str(task_data["user_id"])
+    prior_status = task_data.get("status")
 
     await task_repo.update_status(
         task_id,
@@ -606,8 +667,22 @@ async def suno_callback(
         audio_url_alt=audio_url_alt,
         audio_id_ok=audio_id_ok,
         audio_id_alt=audio_id_alt,
+        image_url_ok=image_url_ok,
+        image_url_alt=image_url_alt,
         error_message=task_error_message,
     )
+
+    if persist_status == TaskStatus.FAILED:
+        task_source = str(task_data.get("source") or "").strip().lower()
+        if task_source == "web_music":
+            from platform_api.dependencies import get_db_pool
+
+            await _refund_web_music_generation_on_failure(
+                get_db_pool(),
+                user_id=user_id,
+                task_id=task_id,
+                prior_status=prior_status,
+            )
 
     if persist_status == TaskStatus.SUCCESS and (audio_url_ok or audio_url_alt):
         task_source = str(task_data.get("source") or "").strip().lower()

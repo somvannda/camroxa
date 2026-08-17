@@ -20,6 +20,92 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Web music public discovery endpoints: `/web-music/public/playlists`, `/web-music/public/artists`, `/web-music/public/artists/{user_id}`. See `docs/changelog/2026-08-17-web-music-explore-public-playlists.md`.
+- Public recent tracks endpoint `/web-music/public/tracks/recent` and public playlist streaming access for explore playback.
+
+### Changed
+
+- `get_user_subscription` returns only active paid subscriptions (fixes pending checkout showing as Starter on profile).
+- User profile photo upload and avatar media route; web music generation likes for player heart button.
+- Streaming public artist list includes `avatar_url` for uploaded profile photos. See `docs/changelog/2026-08-17-streaming-artist-list-avatars.md`.
+- Web music download hardening: MP3-only Suno fetch, play tokens, download rate limits, B2 backfill on fallback. See `docs/changelog/2026-08-17-web-music-download-hardening.md`.
+- Web music LRC cached on Backblaze (`101_web_music_b2_lrc_storage`); playback and streaming play-url require login (free users can play). See `docs/changelog/2026-08-17-web-music-lrc-b2-login-playback.md`.
+- Web music credit hardening (P0): async Suno failure refunds, subscription period enforcement, 15-min maintenance loop, removed public `/v2/credits/consume`. See `docs/changelog/2026-08-17-web-music-credit-hardening-p0.md`.
+- Web music credit hardening (P1): refund to monthly/top-up pools from debit metadata, reservation→task debit linking, refund idempotency index, removed v2 `credit_wallets` updates. See `docs/changelog/2026-08-17-web-music-credit-hardening-p1.md`.
+
+See `docs/changelog/2026-08-17-music-web-profile-likes-avatar.md`.
+
+### Changed
+
+See `docs/changelog/2026-08-17-web-music-lrc-srt-pro-gate.md`.
+
+### Added
+
+- `PATCH /api/v1/web-music/workspaces/{workspace_id}` to rename a user's workspace.
+
+See `docs/changelog/2026-08-17-web-music-workspace-rename.md`.
+
+### Added
+
+- Web music playlists API and migration `096_web_music_playlists`.
+
+See `docs/changelog/2026-08-17-music-web-downloads-playlists-cutluy.md`.
+
+### Changed
+
+- Web music generation clips expose Suno cover URLs; advanced create settings persist on `suno_tasks`; timed lyrics download (LRC/SRT) via Suno alignments; migration `098_web_music_suno_cover_urls`.
+
+See `docs/changelog/2026-08-17-web-music-workspace-track-ui.md`.
+
+- Web music downloads require paid subscription (free users can still stream/play).
+- CutLuy v2 subscription/top-up checkout uses `/v1/payments` with admin DB credentials (KHQR checkout URL).
+
+See `docs/changelog/2026-08-17-music-web-downloads-playlists-cutluy.md`.
+
+- Web music billing is fully credit-based: free users get 50 daily credits (5 songs), subscribers use monthly + top-up pools.
+
+See `docs/changelog/2026-08-17-web-music-unified-daily-credits.md`.
+
+- Web music style AI prompt expands user Styles field into Suno-ready production text.
+
+See `docs/changelog/2026-08-17-web-music-style-prompt-enhancement.md`.
+
+- Auto-generate lyrics draft prompt limit raised to **5000** characters (was 500).
+
+See `docs/changelog/2026-08-17-web-music-lyrics-prompt-5000-char-counts.md`.
+
+### Added
+
+- `web_music_lyrics` credit-priced operation; migration `094_web_music_lyrics_pricing` fixes style pricing units.
+
+See `docs/changelog/2026-08-17-web-music-section-errors-lyrics-billing.md`.
+
+- Web music workspaces API and migration `092_web_music_workspaces`.
+
+See `docs/changelog/2026-08-17-web-music-create-ui-workspaces.md`.
+
+- Web music v2 subscriptions/top-ups: CutLuy checkout, webhook routing, credit balance API.
+- Email verification page (`/verify-email`) with resend; register redirects after signup.
+- Shared compact auth form shell for login/register.
+- Admin `/plans` web music section: manage music subscriptions and top-up packs separately from desktop.
+
+See `docs/changelog/2026-08-16-admin-web-music-plans.md`.
+
+### Fixed
+
+- CutLuy credentials load from `PLATFORM_CUTLUY_*` settings; v2 DB adapter and plan queries use `monthly_song_limit`.
+- Subscription plans API parses JSONB `features` correctly.
+- Register no longer 500s when Turnstile token is omitted: removed inner `get_settings` import that shadowed module scope.
+
+### Added
+
+- Automatic Backblaze B2 upload for web music MP3s and WAVs (permanent storage)
+- Migration `087_web_music_b2_storage` adds B2 storage keys for both MP3 and WAV files
+- Web music download/stream endpoints now serve from Backblaze when available, fall back to Suno CDN
+- WAV downloads are now free (no credit cost) and permanently stored
+- Simplified storage structure for web music: `web-music/{user_id}/{song_slug}-{variant}.{mp3|wav}`
+- See `docs/changelog/2026-08-16-web-music-backblaze-auto-upload.md`
+
 - Music-web product tag (`users.products`) and `/api/v1/web-music` generate /
   list / status / MP3 download. Auth-only (no desktop license or channel
   profile); **5 free songs** then Upgrade to Pro (`web_music_free_daily_limit`,
@@ -28,6 +114,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Music-web Suno advanced options: V5/V5.5 model selector, negative tags, vocal
   gender, style weight, weirdness constraint, audio weight. Added
   `POST /api/v1/web-music/generate-draft` for auto-generating lyrics and title.
+- Music-web WAV downloads: `/api/v1/web-music/generations/{id}/download-wav`
+  with on-demand Suno WAV conversion. Tracks WAV task IDs and URLs in
+  `suno_tasks` (migration `085`). Polls Suno for conversion status (up to 3
+  attempts). See `docs/changelog/2026-08-16-music-web-wav-downloads.md`.
   See `docs/changelog/2026-08-15-music-web-suno-advanced-options.md`.
 - Music-web security hardening: IP-based abuse detection, rate limiting on all
   endpoints, strict input validation, atomic quota enforcement, comprehensive
