@@ -138,6 +138,8 @@ class SunoTaskRepository(Protocol):
         audio_id_alt: str | None = None,
         image_url_ok: str | None = None,
         image_url_alt: str | None = None,
+        duration_ok: float | None = None,
+        duration_alt: float | None = None,
         error_message: str | None = None,
     ) -> None:
         """Update a Suno task's status and audio URLs."""
@@ -589,6 +591,8 @@ async def suno_callback(
     parsed_urls = extract_callback_download_urls(raw_payload)
     audio_id_ok = str(parsed_urls.audio_id_ok or "").strip() or None
     audio_id_alt = str(parsed_urls.audio_id_alt or "").strip() or None
+    duration_ok = parsed_urls.duration_ok
+    duration_alt = parsed_urls.duration_alt
 
     from platform_api.clients.suno_client import coerce_suno_download_url
 
@@ -622,6 +626,8 @@ async def suno_callback(
                 ) or None
                 image_url_ok = image_url_ok or normalize_http_download_url(refreshed.image_url_ok) or None
                 image_url_alt = image_url_alt or normalize_http_download_url(refreshed.image_url_alt) or None
+                duration_ok = duration_ok if duration_ok is not None else refreshed.duration_ok
+                duration_alt = duration_alt if duration_alt is not None else refreshed.duration_alt
         except Exception as exc:
             logger.warning(
                 "Suno callback record-info refresh failed for task_id=%s: %s",
@@ -669,6 +675,8 @@ async def suno_callback(
         audio_id_alt=audio_id_alt,
         image_url_ok=image_url_ok,
         image_url_alt=image_url_alt,
+        duration_ok=duration_ok,
+        duration_alt=duration_alt,
         error_message=task_error_message,
     )
 

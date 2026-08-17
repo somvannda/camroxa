@@ -18,6 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Login no longer 500s on invalid credentials or lockout: import `AccountLockedError` in the auth router. See `docs/changelog/2026-08-17-sandbox-login-alembic-hang.md`.
+- Web music lyric/style assist: accept full 5000-character lyrics on `generate-styles`, and return a clear retryable 502 when the text LLM is down. See `docs/changelog/2026-08-17-music-web-generate-assist.md`.
+- Create playback: return stored vocal/slider settings and clip durations; proxy play through the API with HTTP Range (do not 302 to Suno/B2). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
+- Catalog play-url no longer returns a signed B2 URL; `/public/streaming/tracks/{id}/stream` proxies Range audio the same way. See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
+
 ### Added
 
 - Web music public discovery endpoints: `/web-music/public/playlists`, `/web-music/public/artists`, `/web-music/public/artists/{user_id}`. See `docs/changelog/2026-08-17-web-music-explore-public-playlists.md`.

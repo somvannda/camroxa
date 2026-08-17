@@ -21,6 +21,7 @@ export type WebMusicClip = {
   download_url: string;
   ready: boolean;
   image_url?: string | null;
+  duration_seconds?: number | null;
 };
 
 export type WebMusicGeneration = {
@@ -84,7 +85,16 @@ async function musicFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!response.ok) {
-    throw new Error(await readError(response, `Request failed (${response.status})`));
+    const message = await readError(response, `Request failed (${response.status})`);
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      const looksLikeGateway = /bad gateway|unprocessable|request failed/i.test(message);
+      throw new Error(
+        message && !looksLikeGateway
+          ? message
+          : 'AI assist is temporarily unavailable. Please try again in a moment.',
+      );
+    }
+    throw new Error(message);
   }
   if (response.status === 204) return undefined as T;
   const contentType = response.headers.get('content-type') || '';
@@ -129,7 +139,13 @@ export async function generateWebMusicStyles(input: {
   return musicFetch('/api/v1/web-music/generate-styles', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      style: input.style ?? '',
+      lyrics: (input.lyrics ?? '').slice(0, 400),
+      title: input.title ?? '',
+      description: input.description ?? '',
+      prompt: input.prompt ?? '',
+    }),
   });
 }
 

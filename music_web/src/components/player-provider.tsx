@@ -12,7 +12,7 @@ import {
 import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/components/auth-provider';
-import { getPlayUrl, type StreamTrack } from '@/lib/streaming-api';
+import { catalogStreamUrl, getPlayUrl, isTrustedPlayUrl, type StreamTrack } from '@/lib/streaming-api';
 
 type PlayerState = {
   current: StreamTrack | null;
@@ -35,6 +35,14 @@ type PlayerState = {
 };
 
 const PlayerContext = createContext<PlayerState | null>(null);
+
+function shouldUseCredentialedCors(url: string): boolean {
+  if (!url) return false;
+  return (
+    url.startsWith('/') ||
+    (typeof window !== 'undefined' && url.startsWith(window.location.origin))
+  );
+}
 
 function shuffleTracks(tracks: StreamTrack[]): StreamTrack[] {
   const copy = [...tracks];
@@ -147,13 +155,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(0);
       setDuration(track.duration_seconds ?? 0);
 
-      let url = track.play_url ?? '';
+      let url = isTrustedPlayUrl(track.play_url ?? '') ? (track.play_url as string) : '';
       let nextTrack: StreamTrack = track;
-      if (!url) {
+      const isCatalogTrack = !track.id.includes(':');
+      if (!url && isCatalogTrack) {
+        url = catalogStreamUrl(track.id);
+      }
+      if (!url || isCatalogTrack) {
         try {
           const payload = await getPlayUrl(track.id);
           if (token !== loadTokenRef.current) return;
-          url = payload.url;
+          if (isTrustedPlayUrl(payload.url)) {
+            url = payload.url;
+          } else if (!url) {
+            url = catalogStreamUrl(track.id);
+          }
           nextTrack = {
             ...track,
             title: payload.title ?? track.title,
@@ -169,8 +185,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           };
         } catch {
           if (token !== loadTokenRef.current) return;
-          redirectToLogin();
-          return;
+          if (!url) {
+            redirectToLogin();
+            return;
+          }
         }
       }
       if (token !== loadTokenRef.current) return;
@@ -178,7 +196,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrent(nextTrack);
 
       const audio = ensureAudio();
-      audio.crossOrigin = 'use-credentials';
+      if (shouldUseCredentialedCors(url)) {
+        audio.crossOrigin = 'use-credentials';
+      } else {
+        audio.removeAttribute('crossorigin');
+      }
       audio.src = url;
       audio.volume = muted ? 0 : volume;
       try {

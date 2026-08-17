@@ -147,6 +147,17 @@ export async function getArtist(userId: string) {
   );
 }
 
+export function catalogStreamUrl(trackId: string): string {
+  return `/api/v1/public/streaming/tracks/${trackId}/stream`;
+}
+
+export function isTrustedPlayUrl(url: string): boolean {
+  if (!url) return false;
+  if (url.startsWith('/')) return true;
+  if (typeof window !== 'undefined' && url.startsWith(window.location.origin)) return true;
+  return false;
+}
+
 export async function getPlayUrl(trackId: string) {
   return fetchJson<{
     url: string;

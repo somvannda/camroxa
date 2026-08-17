@@ -17,6 +17,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from platform_api.config import get_settings
 from platform_api.exceptions import (
+    AccountLockedError,
     AuthenticationError,
     DuplicateError,
     NotFoundError,

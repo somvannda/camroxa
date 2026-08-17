@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Create page lyric/style wands: stop sending over-limit lyrics, validate style input before calling the API, and show a clear message when AI assist returns 502. See `docs/changelog/2026-08-17-music-web-generate-assist.md`.
+- Create track details show stored vocal gender and slider percents instead of default 0.50; clips are labeled Version 1/2. Play stays on Camxora URLs (no public Suno/B2 redirect). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
+- Catalog/Explore play uses the same Camxora stream proxy (signed B2 URLs stay server-side). See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
+
 ### Added
 
 - Public playlist discovery on Explore and Artists: recent public playlists, creators with public playlists, playlist/track counts on artist cards. See `docs/changelog/2026-08-17-web-music-explore-public-playlists.md`.

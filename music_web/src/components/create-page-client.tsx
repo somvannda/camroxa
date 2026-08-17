@@ -69,16 +69,25 @@ function isOpenGeneration(item: WebMusicGeneration): boolean {
   return true;
 }
 
+function formatClipDuration(seconds?: number | null): string {
+  if (!seconds || seconds <= 0) return '';
+  const total = Math.round(seconds);
+  const minutes = Math.floor(total / 60);
+  const remainder = total % 60;
+  return `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
 function clipToTrack(generation: WebMusicGeneration, clip: WebMusicGeneration['clips'][number]): StreamTrack | null {
   if (!clip?.ready) return null;
   return {
     id: `${generation.id}:${clip.variant}`,
-    title: generation.title,
+    title: clip.label || generation.title,
     artist_name: 'You',
     genre: generation.style,
     lyrics: generation.lyrics,
     play_url: clip.audio_url,
     cover_url: clip.image_url ?? null,
+    duration_seconds: clip.duration_seconds ?? null,
   };
 }
 
@@ -92,9 +101,8 @@ function formatVocalGender(value: string | null | undefined): string {
 }
 
 function formatSliderSetting(value: number | null | undefined): string {
-  const resolved = value ?? DEFAULT_SLIDER_VALUE;
-  if (Number.isNaN(resolved)) return DEFAULT_SLIDER_VALUE.toFixed(2);
-  return resolved.toFixed(2);
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  return `${Math.round(Number(value) * 100)}%`;
 }
 
 function formatModelVersionTag(model: string | null | undefined): string {
@@ -399,6 +407,12 @@ export default function CreatePageClient() {
   }
 
   async function suggestStyles() {
+    const hasContext = Boolean(style.trim() || lyrics.trim() || title.trim() || prompt.trim());
+    if (!hasContext) {
+      setStylesError('Add style tags, a title, lyrics, or a song description first.');
+      return;
+    }
+
     setGeneratingStyles(true);
     setStylesError(null);
     try {
@@ -879,10 +893,15 @@ export default function CreatePageClient() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <p className="truncate text-sm font-medium text-white">{generation.title}</p>
+                            <p className="truncate text-sm font-medium text-white">
+                              {clip.label || generation.title}
+                            </p>
                             <ModelVersionTag model={generation.model} />
                           </div>
                           <p className="text-xs text-slate-500">
+                            {formatClipDuration(clip.duration_seconds)
+                              ? `${formatClipDuration(clip.duration_seconds)} · `
+                              : ''}
                             {clip.ready ? 'Ready' : 'Waiting'}
                             {isOpenGeneration(generation) ? ' · Generating…' : ''}
                           </p>
@@ -1017,8 +1036,13 @@ export default function CreatePageClient() {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-lg font-semibold text-white">{selectedVersion.song.title}</h2>
+                <h2 className="truncate text-lg font-semibold text-white">
+                  {selectedVersion.clip.label || selectedVersion.song.title}
+                </h2>
                 <p className="text-sm text-slate-400">
+                  {formatClipDuration(selectedVersion.clip.duration_seconds)
+                    ? `${formatClipDuration(selectedVersion.clip.duration_seconds)} · `
+                    : ''}
                   {selectedVersion.clip.ready ? 'Ready' : 'Processing'}
                 </p>
               </div>

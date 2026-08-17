@@ -6,12 +6,20 @@ import asyncio
 import logging
 import re
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
+from fastapi.responses import StreamingResponse
+
 from platform_api.ai.purposes.vocal_profile import truncate_suno_style
-from platform_api.exceptions import ForbiddenError, NotFoundError, QuotaExceededError, ValidationError
+from platform_api.exceptions import (
+    ExternalServiceError,
+    ForbiddenError,
+    NotFoundError,
+    QuotaExceededError,
+    ValidationError,
+)
 from platform_api.models.enums import TaskStatus
 from platform_api.models.products import (
     SUNO_TASK_SOURCE_WEB_MUSIC,
@@ -29,6 +37,10 @@ from platform_api.services.suno_audio_resolver import (
     variant_url_candidates,
 )
 from platform_api.services.streaming_upload_service import StreamingUploadService
+from platform_api.services.audio_origin_proxy import (
+    is_initial_play_range,
+    proxy_origin_audio,
+)
 from platform_api.services.web_music_play_tokens import (
     create_play_token,
     play_url_for_token,
@@ -105,6 +117,21 @@ def build_web_music_style_user_prompt(
             details={"field": "style"},
         )
     return "\n\n".join(parts)
+
+
+_AI_ASSIST_UNAVAILABLE = "AI assist is temporarily unavailable. Please try again in a moment."
+
+
+def reraise_text_assist_failure(exc: BaseException) -> None:
+    """Map LLM/provider failures to a user-facing 502 after credits are refunded."""
+    if isinstance(exc, (ValidationError, QuotaExceededError)):
+        raise exc
+    details = getattr(exc, "details", None)
+    raise ExternalServiceError(
+        _AI_ASSIST_UNAVAILABLE,
+        is_retryable=True,
+        details=details if isinstance(details, dict) else None,
+    ) from exc
 
 
 def _row_value(row: Any, key: str, default: Any = None) -> Any:
@@ -308,9 +335,9 @@ class WebMusicService:
                 max_tokens=900,
                 provider_chain=provider_chain or None,
             )
-        except Exception:
+        except Exception as exc:
             await self._refund_text_operation(user_id, charged, "web_music_lyrics_refund")
-            raise
+            reraise_text_assist_failure(exc)
 
         text = str(raw or "").strip()
         title = "Untitled"
@@ -368,9 +395,9 @@ class WebMusicService:
                 max_tokens=320,
                 provider_chain=provider_chain or None,
             )
-        except Exception:
+        except Exception as exc:
             await self._refund_text_operation(user_id, charged, "web_music_style_refund")
-            raise
+            reraise_text_assist_failure(exc)
 
         cleaned = str(raw or "").strip().strip('"').strip("'")
         if cleaned.lower().startswith("style:"):
@@ -774,7 +801,8 @@ class WebMusicService:
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
                    b2_storage_key_ok, b2_storage_key_alt, workspace_id,
-                   image_url_ok, image_url_alt
+                   image_url_ok, image_url_alt, duration_ok, duration_alt,
+                   audio_id_ok, audio_id_alt
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
             ORDER BY created_at DESC
@@ -799,7 +827,9 @@ class WebMusicService:
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight,
-                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
+                   audio_id_ok, audio_id_alt
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -811,6 +841,7 @@ class WebMusicService:
             raise NotFoundError("Generation not found.")
         row = await self._refresh_pending_from_suno(row)
         row = await self._ensure_cover_urls(row)
+        row = await self._ensure_durations(row)
         return await self._task_payload(row, user_id)
 
     async def _refresh_pending_from_suno(self, row: Any) -> Any:
@@ -838,6 +869,8 @@ class WebMusicService:
                     audio_id_alt = COALESCE(NULLIF(BTRIM($6), ''), audio_id_alt),
                     image_url_ok = COALESCE(NULLIF(BTRIM($7), ''), image_url_ok),
                     image_url_alt = COALESCE(NULLIF(BTRIM($8), ''), image_url_alt),
+                    duration_ok = COALESCE($9::double precision, duration_ok),
+                    duration_alt = COALESCE($10::double precision, duration_alt),
                     updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -849,6 +882,8 @@ class WebMusicService:
                 urls.audio_id_alt,
                 urls.image_url_ok,
                 urls.image_url_alt,
+                urls.duration_ok,
+                urls.duration_alt,
             )
         elif polled.state == "failed":
             await self._pool.execute(
@@ -870,7 +905,9 @@ class WebMusicService:
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight,
-                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
+                   audio_id_ok, audio_id_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -915,7 +952,60 @@ class WebMusicService:
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight,
-                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
+                   audio_id_ok, audio_id_alt
+            FROM suno_tasks
+            WHERE id = $1
+            """,
+            row["id"],
+        )
+        return refreshed or row
+
+    async def _ensure_durations(self, row: Any) -> Any:
+        """Backfill Suno clip durations so the Create list does not wait on audio metadata."""
+        status = str(_row_value(row, "status") or "").strip().lower()
+        if status != "success":
+            return row
+        ok_ready = bool(_row_value(row, "audio_url_ok") or _row_value(row, "b2_storage_key_ok"))
+        alt_ready = bool(_row_value(row, "audio_url_alt") or _row_value(row, "b2_storage_key_alt"))
+        need_ok = ok_ready and _row_value(row, "duration_ok") is None
+        need_alt = alt_ready and _row_value(row, "duration_alt") is None
+        if not need_ok and not need_alt:
+            return row
+        external_id = str(_row_value(row, "external_task_id") or "").strip()
+        if not external_id:
+            return row
+        try:
+            polled = await self._generation.poll_suno_generate_status(external_id)
+        except Exception as exc:
+            logger.warning("Web music duration poll failed for %s: %s", row["id"], exc)
+            return row
+        if polled.state != "success":
+            return row
+        urls = urls_from_generate_poll(polled)
+        if urls.duration_ok is None and urls.duration_alt is None:
+            return row
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET duration_ok = COALESCE($2::double precision, duration_ok),
+                duration_alt = COALESCE($3::double precision, duration_alt),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            row["id"],
+            urls.duration_ok,
+            urls.duration_alt,
+        )
+        refreshed = await self._pool.fetchrow(
+            """
+            SELECT id, title, lyrics, style, model, instrumental, status,
+                   audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
+                   external_task_id, negative_tags, vocal_gender, style_weight,
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
+                   audio_id_ok, audio_id_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -947,6 +1037,118 @@ class WebMusicService:
             access="public",
         )
         return play_url_for_token(token)
+
+    async def proxy_playback(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str,
+        range_header: str | None,
+    ) -> StreamingResponse:
+        variant_key = str(variant or "ok").strip().lower()
+        if variant_key not in ("ok", "alt"):
+            raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
+        row = await self._fetch_playable_task_row(user_id, task_id, variant_key)
+        return await self._proxy_row(
+            row,
+            task_id=task_id,
+            variant_key=variant_key,
+            range_header=range_header,
+        )
+
+    async def proxy_playback_from_token(
+        self,
+        token: str,
+        *,
+        session_user_id: str | None = None,
+        range_header: str | None = None,
+    ) -> StreamingResponse:
+        if not session_user_id:
+            raise ForbiddenError("Sign in to play music.")
+        if self._redis is None:
+            raise ValidationError("Playback tokens are not available.")
+        resolved = await resolve_play_token(self._redis, token)
+        if resolved is None:
+            raise NotFoundError("Play link expired or invalid.")
+        task_id = UUID(resolved["task_id"])
+        variant_key = resolved["variant"]
+        access = resolved["access"]
+        if access == "owner":
+            owner_id = resolved.get("user_id")
+            if not session_user_id or not owner_id or session_user_id != owner_id:
+                raise ForbiddenError("This play link is not valid for your session.")
+        row = await self._fetch_playable_task_row(UUID(session_user_id), task_id, variant_key)
+        return await self._proxy_row(
+            row,
+            task_id=task_id,
+            variant_key=variant_key,
+            range_header=range_header,
+        )
+
+    async def _proxy_row(
+        self,
+        row: Any,
+        *,
+        task_id: UUID,
+        variant_key: str,
+        range_header: str | None,
+    ) -> StreamingResponse:
+        origin = await self._origin_playback_url(row, task_id=task_id, variant_key=variant_key)
+        if origin is None:
+            data, filename, content_type = await self._serve_mp3_row(
+                row, task_id=task_id, variant_key=variant_key
+            )
+            return StreamingResponse(
+                iter([data]),
+                media_type=content_type,
+                headers={"Content-Disposition": content_disposition(filename, inline=True)},
+            )
+        url, source = origin
+        if is_initial_play_range(range_header):
+            await self._increment_play_count(task_id, variant_key)
+            if source == "suno":
+                self._schedule_b2_backfill(task_id, variant_key)
+        return await proxy_origin_audio(url, range_header=range_header)
+
+    async def _origin_playback_url(
+        self,
+        row: Any,
+        *,
+        task_id: UUID,
+        variant_key: str,
+    ) -> tuple[str, Literal["b2", "suno"]] | None:
+        """Server-side origin only. Never return this URL to the browser."""
+        status = str(row["status"] or "").upper()
+        if status != "SUCCESS":
+            return None
+
+        b2_key = row["b2_storage_key_ok"] if variant_key == "ok" else row["b2_storage_key_alt"]
+        if b2_key:
+            try:
+                from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+                from platform_api.services.storage_service import StorageService
+
+                config = await resolve_streaming_storage_config(self._pool)
+                if config.configured:
+                    storage = StorageService.from_config(config)
+                    url = await storage.get_signed_get_url(str(b2_key))
+                    if url:
+                        return str(url), "b2"
+            except Exception as exc:
+                logger.warning(
+                    "Signed B2 play URL failed task=%s variant=%s: %s",
+                    task_id,
+                    variant_key,
+                    exc,
+                )
+
+        suno_url = str(
+            row["audio_url_ok"] if variant_key == "ok" else row["audio_url_alt"] or ""
+        ).strip()
+        if suno_url.startswith("http"):
+            return suno_url, "suno"
+        return None
 
     def _schedule_b2_backfill(self, task_id: UUID, variant: str) -> None:
         try:
@@ -1428,8 +1630,10 @@ class WebMusicService:
         title = row["title"] or "Untitled"
         image_ok = str(row.get("image_url_ok") or "").strip() or None
         image_alt = str(row.get("image_url_alt") or "").strip() or None
-        ok_ready = bool(row.get("audio_url_ok") or row.get("b2_storage_key_ok"))
-        alt_ready = bool(row.get("audio_url_alt") or row.get("b2_storage_key_alt"))
+        ok_ready = bool(_row_value(row, "audio_url_ok") or _row_value(row, "b2_storage_key_ok"))
+        alt_ready = bool(_row_value(row, "audio_url_alt") or _row_value(row, "b2_storage_key_alt"))
+        duration_ok = _row_value(row, "duration_ok")
+        duration_alt = _row_value(row, "duration_alt")
         return {
             "id": task_id,
             "title": title,
@@ -1440,27 +1644,29 @@ class WebMusicService:
             "status": str(row["status"] or "pending").upper(),
             "error_message": row["error_message"],
             "created_at": created,
-            "negative_tags": row.get("negative_tags") or None,
-            "vocal_gender": row.get("vocal_gender") or None,
-            "style_weight": float(row["style_weight"]) if row.get("style_weight") is not None else None,
-            "weirdness_constraint": float(row["weirdness_constraint"]) if row.get("weirdness_constraint") is not None else None,
-            "audio_weight": float(row["audio_weight"]) if row.get("audio_weight") is not None else None,
+            "negative_tags": _row_value(row, "negative_tags") or None,
+            "vocal_gender": _row_value(row, "vocal_gender") or None,
+            "style_weight": float(row["style_weight"]) if _row_value(row, "style_weight") is not None else None,
+            "weirdness_constraint": float(row["weirdness_constraint"]) if _row_value(row, "weirdness_constraint") is not None else None,
+            "audio_weight": float(row["audio_weight"]) if _row_value(row, "audio_weight") is not None else None,
             "clips": [
                 {
                     "variant": "ok",
-                    "label": title,
+                    "label": f"{title} · Version 1",
                     "audio_url": await self._mint_owner_play_url(user_id, UUID(task_id), "ok") if ok_ready else "",
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=ok",
                     "ready": ok_ready,
                     "image_url": image_ok,
+                    "duration_seconds": float(duration_ok) if duration_ok is not None else None,
                 },
                 {
                     "variant": "alt",
-                    "label": title,
+                    "label": f"{title} · Version 2",
                     "audio_url": await self._mint_owner_play_url(user_id, UUID(task_id), "alt") if alt_ready else "",
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=alt",
                     "ready": alt_ready,
                     "image_url": image_alt,
+                    "duration_seconds": float(duration_alt) if duration_alt is not None else None,
                 },
             ],
         }
