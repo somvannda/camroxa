@@ -74,7 +74,7 @@ function clipToTrack(generation: WebMusicGeneration, clip: WebMusicGeneration['c
   if (!clip?.ready) return null;
   return {
     id: `${generation.id}:${clip.variant}`,
-    title: generation.title,
+    title: clip.label || generation.title,
     artist_name: 'You',
     genre: generation.style,
     lyrics: generation.lyrics,
@@ -94,9 +94,8 @@ function formatVocalGender(value: string | null | undefined): string {
 }
 
 function formatSliderSetting(value: number | null | undefined): string {
-  const resolved = value ?? DEFAULT_SLIDER_VALUE;
-  if (Number.isNaN(resolved)) return DEFAULT_SLIDER_VALUE.toFixed(2);
-  return resolved.toFixed(2);
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  return `${Math.round(Number(value) * 100)}%`;
 }
 
 function formatModelVersionTag(model: string | null | undefined): string {
@@ -444,6 +443,12 @@ export default function CreatePageClient() {
   }
 
   async function suggestStyles() {
+    const hasContext = Boolean(style.trim() || lyrics.trim() || title.trim() || prompt.trim());
+    if (!hasContext) {
+      setStylesError('Add style tags, a title, lyrics, or a song description first.');
+      return;
+    }
+
     setGeneratingStyles(true);
     setStylesError(null);
     try {
@@ -924,7 +929,9 @@ export default function CreatePageClient() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-1.5">
-                            <p className="truncate text-sm font-medium text-white">{generation.title}</p>
+                            <p className="truncate text-sm font-medium text-white">
+                              {clip.label || generation.title}
+                            </p>
                             <ModelVersionTag model={generation.model} />
                           </div>
                           <ClipReadyLabel
@@ -1062,7 +1069,9 @@ export default function CreatePageClient() {
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-lg font-semibold text-white">{selectedVersion.song.title}</h2>
+                <h2 className="truncate text-lg font-semibold text-white">
+                  {selectedVersion.clip.label || selectedVersion.song.title}
+                </h2>
                 <ClipReadyLabel
                   clip={selectedVersion.clip}
                   waitingLabel="Processing"

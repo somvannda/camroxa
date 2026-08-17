@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from platform_api.exceptions import NotFoundError
@@ -115,3 +115,17 @@ async def get_track_play_url(
     if payload is None:
         raise NotFoundError("Track not found or streaming is not configured.")
     return PlayUrlResponse.model_validate(payload)
+
+
+@router.get("/tracks/{track_id}/stream")
+async def stream_track(
+    track_id: UUID,
+    request: Request,
+    ctx: CurrentUserDep,
+    service: CatalogServiceDep,
+) -> Response:
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    return await service.proxy_track_audio(
+        track_id,
+        range_header=request.headers.get("range"),
+    )

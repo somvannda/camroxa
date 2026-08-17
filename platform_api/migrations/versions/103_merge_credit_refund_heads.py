@@ -1,16 +1,14 @@
-"""Merge credit refund head with parallel web music merge head.
+"""Linear continuation after credit refund idempotency.
 
 Revision ID: 103_merge_credit_refund_heads
-Revises: 102_credit_refund_idempotency, 1f0ad008d202
+Revises: 102_credit_refund_idempotency
 Create Date: 2026-08-17
 """
 
 from __future__ import annotations
 
-from alembic import op
-
 revision = "103_merge_credit_refund_heads"
-down_revision = ("102_credit_refund_idempotency", "1f0ad008d202")
+down_revision = "102_credit_refund_idempotency"
 branch_labels = None
 depends_on = None
 

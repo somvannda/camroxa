@@ -141,8 +141,8 @@ def test_extract_callback_download_urls_from_sunoapi_payload() -> None:
                 "callbackType": "complete",
                 "task_id": "abc123",
                 "data": [
-                    {"id": "clip-ok", "source_audio_url": "https://cdn.example.com/ok.mp3"},
-                    {"id": "clip-alt", "source_audio_url": "https://cdn.example.com/alt.mp3"},
+                    {"id": "clip-ok", "source_audio_url": "https://cdn.example.com/ok.mp3", "duration": 199.0},
+                    {"id": "clip-alt", "source_audio_url": "https://cdn.example.com/alt.mp3", "duration": 201.0},
                 ],
             },
         }
@@ -151,6 +151,8 @@ def test_extract_callback_download_urls_from_sunoapi_payload() -> None:
     assert parsed.audio_url_alt == "https://cdn.example.com/alt.mp3"
     assert parsed.audio_id_ok == "clip-ok"
     assert parsed.audio_id_alt == "clip-alt"
+    assert parsed.duration_ok == 199.0
+    assert parsed.duration_alt == 201.0
 
 
 def test_extract_callback_synthesizes_cdn_url_when_clip_has_id_only() -> None:

@@ -379,6 +379,7 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
     """Parse sunoapi.org callback payloads with nested clip arrays."""
     from platform_api.clients.suno_client import (
         _extract_clip_audio_id,
+        _extract_clip_duration,
         cdn_url_for_suno_audio_id,
     )
 
@@ -394,6 +395,7 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
     download_urls: list[str] = []
     audio_ids: list[str] = []
     image_urls: list[str] = []
+    durations: list[float | None] = []
     for clip in clips:
         from platform_api.clients.suno_client import _extract_clip_image_url
 
@@ -406,6 +408,7 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
         download_urls.append(url)
         audio_ids.append(audio_id)
         image_urls.append(_extract_clip_image_url(clip))
+        durations.append(_extract_clip_duration(clip))
     if not download_urls:
         return SunoTaskDownloadUrls()
 
@@ -416,6 +419,8 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
         audio_id_alt=audio_ids[1] if len(audio_ids) > 1 else "",
         image_url_ok=image_urls[0] if image_urls else "",
         image_url_alt=image_urls[1] if len(image_urls) > 1 else "",
+        duration_ok=durations[0] if durations else None,
+        duration_alt=durations[1] if len(durations) > 1 else None,
         refreshed=True,
     )
 

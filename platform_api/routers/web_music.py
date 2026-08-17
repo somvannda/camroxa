@@ -6,7 +6,6 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
@@ -50,6 +49,7 @@ class WebMusicClipResponse(BaseModel):
     download_url: str
     ready: bool = False
     image_url: str | None = None
+    duration_seconds: float | None = None
 
 
 class WebMusicQuotaResponse(BaseModel):
@@ -205,6 +205,11 @@ class WebMusicGenerationResponse(BaseModel):
     status: str
     error_message: str | None = None
     created_at: str | None = None
+    negative_tags: str | None = None
+    vocal_gender: str | None = None
+    style_weight: float | None = None
+    weirdness_constraint: float | None = None
+    audio_weight: float | None = None
     clips: list[WebMusicClipResponse] = Field(default_factory=list)
 
 
@@ -228,8 +233,22 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         status=str(payload.get("status") or "PENDING"),
         error_message=payload.get("error_message"),
         created_at=created_text,
+        negative_tags=payload.get("negative_tags") or None,
+        vocal_gender=payload.get("vocal_gender") or None,
+        style_weight=_optional_float(payload.get("style_weight")),
+        weirdness_constraint=_optional_float(payload.get("weirdness_constraint")),
+        audio_weight=_optional_float(payload.get("audio_weight")),
         clips=[WebMusicClipResponse(**clip) for clip in payload.get("clips") or []],
     )
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class WebMusicDraftRequest(BaseModel):
@@ -243,10 +262,10 @@ class WebMusicDraftResponse(BaseModel):
 
 class WebMusicStyleRequest(BaseModel):
     style: str = Field(default="", max_length=1000)
-    lyrics: str = Field(default="", max_length=500)
+    lyrics: str = Field(default="", max_length=5000)
     title: str = Field(default="", max_length=200)
-    description: str = Field(default="", max_length=500)
-    prompt: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=5000)
+    prompt: str = Field(default="", max_length=5000)
 
 
 class WebMusicStyleResponse(BaseModel):
@@ -488,34 +507,26 @@ async def stream_generation(
     variant: Literal["ok", "alt"] = "ok",
 ) -> Response:
     await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
-    data, filename, content_type = await service.download_mp3(
+    return await service.proxy_playback(
         UUID(ctx.user_id),
         task_id,
         variant=variant,
-        require_subscription=False,
-    )
-    return StreamingResponse(
-        iter([data]),
-        media_type=content_type,
-        headers={"Content-Disposition": content_disposition(filename, inline=True)},
+        range_header=request.headers.get("range"),
     )
 
 
 @router.get("/play/{token}")
 async def play_by_token(
     token: str,
+    request: Request,
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> Response:
     await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
-    data, filename, content_type = await service.stream_by_play_token(
+    return await service.proxy_playback_from_token(
         token,
         session_user_id=ctx.user_id,
-    )
-    return StreamingResponse(
-        iter([data]),
-        media_type=content_type,
-        headers={"Content-Disposition": content_disposition(filename, inline=True)},
+        range_header=request.headers.get("range"),
     )
 
 
