@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Album tracklist now keeps duration in the Time column instead of wrapping under the track number. See `docs/changelog/2026-08-17-music-web-album-tracklist-ux.md`.
+
+### Changed
+
+- Album rows hide the Plays column until a track has at least one play. See `docs/changelog/2026-08-17-music-web-album-tracklist-ux.md`.
+
 ### Added
 
 - Music-native sign-in/up, session via same-origin `/api` cookies; `/library` + `/profile` shells
