@@ -19,7 +19,7 @@ from shared.lib.channel_asset_paths import (
     resolve_local_channel_asset_paths,
 )
 from shared.lib.progress_presentation import format_images_compact, format_music_compact
-from shared.lib.video_runtime_inspection import STATUS_IN_PROGRESS, STATUS_PENDING
+from shared.lib.video_runtime_inspection import STATUS_IN_PROGRESS, STATUS_PENDING, row_skip_disk_scan
 from shared.models.platform import ProgressRow, ProgressRowMeta
 from shared.services.file_service import sanitize_local_path
 
@@ -186,7 +186,8 @@ def apply_local_progress_overlays(rows: list[ProgressRow]) -> list[ProgressRow]:
         raw_run_dir = sanitize_local_path(str(row.meta.run_dir or "").strip())
         run_dir = local_run_dir_for_disk(raw_run_dir) if raw_run_dir else ""
         folder_missing = _run_dir_missing(run_dir)
-        folder_scannable = bool(run_dir) and not folder_missing
+        idle_row = row_skip_disk_scan(row)
+        folder_scannable = bool(run_dir) and not folder_missing and not idle_row
         pipeline_complete = bool(getattr(row.meta, "pipeline_complete", False))
         stage_key = _stage_key(row.stage)
         api_music_done = _api_music_complete(row.meta)

@@ -20,6 +20,23 @@ def resolve_row_local_run_dir(row: ProgressRow, *, local_suno_base: str | None =
     return local_run_dir_for_disk(raw, local_suno_base=local_suno_base)
 
 
+def count_missing_role_mp3s_from_meta(row: ProgressRow) -> int:
+    """UI-safe missing count from overlay counters — no disk I/O."""
+    meta = row.meta
+    expected = max(0, int(meta.expected or 0))
+    url_ready = max(0, int(meta.download_ready or 0))
+    saved = max(0, int(meta.saved or 0))
+    ceiling = max(expected, url_ready)
+    if ceiling <= 0:
+        return 0
+    missing = max(0, ceiling - saved)
+    if missing <= 0:
+        return 0
+    if url_ready <= 0 and saved <= 0:
+        return 0
+    return missing
+
+
 def count_missing_role_mp3s(row: ProgressRow, *, local_suno_base: str | None = None) -> int:
     """How many role MP3s are still missing on disk for this Progress row.
 

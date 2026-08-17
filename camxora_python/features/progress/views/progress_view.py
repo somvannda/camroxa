@@ -24,7 +24,11 @@ from features.progress.widgets.progress_detail_card import ProgressDetailCard
 from features.progress.widgets.stats_row import ProgressStatsRow
 from shared.lib.formatting import today_ymd
 from shared.lib.manual_asset_paths import ManualAssetInspection, manual_inspection_key, normalize_image_source_mode
-from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, progress_runtime_key
+from shared.lib.video_runtime_inspection import (
+    ProgressRuntimePresentation,
+    progress_runtime_key,
+    row_is_idle_progress_row,
+)
 from shared.models.auth import ProfileResponse
 from shared.models.platform import (
     ProgressFilters,
@@ -91,6 +95,19 @@ STAGE_OPTIONS = (
 _TERMINAL_ACTIVE_HIDE = frozenset({"done", "completed"})
 
 
+def _hide_from_active_only(entry: EffectiveProgressRow) -> bool:
+    """Hide finished desktop pipelines. YouTube and Error stay visible."""
+    stage = str(entry.effective_stage or "").strip().lower()
+    if stage in _TERMINAL_ACTIVE_HIDE:
+        return True
+    return row_is_idle_progress_row(
+        entry.row,
+        merge=entry.effective_merge,
+        stage=entry.effective_stage,
+        status=entry.effective_status,
+    )
+
+
 def _display_limit_from_text(raw: str, *, default: int = 10) -> int:
     try:
         return max(1, int(str(raw or "").strip() or default))
@@ -129,11 +146,7 @@ def filter_effective_progress_rows(
     """Apply Active → Stage → Limit on post-overlay effective stages."""
     filtered = list(entries)
     if active_only:
-        filtered = [
-            entry
-            for entry in filtered
-            if str(entry.effective_stage or "").strip().lower() not in _TERMINAL_ACTIVE_HIDE
-        ]
+        filtered = [entry for entry in filtered if not _hide_from_active_only(entry)]
     stage_key = str(stage or "all").strip().lower() or "all"
     if stage_key != "all":
         filtered = [
@@ -174,6 +187,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._pending_auto_continue_key: tuple[str, str, str] | None = None
         self._rows: list[ProgressRow] = []
         self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
+        self._video_inspections: dict = {}
         self._manual_inspections: dict[str, ManualAssetInspection] = {}
         self._image_source_mode = "ai"
         self._loading = True
@@ -477,6 +491,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
             return
         self._rows = []
         self._runtime_by_key = {}
+        self._video_inspections = {}
         self._manual_inspections = {}
         self._summary_label.setText(f"Unable to load progress rows. {message}")
         self._rows_card.show_empty()
@@ -493,6 +508,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._error_banner.hide()
         self._rows = payload.response.rows
         self._runtime_by_key = payload.runtime_by_key
+        self._video_inspections = dict(getattr(payload, "inspections", None) or {})
+        self._rows_card.set_video_inspections(self._video_inspections)
         self._summary_label.setText(f"{payload.response.summary} {SUMMARY_SUFFIX}")
         self._render()
         self._refresh_manual_inspections()

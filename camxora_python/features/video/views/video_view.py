@@ -289,6 +289,9 @@ class VideoView(QWidget):
         self._saving = False
         self._deleting = False
         self._pending_preview_auto_play = False
+        # Shell prewarm builds this page before it is shown. Decoding the last
+        # MP3 here freezes startup; wait until the user opens Video.
+        self._preview_audio_enabled = False
         self._worker: VideoWorkspaceWorker | None = None
         self._patch_worker: VideoPatchTemplateWorker | None = None
         self._template_sync_worker: VideoTemplateSyncWorker | None = None
@@ -788,6 +791,7 @@ class VideoView(QWidget):
         self._is_error = False
         self._loading_card.show()
         self._content.hide()
+        self._preview_audio_enabled = False
         get_video_workspace_service().set_workspace_state(None)
 
     def activate_page(self) -> None:
@@ -803,11 +807,24 @@ class VideoView(QWidget):
         ):
             self.refresh_templates_from_store()
             return
+        self._enable_preview_audio()
         if self._ever_loaded and self._workspace is not None:
             return
         if self._try_mount_from_cache():
             return
         self.refresh_data()
+
+    def _enable_preview_audio(self) -> None:
+        if self._preview_audio_enabled:
+            return
+        self._preview_audio_enabled = True
+        if self._workspace is not None and self._template_draft is not None:
+            self._flush_preview_update()
+
+    def _preview_mp3_path(self) -> str:
+        if not self._preview_audio_enabled or not self._workspace:
+            return ""
+        return str(self._workspace.selected_mp3_path or "")
 
     def refresh_templates_from_store(self) -> None:
         """Reload the template dropdown from disk without remounting an in-edit draft.
@@ -3161,7 +3178,7 @@ class VideoView(QWidget):
         if not self._workspace or not self._template_draft or self._loading:
             return
         track_paths = self._current_track_paths()
-        active_track = str(self._workspace.selected_mp3_path or "")
+        active_track = self._preview_mp3_path()
         self._flush_active_spectrum_instance_layers()
         renderer_template = self._template_normalizer.to_renderer_dict(
             base=dict(self._workspace.template),
@@ -3203,7 +3220,7 @@ class VideoView(QWidget):
             template=renderer_template,
             background_path=self._workspace.background_path,
             logo_path=self._workspace.logo_path,
-            mp3_path=self._workspace.selected_mp3_path,
+            mp3_path=active_track,
             aspect_width=int(aspect.width),
             aspect_height=int(aspect.height),
         )

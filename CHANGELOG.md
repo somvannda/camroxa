@@ -11,6 +11,22 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Video prewarm no longer decodes preview audio** until the Video page is
+  opened. Shell startup still builds the page; the last MP3 is analyzed on
+  first visit. See `docs/changelog/2026-08-17-progress-p2-prewarm-and-pipeline-latch.md`.
+
+- **Finished albums latch `pipeline_complete`** when Progress sees a local
+  `MERGED_*.mp4` or an idle Long completed row that never saved the flag.
+  After restart those rows stay frozen without another folder walk.
+  See `docs/changelog/2026-08-17-progress-p2-prewarm-and-pipeline-latch.md`.
+
+- **Progress stays responsive on Long completed rows:** idle albums are not
+  re-listed or re-stat'd on every poll, and the row context menu no longer
+  walks the run folder on the UI thread. Right-click should open immediately.
+  Active only hides those idle rows (YouTube/Error stay). Unfinished folders
+  reuse a listing while the directory mtime is unchanged.
+  See `docs/changelog/2026-08-17-progress-skip-idle-disk-scans.md`.
+
 - **Auto-video no longer redoes Long completed runs** when the user deletes
   per-track MP4s or moves the folder. A known long merge (`pipeline_complete`,
   `MERGED_*.mp4`, or a Long completed / Long merged label) is treated as

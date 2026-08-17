@@ -213,6 +213,36 @@ def test_active_only_then_limit_fills_display_slots(qapp: QApplication) -> None:
     assert all(entry.effective_stage == "Music" for entry in filtered)
 
 
+def test_active_only_hides_idle_long_completed_keeps_youtube(qapp: QApplication) -> None:
+    from features.progress.views.progress_view import filter_effective_progress_rows
+
+    idle = _effective_row(
+        row=_sample_row().model_copy(
+            update={"stage": "Merge", "status": "Completed", "merge": "Long completed"}
+        ),
+        effective_stage="Merge",
+        effective_status="Completed",
+        effective_merge="Long completed",
+    )
+    youtube = _effective_row(
+        row=_sample_row().model_copy(update={"stage": "YouTube", "status": "In Progress"}),
+        effective_stage="YouTube",
+        effective_status="In Progress",
+    )
+    music = _effective_row(
+        row=_sample_row().model_copy(update={"stage": "Music", "status": "Running"}),
+        effective_stage="Music",
+        effective_status="Running",
+    )
+    filtered = filter_effective_progress_rows(
+        [idle, youtube, music],
+        active_only=True,
+        stage="all",
+        limit=None,
+    )
+    assert [entry.effective_stage for entry in filtered] == ["YouTube", "Music"]
+
+
 def test_stage_filter_applies_before_limit(qapp: QApplication) -> None:
     from features.progress.views.progress_view import filter_effective_progress_rows
 

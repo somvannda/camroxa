@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from shared.models.desktop import VideoWorkspaceState
 from shared.models.platform import ProgressRow
@@ -31,6 +32,7 @@ class VideoRunInspection:
     reel_output_paths: tuple[str, ...]
     merged_long_paths: tuple[str, ...]
     merged_reel_paths: tuple[str, ...]
+    mp3_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +87,54 @@ def _normalize_stage_key(stage: str) -> str:
 
 def _is_terminal_stage(stage: str) -> bool:
     return _normalize_stage_key(stage) in {"youtube", "done", "completed", "error"}
+
+
+def row_skip_disk_scan(row: ProgressRow) -> bool:
+    """True when Progress/auto-video must not list or stat the run folder.
+
+    A known long merge (or terminal stage) is idle. Missing track files after
+    that mean archived — rescanning F:\\ albums on every poll freezes the UI.
+    """
+    if bool(getattr(row.meta, "pipeline_complete", False)):
+        return True
+    if _is_terminal_stage(row.stage):
+        return True
+    merge = str(row.merge or "").lower()
+    long_done = "long completed" in merge or "long merged" in merge
+    reel_done = "reel completed" in merge or "reel merged" in merge
+    if long_done and (reel_done or not run_includes_reel(row)):
+        return True
+    if "reel pending" in merge:
+        return False
+    status = str(row.status or "").strip().lower()
+    stage = _normalize_stage_key(row.stage)
+    return stage in {"merge", "merger"} and status in {"completed", "done", "success"}
+
+
+def row_is_idle_progress_row(
+    row: ProgressRow,
+    *,
+    merge: str | None = None,
+    stage: str | None = None,
+    status: str | None = None,
+) -> bool:
+    """Finished desktop pipeline — hide from Active only. YouTube/Error stay visible."""
+    if bool(getattr(row.meta, "pipeline_complete", False)):
+        return True
+    stage_key = _normalize_stage_key(stage if stage is not None else row.stage)
+    if stage_key in {"done", "completed"}:
+        return True
+    if stage_key in {"youtube", "error", "music", "image"}:
+        return False
+    merge_text = str(merge if merge is not None else row.merge or "").lower()
+    long_done = "long completed" in merge_text or "long merged" in merge_text
+    reel_done = "reel completed" in merge_text or "reel merged" in merge_text
+    if long_done and (reel_done or not run_includes_reel(row)):
+        return True
+    if "reel pending" in merge_text:
+        return False
+    status_key = str(status if status is not None else row.status or "").strip().lower()
+    return stage_key in {"merge", "merger"} and status_key in {"completed", "done", "success"}
 
 
 def _stage_rank(stage: str) -> int:
@@ -149,6 +199,7 @@ def run_includes_reel(
             "reel merged",
             "reel single",
             "reel completed",
+            "reel pending",
             "exporting reel",
             "merging reel",
         )
@@ -178,17 +229,21 @@ def inspect_video_run_entries(directory: str, entries: list[DirectoryEntry]) -> 
     reel_paths: list[str] = []
     merged_long_paths: list[str] = []
     merged_reel_paths: list[str] = []
+    mp3_paths: list[str] = []
 
     for entry in entries:
         if entry.is_directory:
             continue
         name = str(entry.name or "").strip()
         lower = name.lower()
+        full_path = _join_windows_path(inspection.directory, name)
+        if lower.endswith(".mp3"):
+            mp3_paths.append(full_path)
+            continue
         if not lower.endswith(".mp4"):
             continue
         if _is_tiny_on_disk_export(inspection.directory, name):
             continue
-        full_path = _join_windows_path(inspection.directory, name)
         if lower.startswith("merged_reel_"):
             merged_reel_paths.append(full_path)
         elif lower.startswith("merged_"):
@@ -204,6 +259,7 @@ def inspect_video_run_entries(directory: str, entries: list[DirectoryEntry]) -> 
         reel_output_paths=tuple(sorted(reel_paths)),
         merged_long_paths=tuple(sorted(merged_long_paths)),
         merged_reel_paths=tuple(sorted(merged_reel_paths)),
+        mp3_paths=tuple(sorted(mp3_paths)),
     )
 
 
@@ -365,6 +421,15 @@ def resolve_progress_runtime_presentation(
         runtime_status = row.status
         runtime_notes = row.notes
 
+    if row_is_idle_progress_row(
+        row,
+        merge=merge,
+        stage=runtime_stage,
+        status=runtime_status,
+    ) and not _is_terminal_stage(runtime_stage):
+        runtime_stage = STATUS_COMPLETED
+        runtime_status = STATUS_COMPLETED
+
     return ProgressRuntimePresentation(
         converter=converter,
         merge=merge,
@@ -379,17 +444,28 @@ def resolve_progress_runtime_presentation(
 def build_runtime_presentation_map(
     rows: list[ProgressRow],
     workspace: VideoWorkspaceState | None,
+    inspections: dict[str, VideoRunInspection] | None = None,
 ) -> dict[str, ProgressRuntimePresentation]:
-    inspections = build_video_run_inspection_map(rows)
+    resolved = inspections if inspections is not None else build_video_run_inspection_map(rows)
 
     return {
         progress_runtime_key(row.meta.batch_id, row.meta.profile_id, row.meta.role): resolve_progress_runtime_presentation(
             row,
-            inspections.get(progress_runtime_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)),
+            resolved.get(progress_runtime_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)),
             workspace,
         )
         for row in rows
     }
+
+
+_inspection_mtime_cache: dict[str, tuple[float, VideoRunInspection]] = {}
+
+
+def _directory_mtime(directory: str) -> float:
+    try:
+        return Path(str(directory or "").strip()).stat().st_mtime
+    except OSError:
+        return -1.0
 
 
 def build_video_run_inspection_map(rows: list[ProgressRow]) -> dict[str, VideoRunInspection]:
@@ -399,6 +475,23 @@ def build_video_run_inspection_map(rows: list[ProgressRow]) -> dict[str, VideoRu
         directory = str(row.meta.run_dir or "").strip()
         if not directory:
             continue
+        if row_skip_disk_scan(row):
+            inspections[key] = VideoRunInspection(
+                directory=directory,
+                long_output_paths=(),
+                reel_output_paths=(),
+                merged_long_paths=(),
+                merged_reel_paths=(),
+            )
+            continue
+        mtime = _directory_mtime(directory)
+        cached = _inspection_mtime_cache.get(directory)
+        if cached is not None and mtime >= 0 and cached[0] == mtime:
+            inspections[key] = cached[1]
+            continue
         entries = list_directory_entries(directory)
-        inspections[key] = inspect_video_run_entries(directory, entries)
+        inspection = inspect_video_run_entries(directory, entries)
+        if mtime >= 0:
+            _inspection_mtime_cache[directory] = (mtime, inspection)
+        inspections[key] = inspection
     return inspections

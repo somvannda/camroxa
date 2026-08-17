@@ -122,6 +122,7 @@ class OperationalRowsCard(QFrame):
         self.setObjectName("account_card")
         self._manual_mode = False
         self._inspections: dict[str, ManualAssetInspection] = {}
+        self._video_inspections: dict = {}
         self._syncing_batch_id = ""
         self._selected_row_index = -1
         self._rows: list[EffectiveProgressRow] = []
@@ -189,6 +190,9 @@ class OperationalRowsCard(QFrame):
 
     def set_manual_inspections(self, inspections: dict[str, ManualAssetInspection]) -> None:
         self._inspections = inspections
+
+    def set_video_inspections(self, inspections: dict) -> None:
+        self._video_inspections = dict(inspections or {})
 
     def set_syncing_batch_id(self, batch_id: str) -> None:
         self._syncing_batch_id = batch_id
@@ -552,9 +556,9 @@ class OperationalRowsCard(QFrame):
             action = menu.addAction("Open Run Folder")
             action.triggered.connect(partial(self._emit_open_run_folder, run_dir))
 
-            from shared.lib.missing_mp3 import count_missing_role_mp3s
+            from shared.lib.missing_mp3 import count_missing_role_mp3s_from_meta
 
-            missing_n = count_missing_role_mp3s(entry.row)
+            missing_n = count_missing_role_mp3s_from_meta(entry.row)
             if missing_n > 0:
                 suffix = "s" if missing_n != 1 else ""
                 action = menu.addAction(f"Download missing MP3{suffix} ({missing_n})")
@@ -592,16 +596,12 @@ class OperationalRowsCard(QFrame):
             menu.exec(self._table.viewport().mapToGlobal(position))
 
     def _add_regenerate_one_track_menu(self, menu: QMenu, entry: EffectiveProgressRow) -> None:
-        run_dir = str(entry.row.meta.run_dir or "").strip()
-        if not run_dir:
-            return
-        try:
-            from features.video.lib.export_track_health import list_run_mp3_paths
-            from features.video.lib.pipeline_merge import resolve_merge_run_dir
-        except Exception:
-            return
-        resolved = resolve_merge_run_dir(run_dir, "long") or run_dir
-        mp3_paths = list_run_mp3_paths(resolved) or list_run_mp3_paths(run_dir)
+        from shared.lib.video_runtime_inspection import progress_runtime_key
+
+        meta = entry.row.meta
+        key = progress_runtime_key(meta.batch_id, meta.profile_id, meta.role)
+        inspection = self._video_inspections.get(key)
+        mp3_paths = tuple(getattr(inspection, "mp3_paths", ()) or ())
         if not mp3_paths:
             return
         track_menu = menu.addMenu("Regenerate one track")

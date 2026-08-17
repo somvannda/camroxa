@@ -249,3 +249,21 @@ def test_overlay_bumps_saved_when_disk_ahead_of_api_flags(tmp_path) -> None:
     assert row.meta.saved == 2
     assert row.meta.download_pending == 0
     assert "2/2" in row.music
+
+
+def test_overlay_does_not_count_mp3s_on_long_completed_folder(tmp_path, monkeypatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
+    (run_dir / "background-16x9.png").write_bytes(b"bg")
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("idle Long completed rows must not count MP3s")
+
+    monkeypatch.setattr("shared.lib.progress_local_overlay.count_channel_mp3_files", _boom)
+    source = _row(run_dir=str(run_dir)).model_copy(
+        update={"stage": "Merge", "status": "Completed", "merge": "Long completed"}
+    )
+    row = apply_local_progress_overlays([source])[0]
+    assert row.meta.saved == 1
+    assert row.merge == "Long completed"
