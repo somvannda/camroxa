@@ -38,6 +38,7 @@ from platform_api.services.suno_audio_resolver import (
 )
 from platform_api.services.streaming_upload_service import StreamingUploadService
 from platform_api.services.audio_origin_proxy import (
+    is_camxora_audio_proxy_url,
     is_initial_play_range,
     proxy_origin_audio,
 )
@@ -1016,7 +1017,9 @@ class WebMusicService:
     async def _mint_owner_play_url(self, user_id: UUID, task_id: UUID, variant: str) -> str:
         variant_key = str(variant or "ok").strip().lower()
         if self._redis is None:
-            return f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
+            return self._safe_client_play_url(
+                f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
+            )
         token = await create_play_token(
             self._redis,
             task_id=task_id,
@@ -1024,19 +1027,26 @@ class WebMusicService:
             access="owner",
             user_id=user_id,
         )
-        return play_url_for_token(token)
+        return self._safe_client_play_url(play_url_for_token(token))
 
     async def _mint_public_play_url(self, task_id: UUID, variant: str) -> str:
         variant_key = str(variant or "ok").strip().lower()
         if self._redis is None:
-            return f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
+            return self._safe_client_play_url(
+                f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
+            )
         token = await create_play_token(
             self._redis,
             task_id=task_id,
             variant=variant_key,
             access="public",
         )
-        return play_url_for_token(token)
+        return self._safe_client_play_url(play_url_for_token(token))
+
+    @staticmethod
+    def _safe_client_play_url(url: str) -> str:
+        text = str(url or "").strip()
+        return text if is_camxora_audio_proxy_url(text) else ""
 
     async def proxy_playback(
         self,

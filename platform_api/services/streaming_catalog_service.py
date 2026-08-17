@@ -137,10 +137,12 @@ class StreamingCatalogService:
         tracks = await self._repo.list_published_tracks_for_album(album_id)
         if not tracks:
             return None
+        album_cover_key = album.get("cover_storage_key")
+        album_genre = album.get("genre")
         await self._decorate_album(album)
         for track in tracks:
-            track["album_cover_storage_key"] = album.get("cover_storage_key")
-            track["album_genre"] = album.get("genre")
+            track["album_cover_storage_key"] = album_cover_key
+            track["album_genre"] = album_genre
             await self._decorate_track(track)
         album["tracks"] = tracks
         return album
@@ -211,8 +213,7 @@ class StreamingCatalogService:
         if not albums:
             return None
         for album in albums:
-            album["cover_url"] = await self._cover_url(album.get("cover_storage_key"))
-            album["play_count"] = int(album.get("play_count") or 0)
+            await self._decorate_album(album)
         return {
             "user_id": str(user_id),
             "artist_name": albums[0].get("artist_name"),
@@ -323,6 +324,8 @@ class StreamingCatalogService:
         rows = await self._repo.list_liked_tracks(user_id, limit=limit, offset=offset)
         total = await self._repo.count_liked_tracks(user_id)
         for track in rows:
+            if not track.get("added_at") and track.get("liked_at"):
+                track["added_at"] = track.get("liked_at")
             await self._decorate_track(track)
             track["id"] = str(track["id"])
             if track.get("album_id"):

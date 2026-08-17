@@ -4,7 +4,11 @@ import httpx
 import pytest
 
 from platform_api.exceptions import NotFoundError
-from platform_api.services.audio_origin_proxy import is_initial_play_range, proxy_origin_audio
+from platform_api.services.audio_origin_proxy import (
+    is_camxora_audio_proxy_url,
+    is_initial_play_range,
+    proxy_origin_audio,
+)
 
 
 def test_is_initial_play_range() -> None:
@@ -12,6 +16,27 @@ def test_is_initial_play_range() -> None:
     assert is_initial_play_range("bytes=0-") is True
     assert is_initial_play_range("bytes=0-1023") is True
     assert is_initial_play_range("bytes=1024-2047") is False
+
+
+def test_is_camxora_audio_proxy_url() -> None:
+    assert is_camxora_audio_proxy_url("/api/v1/web-music/play/abc_DEF-123") is True
+    assert (
+        is_camxora_audio_proxy_url(
+            "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream?variant=ok"
+        )
+        is True
+    )
+    assert (
+        is_camxora_audio_proxy_url(
+            "https://music.sandbox.camxora.com/api/v1/public/streaming/tracks/"
+            "441cb4bf-f013-4c88-8ea1-9d17499b1762/stream"
+        )
+        is True
+    )
+    assert is_camxora_audio_proxy_url("https://cdn1.suno.ai/abc-123.mp3") is False
+    assert is_camxora_audio_proxy_url("https://s3.us-west-004.backblazeb2.com/secret.mp3") is False
+    assert is_camxora_audio_proxy_url("/api/v1/web-music/generations/x/download") is False
+    assert is_camxora_audio_proxy_url("/static/track.mp3") is False
 
 
 @pytest.mark.asyncio

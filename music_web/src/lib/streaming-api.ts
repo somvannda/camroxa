@@ -151,11 +151,25 @@ export function catalogStreamUrl(trackId: string): string {
   return `/api/v1/public/streaming/tracks/${trackId}/stream`;
 }
 
+const CAMXORA_AUDIO_PROXY_RE =
+  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\?variant=(?:ok|alt))?|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
+
 export function isTrustedPlayUrl(url: string): boolean {
-  if (!url) return false;
-  if (url.startsWith('/')) return true;
-  if (typeof window !== 'undefined' && url.startsWith(window.location.origin)) return true;
-  return false;
+  const text = String(url || '').trim();
+  if (!text) return false;
+  let path = text;
+  if (text.startsWith('http://') || text.startsWith('https://')) {
+    try {
+      const parsed = new URL(text);
+      if (typeof window !== 'undefined' && parsed.origin !== window.location.origin) {
+        return false;
+      }
+      path = `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return false;
+    }
+  }
+  return CAMXORA_AUDIO_PROXY_RE.test(path);
 }
 
 export async function getPlayUrl(trackId: string) {

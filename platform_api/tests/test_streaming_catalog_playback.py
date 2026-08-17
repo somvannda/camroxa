@@ -179,6 +179,101 @@ async def test_play_url_endpoint_does_not_expose_origin(client: AsyncClient) -> 
 
 
 @pytest.mark.asyncio
+async def test_decorate_track_strips_origin_fields() -> None:
+    service = StreamingCatalogService(pool=AsyncMock())
+    service._cover_url = AsyncMock(return_value="https://cdn.example/cover.jpg")
+    track = {
+        "id": uuid4(),
+        "title": "Night Drive",
+        "storage_key": "user/album/track-ok.mp3",
+        "suno_audio_id": "abc-123",
+        "suno_image_url": "https://cdn1.suno.ai/abc.jpeg",
+        "cover_storage_key": "covers/x.jpg",
+        "album_cover_storage_key": "covers/album.jpg",
+        "suno_task_id": uuid4(),
+        "play_count": 2,
+        "genre": "edm",
+    }
+
+    await service._decorate_track(track)
+
+    assert track["title"] == "Night Drive"
+    assert track["cover_url"] == "https://cdn.example/cover.jpg"
+    assert "storage_key" not in track
+    assert "suno_audio_id" not in track
+    assert "suno_image_url" not in track
+    assert "cover_storage_key" not in track
+    assert "suno_task_id" not in track
+
+
+@pytest.mark.asyncio
+async def test_get_album_does_not_leak_storage_or_suno_ids() -> None:
+    album_id = uuid4()
+    service = StreamingCatalogService(pool=AsyncMock())
+    service._repo.get_published_album = AsyncMock(
+        return_value={
+            "id": album_id,
+            "album_name": "Pulse",
+            "cover_storage_key": "covers/album.jpg",
+            "genre": "edm",
+            "play_count": 1,
+        }
+    )
+    service._repo.list_published_tracks_for_album = AsyncMock(
+        return_value=[
+            {
+                "id": uuid4(),
+                "title": "Night Drive",
+                "storage_key": "secret.mp3",
+                "suno_audio_id": "leak-me",
+                "cover_storage_key": None,
+                "play_count": 0,
+            }
+        ]
+    )
+    captured: list[str | None] = []
+
+    async def cover(key: str | None) -> str | None:
+        captured.append(key)
+        return "https://covers/signed" if key else None
+
+    service._cover_url = cover  # type: ignore[method-assign]
+    payload = await service.get_album(album_id)
+
+    assert payload is not None
+    assert "cover_storage_key" not in payload
+    track = payload["tracks"][0]
+    assert "storage_key" not in track
+    assert "suno_audio_id" not in track
+    assert "covers/album.jpg" in captured
+
+
+@pytest.mark.asyncio
+async def test_get_artist_strips_album_storage_keys() -> None:
+    service = StreamingCatalogService(pool=AsyncMock())
+    service._repo.list_artist_albums = AsyncMock(
+        return_value=[
+            {
+                "id": uuid4(),
+                "album_name": "Pulse",
+                "artist_name": "Camxora",
+                "cover_storage_key": "covers/pulse.jpg",
+                "play_count": 4,
+                "genre": "edm",
+            }
+        ]
+    )
+    service._cover_url = AsyncMock(return_value="/signed-cover")
+
+    payload = await service.get_artist(uuid4())
+
+    assert payload is not None
+    album = payload["albums"][0]
+    assert "cover_storage_key" not in album
+    assert album["cover_url"] == "/signed-cover"
+
+
+@pytest.mark.asyncio
 async def test_catalog_stream_proxies_without_location(
     client: AsyncClient, mock_catalog_service: AsyncMock
 ) -> None:
