@@ -3,23 +3,21 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
+import { Sparkles } from 'lucide-react';
+import { useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
 import PlayerBar from '@/components/player-bar';
 import Sidebar from '@/components/sidebar';
 import SiteFooter from '@/components/site-footer';
 import SiteHeader from '@/components/site-header';
-import { isSandboxEnvironment } from '@/lib/site-urls';
+import PricingModal from '@/components/pricing-modal';
 
 function MarketingHeader() {
   const { user, loading } = useAuth();
+  const [showPricingModal, setShowPricingModal] = useState(false);
   return (
     <>
-      {isSandboxEnvironment() ? (
-        <div className="border-b border-amber-400/25 bg-amber-500/10 px-4 py-2 text-center text-sm text-amber-100">
-          Sandbox music portal — catalog and generation may use test media.
-        </div>
-      ) : null}
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[rgba(5,8,18,0.82)] backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
           <Link className="flex items-center gap-3" href="/">
@@ -42,6 +40,13 @@ function MarketingHeader() {
             <Link className="hover:text-white" href="/create">
               Create
             </Link>
+            <button
+              onClick={() => setShowPricingModal(true)}
+              className="flex items-center gap-1.5 hover:text-white"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Pricing
+            </button>
           </nav>
           <div className="flex items-center gap-2">
             {loading ? (
@@ -72,6 +77,7 @@ function MarketingHeader() {
           </div>
         </div>
       </header>
+      <PricingModal isOpen={showPricingModal} onClose={() => setShowPricingModal(false)} />
     </>
   );
 }
@@ -79,7 +85,8 @@ function MarketingHeader() {
 export default function ShellSwitcher({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const isAuthPage = pathname === '/login' || pathname === '/register';
+  const isAuthPage =
+    pathname === '/login' || pathname === '/register' || pathname === '/verify-email';
   const showMarketing =
     !user &&
     (pathname === '/' || isAuthPage || pathname === '/explore' || pathname === '/create');
@@ -89,19 +96,19 @@ export default function ShellSwitcher({ children }: { children: ReactNode }) {
       <div className="flex min-h-screen flex-col">
         <MarketingHeader />
         <main className="flex-1">{children}</main>
-        {isAuthPage ? null : <SiteFooter />}
+        <SiteFooter />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col pb-32">
-      <SiteHeader />
-      <div className="mx-auto flex w-full max-w-[1600px] flex-1 gap-4 px-4 py-6 md:px-6">
-        <Sidebar />
-        <main className="min-w-0 flex-1">{children}</main>
+    <div className="flex h-screen overflow-hidden bg-slate-950">
+      <Sidebar />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <SiteHeader />
+        <main className="music-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 pb-[calc(var(--music-player-height)+1.5rem)] md:px-6">{children}</main>
+        <PlayerBar />
       </div>
-      <PlayerBar />
     </div>
   );
 }
