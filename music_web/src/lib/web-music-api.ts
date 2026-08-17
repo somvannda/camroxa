@@ -21,6 +21,7 @@ export type WebMusicClip = {
   download_url: string;
   ready: boolean;
   image_url?: string | null;
+  duration_seconds?: number | null;
 };
 
 export type WebMusicGeneration = {

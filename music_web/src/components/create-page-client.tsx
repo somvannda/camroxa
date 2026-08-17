@@ -39,12 +39,13 @@ import {
   listWebMusicGenerations,
   listWebMusicWorkspaces,
   fetchWebMusicQuota,
+  type WebMusicClip,
   type WebMusicGeneration,
   type WebMusicQuota,
   type WebMusicWorkspace,
 } from '@/lib/web-music-api';
 import { fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
-import type { StreamTrack } from '@/lib/streaming-api';
+import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
 
 const STYLE_CHIPS = [
   'pop',
@@ -79,6 +80,7 @@ function clipToTrack(generation: WebMusicGeneration, clip: WebMusicGeneration['c
     lyrics: generation.lyrics,
     play_url: clip.audio_url,
     cover_url: clip.image_url ?? null,
+    duration_seconds: clip.duration_seconds ?? null,
   };
 }
 
@@ -100,6 +102,49 @@ function formatSliderSetting(value: number | null | undefined): string {
 function formatModelVersionTag(model: string | null | undefined): string {
   const key = String(model || 'V5_5').trim().toUpperCase().replace('.', '_');
   return key === 'V5_5' ? 'v5.5' : 'v5';
+}
+
+function ClipReadyLabel({
+  clip,
+  generating,
+  waitingLabel = 'Waiting',
+  className = 'text-xs text-slate-500',
+}: {
+  clip: WebMusicClip;
+  generating?: boolean;
+  waitingLabel?: string;
+  className?: string;
+}) {
+  const [probedSeconds, setProbedSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (clip.duration_seconds || !clip.ready || !clip.audio_url) {
+      return;
+    }
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    const onLoaded = () => {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        setProbedSeconds(audio.duration);
+      }
+    };
+    audio.addEventListener('loadedmetadata', onLoaded);
+    audio.src = clip.audio_url;
+    return () => {
+      audio.removeEventListener('loadedmetadata', onLoaded);
+      audio.removeAttribute('src');
+    };
+  }, [clip.audio_url, clip.duration_seconds, clip.ready]);
+
+  const duration = formatDuration(clip.duration_seconds ?? probedSeconds);
+  const status = clip.ready ? 'Ready' : waitingLabel;
+
+  return (
+    <p className={className}>
+      {duration ? `${duration} · ${status}` : status}
+      {generating ? ' · Generating…' : ''}
+    </p>
+  );
 }
 
 function ModelVersionTag({ model }: { model: string | null | undefined }) {
@@ -882,10 +927,10 @@ export default function CreatePageClient() {
                             <p className="truncate text-sm font-medium text-white">{generation.title}</p>
                             <ModelVersionTag model={generation.model} />
                           </div>
-                          <p className="text-xs text-slate-500">
-                            {clip.ready ? 'Ready' : 'Waiting'}
-                            {isOpenGeneration(generation) ? ' · Generating…' : ''}
-                          </p>
+                          <ClipReadyLabel
+                            clip={clip}
+                            generating={isOpenGeneration(generation)}
+                          />
                         </div>
                       </button>
                       <div className="flex flex-shrink-0 items-center gap-1">
@@ -1018,9 +1063,11 @@ export default function CreatePageClient() {
               </div>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-lg font-semibold text-white">{selectedVersion.song.title}</h2>
-                <p className="text-sm text-slate-400">
-                  {selectedVersion.clip.ready ? 'Ready' : 'Processing'}
-                </p>
+                <ClipReadyLabel
+                  clip={selectedVersion.clip}
+                  waitingLabel="Processing"
+                  className="text-sm text-slate-400"
+                />
               </div>
             </div>
 
