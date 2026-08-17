@@ -24,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Desktop Progress no longer stays on **Image / background still in progress**
+  after image jobs succeed. Generation-complete (job success) is separate from
+  export-ready (local PNG). `long_ready` is not faked from Windows paths the
+  API host cannot open, so desktop export/automation is unchanged. See
+  `docs/changelog/2026-08-16-progress-trust-image-job-success.md`.
+
 - Admin period quota top-ups (image/song/draft/etc.) are now honored by
   subscription coverage. Previously the admin UI showed remaining allowance
   but generation still demanded wallet credits. See

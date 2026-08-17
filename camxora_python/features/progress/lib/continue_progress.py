@@ -75,12 +75,26 @@ def resolve_continue_progress(
         th_total = int(meta.th_total or 0)
         music = str(row.music or "").upper()
         music_ready = any(token in music for token in ("READY", "SUCCESS", "DONE", "COMPLETE"))
+        bg_status = str(meta.bg_status or "").upper()
+        th_status = str(meta.th_status or "").upper()
         image_failed = (
-            str(meta.bg_status or "").upper() == "FAILED"
-            or str(meta.th_status or "").upper() == "FAILED"
+            bg_status == "FAILED"
+            or th_status == "FAILED"
             or (stage == "error" and "FAILED" in str(row.image or "").upper())
         )
-        if image_failed or stage == "image":
+        image_jobs_ready = (
+            bg_total > 0
+            and bg_status in {"READY", "SUCCESS", "DONE", "COMPLETE"}
+            and th_status != "FAILED"
+        )
+        if image_failed:
+            return ContinueProgressPlan(
+                action="retry_images",
+                label="Retry image jobs",
+                row=row,
+                batch_id=batch_id,
+            )
+        if stage == "image" and not image_jobs_ready:
             return ContinueProgressPlan(
                 action="retry_images",
                 label="Retry image jobs",
@@ -230,9 +244,13 @@ def _can_continue_export(entry: EffectiveProgressRow) -> bool:
     stage = entry.effective_stage.strip().lower()
     if stage in {"youtube", "done", "completed", "error", "merge", "merger"}:
         return False
-    if stage in {"export", "converter"}:
+    # Converter/Export stage is not enough — API may say Converter after jobs
+    # succeed while desktop PNGs are still missing.
+    if not (meta.long_ready or meta.reel_ready):
+        return False
+    if stage in {"export", "converter", "image"}:
         return True
-    return bool(meta.long_ready or meta.reel_ready)
+    return True
 
 
 def _can_continue_merge(entry: EffectiveProgressRow) -> bool:

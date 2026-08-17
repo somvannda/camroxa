@@ -96,3 +96,73 @@ def test_compute_long_ready_is_background_only() -> None:
     assert compute_long_ready({"background_16x9_path": None, "thumbnail_16x9_path": "/th.png"}) is False
     assert compute_reel_ready({"background_9x16_path": "/bg.png", "thumbnail_9x16_path": None}) is True
     assert compute_reel_ready({"background_9x16_path": None, "thumbnail_9x16_path": "/th.png"}) is False
+
+
+def test_trust_persisted_asset_paths_keeps_windows_desktop_paths() -> None:
+    from platform_api.services.channel_asset_service import (
+        overlay_live_channel_asset_paths,
+        trust_persisted_asset_paths,
+    )
+
+    persisted = {
+        "background_16x9_path": r"D:\SUNO\neon-kicks\2026-09-02_Album\background-16x9.png",
+        "thumbnail_16x9_path": r"D:\SUNO\neon-kicks\2026-09-02_Album\thumbnail-16x9.png",
+    }
+    trusted = trust_persisted_asset_paths(persisted)
+    assert trusted["background_16x9_path"]
+    assert trusted["background_16x9_path"].endswith("background-16x9.png")
+    assert compute_long_ready(trusted) is True
+
+    # API host cannot see D:\ — must still keep the DB path.
+    overlaid = overlay_live_channel_asset_paths(r"D:\SUNO\neon-kicks\2026-09-02_Album", persisted)
+    assert compute_long_ready(overlaid) is True
+
+
+def test_mark_ready_from_image_jobs_without_local_files() -> None:
+    from platform_api.services.channel_asset_service import mark_ready_from_image_jobs
+
+    key = ("batch-1", "profile-1", "OK")
+    assets = {
+        key: {
+            "background_16x9_path": None,
+            "background_9x16_path": None,
+            "thumbnail_16x9_path": None,
+            "thumbnail_9x16_path": None,
+            "long_ready": False,
+            "reel_ready": False,
+        }
+    }
+    groups = {
+        key: {
+            "background": {"ready": 1, "total": 1},
+            "thumbnail": {"ready": 1, "total": 1},
+        }
+    }
+    mark_ready_from_image_jobs(assets, groups)
+    assert assets[key]["long_ready"] is True
+    assert assets[key]["background_16x9_path"]
+
+
+def test_mark_ready_from_image_jobs_skips_when_kind_still_has_failures() -> None:
+    from platform_api.services.channel_asset_service import mark_ready_from_image_jobs
+
+    key = ("batch-1", "profile-1", "OK")
+    assets = {
+        key: {
+            "background_16x9_path": None,
+            "background_9x16_path": None,
+            "thumbnail_16x9_path": None,
+            "thumbnail_9x16_path": None,
+            "long_ready": False,
+            "reel_ready": False,
+        }
+    }
+    groups = {
+        key: {
+            "background": {"ready": 1, "total": 1, "failed": 1},
+            "thumbnail": {"ready": 0, "total": 1, "failed": 1},
+        }
+    }
+    mark_ready_from_image_jobs(assets, groups)
+    assert assets[key]["long_ready"] is False
+    assert assets[key]["background_16x9_path"] is None

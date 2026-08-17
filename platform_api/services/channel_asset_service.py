@@ -92,11 +92,76 @@ def compute_youtube_reel_ready(asset_paths: dict[str, str | None]) -> bool:
     return bool(asset_paths.get("background_9x16_path") and asset_paths.get("thumbnail_9x16_path"))
 
 
+def trust_persisted_asset_paths(persisted: dict[str, Any] | None) -> dict[str, str | None]:
+    """Keep DB-persisted desktop paths without requiring them to exist on this host.
+
+    Progress and Pipeline Ops run on the API VPS, which cannot see ``D:\\SUNO\\...``.
+    Dropping those paths made successful image jobs look unfinished.
+    """
+    persisted_assets = persisted or {}
+    merged: dict[str, str | None] = {}
+    for key in _ASSET_PATH_KEYS:
+        raw = str(persisted_assets.get(key) or "").strip() or None
+        merged[key] = normalize_client_path(raw) if raw else None
+    return merged
+
+
+def overlay_live_channel_asset_paths(
+    run_dir: str,
+    persisted: dict[str, Any] | None = None,
+) -> dict[str, str | None]:
+    """Trust DB paths; overlay live files only when this host can actually see them."""
+    merged = trust_persisted_asset_paths(persisted)
+    if not str(run_dir or "").strip():
+        return merged
+    live_assets = resolve_channel_asset_paths(run_dir)
+    for key in _ASSET_PATH_KEYS:
+        live_path = live_assets.get(key)
+        if live_path:
+            merged[key] = live_path
+    return merged
+
+
+def mark_ready_from_image_jobs(
+    channel_assets: dict[tuple[str, str, str], dict[str, Any]],
+    image_groups: dict[tuple[str, str, str], dict[str, Any]],
+) -> None:
+    """Admin board only: treat succeeded BG/TH jobs as ready without desktop FS paths.
+
+    Never overwrites a real path. Never marks ready when that kind still has failures.
+    Do not use this on desktop GET /progress — fake server:// paths would look
+    export-ready to the desktop overlay.
+    """
+    for key, asset in channel_assets.items():
+        image_group = image_groups.get(key, {})
+        bg = image_group.get("background", {})
+        th = image_group.get("thumbnail", {})
+        bg_ready = int(bg.get("ready", 0) or 0)
+        bg_total = int(bg.get("total", 0) or 0)
+        bg_failed = int(bg.get("failed", 0) or 0)
+        th_ready = int(th.get("ready", 0) or 0)
+        th_total = int(th.get("total", 0) or 0)
+        th_failed = int(th.get("failed", 0) or 0)
+        bg_jobs_ok = bg_total > 0 and bg_ready >= bg_total and bg_failed <= 0
+        th_jobs_ok = th_total > 0 and th_ready >= th_total and th_failed <= 0
+        if bg_jobs_ok and not asset.get("background_16x9_path"):
+            asset["background_16x9_path"] = "server://image-job-ready/background-16x9"
+        if th_jobs_ok and not asset.get("thumbnail_16x9_path"):
+            asset["thumbnail_16x9_path"] = "server://image-job-ready/thumbnail-16x9"
+        asset["long_ready"] = compute_long_ready(asset) or bg_jobs_ok
+        asset["reel_ready"] = compute_reel_ready(asset)
+
+
 def merge_channel_asset_paths(
     run_dir: str,
     persisted: dict[str, Any] | None = None,
 ) -> dict[str, str | None]:
-    """Prefer live run-dir scans; only keep persisted paths that still exist on disk."""
+    """Prefer live run-dir scans; only keep persisted paths that still exist on disk.
+
+    Desktop-local helper. Desktop GET /progress must keep using this so
+    ``long_ready`` stays false unless this host can actually open the file.
+    Admin Pipeline Ops uses ``overlay_live_channel_asset_paths`` instead.
+    """
     live_assets = resolve_channel_asset_paths(run_dir)
     persisted_assets = persisted or {}
     merged: dict[str, str | None] = {}
