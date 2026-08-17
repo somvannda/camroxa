@@ -82,17 +82,37 @@ def build_local_progress_sync_items(rows: list[ProgressRow]) -> list[LocalProgre
         # Server may still advertise an AppData/other-PC base while MP3s were
         # remapped onto this machine's sunoOutputDir — prefer the local root.
         run_dir = local_run_dir_for_disk(run_dir)
+        expected = max(1, int(meta.expected or 0))
+        api_saved = max(0, int(meta.saved or 0))
 
-        if not Path(run_dir).is_dir():
-            # Folder moved/archived — never sync empty state over API readiness.
+        from shared.lib.pipeline_completion import should_persist_pipeline_complete
+        from shared.lib.video_runtime_inspection import row_is_idle_progress_row, row_skip_disk_scan
+
+        latch = should_persist_pipeline_complete(row)
+        skip_disk = row_skip_disk_scan(row) or row_is_idle_progress_row(row)
+        folder_missing = not Path(run_dir).is_dir()
+        if skip_disk or folder_missing:
+            if latch:
+                seen.add(key)
+                items.append(
+                    LocalProgressSyncItem(
+                        batch_id=batch_id,
+                        profile_id=profile_id,
+                        role=role,
+                        run_dir=run_dir,
+                        long_ready=bool(meta.long_ready),
+                        reel_ready=bool(meta.reel_ready),
+                        local_mp3_count=api_saved,
+                        expected=expected,
+                        pipeline_complete=True,
+                    )
+                )
             continue
 
         assets = resolve_local_channel_asset_paths(run_dir, channel_role=meta.role)
         long_ready = compute_long_ready(assets)
         reel_ready = compute_reel_ready(assets)
         local_mp3_count = count_channel_mp3_files(run_dir, meta.role)
-        expected = max(1, int(meta.expected or 0))
-        api_saved = max(0, int(meta.saved or 0))
         needs_assets = _needs_channel_asset_sync(row, assets)
         needs_music = local_mp3_count >= expected and local_mp3_count > api_saved
         pipeline_complete = bool(getattr(meta, "pipeline_complete", False))

@@ -28,6 +28,24 @@ def test_video_view_mounts(qapp: QApplication) -> None:
     view.deactivate_page()
 
 
+def test_video_view_defers_preview_audio_until_activate(qapp: QApplication) -> None:
+    from shared.services.workspace_cache import WorkspaceCache
+
+    cache = WorkspaceCache()
+    workspace = VideoWorkspaceState(
+        template_name="Cached Template",
+        selected_mp3_path=r"D:\Runs\track.mp3",
+    )
+    cache.apply_video_workspace(workspace, {"outputResolution": "1920x1080"})
+    api = MagicMock()
+    view = VideoView(api, cache=cache)
+    assert view._preview_audio_enabled is False
+    assert view._preview_mp3_path() == ""
+    view.activate_page()
+    assert view._preview_audio_enabled is True
+    assert view._preview_mp3_path() == r"D:\Runs\track.mp3"
+
+
 def test_video_view_mounts_from_preloaded_cache(qapp: QApplication) -> None:
     from shared.services.workspace_cache import WorkspaceCache
 

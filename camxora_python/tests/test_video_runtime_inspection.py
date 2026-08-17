@@ -7,8 +7,12 @@ from shared.lib.video_runtime_inspection import (
     STATUS_IN_PROGRESS,
     STAGE_EXPORT,
     STAGE_MERGE,
+    build_video_run_inspection_map,
     inspect_video_run_entries,
+    progress_runtime_key,
     resolve_progress_runtime_presentation,
+    row_is_idle_progress_row,
+    row_skip_disk_scan,
     run_includes_reel,
 )
 from shared.models.desktop import VideoExportState, VideoWorkspaceState
@@ -62,6 +66,7 @@ def test_inspect_video_run_entries_classifies_mp4_outputs() -> None:
     assert len(inspection.reel_output_paths) == 1
     assert len(inspection.merged_long_paths) == 1
     assert len(inspection.merged_reel_paths) == 1
+    assert inspection.mp3_paths == ()
 
 
 def test_inspect_skips_tiny_on_disk_mp4s(tmp_path) -> None:
@@ -177,7 +182,7 @@ def test_beattok_long_only_merge_completed_without_reel_branch() -> None:
     )
     assert run_includes_reel(row) is False
     runtime = resolve_progress_runtime_presentation(row, inspection, None)
-    assert runtime.stage == STAGE_MERGE
+    assert runtime.stage == STATUS_COMPLETED
     assert runtime.status == STATUS_COMPLETED
     assert runtime.converter == "Long 3/3"
     assert runtime.converter_percent == 100
@@ -207,6 +212,96 @@ def test_beattok_partial_merge_promotes_merge_stage_not_export() -> None:
     assert runtime.status == STATUS_IN_PROGRESS
     assert runtime.merge == "Long completed · Reel pending"
     assert runtime.converter_percent == 50
+
+
+def test_inspect_collects_mp3_names_from_listing() -> None:
+    inspection = inspect_video_run_entries(
+        r"D:\Runs\batch-1\primary",
+        [
+            DirectoryEntry(name="1. Track_OK.mp3", is_directory=False),
+            DirectoryEntry(name="2. Track_OK.mp3", is_directory=False),
+            DirectoryEntry(name="1. Track_OK.mp4", is_directory=False),
+        ],
+    )
+    assert [path.replace("/", "\\") for path in inspection.mp3_paths] == [
+        r"D:\Runs\batch-1\primary\1. Track_OK.mp3",
+        r"D:\Runs\batch-1\primary\2. Track_OK.mp3",
+    ]
+
+
+def test_row_skip_disk_scan_for_long_completed_without_reel() -> None:
+    row = _base_row(reel_ready=False, background_9x16_path=None, thumbnail_9x16_path=None)
+    row = row.model_copy(update={"merge": "Long completed", "stage": "Merge", "status": "Completed"})
+    assert row_skip_disk_scan(row) is True
+
+
+def test_row_skip_disk_scan_false_for_unfinished_export() -> None:
+    row = _base_row(reel_ready=False)
+    row = row.model_copy(update={"merge": "Pending", "stage": "Export", "status": "Pending"})
+    assert row_skip_disk_scan(row) is False
+
+
+def test_row_is_idle_hides_long_completed_keeps_youtube_and_reel_pending() -> None:
+    idle = _base_row(reel_ready=False, background_9x16_path=None, thumbnail_9x16_path=None)
+    idle = idle.model_copy(update={"merge": "Long completed", "stage": "Merge", "status": "Completed"})
+    assert row_is_idle_progress_row(idle) is True
+
+    youtube = idle.model_copy(update={"stage": "YouTube", "status": "In Progress"})
+    assert row_is_idle_progress_row(youtube) is False
+
+    pending = _base_row(reel_ready=True).model_copy(
+        update={"merge": "Long completed · Reel pending", "stage": "Merge", "status": "In Progress"}
+    )
+    assert row_is_idle_progress_row(pending) is False
+
+
+def test_inspection_map_does_not_list_idle_long_completed_folder(monkeypatch, tmp_path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "track.mp4").write_bytes(b"x" * 60_000)
+    called: list[str] = []
+
+    def _list(directory: str, *, max_results: int = 500):
+        called.append(directory)
+        raise AssertionError("idle Long completed rows must not list the run folder")
+
+    monkeypatch.setattr("shared.lib.video_runtime_inspection.list_directory_entries", _list)
+    row = _base_row(
+        run_dir=str(run_dir),
+        reel_ready=False,
+        background_9x16_path=None,
+        thumbnail_9x16_path=None,
+    ).model_copy(update={"merge": "Long completed", "stage": "Merge", "status": "Completed"})
+    inspections = build_video_run_inspection_map([row])
+    assert called == []
+    key = progress_runtime_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
+    assert key in inspections
+
+
+def test_inspection_map_reuses_listing_when_directory_mtime_unchanged(tmp_path, monkeypatch) -> None:
+    from shared.lib import video_runtime_inspection as inspection_mod
+
+    inspection_mod._inspection_mtime_cache.clear()
+    run_dir = tmp_path / "active-run"
+    run_dir.mkdir()
+    (run_dir / "track.mp4").write_bytes(b"x" * 60_000)
+    called: list[str] = []
+    real_list = inspection_mod.list_directory_entries
+
+    def _list(directory: str, *, max_results: int = 500):
+        called.append(directory)
+        return real_list(directory, max_results=max_results)
+
+    monkeypatch.setattr(inspection_mod, "list_directory_entries", _list)
+    row = _base_row(run_dir=str(run_dir), reel_ready=False).model_copy(
+        update={"merge": "Pending", "stage": "Export", "status": "Pending"}
+    )
+    first = build_video_run_inspection_map([row])
+    second = build_video_run_inspection_map([row])
+    assert len(called) == 1
+    key = progress_runtime_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
+    assert first[key] == second[key]
+    inspection_mod._inspection_mtime_cache.clear()
 
 
 def test_video_workspace_service_registry() -> None:

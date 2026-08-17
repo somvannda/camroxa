@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,7 +11,11 @@ from PySide6.QtCore import QThread, Signal
 from pydantic import ValidationError
 
 from shared.lib.disk_space import has_sufficient_free_space
-from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, build_runtime_presentation_map
+from shared.lib.video_runtime_inspection import (
+    ProgressRuntimePresentation,
+    build_runtime_presentation_map,
+    build_video_run_inspection_map,
+)
 from shared.models.platform import DashboardOverview, ProgressFilters, ProgressListResponse
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
@@ -86,6 +90,7 @@ class ProgressRowsWorker(QThread):
 class WorkflowLoadResult:
     response: ProgressListResponse
     runtime_by_key: dict[str, ProgressRuntimePresentation]
+    inspections: dict = field(default_factory=dict)
 
 
 class WorkflowLoadWorker(QThread):
@@ -112,8 +117,18 @@ class WorkflowLoadWorker(QThread):
             rows = apply_local_progress_overlays(list(response.rows))
             response = response.model_copy(update={"rows": rows})
             workspace = get_video_workspace_service().get_workspace_state()
-            runtime_by_key = build_runtime_presentation_map(rows, workspace)
-            self.succeeded.emit(WorkflowLoadResult(response=response, runtime_by_key=runtime_by_key))
+            inspections = build_video_run_inspection_map(rows)
+            runtime_by_key = build_runtime_presentation_map(rows, workspace, inspections=inspections)
+            self.succeeded.emit(
+                WorkflowLoadResult(
+                    response=response,
+                    runtime_by_key=runtime_by_key,
+                    inspections=inspections,
+                )
+            )
+            from shared.lib.pipeline_completion import persist_discovered_pipeline_complete
+
+            persist_discovered_pipeline_complete(self._api, rows, inspections)
         except PlatformApiError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:
@@ -789,7 +804,7 @@ class VideoPipelineOrchestrationWorker(QThread):
 
             rows = apply_local_progress_overlays(rows)
             inspections = build_video_run_inspection_map(rows)
-            runtime_by_key = build_runtime_presentation_map(rows, workspace)
+            runtime_by_key = build_runtime_presentation_map(rows, workspace, inspections=inspections)
             self.succeeded.emit(
                 VideoPipelineOrchestrationPayload(
                     rows=rows,
@@ -2127,6 +2142,7 @@ class ProgressLocalSyncWorker(QThread):
                     background_9x16_path=item.background_9x16_path,
                     thumbnail_16x9_path=item.thumbnail_16x9_path,
                     thumbnail_9x16_path=item.thumbnail_9x16_path,
+                    pipeline_complete=item.pipeline_complete,
                 )
                 for item in local_items
             ]

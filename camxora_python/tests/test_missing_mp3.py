@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from shared.lib.missing_mp3 import (
     count_missing_role_mp3s,
+    count_missing_role_mp3s_from_meta,
     filter_missing_redownload_items,
     resolve_row_local_run_dir,
     target_path_is_present,
@@ -99,3 +100,11 @@ def test_filter_missing_redownload_items(tmp_path: Path) -> None:
     assert target_path_is_present(str(present)) is True
     assert target_path_is_present(str(missing)) is False
     assert target_path_is_present(str(opus)) is False
+
+
+def test_count_missing_from_meta_uses_saved_not_disk() -> None:
+    row = _row(run_dir=r"D:\missing-on-purpose", expected=15, download_ready=15)
+    row = row.model_copy(update={"meta": row.meta.model_copy(update={"saved": 15})})
+    assert count_missing_role_mp3s_from_meta(row) == 0
+    row = row.model_copy(update={"meta": row.meta.model_copy(update={"saved": 12})})
+    assert count_missing_role_mp3s_from_meta(row) == 3
