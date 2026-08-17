@@ -116,6 +116,15 @@ def _row_value(row: Any, key: str, default: Any = None) -> Any:
         return default
 
 
+def _duration_seconds(row: Any, key: str) -> float | None:
+    raw = _row_value(row, key)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 class WebMusicService:
     def __init__(
         self,
@@ -774,7 +783,7 @@ class WebMusicService:
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
                    b2_storage_key_ok, b2_storage_key_alt, workspace_id,
-                   image_url_ok, image_url_alt
+                   image_url_ok, image_url_alt, duration_ok, duration_alt
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
             ORDER BY created_at DESC
@@ -799,7 +808,8 @@ class WebMusicService:
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight,
-                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   duration_ok, duration_alt
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -838,6 +848,8 @@ class WebMusicService:
                     audio_id_alt = COALESCE(NULLIF(BTRIM($6), ''), audio_id_alt),
                     image_url_ok = COALESCE(NULLIF(BTRIM($7), ''), image_url_ok),
                     image_url_alt = COALESCE(NULLIF(BTRIM($8), ''), image_url_alt),
+                    duration_ok = COALESCE($9, duration_ok),
+                    duration_alt = COALESCE($10, duration_alt),
                     updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -849,6 +861,8 @@ class WebMusicService:
                 urls.audio_id_alt,
                 urls.image_url_ok,
                 urls.image_url_alt,
+                urls.duration_ok,
+                urls.duration_alt,
             )
         elif polled.state == "failed":
             await self._pool.execute(
@@ -870,7 +884,8 @@ class WebMusicService:
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight,
-                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   duration_ok, duration_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -915,7 +930,8 @@ class WebMusicService:
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight,
-                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   duration_ok, duration_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1453,6 +1469,7 @@ class WebMusicService:
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=ok",
                     "ready": ok_ready,
                     "image_url": image_ok,
+                    "duration_seconds": _duration_seconds(row, "duration_ok"),
                 },
                 {
                     "variant": "alt",
@@ -1461,6 +1478,7 @@ class WebMusicService:
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=alt",
                     "ready": alt_ready,
                     "image_url": image_alt,
+                    "duration_seconds": _duration_seconds(row, "duration_alt"),
                 },
             ],
         }
