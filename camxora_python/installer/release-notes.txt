@@ -1,44 +1,34 @@
-﻿Camxora 1.3.0
-Regenerate missing/broken MP4s + real Suno MP3 + export hang fix
-August 15, 2026 (same 1.3.0 stamp)
+﻿Camxora 1.3.1
+Progress stays responsive + no auto-redo after Long completed
+August 17, 2026
 
 What's new
 ----------
-• Suno downloads: use the real {id}.mp3 from the CDN instead of {id}.m4a
-  (Opus in MP4 saved with an .mp3 name). If MPEG is not ready, Camxora
-  waits and retries instead of keeping a fake MP3.
-• Export: an Opus-in-MP4 file named .mp3 no longer hangs the whole queue.
-  ffmpeg decodes it; one bad track is retried then skipped so the album
-  can continue. Manual Export uses the same decoder.
-• Progress: Regenerate missing/broken MP4s re-exports only tracks whose
-  file is missing, tiny, corrupt, or truncated. Regenerating one track
-  rebuilds a specific song from its MP3. You do not restart music or
-  images. Start Merging and Continue Progress repair those files first,
-  then write MERGED_*.mp4. Credits are charged only for tracks that
-  actually re-export.
-• Progress Merge: Start Merging either writes MERGED_*.mp4 in the run
-  folder or shows an error. It no longer finishes “successfully” with no
-  file. Older exported albums can merge if the tracks match each other
-  (not only today’s FPS / 48 kHz). Nested run folders are found; a stale
-  MERGED file is rebuilt if tracks were re-exported.
-• Preferences Suno output dir: a saved folder (for example D:\Suno
-  Generated) is kept across installer upgrades. The app no longer resets
-  it to AppData Media\Suno if the drive is offline or a leftover path
-  file was left at the Camxora root.
+• Progress: Long completed albums are not re-scanned on every poll. Right-click
+  opens immediately. Active only hides finished rows; YouTube and Error stay.
+• Auto-video does not redo a Long completed album after you delete track MP4s
+  or move the folder. Rebuild / Repair / Force still regenerate.
+• Finished albums save pipeline_complete when a MERGED_*.mp4 is seen or the
+  row is already Long completed, so they stay frozen after restart.
+• Startup: Video prewarm no longer decodes the last preview MP3 until you
+  open Video.
+• Dashboard and Profile show usage as used / quota and scale add-on caps.
 
-Also included from 1.2.6
-------------------------
-• Spectrum closed-ring color melt.
-• Auto-Video saved-template WYSIWYG.
-• Quality / Best Quality Workers spin crash fix.
+Already in 1.3.0
+----------------
+• Real Suno .mp3 downloads (not Opus .m4a saved as .mp3).
+• Opus-in-MP4 no longer hangs the export queue.
+• Regenerate missing/broken MP4s and one-track regenerate.
+• Merge must write MERGED_*.mp4.
+• Saved Suno folder is kept across installer upgrades.
 
 Requirements
 ------------
-• Installer: CamxoraSetup-1.3.0.exe
-• Already on 1.3.0: install this Setup again (same version does not
-  force-update itself). Older than 1.3.0: Publish with Force update.
+• Installer: CamxoraSetup-1.3.1.exe
+• Production API: https://api.camxora.com/api/v1
+• Publish with Force update so 1.3.0 clients upgrade on app open.
 
-Coming later
-------------
-• Theme categories, personal reference library, Progress Replace/Export,
-  DistroKid / WAV add-on.
+Not in this build
+-----------------
+• Music web / credits / admin portal
+• DistroKid / WAV add-on
