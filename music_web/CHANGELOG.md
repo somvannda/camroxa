@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Create Simple song description follows Suno V5 limits: UI **1000** (style) with a live counter; API prompt **5000**. Simple uses the description as style. See `docs/changelog/2026-08-18-web-music-simple-prompt-suno-limits.md`.
 - Create workspace rows show each clip’s duration before Ready (for example `3:45 · Ready`). See `docs/changelog/2026-08-17-web-music-clip-duration.md`.
 - Unconfirmed music-web sessions stay on verify-email with no Create/sidebar; `/create` redirects back. See `docs/changelog/2026-08-17-music-web-email-confirm-lock.md`.
 - Checkout iframe only loads CutLuy HTTPS URLs (sandbox + no-referrer). See `docs/changelog/2026-08-17-music-web-checkout-security.md`.

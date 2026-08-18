@@ -233,3 +233,19 @@ class TestWebMusicRouter:
         assert response.status_code == 200
         assert "synthwave" in response.json()["style"]
         mock_web_music_service.generate_styles.assert_awaited()
+
+    async def test_generate_simple_prompt_follows_suno_custom_lyrics_limit(
+        self, client: AsyncClient, mock_web_music_service: AsyncMock
+    ) -> None:
+        ok = await client.post(
+            "/api/v1/web-music/generate",
+            json={"mode": "simple", "prompt": "x" * 5000},
+        )
+        assert ok.status_code == 202
+        mock_web_music_service.generate.assert_awaited()
+
+        too_long = await client.post(
+            "/api/v1/web-music/generate",
+            json={"mode": "simple", "prompt": "x" * 5001},
+        )
+        assert too_long.status_code == 422
