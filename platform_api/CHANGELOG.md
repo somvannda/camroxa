@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Production admin user-detail 500 for studio accounts with channel profiles: `upload_path_exists` was used after the import was replaced by avatar helpers. See `docs/changelog/2026-08-18-admin-user-details-upload-path-import.md`.
 - Admin period quota top-ups (image/song/draft/etc.) are now honored by
   subscription coverage. Previously the admin UI showed remaining allowance
   but generation still demanded wallet credits. See
