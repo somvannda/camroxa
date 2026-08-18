@@ -194,20 +194,49 @@ class TestRegister:
         mock_auth_service: AsyncMock,
         mock_invitation: AsyncMock,
     ) -> None:
+        from unittest.mock import patch
+
         mock_invitation.get_signup_mode = AsyncMock(return_value="invite_only")
-        response = await client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "listener@example.com",
-                "password": "ValidPass1",
-                "display_name": "Listener",
-                "product": "music_web",
-            },
-        )
+        mock_pool = AsyncMock()
+        mock_pool.execute = AsyncMock()
+        with patch("platform_api.dependencies.get_db_pool", return_value=mock_pool), patch(
+            "platform_api.services.email_service.send_verification_email"
+        ):
+            response = await client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "listener@example.com",
+                    "password": "ValidPass1",
+                    "display_name": "Listener",
+                    "product": "music_web",
+                },
+            )
         assert response.status_code == 201
         mock_invitation.consume_invitation_code.assert_not_awaited()
         created_user = mock_auth_service._user_repo.create.await_args.args[0]
         assert created_user.products == ["music_web"]
+
+    async def test_register_music_web_requires_turnstile_when_configured(
+        self,
+        client: AsyncClient,
+        mock_invitation: AsyncMock,
+    ) -> None:
+        from unittest.mock import patch
+
+        mock_invitation.get_signup_mode = AsyncMock(return_value="invite_only")
+        with patch("platform_api.routers.auth.get_settings") as mock_settings:
+            mock_settings.return_value.cloudflare_turnstile_secret_key = "test-secret"
+            mock_settings.return_value.cloudflare_turnstile_hostnames = ""
+            response = await client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "listener@example.com",
+                    "password": "ValidPass1",
+                    "display_name": "Listener",
+                    "product": "music_web",
+                },
+            )
+        assert response.status_code == 422
 
     async def test_register_studio_invite_only_requires_code(
         self,

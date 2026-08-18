@@ -1,15 +1,14 @@
-"""IP-based abuse detection for music web generation endpoints.
+"""IP-based abuse detection for music web generation and signup.
 
 Tracks suspicious patterns such as:
-- Multiple accounts from same IP hitting quota limits
-- Rapid account creation from same IP
-- Repeated failed generation attempts
+- Rapid account creation from the same IP
+- Multiple free accounts generating from the same network
+- Repeated quota-limit cycling
 """
 
 from __future__ import annotations
 
 import logging
-import time
 from typing import Protocol
 
 from fastapi import HTTPException, Request
@@ -17,10 +16,16 @@ from fastapi import HTTPException, Request
 logger = logging.getLogger(__name__)
 
 # Abuse detection thresholds
-MAX_ACCOUNTS_PER_IP_PER_HOUR = 5
+MAX_ACCOUNTS_PER_IP_PER_HOUR = 3
+MAX_ACCOUNTS_PER_IP_PER_DAY = 5
 MAX_QUOTA_HITS_PER_IP_PER_HOUR = 10
-MAX_GENERATIONS_PER_IP_PER_DAY = 5  # Same as user limit
+MAX_GENERATIONS_PER_IP_PER_DAY = 5  # Matches one free account's daily song cap
 ABUSE_BLOCK_DURATION_SECONDS = 3600  # 1 hour
+
+# Geo / VPN checks stay off unless explicitly enabled. Wiring Redis must not
+# start blocking non-KH traffic that was previously allowed.
+ENABLE_GEO_RESTRICT = False
+ENABLE_VPN_BLOCK = False
 
 # Cambodia country code
 ALLOWED_COUNTRY = "KH"  # Cambodia ISO code
@@ -45,18 +50,43 @@ def get_client_ip(request: Request) -> str:
     """Extract client IP from request, respecting X-Forwarded-For."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        # X-Forwarded-For can have multiple IPs, take the first (original client)
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 
+def _billing_hour_stamp() -> str:
+    from datetime import datetime
+
+    from platform_api.services.billing_calendar import BILLING_TIMEZONE
+
+    return datetime.now(BILLING_TIMEZONE).strftime("%Y%m%d%H")
+
+
+def _billing_day_stamp() -> str:
+    from platform_api.services.billing_calendar import billing_today
+
+    return billing_today().isoformat()
+
+
+def _too_many(error_code: str, message: str, retry_after: int) -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail={
+            "error_code": error_code,
+            "message": message,
+            "retry_after": retry_after,
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 async def check_ip_geolocation(ip: str) -> tuple[str, str]:
     """Check IP geolocation. Returns (country_code, asn_description).
-    
+
     Uses ip-api.com free tier (45 requests/minute).
     """
     import httpx
-    
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
@@ -70,8 +100,8 @@ async def check_ip_geolocation(ip: str) -> tuple[str, str]:
                     asn = data.get("as", "").lower()
                     return country_code, asn
     except Exception as exc:
-        logger.warning(f"IP geolocation check failed for {ip}: {exc}")
-    
+        logger.warning("IP geolocation check failed for %s: %s", ip, exc)
+
     return "", ""
 
 
@@ -87,26 +117,20 @@ async def check_ip_abuse(
     user_id: str,
     event_type: str = "generation",
 ) -> None:
-    """Check if an IP address shows signs of abuse, VPN usage, or is outside Cambodia.
-
-    Args:
-        redis: Redis client for tracking.
-        ip: Client IP address.
-        user_id: Current user ID.
-        event_type: Type of event ("generation", "quota_hit", "account_creation").
+    """Check if an IP address shows signs of signup or generation farming.
 
     Raises:
-        HTTPException: 429 if IP is blocked, 403 if VPN/wrong country.
+        HTTPException: 429 if IP is blocked or over a farm cap.
     """
-    # Check geolocation and VPN (only for generation events to avoid overhead)
-    if event_type == "generation":
+    if event_type == "generation" and (ENABLE_GEO_RESTRICT or ENABLE_VPN_BLOCK):
         country_code, asn = await check_ip_geolocation(ip)
-        
-        # Block non-Cambodia IPs
-        if country_code and country_code != ALLOWED_COUNTRY:
+
+        if ENABLE_GEO_RESTRICT and country_code and country_code != ALLOWED_COUNTRY:
             logger.warning(
-                f"Blocked non-Cambodia IP {ip} (country: {country_code}) "
-                f"attempting generation with user {user_id}"
+                "Blocked non-Cambodia IP %s (country: %s) user=%s",
+                ip,
+                country_code,
+                user_id,
             )
             raise HTTPException(
                 status_code=403,
@@ -115,13 +139,9 @@ async def check_ip_abuse(
                     "message": "This service is only available in Cambodia.",
                 },
             )
-        
-        # Block VPNs and proxies
-        if asn and await is_vpn_or_proxy(asn):
-            logger.warning(
-                f"Blocked VPN/proxy IP {ip} (ASN: {asn}) "
-                f"attempting generation with user {user_id}"
-            )
+
+        if ENABLE_VPN_BLOCK and asn and await is_vpn_or_proxy(asn):
+            logger.warning("Blocked VPN/proxy IP %s (ASN: %s) user=%s", ip, asn, user_id)
             await redis.setex(f"abuse:blocked:{ip}", ABUSE_BLOCK_DURATION_SECONDS, "vpn")
             raise HTTPException(
                 status_code=403,
@@ -130,68 +150,80 @@ async def check_ip_abuse(
                     "message": "VPN and proxy connections are not allowed. Please use a direct connection.",
                 },
             )
-    
-    # Check if IP is currently blocked
+
     block_key = f"abuse:blocked:{ip}"
     blocked = await redis.get(block_key)
     if blocked:
-        logger.warning(f"Blocked IP {ip} attempted {event_type} with user {user_id}")
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "error_code": "IP_BLOCKED",
-                "message": "Too many requests from your IP address. Please try again later.",
-                "retry_after": ABUSE_BLOCK_DURATION_SECONDS,
-            },
-            headers={"Retry-After": str(ABUSE_BLOCK_DURATION_SECONDS)},
+        logger.warning("Blocked IP %s attempted %s with user %s", ip, event_type, user_id)
+        raise _too_many(
+            "IP_BLOCKED",
+            "Too many requests from your IP address. Please try again later.",
+            ABUSE_BLOCK_DURATION_SECONDS,
         )
 
-    # Track per-IP daily generation count (5 per day limit)
+    if event_type == "account_creation":
+        hour_key = f"abuse:signup_hour:{ip}:{_billing_hour_stamp()}"
+        day_key = f"abuse:signup_day:{ip}:{_billing_day_stamp()}"
+        hour_count = await redis.incr(hour_key)
+        await redis.expire(hour_key, 3600)
+        day_count = await redis.incr(day_key)
+        await redis.expire(day_key, 90000)
+        if hour_count > MAX_ACCOUNTS_PER_IP_PER_HOUR:
+            logger.warning(
+                "IP %s exceeded hourly signup cap: %s/%s",
+                ip,
+                hour_count,
+                MAX_ACCOUNTS_PER_IP_PER_HOUR,
+            )
+            raise _too_many(
+                "SIGNUP_IP_LIMIT",
+                f"Too many accounts from this network. Limit is {MAX_ACCOUNTS_PER_IP_PER_HOUR} per hour.",
+                3600,
+            )
+        if day_count > MAX_ACCOUNTS_PER_IP_PER_DAY:
+            logger.warning(
+                "IP %s exceeded daily signup cap: %s/%s",
+                ip,
+                day_count,
+                MAX_ACCOUNTS_PER_IP_PER_DAY,
+            )
+            raise _too_many(
+                "SIGNUP_IP_DAILY_LIMIT",
+                f"Too many accounts from this network. Limit is {MAX_ACCOUNTS_PER_IP_PER_DAY} per day.",
+                86400,
+            )
+        return
+
     if event_type == "generation":
-        from datetime import datetime
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        ip_daily_key = f"abuse:ip_daily:{ip}:{today}"
+        ip_daily_key = f"abuse:ip_daily:{ip}:{_billing_day_stamp()}"
         ip_count = await redis.incr(ip_daily_key)
-        await redis.expire(ip_daily_key, 86400)  # 24 hour TTL
-        
+        await redis.expire(ip_daily_key, 90000)
+
         if ip_count > MAX_GENERATIONS_PER_IP_PER_DAY:
             logger.warning(
-                f"IP {ip} exceeded daily generation limit: {ip_count}/{MAX_GENERATIONS_PER_IP_PER_DAY}"
+                "IP %s exceeded daily generation limit: %s/%s",
+                ip,
+                ip_count,
+                MAX_GENERATIONS_PER_IP_PER_DAY,
             )
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error_code": "IP_DAILY_LIMIT",
-                    "message": f"Maximum {MAX_GENERATIONS_PER_IP_PER_DAY} songs per day from one IP. Try again tomorrow.",
-                    "retry_after": 86400,
-                },
-                headers={"Retry-After": "86400"},
+            raise _too_many(
+                "IP_DAILY_LIMIT",
+                f"Maximum {MAX_GENERATIONS_PER_IP_PER_DAY} free songs per day from one network. Try again tomorrow or subscribe.",
+                86400,
             )
-    
-    # Track account usage per IP
-    account_key = f"abuse:accounts:{ip}"
-    await redis.setex(account_key, 3600, user_id)  # Track for 1 hour
-    
-    # Track quota hits per IP (when users hit their limit)
+
     if event_type == "quota_hit":
         quota_key = f"abuse:quota_hits:{ip}"
         hits = await redis.incr(quota_key)
-        await redis.expire(quota_key, 3600)  # 1 hour window
-        
+        await redis.expire(quota_key, 3600)
+
         if hits >= MAX_QUOTA_HITS_PER_IP_PER_HOUR:
-            # Block the IP - likely account cycling
             await redis.setex(block_key, ABUSE_BLOCK_DURATION_SECONDS, "1")
-            logger.warning(
-                f"Blocking IP {ip} for excessive quota hits: {hits} in 1 hour"
-            )
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "error_code": "ABUSE_DETECTED",
-                    "message": "Suspicious activity detected. Your IP has been temporarily blocked.",
-                    "retry_after": ABUSE_BLOCK_DURATION_SECONDS,
-                },
-                headers={"Retry-After": str(ABUSE_BLOCK_DURATION_SECONDS)},
+            logger.warning("Blocking IP %s for excessive quota hits: %s in 1 hour", ip, hits)
+            raise _too_many(
+                "ABUSE_DETECTED",
+                "Suspicious activity detected. Your IP has been temporarily blocked.",
+                ABUSE_BLOCK_DURATION_SECONDS,
             )
 
 
@@ -204,33 +236,28 @@ def configure_abuse_detection(redis: RedisClient) -> None:
     _redis_client = redis
 
 
-async def track_generation_attempt(request: Request, user_id: str) -> None:
-    """Track a generation attempt for abuse detection."""
+async def _run_abuse_check(request: Request, user_id: str, event_type: str) -> None:
     if _redis_client is None:
         return
-    
     ip = get_client_ip(request)
     try:
-        await check_ip_abuse(_redis_client, ip, user_id, "generation")
+        await check_ip_abuse(_redis_client, ip, user_id, event_type)
     except HTTPException:
-        # Re-raise HTTP exceptions (blocks)
         raise
     except Exception as exc:
-        # Log but don't block on Redis errors
-        logger.error(f"Abuse detection error for IP {ip}: {exc}")
+        logger.error("Abuse detection error for IP %s: %s", ip, exc)
+
+
+async def track_generation_attempt(request: Request, user_id: str) -> None:
+    """Track a generation attempt for abuse detection."""
+    await _run_abuse_check(request, user_id, "generation")
 
 
 async def track_quota_exceeded(request: Request, user_id: str) -> None:
     """Track when a user hits their quota limit."""
-    if _redis_client is None:
-        return
-    
-    ip = get_client_ip(request)
-    try:
-        await check_ip_abuse(_redis_client, ip, user_id, "quota_hit")
-    except HTTPException:
-        # Re-raise HTTP exceptions (blocks)
-        raise
-    except Exception as exc:
-        # Log but don't block on Redis errors
-        logger.error(f"Abuse detection error for IP {ip}: {exc}")
+    await _run_abuse_check(request, user_id, "quota_hit")
+
+
+async def track_account_creation(request: Request) -> None:
+    """Track a successful-path signup attempt for per-IP farm limits."""
+    await _run_abuse_check(request, "", "account_creation")

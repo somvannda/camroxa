@@ -23,7 +23,9 @@ from platform_api.exceptions import (
     NotFoundError,
     ValidationError,
 )
+from platform_api.middleware.abuse_detection import get_client_ip, track_account_creation
 from platform_api.middleware.auth import AuthContext, get_current_user
+from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
 from platform_api.models.domain import User
 from platform_api.models.enums import UserRole, UserStatus
 from platform_api.models.products import PRODUCT_MUSIC_WEB, normalize_signup_product
@@ -206,6 +208,55 @@ def _clear_auth_cookies(response: Response, request: Request | None = None) -> N
     access_cookie_name, refresh_cookie_name = _resolve_cookie_names(request)
     response.delete_cookie(access_cookie_name, path="/", httponly=True, secure=secure, samesite="lax")
     response.delete_cookie(refresh_cookie_name, path="/", httponly=True, secure=secure, samesite="lax")
+
+
+def _turnstile_is_configured() -> bool:
+    return bool(get_settings().cloudflare_turnstile_secret_key.strip())
+
+
+async def _verify_turnstile_token(
+    *,
+    token: str | None,
+    expected_action: str,
+    turnstile: TurnstileService,
+    http_request: Request,
+    required: bool,
+) -> None:
+    """Verify Cloudflare Turnstile when a token is present, or when required."""
+    if not token or not str(token).strip():
+        if required:
+            raise ValidationError(
+                message="Bot verification is required.",
+                details={"field": "cf_turnstile_response"},
+            )
+        return
+
+    settings = get_settings()
+    expected_hostnames = {
+        h.strip() for h in settings.cloudflare_turnstile_hostnames.split(",") if h.strip()
+    }
+    result = await turnstile.verify(
+        str(token).strip(),
+        remote_ip=get_client_ip(http_request),
+    )
+    if not result.get("success"):
+        error_codes = result.get("error-codes", [])
+        raise ValidationError(
+            message=(
+                f"Bot verification failed: {', '.join(error_codes) if error_codes else 'unknown error'}"
+            ),
+            details={"field": "cf_turnstile_response", "cloudflare_errors": error_codes},
+        )
+    if result.get("action") != expected_action:
+        raise ValidationError(
+            message="Bot verification failed: invalid action",
+            details={"field": "cf_turnstile_response"},
+        )
+    if expected_hostnames and result.get("hostname") not in expected_hostnames:
+        raise ValidationError(
+            message="Bot verification failed: invalid hostname",
+            details={"field": "cf_turnstile_response"},
+        )
 
 
 async def _set_session_for_user(
@@ -452,37 +503,21 @@ async def register(
     _log.warning("Register called: email=%s display_name=%s password_len=%d",
                  request.email, request.display_name, len(request.password))
 
-    # Verify Cloudflare Turnstile token (if provided from web clients)
-    if request.cf_turnstile_response:
-        settings = get_settings()
-        expected_hostnames = set(
-            h.strip() for h in settings.cloudflare_turnstile_hostnames.split(",") if h.strip()
-        )
-        
-        result = await turnstile.verify(
-            request.cf_turnstile_response,
-            remote_ip=http_request.client.host if http_request.client else None
-        )
-        
-        # Canonical validation: success, action, and hostname
-        if not result.get("success"):
-            error_codes = result.get("error-codes", [])
-            raise ValidationError(
-                message=f"Bot verification failed: {', '.join(error_codes) if error_codes else 'unknown error'}",
-                details={"field": "cf_turnstile_response", "cloudflare_errors": error_codes}
-            )
-        
-        if result.get("action") != "register":
-            raise ValidationError(
-                message="Bot verification failed: invalid action",
-                details={"field": "cf_turnstile_response"}
-            )
-        
-        if expected_hostnames and result.get("hostname") not in expected_hostnames:
-            raise ValidationError(
-                message="Bot verification failed: invalid hostname",
-                details={"field": "cf_turnstile_response"}
-            )
+    await enforce_rate_limit_for_endpoint(
+        f"ip:{get_client_ip(http_request)}",
+        "register",
+    )
+
+    header_product = http_request.headers.get("X-Signup-Product")
+    signup_product = normalize_signup_product(request.product or header_product)
+    require_turnstile = signup_product == PRODUCT_MUSIC_WEB and _turnstile_is_configured()
+    await _verify_turnstile_token(
+        token=request.cf_turnstile_response,
+        expected_action="register",
+        turnstile=turnstile,
+        http_request=http_request,
+        required=require_turnstile,
+    )
 
     # Validate all fields — collect all errors
     errors = _validate_registration(request)
@@ -492,9 +527,6 @@ async def register(
             message="Validation failed.",
             details={"fields": errors},
         )
-
-    header_product = http_request.headers.get("X-Signup-Product")
-    signup_product = normalize_signup_product(request.product or header_product)
 
     signup_mode = await invitation_code_service.get_signup_mode()
     normalized_invitation_code = (
@@ -583,6 +615,7 @@ async def register(
         and signup_mode == "invite_only"
         and bool(normalized_invitation_code)
     )
+    await track_account_creation(http_request)
     if needs_invite_consume:
         pool = get_db_pool()
         async with pool.acquire() as conn:

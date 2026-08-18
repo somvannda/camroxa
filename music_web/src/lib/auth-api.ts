@@ -27,6 +27,10 @@ async function readError(response: Response, fallback: string): Promise<string> 
     };
     if (typeof data.detail === 'string') return data.detail;
     if (Array.isArray(data.detail) && data.detail[0]?.msg) return data.detail[0].msg;
+    if (data.detail && typeof data.detail === 'object' && 'message' in data.detail) {
+      const message = (data.detail as { message?: string }).message;
+      if (message) return message;
+    }
     if (data.error?.details?.fields?.[0]?.message) return data.error.details.fields[0].message;
     if (data.error?.message) return data.error.message;
   } catch {
