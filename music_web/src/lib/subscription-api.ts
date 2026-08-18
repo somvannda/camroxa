@@ -44,6 +44,8 @@ export type CreditBalance = {
   daily_free_limit: number;
   daily_free_used: number;
   has_subscription: boolean;
+  current_period_end?: string | null;
+  reset_at?: string | null;
   breakdown: {
     monthly: number;
     topup: number;
@@ -124,7 +126,15 @@ export async function fetchSubscriptionPlans(): Promise<{ plans: SubscriptionPla
 }
 
 export async function fetchMySubscription(): Promise<UserSubscription | null> {
-  return apiFetch<UserSubscription | null>('/api/v1/v2/subscriptions/my-subscription');
+  const data = await apiFetch<UserSubscription | { data?: UserSubscription | null } | null>(
+    '/api/v1/v2/subscriptions/my-subscription',
+  );
+  const nested =
+    data && typeof data === 'object' && 'data' in data && data.data && typeof data.data === 'object'
+      ? data.data
+      : data;
+  if (!nested || typeof nested !== 'object' || !('status' in nested)) return null;
+  return nested as UserSubscription;
 }
 
 export async function purchaseSubscription(input: {
@@ -249,6 +259,43 @@ export function formatPlanDisplayName(planName: string): string {
   if (cycle === 'monthly') return `${label} (Monthly)`;
   if (cycle === 'yearly') return `${label} (Yearly)`;
   return label;
+}
+
+export function parseBillingDate(value?: string | null): Date | null {
+  if (!value || !value.trim()) return null;
+  const direct = new Date(value);
+  if (Number.isFinite(direct.getTime())) return direct;
+  const normalized = value.trim().replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
+  const retry = new Date(normalized);
+  return Number.isFinite(retry.getTime()) ? retry : null;
+}
+
+export function matchCurrentPlan(
+  plans: SubscriptionPlan[],
+  subscription: UserSubscription | null,
+  grantedCredits = 0,
+): SubscriptionPlan | undefined {
+  if (subscription?.plan_id) {
+    const byId = plans.find((plan) => plan.id === subscription.plan_id);
+    if (byId) return byId;
+  }
+  if (subscription?.plan_name) {
+    const want = formatPlanDisplayName(subscription.plan_name).toLowerCase();
+    const byName = plans.find(
+      (plan) => formatPlanDisplayName(plan.name).toLowerCase() === want,
+    );
+    if (byName) return byName;
+  }
+  if (grantedCredits <= 0) return undefined;
+  const cycle = subscription?.billing_cycle;
+  const pool = cycle ? plans.filter((plan) => plan.billing_cycle === cycle) : plans;
+  const closest = [...pool].sort(
+    (a, b) =>
+      Math.abs(a.monthly_credits - grantedCredits) - Math.abs(b.monthly_credits - grantedCredits),
+  )[0];
+  if (!closest) return undefined;
+  const tolerance = Math.max(50, grantedCredits * 0.15);
+  return Math.abs(closest.monthly_credits - grantedCredits) <= tolerance ? closest : undefined;
 }
 
 /**

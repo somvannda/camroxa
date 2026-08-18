@@ -10,12 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Security
-
-- Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
-
 ### Fixed
 
+- Profile no longer shows the “Unlock Unlimited Music Creation” pitch to paid subscribers. It shows the current plan, next billing date, and the other public plans. See `docs/changelog/2026-08-18-music-web-profile-current-plan.md`.
 - Create workspace Play/Ready wait until the audio file actually streams (Suno CDN 403 is still Finishing). See `docs/changelog/2026-08-18-music-web-stream-ready.md`.
 - Create workspace: clicking a row selects it without playing. Play moves the active selection. Covers show a spinner until Ready, then play; playing shows a tiny purple equalizer on the artwork. Click a title to rename that clip only (Version 1 / Version 2 stay independent). The v5.5 tag sits after Ready. Download badges keep size with a visible spinner overlay; order is playlist, LRC, SRT, MP3, WAV. WAV download no longer fails the MP3-only audio check. Play uses `/stream/ok` and `/stream/alt` so both versions load. See `docs/changelog/2026-08-18-music-web-workspace-follow-playing.md`.
 - Session now survives the 15-minute access cookie by refreshing it with the 7-day refresh cookie, same as the user portal. See `docs/changelog/2026-08-18-music-web-session-refresh.md`.
@@ -23,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Create track details show stored vocal gender and slider percents instead of default 0.50; clips are labeled Version 1/2. Play stays on Camxora URLs (no public Suno/B2 redirect). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
 - Catalog/Explore play uses the same Camxora stream proxy (signed B2 URLs stay server-side). See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
 - Catalog JSON no longer includes `storage_key` or `suno_audio_id`; the player only loads Camxora play/stream paths. See `docs/changelog/2026-08-17-music-web-no-origin-audio-urls.md`.
+
+### Security
+
+- Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
 
 ### Changed
 
