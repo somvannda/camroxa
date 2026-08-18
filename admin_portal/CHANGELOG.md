@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- User detail: freeze / unfreeze music-web generation for 1, 6, 24, or 72 hours. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
+
 ### Fixed
 
 - **User Spent** Song allowance (`S`) no longer stuck at 0%. API now maps

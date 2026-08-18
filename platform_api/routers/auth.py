@@ -448,6 +448,12 @@ async def login(
             _log.warning(f"Authentication failed for {request.email}: {auth_err}")
             # Record the failed attempt (may trigger lockout)
             await lockout.record_failed_attempt(request.email)
+            try:
+                await lockout.check_lockout(request.email)
+            except AccountLockedError:
+                from platform_api.services.generation_freeze import note_login_lockout
+
+                await note_login_lockout(http_request, request.email)
             raise
 
         # Success — reset failure counter

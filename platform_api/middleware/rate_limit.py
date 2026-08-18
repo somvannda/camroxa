@@ -399,6 +399,12 @@ class RateLimiter:
                 config.max_requests,
                 config.window_seconds,
             )
+            try:
+                from platform_api.services.generation_freeze import note_rate_limit_storm
+
+                await note_rate_limit_storm(request, user_id)
+            except Exception:
+                pass
             raise HTTPException(
                 status_code=429,
                 detail={

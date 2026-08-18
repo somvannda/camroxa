@@ -67,6 +67,33 @@ export function useReactivateUser() {
   });
 }
 
+export function useFreezeGeneration() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; hours: number; reason: string }) =>
+      httpClient.post(`/api/v1/users/${data.id}/freeze-generation`, {
+        hours: data.hours,
+        reason: data.reason,
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', variables.id, 'details'] });
+    },
+  });
+}
+
+export function useUnfreezeGeneration() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      httpClient.post(`/api/v1/users/${id}/unfreeze-generation`),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', variables, 'details'] });
+    },
+  });
+}
+
 export function useDeleteUser() {
   const queryClient = useQueryClient();
   return useMutation({

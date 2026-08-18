@@ -95,6 +95,11 @@ export interface UserFullDetail {
 
   custom_descriptions: UserOwnedPromptSummary[];
   custom_structures: UserOwnedPromptSummary[];
+
+  generation_frozen?: boolean;
+  generation_frozen_reason?: string | null;
+  generation_frozen_hours?: number | null;
+  generation_frozen_retry_after?: number;
 }
 
 export interface QuotaKindStatus {

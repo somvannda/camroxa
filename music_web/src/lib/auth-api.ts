@@ -22,9 +22,15 @@ export type TokenResponse = {
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
     const data = (await response.json()) as {
-      detail?: string | { msg?: string }[];
-      error?: { message?: string; details?: { fields?: Array<{ message?: string }> } };
+      detail?: string | { msg?: string; message?: string }[];
+      error?: { message?: string; code?: string; details?: { fields?: Array<{ message?: string }> } };
     };
+    if (data.error?.code === 'GEO_BLOCKED') {
+      return data.error.message || 'This service is only available in Cambodia.';
+    }
+    if (data.error?.code === 'GENERATION_FROZEN') {
+      return data.error.message || 'Music generation is paused. Try again later.';
+    }
     if (typeof data.detail === 'string') return data.detail;
     if (Array.isArray(data.detail) && data.detail[0]?.msg) return data.detail[0].msg;
     if (data.detail && typeof data.detail === 'object' && 'message' in data.detail) {

@@ -10,12 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
+### Security
 
-- Create Simple song description follows Suno V5 limits: UI **1000** (style) with a live counter; API prompt **5000**. Simple uses the description as style. See `docs/changelog/2026-08-18-web-music-simple-prompt-suno-limits.md`.
+- Cambodia-only access and a clear message when Create is paused after abuse. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
+- Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
 
 ### Fixed
 
+- Play no longer sends a logged-in listener back to login when the clip URL is `/stream/ok` or `/stream/alt`. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Profile no longer shows the “Unlock Unlimited Music Creation” pitch to paid subscribers. It shows the current plan, next billing date, and the other public plans. See `docs/changelog/2026-08-18-music-web-profile-current-plan.md`.
 - Create workspace Play/Ready wait until the audio file actually streams (Suno CDN 403 is still Finishing). See `docs/changelog/2026-08-18-music-web-stream-ready.md`.
 - Create workspace: clicking a row selects it without playing. Play moves the active selection. Covers show a spinner until Ready, then play; playing shows a tiny purple equalizer on the artwork. Click a title to rename that clip only (Version 1 / Version 2 stay independent). The v5.5 tag sits after Ready. Download badges keep size with a visible spinner overlay; order is playlist, LRC, SRT, MP3, WAV. WAV download no longer fails the MP3-only audio check. Play uses `/stream/ok` and `/stream/alt` so both versions load. See `docs/changelog/2026-08-18-music-web-workspace-follow-playing.md`.
@@ -25,12 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Catalog/Explore play uses the same Camxora stream proxy (signed B2 URLs stay server-side). See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
 - Catalog JSON no longer includes `storage_key` or `suno_audio_id`; the player only loads Camxora play/stream paths. See `docs/changelog/2026-08-17-music-web-no-origin-audio-urls.md`.
 
-### Security
-
-- Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
-
 ### Changed
 
+- Create Simple song description follows Suno V5 limits: UI **1000** (style) with a live counter; API prompt **5000**. Simple uses the description as style. See `docs/changelog/2026-08-18-web-music-simple-prompt-suno-limits.md`.
 - Create workspace rows show each clip’s duration before Ready (for example `3:45 · Ready`). See `docs/changelog/2026-08-17-web-music-clip-duration.md`.
 - Unconfirmed music-web sessions stay on verify-email with no Create/sidebar; `/create` redirects back. See `docs/changelog/2026-08-17-music-web-email-confirm-lock.md`.
 - Checkout iframe only loads CutLuy HTTPS URLs (sandbox + no-referrer). See `docs/changelog/2026-08-17-music-web-checkout-security.md`.

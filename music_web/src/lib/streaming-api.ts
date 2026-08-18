@@ -1,3 +1,5 @@
+import { musicAuthFetch } from '@/lib/auth-fetch';
+
 function resolveApiBase(): string {
   // Browser: always same-origin so nginx /api proxy sets/sends music.* cookies.
   if (typeof window !== 'undefined') {
@@ -152,7 +154,7 @@ export function catalogStreamUrl(trackId: string): string {
 }
 
 const CAMXORA_AUDIO_PROXY_RE =
-  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\?variant=(?:ok|alt))?|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
+  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\/(?:ok|alt))?(?:\?variant=(?:ok|alt))?|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
 
 export function isTrustedPlayUrl(url: string): boolean {
   const text = String(url || '').trim();
@@ -173,7 +175,13 @@ export function isTrustedPlayUrl(url: string): boolean {
 }
 
 export async function getPlayUrl(trackId: string) {
-  return fetchJson<{
+  const response = await musicAuthFetch(
+    `/api/v1/public/streaming/tracks/${encodeURIComponent(trackId)}/play-url`,
+  );
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json() as Promise<{
     url: string;
     title?: string;
     album_id?: string | null;
@@ -185,7 +193,7 @@ export async function getPlayUrl(trackId: string) {
     play_count?: number;
     genre?: string | null;
     lyrics?: string | null;
-  }>(`/api/v1/public/streaming/tracks/${trackId}/play-url`);
+  }>;
 }
 
 export async function getGenres() {

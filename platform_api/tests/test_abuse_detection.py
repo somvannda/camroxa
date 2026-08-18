@@ -47,6 +47,37 @@ async def test_signup_ip_hourly_cap() -> None:
 
 
 @pytest.mark.asyncio
+async def test_signup_cap_still_429s_and_freeze_is_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Generate freeze must not replace 3/hour signup farm protection."""
+    redis = _FakeRedis()
+    ip = "203.0.113.13"
+    freeze_calls: list[tuple[str | None, str | None, str]] = []
+
+    async def _fake_freeze(
+        *,
+        user_id: str | None = None,
+        ip: str | None = None,
+        reason: str = "",
+        hours: int | None = None,
+    ) -> None:
+        freeze_calls.append((user_id, ip, reason))
+
+    monkeypatch.setattr(
+        "platform_api.services.generation_freeze.freeze_generation",
+        _fake_freeze,
+    )
+    for _ in range(MAX_ACCOUNTS_PER_IP_PER_HOUR):
+        await check_ip_abuse(redis, ip, "", "account_creation")
+    with pytest.raises(HTTPException) as exc_info:
+        await check_ip_abuse(redis, ip, "", "account_creation")
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail["error_code"] == "SIGNUP_IP_LIMIT"
+    assert freeze_calls == [(None, ip, "signup_farm")]
+
+
+@pytest.mark.asyncio
 async def test_generation_ip_daily_cap() -> None:
     redis = _FakeRedis()
     ip = "203.0.113.11"

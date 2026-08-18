@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit, enforce_rate_limit_for_endpoint
 from platform_api.middleware.abuse_detection import track_generation_attempt, track_quota_exceeded
+from platform_api.services.generation_freeze import (
+    enforce_generation_freeze,
+    reject_probe_payload,
+)
 from platform_api.services.web_music_service import WebMusicService, content_disposition
 from platform_api.exceptions import NotFoundError, QuotaExceededError
 
@@ -342,6 +346,8 @@ async def generate_draft(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> WebMusicDraftResponse:
+    await enforce_generation_freeze(http_request, ctx.user_id)
+    await reject_probe_payload(http_request, ctx.user_id, body.prompt)
     await enforce_rate_limit(http_request, ctx.user_id)
     lyrics, title = await service.generate_draft(UUID(ctx.user_id), body.prompt)
     return WebMusicDraftResponse(lyrics=lyrics, title=title)
@@ -354,6 +360,16 @@ async def generate_styles(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> WebMusicStyleResponse:
+    await enforce_generation_freeze(http_request, ctx.user_id)
+    await reject_probe_payload(
+        http_request,
+        ctx.user_id,
+        body.style,
+        body.lyrics,
+        body.title,
+        body.description,
+        body.prompt,
+    )
     await enforce_rate_limit(http_request, ctx.user_id)
     style = await service.generate_styles(
         UUID(ctx.user_id),
@@ -373,6 +389,16 @@ async def generate(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> WebMusicGenerateResponse:
+    await enforce_generation_freeze(http_request, ctx.user_id)
+    await reject_probe_payload(
+        http_request,
+        ctx.user_id,
+        body.lyrics,
+        body.style,
+        body.title,
+        body.prompt,
+        body.negative_tags,
+    )
     await enforce_rate_limit(http_request, ctx.user_id)
     await track_generation_attempt(http_request, ctx.user_id)
     
