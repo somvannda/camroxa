@@ -287,3 +287,10 @@ async def test_catalog_stream_proxies_without_location(
     assert "location" not in response.headers
     assert b"ID3fake" in response.content
     mock_catalog_service.proxy_track_audio.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_catalog_play_auth_returns_204(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/public/streaming/play-auth")
+    assert response.status_code == 204
+    assert response.content == b""

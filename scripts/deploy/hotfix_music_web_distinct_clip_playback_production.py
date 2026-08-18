@@ -28,6 +28,7 @@ PRODUCTION_HOST = "82.197.71.248"
 FILES = [
     "platform_api/services/audio_origin_proxy.py",
     "platform_api/services/web_music_service.py",
+    "platform_api/services/streaming_upload_service.py",
     "music_web/src/components/player-provider.tsx",
     "music_web/src/components/create-page-client.tsx",
 ]
@@ -71,6 +72,7 @@ REPO=/opt/camxora/repo
 chown camxora:camxora \
   $REPO/platform_api/services/audio_origin_proxy.py \
   $REPO/platform_api/services/web_music_service.py \
+  $REPO/platform_api/services/streaming_upload_service.py \
   $REPO/music_web/src/components/player-provider.tsx \
   $REPO/music_web/src/components/create-page-client.tsx
 
@@ -89,27 +91,6 @@ echo HEALTH_BODY
 cat /tmp/prod_health.json || true
 echo
 test "$code" = "200"
-
-echo '=== rebuild music_web ==='
-API_URL=https://api.camxora.com
-sudo -u camxora bash -lc "
-  set -e
-  cd $REPO/music_web
-  rm -rf .next
-  npm ci || npm install --no-audit --no-fund
-  TURNSTILE_SITE=\$(grep -m1 '^CLOUDFLARE_TURNSTILE_SITE_KEY=' $REPO/platform_api/.env | cut -d= -f2- || true)
-  cat > .env.production <<ENVEOF
-NEXT_PUBLIC_API_BASE_URL=$API_URL
-NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com
-NEXT_PUBLIC_WEBSITE_URL=https://camxora.com
-NEXT_PUBLIC_CAMXORA_ENV=production
-NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=\$TURNSTILE_SITE
-ENVEOF
-  npm run build
-"
-systemctl restart camxora-music
-sleep 4
-systemctl is-active camxora-music
 echo DISTINCT_CLIP_PROD_DONE
 """,
             timeout=480,

@@ -85,6 +85,72 @@ async def test_owner_play_urls_are_unique_per_task_and_variant() -> None:
     url_a_alt = await service._mint_owner_play_url(user_id, task_a, "alt")
     assert url_a != url_b
     assert url_a != url_a_alt
-    assert url_a == f"/api/v1/web-music/generations/{task_a}/stream?variant=ok"
-    assert url_a_alt == f"/api/v1/web-music/generations/{task_a}/stream?variant=alt"
-    assert url_b == f"/api/v1/web-music/generations/{task_b}/stream?variant=ok"
+    assert url_a == f"/api/v1/web-music/generations/{task_a}/stream/ok"
+    assert url_a_alt == f"/api/v1/web-music/generations/{task_a}/stream/alt"
+    assert url_b == f"/api/v1/web-music/generations/{task_b}/stream/ok"
+
+
+def test_web_music_storage_key_is_unique_per_task() -> None:
+    from uuid import uuid4
+
+    from platform_api.services.streaming_upload_service import (
+        b2_key_is_task_scoped,
+        web_music_storage_key,
+    )
+
+    user_id = uuid4()
+    task_a = uuid4()
+    task_b = uuid4()
+    key_a = web_music_storage_key(user_id=user_id, suno_task_id=task_a, variant="ok", ext="mp3")
+    key_b = web_music_storage_key(user_id=user_id, suno_task_id=task_b, variant="ok", ext="mp3")
+    shared = f"web-music/{user_id}/untitled-ok.mp3"
+    assert key_a != key_b
+    assert str(task_a) in key_a
+    assert b2_key_is_task_scoped(key_a, task_a) is True
+    assert b2_key_is_task_scoped(key_a, task_b) is False
+    assert b2_key_is_task_scoped(shared, task_a) is False
+
+
+@pytest.mark.asyncio
+async def test_signed_get_url_uses_cdn_path_when_configured() -> None:
+    from platform_api.services.storage_service import StorageService
+    from platform_api.services.streaming_config_service import StreamingStorageConfig
+
+    config = StreamingStorageConfig(
+        key_id="key",
+        application_key="secret",
+        bucket="bucket",
+        region="us-west-004",
+        endpoint="https://s3.example",
+        cdn_base_url="https://cdn.example",
+        stream_url_ttl_seconds=60,
+        secret_source="environment",
+        configured=True,
+    )
+    storage = StorageService(config)
+    url = await storage.get_signed_get_url("web-music/u/t/ok.mp3")
+    assert url == "https://cdn.example/web-music/u/t/ok.mp3"
+
+
+@pytest.mark.asyncio
+async def test_origin_playback_skips_shared_untitled_b2_key() -> None:
+    from unittest.mock import MagicMock
+    from uuid import uuid4
+
+    from platform_api.services.web_music_service import WebMusicService
+
+    service = WebMusicService(pool=MagicMock(), generation_service=MagicMock(), redis=MagicMock())
+    task_id = uuid4()
+    user_id = uuid4()
+    row = {
+        "status": "SUCCESS",
+        "b2_storage_key_ok": f"web-music/{user_id}/untitled-ok.mp3",
+        "b2_storage_key_alt": f"web-music/{user_id}/untitled-alt.mp3",
+        "audio_url_ok": "https://cdn.example.com/fire-ok.mp3",
+        "audio_url_alt": "https://cdn.example.com/fire-alt.mp3",
+    }
+    origin = await service._origin_playback_url(row, task_id=task_id, variant_key="ok")
+    assert origin == ("https://cdn.example.com/fire-ok.mp3", "suno")
+    origin_alt = await service._origin_playback_url(row, task_id=task_id, variant_key="alt")
+    assert origin_alt == ("https://cdn.example.com/fire-alt.mp3", "suno")
+

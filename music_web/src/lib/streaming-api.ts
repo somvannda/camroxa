@@ -152,7 +152,7 @@ export function catalogStreamUrl(trackId: string): string {
 }
 
 const CAMXORA_AUDIO_PROXY_RE =
-  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\?variant=(?:ok|alt))?|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
+  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\/(?:ok|alt)|\?variant=(?:ok|alt))?|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
 
 export function isTrustedPlayUrl(url: string): boolean {
   const text = String(url || '').trim();

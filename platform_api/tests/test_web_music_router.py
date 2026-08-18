@@ -172,6 +172,14 @@ class TestWebMusicRouter:
         mock_web_music_service.proxy_playback.assert_awaited()
         mock_web_music_service.download_mp3.assert_not_awaited()
 
+        path_response = await client.get(
+            f"/api/v1/web-music/generations/{task_id}/stream/alt",
+            headers={"Range": "bytes=0-1023"},
+            follow_redirects=False,
+        )
+        assert path_response.status_code == 200
+        assert mock_web_music_service.proxy_playback.await_args.kwargs["variant"] == "alt"
+
     async def test_generate_draft(self, client: AsyncClient, mock_web_music_service: AsyncMock) -> None:
         response = await client.post(
             "/api/v1/web-music/generate-draft",

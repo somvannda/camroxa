@@ -238,6 +238,36 @@ def test_is_disallowed_suno_audio_url_rejects_m4a_and_hls() -> None:
     assert validate_mp3_bytes(b"\x00\x00\x00\x18ftypmp42") is False
 
 
+def test_variant_url_candidates_never_mix_clips_by_default() -> None:
+    from platform_api.services.suno_audio_resolver import variant_url_candidates
+
+    ok = "https://cdn.example.com/ok.mp3"
+    alt = "https://cdn.example.com/alt.mp3"
+    strict = variant_url_candidates(
+        variant="ok",
+        stored_ok=ok,
+        stored_alt=alt,
+        refreshed=None,
+    )
+    mixed = variant_url_candidates(
+        variant="ok",
+        stored_ok=ok,
+        stored_alt=alt,
+        refreshed=None,
+        include_other_variant=True,
+    )
+    assert strict == [ok]
+    assert mixed == [ok, alt]
+
+
+def test_validate_wav_bytes() -> None:
+    from platform_api.services.suno_audio_resolver import validate_wav_bytes
+
+    assert validate_wav_bytes(b"RIFF\x24\x00\x00\x00WAVEfmt ") is True
+    assert validate_wav_bytes(b"ID3" + b"\x00" * 20) is False
+    assert validate_wav_bytes(b"RIFF") is False
+
+
 def test_callback_indicates_success_for_complete_callback_type() -> None:
     assert callback_indicates_success({"code": 200, "data": {"callbackType": "complete"}})
 

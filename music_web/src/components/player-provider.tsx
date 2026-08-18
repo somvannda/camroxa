@@ -217,7 +217,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (shouldUseCredentialedCors(url)) {
         audio.crossOrigin = 'use-credentials';
       }
-      const playUrl = url.includes('?') ? `${url}&_=${token}` : `${url}?_=${token}`;
+      const playUrl = isCatalogTrack
+        ? url
+        : url.includes('?')
+          ? `${url}&_=${token}`
+          : `${url}?_=${token}`;
       audio.src = playUrl;
       audio.volume = muted ? 0 : volume;
       try {

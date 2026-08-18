@@ -271,7 +271,7 @@ class StreamingCatalogService:
         *,
         range_header: str | None = None,
     ):
-        """Stream catalog audio through the API. Never return the B2 URL to the browser."""
+        """Stream catalog audio through the API from B2. Never Suno, never a B2 URL to the browser."""
         track = await self._repo.get_published_track(track_id)
         if not track:
             raise NotFoundError("Track not found or streaming is not configured.")

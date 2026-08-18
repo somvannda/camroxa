@@ -63,9 +63,9 @@ class StorageService:
         await asyncio.to_thread(_put)
         return normalized_key
 
-    async def get_signed_get_url(self, key: str) -> str:
+    async def get_signed_get_url(self, key: str, *, use_cdn: bool = True) -> str:
         normalized_key = key.lstrip("/")
-        if self._config.cdn_base_url:
+        if use_cdn and self._config.cdn_base_url:
             base = self._config.cdn_base_url.rstrip("/")
             return f"{base}/{quote(normalized_key, safe='/')}"
 

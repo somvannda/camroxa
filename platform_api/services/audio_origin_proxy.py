@@ -13,6 +13,8 @@ from fastapi.responses import StreamingResponse
 from platform_api.exceptions import NotFoundError
 
 _CHUNK_SIZE = 64 * 1024
+_PLAY_CHUNK_BYTES = 256 * 1024
+_RANGE_RE = re.compile(r"bytes=(\d+)-(\d*)", re.I)
 _PROXY_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
     "Accept": "audio/mpeg,application/octet-stream,*/*;q=0.8",
@@ -20,7 +22,7 @@ _PROXY_HEADERS = {
 _CAMXORA_AUDIO_PROXY_RE = re.compile(
     r"^/api/v1/(?:"
     r"web-music/play/[A-Za-z0-9._-]+"
-    r"|web-music/generations/[0-9a-fA-F-]+/stream(?:\?variant=(?:ok|alt))?"
+    r"|web-music/generations/[0-9a-fA-F-]+/stream(?:/(?:ok|alt)|\?variant=(?:ok|alt))?"
     r"|public/streaming/tracks/[0-9a-fA-F-]+/stream"
     r")$"
 )
@@ -45,6 +47,32 @@ def is_initial_play_range(range_header: str | None) -> bool:
     if not range_header:
         return True
     return range_header.strip().lower().startswith("bytes=0-")
+
+
+def is_missing_range(range_header: str | None) -> bool:
+    """True when the client asked for the whole file with no Range header."""
+    return not str(range_header or "").strip()
+
+
+def clamp_stream_range(range_header: str | None) -> str:
+    """Bound play ranges so a scraper cannot one-shot the full MP3.
+
+    Real players send Range and follow up 206 responses. A bare GET, or
+    ``bytes=0-`` with no end, is rewritten to the first 256 KiB.
+    """
+    raw = str(range_header or "").strip()
+    match = _RANGE_RE.search(raw) if raw else None
+    if match is None:
+        return f"bytes=0-{_PLAY_CHUNK_BYTES - 1}"
+    start = int(match.group(1))
+    end_raw = match.group(2)
+    max_end = start + _PLAY_CHUNK_BYTES - 1
+    if end_raw == "":
+        return f"bytes={start}-{max_end}"
+    end = int(end_raw)
+    if end < start or end > max_end:
+        end = max_end
+    return f"bytes={start}-{end}"
 
 
 def _safe_response_headers(origin_headers: Mapping[str, str]) -> dict[str, str]:
@@ -80,8 +108,7 @@ async def proxy_origin_audio(
         raise NotFoundError("Playback source is not available.")
 
     request_headers = dict(_PROXY_HEADERS)
-    if range_header:
-        request_headers["Range"] = range_header
+    request_headers["Range"] = clamp_stream_range(range_header)
 
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(60.0, connect=10.0),

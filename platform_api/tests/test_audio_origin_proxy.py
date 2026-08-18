@@ -18,11 +18,29 @@ def test_is_initial_play_range() -> None:
     assert is_initial_play_range("bytes=1024-2047") is False
 
 
+def test_clamp_stream_range_bounds_full_file_requests() -> None:
+    from platform_api.services.audio_origin_proxy import clamp_stream_range, is_missing_range
+
+    assert is_missing_range(None) is True
+    assert is_missing_range("bytes=0-") is False
+    assert clamp_stream_range(None) == "bytes=0-262143"
+    assert clamp_stream_range("bytes=0-") == "bytes=0-262143"
+    assert clamp_stream_range("bytes=0-1023") == "bytes=0-1023"
+    assert clamp_stream_range("bytes=1024-2047") == "bytes=1024-2047"
+    assert clamp_stream_range("bytes=500000-") == "bytes=500000-762143"
+
+
 def test_is_camxora_audio_proxy_url() -> None:
     assert is_camxora_audio_proxy_url("/api/v1/web-music/play/abc_DEF-123") is True
     assert (
         is_camxora_audio_proxy_url(
             "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream?variant=ok"
+        )
+        is True
+    )
+    assert (
+        is_camxora_audio_proxy_url(
+            "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/alt"
         )
         is True
     )

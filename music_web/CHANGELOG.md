@@ -16,7 +16,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Create track details show stored vocal gender and slider percents instead of default 0.50; clips are labeled Version 1/2. Play stays on Camxora URLs (no public Suno/B2 redirect). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
 - Catalog/Explore play uses the same Camxora stream proxy (signed B2 URLs stay server-side). See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
 - Catalog JSON no longer includes `storage_key` or `suno_audio_id`; the player only loads Camxora play/stream paths. See `docs/changelog/2026-08-17-music-web-no-origin-audio-urls.md`.
-- Create workspace Play no longer keeps the first clip’s audio when switching Version or song. See `docs/changelog/2026-08-17-music-web-distinct-clip-playback.md`.
+- Create workspace Play no longer keeps the first clip’s audio when switching Version or song; shared Backblaze `untitled-*.mp3` objects are ignored. See `docs/changelog/2026-08-17-music-web-distinct-clip-playback.md`.
+- Catalog play uses origin nginx cache after login (B2 only, never Suno). Create workspace streams stay private. See `docs/changelog/2026-08-18-catalog-cache-preupload.md`.
+- Create Version 1/2 play URLs put `ok`/`alt` in the path so the player cannot reuse Version 2’s audio for Version 1. See `docs/changelog/2026-08-18-create-stream-variant-path.md`.
+- Create Version 1/2 no longer share one Backblaze object (ok.mp3 and alt.mp3 were identical). Playback signs B2 directly instead of the CDN copy. See `docs/changelog/2026-08-18-web-music-duplicate-b2-clips.md`.
+- Create MP3/WAV keep retrying this clip’s own Suno file until it is ready; they do not download the other version. See `docs/changelog/2026-08-18-web-music-cdn-retry.md`.
 
 ### Changed
 

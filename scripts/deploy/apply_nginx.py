@@ -44,6 +44,8 @@ def apply_remote(client, env: str) -> tuple[str, str]:
     cfg = ENV_CONFIG[env]
     cmd = f"""
 set -e
+mkdir -p /var/cache/nginx/camxora_catalog_audio
+chown www-data:www-data /var/cache/nginx/camxora_catalog_audio || chown nginx:nginx /var/cache/nginx/camxora_catalog_audio || true
 cp {cfg["remote_tmp"]} {cfg["remote_site"]}
 ln -sf {cfg["remote_site"]} {cfg["site_link"]}
 nginx -t

@@ -19,6 +19,7 @@ SANDBOX_HOST = "46.250.235.83"
 FILES = [
     "platform_api/services/audio_origin_proxy.py",
     "platform_api/services/web_music_service.py",
+    "platform_api/services/streaming_upload_service.py",
     "music_web/src/components/player-provider.tsx",
     "music_web/src/components/create-page-client.tsx",
 ]
@@ -44,39 +45,31 @@ REPO=/opt/camxora/repo
 chown camxora:camxora \
   $REPO/platform_api/services/audio_origin_proxy.py \
   $REPO/platform_api/services/web_music_service.py \
+  $REPO/platform_api/services/streaming_upload_service.py \
   $REPO/music_web/src/components/player-provider.tsx \
   $REPO/music_web/src/components/create-page-client.tsx
+echo '=== restart api ==='
 systemctl restart camxora-api
-sleep 3
-systemctl is-active camxora-api
-curl -sS -m 8 -o /dev/null -w 'health=%{http_code}\n' http://127.0.0.1:8100/health
-API_URL=https://api.sandbox.camxora.com
-sudo -u camxora bash -lc "
-  set -e
-  cd $REPO/music_web
-  rm -rf .next
-  npm ci || npm install --no-audit --no-fund
-  TURNSTILE_SITE=\$(grep -m1 '^CLOUDFLARE_TURNSTILE_SITE_KEY=' $REPO/platform_api/.env | cut -d= -f2- || true)
-  cat > .env.production <<ENVEOF
-NEXT_PUBLIC_API_BASE_URL=$API_URL
-NEXT_PUBLIC_USER_PORTAL_URL=https://app.sandbox.camxora.com
-NEXT_PUBLIC_WEBSITE_URL=https://sandbox.camxora.com
-NEXT_PUBLIC_CAMXORA_ENV=sandbox
-NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=\$TURNSTILE_SITE
-ENVEOF
-  npm run build
-"
-systemctl restart camxora-music
-sleep 4
-systemctl is-active camxora-music
+code=""
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 20; do
+  code=$(curl -sS -m 3 -o /tmp/sandbox_health.json -w '%{http_code}' http://127.0.0.1:8100/health || true)
+  echo attempt_$i health=$code
+  if [ "$code" = "200" ]; then
+    break
+  fi
+  sleep 2
+done
+test "$code" = "200"
 echo DISTINCT_CLIP_SANDBOX_DONE
 """
-        _, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=420)
+        _, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=480)
         while not stdout.channel.exit_status_ready():
             time.sleep(0.2)
         out = stdout.read().decode("utf-8", errors="replace")
+        code = stdout.channel.recv_exit_status()
         print(out.encode("ascii", errors="replace").decode("ascii"))
-        return stdout.channel.recv_exit_status()
+        print(f"exit={code}", flush=True)
+        return code
     finally:
         client.close()
 

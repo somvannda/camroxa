@@ -695,14 +695,17 @@ async def suno_callback(
     if persist_status == TaskStatus.SUCCESS and (audio_url_ok or audio_url_alt):
         task_source = str(task_data.get("source") or "").strip().lower()
         has_song = bool(task_data.get("song_id"))
-        if task_source != "web_music" and has_song:
-            try:
-                from platform_api.dependencies import get_db_pool
-                from platform_api.services.streaming_upload_service import StreamingUploadService
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.services.streaming_upload_service import StreamingUploadService
 
-                StreamingUploadService(get_db_pool()).schedule_suno_streaming_upload(suno_task_id=task_id)
-            except Exception as exc:
-                logger.warning("Failed to schedule streaming upload for task %s: %s", task_id, exc)
+            uploads = StreamingUploadService(get_db_pool())
+            if task_source == "web_music":
+                uploads.schedule_web_music_b2_backfill(suno_task_id=task_id)
+            elif has_song:
+                uploads.schedule_suno_streaming_upload(suno_task_id=task_id)
+        except Exception as exc:
+            logger.warning("Failed to schedule streaming upload for task %s: %s", task_id, exc)
 
     song_id_value = task_data.get("song_id")
     batch_id_value = task_data.get("batch_id")

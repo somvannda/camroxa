@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from platform_api.exceptions import NotFoundError
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
+from platform_api.services.audio_origin_proxy import is_initial_play_range, is_missing_range
 from platform_api.services.streaming_catalog_service import StreamingCatalogService
 
 router = APIRouter(prefix="/public/streaming", tags=["streaming-public"])
@@ -104,6 +105,13 @@ async def search_streaming_catalog(
     return await service.search(q, limit=limit, offset=offset)
 
 
+@router.get("/play-auth", status_code=204)
+async def catalog_play_auth(ctx: CurrentUserDep) -> Response:
+    """Cheap login check for nginx auth_request on catalog stream cache."""
+    del ctx
+    return Response(status_code=204)
+
+
 @router.get("/tracks/{track_id}/play-url", response_model=PlayUrlResponse)
 async def get_track_play_url(
     track_id: UUID,
@@ -124,8 +132,12 @@ async def stream_track(
     ctx: CurrentUserDep,
     service: CatalogServiceDep,
 ) -> Response:
-    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    range_header = request.headers.get("range")
+    if is_missing_range(range_header):
+        await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_download")
+    elif is_initial_play_range(range_header):
+        await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
     return await service.proxy_track_audio(
         track_id,
-        range_header=request.headers.get("range"),
+        range_header=range_header,
     )

@@ -12,6 +12,7 @@ from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit, enforce_rate_limit_for_endpoint
 from platform_api.middleware.abuse_detection import track_generation_attempt, track_quota_exceeded
 from platform_api.services.web_music_service import WebMusicService, content_disposition
+from platform_api.services.audio_origin_proxy import is_initial_play_range, is_missing_range
 from platform_api.exceptions import NotFoundError, QuotaExceededError
 
 router = APIRouter(prefix="/web-music", tags=["web-music"])
@@ -498,6 +499,44 @@ async def download_timed_lyrics(
     )
 
 
+async def _stream_generation(
+    *,
+    task_id: UUID,
+    request: Request,
+    ctx: AuthContext,
+    service: WebMusicService,
+    variant: Literal["ok", "alt"],
+) -> Response:
+    range_header = request.headers.get("range")
+    if is_missing_range(range_header):
+        await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_download")
+    elif is_initial_play_range(range_header):
+        await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    return await service.proxy_playback(
+        UUID(ctx.user_id),
+        task_id,
+        variant=variant,
+        range_header=range_header,
+    )
+
+
+@router.get("/generations/{task_id}/stream/{variant}")
+async def stream_generation_variant(
+    task_id: UUID,
+    variant: Literal["ok", "alt"],
+    request: Request,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    return await _stream_generation(
+        task_id=task_id,
+        request=request,
+        ctx=ctx,
+        service=service,
+        variant=variant,
+    )
+
+
 @router.get("/generations/{task_id}/stream")
 async def stream_generation(
     task_id: UUID,
@@ -506,12 +545,12 @@ async def stream_generation(
     service: WebMusicServiceDep,
     variant: Literal["ok", "alt"] = "ok",
 ) -> Response:
-    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
-    return await service.proxy_playback(
-        UUID(ctx.user_id),
-        task_id,
+    return await _stream_generation(
+        task_id=task_id,
+        request=request,
+        ctx=ctx,
+        service=service,
         variant=variant,
-        range_header=request.headers.get("range"),
     )
 
 
@@ -522,11 +561,15 @@ async def play_by_token(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> Response:
-    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    range_header = request.headers.get("range")
+    if is_missing_range(range_header):
+        await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_download")
+    elif is_initial_play_range(range_header):
+        await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
     return await service.proxy_playback_from_token(
         token,
         session_user_id=ctx.user_id,
-        range_header=request.headers.get("range"),
+        range_header=range_header,
     )
 
 

@@ -30,13 +30,18 @@ from platform_api.services.billing_calendar import billing_today
 from platform_api.services.generation_service import GenerationService
 from platform_api.services.suno_audio_resolver import (
     download_suno_mp3_bytes,
+    download_suno_wav_bytes,
     fetch_timestamped_lrc_with_pool,
     refresh_suno_task_download_urls,
     urls_from_generate_poll,
     validate_mp3_bytes,
+    validate_wav_bytes,
     variant_url_candidates,
 )
-from platform_api.services.streaming_upload_service import StreamingUploadService
+from platform_api.services.streaming_upload_service import (
+    StreamingUploadService,
+    b2_key_is_task_scoped,
+)
 from platform_api.services.audio_origin_proxy import (
     is_camxora_audio_proxy_url,
     is_initial_play_range,
@@ -52,6 +57,13 @@ from platform_api.services.suno_lrc import lrc_to_srt, looks_like_lrc
 logger = logging.getLogger(__name__)
 
 _DEFAULT_SLIDER_VALUE = 0.5
+
+
+def _usable_web_music_b2_key(storage_key: Any, task_id: UUID) -> str | None:
+    key = str(storage_key or "").strip()
+    if key and b2_key_is_task_scoped(key, task_id):
+        return key
+    return None
 
 
 def _normalize_slider(value: float | None, *, default: float = _DEFAULT_SLIDER_VALUE) -> float:
@@ -895,6 +907,16 @@ class WebMusicService:
                 urls.duration_ok,
                 urls.duration_alt,
             )
+            try:
+                self._upload_service.schedule_web_music_b2_backfill(
+                    suno_task_id=UUID(str(row["id"])),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Web music B2 pre-upload schedule failed task=%s: %s",
+                    row["id"],
+                    exc,
+                )
         elif polled.state == "failed":
             await self._pool.execute(
                 """
@@ -1028,17 +1050,17 @@ class WebMusicService:
         variant_key = str(variant or "ok").strip().lower()
         if variant_key not in {"ok", "alt"}:
             variant_key = "ok"
-        # Owner already sees the task id in Create. Use the unique stream path so
-        # the browser cannot reuse one media buffer across clips.
+        # Variant is in the path so the browser cannot reuse one media cache
+        # entry across Version 1 / Version 2 (`?variant=` is not enough).
         return self._safe_client_play_url(
-            f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
+            f"/api/v1/web-music/generations/{task_id}/stream/{variant_key}"
         )
 
     async def _mint_public_play_url(self, task_id: UUID, variant: str) -> str:
         variant_key = str(variant or "ok").strip().lower()
         if self._redis is None:
             return self._safe_client_play_url(
-                f"/api/v1/web-music/generations/{task_id}/stream?variant={variant_key}"
+                f"/api/v1/web-music/generations/{task_id}/stream/{variant_key}"
             )
         token = await create_play_token(
             self._redis,
@@ -1138,7 +1160,10 @@ class WebMusicService:
         if status != "SUCCESS":
             return None
 
-        b2_key = row["b2_storage_key_ok"] if variant_key == "ok" else row["b2_storage_key_alt"]
+        b2_key = _usable_web_music_b2_key(
+            row["b2_storage_key_ok"] if variant_key == "ok" else row["b2_storage_key_alt"],
+            task_id,
+        )
         if b2_key:
             try:
                 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
@@ -1147,7 +1172,7 @@ class WebMusicService:
                 config = await resolve_streaming_storage_config(self._pool)
                 if config.configured:
                     storage = StorageService.from_config(config)
-                    url = await storage.get_signed_get_url(str(b2_key))
+                    url = await storage.get_signed_get_url(str(b2_key), use_cdn=False)
                     if url:
                         return str(url), "b2"
             except Exception as exc:
@@ -1238,7 +1263,10 @@ class WebMusicService:
                 details={"status": status},
             )
 
-        b2_key = row["b2_storage_key_ok"] if variant_key == "ok" else row["b2_storage_key_alt"]
+        b2_key = _usable_web_music_b2_key(
+            row["b2_storage_key_ok"] if variant_key == "ok" else row["b2_storage_key_alt"],
+            task_id,
+        )
         if b2_key:
             try:
                 data = await self._download_from_backblaze(b2_key)
@@ -1265,28 +1293,43 @@ class WebMusicService:
 
         self._schedule_b2_backfill(task_id, variant_key)
         external_task_id = str(row["external_task_id"] or "").strip()
-        refreshed = None
-        if external_task_id:
-            try:
-                refreshed = await refresh_suno_task_download_urls(
-                    external_task_id,
-                    poll_status=self._generation.poll_suno_generate_status,
-                )
-            except Exception as exc:
-                logger.warning("Web music URL refresh failed for %s: %s", task_id, exc)
-        candidates = variant_url_candidates(
-            variant=variant_key,
-            stored_ok=str(row["audio_url_ok"] or ""),
-            stored_alt=str(row["audio_url_alt"] or ""),
-            refreshed=refreshed,
-        )
-        if not candidates:
-            raise NotFoundError("Audio file is not available.")
-        data = await download_suno_mp3_bytes(candidates[0], fallback_urls=candidates[1:])
-        title = str(row["title"] or "camxora-track").strip() or "camxora-track"
-        filename = f"{title}-{variant_key}.mp3"
-        await self._increment_play_count(task_id, variant_key)
-        return data, filename, "audio/mpeg"
+        last_error: Exception | None = None
+        for attempt in range(1, 6):
+            refreshed = None
+            if external_task_id:
+                try:
+                    refreshed = await refresh_suno_task_download_urls(
+                        external_task_id,
+                        poll_status=self._generation.poll_suno_generate_status,
+                    )
+                except Exception as exc:
+                    logger.warning("Web music URL refresh failed for %s: %s", task_id, exc)
+            candidates = variant_url_candidates(
+                variant=variant_key,
+                stored_ok=str(row["audio_url_ok"] or ""),
+                stored_alt=str(row["audio_url_alt"] or ""),
+                refreshed=refreshed,
+                include_other_variant=False,
+            )
+            if candidates:
+                try:
+                    data = await download_suno_mp3_bytes(candidates[0], fallback_urls=candidates[1:])
+                    title = str(row["title"] or "camxora-track").strip() or "camxora-track"
+                    filename = f"{title}-{variant_key}.mp3"
+                    await self._increment_play_count(task_id, variant_key)
+                    return data, filename, "audio/mpeg"
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning(
+                        "Web music MP3 download CDN retry %s/5 task=%s variant=%s: %s",
+                        attempt,
+                        task_id,
+                        variant_key,
+                        exc,
+                    )
+            if attempt < 5:
+                await asyncio.sleep(2.0)
+        raise NotFoundError("Audio file is not available yet. Please try again in a moment.")
 
     async def stream_by_play_token(
         self,
@@ -1376,13 +1419,20 @@ class WebMusicService:
             )
 
         # Check if WAV is available in Backblaze
-        b2_wav_key = row.get("b2_wav_key")
+        b2_wav_key = _usable_web_music_b2_key(row.get("b2_wav_key"), task_id)
         if b2_wav_key:
             try:
                 data = await self._download_from_backblaze(b2_wav_key)
-                title = str(row["title"] or "camxora-track").strip() or "camxora-track"
-                filename = f"{title}-{variant_key}.wav"
-                return data, filename, "audio/wav"
+                if validate_wav_bytes(data):
+                    title = str(row["title"] or "camxora-track").strip() or "camxora-track"
+                    filename = f"{title}-{variant_key}.wav"
+                    return data, filename, "audio/wav"
+                logger.warning(
+                    "B2 WAV failed validation task=%s variant=%s key=%s",
+                    task_id,
+                    variant_key,
+                    b2_wav_key,
+                )
             except Exception as exc:
                 logger.warning("B2 WAV download failed for task=%s variant=%s, falling back to Suno: %s", 
                              task_id, variant_key, exc)
@@ -1396,21 +1446,40 @@ class WebMusicService:
         wav_status = str(row["wav_status"] or "pending").strip().lower()
         
         if not wav_task_id:
-            refreshed = None
-            try:
-                refreshed = await refresh_suno_task_download_urls(
-                    external_task_id,
-                    poll_status=self._generation.poll_suno_generate_status,
-                )
-            except Exception as exc:
-                logger.warning("Web music WAV URL refresh failed for %s: %s", task_id, exc)
-            
             audio_id = ""
-            if refreshed:
-                audio_id = refreshed.audio_id_ok if variant_key == "ok" else refreshed.audio_id_alt
-            
+            for attempt in range(1, 6):
+                refreshed = None
+                try:
+                    refreshed = await refresh_suno_task_download_urls(
+                        external_task_id,
+                        poll_status=self._generation.poll_suno_generate_status,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Web music WAV URL refresh failed for %s attempt=%s/5: %s",
+                        task_id,
+                        attempt,
+                        exc,
+                    )
+                if refreshed:
+                    audio_id = (
+                        refreshed.audio_id_ok if variant_key == "ok" else refreshed.audio_id_alt
+                    )
+                if audio_id:
+                    break
+                logger.info(
+                    "Waiting for this clip audio id for WAV task=%s variant=%s attempt=%s/5",
+                    task_id,
+                    variant_key,
+                    attempt,
+                )
+                if attempt < 5:
+                    await asyncio.sleep(2.0)
+
             if not audio_id:
-                raise ValidationError("Cannot convert to WAV: missing audio ID.")
+                raise ValidationError(
+                    "WAV file is not ready yet. Please try again in a few moments."
+                )
             
             from platform_api.clients.suno_client import extract_suno_wav_task_id
             
@@ -1440,7 +1509,7 @@ class WebMusicService:
         if wav_status == "pending" and wav_task_id:
             from platform_api.clients.suno_client import parse_suno_wav_poll
             
-            max_attempts = 3
+            max_attempts = 12
             for attempt in range(max_attempts):
                 wrapper = await self._generation._require_pool_wrapper(
                     self._generation._suno_pool_wrapper, "suno"
@@ -1489,8 +1558,30 @@ class WebMusicService:
                 details={"wav_status": wav_status},
             )
         
-        from platform_api.services.suno_audio_resolver import download_suno_mp3_bytes
-        data = await download_suno_mp3_bytes(wav_url)
+        last_error: Exception | None = None
+        data: bytes | None = None
+        for attempt in range(1, 6):
+            try:
+                data = await download_suno_wav_bytes(wav_url)
+                if validate_wav_bytes(data):
+                    break
+                data = None
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Web music WAV download CDN retry %s/5 task=%s variant=%s: %s",
+                    attempt,
+                    task_id,
+                    variant_key,
+                    exc,
+                )
+            if attempt < 5:
+                await asyncio.sleep(2.0)
+        if data is None or not validate_wav_bytes(data):
+            raise ValidationError(
+                "WAV file is not ready yet. Please try again in a few moments.",
+                details={"wav_status": wav_status},
+            )
         title = str(row["title"] or "camxora-track").strip() or "camxora-track"
         filename = f"{title}-{variant_key}.wav"
         return data, filename, "audio/wav"
@@ -1538,10 +1629,11 @@ class WebMusicService:
                 details={"status": status},
             )
 
-        b2_lrc_key = (
+        b2_lrc_key = _usable_web_music_b2_key(
             row.get("b2_lrc_storage_key_ok")
             if variant_key == "ok"
-            else row.get("b2_lrc_storage_key_alt")
+            else row.get("b2_lrc_storage_key_alt"),
+            task_id,
         )
         if b2_lrc_key:
             try:

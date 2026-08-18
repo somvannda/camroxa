@@ -25,7 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Create playback: return stored vocal/slider settings and clip durations; proxy play through the API with HTTP Range (do not 302 to Suno/B2). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
 - Catalog play-url no longer returns a signed B2 URL; `/public/streaming/tracks/{id}/stream` proxies Range audio the same way. See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.
 - Public streaming catalog JSON omits origin audio fields (`storage_key`, `suno_audio_id`). See `docs/changelog/2026-08-17-music-web-no-origin-audio-urls.md`.
-- Create owner play URLs are unique per task/variant so the browser cannot reuse one audio buffer. See `docs/changelog/2026-08-17-music-web-distinct-clip-playback.md`.
+- Create owner play URLs are unique per task/variant so the browser cannot reuse one audio buffer. Shared web-music Backblaze `untitled-*.mp3` keys are ignored. See `docs/changelog/2026-08-17-music-web-distinct-clip-playback.md`.
+- Create clips upload to Backblaze when generation succeeds; catalog stream is B2-only with origin cache after login; play ranges are capped at 256 KiB. See `docs/changelog/2026-08-18-catalog-cache-preupload.md`.
+- Create owner play URLs use `/stream/ok` and `/stream/alt` so Version 1/2 cannot share one browser media cache; web-music uploads no longer fall back to the other clip’s file. See `docs/changelog/2026-08-18-create-stream-variant-path.md`.
+- Web-music ok/alt Backblaze objects that were byte-identical are re-uploaded from each clip’s own Suno URL; Create playback uses signed B2 URLs (not CDN). See `docs/changelog/2026-08-18-web-music-duplicate-b2-clips.md`.
+- Create MP3/WAV upload and download retry this clip’s Suno CDN until it is ready; they never fall back to Version 1/2’s sibling file. See `docs/changelog/2026-08-18-web-music-cdn-retry.md`.
 - Startup Alembic runner skips leftover sibling heads and time-boxes upgrade so sandbox cannot hang on broken merge stubs.
 
 ### Changed
