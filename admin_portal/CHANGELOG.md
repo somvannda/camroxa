@@ -9,6 +9,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Users table shows a **Tag** column (`Music` / `Studio`) from `users.products`. See
+  `docs/changelog/2026-08-18-admin-users-product-tag.md`.
+- Users table **Plan** / **Credits** now include Camxora Music subscriptions
+  (`web_subscriptions`), plus a **Burned** column. Studio wallet leftovers like
+  `0.04 cr` are no longer mistaken for the Music credit pool. **Burned** is
+  Music period usage for Music subscribers, and studio wallet debit spend
+  (`cr`) for everyone else. See
+  `docs/changelog/2026-08-18-admin-users-music-credits.md`.
+
 ### Fixed
 
 - **User Spent** Song allowance (`S`) no longer stuck at 0%. API now maps

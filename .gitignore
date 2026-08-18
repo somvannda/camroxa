@@ -54,6 +54,9 @@ camxora_python/vendor/vcredist/
 # Python packaging metadata
 *.egg-info/
 
+# Agent debug snapshots (never commit)
+.dbg/
+
 # Local runtime data
 uploads/
 marketplace_storage/

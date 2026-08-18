@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Admin `GET /users` includes Camxora Music plan + remaining/limit/burned credits
+  from `web_subscriptions` (desktop licenses alone showed "No plan" / leftover
+  studio wallet). See `docs/changelog/2026-08-18-admin-users-music-credits.md`.
+- Admin `GET /users` includes `products` (Music / Studio tags) from `users.products`.
+  See `docs/changelog/2026-08-18-admin-users-product-tag.md`.
 - Startup Alembic runner skips leftover sibling heads (retired `084_*` files) and time-boxes upgrades so a hung migration cannot leave the catalog on `Database pool not initialized`. See `docs/changelog/2026-08-17-alembic-skip-leftover-heads.md`.
 
 ### Fixed
