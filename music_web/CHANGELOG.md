@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Create workspace: clicking a row selects it without playing. Play moves the active selection. Covers show a spinner until Ready, then play; playing shows a tiny purple equalizer on the artwork. Click a title to rename that clip only (Version 1 / Version 2 stay independent). The v5.5 tag sits after Ready. Download badges keep size with a visible spinner overlay; order is playlist, LRC, SRT, MP3, WAV. WAV download no longer fails the MP3-only audio check. Play uses `/stream/ok` and `/stream/alt` so both versions load. See `docs/changelog/2026-08-18-music-web-workspace-follow-playing.md`.
 - Session now survives the 15-minute access cookie by refreshing it with the 7-day refresh cookie, same as the user portal. See `docs/changelog/2026-08-18-music-web-session-refresh.md`.
 - Create page lyric/style wands: stop sending over-limit lyrics, validate style input before calling the API, and show a clear message when AI assist returns 502. See `docs/changelog/2026-08-17-music-web-generate-assist.md`.
 - Create track details show stored vocal gender and slider percents instead of default 0.50; clips are labeled Version 1/2. Play stays on Camxora URLs (no public Suno/B2 redirect). See `docs/changelog/2026-08-17-music-web-create-playback.md`.

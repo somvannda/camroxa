@@ -430,13 +430,43 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
     )
 
 
+def _suno_api_code(payload: Any) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    raw = payload.get("code", 0)
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _extract_suno_wav_url(data: dict[str, Any]) -> str | None:
+    for key in ("audioWavUrl", "wavUrl", "audio_wav_url", "wav_url", "url"):
+        url = str(data.get(key) or "").strip()
+        if url.startswith("http"):
+            return url
+    nested = data.get("response")
+    if isinstance(nested, dict):
+        for key in ("audioWavUrl", "wavUrl", "audio_wav_url", "wav_url", "url"):
+            url = str(nested.get(key) or "").strip()
+            if url.startswith("http"):
+                return url
+    return None
+
+
 def extract_suno_wav_task_id(response: dict[str, Any]) -> str:
     """Return taskId from POST /api/v1/wav/generate response."""
-    code = int(response.get("code", 0) or 0)
+    if not isinstance(response, dict):
+        raise ExternalServiceError(
+            "Suno WAV submit returned an invalid response.",
+            is_retryable=True,
+            details={"provider": "suno", "reason": "invalid_wav_submit"},
+        )
+    code = _suno_api_code(response)
     if code != 200:
         raise ExternalServiceError(
             suno_submit_error_message(code=code, msg=response.get("msg", ""), context="wav_generate"),
-            is_retryable=code in {429, 430, 455, 500},
+            is_retryable=code in {429, 430, 455, 500} or code == 0,
             details={"provider": "suno", "reason": "wav_submit_failed", "code": code},
         )
     data = response.get("data")
@@ -461,18 +491,16 @@ def parse_suno_wav_poll(response: dict[str, Any]) -> tuple[str, str | None, str 
         Tuple of (status, wav_url, error_message).
         Status is one of: pending, success, failed.
     """
-    code = int(response.get("code", 0) or 0)
-    if code != 200:
-        return (
-            "failed",
-            None,
-            suno_task_failure_message(api_code=code, api_msg=response.get("msg", "")),
-        )
+    if not isinstance(response, dict):
+        return ("pending", None, None)
+    code = _suno_api_code(response)
     data = response.get("data") if isinstance(response.get("data"), dict) else {}
     status = str(data.get("status", "")).strip().upper()
-    error_message = str(data.get("errorMessage", "")).strip()
-    wav_url = str(data.get("audioWavUrl", "")).strip() or None
+    error_message = str(data.get("errorMessage") or data.get("error") or "").strip()
+    wav_url = _extract_suno_wav_url(data) or _extract_suno_wav_url(response)
 
+    if wav_url and (code == 200 or is_suno_success_status(status) or not status):
+        return ("success", wav_url, None)
     if is_suno_failure_status(status):
         return (
             "failed",
@@ -482,7 +510,8 @@ def parse_suno_wav_poll(response: dict[str, Any]) -> tuple[str, str | None, str 
     if is_suno_success_status(status):
         if wav_url:
             return ("success", wav_url, None)
-        return ("failed", None, "Suno reported WAV success but returned no URL.")
+        return ("pending", None, None)
+    # Non-200 / not-found / still processing: keep waiting. Do not mark failed.
     return ("pending", None, None)
 
 

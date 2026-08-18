@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles } from 'lucide-react';
 
 import { useAuth } from '@/components/auth-provider';
@@ -39,6 +39,7 @@ import {
   listWebMusicGenerations,
   listWebMusicWorkspaces,
   fetchWebMusicQuota,
+  updateWebMusicGenerationTitle,
   type WebMusicClip,
   type WebMusicGeneration,
   type WebMusicQuota,
@@ -70,11 +71,32 @@ function isOpenGeneration(item: WebMusicGeneration): boolean {
   return true;
 }
 
-function clipToTrack(generation: WebMusicGeneration, clip: WebMusicGeneration['clips'][number]): StreamTrack | null {
+function clipTrackId(generation: WebMusicGeneration, clip: WebMusicClip): string {
+  return `${generation.id}:${clip.variant}`;
+}
+
+function clipDisplayTitle(generation: WebMusicGeneration, clip: WebMusicClip): string {
+  const fromClip = String(clip.title || '').trim();
+  if (fromClip) return fromClip;
+  const fromLabel = String(clip.label || '')
+    .replace(/\s·\sVersion\s[12]\s*$/i, '')
+    .trim();
+  return fromLabel || generation.title || 'Untitled';
+}
+
+function generationClips(generation: WebMusicGeneration): WebMusicClip[] {
+  if (generation.clips.length) return generation.clips;
+  return [
+    { variant: 'ok', label: generation.title, audio_url: '', download_url: '', ready: false },
+    { variant: 'alt', label: generation.title, audio_url: '', download_url: '', ready: false },
+  ];
+}
+
+function clipToTrack(generation: WebMusicGeneration, clip: WebMusicClip): StreamTrack | null {
   if (!clip?.ready) return null;
   return {
-    id: `${generation.id}:${clip.variant}`,
-    title: clip.label || generation.title,
+    id: clipTrackId(generation, clip),
+    title: clipDisplayTitle(generation, clip),
     artist_name: 'You',
     genre: generation.style,
     lyrics: generation.lyrics,
@@ -82,6 +104,32 @@ function clipToTrack(generation: WebMusicGeneration, clip: WebMusicGeneration['c
     cover_url: clip.image_url ?? null,
     duration_seconds: clip.duration_seconds ?? null,
   };
+}
+
+function findVersionForTrackId(
+  items: WebMusicGeneration[],
+  trackId: string | null | undefined,
+): { song: WebMusicGeneration; clip: WebMusicClip } | null {
+  if (!trackId) return null;
+  for (const generation of items) {
+    for (const clip of generationClips(generation)) {
+      if (clipTrackId(generation, clip) === trackId) {
+        return { song: generation, clip };
+      }
+    }
+  }
+  return null;
+}
+
+function workspaceReadyTracks(items: WebMusicGeneration[]): StreamTrack[] {
+  const tracks: StreamTrack[] = [];
+  for (const generation of items) {
+    for (const clip of generationClips(generation)) {
+      const track = clipToTrack(generation, clip);
+      if (track) tracks.push(track);
+    }
+  }
+  return tracks;
 }
 
 const DEFAULT_SLIDER_VALUE = 0.5;
@@ -103,54 +151,253 @@ function formatModelVersionTag(model: string | null | undefined): string {
   return key === 'V5_5' ? 'v5.5' : 'v5';
 }
 
+function ModelVersionTag({ model }: { model: string | null | undefined }) {
+  return (
+    <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-violet-300">
+      {formatModelVersionTag(model)}
+    </span>
+  );
+}
+
 function ClipReadyLabel({
   clip,
   generating,
   waitingLabel = 'Waiting',
+  model,
   className = 'text-xs text-slate-500',
 }: {
   clip: WebMusicClip;
   generating?: boolean;
   waitingLabel?: string;
+  model?: string | null;
   className?: string;
 }) {
-  const [probedSeconds, setProbedSeconds] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (clip.duration_seconds || !clip.ready || !clip.audio_url) {
-      return;
-    }
-    const audio = new Audio();
-    audio.preload = 'metadata';
-    const onLoaded = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setProbedSeconds(audio.duration);
-      }
-    };
-    audio.addEventListener('loadedmetadata', onLoaded);
-    audio.src = clip.audio_url;
-    return () => {
-      audio.removeEventListener('loadedmetadata', onLoaded);
-      audio.removeAttribute('src');
-    };
-  }, [clip.audio_url, clip.duration_seconds, clip.ready]);
-
-  const duration = formatDuration(clip.duration_seconds ?? probedSeconds);
+  const duration = formatDuration(clip.duration_seconds);
   const status = clip.ready ? 'Ready' : waitingLabel;
 
   return (
-    <p className={className}>
-      {duration ? `${duration} · ${status}` : status}
-      {generating ? ' · Generating…' : ''}
+    <p className={`flex min-w-0 flex-nowrap items-center gap-1.5 ${className}`}>
+      <span className="truncate">
+        {duration ? `${duration} · ${status}` : status}
+        {generating ? ' · Generating…' : ''}
+      </span>
+      <ModelVersionTag model={model} />
     </p>
   );
 }
 
-function ModelVersionTag({ model }: { model: string | null | undefined }) {
+function ClipDownloadBadge({
+  label,
+  title,
+  disabled,
+  loading,
+  onClick,
+  size = 'sm',
+  showDownloadIcon = false,
+}: {
+  label: string;
+  title: string;
+  disabled: boolean;
+  loading: boolean;
+  onClick: () => void;
+  size?: 'sm' | 'md';
+  showDownloadIcon?: boolean;
+}) {
+  const box = size === 'md' ? 'h-9 gap-1.5 rounded-lg px-3' : 'h-7 gap-1 rounded-md px-2';
+  const icon = size === 'md' ? 'h-3.5 w-3.5' : 'h-3 w-3';
+
   return (
-    <span className="shrink-0 bg-gradient-to-r from-violet-400 via-purple-400 to-fuchsia-400 bg-clip-text text-[11px] font-semibold uppercase tracking-wide text-transparent">
-      {formatModelVersionTag(model)}
+    <button
+      type="button"
+      disabled={disabled || loading}
+      onClick={onClick}
+      title={title}
+      aria-busy={loading}
+      className={`relative inline-flex items-center justify-center ${box} bg-white/5 text-white hover:bg-white/10 ${
+        loading ? 'cursor-wait' : 'disabled:cursor-not-allowed disabled:opacity-30'
+      }`}
+    >
+      <span className={`inline-flex items-center justify-center gap-1 ${loading ? 'opacity-25' : ''}`}>
+        {showDownloadIcon ? <Download className={icon} /> : null}
+        <span className="text-xs">{label}</span>
+      </span>
+      {loading ? (
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <LoaderCircle className={`${icon} animate-spin text-white`} />
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+type DownloadKind = 'mp3' | 'wav' | 'lrc' | 'srt';
+
+function downloadBusyKey(taskId: string, variant: string, kind: DownloadKind): string {
+  return `${taskId}:${variant}:${kind}`;
+}
+
+function CoverEqualizer({ playing }: { playing: boolean }) {
+  const heights = [10, 18, 12, 16];
+  return (
+    <span
+      className="relative z-10 flex h-[18px] w-[22px] items-end justify-center gap-[2px]"
+      aria-hidden
+    >
+      {heights.map((height, index) => (
+        <span
+          key={index}
+          className="block shrink-0 rounded-[1px] bg-[#e879f9] shadow-[0_0_6px_rgba(232,121,249,0.85)]"
+          style={{
+            width: 3,
+            height,
+            transformOrigin: 'bottom center',
+            animation: playing ? 'eq-bar 0.72s ease-in-out infinite' : undefined,
+            animationDelay: playing ? `${index * 0.14}s` : undefined,
+            opacity: playing ? 1 : 0.9,
+          }}
+        />
+      ))}
     </span>
+  );
+}
+
+function ClipCoverControl({
+  clip,
+  variant,
+  isCurrent,
+  playing,
+  size = 'sm',
+  onPlayToggle,
+}: {
+  clip: WebMusicClip;
+  variant?: string;
+  isCurrent: boolean;
+  playing: boolean;
+  size?: 'sm' | 'md';
+  onPlayToggle: () => void;
+}) {
+  const ready = Boolean(clip.ready);
+  const showPause = isCurrent && playing;
+  const box = size === 'md' ? 'h-16 w-16 rounded-xl' : 'h-11 w-11 rounded-lg';
+  const icon = size === 'md' ? 'h-5 w-5' : 'h-3.5 w-3.5';
+
+  return (
+    <button
+      type="button"
+      disabled={!ready}
+      onClick={onPlayToggle}
+      title={ready ? (showPause ? 'Pause' : 'Play') : 'Waiting for audio'}
+      aria-label={ready ? (showPause ? 'Pause' : 'Play') : 'Waiting for audio'}
+      className={`relative flex ${box} flex-shrink-0 items-center justify-center overflow-hidden bg-violet-500/20 text-fuchsia-100 disabled:cursor-not-allowed`}
+    >
+      {clip.image_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={clip.image_url} alt="" className="h-full w-full object-cover" />
+      ) : variant === 'alt' ? (
+        <Mic2 className={icon} />
+      ) : (
+        <Music2 className={icon} />
+      )}
+      <span className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
+        {!ready ? (
+          <LoaderCircle className={`${icon} animate-spin text-white`} />
+        ) : isCurrent ? (
+          <CoverEqualizer playing={playing} />
+        ) : (
+          <Play className={`${icon} text-white`} />
+        )}
+      </span>
+    </button>
+  );
+}
+
+function clipVersionLabel(variant: string | undefined): string {
+  return variant === 'alt' ? 'Version 2' : 'Version 1';
+}
+
+function ClipTitleEditor({
+  title,
+  versionLabel,
+  className = 'truncate text-sm font-medium text-white',
+  onSelect,
+  onSave,
+}: {
+  title: string;
+  versionLabel: string;
+  className?: string;
+  onSelect: () => void;
+  onSave: (next: string) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(title);
+  }, [title, editing]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  async function commit() {
+    const next = draft.trim();
+    setEditing(false);
+    if (!next || next === title) {
+      setDraft(title);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(next);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        maxLength={200}
+        aria-label="Song title"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => void commit()}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setDraft(title);
+            setEditing(false);
+          }
+        }}
+        className={`min-w-0 flex-1 rounded bg-white/10 px-1.5 py-0.5 outline-none ring-1 ring-violet-400/50 ${className}`}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      title="Click to rename"
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+        setEditing(true);
+      }}
+      className={`min-w-0 flex-1 text-left ${saving ? 'opacity-70' : ''}`}
+    >
+      <span className={className}>
+        {title}
+        <span className="font-normal text-slate-400"> · {versionLabel}</span>
+      </span>
+    </button>
   );
 }
 
@@ -188,8 +435,12 @@ export default function CreatePageClient() {
   const [quota, setQuota] = useState<WebMusicQuota | null>(null);
   const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
-  const [selectedVersion, setSelectedVersion] = useState<{ song: WebMusicGeneration; clip: any } | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<{
+    song: WebMusicGeneration;
+    clip: WebMusicClip;
+  } | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -254,6 +505,17 @@ export default function CreatePageClient() {
     quota && !quota.is_pro && (quota.requires_upgrade || totalCredits < creditsPerSong),
   );
   const canDownload = Boolean(quota?.can_download ?? quota?.has_subscription ?? quota?.is_pro);
+  const workspaceQueue = useMemo(() => workspaceReadyTracks(items), [items]);
+
+  useEffect(() => {
+    const match = findVersionForTrackId(items, current?.id);
+    if (!match) return;
+    setSelectedVersion((prev) =>
+      prev?.song.id === match.song.id && prev?.clip.variant === match.clip.variant && prev.clip === match.clip
+        ? prev
+        : match,
+    );
+  }, [current?.id, items]);
 
   function promptDownloadUpgrade() {
     setShowUpgradeModal(true);
@@ -268,9 +530,14 @@ export default function CreatePageClient() {
       promptDownloadUpgrade();
       return;
     }
+    const clip =
+      generation.clips.find((item) => item.variant === variant) ??
+      ({ variant, label: generation.title, audio_url: '', download_url: '', ready: false } as WebMusicClip);
+    const key = downloadBusyKey(generation.id, variant, format);
     setCreateError(null);
+    setDownloadingKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
     try {
-      const safeTitle = generation.title.trim() || 'camxora-track';
+      const safeTitle = clipDisplayTitle(generation, clip).trim() || 'camxora-track';
       await downloadWebMusicTimedLyrics(
         generation.id,
         variant,
@@ -279,11 +546,136 @@ export default function CreatePageClient() {
       );
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Timed lyrics download failed');
+    } finally {
+      setDownloadingKeys((prev) => prev.filter((item) => item !== key));
     }
+  }
+
+  async function onDownloadAudio(
+    generation: WebMusicGeneration,
+    variant: string,
+    kind: 'mp3' | 'wav',
+    filename: string,
+  ) {
+    if (!canDownload) {
+      promptDownloadUpgrade();
+      return;
+    }
+    const key = downloadBusyKey(generation.id, variant, kind);
+    setCreateError(null);
+    setDownloadingKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    try {
+      if (kind === 'mp3') {
+        await downloadWebMusicClip(generation.id, variant, filename);
+      } else {
+        await downloadWebMusicClipWav(generation.id, variant, filename);
+      }
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : `${kind.toUpperCase()} download failed`);
+    } finally {
+      setDownloadingKeys((prev) => prev.filter((item) => item !== key));
+    }
+  }
+
+  function isDownloading(taskId: string, variant: string, kind: DownloadKind): boolean {
+    return downloadingKeys.includes(downloadBusyKey(taskId, variant, kind));
   }
 
   function canDownloadTimedLyrics(generation: WebMusicGeneration, clipReady: boolean): boolean {
     return clipReady && !generation.instrumental;
+  }
+
+  function clipDownloadButtons(
+    generation: WebMusicGeneration,
+    clip: WebMusicClip,
+    size: 'sm' | 'md',
+  ) {
+    const timedTitle = (format: 'lrc' | 'srt') => {
+      if (!canDownload) return `Upgrade to download ${format.toUpperCase()}`;
+      if (generation.instrumental) return 'Timed lyrics not available for instrumentals';
+      return format === 'lrc'
+        ? 'Download LRC (karaoke timestamps)'
+        : 'Download SRT subtitles for video editors';
+    };
+
+    return (
+      <>
+        <AddToPlaylistButton
+          taskId={generation.id}
+          variant={clip.variant}
+          disabled={!clip.ready}
+          compact={size === 'sm'}
+        />
+        <ClipDownloadBadge
+          label="LRC"
+          size={size}
+          disabled={!canDownloadTimedLyrics(generation, clip.ready)}
+          loading={isDownloading(generation.id, clip.variant, 'lrc')}
+          title={timedTitle('lrc')}
+          onClick={() => void onDownloadTimedLyrics(generation, clip.variant, 'lrc')}
+        />
+        <ClipDownloadBadge
+          label="SRT"
+          size={size}
+          disabled={!canDownloadTimedLyrics(generation, clip.ready)}
+          loading={isDownloading(generation.id, clip.variant, 'srt')}
+          title={timedTitle('srt')}
+          onClick={() => void onDownloadTimedLyrics(generation, clip.variant, 'srt')}
+        />
+        <ClipDownloadBadge
+          label="MP3"
+          size={size}
+          showDownloadIcon
+          disabled={!clip.ready}
+          loading={isDownloading(generation.id, clip.variant, 'mp3')}
+          title={canDownload ? 'Download MP3' : 'Upgrade to download MP3'}
+          onClick={() =>
+            void onDownloadAudio(generation, clip.variant, 'mp3', `${clipDisplayTitle(generation, clip)}.mp3`)
+          }
+        />
+        <ClipDownloadBadge
+          label="WAV"
+          size={size}
+          showDownloadIcon
+          disabled={!clip.ready}
+          loading={isDownloading(generation.id, clip.variant, 'wav')}
+          title={canDownload ? 'Download WAV (High quality)' : 'Upgrade to download WAV'}
+          onClick={() =>
+            void onDownloadAudio(generation, clip.variant, 'wav', `${clipDisplayTitle(generation, clip)}.wav`)
+          }
+        />
+      </>
+    );
+  }
+
+  function playWorkspaceClip(generation: WebMusicGeneration, clip: WebMusicClip, toggleIfCurrent = false) {
+    const track = clipToTrack(generation, clip);
+    if (!track) return;
+    setSelectedVersion({ song: generation, clip });
+    if (current?.id === track.id) {
+      if (toggleIfCurrent) toggle();
+      return;
+    }
+    void playTrack(track, workspaceQueue);
+  }
+
+  function selectWorkspaceClip(generation: WebMusicGeneration, clip: WebMusicClip) {
+    setSelectedVersion({ song: generation, clip });
+  }
+
+  async function saveClipTitle(generation: WebMusicGeneration, clip: WebMusicClip, nextTitle: string) {
+    setCreateError(null);
+    try {
+      const updated = await updateWebMusicGenerationTitle(generation.id, nextTitle, clip.variant);
+      setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedVersion((prev) => {
+        if (!prev || prev.song.id !== updated.id) return prev;
+        const nextClip = updated.clips.find((item) => item.variant === prev.clip.variant) ?? prev.clip;
+        return { song: updated, clip: nextClip };
+      });
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not save title');
+    }
   }
 
   const canCreate = useMemo(() => {
@@ -885,16 +1277,10 @@ export default function CreatePageClient() {
                   );
                 }
 
-                const clips = generation.clips.length
-                  ? generation.clips
-                  : [
-                      { variant: 'ok', label: generation.title, audio_url: '', download_url: '', ready: false },
-                      { variant: 'alt', label: generation.title, audio_url: '', download_url: '', ready: false },
-                    ];
+                const clips = generationClips(generation);
 
                 return clips.map((clip) => {
-                  const track = clipToTrack(generation, clip);
-                  const isCurrent = current?.id === `${generation.id}:${clip.variant}`;
+                  const isCurrent = current?.id === clipTrackId(generation, clip);
                   const isSelected =
                     selectedVersion?.song.id === generation.id &&
                     selectedVersion?.clip.variant === clip.variant;
@@ -908,133 +1294,33 @@ export default function CreatePageClient() {
                           : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.05]'
                       }`}
                     >
-                      <button
-                        type="button"
-                        onClick={() => setSelectedVersion({ song: generation, clip })}
-                        className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                      <ClipCoverControl
+                        clip={clip}
+                        variant={clip.variant}
+                        isCurrent={isCurrent}
+                        playing={playing}
+                        onPlayToggle={() => playWorkspaceClip(generation, clip, true)}
+                      />
+                      <div
+                        className="flex min-w-0 flex-1 cursor-pointer items-center text-left"
+                        onClick={() => selectWorkspaceClip(generation, clip)}
                       >
-                        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-violet-500/20 text-fuchsia-100">
-                          {clip.image_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={clip.image_url}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                          ) : clip.variant === 'ok' ? (
-                            <Music2 className="h-4 w-4" />
-                          ) : (
-                            <Mic2 className="h-4 w-4" />
-                          )}
-                        </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 items-center gap-1.5">
-                            <p className="truncate text-sm font-medium text-white">
-                              {clip.label || generation.title}
-                            </p>
-                            <ModelVersionTag model={generation.model} />
-                          </div>
+                          <ClipTitleEditor
+                            title={clipDisplayTitle(generation, clip)}
+                            versionLabel={clipVersionLabel(clip.variant)}
+                            onSelect={() => selectWorkspaceClip(generation, clip)}
+                            onSave={(next) => saveClipTitle(generation, clip, next)}
+                          />
                           <ClipReadyLabel
                             clip={clip}
+                            model={generation.model}
                             generating={isOpenGeneration(generation)}
                           />
                         </div>
-                      </button>
+                      </div>
                       <div className="flex flex-shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={!track}
-                          onClick={() => {
-                            if (isCurrent) {
-                              toggle();
-                              return;
-                            }
-                            if (track) void playTrack(track);
-                          }}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-full text-white disabled:text-slate-600 hover:bg-white/10"
-                        >
-                          {isCurrent && playing ? (
-                            <Pause className="h-3.5 w-3.5" />
-                          ) : (
-                            <Play className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!clip.ready}
-                          onClick={() => {
-                            if (!canDownload) {
-                              promptDownloadUpgrade();
-                              return;
-                            }
-                            void downloadWebMusicClip(
-                              generation.id,
-                              clip.variant,
-                              `${generation.title}.mp3`,
-                            );
-                          }}
-                          className="inline-flex h-7 items-center justify-center gap-1 rounded-md bg-white/5 px-2 text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                          title={canDownload ? 'Download MP3' : 'Upgrade to download MP3'}
-                        >
-                          <Download className="h-3 w-3" />
-                          <span className="text-xs">MP3</span>
-                        </button>
-                        <AddToPlaylistButton
-                          taskId={generation.id}
-                          variant={clip.variant}
-                          disabled={!clip.ready}
-                          compact
-                        />
-                        <button
-                          type="button"
-                          disabled={!canDownloadTimedLyrics(generation, clip.ready)}
-                          onClick={() => void onDownloadTimedLyrics(generation, clip.variant, 'lrc')}
-                          className="inline-flex h-7 items-center justify-center rounded-md bg-white/5 px-2 text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                          title={
-                            !canDownload
-                              ? 'Upgrade to download LRC'
-                              : generation.instrumental
-                                ? 'Timed lyrics not available for instrumentals'
-                                : 'Download LRC (karaoke timestamps)'
-                          }
-                        >
-                          <span className="text-xs">LRC</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!canDownloadTimedLyrics(generation, clip.ready)}
-                          onClick={() => void onDownloadTimedLyrics(generation, clip.variant, 'srt')}
-                          className="inline-flex h-7 items-center justify-center rounded-md bg-white/5 px-2 text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                          title={
-                            !canDownload
-                              ? 'Upgrade to download SRT'
-                              : generation.instrumental
-                                ? 'Timed lyrics not available for instrumentals'
-                                : 'Download SRT subtitles for video editors'
-                          }
-                        >
-                          <span className="text-xs">SRT</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!clip.ready}
-                          onClick={() => {
-                            if (!canDownload) {
-                              promptDownloadUpgrade();
-                              return;
-                            }
-                            void downloadWebMusicClipWav(
-                              generation.id,
-                              clip.variant,
-                              `${generation.title}.wav`,
-                            );
-                          }}
-                          className="inline-flex h-7 items-center justify-center gap-1 rounded-md bg-white/5 px-2 text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
-                          title={canDownload ? 'Download WAV (High quality)' : 'Upgrade to download WAV'}
-                        >
-                          <Download className="h-3 w-3" />
-                          <span className="text-xs">WAV</span>
-                        </button>
+                        {clipDownloadButtons(generation, clip, 'sm')}
                       </div>
                     </div>
                   );
@@ -1056,24 +1342,25 @@ export default function CreatePageClient() {
         {selectedVersion && (
           <div className="w-80 max-w-full flex-shrink-0 rounded-2xl border border-white/8 bg-white/[0.03] p-5 space-y-4 overflow-hidden">
             <div className="flex items-start gap-3 min-w-0">
-              <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-violet-500/20 text-fuchsia-100">
-                {selectedVersion.clip.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={selectedVersion.clip.image_url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <Music2 className="h-6 w-6" />
-                )}
-              </div>
+              <ClipCoverControl
+                clip={selectedVersion.clip}
+                variant={selectedVersion.clip.variant}
+                isCurrent={current?.id === clipTrackId(selectedVersion.song, selectedVersion.clip)}
+                playing={playing}
+                size="md"
+                onPlayToggle={() => playWorkspaceClip(selectedVersion.song, selectedVersion.clip, true)}
+              />
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-lg font-semibold text-white">
-                  {selectedVersion.clip.label || selectedVersion.song.title}
-                </h2>
+                <ClipTitleEditor
+                  title={clipDisplayTitle(selectedVersion.song, selectedVersion.clip)}
+                  versionLabel={clipVersionLabel(selectedVersion.clip.variant)}
+                  className="truncate text-lg font-semibold text-white"
+                  onSelect={() => undefined}
+                  onSave={(next) => saveClipTitle(selectedVersion.song, selectedVersion.clip, next)}
+                />
                 <ClipReadyLabel
                   clip={selectedVersion.clip}
+                  model={selectedVersion.song.model}
                   waitingLabel="Processing"
                   className="text-sm text-slate-400"
                 />
@@ -1087,15 +1374,7 @@ export default function CreatePageClient() {
                 <button
                   type="button"
                   disabled={!selectedVersion.clip.ready}
-                  onClick={() => {
-                    const track = clipToTrack(selectedVersion.song, selectedVersion.clip);
-                    const isCurrent = current?.id === `${selectedVersion.song.id}:${selectedVersion.clip.variant}`;
-                    if (isCurrent) {
-                      toggle();
-                      return;
-                    }
-                    if (track) void playTrack(track);
-                  }}
+                  onClick={() => playWorkspaceClip(selectedVersion.song, selectedVersion.clip, true)}
                   className="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-violet-500/20 text-white hover:bg-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {current?.id === `${selectedVersion.song.id}:${selectedVersion.clip.variant}` && playing ? (
@@ -1104,85 +1383,7 @@ export default function CreatePageClient() {
                     <Play className="h-4 w-4" />
                   )}
                 </button>
-                <button
-                  type="button"
-                  disabled={!selectedVersion.clip.ready}
-                  onClick={() => {
-                    if (!canDownload) {
-                      promptDownloadUpgrade();
-                      return;
-                    }
-                    void downloadWebMusicClip(
-                      selectedVersion.song.id,
-                      selectedVersion.clip.variant,
-                      `${selectedVersion.song.title}-${selectedVersion.clip.variant}.mp3`,
-                    );
-                  }}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white/5 px-3 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={canDownload ? 'Download MP3' : 'Upgrade to download MP3'}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span className="text-xs">MP3</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedVersion.clip.ready}
-                  onClick={() => {
-                    if (!canDownload) {
-                      promptDownloadUpgrade();
-                      return;
-                    }
-                    void downloadWebMusicClipWav(
-                      selectedVersion.song.id,
-                      selectedVersion.clip.variant,
-                      `${selectedVersion.song.title}-${selectedVersion.clip.variant}.wav`,
-                    );
-                  }}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white/5 px-3 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={canDownload ? 'Download WAV (High quality)' : 'Upgrade to download WAV'}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span className="text-xs">WAV</span>
-                </button>
-                <AddToPlaylistButton
-                  taskId={selectedVersion.song.id}
-                  variant={selectedVersion.clip.variant}
-                  disabled={!selectedVersion.clip.ready}
-                />
-                <button
-                  type="button"
-                  disabled={!canDownloadTimedLyrics(selectedVersion.song, selectedVersion.clip.ready)}
-                  onClick={() =>
-                    void onDownloadTimedLyrics(
-                      selectedVersion.song,
-                      selectedVersion.clip.variant,
-                      'lrc',
-                    )
-                  }
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white/5 px-3 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={
-                    !canDownload
-                      ? 'Upgrade to download LRC'
-                      : 'Download LRC (karaoke timestamps)'
-                  }
-                >
-                  <span className="text-xs">LRC</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!canDownloadTimedLyrics(selectedVersion.song, selectedVersion.clip.ready)}
-                  onClick={() =>
-                    void onDownloadTimedLyrics(
-                      selectedVersion.song,
-                      selectedVersion.clip.variant,
-                      'srt',
-                    )
-                  }
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white/5 px-3 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={!canDownload ? 'Upgrade to download SRT' : 'Download SRT subtitles'}
-                >
-                  <span className="text-xs">SRT</span>
-                </button>
+                {clipDownloadButtons(selectedVersion.song, selectedVersion.clip, 'md')}
               </div>
             </div>
             <div className="space-y-2">
