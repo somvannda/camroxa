@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Session now survives the 15-minute access cookie by refreshing it with the 7-day refresh cookie, same as the user portal. See `docs/changelog/2026-08-18-music-web-session-refresh.md`.
 - Create page lyric/style wands: stop sending over-limit lyrics, validate style input before calling the API, and show a clear message when AI assist returns 502. See `docs/changelog/2026-08-17-music-web-generate-assist.md`.
 - Create track details show stored vocal gender and slider percents instead of default 0.50; clips are labeled Version 1/2. Play stays on Camxora URLs (no public Suno/B2 redirect). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
 - Catalog/Explore play uses the same Camxora stream proxy (signed B2 URLs stay server-side). See `docs/changelog/2026-08-17-catalog-playback-proxy.md`.

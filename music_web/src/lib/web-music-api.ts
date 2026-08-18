@@ -1,5 +1,7 @@
 /** Same-origin music-web generation client. */
 
+import { musicAuthFetch } from '@/lib/auth-fetch';
+
 export type WebMusicQuota = {
   limit: number;
   used: number;
@@ -76,14 +78,7 @@ async function readError(response: Response, fallback: string): Promise<string> 
 }
 
 async function musicFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: 'include',
-    headers: {
-      'X-Portal-Context': 'user',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  const response = await musicAuthFetch(path, init);
   if (!response.ok) {
     const message = await readError(response, `Request failed (${response.status})`);
     if (response.status === 502 || response.status === 503 || response.status === 504) {
@@ -199,9 +194,8 @@ export async function getWebMusicGeneration(id: string): Promise<WebMusicGenerat
 }
 
 export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
-  const response = await fetch(
+  const response = await musicAuthFetch(
     `/api/v1/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
-    { credentials: 'include', headers: { 'X-Portal-Context': 'user' } },
   );
   if (!response.ok) {
     throw new Error(await readError(response, 'Download failed'));
@@ -218,9 +212,8 @@ export async function downloadWebMusicClip(id: string, variant: string, filename
 }
 
 export async function downloadWebMusicClipWav(id: string, variant: string, filename: string): Promise<void> {
-  const response = await fetch(
+  const response = await musicAuthFetch(
     `/api/v1/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
-    { credentials: 'include', headers: { 'X-Portal-Context': 'user' } },
   );
   if (!response.ok) {
     throw new Error(await readError(response, 'WAV download failed'));
@@ -242,9 +235,8 @@ export async function downloadWebMusicTimedLyrics(
   format: 'lrc' | 'srt',
   filename: string,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await musicAuthFetch(
     `/api/v1/web-music/generations/${id}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${encodeURIComponent(format)}`,
-    { credentials: 'include', headers: { 'X-Portal-Context': 'user' } },
   );
   if (!response.ok) {
     throw new Error(await readError(response, 'Timed lyrics download failed'));

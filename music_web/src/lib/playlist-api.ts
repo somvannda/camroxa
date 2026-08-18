@@ -1,5 +1,7 @@
 /** Web music playlist client. */
 
+import { musicAuthFetch } from '@/lib/auth-fetch';
+
 function resolveApiBase(): string {
   if (typeof window !== 'undefined') return '';
   return (
@@ -148,7 +150,7 @@ export async function getPublicArtist(
 }
 
 export async function listWebMusicPlaylists(): Promise<{ items: WebMusicPlaylist[] }> {
-  const response = await fetch('/api/v1/web-music/playlists', { credentials: 'include' });
+  const response = await musicAuthFetch('/api/v1/web-music/playlists');
   if (!response.ok) {
     throw new Error(await readError(response, 'Unable to load playlists'));
   }
@@ -160,9 +162,8 @@ export async function createWebMusicPlaylist(input: {
   description?: string;
   is_public?: boolean;
 }): Promise<WebMusicPlaylist> {
-  const response = await fetch('/api/v1/web-music/playlists', {
+  const response = await musicAuthFetch('/api/v1/web-music/playlists', {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -173,9 +174,7 @@ export async function createWebMusicPlaylist(input: {
 }
 
 export async function getWebMusicPlaylist(id: string): Promise<WebMusicPlaylist> {
-  const response = await fetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}`, {
-    credentials: 'include',
-  });
+  const response = await musicAuthFetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}`);
   if (!response.ok) {
     throw new Error(await readError(response, 'Unable to load playlist'));
   }
@@ -186,9 +185,8 @@ export async function updateWebMusicPlaylist(
   id: string,
   input: { name?: string; description?: string; is_public?: boolean },
 ): Promise<WebMusicPlaylist> {
-  const response = await fetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}`, {
+  const response = await musicAuthFetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -199,9 +197,8 @@ export async function updateWebMusicPlaylist(
 }
 
 export async function deleteWebMusicPlaylist(id: string): Promise<void> {
-  const response = await fetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}`, {
+  const response = await musicAuthFetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    credentials: 'include',
   });
   if (!response.ok) {
     throw new Error(await readError(response, 'Unable to delete playlist'));
@@ -209,9 +206,7 @@ export async function deleteWebMusicPlaylist(id: string): Promise<void> {
 }
 
 export async function listWebMusicPlaylistItems(id: string): Promise<{ items: WebMusicPlaylistItem[] }> {
-  const response = await fetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}/items`, {
-    credentials: 'include',
-  });
+  const response = await musicAuthFetch(`/api/v1/web-music/playlists/${encodeURIComponent(id)}/items`);
   if (!response.ok) {
     throw new Error(await readError(response, 'Unable to load playlist songs'));
   }
@@ -222,11 +217,10 @@ export async function addWebMusicPlaylistItem(
   playlistId: string,
   input: { task_id: string; variant?: 'ok' | 'alt' },
 ): Promise<WebMusicPlaylistItem> {
-  const response = await fetch(
+  const response = await musicAuthFetch(
     `/api/v1/web-music/playlists/${encodeURIComponent(playlistId)}/items`,
     {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     },
@@ -238,12 +232,9 @@ export async function addWebMusicPlaylistItem(
 }
 
 export async function removeWebMusicPlaylistItem(playlistId: string, itemId: string): Promise<void> {
-  const response = await fetch(
+  const response = await musicAuthFetch(
     `/api/v1/web-music/playlists/${encodeURIComponent(playlistId)}/items/${encodeURIComponent(itemId)}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    },
+    { method: 'DELETE' },
   );
   if (!response.ok) {
     throw new Error(await readError(response, 'Unable to remove song from playlist'));
