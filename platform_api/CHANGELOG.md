@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Web-music WAV download no longer runs WAV bytes through the MP3-only Suno downloader (RIFF was rejected). WAV URLs mislabelled as `audio/mp4` are accepted; a previous failed conversion is retried; unexpected errors return a retryable 422 instead of a blank 500. Owner play URLs `/stream/ok` and `/stream/alt` are routed again (query-param stream still works). Clip titles can be renamed per Version via `title_ok` / `title_alt`. See `docs/changelog/2026-08-18-music-web-workspace-follow-playing.md`.
 - Login no longer 500s on invalid credentials or lockout: import `AccountLockedError` in the auth router. See `docs/changelog/2026-08-17-sandbox-login-alembic-hang.md`.
 - Web music lyric/style assist: accept full 5000-character lyrics on `generate-styles`, and return a clear retryable 502 when the text LLM is down. See `docs/changelog/2026-08-17-music-web-generate-assist.md`.
 - Create playback: return stored vocal/slider settings and clip durations; proxy play through the API with HTTP Range (do not 302 to Suno/B2). See `docs/changelog/2026-08-17-music-web-create-playback.md`.
@@ -36,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `PATCH /api/v1/web-music/generations/{id}` updates a Create-workspace song title. See `docs/changelog/2026-08-18-music-web-workspace-follow-playing.md`.
 - Web music public discovery endpoints: `/web-music/public/playlists`, `/web-music/public/artists`, `/web-music/public/artists/{user_id}`. See `docs/changelog/2026-08-17-web-music-explore-public-playlists.md`.
 - Public recent tracks endpoint `/web-music/public/tracks/recent` and public playlist streaming access for explore playback.
 

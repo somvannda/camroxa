@@ -89,6 +89,15 @@
   will-change: transform;
 }
 
+.eq-bar-brand {
+  background-image: linear-gradient(to top, #7466f1 0%, #a259ff 52%, #e879f9 100%);
+}
+
+.eq-bar-inline {
+  min-height: 0;
+  height: 100%;
+}
+
 .eq-bar-paused {
   animation: none;
   transform: scaleY(0.4);

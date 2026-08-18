@@ -71,6 +71,21 @@ def mock_web_music_service() -> AsyncMock:
         }
     )
     service.download_mp3 = AsyncMock(return_value=(b"ID3fake", "Night Drive-ok.mp3", "audio/mpeg"))
+    service.download_wav = AsyncMock(return_value=(b"RIFF____WAVEdata", "Night Drive-ok.wav", "audio/wav"))
+    service.update_generation_title = AsyncMock(
+        return_value={
+            "id": str(uuid4()),
+            "title": "Renamed Drive",
+            "lyrics": "[Verse]",
+            "style": "synthwave",
+            "model": "V5",
+            "instrumental": False,
+            "status": "SUCCESS",
+            "error_message": None,
+            "created_at": None,
+            "clips": [],
+        }
+    )
     service.generate_draft = AsyncMock(return_value=("[Verse]\nCity lights", "Night Drive"))
     service.generate_styles = AsyncMock(return_value="synthwave, analog synth, 118 BPM")
     return service
@@ -131,6 +146,25 @@ class TestWebMusicRouter:
         assert response.headers["content-type"].startswith("audio/mpeg")
         assert b"ID3fake" in response.content
 
+    async def test_download_wav(self, client: AsyncClient) -> None:
+        task_id = uuid4()
+        response = await client.get(f"/api/v1/web-music/generations/{task_id}/download-wav?variant=ok")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("audio/wav")
+        assert response.content.startswith(b"RIFF")
+
+    async def test_patch_generation_title(self, client: AsyncClient, mock_web_music_service: AsyncMock) -> None:
+        task_id = uuid4()
+        response = await client.patch(
+            f"/api/v1/web-music/generations/{task_id}",
+            json={"title": "Renamed Drive", "variant": "alt"},
+        )
+        assert response.status_code == 200
+        assert response.json()["title"] == "Renamed Drive"
+        mock_web_music_service.update_generation_title.assert_awaited()
+        assert mock_web_music_service.update_generation_title.await_args.kwargs["variant"] == "alt"
+        assert mock_web_music_service.update_generation_title.await_args.kwargs["title"] == "Renamed Drive"
+
     async def test_get_generation_returns_advanced_settings(self, client: AsyncClient) -> None:
         task_id = uuid4()
         response = await client.get(f"/api/v1/web-music/generations/{task_id}")
@@ -171,6 +205,14 @@ class TestWebMusicRouter:
         assert b"ID3fake" in response.content
         mock_web_music_service.proxy_playback.assert_awaited()
         mock_web_music_service.download_mp3.assert_not_awaited()
+
+        path_response = await client.get(
+            f"/api/v1/web-music/generations/{task_id}/stream/alt",
+            headers={"Range": "bytes=0-1023"},
+            follow_redirects=False,
+        )
+        assert path_response.status_code == 200
+        assert mock_web_music_service.proxy_playback.await_args.kwargs["variant"] == "alt"
 
     async def test_generate_draft(self, client: AsyncClient, mock_web_music_service: AsyncMock) -> None:
         response = await client.post(

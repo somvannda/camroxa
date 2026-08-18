@@ -24,6 +24,7 @@ export type WebMusicClip = {
   ready: boolean;
   image_url?: string | null;
   duration_seconds?: number | null;
+  title?: string;
 };
 
 export type WebMusicGeneration = {
@@ -193,6 +194,18 @@ export async function getWebMusicGeneration(id: string): Promise<WebMusicGenerat
   return musicFetch<WebMusicGeneration>(`/api/v1/web-music/generations/${id}`);
 }
 
+export async function updateWebMusicGenerationTitle(
+  id: string,
+  title: string,
+  variant?: string,
+): Promise<WebMusicGeneration> {
+  return musicFetch<WebMusicGeneration>(`/api/v1/web-music/generations/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, ...(variant ? { variant } : {}) }),
+  });
+}
+
 export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
   const response = await musicAuthFetch(
     `/api/v1/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
@@ -212,21 +225,34 @@ export async function downloadWebMusicClip(id: string, variant: string, filename
 }
 
 export async function downloadWebMusicClipWav(id: string, variant: string, filename: string): Promise<void> {
-  const response = await musicAuthFetch(
-    `/api/v1/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
-  );
-  if (!response.ok) {
-    throw new Error(await readError(response, 'WAV download failed'));
+  const maxAttempts = 8;
+  let lastError = 'WAV download failed';
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const response = await musicAuthFetch(
+      `/api/v1/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
+    );
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    lastError = await readError(response, 'WAV download failed');
+    const retryable = /not ready yet|try again/i.test(lastError);
+    if (!retryable || attempt === maxAttempts - 1) {
+      throw new Error(lastError);
+    }
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 2500);
+    });
   }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  throw new Error(lastError);
 }
 
 export async function downloadWebMusicTimedLyrics(

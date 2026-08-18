@@ -50,6 +50,7 @@ class WebMusicClipResponse(BaseModel):
     ready: bool = False
     image_url: str | None = None
     duration_seconds: float | None = None
+    title: str = ""
 
 
 class WebMusicQuotaResponse(BaseModel):
@@ -405,6 +406,11 @@ async def generate(
     )
 
 
+class WebMusicGenerationUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    variant: Literal["ok", "alt"] | None = None
+
+
 @router.get("/generations", response_model=WebMusicGenerationListResponse)
 async def list_generations(
     ctx: CurrentUserDep,
@@ -434,6 +440,22 @@ async def get_generation(
     service: WebMusicServiceDep,
 ) -> WebMusicGenerationResponse:
     payload = await service.get_generation(UUID(ctx.user_id), task_id)
+    return _generation_response(payload)
+
+
+@router.patch("/generations/{task_id}", response_model=WebMusicGenerationResponse)
+async def update_generation(
+    task_id: UUID,
+    body: WebMusicGenerationUpdateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicGenerationResponse:
+    payload = await service.update_generation_title(
+        UUID(ctx.user_id),
+        task_id,
+        title=body.title,
+        variant=body.variant,
+    )
     return _generation_response(payload)
 
 
@@ -495,6 +517,23 @@ async def download_timed_lyrics(
         content=data,
         media_type=content_type,
         headers={"Content-Disposition": content_disposition(filename, inline=False)},
+    )
+
+
+@router.get("/generations/{task_id}/stream/{variant}")
+async def stream_generation_variant(
+    task_id: UUID,
+    variant: Literal["ok", "alt"],
+    request: Request,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    return await service.proxy_playback(
+        UUID(ctx.user_id),
+        task_id,
+        variant=variant,
+        range_header=request.headers.get("range"),
     )
 
 
