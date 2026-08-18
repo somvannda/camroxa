@@ -61,6 +61,15 @@ const STYLE_CHIPS = [
   'indie',
 ];
 
+function clipWaitingLabel(generation: WebMusicGeneration): string {
+  return (generation.status || '').toUpperCase() === 'SUCCESS' ? 'Finishing' : 'Waiting';
+}
+
+function isGeneratingStatus(generation: WebMusicGeneration): boolean {
+  const status = (generation.status || '').toLowerCase();
+  return status === 'pending' || status === 'running';
+}
+
 function isOpenGeneration(item: WebMusicGeneration): boolean {
   const status = (item.status || '').toLowerCase();
   if (status === 'failed' || status === 'cancelled') return false;
@@ -1315,7 +1324,8 @@ export default function CreatePageClient() {
                           <ClipReadyLabel
                             clip={clip}
                             model={generation.model}
-                            generating={isOpenGeneration(generation)}
+                            waitingLabel={clipWaitingLabel(generation)}
+                            generating={isGeneratingStatus(generation)}
                           />
                         </div>
                       </div>
@@ -1361,7 +1371,7 @@ export default function CreatePageClient() {
                 <ClipReadyLabel
                   clip={selectedVersion.clip}
                   model={selectedVersion.song.model}
-                  waitingLabel="Processing"
+                  waitingLabel={clipWaitingLabel(selectedVersion.song)}
                   className="text-sm text-slate-400"
                 />
               </div>
@@ -1415,7 +1425,7 @@ export default function CreatePageClient() {
                 </div>
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">Status</span>
-                  <span className="text-white">{selectedVersion.clip.ready ? 'Ready' : 'Processing'}</span>
+                  <span className="text-white">{selectedVersion.clip.ready ? 'Ready' : clipWaitingLabel(selectedVersion.song)}</span>
                 </div>
               </div>
             </div>

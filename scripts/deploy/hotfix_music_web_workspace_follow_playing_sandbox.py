@@ -7,23 +7,25 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DEPLOY = ROOT / "scripts" / "deploy"
-SIBLING_VENV = ROOT.parent / "MusicGenerator" / "scripts" / "deploy" / ".venv" / "Lib" / "site-packages"
-for candidate in (DEPLOY / ".venv" / "Lib" / "site-packages", SIBLING_VENV):
-    if candidate.is_dir():
+PRIMARY = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+SCRIPT_DIR = Path(__file__).resolve().parent
+_DEPLOY_CANDIDATES = [PRIMARY / "scripts" / "deploy", SCRIPT_DIR]
+for candidate in _DEPLOY_CANDIDATES:
+    venv_site = candidate / ".venv" / "Lib" / "site-packages"
+    if venv_site.is_dir():
+        sys.path.insert(0, str(venv_site))
+    if (candidate / "deploy.py").is_file():
         sys.path.insert(0, str(candidate))
         break
-sys.path.insert(0, str(DEPLOY))
 
 from deploy import ensure_deploy_key, load_sandbox_secrets, resolve_sandbox_ssh, ssh_connect  # noqa: E402
 
 SANDBOX_HOST = "46.250.235.83"
 FILES = [
     "music_web/src/components/create-page-client.tsx",
-    "music_web/src/lib/web-music-api.ts",
     "platform_api/services/web_music_service.py",
-    "platform_api/clients/suno_client.py",
     "platform_api/services/suno_audio_resolver.py",
+    "platform_api/migrations/versions/106_web_music_stream_ready.py",
 ]
 
 
@@ -54,18 +56,28 @@ set -e
 REPO=/opt/camxora/repo
 chown camxora:camxora \
   $REPO/music_web/src/components/create-page-client.tsx \
-  $REPO/music_web/src/lib/web-music-api.ts \
   $REPO/platform_api/services/web_music_service.py \
-  $REPO/platform_api/clients/suno_client.py \
-  $REPO/platform_api/services/suno_audio_resolver.py
-grep -n "CoverEqualizer\|_extract_suno_wav_url\|max_attempts = 30\|reject_mp4=False" \
+  $REPO/platform_api/services/suno_audio_resolver.py \
+  $REPO/platform_api/migrations/versions/106_web_music_stream_ready.py
+grep -n "Finishing\|_ensure_stream_ready\|origin_audio_range_is_playable" \
   $REPO/music_web/src/components/create-page-client.tsx \
-  $REPO/platform_api/clients/suno_client.py \
   $REPO/platform_api/services/web_music_service.py \
   $REPO/platform_api/services/suno_audio_resolver.py
-timeout 20 sudo -u postgres psql -d camxora_platform -c "ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS wav_task_id_ok TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS wav_task_id_alt TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS wav_url_ok TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS wav_url_alt TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS wav_status_ok TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS wav_status_alt TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS b2_wav_storage_key_ok TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS b2_wav_storage_key_alt TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS audio_id_ok TEXT; ALTER TABLE suno_tasks ADD COLUMN IF NOT EXISTS audio_id_alt TEXT;"
+timeout 20 sudo -u postgres psql -d camxora_platform -v ON_ERROR_STOP=1 -c "
+ALTER TABLE suno_tasks
+  ADD COLUMN IF NOT EXISTS stream_ready_ok BOOLEAN,
+  ADD COLUMN IF NOT EXISTS stream_ready_alt BOOLEAN;
+UPDATE suno_tasks SET stream_ready_ok = TRUE
+ WHERE stream_ready_ok IS NULL
+   AND (NULLIF(BTRIM(COALESCE(audio_url_ok, '')), '') IS NOT NULL
+        OR NULLIF(BTRIM(COALESCE(b2_storage_key_ok, '')), '') IS NOT NULL);
+UPDATE suno_tasks SET stream_ready_alt = TRUE
+ WHERE stream_ready_alt IS NULL
+   AND (NULLIF(BTRIM(COALESCE(audio_url_alt, '')), '') IS NOT NULL
+        OR NULLIF(BTRIM(COALESCE(b2_storage_key_alt, '')), '') IS NOT NULL);
+"
 cd /opt/camxora/repo
-PYTHONPATH=/opt/camxora/repo /opt/camxora/repo/platform_api/.venv/bin/python -c "from platform_api.clients.suno_client import parse_suno_wav_poll, extract_suno_wav_task_id; from platform_api.services.suno_audio_resolver import validate_wav_bytes; from platform_api.services.audio_origin_proxy import is_missing_range; print('IMPORT_OK', parse_suno_wav_poll({'code':404}))"
+PYTHONPATH=/opt/camxora/repo /opt/camxora/repo/platform_api/.venv/bin/python -c "from platform_api.services.suno_audio_resolver import origin_audio_range_is_playable, validate_wav_bytes; from platform_api.services.audio_origin_proxy import is_missing_range; print('IMPORT_OK')"
 systemctl restart camxora-api
 sleep 4
 systemctl is-active camxora-api
@@ -91,7 +103,7 @@ echo WORKSPACE_FOLLOW_PLAYING_DONE
                 print(err.encode("ascii", errors="replace").decode("ascii"))
         if "WORKSPACE_FOLLOW_PLAYING_DONE" not in out:
             raise SystemExit("Sandbox workspace follow-playing deploy did not finish cleanly.")
-        log_path = DEPLOY / "deploy-music-web-workspace-follow-playing-sandbox.log"
+        log_path = SCRIPT_DIR / "deploy-music-web-workspace-follow-playing-sandbox.log"
         log_path.write_text(out + "\n--- STDERR ---\n" + err, encoding="utf-8")
         print(f"Logged full output to {log_path}")
     finally:

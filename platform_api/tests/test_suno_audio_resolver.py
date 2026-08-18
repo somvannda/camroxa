@@ -317,6 +317,58 @@ async def test_download_suno_wav_bytes_accepts_mislabelled_mp4_content_type(monk
     assert data[:4] == b"RIFF"
 
 
+@pytest.mark.asyncio
+async def test_origin_audio_range_is_playable_accepts_partial_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import suno_audio_resolver as resolver
+
+    class FakeResponse:
+        status_code = 206
+        content = b"ID3" + b"\x00" * 80
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        async def get(self, url: str, headers: dict[str, str] | None = None):
+            del url, headers
+            return FakeResponse()
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeClient)
+    assert await resolver.origin_audio_range_is_playable("https://cdn1.suno.ai/clip.mp3") is True
+
+
+@pytest.mark.asyncio
+async def test_origin_audio_range_is_playable_rejects_cdn_forbidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import suno_audio_resolver as resolver
+
+    class FakeResponse:
+        status_code = 403
+        content = b"Forbidden"
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        async def get(self, url: str, headers: dict[str, str] | None = None):
+            del url, headers
+            return FakeResponse()
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeClient)
+    assert await resolver.origin_audio_range_is_playable("https://cdn1.suno.ai/clip.mp3") is False
+
+
 def test_callback_indicates_success_for_complete_callback_type() -> None:
     assert callback_indicates_success({"code": 200, "data": {"callbackType": "complete"}})
 
