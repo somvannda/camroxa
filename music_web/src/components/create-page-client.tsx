@@ -918,13 +918,17 @@ export default function CreatePageClient() {
         {mode === 'simple' ? (
           <label className="block space-y-2 text-sm text-slate-200">
             <span>Song description</span>
-            <textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              rows={8}
-              placeholder="A rainy-night synthwave song about leaving the city..."
-              className="min-h-[180px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
-            />
+            <div className="space-y-1.5">
+              <textarea
+                value={prompt}
+                onChange={(event) => setPrompt(clampText(event.target.value, WEB_MUSIC_STYLE_MAX))}
+                maxLength={WEB_MUSIC_STYLE_MAX}
+                rows={8}
+                placeholder="A rainy-night synthwave song about leaving the city..."
+                className="min-h-[180px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
+              />
+              <MusicCharCount value={prompt} max={WEB_MUSIC_STYLE_MAX} />
+            </div>
           </label>
         ) : (
           <div className="space-y-3">
@@ -957,13 +961,17 @@ export default function CreatePageClient() {
                   <MusicCharCount value={lyrics} max={WEB_MUSIC_LYRICS_MAX} />
                 </div>
               ) : lyricsMode === 'prompt' ? (
-                <textarea
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  rows={7}
-                  placeholder="Describe the song you want the lyrics to express..."
-                  className="min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
-                />
+                <div className="space-y-1.5">
+                  <textarea
+                    value={prompt}
+                    onChange={(event) => setPrompt(clampText(event.target.value, WEB_MUSIC_LYRICS_MAX))}
+                    maxLength={WEB_MUSIC_LYRICS_MAX}
+                    rows={7}
+                    placeholder="Describe the song you want the lyrics to express..."
+                    className="min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
+                  />
+                  <MusicCharCount value={prompt} max={WEB_MUSIC_LYRICS_MAX} />
+                </div>
               ) : (
                 <p className="rounded-[7px] border border-dashed border-white/10 px-4 py-6 text-sm text-slate-400">
                   Instrumental mode — no vocals. Set your style below and hit Create.
