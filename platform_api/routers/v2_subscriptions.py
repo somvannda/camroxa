@@ -26,6 +26,35 @@ router = APIRouter(prefix="/v2/subscriptions", tags=["subscriptions-v2"])
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
+def _iso(value: object) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()  # type: ignore[no-any-return]
+    return str(value)
+
+
+def _subscription_response(subscription: dict) -> SubscriptionResponse:
+    cancelled = subscription.get("cancelled_at")
+    return SubscriptionResponse(
+        id=str(subscription["id"]),
+        user_id=str(subscription["user_id"]),
+        plan_id=str(subscription["plan_id"]),
+        plan_name=subscription.get("plan_name") or "Pro",
+        status=subscription["status"],
+        billing_cycle=subscription["billing_cycle"],
+        current_period_start=_iso(subscription["current_period_start"]),
+        current_period_end=_iso(subscription["current_period_end"]),
+        cancel_at_period_end=bool(subscription.get("cancel_at_period_end")),
+        monthly_credits_granted=int(subscription.get("monthly_credits_granted") or 0),
+        monthly_credits_used=int(subscription.get("monthly_credits_used") or 0),
+        topup_credits_balance=int(subscription.get("topup_credits_balance") or 0),
+        total_credits_available=int(subscription.get("total_credits_available") or 0),
+        created_at=_iso(subscription["created_at"]),
+        cancelled_at=_iso(cancelled) if cancelled else None,
+    )
+
+
 async def _get_subscription_service() -> SubscriptionService:
     raise NotImplementedError("SubscriptionService dependency not configured.")
 
@@ -162,24 +191,8 @@ async def get_my_subscription(
     
     if not subscription:
         return None
-    
-    return SubscriptionResponse(
-        id=str(subscription["id"]),
-        user_id=str(subscription["user_id"]),
-        plan_id=str(subscription["plan_id"]),
-        plan_name=subscription["plan_name"],
-        status=subscription["status"],
-        billing_cycle=subscription["billing_cycle"],
-        current_period_start=subscription["current_period_start"].isoformat(),
-        current_period_end=subscription["current_period_end"].isoformat(),
-        cancel_at_period_end=subscription["cancel_at_period_end"],
-        monthly_credits_granted=subscription["monthly_credits_granted"],
-        monthly_credits_used=subscription["monthly_credits_used"],
-        topup_credits_balance=subscription["topup_credits_balance"],
-        total_credits_available=subscription.get("total_credits_available", 0),
-        created_at=subscription["created_at"].isoformat(),
-        cancelled_at=subscription["cancelled_at"].isoformat() if subscription.get("cancelled_at") else None
-    )
+
+    return _subscription_response(subscription)
 
 
 @router.post("/purchase", response_model=PurchaseSubscriptionResponse, status_code=200)
@@ -269,21 +282,5 @@ async def cancel_subscription(
     return CancelSubscriptionResponse(
         success=True,
         message=message,
-        subscription=SubscriptionResponse(
-            id=str(subscription["id"]),
-            user_id=str(subscription["user_id"]),
-            plan_id=str(subscription["plan_id"]),
-            plan_name=subscription["plan_name"],
-            status=subscription["status"],
-            billing_cycle=subscription["billing_cycle"],
-            current_period_start=subscription["current_period_start"].isoformat(),
-            current_period_end=subscription["current_period_end"].isoformat(),
-            cancel_at_period_end=subscription["cancel_at_period_end"],
-            monthly_credits_granted=subscription["monthly_credits_granted"],
-            monthly_credits_used=subscription["monthly_credits_used"],
-            topup_credits_balance=subscription["topup_credits_balance"],
-            total_credits_available=subscription.get("total_credits_available", 0),
-            created_at=subscription["created_at"].isoformat(),
-            cancelled_at=subscription["cancelled_at"].isoformat() if subscription.get("cancelled_at") else None
-        ) if subscription else None
+        subscription=_subscription_response(subscription) if subscription else None
     )

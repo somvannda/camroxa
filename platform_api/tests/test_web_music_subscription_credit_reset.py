@@ -93,3 +93,39 @@ async def test_reset_quota_if_needed_skips_yearly_before_monthly_due() -> None:
 
     assert reset is False
     service._db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_user_subscription_survives_missing_plan_row() -> None:
+    service = SubscriptionService.__new__(SubscriptionService)
+    now = datetime.utcnow()
+    row = {
+        "id": "sub-1",
+        "user_id": "user-1",
+        "plan_id": "missing-plan",
+        "status": "active",
+        "billing_cycle": "monthly",
+        "current_period_start": now - timedelta(days=1),
+        "current_period_end": now + timedelta(days=29),
+        "cancel_at_period_end": False,
+        "monthly_credits_granted": 1000,
+        "monthly_credits_used": 23,
+        "topup_credits_balance": 400,
+        "external_subscription_id": None,
+        "last_credit_reset": now - timedelta(days=1),
+        "created_at": now - timedelta(days=1),
+        "cancelled_at": None,
+        "plan_name": "Pro",
+    }
+    service._db = AsyncMock()
+    service._db.fetch_one = AsyncMock(side_effect=[row, dict(row)])
+    service.reset_quota_if_needed = AsyncMock(return_value=False)
+
+    result = await service.get_user_subscription("user-1")
+
+    sql = service._db.fetch_one.await_args_list[0].args[0]
+    assert "LEFT JOIN plans" in sql
+    assert "current_period_end > NOW()" in sql
+    assert result is not None
+    assert result["plan_name"] == "Pro"
+    assert result["total_credits_available"] == 1377

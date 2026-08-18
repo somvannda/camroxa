@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Play no longer sends a logged-in listener back to login when the clip URL is `/stream/ok` or `/stream/alt`. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
+- Profile no longer shows the “Unlock Unlimited Music Creation” pitch to paid subscribers. It shows the current plan, next billing date, and the other public plans. See `docs/changelog/2026-08-18-music-web-profile-current-plan.md`.
 - Create workspace Play/Ready wait until the audio file actually streams (Suno CDN 403 is still Finishing). See `docs/changelog/2026-08-18-music-web-stream-ready.md`.
 - Create workspace: clicking a row selects it without playing. Play moves the active selection. Covers show a spinner until Ready, then play; playing shows a tiny purple equalizer on the artwork. Click a title to rename that clip only (Version 1 / Version 2 stay independent). The v5.5 tag sits after Ready. Download badges keep size with a visible spinner overlay; order is playlist, LRC, SRT, MP3, WAV. WAV download no longer fails the MP3-only audio check. Play uses `/stream/ok` and `/stream/alt` so both versions load. See `docs/changelog/2026-08-18-music-web-workspace-follow-playing.md`.
 - Session now survives the 15-minute access cookie by refreshing it with the 7-day refresh cookie, same as the user portal. See `docs/changelog/2026-08-18-music-web-session-refresh.md`.

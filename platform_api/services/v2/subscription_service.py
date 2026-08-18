@@ -197,18 +197,29 @@ class SubscriptionService:
                 ws.topup_credits_balance, ws.external_subscription_id,
                 ws.last_credit_reset,
                 ws.created_at, ws.cancelled_at,
-                p.name AS plan_name
+                COALESCE(p.name, 'Pro') AS plan_name
             FROM web_subscriptions ws
-            JOIN plans p ON ws.plan_id = p.id
+            LEFT JOIN plans p ON ws.plan_id = p.id
             WHERE ws.user_id = $1
               AND ws.status = 'active'
-              AND (ws.cancel_at_period_end = false OR ws.current_period_end > NOW())
+              AND ws.current_period_end > NOW()
             ORDER BY ws.created_at DESC
             LIMIT 1
         """, user_id)
 
         if not row:
             return None
+
+        if row["current_period_start"] is None or row["current_period_end"] is None:
+            monthly_remaining = max(
+                0,
+                int(row["monthly_credits_granted"] or 0) - int(row["monthly_credits_used"] or 0),
+            )
+            result = dict(row)
+            result["total_credits_available"] = monthly_remaining + int(
+                row["topup_credits_balance"] or 0
+            )
+            return result
 
         subscription = Subscription(
             id=str(row["id"]),
@@ -218,10 +229,10 @@ class SubscriptionService:
             billing_cycle=row["billing_cycle"],
             current_period_start=row["current_period_start"],
             current_period_end=row["current_period_end"],
-            cancel_at_period_end=row["cancel_at_period_end"],
-            monthly_credits_granted=row["monthly_credits_granted"],
-            monthly_credits_used=row["monthly_credits_used"],
-            topup_credits_balance=row["topup_credits_balance"],
+            cancel_at_period_end=bool(row["cancel_at_period_end"]),
+            monthly_credits_granted=int(row["monthly_credits_granted"] or 0),
+            monthly_credits_used=int(row["monthly_credits_used"] or 0),
+            topup_credits_balance=int(row["topup_credits_balance"] or 0),
             external_subscription_id=row.get("external_subscription_id"),
             last_credit_reset=row.get("last_credit_reset"),
         )
@@ -235,9 +246,9 @@ class SubscriptionService:
                 ws.monthly_credits_granted, ws.monthly_credits_used,
                 ws.topup_credits_balance, ws.external_subscription_id,
                 ws.created_at, ws.cancelled_at,
-                p.name AS plan_name
+                COALESCE(p.name, 'Pro') AS plan_name
             FROM web_subscriptions ws
-            JOIN plans p ON ws.plan_id = p.id
+            LEFT JOIN plans p ON ws.plan_id = p.id
             WHERE ws.id = $1
         """, subscription.id)
 
@@ -246,10 +257,13 @@ class SubscriptionService:
 
         monthly_remaining = max(
             0,
-            refreshed["monthly_credits_granted"] - refreshed["monthly_credits_used"],
+            int(refreshed["monthly_credits_granted"] or 0)
+            - int(refreshed["monthly_credits_used"] or 0),
         )
         result = dict(refreshed)
-        result["total_credits_available"] = monthly_remaining + refreshed["topup_credits_balance"]
+        result["total_credits_available"] = monthly_remaining + int(
+            refreshed["topup_credits_balance"] or 0
+        )
         return result
 
     async def _get_checkout_subscription_row(self, user_id: str) -> Optional[dict]:

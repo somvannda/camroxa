@@ -16,6 +16,15 @@ from platform_api.services.v2.credit_service import CreditService
 
 router = APIRouter(prefix="/v2/credits", tags=["credits-v2"])
 
+
+def _iso(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()  # type: ignore[no-any-return]
+    text = str(value).strip()
+    return text or None
+
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -40,6 +49,8 @@ class CreditBalanceResponse(BaseModel):
     daily_free_limit: int
     daily_free_used: int
     has_subscription: bool
+    current_period_end: str | None = None
+    reset_at: str | None = None
     breakdown: dict
 
 
@@ -105,6 +116,8 @@ async def get_balance(
             daily_free_limit=balance.daily_free_limit,
             daily_free_used=balance.daily_free_used,
             has_subscription=balance.has_subscription,
+            current_period_end=_iso(balance.current_period_end),
+            reset_at=_iso(balance.reset_at),
             breakdown={
                 "monthly": balance.monthly_remaining,
                 "topup": balance.topup_balance,
