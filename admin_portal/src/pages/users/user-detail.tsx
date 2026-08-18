@@ -522,12 +522,36 @@ export default function UserDetailPage() {
             <CreditCard className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-100">
-              {formatCredits(user.credit_balance)}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {user.total_credits_spent.toLocaleString()} spent total
-            </p>
+            {user.music_credits_limit != null && user.music_credits_remaining != null ? (
+              <>
+                <div className="text-2xl font-bold text-slate-100">
+                  {(
+                    user.credits_burned != null
+                      ? user.credits_burned
+                      : Math.max(0, user.music_credits_limit - user.music_credits_remaining)
+                  ).toLocaleString()}{' '}
+                  / {user.music_credits_limit.toLocaleString()}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {user.music_credits_remaining.toLocaleString()} remaining
+                  {user.credit_balance > 0
+                    ? ` · Studio wallet ${formatCredits(user.credit_balance)}`
+                    : null}
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-slate-100">
+                  {formatCredits(user.credit_balance)}
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {user.credits_burned != null
+                    ? `${user.credits_burned.toLocaleString()} cr burned · `
+                    : null}
+                  {user.total_credits_spent.toLocaleString()} spent total
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 

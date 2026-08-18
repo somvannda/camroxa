@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Users table infers **Free** for Music-tagged accounts with no paid Music plan
+  and shows today's used / 50 daily credits. User detail matches. See
+  `docs/changelog/2026-08-18-admin-music-free-daily-display.md`.
 - Users table shows a **Tag** column (`Music` / `Studio`) from `users.products`. See
   `docs/changelog/2026-08-18-admin-users-product-tag.md`.
 - Users table **Plan** / **Credits** now include Camxora Music subscriptions

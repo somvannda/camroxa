@@ -281,13 +281,17 @@ export default function UsersPage() {
       header: 'Credits',
       accessorFn: (row) => {
         if (row.music_credits_limit != null && row.music_credits_remaining != null) {
+          const used =
+            row.credits_burned != null
+              ? row.credits_burned
+              : Math.max(0, row.music_credits_limit - row.music_credits_remaining);
           const walletHint =
             row.credit_balance > 0
               ? `Studio wallet ${row.credit_balance.toLocaleString()} cr`
-              : undefined;
+              : `${row.music_credits_remaining.toLocaleString()} remaining`;
           return (
             <span className="text-slate-200 font-medium" title={walletHint}>
-              {row.music_credits_remaining.toLocaleString()} / {row.music_credits_limit.toLocaleString()}
+              {used.toLocaleString()} / {row.music_credits_limit.toLocaleString()}
             </span>
           );
         }
