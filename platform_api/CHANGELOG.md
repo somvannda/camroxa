@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Music-web play no longer kicks a logged-in session to login: geo gate is pure ASGI (does not wrap Range audio), `/stream/ok` and `/stream/alt` are trusted play URLs, and unconfirmed users can still listen. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
+- Settings ignore unknown `PLATFORM_*` env vars (Telegram ops keys on production must not crash boot). Audio proxy keeps `is_missing_range` for production stream routers.
 - `GET /v2/subscriptions/my-subscription` still returns an active web-music subscription when the plan row is missing (LEFT JOIN). Credit balance includes `current_period_end` for the profile next-billing date. See `docs/changelog/2026-08-18-music-web-profile-current-plan.md`.
 - Web Music Create: validate title and admin Suno blocklist **before** charging; reject blocked lyrics instead of submitting them; allow Khmer titles; refund if Suno later rejects. See `docs/changelog/2026-08-18-web-music-blocklist-precheck.md`.
 - Create workspace `clips[].ready` waits until origin audio actually serves bytes (or B2 has our file). Suno SUCCESS+URL alone is not enough. See `docs/changelog/2026-08-18-music-web-stream-ready.md`.

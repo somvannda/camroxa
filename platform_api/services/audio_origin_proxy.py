@@ -46,6 +46,11 @@ def is_initial_play_range(range_header: str | None) -> bool:
     return range_header.strip().lower().startswith("bytes=0-")
 
 
+def is_missing_range(range_header: str | None) -> bool:
+    """True when the client asked for the whole file with no Range header."""
+    return not str(range_header or "").strip()
+
+
 def _safe_response_headers(origin_headers: Mapping[str, str]) -> dict[str, str]:
     headers: dict[str, str] = {
         "Cache-Control": "private, no-store",

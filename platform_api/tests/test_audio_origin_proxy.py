@@ -18,6 +18,14 @@ def test_is_initial_play_range() -> None:
     assert is_initial_play_range("bytes=1024-2047") is False
 
 
+def test_is_missing_range() -> None:
+    from platform_api.services.audio_origin_proxy import is_missing_range
+
+    assert is_missing_range(None) is True
+    assert is_missing_range("") is True
+    assert is_missing_range("bytes=0-") is False
+
+
 def test_is_camxora_audio_proxy_url() -> None:
     assert is_camxora_audio_proxy_url("/api/v1/web-music/play/abc_DEF-123") is True
     assert is_camxora_audio_proxy_url(
