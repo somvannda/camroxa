@@ -37,6 +37,7 @@ class DetailedBalance:
     daily_free_remaining: int
     total_available: int
     reset_at: datetime | None
+    current_period_end: datetime | None = None
 
 
 @dataclass
@@ -234,6 +235,7 @@ class CreditService:
                     current_period_end=subscription["current_period_end"],
                     last_credit_reset=last_reset,
                 ),
+                current_period_end=subscription["current_period_end"],
             )
 
         return DetailedBalance(
@@ -247,6 +249,7 @@ class CreditService:
             daily_free_remaining=daily_remaining,
             total_available=daily_remaining,
             reset_at=next_billing_midnight(),
+            current_period_end=None,
         )
 
     async def get_total_balance(self, user_id: str) -> int:
