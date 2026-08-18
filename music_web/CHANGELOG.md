@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
+
 ### Fixed
 
 - Create workspace Play/Ready wait until the audio file actually streams (Suno CDN 403 is still Finishing). See `docs/changelog/2026-08-18-music-web-stream-ready.md`.

@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Music Web free-credit farm protection: required Turnstile on web register, per-IP signup caps, and a shared 5-song/day network cap. Public music signup stays open. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
+
 ### Fixed
 
 - Create workspace `clips[].ready` waits until origin audio actually serves bytes (or B2 has our file). Suno SUCCESS+URL alone is not enough. See `docs/changelog/2026-08-18-music-web-stream-ready.md`.

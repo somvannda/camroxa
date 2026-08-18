@@ -200,6 +200,11 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         logger.info("Rate limiter configured.")
 
+        from platform_api.middleware.abuse_detection import configure_abuse_detection
+
+        configure_abuse_detection(redis_conn)
+        logger.info("Signup/generation abuse detection configured.")
+
         # --- Configure audit middleware ---
         configure_audit_middleware(audit_service=get_audit_service())
         logger.info("Audit middleware configured.")

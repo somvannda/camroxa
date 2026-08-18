@@ -49,6 +49,9 @@ WEB_MUSIC_CHECKOUT_RATE_WINDOW_SECONDS = 60
 WEB_MUSIC_CHECKOUT_STATUS_RATE_LIMIT = 45
 WEB_MUSIC_CHECKOUT_STATUS_RATE_WINDOW_SECONDS = 60
 
+REGISTER_RATE_LIMIT = 8
+REGISTER_RATE_WINDOW_SECONDS = 3600
+
 # Redis key prefix for cached rate limit config
 CONFIG_CACHE_PREFIX = "ratelimit:config:"
 CONFIG_CACHE_TTL = 5  # seconds — Admin updates apply within this window
@@ -242,6 +245,11 @@ async def get_rate_limit_config(
         config = RateLimitConfig(
             max_requests=WEB_MUSIC_CHECKOUT_STATUS_RATE_LIMIT,
             window_seconds=WEB_MUSIC_CHECKOUT_STATUS_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "register":
+        config = RateLimitConfig(
+            max_requests=REGISTER_RATE_LIMIT,
+            window_seconds=REGISTER_RATE_WINDOW_SECONDS,
         )
     else:
         config = RateLimitConfig(
