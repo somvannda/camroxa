@@ -120,6 +120,28 @@ def _is_terminal_progress_stage(stage: str) -> bool:
     return normalized in {"youtube", "done", "completed", "error"}
 
 
+def _is_synthetic_asset_path(path: str | None) -> bool:
+    """Admin board may inject server:// placeholders; those are not exportable files."""
+    return str(path or "").strip().lower().startswith("server://")
+
+
+def _image_jobs_complete(*, bg_ready: int, bg_total: int) -> bool:
+    """True when every background image job has succeeded."""
+    return int(bg_total or 0) > 0 and int(bg_ready or 0) >= int(bg_total or 0)
+
+
+def _export_assets_verified(
+    *,
+    long_ready: bool,
+    reel_ready: bool,
+    paths: tuple[str | None, ...],
+) -> bool:
+    """True only when a real background file is known — never from job success alone."""
+    if not (long_ready or reel_ready):
+        return False
+    return any(bool(path) and not _is_synthetic_asset_path(path) for path in paths)
+
+
 def _progress_batch_fetch_limit(*, limit: int, active_only: bool) -> int:
     """How many batches to load before OK/ALT expansion and row slicing."""
     resolved = max(1, int(limit))
@@ -210,12 +232,22 @@ def _build_row(
     youtube_status = str(youtube.get("latest_status", "") or "").upper()
     youtube_url = youtube.get("youtube_url")
 
-    # Export can start once the background is ready. Thumbnail is for YouTube upload
-    # and may still be rendering while the row is already in Converter/Export.
-    image_complete = (
-        (bg_total <= 0 or bg_ready >= bg_total)
-        and (bg_total > 0 or long_ready or reel_ready)
-        and (long_ready or reel_ready)
+    # Generation complete: jobs succeeded (API host cannot see desktop PNGs).
+    # Export-ready: a real background file is verified on this host. Do not mix
+    # the two — fake/unverified paths must not start desktop export.
+    image_generation_complete = _image_jobs_complete(
+        bg_ready=bg_ready,
+        bg_total=bg_total,
+    ) or bool(long_ready or reel_ready)
+    export_assets_ready = _export_assets_verified(
+        long_ready=long_ready,
+        reel_ready=reel_ready,
+        paths=(
+            background_16x9_path,
+            background_9x16_path,
+            thumbnail_16x9_path,
+            thumbnail_9x16_path,
+        ),
     )
 
     stage = "Music"
@@ -267,27 +299,24 @@ def _build_row(
         else:
             status = "Waiting"
             notes = "Waiting for music generation."
-    elif not image_complete:
+    elif not image_generation_complete:
         stage = "Image"
         status = "Rendering" if (bg_total > 0 or th_total > 0) else "Queued"
         notes = "Background generation is still in progress (needed before video export)."
     else:
         stage = "Converter"
         status = "Queued"
-        notes = "Waiting for desktop video export and merge."
+        notes = (
+            "Waiting for desktop video export and merge."
+            if export_assets_ready
+            else "Background generation succeeded. Waiting for desktop image files before video export."
+        )
 
-    assets_ready = image_complete and any(
-        [
-            background_16x9_path,
-            background_9x16_path,
-            thumbnail_16x9_path,
-            thumbnail_9x16_path,
-        ]
-    )
+    assets_ready = export_assets_ready
     if stage == "Completed":
         converter_text = "Completed"
         merge_text = "Completed"
-    elif image_complete and not _is_terminal_progress_stage(stage):
+    elif image_generation_complete and not _is_terminal_progress_stage(stage):
         inspection = inspect_video_run_directory(row_run_dir) if row_run_dir else None
         video_presentation = build_video_run_presentation(
             inspection=inspection,
@@ -296,7 +325,12 @@ def _build_row(
         )
         converter_text = video_presentation.converter
         merge_text = video_presentation.merge
-        if video_presentation.stage and stage.lower() == "converter":
+        # Only promote Converter → Merger/Completed when this host actually saw MP4s.
+        if (
+            video_presentation.stage
+            and stage.lower() == "converter"
+            and inspection is not None
+        ):
             stage = video_presentation.stage
             status = video_presentation.status or status
             notes = video_presentation.notes or notes
@@ -721,6 +755,8 @@ async def list_progress_rows(
                 alt_profile_name=str(batch.get("alt_profile_name") or ""),
             ) or ""
             persisted = dict(persisted_asset_groups.get(key, {}))
+            # Desktop PNG paths like D:\SUNO\... are not on this host. Keep only
+            # files that exist here so meta.long_ready cannot fake export readiness.
             merged = merge_channel_asset_paths(run_dir, persisted)
             merged = {
                 "run_dir": persisted.get("run_dir") or run_dir or None,

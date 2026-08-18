@@ -16,52 +16,23 @@ from platform_api.routers.progress import _build_row
 from platform_api.services.channel_asset_service import (
     compute_long_ready,
     compute_reel_ready,
-    normalize_client_path,
+    mark_ready_from_image_jobs,
+    trust_persisted_asset_paths,
 )
 from platform_api.services.run_directory_planner import resolve_channel_run_dir
 
 logger = logging.getLogger(__name__)
 
-_ASSET_PATH_KEYS = (
-    "background_16x9_path",
-    "background_9x16_path",
-    "thumbnail_16x9_path",
-    "thumbnail_9x16_path",
-)
-
 
 def _trust_persisted_asset_paths(persisted: dict[str, Any] | None) -> dict[str, str | None]:
-    """Admin board runs on the API host and cannot see desktop E:\\ run folders.
-
-    Trust DB-persisted paths as-is (do not require Path.is_file on this machine).
-    """
-    persisted_assets = persisted or {}
-    merged: dict[str, str | None] = {}
-    for key in _ASSET_PATH_KEYS:
-        raw = str(persisted_assets.get(key) or "").strip() or None
-        merged[key] = normalize_client_path(raw) if raw else None
-    return merged
+    return trust_persisted_asset_paths(persisted)
 
 
 def _mark_ready_from_image_jobs(
     channel_assets: dict[tuple[str, str, str], dict[str, Any]],
     image_groups: dict[tuple[str, str, str], dict[str, Any]],
 ) -> None:
-    """If BG/TH image jobs succeeded, treat export readiness as true even without FS paths."""
-    for key, asset in channel_assets.items():
-        image_group = image_groups.get(key, {})
-        bg = image_group.get("background", {})
-        th = image_group.get("thumbnail", {})
-        bg_ready = int(bg.get("ready", 0) or 0)
-        bg_total = int(bg.get("total", 0) or 0)
-        th_ready = int(th.get("ready", 0) or 0)
-        th_total = int(th.get("total", 0) or 0)
-        if bg_total > 0 and bg_ready >= bg_total and not asset.get("background_16x9_path"):
-            asset["background_16x9_path"] = "server://image-job-ready/background-16x9"
-        if th_total > 0 and th_ready >= th_total and not asset.get("thumbnail_16x9_path"):
-            asset["thumbnail_16x9_path"] = "server://image-job-ready/thumbnail-16x9"
-        asset["long_ready"] = compute_long_ready(asset) or (bg_total > 0 and bg_ready >= bg_total)
-        asset["reel_ready"] = compute_reel_ready(asset)
+    mark_ready_from_image_jobs(channel_assets, image_groups)
 
 
 def _aggregate_streaming_groups(stream_rows: list[Any]) -> dict[tuple[str, str], dict[str, Any]]:

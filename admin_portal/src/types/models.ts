@@ -7,7 +7,12 @@ export interface User {
   suspension_reason?: string;
   credit_balance: number;
   plan_name: string | null;
+  music_credits_remaining?: number | null;
+  music_credits_limit?: number | null;
+  credits_burned?: number | null;
   channel_profile_count: number;
+  /** Signup product tags, e.g. music_web, studio. */
+  products?: string[];
   email_confirmed?: boolean;
   pending_verification_code?: string | null;
   verification_code_expires_at?: string | null;
@@ -28,6 +33,9 @@ export interface UserFullDetail {
   // Credits
   credit_balance: number;
   total_credits_spent: number;
+  music_credits_remaining?: number | null;
+  music_credits_limit?: number | null;
+  credits_burned?: number | null;
   recent_transactions: {
     id: string;
     amount: number;
@@ -172,6 +180,40 @@ export interface Plan {
   subscriber_count: number;
   can_delete: boolean;
   plan_kind?: 'subscription' | 'profile_addon';
+  plan_type?: 'desktop_pro' | 'web_music';
+}
+
+export interface WebMusicPlan {
+  id: string;
+  name: string;
+  price_cents: number;
+  billing_cycle_days: number;
+  monthly_credits: number;
+  features: {
+    music: boolean;
+    images: boolean;
+    topup: boolean;
+  };
+  is_public: boolean;
+  display_order: number;
+  is_active: boolean;
+  subscriber_count: number;
+  can_delete: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebMusicTopupPack {
+  id: string;
+  slug: string;
+  name: string;
+  total_credits: number;
+  price_cents: number;
+  display_order: number;
+  is_active: boolean;
+  songs_equivalent: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PlanOffer {

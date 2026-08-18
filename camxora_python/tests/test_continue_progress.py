@@ -16,6 +16,8 @@ def _entry(
     suno_ids: list[str] | None = None,
     bg_total: int = 2,
     th_total: int = 2,
+    bg_status: str = "",
+    th_status: str = "",
     long_ready: bool = True,
     run_dir: str = r"E:\runs\demo",
     converter: str = "pending",
@@ -44,6 +46,8 @@ def _entry(
             suno_failed_song_ids=suno_ids or [],
             bg_total=bg_total,
             th_total=th_total,
+            bg_status=bg_status,
+            th_status=th_status,
             long_ready=long_ready,
             reel_ready=False,
             expected=expected,
@@ -81,6 +85,28 @@ def test_continue_enqueues_images_when_music_ready() -> None:
 def test_continue_starts_export_on_export_stage() -> None:
     plan = resolve_continue_progress(_entry(stage="export", status="pending"))
     assert plan.action == "start_export"
+
+
+def test_continue_retries_images_while_jobs_pending() -> None:
+    plan = resolve_continue_progress(
+        _entry(stage="image", bg_status="PENDING", long_ready=False)
+    )
+    assert plan.action == "retry_images"
+
+
+def test_continue_does_not_retry_when_image_jobs_already_ready() -> None:
+    plan = resolve_continue_progress(
+        _entry(stage="image", bg_status="READY", long_ready=True)
+    )
+    assert plan.action != "retry_images"
+    assert plan.action == "start_export"
+
+
+def test_continue_does_not_export_converter_without_local_assets() -> None:
+    plan = resolve_continue_progress(
+        _entry(stage="converter", bg_status="READY", long_ready=False)
+    )
+    assert plan.action != "start_export"
 
 
 def test_continue_starts_merge_on_merge_stage() -> None:

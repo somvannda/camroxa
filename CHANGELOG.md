@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Continue Progress no longer retries image jobs that already succeeded, and
+  will not start video export until a local background PNG is ready (`long_ready`).
+
 ## [1.3.1] - 2026-08-17
 
 Desktop-only production installer `CamxoraSetup-1.3.1.exe` from `main`

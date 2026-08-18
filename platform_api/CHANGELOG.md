@@ -20,11 +20,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Admin Users infers Music **Free** (50 daily credits) for `music_web` users
+  without a paid `web_subscriptions` row. Credits show remaining / 50 and Burned
+  is today's whole-credit usage, not studio micro-units. See
+  `docs/changelog/2026-08-18-admin-music-free-daily-display.md`.
+- Admin `GET /users` includes Camxora Music plan + remaining/limit/burned credits
+  from `web_subscriptions` (desktop licenses alone showed "No plan" / leftover
+  studio wallet). See `docs/changelog/2026-08-18-admin-users-music-credits.md`.
+- Admin `GET /users` includes `products` (Music / Studio tags) from `users.products`.
+  See `docs/changelog/2026-08-18-admin-users-product-tag.md`.
 - Startup Alembic runner skips leftover sibling heads (retired `084_*` files) and time-boxes upgrades so a hung migration cannot leave the catalog on `Database pool not initialized`. See `docs/changelog/2026-08-17-alembic-skip-leftover-heads.md`.
 
 ### Fixed
 
 - Production admin user-detail 500 for studio accounts with channel profiles: `upload_path_exists` was used after the import was replaced by avatar helpers. See `docs/changelog/2026-08-18-admin-user-details-upload-path-import.md`.
+- Desktop Progress no longer stays on **Image / background still in progress**
+  after image jobs succeed. Generation-complete (job success) is separate from
+  export-ready (local PNG). `long_ready` is not faked from Windows paths the
+  API host cannot open, so desktop export/automation is unchanged. See
+  `docs/changelog/2026-08-16-progress-trust-image-job-success.md`.
 - Admin period quota top-ups (image/song/draft/etc.) are now honored by
   subscription coverage. Previously the admin UI showed remaining allowance
   but generation still demanded wallet credits. See
