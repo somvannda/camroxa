@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Web Music Create: validate title and admin Suno blocklist **before** charging; reject blocked lyrics instead of submitting them; allow Khmer titles; refund if Suno later rejects. See `docs/changelog/2026-08-18-web-music-blocklist-precheck.md`.
 - Create workspace `clips[].ready` waits until origin audio actually serves bytes (or B2 has our file). Suno SUCCESS+URL alone is not enough. See `docs/changelog/2026-08-18-music-web-stream-ready.md`.
 - Web-music WAV download no longer runs WAV bytes through the MP3-only Suno downloader (RIFF was rejected). WAV URLs mislabelled as `audio/mp4` are accepted; a previous failed conversion is retried; unexpected errors return a retryable 422 instead of a blank 500. Owner play URLs `/stream/ok` and `/stream/alt` are routed again (query-param stream still works). Clip titles can be renamed per Version via `title_ok` / `title_alt`. See `docs/changelog/2026-08-18-music-web-workspace-follow-playing.md`.
 - Login no longer 500s on invalid credentials or lockout: import `AccountLockedError` in the auth router. See `docs/changelog/2026-08-17-sandbox-login-alembic-hang.md`.
