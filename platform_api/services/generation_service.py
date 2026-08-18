@@ -2719,23 +2719,64 @@ class GenerationService:
         from platform_api.services.suno_lyrics_sanitize import sanitize_text_for_suno
 
         runtime_config = await get_suno_blocklist_service().get_runtime_config()
-        safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
-        if not safe_title or not is_valid_metadata_name(
-            safe_title, field="title", max_length=255
-        ):
-            raise ValidationError(
-                "Suno requires a valid song title.",
-                details={"field": "title", "title": str(request.title or "")[:160]},
+        is_web_music = str(source or "studio").strip().lower() == "web_music"
+        if is_web_music:
+            from platform_api.services.web_music_suno_guard import (
+                is_valid_web_music_title,
+                prepare_web_music_title,
+                raise_if_suno_blocklisted,
+                sanitize_web_music_suno_fields,
             )
 
-        safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
-        if not is_valid_metadata_name(safe_title, field="title", max_length=255):
-            raise ValidationError(
-                "Suno requires a valid song title after blocklist sanitize.",
-                details={"field": "title"},
+            safe_title = prepare_web_music_title(
+                title=str(request.title or ""),
+                lyrics=str(request.lyrics or ""),
             )
-        safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
-        safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
+            if not is_valid_web_music_title(safe_title):
+                raise ValidationError(
+                    "Enter a song title (at least 2 letters, no URLs or empty brackets).",
+                    details={"field": "title", "title": str(request.title or "")[:160]},
+                )
+            raise_if_suno_blocklisted(
+                runtime_config,
+                title=safe_title,
+                lyrics=str(request.lyrics or ""),
+                style=str(request.style or ""),
+                negative_tags=str(request.negative_tags or ""),
+            )
+            safe_title, safe_lyrics, safe_style, safe_negative = sanitize_web_music_suno_fields(
+                runtime_config,
+                title=safe_title,
+                lyrics=str(request.lyrics or ""),
+                style=str(request.style or ""),
+                negative_tags=str(request.negative_tags or ""),
+            )
+            raise_if_suno_blocklisted(
+                runtime_config,
+                title=safe_title,
+                lyrics=safe_lyrics,
+                style=safe_style,
+                negative_tags=safe_negative,
+            )
+        else:
+            safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
+            if not safe_title or not is_valid_metadata_name(
+                safe_title, field="title", max_length=255
+            ):
+                raise ValidationError(
+                    "Suno requires a valid song title.",
+                    details={"field": "title", "title": str(request.title or "")[:160]},
+                )
+
+            safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
+            if not is_valid_metadata_name(safe_title, field="title", max_length=255):
+                raise ValidationError(
+                    "Suno requires a valid song title after blocklist sanitize.",
+                    details={"field": "title"},
+                )
+            safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
+            safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
+            safe_negative = str(request.negative_tags or "").strip()
 
         # Compute request hash for dedup (Req 11.5)
         request_hash = compute_suno_request_hash(
@@ -2801,7 +2842,7 @@ class GenerationService:
                 style=safe_style,
                 instrumental=request.instrumental,
                 callback_url=None,  # Client uses configured callback URL
-                negative_tags=request.negative_tags,
+                negative_tags=safe_negative or None,
                 vocal_gender=request.vocal_gender,
                 style_weight=request.style_weight,
                 weirdness_constraint=request.weirdness_constraint,

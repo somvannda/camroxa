@@ -586,8 +586,9 @@ class WebMusicService:
 
         safe_style = str(style or "").strip() or "Contemporary pop"
         safe_lyrics = str(lyrics or "").strip()
-        safe_title = str(title or "").strip()
         safe_prompt = str(prompt or "").strip()
+        safe_negative = str(negative_tags or "").strip()
+        raw_title = str(title or "").strip()
 
         if mode_key == "simple":
             if not safe_prompt:
@@ -598,15 +599,32 @@ class WebMusicService:
         else:
             if not instrumental and not safe_lyrics:
                 raise ValidationError("Lyrics are required.", details={"field": "lyrics"})
-            if not safe_title:
-                first_line = next(
-                    (line.strip() for line in safe_lyrics.splitlines() if line.strip()),
-                    "",
+
+        from platform_api.dependencies import get_suno_blocklist_service
+        from platform_api.services.web_music_suno_guard import (
+            is_valid_web_music_title,
+            prepare_web_music_title,
+            raise_if_suno_blocklisted,
+        )
+
+        runtime_config = await get_suno_blocklist_service().get_runtime_config()
+        safe_title = prepare_web_music_title(title=raw_title, lyrics=safe_lyrics)
+        if mode_key != "simple":
+            if not is_valid_web_music_title(safe_title):
+                raise ValidationError(
+                    "Enter a song title (at least 2 letters, no URLs or empty brackets).",
+                    details={"field": "title", "title": raw_title[:160]},
                 )
-                safe_title = first_line[:80] or "Untitled"
+            raise_if_suno_blocklisted(
+                runtime_config,
+                title=safe_title,
+                lyrics=safe_lyrics if not instrumental else "",
+                style=safe_style,
+                negative_tags=safe_negative,
+            )
 
         reservation_id = str(uuid4())
-        # Charge before simple-mode Suno lyrics so zero-credit users cannot consume API quota.
+        # Charge only after title/blocklist checks so 422s do not burn daily credits.
         quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
 
         if mode_key == "simple":
@@ -618,8 +636,26 @@ class WebMusicService:
                 await self._release_daily_slot(user_id, reference_id=reservation_id)
                 raise
             safe_lyrics = str(generated_lyrics or "").strip() or safe_prompt
-            if not safe_title:
-                safe_title = str(generated_title or "").strip() or safe_prompt[:80]
+            safe_title = prepare_web_music_title(
+                title=raw_title or str(generated_title or ""),
+                lyrics=safe_lyrics,
+            ) or prepare_web_music_title(title=safe_prompt, lyrics="")
+            try:
+                if not is_valid_web_music_title(safe_title):
+                    raise ValidationError(
+                        "Enter a song title (at least 2 letters, no URLs or empty brackets).",
+                        details={"field": "title"},
+                    )
+                raise_if_suno_blocklisted(
+                    runtime_config,
+                    title=safe_title,
+                    lyrics=safe_lyrics if not instrumental else "",
+                    style=safe_style,
+                    negative_tags=safe_negative,
+                )
+            except Exception:
+                await self._release_daily_slot(user_id, reference_id=reservation_id)
+                raise
 
         stored_style_weight = _normalize_slider(style_weight)
         stored_weirdness = _normalize_slider(weirdness_constraint)
@@ -636,7 +672,7 @@ class WebMusicService:
                 lyrics=safe_lyrics if not instrumental else (safe_lyrics or "Instrumental"),
                 style=safe_style,
                 instrumental=instrumental,
-                negative_tags=str(negative_tags).strip() if negative_tags else None,
+                negative_tags=safe_negative or None,
                 vocal_gender=stored_vocal_gender if stored_vocal_gender in ("m", "f") else None,
                 style_weight=stored_style_weight,
                 weirdness_constraint=stored_weirdness,

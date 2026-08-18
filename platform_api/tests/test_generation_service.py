@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -1205,6 +1205,18 @@ class TestSubmitDraft:
 class TestSubmitSuno:
     """Tests for GenerationService.submit_suno."""
 
+    @pytest.fixture(autouse=True)
+    def _stub_suno_blocklist(self):
+        from platform_api.services.suno_lyrics_sanitize import SunoRuntimeBlocklist
+
+        blocklist = AsyncMock()
+        blocklist.get_runtime_config = AsyncMock(return_value=SunoRuntimeBlocklist())
+        with patch(
+            "platform_api.dependencies.get_suno_blocklist_service",
+            return_value=blocklist,
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_successful_submission(self, credit_service, pricing_repo, task_repo):
         service = _make_service(
@@ -1303,6 +1315,45 @@ class TestSubmitSuno:
         # Credits deducted then refunded
         assert len(credit_service.deductions) == 1
         assert len(credit_service.refunds) == 1
+
+    @pytest.mark.asyncio
+    async def test_web_music_blocklist_rejects_before_suno(
+        self, credit_service, pricing_repo, task_repo
+    ):
+        from platform_api.services.suno_lyrics_sanitize import SunoRuntimeBlocklist
+
+        suno = FakeSunoClient(task_id="should-not-run")
+        service = _make_service(
+            credit_service=credit_service,
+            pricing_repo=pricing_repo,
+            task_repo=task_repo,
+            suno_client=suno,
+        )
+        runtime = SunoRuntimeBlocklist(
+            replacements={"lowlight": "afterglow"},
+            block_terms=frozenset({"lowlight"}),
+        )
+        blocklist = AsyncMock()
+        blocklist.get_runtime_config = AsyncMock(return_value=runtime)
+        request = SunoRequest(
+            model="V5",
+            title="Night Song",
+            lyrics="Pressure in the bleeding lowlight",
+            style="Pop",
+        )
+        with patch(
+            "platform_api.dependencies.get_suno_blocklist_service",
+            return_value=blocklist,
+        ):
+            with pytest.raises(ValidationError, match="Suno-blocked"):
+                await service.submit_suno(
+                    str(uuid4()),
+                    request,
+                    skip_pricing=True,
+                    source="web_music",
+                )
+        assert task_repo.tasks == []
+        assert credit_service.deductions == []
 
 
 # ---------------------------------------------------------------------------
