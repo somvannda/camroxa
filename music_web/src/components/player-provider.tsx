@@ -186,7 +186,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         } catch {
           if (token !== loadTokenRef.current) return;
           if (!url) {
-            redirectToLogin();
+            if (!user) redirectToLogin();
             return;
           }
         }

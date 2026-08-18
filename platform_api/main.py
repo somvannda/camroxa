@@ -205,6 +205,11 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         configure_abuse_detection(redis_conn)
         logger.info("Signup/generation abuse detection configured.")
 
+        from platform_api.services.generation_freeze import configure_generation_freeze
+
+        configure_generation_freeze(redis_conn)
+        logger.info("Music-web generation freeze configured.")
+
         # --- Configure audit middleware ---
         configure_audit_middleware(audit_service=get_audit_service())
         logger.info("Audit middleware configured.")
@@ -442,6 +447,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from platform_api.middleware.request_log import RequestLogMiddleware
 
     app.add_middleware(RequestLogMiddleware)
+
+    from platform_api.middleware.geo_access import MusicWebGeoMiddleware
+
+    app.add_middleware(MusicWebGeoMiddleware)
 
     # Note: Rate limiting is implemented as a FastAPI Depends() in route handlers
     # (via RateLimiter.check()), not as ASGI middleware. The auth middleware is also

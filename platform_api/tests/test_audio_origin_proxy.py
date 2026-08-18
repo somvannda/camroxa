@@ -20,11 +20,11 @@ def test_is_initial_play_range() -> None:
 
 def test_is_camxora_audio_proxy_url() -> None:
     assert is_camxora_audio_proxy_url("/api/v1/web-music/play/abc_DEF-123") is True
-    assert (
-        is_camxora_audio_proxy_url(
-            "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream?variant=ok"
-        )
-        is True
+    assert is_camxora_audio_proxy_url(
+        "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/ok"
+    )
+    assert is_camxora_audio_proxy_url(
+        "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/alt"
     )
     assert (
         is_camxora_audio_proxy_url(

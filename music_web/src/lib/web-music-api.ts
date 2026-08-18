@@ -62,6 +62,12 @@ async function readError(response: Response, fallback: string): Promise<string> 
       error?: { message?: string; code?: string; details?: { requires_upgrade?: boolean } };
       message?: string;
     };
+    if (data.error?.code === 'GEO_BLOCKED') {
+      return data.error.message || 'This service is only available in Cambodia.';
+    }
+    if (data.error?.code === 'GENERATION_FROZEN') {
+      return data.error.message || 'Music generation is paused. Try again later.';
+    }
     if (data.error?.message) return data.error.message;
     if (typeof data.detail === 'string') return data.detail;
     if (data.detail && typeof data.detail === 'object' && !Array.isArray(data.detail) && data.detail.message) {

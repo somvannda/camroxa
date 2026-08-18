@@ -148,6 +148,12 @@ class UserFullDetailResponse(BaseModel):
     custom_descriptions: list[UserOwnedPromptSummary] = []
     custom_structures: list[UserOwnedPromptSummary] = []
 
+    # Music-web generation freeze (Redis TTL, not a DB status)
+    generation_frozen: bool = False
+    generation_frozen_reason: str | None = None
+    generation_frozen_hours: int | None = None
+    generation_frozen_retry_after: int = 0
+
 
 class QuotaTopupRequest(BaseModel):
     """Admin request to bump a user's period quota limit."""
@@ -222,6 +228,13 @@ class AdminUpdateUserRequest(BaseModel):
 class SuspendRequest(BaseModel):
     """Request body for suspending a user."""
 
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
+class FreezeGenerationRequest(BaseModel):
+    """Admin timed freeze of music-web generation."""
+
+    hours: int = Field(..., description="1, 6, 24, or 72")
     reason: str = Field(..., min_length=1, max_length=500)
 
 
@@ -925,6 +938,19 @@ async def get_user_full_details(
     topup_service = get_quota_topup_service()
     quota_snapshot = snapshot_to_dict(await topup_service.build_period_snapshot(user_id))
 
+    freeze_info = {
+        "generation_frozen": False,
+        "generation_frozen_reason": None,
+        "generation_frozen_hours": None,
+        "generation_frozen_retry_after": 0,
+    }
+    try:
+        from platform_api.services.generation_freeze import freeze_status
+
+        freeze_info = await freeze_status(str(user_id))
+    except Exception:
+        pass
+
     return UserFullDetailResponse(
         id=str(user.id),
         email=user.email,
@@ -968,6 +994,10 @@ async def get_user_full_details(
             )
             for row in custom_structure_rows
         ],
+        generation_frozen=bool(freeze_info.get("generation_frozen")),
+        generation_frozen_reason=freeze_info.get("generation_frozen_reason"),
+        generation_frozen_hours=freeze_info.get("generation_frozen_hours"),
+        generation_frozen_retry_after=int(freeze_info.get("generation_frozen_retry_after") or 0),
     )
 
 
@@ -1307,6 +1337,66 @@ async def suspend_user(
     """
     user = await user_service.suspend_user(user_id, request.reason)
     return _user_to_response(user)
+
+
+class FreezeGenerationResponse(BaseModel):
+    user_id: str
+    generation_frozen: bool
+    generation_frozen_reason: str | None = None
+    generation_frozen_hours: int | None = None
+    generation_frozen_retry_after: int = 0
+
+
+@router.post(
+    "/{user_id}/freeze-generation",
+    response_model=FreezeGenerationResponse,
+    summary="Temporarily freeze music-web generation (Admin)",
+)
+async def freeze_user_generation(
+    user_id: UUID,
+    request: FreezeGenerationRequest,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> FreezeGenerationResponse:
+    from platform_api.exceptions import ValidationError
+    from platform_api.services.generation_freeze import (
+        ALLOWED_HOURS,
+        freeze_generation,
+        freeze_status,
+    )
+
+    await user_service.get_user(user_id)
+    if request.hours not in ALLOWED_HOURS:
+        raise ValidationError(
+            "Freeze hours must be 1, 6, 24, or 72.",
+            details={"field": "hours", "allowed": list(ALLOWED_HOURS)},
+        )
+    await freeze_generation(
+        user_id=str(user_id),
+        ip=None,
+        hours=request.hours,
+        reason=request.reason.strip(),
+    )
+    status = await freeze_status(str(user_id))
+    return FreezeGenerationResponse(user_id=str(user_id), **status)
+
+
+@router.post(
+    "/{user_id}/unfreeze-generation",
+    response_model=FreezeGenerationResponse,
+    summary="Clear music-web generation freeze (Admin)",
+)
+async def unfreeze_user_generation(
+    user_id: UUID,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> FreezeGenerationResponse:
+    from platform_api.services.generation_freeze import freeze_status, unfreeze_generation
+
+    await user_service.get_user(user_id)
+    await unfreeze_generation(user_id=str(user_id))
+    status = await freeze_status(str(user_id))
+    return FreezeGenerationResponse(user_id=str(user_id), **status)
 
 
 @router.post(

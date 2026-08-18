@@ -774,11 +774,11 @@ export default function CreatePageClient() {
         ...currentItems.filter((item) => item.id !== pending.id),
       ]);
     } catch (err) {
-      // Check if it's a quota exceeded error
-      if (err instanceof Error && err.message.toLowerCase().includes('insufficient credits')) {
+      const message = err instanceof Error ? err.message : 'Create failed';
+      if (message.toLowerCase().includes('insufficient credits')) {
         setShowUpgradeModal(true);
       }
-      setCreateError(err instanceof Error ? err.message : 'Create failed');
+      setCreateError(message);
       void fetchWebMusicQuota()
         .then(setQuota)
         .catch(() => undefined);

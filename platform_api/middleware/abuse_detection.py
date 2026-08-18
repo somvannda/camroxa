@@ -15,15 +15,15 @@ from fastapi import HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
-# Abuse detection thresholds
+# Abuse detection thresholds (signup farm protection — do not loosen)
 MAX_ACCOUNTS_PER_IP_PER_HOUR = 3
 MAX_ACCOUNTS_PER_IP_PER_DAY = 5
 MAX_QUOTA_HITS_PER_IP_PER_HOUR = 10
 MAX_GENERATIONS_PER_IP_PER_DAY = 5  # Matches one free account's daily song cap
 ABUSE_BLOCK_DURATION_SECONDS = 3600  # 1 hour
 
-# Geo / VPN checks stay off unless explicitly enabled. Wiring Redis must not
-# start blocking non-KH traffic that was previously allowed.
+# Geo / VPN at the IP-lookup layer stay off. KH-only + Tor/unknown
+# blocking is MusicWebGeoMiddleware (Cloudflare CF-IPCountry).
 ENABLE_GEO_RESTRICT = False
 ENABLE_VPN_BLOCK = False
 
@@ -47,11 +47,24 @@ class RedisClient(Protocol):
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP from request, respecting X-Forwarded-For."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    """Extract client IP, preferring Cloudflare CF-Connecting-IP."""
+    from platform_api.middleware.geo_access import client_ip
+
+    return client_ip(request)
+
+
+async def _freeze_signup_farm_ip(ip: str, count: int) -> None:
+    """Extra generate freeze after the existing signup cap already fired.
+
+    Does not change MAX_ACCOUNTS_PER_IP_PER_HOUR (3) or per-day (5).
+    Those 429s remain the signup gate.
+    """
+    from platform_api.services.generation_freeze import freeze_generation
+
+    try:
+        await freeze_generation(user_id=None, ip=ip, reason="signup_farm")
+    except Exception:
+        logger.debug("Signup-farm freeze skipped for IP %s count=%s", ip, count)
 
 
 def _billing_hour_stamp() -> str:
@@ -162,6 +175,8 @@ async def check_ip_abuse(
         )
 
     if event_type == "account_creation":
+        # Signup farm protection: 3 successful accounts/hour and 5/day per IP.
+        # Generate freeze below is extra; it must not replace these 429s.
         hour_key = f"abuse:signup_hour:{ip}:{_billing_hour_stamp()}"
         day_key = f"abuse:signup_day:{ip}:{_billing_day_stamp()}"
         hour_count = await redis.incr(hour_key)
@@ -175,6 +190,7 @@ async def check_ip_abuse(
                 hour_count,
                 MAX_ACCOUNTS_PER_IP_PER_HOUR,
             )
+            await _freeze_signup_farm_ip(ip, hour_count)
             raise _too_many(
                 "SIGNUP_IP_LIMIT",
                 f"Too many accounts from this network. Limit is {MAX_ACCOUNTS_PER_IP_PER_HOUR} per hour.",
@@ -187,6 +203,7 @@ async def check_ip_abuse(
                 day_count,
                 MAX_ACCOUNTS_PER_IP_PER_DAY,
             )
+            await _freeze_signup_farm_ip(ip, day_count)
             raise _too_many(
                 "SIGNUP_IP_DAILY_LIMIT",
                 f"Too many accounts from this network. Limit is {MAX_ACCOUNTS_PER_IP_PER_DAY} per day.",
@@ -256,6 +273,12 @@ async def track_generation_attempt(request: Request, user_id: str) -> None:
 async def track_quota_exceeded(request: Request, user_id: str) -> None:
     """Track when a user hits their quota limit."""
     await _run_abuse_check(request, user_id, "quota_hit")
+    try:
+        from platform_api.services.generation_freeze import note_quota_hammer
+
+        await note_quota_hammer(request, user_id)
+    except Exception:
+        logger.debug("Quota-hammer freeze tracking skipped for user %s", user_id)
 
 
 async def track_account_creation(request: Request) -> None:

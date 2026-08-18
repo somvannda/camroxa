@@ -82,6 +82,36 @@ class ForbiddenError(PlatformAPIError):
         super().__init__(message, details=details)
 
 
+class GeoBlockedError(PlatformAPIError):
+    """Music web request is not from an allowed country (403)."""
+
+    status_code = 403
+    error_code = "GEO_BLOCKED"
+
+    def __init__(
+        self,
+        message: str = "This service is only available in Cambodia.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+
+
+class GenerationFrozenError(PlatformAPIError):
+    """Music web generation is temporarily frozen for this user or IP (403)."""
+
+    status_code = 403
+    error_code = "GENERATION_FROZEN"
+
+    def __init__(
+        self,
+        message: str = "Music generation is paused. Try again later.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+
+
 class LicenseExpiredError(PlatformAPIError):
     """License expired — generation requests rejected (403)."""
 
