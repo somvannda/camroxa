@@ -51,6 +51,10 @@ class UserProfileResponse(BaseModel):
     suspension_reason: str | None = None
     credit_balance: float = 0
     plan_name: str | None = None
+    music_credits_remaining: int | None = None
+    music_credits_limit: int | None = None
+    credits_burned: float | None = None
+    products: list[str] = Field(default_factory=list)
     profile_allowance: int | None = None
     profile_addon_slots: int = 0
     profile_addon_pending: int = 0
@@ -250,6 +254,17 @@ AdminUserDep = Annotated[AuthContext, Depends(require_admin)]
 # ---------------------------------------------------------------------------
 
 
+async def _fetch_optional_rows(pool, query: str, *args):
+    """Fetch rows, treating a missing table/column as an empty result."""
+    try:
+        return await pool.fetch(query, *args)
+    except Exception as exc:
+        message = str(exc).lower()
+        if "does not exist" in message or "undefined" in message:
+            return []
+        raise
+
+
 def _user_to_response(
     user,
     credit_balance: int | float = 0,
@@ -263,6 +278,10 @@ def _user_to_response(
     onboarding_paid: bool = False,
     pending_verification_code: str | None = None,
     verification_code_expires_at: datetime | None = None,
+    music_credits_remaining: int | None = None,
+    music_credits_limit: int | None = None,
+    credits_burned: float | None = None,
+    products: list[str] | None = None,
 ) -> UserProfileResponse:
     """Convert a domain User object to the response model."""
     balance_display = (
@@ -280,6 +299,10 @@ def _user_to_response(
         suspension_reason=getattr(user, "suspension_reason", None),
         credit_balance=balance_display,
         plan_name=plan_name,
+        music_credits_remaining=music_credits_remaining,
+        music_credits_limit=music_credits_limit,
+        credits_burned=credits_burned,
+        products=list(products or getattr(user, "products", None) or []),
         profile_allowance=profile_allowance,
         profile_addon_slots=profile_addon_slots,
         profile_addon_pending=profile_addon_pending,
@@ -538,6 +561,72 @@ async def list_users(
         )
         plans = {str(row["user_id"]): row["plan_name"] for row in plan_rows}
 
+        music_rows = await _fetch_optional_rows(
+            pool,
+            """
+            SELECT DISTINCT ON (ws.user_id)
+                   ws.user_id,
+                   p.name AS plan_name,
+                   COALESCE(ws.monthly_credits_granted, 0)::int AS monthly_granted,
+                   COALESCE(ws.monthly_credits_used, 0)::int AS monthly_used,
+                   COALESCE(ws.topup_credits_balance, 0)::int AS topup_balance
+            FROM web_subscriptions ws
+            LEFT JOIN plans p ON p.id = ws.plan_id
+            WHERE ws.user_id = ANY($1)
+              AND ws.status = 'active'
+              AND ws.current_period_end > NOW()
+            ORDER BY ws.user_id, ws.current_period_end DESC
+            """,
+            user_ids,
+        )
+        music = {
+            str(row["user_id"]): {
+                "plan_name": row["plan_name"],
+                "granted": int(row["monthly_granted"] or 0),
+                "used": int(row["monthly_used"] or 0),
+                "topup": int(row["topup_balance"] or 0),
+            }
+            for row in music_rows
+        }
+
+        topup_rows = await _fetch_optional_rows(
+            pool,
+            """
+            SELECT user_id, COALESCE(SUM(credits_purchased), 0)::int AS purchased
+            FROM topup_purchases
+            WHERE user_id = ANY($1)
+              AND payment_status = 'completed'
+            GROUP BY user_id
+            """,
+            user_ids,
+        )
+        topup_purchased = {str(row["user_id"]): int(row["purchased"] or 0) for row in topup_rows}
+
+        spent_rows = await pool.fetch(
+            """
+            SELECT user_id, COALESCE(SUM(amount), 0)::bigint AS total
+            FROM credit_transactions
+            WHERE user_id = ANY($1) AND direction = 'debit'
+            GROUP BY user_id
+            """,
+            user_ids,
+        )
+        studio_spent = {str(row["user_id"]): int(row["total"] or 0) for row in spent_rows}
+
+        product_rows = await _fetch_optional_rows(
+            pool,
+            """
+            SELECT id, COALESCE(products, '{}'::text[]) AS products
+            FROM users
+            WHERE id = ANY($1)
+            """,
+            user_ids,
+        )
+        products_by_user = {
+            str(row["id"]): [str(item) for item in (row["products"] or []) if str(item).strip()]
+            for row in product_rows
+        }
+
         # Batch fetch profile counts
         profile_rows = await pool.fetch(
             "SELECT user_id, COUNT(*)::int as cnt FROM channel_profiles WHERE user_id = ANY($1) GROUP BY user_id",
@@ -566,22 +655,48 @@ async def list_users(
     else:
         balances = {}
         plans = {}
+        music = {}
+        topup_purchased = {}
+        studio_spent = {}
+        products_by_user = {}
         profiles = {}
         verifications = {}
 
+    def _list_row(user):
+        uid = str(user.id)
+        music_row = music.get(uid)
+        music_remaining = None
+        music_limit = None
+        burned = None
+        plan_name = plans.get(uid)
+        if music_row:
+            granted = int(music_row["granted"])
+            used = int(music_row["used"])
+            topup = int(music_row["topup"])
+            purchased = int(topup_purchased.get(uid, 0))
+            monthly_remaining = max(0, granted - used)
+            music_remaining = monthly_remaining + max(0, topup)
+            music_limit = max(music_remaining, granted + max(topup, purchased), 1)
+            burned = float(used + max(0, purchased - topup))
+            plan_name = music_row.get("plan_name") or plan_name
+        else:
+            burned = units_to_credits(studio_spent.get(uid, 0))
+        return _user_to_response(
+            user,
+            credit_balance=balances.get(uid, 0),
+            plan_name=plan_name,
+            profile_allowance=None,
+            channel_profile_count=profiles.get(uid, 0),
+            pending_verification_code=verifications.get(uid, {}).get("code"),
+            verification_code_expires_at=verifications.get(uid, {}).get("expires_at"),
+            music_credits_remaining=music_remaining,
+            music_credits_limit=music_limit,
+            credits_burned=burned,
+            products=products_by_user.get(uid, []),
+        )
+
     return PaginatedUsersResponse(
-        users=[
-            _user_to_response(
-                u,
-                credit_balance=balances.get(str(u.id), 0),
-                plan_name=plans.get(str(u.id)),
-                profile_allowance=None,
-                channel_profile_count=profiles.get(str(u.id), 0),
-                pending_verification_code=verifications.get(str(u.id), {}).get("code"),
-                verification_code_expires_at=verifications.get(str(u.id), {}).get("expires_at"),
-            )
-            for u in users
-        ],
+        users=[_list_row(u) for u in users],
         total=total,
         page=page,
         page_size=page_size,

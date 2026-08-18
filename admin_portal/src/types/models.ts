@@ -7,7 +7,12 @@ export interface User {
   suspension_reason?: string;
   credit_balance: number;
   plan_name: string | null;
+  music_credits_remaining?: number | null;
+  music_credits_limit?: number | null;
+  credits_burned?: number | null;
   channel_profile_count: number;
+  /** Signup product tags, e.g. music_web, studio. */
+  products?: string[];
   email_confirmed?: boolean;
   pending_verification_code?: string | null;
   verification_code_expires_at?: string | null;
