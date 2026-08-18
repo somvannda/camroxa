@@ -1,5 +1,7 @@
 /** Subscription and credit management API client (v2) */
 
+import { musicAuthFetch } from '@/lib/auth-fetch';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -99,14 +101,7 @@ async function readError(response: Response, fallback: string): Promise<string> 
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: 'include',
-    headers: {
-      'X-Portal-Context': 'user',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  const response = await musicAuthFetch(path, init);
 
   if (!response.ok) {
     throw new Error(await readError(response, `Request failed (${response.status})`));

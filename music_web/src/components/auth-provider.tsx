@@ -42,7 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setUser(await fetchMusicUser());
     } catch {
-      setUser(null);
+      // 401 already returns null from fetchMusicUser (after a refresh attempt).
+      // Transient network/5xx must not look like a sign-out.
     } finally {
       setLoading(false);
     }

@@ -1,14 +1,8 @@
+import { musicAuthFetch } from '@/lib/auth-fetch';
 import type { StreamTrack, Paginated } from '@/lib/streaming-api';
 
 async function libraryFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: 'include',
-    headers: {
-      'X-Portal-Context': 'user',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
+  const response = await musicAuthFetch(path, init);
   if (!response.ok) {
     throw new Error(`Library request failed: ${response.status}`);
   }

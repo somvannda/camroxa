@@ -1,5 +1,7 @@
 /** Browser auth against same-origin /api (nginx → platform_api) so cookies stay on music.*. */
 
+import { apiPath, musicAuthFetch } from '@/lib/auth-fetch';
+
 export type MusicUser = {
   id: string;
   email: string;
@@ -16,10 +18,6 @@ export type TokenResponse = {
   token_type: string;
   expires_in: number;
 };
-
-function apiPath(path: string): string {
-  return path.startsWith('/') ? path : `/${path}`;
-}
 
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
@@ -42,13 +40,9 @@ export async function loginMusicUser(input: {
   password: string;
   cf_turnstile_response?: string;
 }): Promise<TokenResponse> {
-  const response = await fetch(apiPath('/api/v1/auth/login'), {
+  const response = await musicAuthFetch('/api/v1/auth/login', {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Portal-Context': 'user',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
@@ -63,12 +57,10 @@ export async function registerMusicUser(input: {
   display_name: string;
   cf_turnstile_response?: string;
 }): Promise<void> {
-  const response = await fetch(apiPath('/api/v1/auth/register'), {
+  const response = await musicAuthFetch('/api/v1/auth/register', {
     method: 'POST',
-    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      'X-Portal-Context': 'user',
       'X-Signup-Product': 'music_web',
     },
     body: JSON.stringify({ ...input, product: 'music_web' }),
@@ -79,13 +71,9 @@ export async function registerMusicUser(input: {
 }
 
 export async function sendVerificationEmail(email: string): Promise<{ message: string }> {
-  const response = await fetch(apiPath('/api/v1/auth/send-verification'), {
+  const response = await musicAuthFetch('/api/v1/auth/send-verification', {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Portal-Context': 'user',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
   if (!response.ok) {
@@ -98,13 +86,9 @@ export async function verifyEmailCode(input: {
   email: string;
   code: string;
 }): Promise<{ message: string; is_verified?: boolean }> {
-  const response = await fetch(apiPath('/api/v1/auth/verify-email'), {
+  const response = await musicAuthFetch('/api/v1/auth/verify-email', {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Portal-Context': 'user',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
@@ -114,11 +98,7 @@ export async function verifyEmailCode(input: {
 }
 
 export async function fetchMusicUser(): Promise<MusicUser | null> {
-  const response = await fetch(apiPath('/api/v1/users/me'), {
-    method: 'GET',
-    credentials: 'include',
-    headers: { 'X-Portal-Context': 'user' },
-  });
+  const response = await musicAuthFetch('/api/v1/users/me', { method: 'GET' });
   if (response.status === 401) return null;
   if (!response.ok) {
     throw new Error(await readError(response, `Session check failed (${response.status})`));
@@ -143,13 +123,9 @@ export function getUserAvatarUrl(userId: string, cacheKey?: string | number | nu
 export async function updateMusicUserProfile(input: {
   display_name?: string;
 }): Promise<MusicUser> {
-  const response = await fetch(apiPath('/api/v1/users/me'), {
+  const response = await musicAuthFetch('/api/v1/users/me', {
     method: 'PATCH',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Portal-Context': 'user',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
@@ -170,12 +146,8 @@ export async function updateMusicUserProfile(input: {
 export async function uploadMusicUserAvatar(file: File): Promise<MusicUser> {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await fetch(apiPath('/api/v1/users/me/avatar'), {
+  const response = await musicAuthFetch('/api/v1/users/me/avatar', {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      'X-Portal-Context': 'user',
-    },
     body: formData,
   });
   if (!response.ok) {
@@ -194,11 +166,7 @@ export async function uploadMusicUserAvatar(file: File): Promise<MusicUser> {
 }
 
 export async function logoutMusicUser(): Promise<void> {
-  const response = await fetch(apiPath('/api/v1/auth/logout'), {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'X-Portal-Context': 'user' },
-  });
+  const response = await musicAuthFetch('/api/v1/auth/logout', { method: 'POST' });
   if (!response.ok && response.status !== 401) {
     throw new Error(await readError(response, `Sign out failed (${response.status})`));
   }
