@@ -62,11 +62,21 @@ class FakeUserDetailDbPool:
             return {"cnt": 7}
         if "from image_jobs" in sql:
             return {"cnt": 11}
+        if "from users" in sql and "products" in sql:
+            return {"products": []}
+        if "from topup_purchases" in sql:
+            return {"purchased": 0}
+        if "from web_music_daily_usage" in sql:
+            return None
+        if "from system_settings" in sql:
+            return None
         raise AssertionError(f"Unexpected fetchrow query: {query}")
 
     async def fetch(self, query: str, *args):
         sql = " ".join(str(query).split()).lower()
         if "from credit_transactions" in sql:
+            return []
+        if "from web_subscriptions" in sql:
             return []
         if "from music_descriptions" in sql or "from music_structures" in sql:
             return []
@@ -418,3 +428,235 @@ class TestAdminSetPassword:
                 json={"password": "weakpass"},
             )
         assert response.status_code == 422
+
+
+class FakeListUsersDbPool:
+    def __init__(
+        self,
+        *,
+        music_rows=None,
+        usage_rows=None,
+        product_rows=None,
+        settings_value="50",
+        balance_rows=None,
+        plan_rows=None,
+        spent_rows=None,
+        topup_rows=None,
+    ) -> None:
+        self.music_rows = music_rows or []
+        self.usage_rows = usage_rows or []
+        self.product_rows = product_rows or []
+        self.settings_value = settings_value
+        self.balance_rows = balance_rows or []
+        self.plan_rows = plan_rows or []
+        self.spent_rows = spent_rows or []
+        self.topup_rows = topup_rows or []
+
+    async def fetch(self, query: str, *args):
+        sql = " ".join(str(query).split()).lower()
+        if "from credit_wallets" in sql:
+            return self.balance_rows
+        if "from licenses l" in sql:
+            return self.plan_rows
+        if "from web_subscriptions" in sql:
+            return self.music_rows
+        if "from topup_purchases" in sql:
+            return self.topup_rows
+        if "from credit_transactions" in sql:
+            return self.spent_rows
+        if "from users" in sql and "products" in sql:
+            return self.product_rows
+        if "from web_music_daily_usage" in sql:
+            return self.usage_rows
+        if "from channel_profiles" in sql:
+            return []
+        if "from email_verifications" in sql:
+            return []
+        raise AssertionError(f"Unexpected fetch query: {query}")
+
+    async def fetchrow(self, query: str, *args):
+        sql = " ".join(str(query).split()).lower()
+        if "from system_settings" in sql:
+            return {"value": self.settings_value}
+        raise AssertionError(f"Unexpected fetchrow query: {query}")
+
+
+class FakeFreeMusicDetailDbPool(FakeUserDetailDbPool):
+    def __init__(self, *, products=None, usage=10, license_row=None) -> None:
+        self._products = products if products is not None else ["music_web"]
+        self._usage = usage
+        self._license_override = license_row
+        self._use_license_override = True
+
+    async def fetchrow(self, query: str, *args):
+        sql = " ".join(str(query).split()).lower()
+        if "from users" in sql and "products" in sql:
+            return {"products": self._products}
+        if "from web_music_daily_usage" in sql:
+            if self._usage is None:
+                return None
+            return {"credits_used": self._usage}
+        if "from system_settings" in sql:
+            return {"value": "50"}
+        if "from licenses l" in sql and "join plans p" in sql:
+            return self._license_override
+        return await super().fetchrow(query, *args)
+
+
+class TestListUsers:
+    async def _get_list(self, app, mock_user_service, monkeypatch, pool):
+        app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
+        mock_user_service.get_users = AsyncMock(return_value=([_make_user()], 1))
+        monkeypatch.setattr(users_router, "get_db_pool", lambda: pool)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/api/v1/users")
+
+    async def test_music_free_user_shows_daily_remaining(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        response = await self._get_list(
+            app,
+            mock_user_service,
+            monkeypatch,
+            FakeListUsersDbPool(
+                product_rows=[{"id": USER_ID, "products": ["music_web"]}],
+                usage_rows=[{"user_id": USER_ID, "credits_used": 10}],
+                spent_rows=[{"user_id": USER_ID, "total": -10}],
+            ),
+        )
+        assert response.status_code == 200
+        user = response.json()["users"][0]
+        assert user["plan_name"] == "Free"
+        assert user["music_credits_remaining"] == 40
+        assert user["music_credits_limit"] == 50
+        assert user["credits_burned"] == 10
+
+    async def test_music_free_user_without_usage_row_is_full_allowance(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        response = await self._get_list(
+            app,
+            mock_user_service,
+            monkeypatch,
+            FakeListUsersDbPool(
+                product_rows=[{"id": USER_ID, "products": ["music_web"]}],
+            ),
+        )
+        assert response.status_code == 200
+        user = response.json()["users"][0]
+        assert user["plan_name"] == "Free"
+        assert user["music_credits_remaining"] == 50
+        assert user["music_credits_limit"] == 50
+        assert user["credits_burned"] == 0
+
+    async def test_paid_music_sub_wins_over_free_inference(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        response = await self._get_list(
+            app,
+            mock_user_service,
+            monkeypatch,
+            FakeListUsersDbPool(
+                product_rows=[{"id": USER_ID, "products": ["music_web"]}],
+                usage_rows=[{"user_id": USER_ID, "credits_used": 10}],
+                music_rows=[
+                    {
+                        "user_id": USER_ID,
+                        "plan_name": "starter_monthly",
+                        "monthly_granted": 1000,
+                        "monthly_used": 20,
+                        "topup_balance": 0,
+                    }
+                ],
+            ),
+        )
+        assert response.status_code == 200
+        user = response.json()["users"][0]
+        assert user["plan_name"] == "starter_monthly"
+        assert user["music_credits_remaining"] == 980
+        assert user["music_credits_limit"] == 1000
+        assert user["credits_burned"] == 20
+
+    async def test_studio_only_user_uses_wallet_burned(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        response = await self._get_list(
+            app,
+            mock_user_service,
+            monkeypatch,
+            FakeListUsersDbPool(
+                product_rows=[{"id": USER_ID, "products": ["studio"]}],
+                balance_rows=[{"user_id": USER_ID, "balance": 50000}],
+                spent_rows=[{"user_id": USER_ID, "total": 40000}],
+                plan_rows=[{"user_id": USER_ID, "plan_name": "Pro"}],
+            ),
+        )
+        assert response.status_code == 200
+        user = response.json()["users"][0]
+        assert user["plan_name"] == "Pro"
+        assert user["music_credits_remaining"] is None
+        assert user["music_credits_limit"] is None
+        assert user["credit_balance"] == 5
+        assert user["credits_burned"] == 4
+
+
+class TestGetUserFullDetailsMusicFree:
+    async def test_music_free_user_shows_daily_remaining(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
+        monkeypatch.setattr(
+            users_router,
+            "get_db_pool",
+            lambda: FakeFreeMusicDetailDbPool(usage=10, license_row=None),
+        )
+        monkeypatch.setattr(
+            users_router,
+            "upload_path_exists",
+            lambda value: bool(str(value or "").strip()),
+        )
+        fake_topup = AsyncMock()
+        fake_topup.build_period_snapshot = AsyncMock(
+            return_value=type("Snap", (), {"period_start": None, "period_end": None, "plan_name": None, "kinds": {}})()
+        )
+        monkeypatch.setattr(
+            "platform_api.dependencies.get_quota_topup_service",
+            lambda: fake_topup,
+        )
+        monkeypatch.setattr(
+            "platform_api.services.quota_topup_service.snapshot_to_dict",
+            lambda snap: {
+                "period_start": None,
+                "period_end": None,
+                "plan_name": None,
+                "kinds": {},
+            },
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(f"/api/v1/users/{USER_ID}/details")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["plan_name"] == "Free"
+        assert data["music_credits_remaining"] == 40
+        assert data["music_credits_limit"] == 50
+        assert data["credits_burned"] == 10
+
