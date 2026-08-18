@@ -584,11 +584,11 @@ class WebMusicService:
         if mode_key not in ("simple", "advanced"):
             raise ValidationError("mode must be simple or advanced.", details={"field": "mode"})
 
-        safe_style = str(style or "").strip() or "Contemporary pop"
         safe_lyrics = str(lyrics or "").strip()
         safe_prompt = str(prompt or "").strip()
         safe_negative = str(negative_tags or "").strip()
         raw_title = str(title or "").strip()
+        safe_style = str(style or "").strip()
 
         if mode_key == "simple":
             if not safe_prompt:
@@ -596,9 +596,13 @@ class WebMusicService:
                     "Describe the song you want to create.",
                     details={"field": "prompt"},
                 )
+            if not safe_style:
+                safe_style = truncate_suno_style(safe_prompt) or "Contemporary pop"
         else:
             if not instrumental and not safe_lyrics:
                 raise ValidationError("Lyrics are required.", details={"field": "lyrics"})
+            if not safe_style:
+                safe_style = "Contemporary pop"
 
         from platform_api.dependencies import get_suno_blocklist_service
         from platform_api.services.web_music_suno_guard import (

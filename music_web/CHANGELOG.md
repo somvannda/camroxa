@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Create Simple song description follows Suno V5 limits: UI **1000** (style) with a live counter; API prompt **5000**. Simple uses the description as style. See `docs/changelog/2026-08-18-web-music-simple-prompt-suno-limits.md`.
+
 ### Fixed
 
 - Profile no longer shows the “Unlock Unlimited Music Creation” pitch to paid subscribers. It shows the current plan, next billing date, and the other public plans. See `docs/changelog/2026-08-18-music-web-profile-current-plan.md`.

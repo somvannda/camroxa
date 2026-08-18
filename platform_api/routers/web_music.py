@@ -31,7 +31,8 @@ class WebMusicGenerateRequest(BaseModel):
     lyrics: str = Field(default="", max_length=5000)
     style: str = Field(default="", max_length=1000)
     title: str = Field(default="", max_length=200)
-    prompt: str = Field(default="", max_length=500)
+    # Suno V5/V5.5 customMode lyrics cap. Simple mode UI clamps to 1000 (style).
+    prompt: str = Field(default="", max_length=5000)
     instrumental: bool = False
     model: str = Field(default="V5_5", pattern=r"^(V5|V5_5)$")
     negative_tags: str | None = Field(default=None, max_length=500)
