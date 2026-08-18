@@ -42,6 +42,7 @@ FILES = [
     "platform_api/clients/suno_client.py",
     "platform_api/routers/web_music.py",
     "platform_api/migrations/versions/105_web_music_clip_titles.py",
+    "platform_api/migrations/versions/106_web_music_stream_ready.py",
 ]
 
 
@@ -92,9 +93,10 @@ chown camxora:camxora \
   $REPO/platform_api/services/suno_audio_resolver.py \
   $REPO/platform_api/clients/suno_client.py \
   $REPO/platform_api/routers/web_music.py \
-  $REPO/platform_api/migrations/versions/105_web_music_clip_titles.py
+  $REPO/platform_api/migrations/versions/105_web_music_clip_titles.py \
+  $REPO/platform_api/migrations/versions/106_web_music_stream_ready.py
 
-echo '=== wav/title columns ==='
+echo '=== wav/title/stream-ready columns ==='
 timeout 20 sudo -u postgres psql -d camxora_platform -v ON_ERROR_STOP=1 -c "
 ALTER TABLE suno_tasks
   ADD COLUMN IF NOT EXISTS title_ok TEXT,
@@ -108,12 +110,22 @@ ALTER TABLE suno_tasks
   ADD COLUMN IF NOT EXISTS b2_wav_storage_key_ok TEXT,
   ADD COLUMN IF NOT EXISTS b2_wav_storage_key_alt TEXT,
   ADD COLUMN IF NOT EXISTS audio_id_ok TEXT,
-  ADD COLUMN IF NOT EXISTS audio_id_alt TEXT;
+  ADD COLUMN IF NOT EXISTS audio_id_alt TEXT,
+  ADD COLUMN IF NOT EXISTS stream_ready_ok BOOLEAN,
+  ADD COLUMN IF NOT EXISTS stream_ready_alt BOOLEAN;
+UPDATE suno_tasks SET stream_ready_ok = TRUE
+ WHERE stream_ready_ok IS NULL
+   AND (NULLIF(BTRIM(COALESCE(audio_url_ok, '')), '') IS NOT NULL
+        OR NULLIF(BTRIM(COALESCE(b2_storage_key_ok, '')), '') IS NOT NULL);
+UPDATE suno_tasks SET stream_ready_alt = TRUE
+ WHERE stream_ready_alt IS NULL
+   AND (NULLIF(BTRIM(COALESCE(audio_url_alt, '')), '') IS NOT NULL
+        OR NULLIF(BTRIM(COALESCE(b2_storage_key_alt, '')), '') IS NOT NULL);
 "
 
 echo '=== import check ==='
 cd /opt/camxora/repo
-PYTHONPATH=/opt/camxora/repo /opt/camxora/repo/platform_api/.venv/bin/python -c "from platform_api.services.suno_audio_resolver import validate_wav_bytes, download_suno_wav_bytes; from platform_api.clients.suno_client import parse_suno_wav_poll; from platform_api.services.audio_origin_proxy import is_missing_range; print('IMPORT_OK', parse_suno_wav_poll({'code':404}))"
+PYTHONPATH=/opt/camxora/repo /opt/camxora/repo/platform_api/.venv/bin/python -c "from platform_api.services.suno_audio_resolver import validate_wav_bytes, download_suno_wav_bytes, origin_audio_range_is_playable; from platform_api.clients.suno_client import parse_suno_wav_poll; from platform_api.services.audio_origin_proxy import is_missing_range; print('IMPORT_OK', parse_suno_wav_poll({'code':404}))"
 
 echo '=== restart api ==='
 systemctl restart camxora-api

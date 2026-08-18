@@ -33,6 +33,7 @@ from platform_api.services.suno_audio_resolver import (
     download_suno_mp3_bytes,
     download_suno_wav_bytes,
     fetch_timestamped_lrc_with_pool,
+    origin_audio_range_is_playable,
     refresh_suno_task_download_urls,
     urls_from_generate_poll,
     validate_mp3_bytes,
@@ -69,6 +70,15 @@ def _usable_web_music_b2_key(storage_key: Any, task_id: UUID) -> str | None:
     if key and _b2_key_is_task_scoped(key, task_id):
         return key
     return None
+
+
+def _clip_is_playable(row: Any, *, variant: str, task_id: UUID) -> bool:
+    """True when this clip can actually stream (verified origin or our B2 object)."""
+    variant_key = "alt" if str(variant or "ok").strip().lower() == "alt" else "ok"
+    if bool(_row_value(row, "stream_ready_ok" if variant_key == "ok" else "stream_ready_alt")):
+        return True
+    b2_col = "b2_storage_key_ok" if variant_key == "ok" else "b2_storage_key_alt"
+    return bool(_usable_web_music_b2_key(_row_value(row, b2_col), task_id))
 
 
 def _normalize_slider(value: float | None, *, default: float = _DEFAULT_SLIDER_VALUE) -> float:
@@ -835,7 +845,7 @@ class WebMusicService:
                    negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
                    b2_storage_key_ok, b2_storage_key_alt, workspace_id,
                    image_url_ok, image_url_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
             ORDER BY created_at DESC
@@ -862,7 +872,7 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -875,6 +885,7 @@ class WebMusicService:
         row = await self._refresh_pending_from_suno(row)
         row = await self._ensure_cover_urls(row)
         row = await self._ensure_durations(row)
+        row = await self._ensure_stream_ready(row)
         return await self._task_payload(row, user_id)
 
     async def update_generation_title(
@@ -995,7 +1006,7 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1042,7 +1053,7 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1093,7 +1104,69 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
+            FROM suno_tasks
+            WHERE id = $1
+            """,
+            row["id"],
+        )
+        return refreshed or row
+
+    async def _ensure_stream_ready(self, row: Any) -> Any:
+        """Mark a clip Ready only after origin audio actually serves bytes (or B2 has our file)."""
+        status = str(_row_value(row, "status") or "").strip().lower()
+        if status != "success":
+            return row
+        try:
+            task_id = row["id"] if isinstance(row["id"], UUID) else UUID(str(row["id"]))
+        except (KeyError, TypeError, ValueError):
+            return row
+
+        variants = (
+            ("ok", "stream_ready_ok", "audio_url_ok", "b2_storage_key_ok"),
+            ("alt", "stream_ready_alt", "audio_url_alt", "b2_storage_key_alt"),
+        )
+        marks: dict[str, bool] = {}
+        probes: list[tuple[str, str]] = []
+        for _variant, ready_col, url_col, b2_col in variants:
+            if bool(_row_value(row, ready_col)):
+                continue
+            if _usable_web_music_b2_key(_row_value(row, b2_col), task_id):
+                marks[ready_col] = True
+                continue
+            url = str(_row_value(row, url_col) or "").strip()
+            if url.startswith("http"):
+                probes.append((ready_col, url))
+        if probes:
+            results = await asyncio.gather(
+                *[origin_audio_range_is_playable(url) for _col, url in probes],
+                return_exceptions=True,
+            )
+            for (ready_col, _url), result in zip(probes, results):
+                if result is True:
+                    marks[ready_col] = True
+        if not marks:
+            return row
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET stream_ready_ok = COALESCE($2, stream_ready_ok),
+                stream_ready_alt = COALESCE($3, stream_ready_alt),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            task_id,
+            True if marks.get("stream_ready_ok") else None,
+            True if marks.get("stream_ready_alt") else None,
+        )
+        refreshed = await self._pool.fetchrow(
+            """
+            SELECT id, title, lyrics, style, model, instrumental, status,
+                   audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
+                   external_task_id, negative_tags, vocal_gender, style_weight,
+                   weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
+                   b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1851,10 +1924,8 @@ class WebMusicService:
         title_alt = _clip_display_title(row, variant="alt", fallback=title)
         image_ok = str(_row_value(row, "image_url_ok") or "").strip() or None
         image_alt = str(_row_value(row, "image_url_alt") or "").strip() or None
-        ok_ready = bool(_row_value(row, "audio_url_ok") or _row_value(row, "b2_storage_key_ok"))
-        alt_ready = bool(_row_value(row, "audio_url_alt") or _row_value(row, "b2_storage_key_alt"))
-        duration_ok = _row_value(row, "duration_ok")
-        duration_alt = _row_value(row, "duration_alt")
+        ok_ready = _clip_is_playable(row, variant="ok", task_id=UUID(task_id))
+        alt_ready = _clip_is_playable(row, variant="alt", task_id=UUID(task_id))
         return {
             "id": task_id,
             "title": title,

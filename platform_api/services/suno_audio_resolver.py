@@ -341,6 +341,33 @@ def validate_wav_bytes(data: bytes) -> bool:
     return len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WAVE"
 
 
+async def origin_audio_range_is_playable(url: str) -> bool:
+    """True when origin serves a short Range GET (CDN has the file, not a 403 placeholder)."""
+    text = normalize_http_download_url(url)
+    if not text:
+        return False
+    headers = {**_DOWNLOAD_HEADERS, "Range": "bytes=0-2047"}
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(8.0, connect=4.0),
+            follow_redirects=True,
+            headers=_DOWNLOAD_HEADERS,
+        ) as client:
+            response = await client.get(text, headers=headers)
+    except Exception as exc:
+        logger.info("Origin audio probe failed url=%s: %s", text[:120], exc)
+        return False
+    if response.status_code not in {200, 206}:
+        return False
+    data = bytes(response.content or b"")
+    if len(data) < 64:
+        return False
+    stripped = data.lstrip()[:32].lower()
+    if stripped.startswith(b"<!doctype") or stripped.startswith(b"<html"):
+        return False
+    return True
+
+
 def payload_is_wav_audio(data: bytes) -> bool:
     """Alias used by tests and older callers."""
     return validate_wav_bytes(data)
@@ -522,6 +549,7 @@ __all__ = [
     "is_disallowed_suno_audio_url",
     "is_http_download_url",
     "normalize_http_download_url",
+    "origin_audio_range_is_playable",
     "payload_is_wav_audio",
     "refresh_suno_task_download_urls",
     "urls_from_record_info_payload",
