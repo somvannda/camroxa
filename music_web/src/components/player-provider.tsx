@@ -9,8 +9,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useRouter } from 'next/navigation';
 
-import { getPlayUrl, type StreamTrack } from '@/lib/streaming-api';
+import { useAuth } from '@/components/auth-provider';
+import { catalogStreamUrl, getPlayUrl, isTrustedPlayUrl, type StreamTrack } from '@/lib/streaming-api';
 
 type PlayerState = {
   current: StreamTrack | null;
@@ -34,6 +36,14 @@ type PlayerState = {
 
 const PlayerContext = createContext<PlayerState | null>(null);
 
+function shouldUseCredentialedCors(url: string): boolean {
+  if (!url) return false;
+  return (
+    url.startsWith('/') ||
+    (typeof window !== 'undefined' && url.startsWith(window.location.origin))
+  );
+}
+
 function shuffleTracks(tracks: StreamTrack[]): StreamTrack[] {
   const copy = [...tracks];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -52,6 +62,8 @@ function readStoredVolume(): number {
 }
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<StreamTrack[]>([]);
   const indexRef = useRef(-1);
@@ -119,8 +131,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.volume = muted ? 0 : volume;
   }, [muted, volume]);
 
+  const redirectToLogin = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const next = `${window.location.pathname}${window.location.search}`;
+    router.push(`/login?next=${encodeURIComponent(next || '/')}`);
+  }, [router]);
+
   const playFromIndex = useCallback(
     async (index: number) => {
+      if (authLoading) return;
+      if (!user) {
+        redirectToLogin();
+        return;
+      }
+
       const tracks = queueRef.current;
       const track = tracks[index];
       if (!track) return;
@@ -131,26 +155,53 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(0);
       setDuration(track.duration_seconds ?? 0);
 
-      const payload = await getPlayUrl(track.id);
+      let url = isTrustedPlayUrl(track.play_url ?? '') ? (track.play_url as string) : '';
+      let nextTrack: StreamTrack = track;
+      const isCatalogTrack = !track.id.includes(':');
+      if (!url && isCatalogTrack) {
+        url = catalogStreamUrl(track.id);
+      }
+      if (!url || isCatalogTrack) {
+        try {
+          const payload = await getPlayUrl(track.id);
+          if (token !== loadTokenRef.current) return;
+          if (isTrustedPlayUrl(payload.url)) {
+            url = payload.url;
+          } else if (!url) {
+            url = catalogStreamUrl(track.id);
+          }
+          nextTrack = {
+            ...track,
+            title: payload.title ?? track.title,
+            album_id: payload.album_id ?? track.album_id,
+            album_name: payload.album_name ?? track.album_name,
+            user_id: payload.user_id ?? track.user_id,
+            artist_name: payload.artist_name ?? track.artist_name,
+            cover_url: payload.cover_url ?? track.cover_url,
+            duration_seconds: payload.duration_seconds ?? track.duration_seconds,
+            play_count: payload.play_count ?? track.play_count,
+            genre: payload.genre ?? track.genre,
+            lyrics: payload.lyrics ?? track.lyrics,
+          };
+        } catch {
+          if (token !== loadTokenRef.current) return;
+          if (!url) {
+            if (!user) redirectToLogin();
+            return;
+          }
+        }
+      }
       if (token !== loadTokenRef.current) return;
 
-      const nextTrack: StreamTrack = {
-        ...track,
-        title: payload.title ?? track.title,
-        album_id: payload.album_id ?? track.album_id,
-        album_name: payload.album_name ?? track.album_name,
-        user_id: payload.user_id ?? track.user_id,
-        artist_name: payload.artist_name ?? track.artist_name,
-        cover_url: payload.cover_url ?? track.cover_url,
-        duration_seconds: payload.duration_seconds ?? track.duration_seconds,
-        play_count: payload.play_count ?? track.play_count,
-        genre: payload.genre ?? track.genre,
-        lyrics: payload.lyrics ?? track.lyrics,
-      };
       setCurrent(nextTrack);
 
       const audio = ensureAudio();
-      audio.src = payload.url;
+      if (shouldUseCredentialedCors(url)) {
+        audio.crossOrigin = 'use-credentials';
+      } else {
+        audio.removeAttribute('crossorigin');
+      }
+      audio.src = url;
       audio.volume = muted ? 0 : volume;
       try {
         await audio.play();
@@ -159,7 +210,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (token === loadTokenRef.current) setPlaying(false);
       }
     },
-    [ensureAudio, muted, volume],
+    [authLoading, ensureAudio, muted, redirectToLogin, user, volume],
   );
 
   playFromIndexRef.current = playFromIndex;

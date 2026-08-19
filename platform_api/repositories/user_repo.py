@@ -43,6 +43,16 @@ class AsyncPGPool(Protocol):
         ...
 
 
+def _products_from_row(row: Any) -> list[str]:
+    try:
+        raw = row["products"]
+    except (KeyError, TypeError):
+        return []
+    if not raw:
+        return []
+    return [str(item).strip() for item in list(raw) if str(item).strip()]
+
+
 def _row_to_user(row: Any) -> User:
     """Convert an asyncpg Record to a User domain object."""
     return User(
@@ -56,6 +66,7 @@ def _row_to_user(row: Any) -> User:
         suspension_reason=row.get("suspension_reason"),
         deleted_at=row.get("deleted_at"),
         token_version=int(row.get("token_version", 0) or 0),
+        products=_products_from_row(row),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -86,7 +97,7 @@ class UserRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, email, password_hash, display_name, role, status,
-                   email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
+                   email_confirmed, suspension_reason, deleted_at, token_version, products, created_at, updated_at
             FROM users
             WHERE id = $1
             """,
@@ -108,7 +119,7 @@ class UserRepository:
         row = await self._pool.fetchrow(
             """
             SELECT id, email, password_hash, display_name, role, status,
-                   email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
+                   email_confirmed, suspension_reason, deleted_at, token_version, products, created_at, updated_at
             FROM users
             WHERE LOWER(email) = LOWER($1)
             """,
@@ -170,10 +181,10 @@ class UserRepository:
             row = await conn.fetchrow(
                 """
                 INSERT INTO users (id, email, password_hash, display_name, role, status,
-                                   email_confirmed, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, false, NOW(), NOW())
+                                   email_confirmed, products, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, false, $7::text[], NOW(), NOW())
                 RETURNING id, email, password_hash, display_name, role, status,
-                          email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
+                          email_confirmed, suspension_reason, deleted_at, token_version, products, created_at, updated_at
                 """,
                 user.id,
                 user.email,
@@ -181,6 +192,7 @@ class UserRepository:
                 user.display_name,
                 user.role.value,
                 user.status.value,
+                list(user.products or []),
             )
             await conn.execute(
                 """
@@ -196,10 +208,10 @@ class UserRepository:
                 row = await acquired.fetchrow(
                     """
                     INSERT INTO users (id, email, password_hash, display_name, role, status,
-                                       email_confirmed, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, false, NOW(), NOW())
+                                       email_confirmed, products, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, false, $7::text[], NOW(), NOW())
                     RETURNING id, email, password_hash, display_name, role, status,
-                              email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
+                              email_confirmed, suspension_reason, deleted_at, token_version, products, created_at, updated_at
                     """,
                     user.id,
                     user.email,
@@ -207,6 +219,7 @@ class UserRepository:
                     user.display_name,
                     user.role.value,
                     user.status.value,
+                    list(user.products or []),
                 )
                 await acquired.execute(
                     """
@@ -254,13 +267,33 @@ class UserRepository:
             SET {', '.join(set_parts)}
             WHERE id = ${param_idx}
             RETURNING id, email, password_hash, display_name, role, status,
-                      email_confirmed, suspension_reason, deleted_at, token_version, created_at, updated_at
+                      email_confirmed, suspension_reason, deleted_at, token_version, products, created_at, updated_at
         """
 
         row = await self._pool.fetchrow(query, *values)
         if row is None:
             return None
         return _row_to_user(row)
+
+    async def add_product(self, user_id: UUID, product: str) -> None:
+        """Idempotently add a product tag (studio / music_web) to the user."""
+        tag = str(product or "").strip().lower()
+        if not tag:
+            return
+        await self._pool.execute(
+            """
+            UPDATE users
+            SET products = (
+                    SELECT ARRAY(
+                        SELECT DISTINCT unnest(COALESCE(products, '{}'::text[]) || ARRAY[$2]::text[])
+                    )
+                ),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            user_id,
+            tag,
+        )
 
     async def increment_token_version(self, user_id: UUID) -> None:
         """Invalidate all previously issued access tokens for the user."""
@@ -350,7 +383,7 @@ class UserRepository:
         data_query = f"""
             SELECT DISTINCT u.id, u.email, u.password_hash, u.display_name,
                    u.role, u.status, u.email_confirmed, u.suspension_reason, u.deleted_at,
-                   u.created_at, u.updated_at
+                   u.token_version, u.products, u.created_at, u.updated_at
             FROM users u
             {join_clause}
             {where_sql}

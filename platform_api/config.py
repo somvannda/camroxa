@@ -4,7 +4,7 @@ from functools import lru_cache
 import hashlib
 import os
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Digests produced by normalize_jwt_secret for known insecure seeds.
@@ -36,6 +36,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         env_prefix="PLATFORM_",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # --- Application ---
@@ -164,6 +165,30 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     telegram_ops_enabled: bool = True
 
+    # --- Cloudflare Turnstile (Bot Protection) ---
+    # These use CLOUDFLARE_* env names (not PLATFORM_*) to match Cloudflare dashboard naming.
+    cloudflare_turnstile_site_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "CLOUDFLARE_TURNSTILE_SITE_KEY",
+            "PLATFORM_CLOUDFLARE_TURNSTILE_SITE_KEY",
+        ),
+    )
+    cloudflare_turnstile_secret_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "CLOUDFLARE_TURNSTILE_SECRET_KEY",
+            "PLATFORM_CLOUDFLARE_TURNSTILE_SECRET_KEY",
+        ),
+    )
+    cloudflare_turnstile_hostnames: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "CLOUDFLARE_TURNSTILE_HOSTNAMES",
+            "PLATFORM_CLOUDFLARE_TURNSTILE_HOSTNAMES",
+        ),
+    )  # Comma-separated list of allowed frontend hostnames
+
     # --- Admin dual-control (Phase 3 / H6) ---
     # Absolute display credits; adjusts at/above this need a second admin.
     # Default 0 = disabled (single-admin ops apply credit adjusts immediately).
@@ -175,6 +200,12 @@ class Settings(BaseSettings):
     abuse_polish_probe_threshold: int = 10
     abuse_redeem_burst_threshold: int = 5
     abuse_redeem_burst_window_seconds: int = 300
+
+    # --- Music web geo / generation freeze ---
+    # Empty = auto (on for sandbox/production, off for local). "true"/"false" override.
+    music_web_geo_enforce: str = ""
+    music_web_geo_allowed_country: str = "KH"
+    music_web_gen_freeze_hours: int = 6
 
     # --- Pipeline stuck-batch housekeeping alert (PLATFORM_WORKERS_REQUIREMENTS.md §8) ---
     # A batch/channel with no draft/Suno/image/asset activity for this long, and not
@@ -231,6 +262,28 @@ def is_production(settings: Settings | None = None) -> bool:
     """Return True when PLATFORM_ENVIRONMENT is production/prod."""
     resolved = settings or get_settings()
     return (resolved.environment or "").strip().lower() in {"production", "prod"}
+
+
+def is_sandbox_or_production(settings: Settings | None = None) -> bool:
+    """Return True for sandbox/staging/production (fail-closed geo environments)."""
+    resolved = settings or get_settings()
+    raw = (resolved.environment or "").strip().lower()
+    return raw in {"production", "prod", "staging", "sandbox"}
+
+
+def is_music_web_geo_enforced(settings: Settings | None = None) -> bool:
+    """Whether music-web KH-only geo is on.
+
+    Local/dev is off unless PLATFORM_MUSIC_WEB_GEO_ENFORCE=true.
+    Sandbox and production fail closed unless explicitly set to false.
+    """
+    resolved = settings or get_settings()
+    raw = (resolved.music_web_geo_enforce or "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return is_sandbox_or_production(resolved)
 
 
 def environment_display_label(settings: Settings | None = None) -> str:

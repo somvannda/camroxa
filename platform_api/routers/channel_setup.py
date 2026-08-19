@@ -1264,6 +1264,11 @@ async def create_profile(
         _json.dumps(youtube_config),
     )
 
+    from platform_api.dependencies import get_user_repo
+    from platform_api.models.products import PRODUCT_STUDIO
+
+    await get_user_repo().add_product(user_uuid, PRODUCT_STUDIO)
+
     return CreateProfileResponse(
         profile_id=str(profile_id),
         name=request.name,

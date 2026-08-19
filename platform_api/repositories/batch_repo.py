@@ -904,8 +904,8 @@ class BatchRepository:
             INSERT INTO suno_tasks
                 (id, song_id, user_id, batch_id, request_hash, model,
                  title, lyrics, style, instrumental, external_task_id,
-                 status, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+                 status, source, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
             """,
             task.id,
             task.song_id,
@@ -919,6 +919,7 @@ class BatchRepository:
             task.instrumental,
             task.external_task_id,
             task.status.value,
+            getattr(task, "source", None) or "studio",
         )
         return task
 
@@ -962,7 +963,7 @@ class BatchRepository:
         """Return callback-oriented task data by external Suno task ID."""
         row = await self._pool.fetchrow(
             """
-            SELECT id, user_id, song_id, batch_id, external_task_id, status
+            SELECT id, user_id, song_id, batch_id, external_task_id, status, source
             FROM suno_tasks
             WHERE external_task_id = $1
             """,
@@ -970,6 +971,11 @@ class BatchRepository:
         )
         if row is None:
             return None
+        source = ""
+        try:
+            source = str(row["source"] or "")
+        except (KeyError, TypeError):
+            source = ""
         return {
             "id": row["id"],
             "user_id": row["user_id"],
@@ -977,6 +983,7 @@ class BatchRepository:
             "batch_id": row["batch_id"],
             "external_task_id": row["external_task_id"],
             "status": row["status"],
+            "source": source,
         }
 
     async def update_status(
@@ -988,6 +995,10 @@ class BatchRepository:
         audio_url_alt: str | None = None,
         audio_id_ok: str | None = None,
         audio_id_alt: str | None = None,
+        image_url_ok: str | None = None,
+        image_url_alt: str | None = None,
+        duration_ok: float | None = None,
+        duration_alt: float | None = None,
         error_message: str | None = None,
     ) -> None:
         """Compatibility update surface for the callbacks router."""
@@ -1000,6 +1011,10 @@ class BatchRepository:
                 error_message = COALESCE($5, error_message),
                 audio_id_ok = COALESCE(NULLIF(BTRIM($6), ''), audio_id_ok),
                 audio_id_alt = COALESCE(NULLIF(BTRIM($7), ''), audio_id_alt),
+                image_url_ok = COALESCE(NULLIF(BTRIM($8), ''), image_url_ok),
+                image_url_alt = COALESCE(NULLIF(BTRIM($9), ''), image_url_alt),
+                duration_ok = COALESCE($10::double precision, duration_ok),
+                duration_alt = COALESCE($11::double precision, duration_alt),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -1010,6 +1025,10 @@ class BatchRepository:
             error_message,
             audio_id_ok,
             audio_id_alt,
+            image_url_ok,
+            image_url_alt,
+            duration_ok,
+            duration_alt,
         )
 
     async def list_pending_suno_downloads(
@@ -2241,6 +2260,7 @@ class BatchRepository:
             downloaded_ok=row["downloaded_ok"],
             downloaded_alt=row["downloaded_alt"],
             error_message=row["error_message"] if "error_message" in row else None,
+            source=str(row["source"] or "studio") if "source" in row else "studio",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

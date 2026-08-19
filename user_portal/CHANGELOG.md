@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Email confirmation is a locked screen (no marketing nav, footer, or dashboard
   sidebar). Unconfirmed users cannot open the control panel. See
   `docs/changelog/2026-08-17-email-confirm-gate.md`.
+- Studio register sends `product: studio` / `X-Signup-Product` so music-web
+  signups stay a separate product tag on the same email. Completing channel
+  onboarding still adds `studio`. See
+  `docs/changelog/2026-08-15-music-web-suno-create.md`.
 
 ### Added
 

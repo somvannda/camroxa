@@ -28,6 +28,8 @@ class Operation(StrEnum):
     CHANNEL_COVER = "channel_cover"
     BACKGROUND_IMAGE = "background_image"
     THUMBNAIL_IMAGE = "thumbnail_image"
+    WEB_MUSIC_STYLE = "web_music_style"
+    WEB_MUSIC_LYRICS = "web_music_lyrics"
     MUSIC = "music"
 
 
@@ -40,6 +42,8 @@ OPERATION_SERVICE_TYPE: MappingProxyType[Operation, ServiceType] = MappingProxyT
         Operation.LYRIC: ServiceType.TEXT_GENERATION,
         Operation.TITLE: ServiceType.TEXT_GENERATION,
         Operation.ALBUM: ServiceType.TEXT_GENERATION,
+        Operation.WEB_MUSIC_STYLE: ServiceType.TEXT_GENERATION,
+        Operation.WEB_MUSIC_LYRICS: ServiceType.TEXT_GENERATION,
         Operation.CHANNEL_LOGO: ServiceType.IMAGE_GENERATION,
         Operation.CHANNEL_COVER: ServiceType.IMAGE_GENERATION,
         Operation.BACKGROUND_IMAGE: ServiceType.IMAGE_GENERATION,

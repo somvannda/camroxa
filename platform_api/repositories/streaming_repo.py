@@ -615,12 +615,13 @@ class StreamingRepository:
             """
             SELECT u.id AS user_id,
                    u.display_name AS artist_name,
+                   u.avatar_url,
                    COUNT(DISTINCT a.id)::int AS album_count,
                    COUNT(t.id)::int AS track_count
             FROM users u
             JOIN stream_albums a ON a.user_id = u.id AND a.publish_status = 'published'
             JOIN stream_tracks t ON t.album_id = a.id AND t.publish_status = 'published'
-            GROUP BY u.id, u.display_name
+            GROUP BY u.id, u.display_name, u.avatar_url
             ORDER BY track_count DESC, artist_name ASC
             LIMIT $1 OFFSET $2
             """,
@@ -1085,6 +1086,7 @@ class StreamingRepository:
                    st.audio_id_ok,
                    st.audio_id_alt,
                    st.style AS suno_style,
+                   st.source AS source,
                    s.title AS song_title,
                    s.album AS song_album,
                    s.lyrics AS song_lyrics,

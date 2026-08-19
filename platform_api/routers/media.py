@@ -90,3 +90,19 @@ async def get_channel_profile_cover(
         raise NotFoundError("Cover not found.")
     media_type, _ = mimetypes.guess_type(str(path))
     return FileResponse(path, media_type=media_type or "application/octet-stream")
+
+
+@router.get("/users/{user_id}/avatar")
+async def get_user_avatar(user_id: UUID) -> FileResponse:
+    """Public profile photo for music web artist cards and headers."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    row = await pool.fetchrow("SELECT avatar_url FROM users WHERE id = $1", user_id)
+    if not row:
+        raise NotFoundError("Avatar not found.")
+    path = resolve_upload_path(row.get("avatar_url"))
+    if path is None or not path.exists() or not path.is_file():
+        raise NotFoundError("Avatar not found.")
+    media_type, _ = mimetypes.guess_type(str(path))
+    return FileResponse(path, media_type=media_type or "application/octet-stream")

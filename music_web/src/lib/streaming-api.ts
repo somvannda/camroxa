@@ -1,3 +1,5 @@
+import { musicAuthFetch } from '@/lib/auth-fetch';
+
 function resolveApiBase(): string {
   // Browser: always same-origin so nginx /api proxy sets/sends music.* cookies.
   if (typeof window !== 'undefined') {
@@ -44,6 +46,10 @@ export type StreamTrack = {
   duration_seconds?: number | null;
   play_count?: number;
   lyrics?: string | null;
+  play_url?: string | null;
+  published_at?: string | null;
+  created_at?: string | null;
+  added_at?: string | null;
 };
 
 export type StreamAlbum = {
@@ -61,6 +67,7 @@ export type StreamAlbum = {
 export type StreamArtist = {
   user_id: string;
   artist_name?: string | null;
+  avatar_url?: string | null;
   album_count?: number;
   track_count?: number;
 };
@@ -142,8 +149,39 @@ export async function getArtist(userId: string) {
   );
 }
 
+export function catalogStreamUrl(trackId: string): string {
+  return `/api/v1/public/streaming/tracks/${trackId}/stream`;
+}
+
+const CAMXORA_AUDIO_PROXY_RE =
+  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\/(?:ok|alt))?(?:\?variant=(?:ok|alt))?|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
+
+export function isTrustedPlayUrl(url: string): boolean {
+  const text = String(url || '').trim();
+  if (!text) return false;
+  let path = text;
+  if (text.startsWith('http://') || text.startsWith('https://')) {
+    try {
+      const parsed = new URL(text);
+      if (typeof window !== 'undefined' && parsed.origin !== window.location.origin) {
+        return false;
+      }
+      path = `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return false;
+    }
+  }
+  return CAMXORA_AUDIO_PROXY_RE.test(path);
+}
+
 export async function getPlayUrl(trackId: string) {
-  return fetchJson<{
+  const response = await musicAuthFetch(
+    `/api/v1/public/streaming/tracks/${encodeURIComponent(trackId)}/play-url`,
+  );
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return response.json() as Promise<{
     url: string;
     title?: string;
     album_id?: string | null;
@@ -155,7 +193,7 @@ export async function getPlayUrl(trackId: string) {
     play_count?: number;
     genre?: string | null;
     lyrics?: string | null;
-  }>(`/api/v1/public/streaming/tracks/${trackId}/play-url`);
+  }>;
 }
 
 export async function getGenres() {

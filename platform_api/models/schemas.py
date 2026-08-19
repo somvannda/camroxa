@@ -25,6 +25,7 @@ class LoginRequest(BaseModel):
 
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    cf_turnstile_response: str | None = Field(default=None, description="Cloudflare Turnstile token")
 
 
 class TokenResponse(BaseModel):

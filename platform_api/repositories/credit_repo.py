@@ -1530,6 +1530,145 @@ class CreditRepository:
         )
         return "DELETE 1" in result
 
+    async def get_packs_by_type(
+        self,
+        pack_type: str,
+        *,
+        include_inactive: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return credit packs for a given pack_type."""
+        if include_inactive:
+            rows = await self._pool.fetch(
+                """
+                SELECT id, slug, name, pack_type, total_credits, price_cents,
+                       song_credits, request_count, display_order, is_active,
+                       created_at, updated_at
+                FROM credit_packs
+                WHERE pack_type = $1
+                ORDER BY display_order ASC, price_cents ASC
+                """,
+                pack_type,
+            )
+        else:
+            rows = await self._pool.fetch(
+                """
+                SELECT id, slug, name, pack_type, total_credits, price_cents,
+                       song_credits, request_count, display_order, is_active,
+                       created_at, updated_at
+                FROM credit_packs
+                WHERE pack_type = $1 AND is_active = true
+                ORDER BY display_order ASC, price_cents ASC
+                """,
+                pack_type,
+            )
+        return [dict(r) for r in rows]
+
+    async def create_web_music_pack(
+        self,
+        *,
+        slug: str,
+        name: str,
+        total_credits: int,
+        price_cents: int,
+        display_order: int,
+        is_active: bool,
+    ) -> dict[str, Any]:
+        songs = max(1, total_credits // 10)
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO credit_packs (
+                slug, name, pack_type, total_credits, price_cents,
+                song_credits, request_count, display_order, is_active,
+                created_at, updated_at
+            )
+            VALUES ($1, $2, 'web_music', $3, $4, $5, $5, $6, $7, NOW(), NOW())
+            RETURNING id, slug, name, pack_type, total_credits, price_cents,
+                      song_credits, request_count, display_order, is_active,
+                      created_at, updated_at
+            """,
+            slug,
+            name,
+            total_credits,
+            price_cents,
+            songs,
+            display_order,
+            is_active,
+        )
+        return dict(row)
+
+    async def update_web_music_pack(
+        self,
+        pack_id: UUID,
+        *,
+        slug: str | None = None,
+        name: str | None = None,
+        total_credits: int | None = None,
+        price_cents: int | None = None,
+        display_order: int | None = None,
+        is_active: bool | None = None,
+    ) -> dict[str, Any] | None:
+        from datetime import datetime, timezone
+
+        fields: dict[str, Any] = {}
+        if slug is not None:
+            fields["slug"] = slug
+        if name is not None:
+            fields["name"] = name
+        if total_credits is not None:
+            fields["total_credits"] = total_credits
+            fields["song_credits"] = max(1, total_credits // 10)
+            fields["request_count"] = max(1, total_credits // 10)
+        if price_cents is not None:
+            fields["price_cents"] = price_cents
+        if display_order is not None:
+            fields["display_order"] = display_order
+        if is_active is not None:
+            fields["is_active"] = is_active
+        if not fields:
+            row = await self._pool.fetchrow(
+                """
+                SELECT id, slug, name, pack_type, total_credits, price_cents,
+                       song_credits, request_count, display_order, is_active,
+                       created_at, updated_at
+                FROM credit_packs
+                WHERE id = $1 AND pack_type = 'web_music'
+                """,
+                pack_id,
+            )
+            return dict(row) if row else None
+
+        set_parts: list[str] = []
+        values: list[Any] = []
+        param_idx = 1
+        for col, val in fields.items():
+            set_parts.append(f"{col} = ${param_idx}")
+            values.append(val)
+            param_idx += 1
+        set_parts.append(f"updated_at = ${param_idx}")
+        values.append(datetime.now(timezone.utc))
+        param_idx += 1
+        values.append(pack_id)
+
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE credit_packs
+            SET {', '.join(set_parts)}
+            WHERE id = ${param_idx} AND pack_type = 'web_music'
+            RETURNING id, slug, name, pack_type, total_credits, price_cents,
+                      song_credits, request_count, display_order, is_active,
+                      created_at, updated_at
+            """,
+            *values,
+        )
+        return dict(row) if row else None
+
+    async def delete_web_music_pack(self, pack_id: UUID) -> bool:
+        result = await self._pool.execute(
+            "DELETE FROM credit_packs WHERE id = $1 AND pack_type = 'web_music'",
+            pack_id,
+        )
+        return "DELETE 1" in result
+
     async def get_by_id(self, pack_id: UUID) -> dict[str, Any] | None:
         """Return a credit pack by ID."""
         row = await self._pool.fetchrow(

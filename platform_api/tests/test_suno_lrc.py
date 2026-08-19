@@ -6,6 +6,7 @@ from platform_api.services.suno_lrc import (
     aligned_words_to_lrc,
     format_lrc_time,
     looks_like_lrc,
+    lrc_to_srt,
     parse_aligned_words_payload,
 )
 
@@ -19,6 +20,15 @@ def test_looks_like_lrc() -> None:
     assert looks_like_lrc("[00:01.00]One\n[00:04.00]Two")
     assert not looks_like_lrc("[Verse]\nHello world")
     assert not looks_like_lrc("[00:01.00]only one stamp")
+
+
+def test_lrc_to_srt() -> None:
+    lrc = "[00:01.00]Hello world\n[00:04.50]Second line"
+    srt = lrc_to_srt(lrc)
+    assert "1\n" in srt
+    assert "00:00:01,000 --> 00:00:04,450" in srt
+    assert "Hello world" in srt
+    assert "Second line" in srt
 
 
 def test_aligned_words_to_lrc_groups_lines_on_newlines() -> None:

@@ -22,12 +22,12 @@ type AuthState = {
   user: MusicUser | null;
   loading: boolean;
   refresh: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, turnstileToken?: string) => Promise<void>;
   register: (input: {
     email: string;
     password: string;
     display_name: string;
-    invitation_code?: string;
+    cf_turnstile_response?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -42,7 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setUser(await fetchMusicUser());
     } catch {
-      setUser(null);
+      // 401 already returns null from fetchMusicUser (after a refresh attempt).
+      // Transient network/5xx must not look like a sign-out.
     } finally {
       setLoading(false);
     }
@@ -57,13 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       refresh,
-      async login(email, password) {
-        await loginMusicUser({ email, password });
+      async login(email, password, turnstileToken) {
+        await loginMusicUser({ email, password, cf_turnstile_response: turnstileToken });
         await refresh();
       },
       async register(input) {
         await registerMusicUser(input);
-        await loginMusicUser({ email: input.email, password: input.password });
         await refresh();
       },
       async logout() {

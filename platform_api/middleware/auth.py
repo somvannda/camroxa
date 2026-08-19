@@ -126,7 +126,8 @@ _usage_repo: UsageQuotaLookupRepository | None = None
 USER_ACCESS_TOKEN_COOKIE_NAME = "camxora_access_token"
 ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
 
-# Unconfirmed users may only read their own profile / routing status and end the session.
+# Unconfirmed users may only read profile/routing status, refresh/logout,
+# and listen to music-web streams. Verify/resend email endpoints are public.
 _UNCONFIRMED_ALLOWED_PATHS = {
     ("GET", "/api/v1/users/me"),
     ("GET", "/users/me"),
@@ -147,8 +148,24 @@ def _normalize_request_path(path: str) -> str:
     return path.rstrip("/")
 
 
+def _is_unconfirmed_play_path(path: str) -> bool:
+    """Logged-in music-web users may listen before confirming email."""
+    normalized = _normalize_request_path(path)
+    if normalized.startswith("/api/v1/public/streaming/tracks/") and (
+        normalized.endswith("/play-url") or normalized.endswith("/stream")
+    ):
+        return True
+    if normalized.startswith("/api/v1/web-music/play/"):
+        return True
+    if normalized.startswith("/api/v1/web-music/generations/") and "/stream" in normalized:
+        return True
+    return False
+
+
 def _is_unconfirmed_path_allowed(method: str, path: str) -> bool:
-    return (method.upper(), _normalize_request_path(path)) in _UNCONFIRMED_ALLOWED_PATHS
+    if (method.upper(), _normalize_request_path(path)) in _UNCONFIRMED_ALLOWED_PATHS:
+        return True
+    return method.upper() == "GET" and _is_unconfirmed_play_path(path)
 
 
 def _resolve_access_cookie_name(request: Request | None) -> str:

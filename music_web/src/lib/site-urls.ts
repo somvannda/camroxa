@@ -20,3 +20,7 @@ export function getWebsiteBaseUrl(): string {
     ? 'https://sandbox.camxora.com'
     : 'https://camxora.com';
 }
+
+export function getDownloadAppUrl(): string {
+  return `${getWebsiteBaseUrl()}/download`;
+}

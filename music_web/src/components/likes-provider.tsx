@@ -14,8 +14,12 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import {
   fetchLikedTrackIds,
+  fetchWebMusicLikedKeys,
+  isWebMusicLikeKey,
   likeTrack,
+  likeWebMusicTrack,
   unlikeTrack,
+  unlikeWebMusicTrack,
 } from '@/lib/library-api';
 
 type LikesState = {
@@ -34,14 +38,17 @@ export function LikesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!user) {
+    if (!user || user.email_confirmed === false) {
       setLikedIds(new Set());
       return;
     }
     setLoading(true);
     try {
-      const ids = await fetchLikedTrackIds();
-      setLikedIds(new Set(ids));
+      const [streamingIds, webMusicIds] = await Promise.all([
+        fetchLikedTrackIds().catch(() => [] as string[]),
+        fetchWebMusicLikedKeys().catch(() => [] as string[]),
+      ]);
+      setLikedIds(new Set([...streamingIds, ...webMusicIds]));
     } catch {
       setLikedIds(new Set());
     } finally {
@@ -69,8 +76,16 @@ export function LikesProvider({ children }: { children: ReactNode }) {
           return next;
         });
         try {
-          if (currentlyLiked) await unlikeTrack(trackId);
-          else await likeTrack(trackId);
+          if (isWebMusicLikeKey(trackId)) {
+            const [taskId, variant = 'ok'] = trackId.split(':');
+            if (!taskId) throw new Error('Invalid track id');
+            if (currentlyLiked) await unlikeWebMusicTrack(taskId, variant);
+            else await likeWebMusicTrack(taskId, variant);
+          } else if (currentlyLiked) {
+            await unlikeTrack(trackId);
+          } else {
+            await likeTrack(trackId);
+          }
         } catch {
           setLikedIds((prev) => {
             const next = new Set(prev);

@@ -141,8 +141,8 @@ def test_extract_callback_download_urls_from_sunoapi_payload() -> None:
                 "callbackType": "complete",
                 "task_id": "abc123",
                 "data": [
-                    {"id": "clip-ok", "source_audio_url": "https://cdn.example.com/ok.mp3"},
-                    {"id": "clip-alt", "source_audio_url": "https://cdn.example.com/alt.mp3"},
+                    {"id": "clip-ok", "source_audio_url": "https://cdn.example.com/ok.mp3", "duration": 199.0},
+                    {"id": "clip-alt", "source_audio_url": "https://cdn.example.com/alt.mp3", "duration": 201.0},
                 ],
             },
         }
@@ -151,6 +151,8 @@ def test_extract_callback_download_urls_from_sunoapi_payload() -> None:
     assert parsed.audio_url_alt == "https://cdn.example.com/alt.mp3"
     assert parsed.audio_id_ok == "clip-ok"
     assert parsed.audio_id_alt == "clip-alt"
+    assert parsed.duration_ok == 199.0
+    assert parsed.duration_alt == 201.0
 
 
 def test_extract_callback_synthesizes_cdn_url_when_clip_has_id_only() -> None:
@@ -215,6 +217,156 @@ def test_payload_is_mpeg_audio_rejects_iso_bmff() -> None:
     assert payload_is_mpeg_audio(b"ID3" + b"\x00" * 300) is True
     assert payload_is_mpeg_audio(b"\x00\x00\x00\x20ftypisom" + b"\x00" * 300) is False
     assert payload_is_mpeg_audio(b"ID3") is False
+
+
+def test_is_disallowed_suno_audio_url_rejects_m4a_and_hls() -> None:
+    from platform_api.services.suno_audio_resolver import (
+        build_download_url_candidates,
+        is_disallowed_suno_audio_url,
+        validate_mp3_bytes,
+    )
+
+    assert is_disallowed_suno_audio_url("https://cdn.example.com/track.m4a") is True
+    assert is_disallowed_suno_audio_url("https://cdn.example.com/stream.m3u8") is True
+    assert is_disallowed_suno_audio_url("https://cdn1.suno.ai/abc.mp3") is False
+    assert build_download_url_candidates(
+        "https://cdn.example.com/track.m4a",
+        "https://cdn.example.com/ok.mp3",
+    ) == ["https://cdn.example.com/ok.mp3"]
+    assert validate_mp3_bytes(b"ID3" + b"x" * 100) is True
+    assert validate_mp3_bytes(b"\xff\xfb" + b"x" * 100) is True
+    assert validate_mp3_bytes(b"\x00\x00\x00\x18ftypmp42") is False
+
+
+def test_payload_is_wav_audio() -> None:
+    from platform_api.services.suno_audio_resolver import payload_is_wav_audio, validate_wav_bytes
+
+    wav = b"RIFF" + b"\x00" * 4 + b"WAVE" + b"fmt "
+    assert payload_is_wav_audio(wav)
+    assert validate_wav_bytes(wav)
+    assert payload_is_wav_audio(b"ID3" + b"x" * 20) is False
+
+
+def test_parse_suno_wav_poll_keeps_pending_on_non_200() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, error = parse_suno_wav_poll({"code": 404, "msg": "not found"})
+    assert status == "pending"
+    assert url is None
+    assert error is None
+
+
+def test_parse_suno_wav_poll_success_url() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, error = parse_suno_wav_poll(
+        {
+            "code": 200,
+            "data": {"status": "SUCCESS", "audioWavUrl": "https://cdn.example.com/clip.wav"},
+        }
+    )
+    assert status == "success"
+    assert url == "https://cdn.example.com/clip.wav"
+    assert error is None
+
+
+def test_extract_suno_wav_task_id_accepts_string_code() -> None:
+    from platform_api.clients.suno_client import extract_suno_wav_task_id
+
+    task_id = extract_suno_wav_task_id({"code": "200", "data": {"taskId": "wav-1"}})
+    assert task_id == "wav-1"
+
+
+@pytest.mark.asyncio
+async def test_download_suno_wav_bytes_accepts_mislabelled_mp4_content_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import suno_audio_resolver as resolver
+
+    wav = b"RIFF" + b"\x00" * 4 + b"WAVE" + b"fmt " + b"\x00" * 16
+
+    class FakeResponse:
+        headers = {"content-type": "audio/mp4"}
+
+        def raise_for_status(self) -> None:
+            return None
+
+        async def aiter_bytes(self, chunk_size: int = 65536):
+            yield wav
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        def stream(self, method: str, url: str):
+            del method, url
+            return FakeResponse()
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeClient)
+    data = await resolver.download_suno_wav_bytes("https://cdn.example.com/clip.wav")
+    assert data[:4] == b"RIFF"
+
+
+@pytest.mark.asyncio
+async def test_origin_audio_range_is_playable_accepts_partial_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import suno_audio_resolver as resolver
+
+    class FakeResponse:
+        status_code = 206
+        content = b"ID3" + b"\x00" * 80
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        async def get(self, url: str, headers: dict[str, str] | None = None):
+            del url, headers
+            return FakeResponse()
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeClient)
+    assert await resolver.origin_audio_range_is_playable("https://cdn1.suno.ai/clip.mp3") is True
+
+
+@pytest.mark.asyncio
+async def test_origin_audio_range_is_playable_rejects_cdn_forbidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import suno_audio_resolver as resolver
+
+    class FakeResponse:
+        status_code = 403
+        content = b"Forbidden"
+
+    class FakeClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        async def get(self, url: str, headers: dict[str, str] | None = None):
+            del url, headers
+            return FakeResponse()
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeClient)
+    assert await resolver.origin_audio_range_is_playable("https://cdn1.suno.ai/clip.mp3") is False
 
 
 def test_callback_indicates_success_for_complete_callback_type() -> None:
