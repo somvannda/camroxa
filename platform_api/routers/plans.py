@@ -76,6 +76,7 @@ class PlanResponse(BaseModel):
     subscriber_count: int = 0
     can_delete: bool = False
     plan_kind: str = "subscription"
+    plan_type: str = "desktop_pro"
 
 
 class PublicPlanOfferResponse(BaseModel):
@@ -390,6 +391,7 @@ def _plan_to_response(plan: Any, *, subscriber_count: int = 0) -> PlanResponse:
         subscriber_count=subscriber_count,
         can_delete=subscriber_count == 0,
         plan_kind=str(getattr(plan, "plan_kind", "subscription") or "subscription"),
+        plan_type=str(getattr(plan, "plan_type", "desktop_pro") or "desktop_pro"),
     )
 
 
@@ -838,6 +840,11 @@ async def create_plan(
         plan_kind=plan_kind,
     )
     return _plan_to_response(plan, subscriber_count=0)
+
+
+from platform_api.routers import web_music_plans_admin  # noqa: E402
+
+router.include_router(web_music_plans_admin.router)
 
 
 @router.patch(

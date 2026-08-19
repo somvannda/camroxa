@@ -19,6 +19,11 @@ class SunoRequest:
     lyrics: str
     style: str
     instrumental: bool = False
+    negative_tags: str | None = None
+    vocal_gender: str | None = None
+    style_weight: float | None = None
+    weirdness_constraint: float | None = None
+    audio_weight: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

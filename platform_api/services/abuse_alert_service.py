@@ -83,6 +83,12 @@ class AbuseAlertService:
         count = await self._incr(key, ttl_seconds=86_400)
         if count < self._polish_probe_threshold:
             return
+        try:
+            from platform_api.services.generation_freeze import note_polish_probe_freeze
+
+            await note_polish_probe_freeze(user_id=user_id, count=count)
+        except Exception:
+            pass
         await self._emit(
             kind="polish_probe_storm",
             severity="warning",
@@ -133,6 +139,32 @@ class AbuseAlertService:
                 "amount_cents": amount_cents,
             },
             cooldown_key=f"abuse:cooldown:zero_dollar:{payment_id}",
+        )
+
+    async def note_generation_freeze(
+        self,
+        *,
+        user_id: str | None,
+        ip: str | None,
+        hours: int,
+        reason: str,
+    ) -> None:
+        """Alert when music-web generation is auto-frozen."""
+        target = user_id or ip or "unknown"
+        await self._emit(
+            kind="generation_freeze",
+            severity="warning",
+            message=(
+                f"Music generation frozen for {target} "
+                f"({hours}h, reason={reason}, ip={ip})."
+            ),
+            metadata={
+                "user_id": user_id,
+                "ip": ip,
+                "hours": hours,
+                "reason": reason,
+            },
+            cooldown_key=f"abuse:cooldown:genfreeze:{target}:{reason}",
         )
 
     async def _incr(self, key: str, *, ttl_seconds: int) -> int:

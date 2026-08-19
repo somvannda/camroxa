@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - User detail shows Camxora Music generations in the music.camxora.com
   workspace layout (list, prompt/settings, in-page player). See
   `docs/changelog/2026-08-19-admin-user-generated-songs.md`.
+- User detail: freeze / unfreeze music-web generation for 1, 6, 24, or 72 hours. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - **Plans** and **Settings → Music Web** can set the unpaid Music daily credit
   pool (default 50 credits ≈ 5 songs; 10 credits per song). Presets for 1 / 3 /
   5 songs or 0 (listen-only). See
@@ -61,6 +62,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Plans** (`/plans`): Web Music Plans section — manage music.camxora.com subscription tiers and top-up packs separately from desktop channel plans. See `docs/changelog/2026-08-16-admin-web-music-plans.md`.
 - Provider credit cards: **today used (red) / remaining (green)** from balance drop. See `docs/changelog/2026-08-07-admin-provider-today-usage.md`.
 - Dashboard redesigned as a live ops + money glance board: system/workers health, provider credits, income/COGS/profit/credits purchased, and Top 10 spenders (last 30 days). Layout clarified into Platform API / Database / Workers, key-pool row (incl. CALA), per-provider credit cards, then Accounts → Money → Top 10. See `docs/changelog/2026-08-07-admin-dashboard-live-ops.md`.
 

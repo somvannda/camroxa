@@ -35,15 +35,29 @@ const OPERATION_LABELS: Record<string, string> = {
   channel_description: 'Channel Description',
   channel_keywords: 'Channel Keywords',
   channel_tags: 'Channel Tags',
-  lyric: 'Lyric',
+  lyric: 'Lyric (Desktop / Batch)',
+  web_music_lyrics: 'Music Lyric',
   title: 'Title',
   album: 'Album',
+  web_music_style: 'Music Style Tags',
   channel_logo: 'Channel Logo',
   channel_cover: 'Channel Cover',
   background_image: 'Background Image',
   thumbnail_image: 'Thumbnail Image',
   music: 'Music',
 };
+
+const TEXT_OPERATION_ORDER = [
+  'channel_name',
+  'channel_description',
+  'channel_keywords',
+  'channel_tags',
+  'lyric',
+  'web_music_lyrics',
+  'title',
+  'album',
+  'web_music_style',
+] as const;
 
 const SERVICE_TYPE_LABELS: Record<string, string> = {
   text_generation: 'Text Generation',
@@ -735,9 +749,10 @@ function ServiceTypeGroup({
   onSubModelChange,
   onActiveChange,
 }: ServiceTypeGroupProps) {
-  const operations = Object.keys(OPERATION_LABELS).filter(
-    (op) => getServiceTypeForOperation(op) === serviceType,
-  );
+  const operations =
+    serviceType === 'text_generation'
+      ? TEXT_OPERATION_ORDER.filter((op) => getServiceTypeForOperation(op) === serviceType)
+      : Object.keys(OPERATION_LABELS).filter((op) => getServiceTypeForOperation(op) === serviceType);
 
   if (operations.length === 0) return null;
 
@@ -746,6 +761,13 @@ function ServiceTypeGroup({
       <h3 className="mb-3 text-sm font-semibold text-slate-200">
         {SERVICE_TYPE_LABELS[serviceType]}
       </h3>
+      {serviceType === 'text_generation' ? (
+        <p className="mb-3 text-xs text-slate-400">
+          <strong className="font-medium text-slate-300">Lyric (Desktop / Batch)</strong> uses Suno&apos;s
+          lyrics API when routed to Suno. <strong className="font-medium text-slate-300">Music Lyric</strong>{' '}
+          is for the web music portal auto-generate button and uses chat LLMs only (SLAI, OpenAI, DeepSeek).
+        </p>
+      ) : null}
       {serviceType === 'music_generation' ? (
         <p className="mb-3 text-xs text-slate-400">
           Suno is the only music provider. Users choose the Suno model version in
@@ -866,6 +888,8 @@ const OPERATION_TO_SERVICE_TYPE: Record<string, ServiceType> = {
   lyric: 'text_generation',
   title: 'text_generation',
   album: 'text_generation',
+  web_music_style: 'text_generation',
+  web_music_lyrics: 'text_generation',
   channel_logo: 'image_generation',
   channel_cover: 'image_generation',
   background_image: 'image_generation',

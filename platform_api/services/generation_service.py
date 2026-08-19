@@ -164,6 +164,11 @@ class SunoClientProtocol(Protocol):
         style: str,
         instrumental: bool,
         callback_url: str | None,
+        negative_tags: str | None = None,
+        vocal_gender: str | None = None,
+        style_weight: float | None = None,
+        weirdness_constraint: float | None = None,
+        audio_weight: float | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -2691,6 +2696,7 @@ class GenerationService:
         request: SunoRequest,
         *,
         skip_pricing: bool = False,
+        source: str = "studio",
     ) -> str:
         """Submit a music generation request to Suno.
 
@@ -2713,23 +2719,64 @@ class GenerationService:
         from platform_api.services.suno_lyrics_sanitize import sanitize_text_for_suno
 
         runtime_config = await get_suno_blocklist_service().get_runtime_config()
-        safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
-        if not safe_title or not is_valid_metadata_name(
-            safe_title, field="title", max_length=255
-        ):
-            raise ValidationError(
-                "Suno requires a valid song title.",
-                details={"field": "title", "title": str(request.title or "")[:160]},
+        is_web_music = str(source or "studio").strip().lower() == "web_music"
+        if is_web_music:
+            from platform_api.services.web_music_suno_guard import (
+                is_valid_web_music_title,
+                prepare_web_music_title,
+                raise_if_suno_blocklisted,
+                sanitize_web_music_suno_fields,
             )
 
-        safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
-        if not is_valid_metadata_name(safe_title, field="title", max_length=255):
-            raise ValidationError(
-                "Suno requires a valid song title after blocklist sanitize.",
-                details={"field": "title"},
+            safe_title = prepare_web_music_title(
+                title=str(request.title or ""),
+                lyrics=str(request.lyrics or ""),
             )
-        safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
-        safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
+            if not is_valid_web_music_title(safe_title):
+                raise ValidationError(
+                    "Enter a song title (at least 2 letters, no URLs or empty brackets).",
+                    details={"field": "title", "title": str(request.title or "")[:160]},
+                )
+            raise_if_suno_blocklisted(
+                runtime_config,
+                title=safe_title,
+                lyrics=str(request.lyrics or ""),
+                style=str(request.style or ""),
+                negative_tags=str(request.negative_tags or ""),
+            )
+            safe_title, safe_lyrics, safe_style, safe_negative = sanitize_web_music_suno_fields(
+                runtime_config,
+                title=safe_title,
+                lyrics=str(request.lyrics or ""),
+                style=str(request.style or ""),
+                negative_tags=str(request.negative_tags or ""),
+            )
+            raise_if_suno_blocklisted(
+                runtime_config,
+                title=safe_title,
+                lyrics=safe_lyrics,
+                style=safe_style,
+                negative_tags=safe_negative,
+            )
+        else:
+            safe_title = sanitize_metadata_name(request.title, field="title", max_length=255)
+            if not safe_title or not is_valid_metadata_name(
+                safe_title, field="title", max_length=255
+            ):
+                raise ValidationError(
+                    "Suno requires a valid song title.",
+                    details={"field": "title", "title": str(request.title or "")[:160]},
+                )
+
+            safe_title = sanitize_text_for_suno(safe_title, runtime_config=runtime_config)
+            if not is_valid_metadata_name(safe_title, field="title", max_length=255):
+                raise ValidationError(
+                    "Suno requires a valid song title after blocklist sanitize.",
+                    details={"field": "title"},
+                )
+            safe_lyrics = sanitize_text_for_suno(request.lyrics, runtime_config=runtime_config)
+            safe_style = sanitize_text_for_suno(request.style, runtime_config=runtime_config)
+            safe_negative = str(request.negative_tags or "").strip()
 
         # Compute request hash for dedup (Req 11.5)
         request_hash = compute_suno_request_hash(
@@ -2740,9 +2787,9 @@ class GenerationService:
             instrumental=request.instrumental,
         )
 
-        # Check for existing task with same hash
+        # Check for existing task with same hash (studio only — web Create is a new request each time)
         existing_task = await self._task_repo.find_by_hash(user_uuid, request_hash)
-        if existing_task is not None:
+        if existing_task is not None and str(source or "studio").strip().lower() != "web_music":
             logger.info(
                 "Duplicate Suno request detected for user %s (hash=%s). "
                 "Returning existing task %s",
@@ -2795,6 +2842,11 @@ class GenerationService:
                 style=safe_style,
                 instrumental=request.instrumental,
                 callback_url=None,  # Client uses configured callback URL
+                negative_tags=safe_negative or None,
+                vocal_gender=request.vocal_gender,
+                style_weight=request.style_weight,
+                weirdness_constraint=request.weirdness_constraint,
+                audio_weight=request.audio_weight,
             )
         except ExternalServiceError as exc:
             # Delivery failure — refund credits (Req 7.6)
@@ -2836,6 +2888,7 @@ class GenerationService:
             instrumental=request.instrumental,
             external_task_id=external_task_id,
             status=TaskStatus.PENDING,
+            source=str(source or "studio"),
         )
         await self._task_repo.create(task)
 
@@ -3510,6 +3563,11 @@ class GenerationService:
         style: str,
         instrumental: bool,
         callback_url: str | None,
+        negative_tags: str | None = None,
+        vocal_gender: str | None = None,
+        style_weight: float | None = None,
+        weirdness_constraint: float | None = None,
+        audio_weight: float | None = None,
     ) -> dict[str, Any]:
         wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
         return await wrapper.execute(
@@ -3521,6 +3579,11 @@ class GenerationService:
                 instrumental=instrumental,
                 callback_url=callback_url,
                 api_key=api_key,
+                negative_tags=negative_tags,
+                vocal_gender=vocal_gender,
+                style_weight=style_weight,
+                weirdness_constraint=weirdness_constraint,
+                audio_weight=audio_weight,
             )
         )
 
@@ -3533,6 +3596,18 @@ class GenerationService:
             lambda api_key: self._suno_client.check_status(external_task_id, api_key=api_key)
         )
         return parse_suno_generate_poll(response)
+
+    async def generate_suno_lyrics(self, prompt: str) -> tuple[str, str]:
+        """Generate lyrics (and optional title) via Suno for web Simple mode."""
+        wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
+
+        async def _run_with_key(api_key: str) -> tuple[str, str]:
+            return await self._suno_client.generate_lyrics_blocking(
+                prompt=prompt,
+                api_key=api_key,
+            )
+
+        return await wrapper.execute(_run_with_key)
 
     async def _call_suno_lyrics(self, *, prompt: str) -> str:
         """Generate lyrics via Suno API (submit + poll on the same pool key)."""

@@ -96,8 +96,9 @@ export async function registerWithEmailPassword(input: {
     headers: {
       "Content-Type": "application/json",
       "X-Portal-Context": "user",
+      "X-Signup-Product": "studio",
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, product: "studio" }),
   });
 
   if (!response.ok) {

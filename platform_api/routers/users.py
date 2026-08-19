@@ -297,7 +297,6 @@ def _save_user_avatar(*, user_id: UUID, data: bytes, content_type: str) -> str:
     return str(Path("uploads") / "avatars" / f"{user_id}{ext}")
 
 
-
 MUSIC_WEB_PRODUCT = "music_web"
 WEB_MUSIC_FREE_DAILY_CREDITS_KEY = "web_music_free_daily_credits"
 WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT = 50
@@ -366,8 +365,6 @@ async def _web_music_daily_free_limit(pool) -> int:
     except (TypeError, ValueError):
         limit = WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT
     return max(0, limit)
-
-
 
 
 def _user_to_response(

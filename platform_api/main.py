@@ -109,6 +109,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     db_pool = None
     redis_conn = None
     pipeline_stuck_task: asyncio.Task | None = None
+    subscription_maintenance_task: asyncio.Task | None = None
 
     configure_api_logging()
     logger.info("API logging ready — batch/music, image, and credit progress appear in this terminal.")
@@ -198,6 +199,16 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             config_repo=get_rate_limit_config_repo(),
         )
         logger.info("Rate limiter configured.")
+
+        from platform_api.middleware.abuse_detection import configure_abuse_detection
+
+        configure_abuse_detection(redis_conn)
+        logger.info("Signup/generation abuse detection configured.")
+
+        from platform_api.services.generation_freeze import configure_generation_freeze
+
+        configure_generation_freeze(redis_conn)
+        logger.info("Music-web generation freeze configured.")
 
         # --- Configure audit middleware ---
         configure_audit_middleware(audit_service=get_audit_service())
@@ -294,6 +305,34 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Pipeline stuck-batch alert service not configured (non-fatal): %s", exc)
 
+        # --- Web music subscription period maintenance ---
+        try:
+            from platform_api.services.v2.subscription_service import SubscriptionService
+
+            async def _run_subscription_maintenance() -> None:
+                handled = await SubscriptionService(db_pool).process_due_subscriptions()
+                if handled:
+                    logger.info(
+                        "Web music subscription maintenance handled %s row(s)",
+                        handled,
+                    )
+
+            async def _subscription_maintenance_loop() -> None:
+                while True:
+                    try:
+                        await _run_subscription_maintenance()
+                    except Exception as exc:
+                        logger.warning("Web music subscription maintenance failed: %s", exc)
+                    await asyncio.sleep(900)
+
+            subscription_maintenance_task = asyncio.create_task(
+                _subscription_maintenance_loop(),
+                name="web-music-subscription-maintenance",
+            )
+            logger.info("Web music subscription maintenance loop started (every 15 minutes).")
+        except Exception as exc:
+            logger.warning("Web music subscription maintenance not configured (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",
@@ -342,6 +381,15 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             pass
         except Exception as exc:
             logger.warning("Error stopping pipeline stuck-alert task: %s", exc)
+
+    if subscription_maintenance_task is not None:
+        subscription_maintenance_task.cancel()
+        try:
+            await subscription_maintenance_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning("Error stopping subscription maintenance task: %s", exc)
 
     if redis_conn is not None:
         try:
@@ -409,6 +457,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from platform_api.middleware.request_log import RequestLogMiddleware
 
     app.add_middleware(RequestLogMiddleware)
+
+    from platform_api.middleware.geo_access import MusicWebGeoMiddleware
+
+    app.add_middleware(MusicWebGeoMiddleware)
 
     # Note: Rate limiting is implemented as a FastAPI Depends() in route handlers
     # (via RateLimiter.check()), not as ASGI middleware. The auth middleware is also
@@ -527,6 +579,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(streaming_public.router, prefix=settings.api_v1_prefix)
     app.include_router(streaming_admin.router, prefix=settings.api_v1_prefix)
     app.include_router(streaming_library.router, prefix=settings.api_v1_prefix)
+
+    from platform_api.routers import web_music
+
+    app.include_router(web_music.router, prefix=settings.api_v1_prefix)
+
+    # --- V2 APIs for web music subscriptions and credits ---
+    from platform_api.routers import v2_subscriptions, v2_credits, v2_topups, webhooks_cutluy
+
+    app.include_router(v2_subscriptions.router, prefix=settings.api_v1_prefix)
+    app.include_router(v2_credits.router, prefix=settings.api_v1_prefix)
+    app.include_router(v2_topups.router, prefix=settings.api_v1_prefix)
+    app.include_router(webhooks_cutluy.router, prefix=settings.api_v1_prefix)
 
     return app
 

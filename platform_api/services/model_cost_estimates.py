@@ -34,6 +34,8 @@ TEXT_TOKEN_ESTIMATES: dict[str, int] = {
     "channel_keywords": 300,
     "channel_tags": 300,
     "lyric": 1200,
+    "web_music_lyrics": 900,
+    "web_music_style": 400,
     "title": 180,
     "album": 180,
 }

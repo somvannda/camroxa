@@ -61,6 +61,7 @@ NEXT_PUBLIC_API_BASE_URL=$API_URL
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.sandbox.camxora.com
 NEXT_PUBLIC_WEBSITE_URL=https://sandbox.camxora.com
 NEXT_PUBLIC_CAMXORA_ENV=sandbox
+NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=$(grep -m1 '^CLOUDFLARE_TURNSTILE_SITE_KEY=' /opt/camxora/repo/platform_api/.env | cut -d= -f2- || true)
 ENVEOF
   npm run build
 "

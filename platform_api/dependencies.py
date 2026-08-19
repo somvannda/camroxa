@@ -760,3 +760,55 @@ def get_ai_routing_service():
         key_pool_service=key_pool_svc,
         model_cost_repo=get_model_cost_repo(),
     )
+
+
+# ---------------------------------------------------------------------------
+# Shared Services (Turnstile, CutLuy, etc.)
+# ---------------------------------------------------------------------------
+
+
+def get_turnstile_service():
+    """Dependency that returns the TurnstileService instance."""
+    from platform_api.services.shared.turnstile_service import TurnstileService
+    
+    return TurnstileService(get_settings())
+
+
+# ---------------------------------------------------------------------------
+# V2 Services (web music subscriptions and credits)
+# ---------------------------------------------------------------------------
+
+
+def get_v2_subscription_service():
+    """Dependency that returns the v2 SubscriptionService instance."""
+    from platform_api.db.asyncpg_adapter import wrap_pool
+    from platform_api.services.v2.subscription_service import SubscriptionService
+    from platform_api.services.shared.cutluy_service import get_cutluy_service
+
+    return SubscriptionService(
+        db=wrap_pool(get_db_pool()),
+        cutluy=get_cutluy_service()
+    )
+
+
+def get_v2_credit_service():
+    """Dependency that returns the v2 CreditService instance."""
+    from platform_api.db.asyncpg_adapter import wrap_pool
+    from platform_api.services.v2.credit_service import CreditService
+
+    return CreditService(db=wrap_pool(get_db_pool()))
+
+
+def get_v2_topup_service():
+    """Dependency that returns the v2 TopupService instance."""
+    from platform_api.db.asyncpg_adapter import wrap_pool
+    from platform_api.services.v2.topup_service import TopupService
+    from platform_api.services.shared.cutluy_service import get_cutluy_service
+    from platform_api.services.v2.credit_service import CreditService
+
+    db = wrap_pool(get_db_pool())
+    return TopupService(
+        db=db,
+        cutluy=get_cutluy_service(),
+        credit_service=CreditService(db=db),
+    )

@@ -34,10 +34,14 @@ from platform_api.dependencies import (
     get_image_sample_pack_repo,
     get_suno_balance_service,
     get_provider_key_balance_service,
+    get_turnstile_service,
     get_usage_enforcement_service,
     get_usage_tracking_repo,
     get_user_repo,
     get_user_service,
+    get_v2_subscription_service,
+    get_v2_credit_service,
+    get_v2_topup_service,
 )
 
 
@@ -49,6 +53,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
         _get_auth_service as auth_get_auth,
         _get_invitation_code_service as auth_get_invitation_code_service,
         _get_lockout as auth_get_lockout,
+        _get_turnstile_service as auth_get_turnstile,
         _get_current_user_id as auth_get_current_user_id,
     )
 
@@ -60,6 +65,9 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     async def real_invitation_code_service():
         return get_invitation_code_service()
+
+    async def real_turnstile_service():
+        return get_turnstile_service()
 
     async def real_current_user_id(
         request: Request,
@@ -81,6 +89,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[auth_get_auth] = real_auth_service
     app.dependency_overrides[auth_get_invitation_code_service] = real_invitation_code_service
     app.dependency_overrides[auth_get_lockout] = real_lockout
+    app.dependency_overrides[auth_get_turnstile] = real_turnstile_service
     app.dependency_overrides[auth_get_current_user_id] = real_current_user_id
 
     # --- users.py ---
@@ -467,6 +476,20 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[plans_get_repo] = real_plans_repo
 
+    from platform_api.routers.web_music_plans_admin import (
+        _get_credit_repo as wm_plans_get_credit_repo,
+        _get_plan_repo as wm_plans_get_plan_repo,
+    )
+
+    async def real_wm_plans_repo():
+        return get_plan_repo()
+
+    async def real_wm_credit_repo():
+        return get_credit_repo()
+
+    app.dependency_overrides[wm_plans_get_plan_repo] = real_wm_plans_repo
+    app.dependency_overrides[wm_plans_get_credit_repo] = real_wm_credit_repo
+
     # --- profiles.py ---
     from platform_api.routers.profiles import (
         _get_profile_service as prof_get_svc,
@@ -586,3 +609,61 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[streaming_public_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_admin_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_library_catalog] = real_streaming_catalog_service
+
+    from platform_api.routers.web_music import _get_web_music_service as web_music_get_svc
+    from platform_api.services.web_music_service import WebMusicService
+
+    async def real_web_music_service() -> WebMusicService:
+        from platform_api.dependencies import (
+            get_ai_routing_service,
+            get_credit_pricing_service,
+            get_db_pool,
+            get_redis,
+        )
+
+        return WebMusicService(
+            get_db_pool(), 
+            get_generation_service(),
+            credit_service=get_v2_credit_service(),
+            ai_routing_service=get_ai_routing_service(),
+            pricing_service=get_credit_pricing_service(),
+            redis=get_redis(),
+        )
+
+    app.dependency_overrides[web_music_get_svc] = real_web_music_service
+
+    # --- v2_subscriptions.py ---
+    from platform_api.routers.v2_subscriptions import _get_subscription_service as v2_sub_get_svc
+    from platform_api.dependencies import get_v2_subscription_service
+
+    async def real_v2_subscription_service():
+        return get_v2_subscription_service()
+
+    app.dependency_overrides[v2_sub_get_svc] = real_v2_subscription_service
+
+    # --- v2_credits.py ---
+    from platform_api.routers.v2_credits import _get_credit_service as v2_credit_get_svc
+    from platform_api.dependencies import get_v2_credit_service
+
+    async def real_v2_credit_service():
+        return get_v2_credit_service()
+
+    app.dependency_overrides[v2_credit_get_svc] = real_v2_credit_service
+
+    # --- v2_topups.py ---
+    from platform_api.routers.v2_topups import _get_topup_service as v2_topup_get_svc
+    from platform_api.dependencies import get_v2_topup_service
+
+    async def real_v2_topup_service():
+        return get_v2_topup_service()
+
+    app.dependency_overrides[v2_topup_get_svc] = real_v2_topup_service
+
+    # --- webhooks_cutluy.py ---
+    from platform_api.routers.webhooks_cutluy import (
+        _get_subscription_service as webhook_sub_get_svc,
+        _get_topup_service as webhook_topup_get_svc
+    )
+
+    app.dependency_overrides[webhook_sub_get_svc] = real_v2_subscription_service
+    app.dependency_overrides[webhook_topup_get_svc] = real_v2_topup_service

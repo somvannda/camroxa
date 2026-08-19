@@ -37,6 +37,21 @@ DEFAULT_RATE_WINDOW_SECONDS = 60
 SUNO_RATE_LIMIT = 20
 SUNO_RATE_WINDOW_SECONDS = 10
 
+WEB_MUSIC_DOWNLOAD_RATE_LIMIT = 30
+WEB_MUSIC_DOWNLOAD_RATE_WINDOW_SECONDS = 60
+
+WEB_MUSIC_PLAY_RATE_LIMIT = 120
+WEB_MUSIC_PLAY_RATE_WINDOW_SECONDS = 60
+
+WEB_MUSIC_CHECKOUT_RATE_LIMIT = 8
+WEB_MUSIC_CHECKOUT_RATE_WINDOW_SECONDS = 60
+
+WEB_MUSIC_CHECKOUT_STATUS_RATE_LIMIT = 45
+WEB_MUSIC_CHECKOUT_STATUS_RATE_WINDOW_SECONDS = 60
+
+REGISTER_RATE_LIMIT = 8
+REGISTER_RATE_WINDOW_SECONDS = 3600
+
 # Redis key prefix for cached rate limit config
 CONFIG_CACHE_PREFIX = "ratelimit:config:"
 CONFIG_CACHE_TTL = 5  # seconds — Admin updates apply within this window
@@ -211,6 +226,31 @@ async def get_rate_limit_config(
             max_requests=SUNO_RATE_LIMIT,
             window_seconds=SUNO_RATE_WINDOW_SECONDS,
         )
+    elif endpoint_type == "web_music_download":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_DOWNLOAD_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_DOWNLOAD_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "web_music_play":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_PLAY_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_PLAY_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "web_music_checkout":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_CHECKOUT_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_CHECKOUT_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "web_music_checkout_status":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_CHECKOUT_STATUS_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_CHECKOUT_STATUS_RATE_WINDOW_SECONDS,
+        )
+    elif endpoint_type == "register":
+        config = RateLimitConfig(
+            max_requests=REGISTER_RATE_LIMIT,
+            window_seconds=REGISTER_RATE_WINDOW_SECONDS,
+        )
     else:
         config = RateLimitConfig(
             max_requests=DEFAULT_RATE_LIMIT,
@@ -273,6 +313,14 @@ def resolve_endpoint_type(path: str) -> str:
         or normalized.startswith("channel-setup/generate-")
     ):
         return "llm"
+
+    if normalized.endswith("v2/subscriptions/purchase") or normalized.endswith(
+        "v2/topups/purchase"
+    ):
+        return "web_music_checkout"
+
+    if "v2/subscriptions/payments/" in normalized or "v2/topups/payments/" in normalized:
+        return "web_music_checkout_status"
 
     return "default"
 
@@ -351,6 +399,12 @@ class RateLimiter:
                 config.max_requests,
                 config.window_seconds,
             )
+            try:
+                from platform_api.services.generation_freeze import note_rate_limit_storm
+
+                await note_rate_limit_storm(request, user_id)
+            except Exception:
+                pass
             raise HTTPException(
                 status_code=429,
                 detail={

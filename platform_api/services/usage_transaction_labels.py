@@ -43,6 +43,8 @@ _OPERATION_LABELS: dict[str, str] = {
     "channel_description": "Channel description generation",
     "channel_keywords": "Channel keyword generation",
     "channel_tags": "Channel tag generation",
+    "web_music_lyrics": "Music lyric generation",
+    "web_music_style": "Music style tag generation",
     "text_generation": "Text generation",
 }
 
