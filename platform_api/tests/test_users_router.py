@@ -498,8 +498,13 @@ class FakeFreeMusicDetailDbPool(FakeUserDetailDbPool):
             return {"products": self._products}
         if "from web_music_daily_usage" in sql:
             if self._usage is None:
-                return None
-            return {"credits_used": self._usage}
+                return {"lifetime_used": 0, "today_used": 0}
+            if isinstance(self._usage, dict):
+                return {
+                    "lifetime_used": int(self._usage.get("lifetime_used") or 0),
+                    "today_used": int(self._usage.get("today_used") or 0),
+                }
+            return {"lifetime_used": int(self._usage), "today_used": int(self._usage)}
         if "from system_settings" in sql:
             return {"value": "50"}
         if "from licenses l" in sql and "join plans p" in sql:
@@ -528,7 +533,7 @@ class TestListUsers:
             monkeypatch,
             FakeListUsersDbPool(
                 product_rows=[{"id": USER_ID, "products": ["music_web"]}],
-                usage_rows=[{"user_id": USER_ID, "credits_used": 10}],
+                usage_rows=[{"user_id": USER_ID, "today_used": 10, "lifetime_used": 10}],
                 spent_rows=[{"user_id": USER_ID, "total": -10}],
             ),
         )
@@ -560,6 +565,30 @@ class TestListUsers:
         assert user["music_credits_limit"] == 50
         assert user["credits_burned"] == 0
 
+    async def test_music_free_user_keeps_lifetime_burn_when_today_is_zero(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        response = await self._get_list(
+            app,
+            mock_user_service,
+            monkeypatch,
+            FakeListUsersDbPool(
+                product_rows=[{"id": USER_ID, "products": ["music_web"]}],
+                usage_rows=[
+                    {"user_id": USER_ID, "today_used": 0, "lifetime_used": 25}
+                ],
+            ),
+        )
+        assert response.status_code == 200
+        user = response.json()["users"][0]
+        assert user["plan_name"] == "Free"
+        assert user["music_credits_remaining"] == 50
+        assert user["music_credits_limit"] == 50
+        assert user["credits_burned"] == 25
+
     async def test_paid_music_sub_wins_over_free_inference(
         self,
         app,
@@ -572,7 +601,7 @@ class TestListUsers:
             monkeypatch,
             FakeListUsersDbPool(
                 product_rows=[{"id": USER_ID, "products": ["music_web"]}],
-                usage_rows=[{"user_id": USER_ID, "credits_used": 10}],
+                usage_rows=[{"user_id": USER_ID, "today_used": 10, "lifetime_used": 10}],
                 music_rows=[
                     {
                         "user_id": USER_ID,
@@ -615,6 +644,28 @@ class TestListUsers:
         assert user["music_credits_limit"] is None
         assert user["credit_balance"] == 5
         assert user["credits_burned"] == 4
+
+    async def test_studio_only_user_uses_absolute_wallet_burned(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        response = await self._get_list(
+            app,
+            mock_user_service,
+            monkeypatch,
+            FakeListUsersDbPool(
+                product_rows=[{"id": USER_ID, "products": ["studio"]}],
+                balance_rows=[{"user_id": USER_ID, "balance": 0}],
+                spent_rows=[{"user_id": USER_ID, "total": -82}],
+            ),
+        )
+        assert response.status_code == 200
+        user = response.json()["users"][0]
+        assert user["music_credits_remaining"] is None
+        assert user["credit_balance"] == 0
+        assert user["credits_burned"] == pytest.approx(0.0082)
 
 
 class TestGetUserFullDetailsMusicFree:
@@ -664,3 +715,51 @@ class TestGetUserFullDetailsMusicFree:
         assert data["music_credits_limit"] == 50
         assert data["credits_burned"] == 10
 
+    async def test_music_free_user_keeps_lifetime_burn_when_today_is_zero(
+        self,
+        app,
+        mock_user_service: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        app.dependency_overrides[get_current_user] = lambda: ADMIN_CONTEXT
+        monkeypatch.setattr(
+            users_router,
+            "get_db_pool",
+            lambda: FakeFreeMusicDetailDbPool(
+                usage={"today_used": 0, "lifetime_used": 25},
+                license_row=None,
+            ),
+        )
+        monkeypatch.setattr(
+            users_router,
+            "upload_path_exists",
+            lambda value: bool(str(value or "").strip()),
+        )
+        fake_topup = AsyncMock()
+        fake_topup.build_period_snapshot = AsyncMock(
+            return_value=type("Snap", (), {"period_start": None, "period_end": None, "plan_name": None, "kinds": {}})()
+        )
+        monkeypatch.setattr(
+            "platform_api.dependencies.get_quota_topup_service",
+            lambda: fake_topup,
+        )
+        monkeypatch.setattr(
+            "platform_api.services.quota_topup_service.snapshot_to_dict",
+            lambda snap: {
+                "period_start": None,
+                "period_end": None,
+                "plan_name": None,
+                "kinds": {},
+            },
+        )
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get(f"/api/v1/users/{USER_ID}/details")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["plan_name"] == "Free"
+        assert data["music_credits_remaining"] == 50
+        assert data["music_credits_limit"] == 50
+        assert data["credits_burned"] == 25
