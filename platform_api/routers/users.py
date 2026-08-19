@@ -11,17 +11,19 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.user_service import UserService
 from platform_api.services.credit_units import units_to_credits
-from platform_api.utils.upload_paths import upload_path_exists
+from platform_api.utils.upload_paths import resolve_upload_path, uploads_root, upload_path_exists
 
 # ---------------------------------------------------------------------------
 # Router
@@ -46,6 +48,7 @@ class UserProfileResponse(BaseModel):
     email: str
     email_confirmed: bool = False
     display_name: str
+    avatar_url: str | None = None
     role: str
     status: str
     suspension_reason: str | None = None
@@ -54,7 +57,6 @@ class UserProfileResponse(BaseModel):
     music_credits_remaining: int | None = None
     music_credits_limit: int | None = None
     credits_burned: float | None = None
-    products: list[str] = Field(default_factory=list)
     profile_allowance: int | None = None
     profile_addon_slots: int = 0
     profile_addon_pending: int = 0
@@ -62,6 +64,7 @@ class UserProfileResponse(BaseModel):
     effective_quota_channels: int | None = None
     channel_profile_count: int = 0
     onboarding_paid: bool = False
+    products: list[str] = Field(default_factory=list)
     pending_verification_code: str | None = None
     verification_code_expires_at: datetime | None = None
     created_at: datetime
@@ -151,6 +154,12 @@ class UserFullDetailResponse(BaseModel):
     custom_descriptions: list[UserOwnedPromptSummary] = []
     custom_structures: list[UserOwnedPromptSummary] = []
 
+    # Music-web generation freeze (Redis TTL, not a DB status)
+    generation_frozen: bool = False
+    generation_frozen_reason: str | None = None
+    generation_frozen_hours: int | None = None
+    generation_frozen_retry_after: int = 0
+
 
 class QuotaTopupRequest(BaseModel):
     """Admin request to bump a user's period quota limit."""
@@ -228,6 +237,13 @@ class SuspendRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500)
 
 
+class FreezeGenerationRequest(BaseModel):
+    """Admin timed freeze of music-web generation."""
+
+    hours: int = Field(..., description="1, 6, 24, or 72")
+    reason: str = Field(..., min_length=1, max_length=500)
+
+
 class AdminSetPasswordRequest(BaseModel):
     """Admin sets a new password for a target user."""
 
@@ -255,6 +271,31 @@ AdminUserDep = Annotated[AuthContext, Depends(require_admin)]
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
+
+async def _fetch_avatar_url(pool, user_id: UUID) -> str | None:
+    row = await _fetch_optional_row(pool, "SELECT avatar_url FROM users WHERE id = $1", user_id)
+    if not row:
+        return None
+    raw = str(row.get("avatar_url") or "").strip()
+    if not raw:
+        return None
+    return f"/api/v1/media/users/{user_id}/avatar"
+
+
+def _save_user_avatar(*, user_id: UUID, data: bytes, content_type: str) -> str:
+    ext = ".jpg"
+    lowered = str(content_type or "").lower()
+    if "png" in lowered:
+        ext = ".png"
+    elif "webp" in lowered:
+        ext = ".webp"
+    avatar_dir = (uploads_root() / "avatars").resolve()
+    avatar_dir.mkdir(parents=True, exist_ok=True)
+    avatar_path = avatar_dir / f"{user_id}{ext}"
+    avatar_path.write_bytes(data)
+    return str(Path("uploads") / "avatars" / f"{user_id}{ext}")
+
 
 
 MUSIC_WEB_PRODUCT = "music_web"
@@ -322,10 +363,13 @@ async def _web_music_daily_free_limit(pool) -> int:
     return max(0, limit)
 
 
+
+
 def _user_to_response(
     user,
     credit_balance: int | float = 0,
     plan_name: str | None = None,
+    avatar_url: str | None = None,
     profile_allowance: int | None = None,
     profile_addon_slots: int = 0,
     profile_addon_pending: int = 0,
@@ -333,12 +377,12 @@ def _user_to_response(
     effective_quota_channels: int | None = None,
     channel_profile_count: int = 0,
     onboarding_paid: bool = False,
-    pending_verification_code: str | None = None,
-    verification_code_expires_at: datetime | None = None,
+    products: list[str] | None = None,
     music_credits_remaining: int | None = None,
     music_credits_limit: int | None = None,
     credits_burned: float | None = None,
-    products: list[str] | None = None,
+    pending_verification_code: str | None = None,
+    verification_code_expires_at: datetime | None = None,
 ) -> UserProfileResponse:
     """Convert a domain User object to the response model."""
     balance_display = (
@@ -351,6 +395,7 @@ def _user_to_response(
         email=user.email,
         email_confirmed=bool(getattr(user, "email_confirmed", False)),
         display_name=user.display_name,
+        avatar_url=avatar_url,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         status=user.status.value if hasattr(user.status, "value") else str(user.status),
         suspension_reason=getattr(user, "suspension_reason", None),
@@ -359,7 +404,6 @@ def _user_to_response(
         music_credits_remaining=music_credits_remaining,
         music_credits_limit=music_credits_limit,
         credits_burned=credits_burned,
-        products=list(products or getattr(user, "products", None) or []),
         profile_allowance=profile_allowance,
         profile_addon_slots=profile_addon_slots,
         profile_addon_pending=profile_addon_pending,
@@ -367,6 +411,7 @@ def _user_to_response(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
+        products=list(products or getattr(user, "products", None) or []),
         pending_verification_code=pending_verification_code,
         verification_code_expires_at=verification_code_expires_at,
         created_at=user.created_at,
@@ -439,11 +484,13 @@ async def get_me(
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
     onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+    avatar_url = await _fetch_avatar_url(pool, user_id)
 
     return _user_to_response(
         user,
         credit_balance=credit_balance,
         plan_name=plan_name,
+        avatar_url=avatar_url,
         profile_allowance=profile_allowance,
         profile_addon_slots=profile_addon_slots,
         profile_addon_pending=profile_addon_pending,
@@ -545,10 +592,12 @@ async def update_me(
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
     onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+    avatar_url = await _fetch_avatar_url(pool, user_id)
     return _user_to_response(
         user,
         credit_balance=credit_balance,
         plan_name=plan_name,
+        avatar_url=avatar_url,
         profile_allowance=profile_allowance,
         profile_addon_slots=profile_addon_slots,
         profile_addon_pending=profile_addon_pending,
@@ -557,6 +606,39 @@ async def update_me(
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
     )
+
+
+@router.post(
+    "/me/avatar",
+    response_model=UserProfileResponse,
+    status_code=200,
+    summary="Upload current user profile photo",
+)
+async def upload_my_avatar(
+    ctx: CurrentUserDep,
+    user_service: UserServiceDep,
+    file: UploadFile = File(...),
+) -> UserProfileResponse:
+    from platform_api.exceptions import ValidationError
+
+    content_type = str(file.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise ValidationError("Profile photo must be an image file.", details={"field": "file"})
+    data = await file.read()
+    if not data:
+        raise ValidationError("Profile photo file is empty.", details={"field": "file"})
+    if len(data) > 2 * 1024 * 1024:
+        raise ValidationError("Profile photo must be 2 MB or smaller.", details={"field": "file"})
+
+    user_id = UUID(ctx.user_id)
+    stored_path = _save_user_avatar(user_id=user_id, data=data, content_type=content_type)
+    pool = get_db_pool()
+    await pool.execute(
+        "UPDATE users SET avatar_url = $2, updated_at = NOW() WHERE id = $1",
+        user_id,
+        stored_path,
+    )
+    return await get_me(ctx, user_service)
 
 
 # ---------------------------------------------------------------------------
@@ -1124,6 +1206,19 @@ async def get_user_full_details(
     topup_service = get_quota_topup_service()
     quota_snapshot = snapshot_to_dict(await topup_service.build_period_snapshot(user_id))
 
+    freeze_info = {
+        "generation_frozen": False,
+        "generation_frozen_reason": None,
+        "generation_frozen_hours": None,
+        "generation_frozen_retry_after": 0,
+    }
+    try:
+        from platform_api.services.generation_freeze import freeze_status
+
+        freeze_info = await freeze_status(str(user_id))
+    except Exception:
+        pass
+
     return UserFullDetailResponse(
         id=str(user.id),
         email=user.email,
@@ -1170,6 +1265,10 @@ async def get_user_full_details(
             )
             for row in custom_structure_rows
         ],
+        generation_frozen=bool(freeze_info.get("generation_frozen")),
+        generation_frozen_reason=freeze_info.get("generation_frozen_reason"),
+        generation_frozen_hours=freeze_info.get("generation_frozen_hours"),
+        generation_frozen_retry_after=int(freeze_info.get("generation_frozen_retry_after") or 0),
     )
 
 
@@ -1511,6 +1610,66 @@ async def suspend_user(
     return _user_to_response(user)
 
 
+class FreezeGenerationResponse(BaseModel):
+    user_id: str
+    generation_frozen: bool
+    generation_frozen_reason: str | None = None
+    generation_frozen_hours: int | None = None
+    generation_frozen_retry_after: int = 0
+
+
+@router.post(
+    "/{user_id}/freeze-generation",
+    response_model=FreezeGenerationResponse,
+    summary="Temporarily freeze music-web generation (Admin)",
+)
+async def freeze_user_generation(
+    user_id: UUID,
+    request: FreezeGenerationRequest,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> FreezeGenerationResponse:
+    from platform_api.exceptions import ValidationError
+    from platform_api.services.generation_freeze import (
+        ALLOWED_HOURS,
+        freeze_generation,
+        freeze_status,
+    )
+
+    await user_service.get_user(user_id)
+    if request.hours not in ALLOWED_HOURS:
+        raise ValidationError(
+            "Freeze hours must be 1, 6, 24, or 72.",
+            details={"field": "hours", "allowed": list(ALLOWED_HOURS)},
+        )
+    await freeze_generation(
+        user_id=str(user_id),
+        ip=None,
+        hours=request.hours,
+        reason=request.reason.strip(),
+    )
+    status = await freeze_status(str(user_id))
+    return FreezeGenerationResponse(user_id=str(user_id), **status)
+
+
+@router.post(
+    "/{user_id}/unfreeze-generation",
+    response_model=FreezeGenerationResponse,
+    summary="Clear music-web generation freeze (Admin)",
+)
+async def unfreeze_user_generation(
+    user_id: UUID,
+    ctx: AdminUserDep,
+    user_service: UserServiceDep,
+) -> FreezeGenerationResponse:
+    from platform_api.services.generation_freeze import freeze_status, unfreeze_generation
+
+    await user_service.get_user(user_id)
+    await unfreeze_generation(user_id=str(user_id))
+    status = await freeze_status(str(user_id))
+    return FreezeGenerationResponse(user_id=str(user_id), **status)
+
+
 @router.post(
     "/{user_id}/reactivate",
     response_model=UserProfileResponse,
@@ -1578,3 +1737,8 @@ async def permanent_delete_user(
     """
     await user_service.hard_delete_user(user_id)
     return {"message": f"User {user_id} has been permanently deleted."}
+
+
+from platform_api.routers.admin_user_web_music import router as admin_web_music_router
+
+router.include_router(admin_web_music_router)

@@ -40,6 +40,8 @@ class FakeDbPool:
             return self._profile_row
         if "from billing_payments" in sql:
             return None
+        if "select avatar_url from users" in sql:
+            return None
         raise AssertionError(f"Unexpected query: {query}")
 
 
@@ -69,6 +71,8 @@ class FakeUserDetailDbPool:
         if "from web_music_daily_usage" in sql:
             return None
         if "from system_settings" in sql:
+            return None
+        if "select avatar_url from users" in sql:
             return None
         raise AssertionError(f"Unexpected fetchrow query: {query}")
 
