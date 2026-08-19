@@ -34,10 +34,11 @@ A logged-in client could still save a full MP3 by walking the 256 KiB play windo
 - `platform_api/tests/test_stream_playback_guard.py`
 - `platform_api/tests/test_exceptions.py`
 - `scripts/deploy/hotfix_web_music_stream_stitch_pace_sandbox.py`
+- `scripts/deploy/hotfix_web_music_stream_stitch_pace_production.py`
 
 ## Migration/deploy
 
-No database migration. File-scoped API hotfix, restart `camxora-api`. No `music_web` rebuild. Production only on explicit request.
+No database migration. File-scoped API hotfix, restart `camxora-api`. No `music_web` rebuild. Sandbox and production file-scoped hotfixes were applied.
 
 ## Tests
 
@@ -48,4 +49,4 @@ No database migration. File-scoped API hotfix, restart `camxora-api`. No `music_
 
 ## Follow-ups
 
-Production API when asked. Real DRM (encrypted HLS/MSE) would be required to stop a patched browser/Playwright client.
+Real DRM (encrypted HLS/MSE) would be required to stop a patched browser/Playwright client.
