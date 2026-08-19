@@ -37,6 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { usePlans, useCreatePlan, useUpdatePlan, useDeletePlan, useOffers, useCreateOffer, usePlanTermDiscounts } from '@/hooks/use-plans';
 import { billingTermQuotes, formatChannelPlanName, formatUsd, linearPlanMonthlyCents } from '@/lib/plan-tier-pricing';
 import { ChannelPricingSection } from '@/pages/plans/channel-pricing-section';
+import { MusicWebFreeCreditsSection } from '@/pages/plans/music-web-free-credits-section';
 import { PlanLimitsFields } from '@/pages/plans/plan-limits-fields';
 import { PlanPricingPreview, SmartPlanPriceCalculator } from '@/pages/plans/plan-pricing-preview';
 import { SubscriptionPlansSection } from '@/pages/plans/subscription-plans-section';
@@ -375,6 +376,8 @@ export default function PlansPage() {
   return (
     <div className="p-6 space-y-8">
       <h1 className="text-2xl font-bold text-slate-100">Plans</h1>
+
+      <MusicWebFreeCreditsSection />
 
       <ChannelPricingSection />
 
