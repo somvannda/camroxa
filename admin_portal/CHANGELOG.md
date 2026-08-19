@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- User detail shows Camxora Music generations in the music.camxora.com
+  workspace layout (list, prompt/settings, in-page player). See
+  `docs/changelog/2026-08-19-admin-user-generated-songs.md`.
 - Users table infers **Free** for Music-tagged accounts with no paid Music plan
   and shows today's used / 50 daily credits. User detail matches. See
   `docs/changelog/2026-08-18-admin-music-free-daily-display.md`.
@@ -25,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Sandbox Users list rebuilt with production **Tag** / used-total **Credits** /
+  **Burned** columns (generated-songs hotfix had left `index.tsx` stale). See
+  `docs/changelog/2026-08-19-sandbox-admin-users-table-sync.md`.
 - **User Spent** Song allowance (`S`) no longer stuck at 0%. API now maps
   tracked `music` usage onto the song meter. See
   `docs/changelog/2026-08-16-user-spent-song-meter.md`.
