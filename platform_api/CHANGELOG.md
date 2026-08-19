@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Admin blog CRUD (`/api/v1/admin/blog-posts`) now requires `Depends(require_admin)`.
+  Unauthenticated list/create/update/delete previously skipped auth. See
+  `docs/changelog/2026-08-19-admin-blog-require-admin.md`.
 - Unconfirmed accounts can only call session/profile routing endpoints until they
   verify email. Other authenticated routes return 403. See
   `docs/changelog/2026-08-17-email-confirm-gate.md`.

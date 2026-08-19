@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
-from platform_api.middleware.auth import require_admin
+from platform_api.middleware.auth import AuthContext, require_admin
 
 router = APIRouter(tags=["blog-posts"])
+AdminDep = Annotated[AuthContext, Depends(require_admin)]
 
 _SLUGIFY_PATTERN = re.compile(r"[^a-z0-9]+")
 
@@ -179,7 +180,7 @@ async def _get_post_or_404(post_id: UUID) -> Any:
 
 
 @router.get("/admin/blog-posts", response_model=list[AdminBlogPostResponse], status_code=200)
-async def list_admin_blog_posts(_: Any = require_admin) -> list[AdminBlogPostResponse]:
+async def list_admin_blog_posts(_: AdminDep) -> list[AdminBlogPostResponse]:
     pool = get_db_pool()
     rows = await pool.fetch(
         """
@@ -208,7 +209,7 @@ async def list_admin_blog_posts(_: Any = require_admin) -> list[AdminBlogPostRes
 @router.post("/admin/blog-posts", response_model=AdminBlogPostResponse, status_code=201)
 async def create_blog_post(
     request: BlogPostUpsertRequest,
-    _: Any = require_admin,
+    _: AdminDep,
 ) -> AdminBlogPostResponse:
     pool = get_db_pool()
     slug = _slugify(request.slug or request.title)
@@ -275,7 +276,7 @@ async def create_blog_post(
 
 
 @router.get("/admin/blog-posts/{post_id}", response_model=AdminBlogPostResponse, status_code=200)
-async def get_admin_blog_post(post_id: UUID, _: Any = require_admin) -> AdminBlogPostResponse:
+async def get_admin_blog_post(post_id: UUID, _: AdminDep) -> AdminBlogPostResponse:
     row = await _get_post_or_404(post_id)
     return _serialize_admin_post(row)
 
@@ -284,7 +285,7 @@ async def get_admin_blog_post(post_id: UUID, _: Any = require_admin) -> AdminBlo
 async def update_blog_post(
     post_id: UUID,
     request: BlogPostUpsertRequest,
-    _: Any = require_admin,
+    _: AdminDep,
 ) -> AdminBlogPostResponse:
     pool = get_db_pool()
     existing = await _get_post_or_404(post_id)
@@ -352,7 +353,7 @@ async def update_blog_post(
 
 
 @router.delete("/admin/blog-posts/{post_id}", status_code=204, response_class=Response)
-async def delete_blog_post(post_id: UUID, _: Any = require_admin) -> Response:
+async def delete_blog_post(post_id: UUID, _: AdminDep) -> Response:
     pool = get_db_pool()
     result = await pool.execute("DELETE FROM blog_posts WHERE id = $1", post_id)
     if result == "DELETE 0":
