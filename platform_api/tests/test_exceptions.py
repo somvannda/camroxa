@@ -16,6 +16,7 @@ from platform_api.exceptions import (
     NotFoundError,
     PlatformAPIError,
     QuotaExceededError,
+    RateLimitedError,
     ValidationError,
 )
 from platform_api.main import create_app
@@ -52,6 +53,7 @@ class TestExceptionHierarchy:
             (LicenseExpiredError, 403, "LICENSE_EXPIRED"),
             (InsufficientCreditsError, 402, "INSUFFICIENT_CREDITS"),
             (QuotaExceededError, 429, "QUOTA_EXCEEDED"),
+            (RateLimitedError, 429, "RATE_LIMITED"),
             (ExternalServiceError, 502, "EXTERNAL_SERVICE_ERROR"),
             (ValidationError, 422, "VALIDATION_ERROR"),
             (DuplicateError, 409, "DUPLICATE_ERROR"),
@@ -117,6 +119,10 @@ class TestGlobalErrorHandler:
                 "Daily limit reached.",
                 details={"limit": 7, "used": 7, "reset_at": "2024-01-02T00:00:00Z"},
             )
+
+        @application.get("/test/rate-limited")
+        async def _raise_rate_limited():
+            raise RateLimitedError("Slow down.", retry_after=7)
 
         @application.get("/test/external")
         async def _raise_external():
@@ -190,6 +196,14 @@ class TestGlobalErrorHandler:
         body = resp.json()
         assert body["error"]["code"] == "QUOTA_EXCEEDED"
         assert body["error"]["details"]["limit"] == 7
+
+    async def test_rate_limited_sets_retry_after(self, client: AsyncClient) -> None:
+        resp = await client.get("/test/rate-limited")
+        assert resp.status_code == 429
+        assert resp.headers["retry-after"] == "7"
+        body = resp.json()
+        assert body["error"]["code"] == "RATE_LIMITED"
+        assert body["error"]["details"]["retry_after"] == 7
 
     async def test_external_service_error(self, client: AsyncClient) -> None:
         resp = await client.get("/test/external")

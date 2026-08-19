@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 from datetime import date, datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
@@ -47,6 +47,7 @@ from platform_api.services.audio_origin_proxy import (
     is_initial_play_range,
     proxy_origin_audio,
 )
+from platform_api.services.stream_playback_guard import enforce_stream_playback_guard
 from platform_api.services.storage_service import StorageServiceError
 from platform_api.services.web_music_play_tokens import (
     create_play_token,
@@ -1252,6 +1253,7 @@ class WebMusicService:
         *,
         variant: str,
         range_header: str | None,
+        request_headers: Mapping[str, str] | None = None,
     ) -> Response:
         variant_key = str(variant or "ok").strip().lower()
         if variant_key not in ("ok", "alt"):
@@ -1262,6 +1264,8 @@ class WebMusicService:
             task_id=task_id,
             variant_key=variant_key,
             range_header=range_header,
+            session_user_id=str(user_id),
+            request_headers=request_headers,
         )
 
     async def proxy_playback_from_token(
@@ -1270,6 +1274,7 @@ class WebMusicService:
         *,
         session_user_id: str | None = None,
         range_header: str | None = None,
+        request_headers: Mapping[str, str] | None = None,
     ) -> Response:
         if not session_user_id:
             raise ForbiddenError("Sign in to play music.")
@@ -1291,6 +1296,8 @@ class WebMusicService:
             task_id=task_id,
             variant_key=variant_key,
             range_header=range_header,
+            session_user_id=session_user_id,
+            request_headers=request_headers,
         )
 
     async def _proxy_row(
@@ -1300,7 +1307,15 @@ class WebMusicService:
         task_id: UUID,
         variant_key: str,
         range_header: str | None,
+        session_user_id: str | None = None,
+        request_headers: Mapping[str, str] | None = None,
     ) -> Response:
+        await enforce_stream_playback_guard(
+            redis=self._redis,
+            scope=f"user:{session_user_id}:task:{task_id}:{variant_key}",
+            range_header=range_header,
+            request_headers=request_headers,
+        )
         origin = await self._origin_playback_url(row, task_id=task_id, variant_key=variant_key)
         if origin is None:
             data, _filename, content_type = await self._serve_mp3_row(

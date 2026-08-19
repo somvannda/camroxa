@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Security
 
 - Cambodia-only access and a clear message when Create is paused after abuse. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
+- Play/stream URLs refuse curl and Range-stitch downloads; the in-app player is unchanged. See `docs/changelog/2026-08-19-web-music-stream-stitch-pace.md`.
 - Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
 
 ### Fixed

@@ -204,6 +204,7 @@ class TestWebMusicRouter:
         assert b"cdn1.suno.ai" not in response.content
         assert b"ID3fake" in response.content
         mock_web_music_service.proxy_playback.assert_awaited()
+        assert mock_web_music_service.proxy_playback.await_args.kwargs["request_headers"] is not None
         mock_web_music_service.download_mp3.assert_not_awaited()
 
         path_response = await client.get(

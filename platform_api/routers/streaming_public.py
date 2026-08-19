@@ -132,4 +132,6 @@ async def stream_track(
     return await service.proxy_track_audio(
         track_id,
         range_header=range_header,
+        session_user_id=ctx.user_id,
+        request_headers=request.headers,
     )
