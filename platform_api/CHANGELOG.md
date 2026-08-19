@@ -24,8 +24,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   verify email. Other authenticated routes return 403. See
   `docs/changelog/2026-08-17-email-confirm-gate.md`.
 
+### Added
+
+- Admin user detail lists Camxora Music generations with prompt/settings and
+  authenticated MP3 playback. See
+  `docs/changelog/2026-08-19-admin-user-generated-songs.md`.
+
 ### Changed
 
+- Admin Users keeps live avatar/freeze fields and infers Music **Free** daily
+  credits on the list (sandbox table sync). See
+  `docs/changelog/2026-08-19-sandbox-admin-users-table-sync.md`.
 - Admin Users infers Music **Free** (50 daily credits) for `music_web` users
   without a paid `web_subscriptions` row. Credits show remaining / 50 and Burned
   is today's whole-credit usage, not studio micro-units. See

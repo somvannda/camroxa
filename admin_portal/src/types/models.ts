@@ -11,7 +11,6 @@ export interface User {
   music_credits_limit?: number | null;
   credits_burned?: number | null;
   channel_profile_count: number;
-  /** Signup product tags, e.g. music_web, studio. */
   products?: string[];
   email_confirmed?: boolean;
   pending_verification_code?: string | null;
@@ -103,6 +102,11 @@ export interface UserFullDetail {
 
   custom_descriptions: UserOwnedPromptSummary[];
   custom_structures: UserOwnedPromptSummary[];
+
+  generation_frozen?: boolean;
+  generation_frozen_reason?: string | null;
+  generation_frozen_hours?: number | null;
+  generation_frozen_retry_after?: number;
 }
 
 export interface QuotaKindStatus {

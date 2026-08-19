@@ -67,6 +67,33 @@ export function useReactivateUser() {
   });
 }
 
+export function useFreezeGeneration() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; hours: number; reason: string }) =>
+      httpClient.post(`/api/v1/users/${data.id}/freeze-generation`, {
+        hours: data.hours,
+        reason: data.reason,
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', variables.id, 'details'] });
+    },
+  });
+}
+
+export function useUnfreezeGeneration() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      httpClient.post(`/api/v1/users/${id}/unfreeze-generation`),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users', variables, 'details'] });
+    },
+  });
+}
+
 export function useDeleteUser() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -127,5 +154,68 @@ export function useChannelProfileCoverBlob(profileId: string, index: number) {
     },
     enabled: !!profileId && index >= 0,
     retry: false,
+  });
+}
+
+export type AdminWebMusicWorkspace = {
+  id: string;
+  name: string;
+  is_default?: boolean;
+  created_at?: string | null;
+};
+
+export type AdminWebMusicClip = {
+  variant: string;
+  label: string;
+  title?: string | null;
+  audio_url: string;
+  download_url: string;
+  ready: boolean;
+  image_url?: string | null;
+  duration_seconds?: number | null;
+};
+
+export type AdminWebMusicGeneration = {
+  id: string;
+  title: string;
+  lyrics: string;
+  style: string;
+  model: string;
+  instrumental: boolean;
+  status: string;
+  error_message?: string | null;
+  created_at?: string | null;
+  negative_tags?: string | null;
+  vocal_gender?: string | null;
+  style_weight?: number | null;
+  weirdness_constraint?: number | null;
+  audio_weight?: number | null;
+  clips: AdminWebMusicClip[];
+};
+
+export function useUserWebMusicWorkspaces(userId: string) {
+  return useQuery({
+    queryKey: ['users', userId, 'web-music', 'workspaces'],
+    queryFn: () =>
+      httpClient.get<{ items: AdminWebMusicWorkspace[] }>(
+        `/api/v1/users/${userId}/web-music/workspaces`,
+      ),
+    enabled: !!userId,
+  });
+}
+
+export function useUserWebMusicGenerations(userId: string, workspaceId?: string) {
+  return useQuery({
+    queryKey: ['users', userId, 'web-music', 'generations', workspaceId ?? 'all'],
+    queryFn: () =>
+      httpClient.get<{ items: AdminWebMusicGeneration[]; total: number }>(
+        `/api/v1/users/${userId}/web-music/generations`,
+        {
+          limit: 40,
+          offset: 0,
+          ...(workspaceId ? { workspace_id: workspaceId } : {}),
+        },
+      ),
+    enabled: !!userId,
   });
 }

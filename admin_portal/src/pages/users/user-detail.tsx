@@ -13,6 +13,8 @@ import {
   useSetUserPassword,
   useUserDetails,
   useQuotaTopup,
+  useFreezeGeneration,
+  useUnfreezeGeneration,
   useChannelProfileLogoBlob,
   useChannelProfileCoverBlob,
 } from '@/hooks/use-users';
@@ -67,6 +69,7 @@ import {
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { ErrorState } from '@/components/shared/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { UserGeneratedSongs } from '@/pages/users/user-generated-songs';
 
 // --- Zod schema for user edit form ---
 const userEditSchema = z.object({
@@ -231,6 +234,8 @@ export default function UserDetailPage() {
   const updateUser = useUpdateUser();
   const suspendUser = useSuspendUser();
   const reactivateUser = useReactivateUser();
+  const freezeGeneration = useFreezeGeneration();
+  const unfreezeGeneration = useUnfreezeGeneration();
   const deleteUser = useDeleteUser();
   const setUserPassword = useSetUserPassword();
   const quotaTopup = useQuotaTopup(id!);
@@ -242,12 +247,15 @@ export default function UserDetailPage() {
   // Dialog states
   const [suspendDialogOpen, setSuspendDialogOpen] = useState(false);
   const [reactivateDialogOpen, setReactivateDialogOpen] = useState(false);
+  const [freezeDialogOpen, setFreezeDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [quotaTopupOpen, setQuotaTopupOpen] = useState(false);
   const [creditTopupOpen, setCreditTopupOpen] = useState(false);
   const [failAbsorbResetOpen, setFailAbsorbResetOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
+  const [freezeReason, setFreezeReason] = useState('');
+  const [freezeHours, setFreezeHours] = useState('6');
 
   // Edit form
   const form = useForm<UserEditFormValues>({
@@ -411,6 +419,48 @@ export default function UserDetailPage() {
         },
       },
     );
+  };
+
+  const handleFreezeGeneration = () => {
+    if (!id || !freezeReason.trim()) return;
+    freezeGeneration.mutate(
+      { id, hours: Number(freezeHours), reason: freezeReason.trim() },
+      {
+        onSuccess: () => {
+          toast({
+            title: 'Generation frozen',
+            description: `Music generation paused for ${freezeHours} hours.`,
+          });
+          setFreezeDialogOpen(false);
+          setFreezeReason('');
+          refetch();
+        },
+        onError: (err) => {
+          toast({
+            variant: 'destructive',
+            title: 'Freeze failed',
+            description: err instanceof Error ? err.message : 'An error occurred',
+          });
+        },
+      },
+    );
+  };
+
+  const handleUnfreezeGeneration = () => {
+    if (!id) return;
+    unfreezeGeneration.mutate(id, {
+      onSuccess: () => {
+        toast({ title: 'Generation unfrozen', description: 'The user can generate music again.' });
+        refetch();
+      },
+      onError: (err) => {
+        toast({
+          variant: 'destructive',
+          title: 'Unfreeze failed',
+          description: err instanceof Error ? err.message : 'An error occurred',
+        });
+      },
+    });
   };
 
   const handleReactivate = () => {
@@ -606,6 +656,8 @@ export default function UserDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <UserGeneratedSongs userId={user.id} />
 
       {/* Period quota + top-ups */}
       <Card className="border-slate-800 bg-slate-900/50">
@@ -1080,6 +1132,15 @@ export default function UserDetailPage() {
           <CardTitle className="text-slate-100">Actions</CardTitle>
           <CardDescription className="text-slate-400">
             Manage user account status
+            {user.generation_frozen
+              ? ` — music generation frozen${
+                  user.generation_frozen_retry_after
+                    ? ` (~${Math.max(1, Math.ceil(user.generation_frozen_retry_after / 3600))}h left`
+                    : ''
+                }${user.generation_frozen_reason ? `, ${user.generation_frozen_reason}` : ''}${
+                  user.generation_frozen_retry_after ? ')' : ''
+                }`
+              : ''}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
@@ -1102,6 +1163,26 @@ export default function UserDetailPage() {
               onClick={() => setSuspendDialogOpen(true)}
             >
               Suspend User
+            </Button>
+          )}
+
+          {user.generation_frozen ? (
+            <Button
+              variant="outline"
+              className="border-green-500/30 text-green-400 hover:bg-green-500/10"
+              onClick={handleUnfreezeGeneration}
+              disabled={unfreezeGeneration.isPending}
+            >
+              {unfreezeGeneration.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Unfreeze Generation
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10"
+              onClick={() => setFreezeDialogOpen(true)}
+            >
+              Freeze Generation
             </Button>
           )}
 
@@ -1158,6 +1239,57 @@ export default function UserDetailPage() {
             >
               {suspendUser.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Suspend
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={freezeDialogOpen} onOpenChange={setFreezeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Freeze music generation</DialogTitle>
+            <DialogDescription>
+              Pause this user&apos;s music-web generate for a set time. They can still browse
+              and listen. Full suspend remains available for a complete lockout.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <p className="text-sm text-slate-300">Duration</p>
+              <Select value={freezeHours} onValueChange={setFreezeHours}>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 hour</SelectItem>
+                  <SelectItem value="6">6 hours</SelectItem>
+                  <SelectItem value="24">24 hours</SelectItem>
+                  <SelectItem value="72">72 hours</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Textarea
+              placeholder="Reason for freeze..."
+              value={freezeReason}
+              onChange={(e) => setFreezeReason(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-slate-100"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setFreezeDialogOpen(false)}
+              disabled={freezeGeneration.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleFreezeGeneration}
+              disabled={!freezeReason.trim() || freezeGeneration.isPending}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {freezeGeneration.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Freeze
             </Button>
           </DialogFooter>
         </DialogContent>
