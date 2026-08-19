@@ -610,8 +610,22 @@ export function OnboardingWizard({
         if (refreshed) {
           saveSession(refreshed);
         }
-        const [meResult, genresResult, statusResult, plansResult, billingConfigResult, termDiscountsResult, draftResult] = await Promise.all([
-          getCurrentUser(),
+        const meResult = await getCurrentUser();
+        if (cancelled) return;
+
+        if (!meResult.email_confirmed) {
+          setCurrentUser(meResult);
+          setState({
+            ...createDefaultState(),
+            email: meResult.email,
+            emailVerified: false,
+            hydrated: true,
+            genresLoading: false,
+          });
+          return;
+        }
+
+        const [genresResult, statusResult, plansResult, billingConfigResult, termDiscountsResult, draftResult] = await Promise.all([
           listPublicGenres().catch(() => []),
           getProfilesStatus(),
           listPublicPlans().catch(() => []),
@@ -1546,6 +1560,7 @@ export function OnboardingWizard({
       <PortalMarketingShell
         active="register"
         compact
+        locked
         account={
           state.email
             ? {
@@ -1635,9 +1650,13 @@ export function OnboardingWizard({
                     : "Resend"}
               </button>
             </div>
-            <Link className="text-sm text-slate-300/72 underline-offset-4 hover:text-white hover:underline" href="/login">
-              Sign in
-            </Link>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="text-sm text-slate-300/72 underline-offset-4 hover:text-white hover:underline"
+            >
+              Sign out
+            </button>
           </CardFooter>
         </Card>
       </PortalMarketingShell>

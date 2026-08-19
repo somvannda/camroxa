@@ -86,8 +86,13 @@ export function UserControlPanelProvider(props: { children: React.ReactNode }) {
   const websiteBaseUrl = getWebsiteBaseUrl();
 
   const reloadAll = React.useCallback(async () => {
+    const user = await getCurrentUser();
+    if (!user.email_confirmed) {
+      router.replace("/onboarding");
+      return;
+    }
+
     const [
-      user,
       status,
       profiles,
       wallet,
@@ -100,7 +105,6 @@ export function UserControlPanelProvider(props: { children: React.ReactNode }) {
       notifications,
       security,
     ] = await Promise.all([
-      getCurrentUser(),
       getProfilesStatus(),
       listProfiles().catch(() => []),
       getWalletBalance().catch(() => null),
