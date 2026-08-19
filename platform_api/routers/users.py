@@ -349,6 +349,11 @@ def _free_music_credit_fields(used: int, daily_limit: int) -> tuple[int, int, fl
     return remaining, daily_limit, float(used)
 
 
+def _studio_credits_burned(units: int | None) -> float:
+    """Debit rows are stored as signed micro-units; never show negative burn."""
+    return units_to_credits(abs(int(units or 0)))
+
+
 async def _web_music_daily_free_limit(pool) -> int:
     row = await _fetch_optional_row(
         pool,
@@ -772,15 +777,24 @@ async def list_users(
         usage_rows = await _fetch_optional_rows(
             pool,
             """
-            SELECT user_id, COALESCE(credits_used, 0)::int AS credits_used
+            SELECT user_id,
+                   COALESCE(SUM(credits_used), 0)::int AS lifetime_used,
+                   COALESCE(
+                       SUM(credits_used) FILTER (WHERE usage_date = $2),
+                       0
+                   )::int AS today_used
             FROM web_music_daily_usage
-            WHERE user_id = ANY($1) AND usage_date = $2
+            WHERE user_id = ANY($1)
+            GROUP BY user_id
             """,
             user_ids,
             billing_today(),
         )
         daily_used = {
-            str(row["user_id"]): int(row["credits_used"] or 0) for row in usage_rows
+            str(row["user_id"]): int(row["today_used"] or 0) for row in usage_rows
+        }
+        lifetime_used = {
+            str(row["user_id"]): int(row["lifetime_used"] or 0) for row in usage_rows
         }
 
         # Batch fetch profile counts
@@ -816,6 +830,7 @@ async def list_users(
         studio_spent = {}
         products_by_user = {}
         daily_used = {}
+        lifetime_used = {}
         daily_limit = WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT
         profiles = {}
         verifications = {}
@@ -835,13 +850,15 @@ async def list_users(
             )
             plan_name = paid_plan or plan_name
         elif _is_music_web_user(products):
-            music_remaining, music_limit, burned = _free_music_credit_fields(
-                int(daily_used.get(uid, 0)),
+            today = int(daily_used.get(uid, 0))
+            music_remaining, music_limit, _today_burned = _free_music_credit_fields(
+                today,
                 daily_limit,
             )
+            burned = float(lifetime_used.get(uid, today))
             plan_name = plan_name or "Free"
         else:
-            burned = units_to_credits(studio_spent.get(uid, 0))
+            burned = _studio_credits_burned(studio_spent.get(uid, 0))
         return _user_to_response(
             user,
             credit_balance=balances.get(uid, 0),
@@ -1010,7 +1027,9 @@ async def get_user_full_details(
 
     music_credits_remaining: int | None = None
     music_credits_limit: int | None = None
-    credits_burned: float | None = units_to_credits(int(spent_row["total"] or 0)) if spent_row else 0.0
+    credits_burned: float | None = _studio_credits_burned(
+        int(spent_row["total"] or 0) if spent_row else 0
+    )
     if music_rows:
         music_row = {
             "plan_name": music_rows[0]["plan_name"],
@@ -1029,17 +1048,24 @@ async def get_user_full_details(
         usage_row = await _fetch_optional_row(
             pool,
             """
-            SELECT COALESCE(credits_used, 0)::int AS credits_used
+            SELECT
+                COALESCE(SUM(credits_used), 0)::int AS lifetime_used,
+                COALESCE(
+                    SUM(credits_used) FILTER (WHERE usage_date = $2),
+                    0
+                )::int AS today_used
             FROM web_music_daily_usage
-            WHERE user_id = $1 AND usage_date = $2
+            WHERE user_id = $1
             """,
             user_id,
             billing_today(),
         )
-        used = int((usage_row or {}).get("credits_used") or 0)
-        music_credits_remaining, music_credits_limit, credits_burned = (
-            _free_music_credit_fields(used, daily_limit)
+        used_today = int((usage_row or {}).get("today_used") or 0)
+        lifetime = int((usage_row or {}).get("lifetime_used") or 0)
+        music_credits_remaining, music_credits_limit, _today_burned = (
+            _free_music_credit_fields(used_today, daily_limit)
         )
+        credits_burned = float(lifetime)
         plan_name = plan_name or "Free"
 
     # Channel profiles

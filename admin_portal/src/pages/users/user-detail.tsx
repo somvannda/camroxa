@@ -575,15 +575,14 @@ export default function UserDetailPage() {
             {user.music_credits_limit != null && user.music_credits_remaining != null ? (
               <>
                 <div className="text-2xl font-bold text-slate-100">
-                  {(
-                    user.credits_burned != null
-                      ? user.credits_burned
-                      : Math.max(0, user.music_credits_limit - user.music_credits_remaining)
-                  ).toLocaleString()}{' '}
+                  {Math.max(0, user.music_credits_limit - user.music_credits_remaining).toLocaleString()}{' '}
                   / {user.music_credits_limit.toLocaleString()}
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  {user.music_credits_remaining.toLocaleString()} remaining
+                  {user.music_credits_remaining.toLocaleString()} remaining today
+                  {user.credits_burned != null
+                    ? ` · ${user.credits_burned.toLocaleString()} burned`
+                    : null}
                   {user.credit_balance > 0
                     ? ` · Studio wallet ${formatCredits(user.credit_balance)}`
                     : null}

@@ -40,8 +40,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   credits on the list (sandbox table sync). See
   `docs/changelog/2026-08-19-sandbox-admin-users-table-sync.md`.
 - Admin Users infers Music **Free** (50 daily credits) for `music_web` users
-  without a paid `web_subscriptions` row. Credits show remaining / 50 and Burned
-  is today's whole-credit usage, not studio micro-units. See
+  without a paid `web_subscriptions` row. Credits show today's used / limit;
+  Burned is lifetime `web_music_daily_usage` so midnight reset does not wipe
+  the column. Studio debit sums use absolute micro-units. See
+  `docs/changelog/2026-08-19-admin-users-lifetime-burn.md` and
   `docs/changelog/2026-08-18-admin-music-free-daily-display.md`.
 - Admin `GET /users` includes Camxora Music plan + remaining/limit/burned credits
   from `web_subscriptions` (desktop licenses alone showed "No plan" / leftover

@@ -19,7 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   5 songs or 0 (listen-only). See
   `docs/changelog/2026-08-18-admin-music-free-daily-credits-setting.md`.
 - Users table infers **Free** for Music-tagged accounts with no paid Music plan
-  and shows today's used / 50 daily credits. User detail matches. See
+  and shows today's used / daily credits. **Burned** is lifetime Music usage so
+  it does not wipe at midnight. See
+  `docs/changelog/2026-08-19-admin-users-lifetime-burn.md` and
   `docs/changelog/2026-08-18-admin-music-free-daily-display.md`.
 - Users table shows a **Tag** column (`Music` / `Studio`) from `users.products`. See
   `docs/changelog/2026-08-18-admin-users-product-tag.md`.
