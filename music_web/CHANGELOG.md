@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Public recent tracks include clip duration so Explore/catalog typechecks and can show time. See `docs/changelog/2026-08-19-music-web-public-track-duration.md`.
 - Play no longer sends a logged-in listener back to login when the clip URL is `/stream/ok` or `/stream/alt`. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Profile no longer shows the “Unlock Unlimited Music Creation” pitch to paid subscribers. It shows the current plan, next billing date, and the other public plans. See `docs/changelog/2026-08-18-music-web-profile-current-plan.md`.
 - Create workspace Play/Ready wait until the audio file actually streams (Suno CDN 403 is still Finishing). See `docs/changelog/2026-08-18-music-web-stream-ready.md`.
