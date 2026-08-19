@@ -14,6 +14,7 @@ type PortalMarketingShellProps = {
   compact?: boolean;
   wide?: boolean;
   hideFooter?: boolean;
+  locked?: boolean;
   account?: {
     email: string;
     planLabel?: string | null;
@@ -74,6 +75,19 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[rgba(5,8,18,0.82)] backdrop-blur-xl">
         <div className="mx-auto w-full max-w-7xl px-6 py-4 md:px-10">
           <div className="flex items-center justify-between gap-4">
+            {props.locked ? (
+              <div className="flex items-center gap-3">
+                <img alt="Camxora" className="h-10 w-10" src="/camxora-logo.svg" />
+                <div>
+                  <div className="font-display text-lg font-semibold tracking-[-0.05em] text-white">
+                    Camxora
+                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-fuchsia-100/58">
+                    Confirm your email
+                  </div>
+                </div>
+              </div>
+            ) : (
             <Link className="flex items-center gap-3" href={websiteBaseUrl}>
               <img alt="Camxora" className="h-10 w-10" src="/camxora-logo.svg" />
               <div>
@@ -85,7 +99,9 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
                 </div>
               </div>
             </Link>
+            )}
 
+            {props.locked ? null : (
             <nav className="hidden items-center gap-6 text-sm font-medium text-slate-200/74 xl:flex">
               {primaryNavLinks.map((item) => (
                 <Link key={item.href} className="transition hover:text-white" href={item.href}>
@@ -93,6 +109,7 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
                 </Link>
               ))}
             </nav>
+            )}
 
             {props.account ? (
               <details className="relative">
@@ -122,7 +139,7 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
                   </button>
                 </div>
               </details>
-            ) : (
+            ) : props.locked ? null : (
               <div className="flex items-center gap-2">
                 <Link
                   className="hidden h-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-slate-100 transition hover:bg-white/[0.06] sm:inline-flex"
@@ -141,6 +158,7 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
             )}
           </div>
 
+          {props.locked ? null : (
           <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 text-sm xl:hidden">
             {primaryNavLinks.map((item) => (
               <Link
@@ -152,20 +170,21 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
               </Link>
             ))}
           </nav>
+          )}
         </div>
       </header>
 
       <main className="relative mx-auto flex w-full max-w-[1500px] flex-1 flex-col px-5 py-8 md:px-8 md:py-10">
         <section
           className={
-            props.wide
+            props.wide && !props.locked
               ? "mx-auto w-full max-w-[1500px]"
-              : props.compact
+              : props.compact || props.locked
                 ? "mx-auto flex w-full max-w-md flex-1 items-center"
                 : "grid items-center gap-12 md:grid-cols-2"
           }
         >
-          {props.compact || props.wide ? null : (
+          {props.compact || props.wide || props.locked ? null : (
             <div className="min-w-0">
               {props.badge ? (
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-200/80">
@@ -217,7 +236,7 @@ export function PortalMarketingShell(props: PortalMarketingShellProps) {
         </section>
       </main>
 
-      {props.hideFooter ? null : (
+      {props.hideFooter || props.locked ? null : (
         <footer className="relative mt-auto border-t border-white/8 bg-[linear-gradient(180deg,rgba(8,10,20,0.24),rgba(4,6,14,0.92))]">
           <div className="mx-auto grid w-full max-w-7xl gap-10 px-6 py-12 text-sm text-slate-200/68 md:px-10 lg:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
             <div className="max-w-md">

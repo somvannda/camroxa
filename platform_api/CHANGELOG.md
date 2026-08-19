@@ -18,6 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Unconfirmed accounts can only call session/profile routing endpoints until they
+  verify email. Other authenticated routes return 403. See
+  `docs/changelog/2026-08-17-email-confirm-gate.md`.
+
 ### Changed
 
 - Admin Users infers Music **Free** (50 daily credits) for `music_web` users

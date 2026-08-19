@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { saveSession } from "@/lib/auth";
-import { getProfilesStatus } from "@/lib/channel-setup";
+import { getCurrentUser, getProfilesStatus } from "@/lib/channel-setup";
 import { loginWithEmailPassword } from "@/lib/platform-api";
 
 export function LoginForm() {
@@ -34,6 +34,12 @@ export function LoginForm() {
       });
 
       saveSession(tokens);
+      const me = await getCurrentUser();
+      if (!me.email_confirmed) {
+        toast({ title: "Signed in", description: "Confirm your email to continue." });
+        router.push("/onboarding");
+        return;
+      }
       const status = await getProfilesStatus();
       if (status.profile_count > 0) {
         toast({

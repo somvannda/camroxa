@@ -140,7 +140,7 @@ class UserRepository:
         """Return auth-critical user state for token/session validation."""
         row = await self._pool.fetchrow(
             """
-            SELECT status, token_version
+            SELECT status, token_version, email_confirmed
             FROM users
             WHERE id = $1
             """,
@@ -151,6 +151,7 @@ class UserRepository:
         return {
             "status": str(row["status"]),
             "token_version": int(row["token_version"] or 0),
+            "email_confirmed": bool(row["email_confirmed"]),
         }
 
     async def create(self, user: User, *, conn: Any | None = None) -> User:

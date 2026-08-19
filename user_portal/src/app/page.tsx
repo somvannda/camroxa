@@ -13,9 +13,9 @@ export default function Home() {
 
     async function resolveLanding() {
       try {
-        await getCurrentUser();
+        const me = await getCurrentUser();
         if (!cancelled) {
-          router.replace("/dashboard");
+          router.replace(me.email_confirmed ? "/dashboard" : "/onboarding");
         }
       } catch {
         if (!cancelled) {
