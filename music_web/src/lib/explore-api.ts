@@ -68,6 +68,7 @@ export function publicTrackToStreamTrack(track: WebMusicPublicRecentTrack): Stre
     play_url: track.play_url,
     play_count: track.play_count ?? 0,
     added_at: track.added_at,
+    duration_seconds: track.duration_seconds ?? null,
   };
 }
 

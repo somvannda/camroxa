@@ -88,6 +88,7 @@ export type WebMusicPublicRecentTrack = {
   play_url: string;
   added_at?: string | null;
   play_count?: number;
+  duration_seconds?: number | null;
 };
 
 export type Paginated<T> = {
