@@ -8,6 +8,7 @@ import { ImageGenerationSection } from './image-generation-section';
 import { MusicLanguagesSection } from './music-languages-section';
 import { SunoBlocklistSection } from './suno-blocklist-section';
 import { FailAbsorbSection } from './fail-absorb-section';
+import { MusicWebFreeCreditsSection } from '@/pages/plans/music-web-free-credits-section';
 import { PaymentSection } from './payment-section';
 import { StreamingStorageSection } from './streaming-section';
 import { UserDataManagementSection } from './user-data-section';
@@ -109,6 +110,7 @@ export default function SettingsPage() {
           <TabsTrigger value="music-languages">Music Languages</TabsTrigger>
           <TabsTrigger value="suno-blocklist">Suno Blocklist</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
+          <TabsTrigger value="music-web">Music Web</TabsTrigger>
           <TabsTrigger value="fail-absorb">Fail / Retry Absorb</TabsTrigger>
           <TabsTrigger value="streaming">Streaming</TabsTrigger>
           <TabsTrigger value="youtube-oauth">YouTube OAuth</TabsTrigger>
@@ -140,6 +142,10 @@ export default function SettingsPage() {
 
         <TabsContent value="billing" className="mt-6">
           <PaymentSection />
+        </TabsContent>
+
+        <TabsContent value="music-web" className="mt-6">
+          <MusicWebFreeCreditsSection />
         </TabsContent>
 
         <TabsContent value="fail-absorb" className="mt-6">

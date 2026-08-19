@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - User detail shows Camxora Music generations in the music.camxora.com
   workspace layout (list, prompt/settings, in-page player). See
   `docs/changelog/2026-08-19-admin-user-generated-songs.md`.
+- **Plans** and **Settings → Music Web** can set the unpaid Music daily credit
+  pool (default 50 credits ≈ 5 songs; 10 credits per song). Presets for 1 / 3 /
+  5 songs or 0 (listen-only). See
+  `docs/changelog/2026-08-18-admin-music-free-daily-credits-setting.md`.
 - Users table infers **Free** for Music-tagged accounts with no paid Music plan
   and shows today's used / 50 daily credits. User detail matches. See
   `docs/changelog/2026-08-18-admin-music-free-daily-display.md`.
