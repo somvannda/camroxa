@@ -157,6 +157,13 @@ class Settings(BaseSettings):
     # Signing secret from CutLuy Dashboard → Webhooks (distinct from ck_live_…).
     cutluy_webhook_secret: str = ""
 
+    # --- Ops Telegram activity feed ---
+    # Empty token/chat_id = disabled. PLATFORM_TELEGRAM_OPS_ENABLED=false
+    # kills posts without removing credentials (restart required).
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    telegram_ops_enabled: bool = True
+
     # --- Admin dual-control (Phase 3 / H6) ---
     # Absolute display credits; adjusts at/above this need a second admin.
     # Default 0 = disabled (single-admin ops apply credit adjusts immediately).

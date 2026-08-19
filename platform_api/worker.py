@@ -86,6 +86,16 @@ async def _bootstrap_connections() -> None:
     except Exception:
         logger.exception("Worker Redis unavailable — continuing without cache/rate gates.")
 
+    try:
+        from platform_api.services.telegram_ops_alert_service import (
+            install_telegram_ops_hooks,
+        )
+
+        install_telegram_ops_hooks()
+        logger.info("Worker Telegram ops hooks installed.")
+    except Exception as exc:
+        logger.warning("Worker Telegram ops hooks skipped: %s", exc)
+
 
 async def _shutdown_connections() -> None:
     from platform_api.dependencies import clear_connections, get_db_pool, get_redis

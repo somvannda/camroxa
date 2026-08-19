@@ -26,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Telegram ops feed posts signup, login, paid checkout, credit spend, plan-quota
+  use, and refunds to a group chat. `/stats` and `/burncredit` reply in-chat;
+  burn tables also post at 10:00 PM Asia/Phnom_Penh. See
+  `docs/changelog/2026-08-18-telegram-ops-activity-feed.md`.
 - Admin user detail lists Camxora Music generations with prompt/settings and
   authenticated MP3 playback. See
   `docs/changelog/2026-08-19-admin-user-generated-songs.md`.

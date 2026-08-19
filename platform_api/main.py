@@ -244,6 +244,16 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Abuse alert service not configured (non-fatal): %s", exc)
 
+        try:
+            from platform_api.services.telegram_ops_alert_service import (
+                install_telegram_ops_hooks,
+            )
+
+            install_telegram_ops_hooks()
+            logger.info("Telegram ops activity feed hooks installed.")
+        except Exception as exc:
+            logger.warning("Telegram ops hooks not installed (non-fatal): %s", exc)
+
         # --- Pipeline stuck-batch housekeeping (PLATFORM_WORKERS_REQUIREMENTS.md §8) ---
         # No dedicated `platform_worker` process exists yet, so this runs as an
         # in-process scheduled loop (same stopgap pattern as other periodic sweeps
