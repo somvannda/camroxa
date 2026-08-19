@@ -10,7 +10,7 @@ from typing import Any, Literal
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from platform_api.ai.purposes.vocal_profile import truncate_suno_style
 from platform_api.exceptions import (
@@ -42,6 +42,7 @@ from platform_api.services.suno_audio_resolver import (
 )
 from platform_api.services.streaming_upload_service import StreamingUploadService
 from platform_api.services.audio_origin_proxy import (
+    bounded_mp3_response,
     is_camxora_audio_proxy_url,
     is_initial_play_range,
     proxy_origin_audio,
@@ -1251,7 +1252,7 @@ class WebMusicService:
         *,
         variant: str,
         range_header: str | None,
-    ) -> StreamingResponse:
+    ) -> Response:
         variant_key = str(variant or "ok").strip().lower()
         if variant_key not in ("ok", "alt"):
             raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
@@ -1269,7 +1270,7 @@ class WebMusicService:
         *,
         session_user_id: str | None = None,
         range_header: str | None = None,
-    ) -> StreamingResponse:
+    ) -> Response:
         if not session_user_id:
             raise ForbiddenError("Sign in to play music.")
         if self._redis is None:
@@ -1299,17 +1300,13 @@ class WebMusicService:
         task_id: UUID,
         variant_key: str,
         range_header: str | None,
-    ) -> StreamingResponse:
+    ) -> Response:
         origin = await self._origin_playback_url(row, task_id=task_id, variant_key=variant_key)
         if origin is None:
-            data, filename, content_type = await self._serve_mp3_row(
+            data, _filename, content_type = await self._serve_mp3_row(
                 row, task_id=task_id, variant_key=variant_key
             )
-            return StreamingResponse(
-                iter([data]),
-                media_type=content_type,
-                headers={"Content-Disposition": content_disposition(filename, inline=True)},
-            )
+            return bounded_mp3_response(data, range_header, media_type=content_type)
         url, source = origin
         if is_initial_play_range(range_header):
             await self._increment_play_count(task_id, variant_key)

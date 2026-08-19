@@ -16,6 +16,7 @@ from platform_api.services.generation_freeze import (
     reject_probe_payload,
 )
 from platform_api.services.web_music_service import WebMusicService, content_disposition
+from platform_api.services.audio_origin_proxy import is_missing_range
 from platform_api.exceptions import NotFoundError, QuotaExceededError
 
 router = APIRouter(prefix="/web-music", tags=["web-music"])
@@ -547,6 +548,12 @@ async def download_timed_lyrics(
     )
 
 
+async def _enforce_stream_rate_limit(user_id: str, range_header: str | None) -> None:
+    if is_missing_range(range_header):
+        await enforce_rate_limit_for_endpoint(user_id, "web_music_download")
+    await enforce_rate_limit_for_endpoint(user_id, "web_music_play")
+
+
 @router.get("/generations/{task_id}/stream/{variant}")
 async def stream_generation_variant(
     task_id: UUID,
@@ -555,12 +562,13 @@ async def stream_generation_variant(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> Response:
-    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    range_header = request.headers.get("range")
+    await _enforce_stream_rate_limit(ctx.user_id, range_header)
     return await service.proxy_playback(
         UUID(ctx.user_id),
         task_id,
         variant=variant,
-        range_header=request.headers.get("range"),
+        range_header=range_header,
     )
 
 
@@ -572,12 +580,13 @@ async def stream_generation(
     service: WebMusicServiceDep,
     variant: Literal["ok", "alt"] = "ok",
 ) -> Response:
-    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    range_header = request.headers.get("range")
+    await _enforce_stream_rate_limit(ctx.user_id, range_header)
     return await service.proxy_playback(
         UUID(ctx.user_id),
         task_id,
         variant=variant,
-        range_header=request.headers.get("range"),
+        range_header=range_header,
     )
 
 
@@ -588,11 +597,12 @@ async def play_by_token(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> Response:
-    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    range_header = request.headers.get("range")
+    await _enforce_stream_rate_limit(ctx.user_id, range_header)
     return await service.proxy_playback_from_token(
         token,
         session_user_id=ctx.user_id,
-        range_header=request.headers.get("range"),
+        range_header=range_header,
     )
 
 

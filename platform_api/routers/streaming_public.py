@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from platform_api.exceptions import NotFoundError
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
+from platform_api.services.audio_origin_proxy import is_missing_range
 from platform_api.services.streaming_catalog_service import StreamingCatalogService
 
 router = APIRouter(prefix="/public/streaming", tags=["streaming-public"])
@@ -124,8 +125,11 @@ async def stream_track(
     ctx: CurrentUserDep,
     service: CatalogServiceDep,
 ) -> Response:
+    range_header = request.headers.get("range")
+    if is_missing_range(range_header):
+        await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_download")
     await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
     return await service.proxy_track_audio(
         track_id,
-        range_header=request.headers.get("range"),
+        range_header=range_header,
     )
