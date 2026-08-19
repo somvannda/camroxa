@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Unconfirmed sessions cannot play catalog or Create audio; they stay on verify-email. Paid accounts still download MP3/WAV/LRC/SRT. See `docs/changelog/2026-08-19-music-web-confirmed-listen.md`.
 - Cambodia-only access and a clear message when Create is paused after abuse. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Play/stream URLs refuse curl and Range-stitch downloads; the in-app player is unchanged. See `docs/changelog/2026-08-19-web-music-stream-stitch-pace.md`.
 - Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.

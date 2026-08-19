@@ -137,11 +137,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     router.push(`/login?next=${encodeURIComponent(next || '/')}`);
   }, [router]);
 
+  const redirectToVerifyEmail = useCallback(() => {
+    if (typeof window === 'undefined' || !user?.email) return;
+    const next = `${window.location.pathname}${window.location.search}`;
+    router.replace(
+      `/verify-email?email=${encodeURIComponent(user.email)}&next=${encodeURIComponent(next || '/')}`,
+    );
+  }, [router, user?.email]);
+
   const playFromIndex = useCallback(
     async (index: number) => {
       if (authLoading) return;
       if (!user) {
         redirectToLogin();
+        return;
+      }
+      if (user.email_confirmed === false) {
+        redirectToVerifyEmail();
         return;
       }
 
@@ -210,7 +222,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (token === loadTokenRef.current) setPlaying(false);
       }
     },
-    [authLoading, ensureAudio, muted, redirectToLogin, user, volume],
+    [authLoading, ensureAudio, muted, redirectToLogin, redirectToVerifyEmail, user, volume],
   );
 
   playFromIndexRef.current = playFromIndex;

@@ -25,8 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Unauthenticated list/create/update/delete previously skipped auth. See
   `docs/changelog/2026-08-19-admin-blog-require-admin.md`.
 - Unconfirmed accounts can only call session/profile routing endpoints until they
-  verify email. Other authenticated routes return 403. See
-  `docs/changelog/2026-08-17-email-confirm-gate.md`.
+  verify email. Play/stream and file downloads are blocked until confirmation.
+  See `docs/changelog/2026-08-19-music-web-confirmed-listen.md`.
 - Music web is Cambodia-only (`CF-IPCountry=KH`; Tor/unknown/missing country blocked). Attack-like generate/auth patterns freeze Create for 6 hours (admin can set 1/6/24/72h). Signup farm caps stay 3/hour and 5/day; freeze is extra. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Music Web free-credit farm protection: required Turnstile on web register, per-IP signup caps, and a shared 5-song/day network cap. Public music signup stays open. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
 
