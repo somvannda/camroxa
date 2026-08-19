@@ -12,7 +12,8 @@ from fastapi.responses import Response, StreamingResponse
 from platform_api.exceptions import NotFoundError
 
 _CHUNK_SIZE = 64 * 1024
-_PLAY_CHUNK_BYTES = 256 * 1024
+PLAY_CHUNK_BYTES = 256 * 1024
+_PLAY_CHUNK_BYTES = PLAY_CHUNK_BYTES
 _RANGE_RE = re.compile(r"bytes=(\d+)-(\d*)", re.I)
 _CONTENT_RANGE_RE = re.compile(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", re.I)
 _PROXY_HEADERS = {

@@ -10,6 +10,10 @@ from platform_api.exceptions import NotFoundError
 from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.audio_origin_proxy import is_initial_play_range, proxy_origin_audio
 from platform_api.services.storage_service import StorageService
+from platform_api.services.stream_playback_guard import (
+    assert_browser_audio_request,
+    enforce_unique_window_pace,
+)
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
 from platform_api.services.streaming_slug import slugify
 from platform_api.services.music_genre_utils import parse_genre_list
@@ -56,8 +60,9 @@ _PUBLIC_ALBUM_KEYS = {
 
 
 class StreamingCatalogService:
-    def __init__(self, pool: Any) -> None:
+    def __init__(self, pool: Any, redis: Any | None = None) -> None:
         self._pool = pool
+        self._redis = redis
         self._repo = StreamingRepository(pool)
 
     async def _cover_url(self, storage_key: str | None) -> str | None:
@@ -270,8 +275,12 @@ class StreamingCatalogService:
         track_id: UUID,
         *,
         range_header: str | None = None,
+        session_user_id: str | None = None,
+        request_headers: Any | None = None,
     ):
         """Stream catalog audio through the API. Never return the B2 URL to the browser."""
+        if request_headers is not None:
+            assert_browser_audio_request(request_headers)
         track = await self._repo.get_published_track(track_id)
         if not track:
             raise NotFoundError("Track not found or streaming is not configured.")
@@ -285,6 +294,11 @@ class StreamingCatalogService:
         origin_url = await storage.get_signed_get_url(storage_key)
         if not origin_url:
             raise NotFoundError("Track not found or streaming is not configured.")
+        await enforce_unique_window_pace(
+            self._redis,
+            f"user:{session_user_id}:track:{track_id}",
+            range_header,
+        )
         if is_initial_play_range(range_header):
             await self._repo.increment_play_count(track_id)
         return await proxy_origin_audio(origin_url, range_header=range_header)

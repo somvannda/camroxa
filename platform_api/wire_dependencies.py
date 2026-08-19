@@ -602,9 +602,9 @@ def wire_all_dependencies(app: FastAPI) -> None:
     from platform_api.services.streaming_catalog_service import StreamingCatalogService
 
     async def real_streaming_catalog_service() -> StreamingCatalogService:
-        from platform_api.dependencies import get_db_pool
+        from platform_api.dependencies import get_db_pool, get_redis
 
-        return StreamingCatalogService(get_db_pool())
+        return StreamingCatalogService(get_db_pool(), redis=get_redis())
 
     app.dependency_overrides[streaming_public_catalog] = real_streaming_catalog_service
     app.dependency_overrides[streaming_admin_catalog] = real_streaming_catalog_service
