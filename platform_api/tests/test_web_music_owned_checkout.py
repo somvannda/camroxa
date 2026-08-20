@@ -341,6 +341,58 @@ async def test_create_subscription_reuses_pending_row() -> None:
     assert result["qr_string"].startswith("000201")
     db.fetch_val.assert_not_called()
     assert db.execute.await_count >= 2
+    assert any(
+        "status = 'pending'" in str(call.args[0])
+        for call in db.execute.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_subscription_reuses_expired_row() -> None:
+    db = AsyncMock()
+    db.fetch_one = AsyncMock(
+        side_effect=[
+            {"id": "sub-expired", "status": "expired", "plan_id": "plan-old"},
+            {
+                "id": "plan-1",
+                "name": "starter_monthly",
+                "plan_type": "web_music",
+                "price_cents": 900,
+                "billing_cycle_days": 30,
+                "monthly_credits": 500,
+                "monthly_song_quota": None,
+                "features": {},
+                "is_public": True,
+                "display_order": 1,
+            },
+        ]
+    )
+    db.execute = AsyncMock()
+    db.fetch_val = AsyncMock()
+    cutluy = AsyncMock()
+    cutluy.create_subscription_payment = AsyncMock(
+        return_value={
+            "checkout_url": "https://cutluy.com/pay/x",
+            "payment_id": "pay_new",
+            "expires_at": "",
+            "qr_string": "00020101021229300012KHQRFAKEPAYLOAD6304ABCD",
+        }
+    )
+
+    service = SubscriptionService(db, cutluy=cutluy)
+    result = await service.create_subscription(
+        user_id="user-1",
+        plan_name="starter_monthly",
+        billing_cycle="monthly",
+        success_url="https://music.example/create",
+        cancel_url="https://music.example/create",
+    )
+
+    assert result["payment_id"] == "pay_new"
+    db.fetch_val.assert_not_called()
+    update_sql = db.execute.await_args_list[0].args[0]
+    assert "status = 'pending'" in update_sql
+    assert "status <> 'active'" in update_sql
 
 
 @pytest.mark.asyncio
