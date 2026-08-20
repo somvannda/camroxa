@@ -22,6 +22,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
   const [loading, setLoading] = useState(true);
   const [purchasingPackId, setPurchasingPackId] = useState<string | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutQrString, setCheckoutQrString] = useState<string | null>(null);
   const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
   const [checkoutPack, setCheckoutPack] = useState<{ name: string; price: string } | null>(null);
 
@@ -51,7 +52,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
 
     try {
       const currentUrl = window.location.origin;
-      const { checkout_url, payment_id } = await purchaseTopup({
+      const { checkout_url, payment_id, qr_string } = await purchaseTopup({
         pack_slug: pack.slug,
         success_url: `${currentUrl}/create`,
         cancel_url: `${currentUrl}/create`,
@@ -59,6 +60,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
 
       setCheckoutPack({ name: pack.name, price: formatPrice(pack.price_cents) });
       setCheckoutPaymentId(payment_id);
+      setCheckoutQrString(qr_string || null);
       setCheckoutUrl(checkout_url);
       onClose();
     } catch (err: any) {
@@ -233,6 +235,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
       <CutluyCheckoutModal
         isOpen={Boolean(checkoutUrl)}
         checkoutUrl={checkoutUrl}
+        qrString={checkoutQrString}
         paymentId={checkoutPaymentId}
         kind="topup"
         title="Top up with KHQR"
@@ -240,6 +243,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
         planPrice={checkoutPack?.price}
         onClose={() => {
           setCheckoutUrl(null);
+          setCheckoutQrString(null);
           setCheckoutPaymentId(null);
           setCheckoutPack(null);
           setPurchasingPackId(null);

@@ -65,7 +65,8 @@ class PurchaseTopupRequest(BaseModel):
 class PurchaseTopupResponse(BaseModel):
     checkout_url: str
     payment_id: str
-    expires_at: str
+    expires_at: str = ""
+    qr_string: str = ""
     pack_name: str
     credits: int
     amount_cents: int
@@ -160,7 +161,8 @@ async def purchase_topup(
     return PurchaseTopupResponse(
         checkout_url=payment["checkout_url"],
         payment_id=payment["payment_id"],
-        expires_at=payment["expires_at"],
+        expires_at=payment.get("expires_at") or "",
+        qr_string=payment.get("qr_string") or "",
         pack_name=pack.name,
         credits=pack.total_credits,
         amount_cents=pack.price_cents

@@ -40,14 +40,14 @@ export default function PlayerBar() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/8 bg-[rgba(5,8,18,0.94)] px-4 py-3 backdrop-blur-xl md:left-72 md:px-6">
       <div className="mx-auto grid max-w-[1600px] grid-cols-1 items-center gap-3 md:grid-cols-[1.2fr_1.4fr_1fr] md:gap-4">
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-center justify-center gap-3 md:justify-start">
           {current?.cover_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={current.cover_url} alt="" className="h-14 w-14 rounded-lg object-cover" />
+            <img src={current.cover_url} alt="" className="h-12 w-12 rounded-lg object-cover md:h-14 md:w-14" />
           ) : (
-            <div className="h-14 w-14 rounded-lg bg-white/[0.06]" />
+            <div className="h-12 w-12 rounded-lg bg-white/[0.06] md:h-14 md:w-14" />
           )}
-          <div className="min-w-0">
+          <div className="min-w-0 max-w-[70%] text-center md:max-w-none md:text-left">
             <p className="truncate font-medium text-white">
               {current?.title ?? 'Select a track to play'}
             </p>

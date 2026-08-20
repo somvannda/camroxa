@@ -12,6 +12,7 @@ import Sidebar from '@/components/sidebar';
 import SiteFooter from '@/components/site-footer';
 import SiteHeader from '@/components/site-header';
 import PricingModal from '@/components/pricing-modal';
+import { useMobileKeyboardInset } from '@/lib/use-mobile-keyboard-inset';
 
 function MarketingHeader() {
   const { user, loading } = useAuth();
@@ -113,6 +114,7 @@ export default function ShellSwitcher({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, loading } = useAuth();
+  useMobileKeyboardInset();
   const needsConfirm = Boolean(user && user.email_confirmed === false);
   const isAuthPage =
     pathname === '/login' || pathname === '/register' || pathname === '/verify-email';
@@ -154,7 +156,7 @@ export default function ShellSwitcher({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <SiteHeader />
-        <main className="music-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 pb-[calc(var(--music-player-height)+1.5rem)] md:px-6">{children}</main>
+        <main className="music-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 pb-[calc(var(--music-player-height)+var(--music-menu-clearance)+1.5rem)] md:px-6">{children}</main>
         <PlayerBar />
       </div>
     </div>

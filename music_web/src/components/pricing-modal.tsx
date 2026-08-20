@@ -53,6 +53,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>(defaultBillingCycle);
   const [purchasingPlan, setPurchasingPlan] = useState<string | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutQrString, setCheckoutQrString] = useState<string | null>(null);
   const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<{ name: string; price: string } | null>(null);
 
@@ -113,6 +114,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
           price: `${formatPrice(plan.price_cents)}/${billingCycle === 'monthly' ? 'mo' : 'yr'}`,
         });
         setCheckoutPaymentId(result.payment_id);
+        setCheckoutQrString(result.qr_string || null);
         setCheckoutUrl(result.checkout_url);
         onClose();
       }
@@ -127,18 +129,20 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
 
   const filteredPlans = plans
     .filter((plan) => plan.billing_cycle === billingCycle)
+    .filter((plan) => plan.price_cents > 0)
     .sort((a, b) => a.display_order - b.display_order);
 
   const modal = (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] overflow-y-auto overscroll-contain bg-black/80 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="pricing-modal-title"
     >
+      <div className="flex min-h-full items-start justify-center p-3 pb-[calc(var(--music-player-height)+var(--music-menu-clearance)+1rem)] pt-4 sm:items-center sm:p-4 sm:pb-8">
       <div
-        className="relative my-8 w-full max-w-6xl rounded-3xl border border-white/10 bg-slate-900 shadow-2xl"
+        className="relative my-0 w-full max-w-6xl rounded-3xl border border-white/10 bg-slate-900 shadow-2xl sm:my-4"
         onClick={(event) => event.stopPropagation()}
       >
         <button
@@ -150,7 +154,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
           <X className="h-5 w-5" />
         </button>
 
-        <div className="border-b border-white/10 p-6 text-center sm:p-8">
+        <div className="sticky top-0 z-10 border-b border-white/10 bg-slate-900/95 p-4 text-center backdrop-blur sm:p-8">
           <h2 id="pricing-modal-title" className="text-2xl font-bold text-white sm:text-3xl">
             Choose Your Plan
           </h2>
@@ -191,9 +195,9 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
               {/* Free plan */}
-              <div className="relative flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
+              <div className="relative flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/5 p-4 sm:p-6">
                 <div className="relative z-10 flex items-center gap-3 border-b border-white/10 pb-4">
                   <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${planColors.Free}`}>
                     <Gift className="h-5 w-5 text-white" />
@@ -260,7 +264,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                 return (
                   <div
                     key={plan.id}
-                    className={`relative flex min-w-0 flex-col rounded-2xl border p-5 transition-all sm:p-6 ${
+                    className={`relative flex min-w-0 flex-col rounded-2xl border p-4 transition-all sm:p-6 ${
                       isPopular
                         ? 'border-purple-500/50 bg-gradient-to-b from-purple-500/10 to-transparent pt-8'
                         : 'border-white/10 bg-white/5'
@@ -345,6 +349,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
         </div>
       </div>
     </div>
+    </div>
   );
 
   return (
@@ -353,12 +358,14 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
       <CutluyCheckoutModal
         isOpen={Boolean(checkoutUrl)}
         checkoutUrl={checkoutUrl}
+        qrString={checkoutQrString}
         paymentId={checkoutPaymentId}
         kind="subscription"
         planName={checkoutPlan?.name}
         planPrice={checkoutPlan?.price}
         onClose={() => {
           setCheckoutUrl(null);
+          setCheckoutQrString(null);
           setCheckoutPaymentId(null);
           setCheckoutPlan(null);
           setPurchasingPlan(null);

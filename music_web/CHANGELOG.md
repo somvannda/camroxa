@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Phone header shows the compact Camxora Music mark. A 7px-radius menu button sits just above the left of the player and opens the sidebar; Create fills the rest of that row. Song description on phones uses 16px text so Safari does not zoom, and the menu/Create lift above the keyboard. See `docs/changelog/2026-08-19-music-web-mobile-nav.md`.
+
+### Changed
+
+- Pay modal draws CutLuy KHQR from `qr_string` instead of iframing cutluy.com (`X-Frame-Options: sameorigin`). See `docs/changelog/2026-08-20-cutluy-khqr-modal.md`.
+- Pricing modal/page show Free first and scroll without clipping cards on phones.
+- Create on phones defaults to Simple, stacks the song list and details, and keeps Play large enough to tap. Playlists use full-width actions and always-visible play controls. See `docs/changelog/2026-08-19-music-web-mobile-nav.md`.
+
 ### Security
 
 - Unconfirmed sessions cannot play catalog or Create audio; they stay on verify-email. Paid accounts still download MP3/WAV/LRC/SRT. See `docs/changelog/2026-08-19-music-web-confirmed-listen.md`.

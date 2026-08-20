@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Sparkles, Zap, Crown, Loader2 } from 'lucide-react';
+import { Check, Sparkles, Zap, Crown, Loader2, Gift } from 'lucide-react';
 import {
   fetchSubscriptionPlans,
   purchaseSubscription,
@@ -23,6 +23,7 @@ export default function PricingPageClient() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutQrString, setCheckoutQrString] = useState<string | null>(null);
   const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<{ name: string; price: string } | null>(null);
 
@@ -51,7 +52,7 @@ export default function PricingPageClient() {
 
     try {
       const currentUrl = window.location.origin;
-      const { checkout_url, payment_id } = await purchaseSubscription({
+      const { checkout_url, payment_id, qr_string } = await purchaseSubscription({
         plan_id: plan.id,
         success_url: `${currentUrl}/create`,
         cancel_url: `${currentUrl}/create`,
@@ -62,6 +63,7 @@ export default function PricingPageClient() {
         price: formatPrice(plan.price_cents),
       });
       setCheckoutPaymentId(payment_id);
+      setCheckoutQrString(qr_string || null);
       setCheckoutUrl(checkout_url);
     } catch (err: any) {
       console.error('Purchase failed:', err);
@@ -77,7 +79,9 @@ export default function PricingPageClient() {
   const displayPlans = billingCycle === 'monthly' ? monthlyPlans : yearlyPlans;
 
   // Sort by price
-  const sortedPlans = [...displayPlans].sort((a, b) => a.price_cents - b.price_cents);
+  const sortedPlans = [...displayPlans]
+    .filter((plan) => plan.price_cents > 0)
+    .sort((a, b) => a.price_cents - b.price_cents);
 
   // Calculate yearly discount
   const yearlyDiscount = monthlyPlans[0] && yearlyPlans[0]
@@ -134,7 +138,49 @@ export default function PricingPageClient() {
 
       {/* Plans */}
       <div className="container mx-auto px-4 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        <div className="grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mx-auto">
+          <div className="relative rounded-2xl border-2 border-purple-500/20 bg-[#0c1230] p-6 md:p-8">
+            <div className="mb-4 flex justify-center">
+              <div className="rounded-full bg-purple-500/20 p-3">
+                <Gift className="h-6 w-6 text-purple-400" />
+              </div>
+            </div>
+            <h3 className="mb-2 text-center font-display text-2xl font-bold">Free</h3>
+            <div className="mb-6 text-center">
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-4xl font-bold">$0</span>
+                <span className="text-gray-400">/month</span>
+              </div>
+            </div>
+            <div className="mb-6 border-b border-purple-500/20 pb-6 text-center">
+              <div className="text-3xl font-bold text-purple-400">50</div>
+              <div className="text-sm text-gray-400">daily credits</div>
+              <div className="mt-1 text-xs text-gray-500">Resets at midnight</div>
+            </div>
+            <ul className="mb-8 space-y-3">
+              {['AI music generation', 'Style and lyrics assist (uses credits)', 'Daily credits reset at midnight'].map(
+                (feature) => (
+                  <li key={feature} className="flex items-start gap-3">
+                    <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-400" />
+                    <span className="text-sm text-gray-300">{feature}</span>
+                  </li>
+                ),
+              )}
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                if (!user) {
+                  router.push('/register');
+                  return;
+                }
+                router.push('/create');
+              }}
+              className="w-full rounded-lg border border-purple-500/30 bg-purple-500/20 py-3 font-medium text-purple-300 transition-all hover:bg-purple-500/30"
+            >
+              {user ? 'Current plan' : 'Sign up free'}
+            </button>
+          </div>
           {sortedPlans.map((plan, index) => {
             const songs = creditsToSongs(plan.monthly_credits);
             const pricePerMonth =
@@ -149,7 +195,7 @@ export default function PricingPageClient() {
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-2xl p-8 border-2 transition-all hover:scale-105 ${
+                className={`relative rounded-2xl border-2 p-6 transition-all md:p-8 ${
                   isPopular
                     ? 'border-purple-500 bg-gradient-to-b from-purple-900/30 to-[#0c1230] shadow-xl shadow-purple-500/20'
                     : 'border-purple-500/20 bg-[#0c1230] hover:border-purple-500/40'
@@ -250,12 +296,14 @@ export default function PricingPageClient() {
     <CutluyCheckoutModal
       isOpen={Boolean(checkoutUrl)}
       checkoutUrl={checkoutUrl}
+      qrString={checkoutQrString}
       paymentId={checkoutPaymentId}
       kind="subscription"
       planName={checkoutPlan?.name}
       planPrice={checkoutPlan?.price}
       onClose={() => {
         setCheckoutUrl(null);
+        setCheckoutQrString(null);
         setCheckoutPaymentId(null);
         setCheckoutPlan(null);
         setPurchasingPlanId(null);

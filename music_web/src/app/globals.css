@@ -38,6 +38,17 @@
 
   --music-header-height: 4.25rem;
   --music-player-height: 6.75rem;
+  --music-menu-clearance: 0px;
+  --music-keyboard-inset: 0px;
+  --music-fab-bottom: calc(0.75rem + max(var(--music-player-height), var(--music-keyboard-inset)));
+}
+
+@media (max-width: 767px) {
+  :root,
+  .dark {
+    --music-player-height: 10.5rem;
+    --music-menu-clearance: 4rem;
+  }
 }
 
 @layer base {
@@ -66,6 +77,14 @@
   .font-display {
     font-family: 'Outfit', 'Inter', system-ui, sans-serif;
     letter-spacing: -0.04em;
+  }
+
+  @media (max-width: 767px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']),
+    textarea,
+    select {
+      font-size: 16px;
+    }
   }
 }
 
