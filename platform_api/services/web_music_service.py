@@ -33,7 +33,6 @@ from platform_api.services.suno_audio_resolver import (
     download_suno_mp3_bytes,
     download_suno_wav_bytes,
     fetch_timestamped_lrc_with_pool,
-    origin_audio_range_is_playable,
     refresh_suno_task_download_urls,
     urls_from_generate_poll,
     validate_mp3_bytes,
@@ -75,9 +74,15 @@ def _usable_web_music_b2_key(storage_key: Any, task_id: UUID) -> str | None:
 
 
 def _clip_is_playable(row: Any, *, variant: str, task_id: UUID) -> bool:
-    """True when this clip can actually stream (verified origin or our B2 object)."""
+    """True when this clip can stream from our B2 (encrypted or legacy plaintext)."""
     variant_key = "alt" if str(variant or "ok").strip().lower() == "alt" else "ok"
-    if bool(_row_value(row, "stream_ready_ok" if variant_key == "ok" else "stream_ready_alt")):
+    pkg = str(_row_value(row, "package_status_ok" if variant_key == "ok" else "package_status_alt") or "")
+    if pkg == "ready":
+        return True
+    packaged = _row_value(
+        row, "packaged_storage_key_ok" if variant_key == "ok" else "packaged_storage_key_alt"
+    )
+    if packaged:
         return True
     b2_col = "b2_storage_key_ok" if variant_key == "ok" else "b2_storage_key_alt"
     return bool(_usable_web_music_b2_key(_row_value(row, b2_col), task_id))
@@ -887,7 +892,11 @@ class WebMusicService:
                    negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
                    b2_storage_key_ok, b2_storage_key_alt, workspace_id,
                    image_url_ok, image_url_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   encrypted_original_key_ok, encrypted_original_key_alt,
+                   package_status_ok, package_status_alt,
+                   content_key_id_ok, content_key_id_alt,
+                   packaged_storage_key_ok, packaged_storage_key_alt
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
             ORDER BY created_at DESC
@@ -914,7 +923,11 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   encrypted_original_key_ok, encrypted_original_key_alt,
+                   package_status_ok, package_status_alt,
+                   content_key_id_ok, content_key_id_alt,
+                   packaged_storage_key_ok, packaged_storage_key_alt
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -1048,7 +1061,11 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   encrypted_original_key_ok, encrypted_original_key_alt,
+                   package_status_ok, package_status_alt,
+                   content_key_id_ok, content_key_id_alt,
+                   packaged_storage_key_ok, packaged_storage_key_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1095,7 +1112,11 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   encrypted_original_key_ok, encrypted_original_key_alt,
+                   package_status_ok, package_status_alt,
+                   content_key_id_ok, content_key_id_alt,
+                   packaged_storage_key_ok, packaged_storage_key_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1146,7 +1167,11 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   encrypted_original_key_ok, encrypted_original_key_alt,
+                   package_status_ok, package_status_alt,
+                   content_key_id_ok, content_key_id_alt,
+                   packaged_storage_key_ok, packaged_storage_key_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1155,7 +1180,7 @@ class WebMusicService:
         return refreshed or row
 
     async def _ensure_stream_ready(self, row: Any) -> Any:
-        """Mark a clip Ready only after origin audio actually serves bytes (or B2 has our file)."""
+        """Mark a clip Ready only when our B2 object exists (plaintext leftover or packaged)."""
         status = str(_row_value(row, "status") or "").strip().lower()
         if status != "success":
             return row
@@ -1165,28 +1190,18 @@ class WebMusicService:
             return row
 
         variants = (
-            ("ok", "stream_ready_ok", "audio_url_ok", "b2_storage_key_ok"),
-            ("alt", "stream_ready_alt", "audio_url_alt", "b2_storage_key_alt"),
+            ("ok", "stream_ready_ok", "b2_storage_key_ok", "package_status_ok", "packaged_storage_key_ok"),
+            ("alt", "stream_ready_alt", "b2_storage_key_alt", "package_status_alt", "packaged_storage_key_alt"),
         )
         marks: dict[str, bool] = {}
-        probes: list[tuple[str, str]] = []
-        for _variant, ready_col, url_col, b2_col in variants:
+        for _variant, ready_col, b2_col, pkg_col, packaged_col in variants:
             if bool(_row_value(row, ready_col)):
+                continue
+            if str(_row_value(row, pkg_col) or "") == "ready" or _row_value(row, packaged_col):
+                marks[ready_col] = True
                 continue
             if _usable_web_music_b2_key(_row_value(row, b2_col), task_id):
                 marks[ready_col] = True
-                continue
-            url = str(_row_value(row, url_col) or "").strip()
-            if url.startswith("http"):
-                probes.append((ready_col, url))
-        if probes:
-            results = await asyncio.gather(
-                *[origin_audio_range_is_playable(url) for _col, url in probes],
-                return_exceptions=True,
-            )
-            for (ready_col, _url), result in zip(probes, results):
-                if result is True:
-                    marks[ready_col] = True
         if not marks:
             return row
         await self._pool.execute(
@@ -1208,7 +1223,11 @@ class WebMusicService:
                    external_task_id, negative_tags, vocal_gender, style_weight,
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
-                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt
+                   audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   encrypted_original_key_ok, encrypted_original_key_alt,
+                   package_status_ok, package_status_alt,
+                   content_key_id_ok, content_key_id_alt,
+                   packaged_storage_key_ok, packaged_storage_key_alt
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -1307,15 +1326,19 @@ class WebMusicService:
         task_id: UUID,
         variant_key: str,
         range_header: str | None,
-        session_user_id: str | None = None,
-        request_headers: Mapping[str, str] | None = None,
     ) -> Response:
-        await enforce_stream_playback_guard(
-            redis=self._redis,
-            scope=f"user:{session_user_id}:task:{task_id}:{variant_key}",
-            range_header=range_header,
-            request_headers=request_headers,
+        pkg = str(
+            _row_value(
+                row,
+                "package_status_ok" if variant_key == "ok" else "package_status_alt",
+            )
+            or ""
         )
+        if pkg == "ready":
+            raise ValidationError(
+                "This track requires the encrypted player.",
+                details={"code": "encrypted_playback_required"},
+            )
         origin = await self._origin_playback_url(row, task_id=task_id, variant_key=variant_key)
         if origin is None:
             data, _filename, content_type = await self._serve_mp3_row(
@@ -1353,7 +1376,7 @@ class WebMusicService:
                 config = await resolve_streaming_storage_config(self._pool)
                 if config.configured:
                     storage = StorageService.from_config(config)
-                    url = await storage.get_signed_get_url(str(b2_key), use_cdn=False)
+                    url = await storage.get_signed_get_url(str(b2_key))
                     if url:
                         return str(url), "b2"
             except Exception as exc:
@@ -1363,12 +1386,6 @@ class WebMusicService:
                     variant_key,
                     exc,
                 )
-
-        suno_url = str(
-            row["audio_url_ok"] if variant_key == "ok" else row["audio_url_alt"] or ""
-        ).strip()
-        if suno_url.startswith("http"):
-            return suno_url, "suno"
         return None
 
     def _schedule_b2_backfill(self, task_id: UUID, variant: str) -> None:
@@ -1400,7 +1417,11 @@ class WebMusicService:
             row = await self._pool.fetchrow(
                 """
                 SELECT id, title, status, audio_url_ok, audio_url_alt, external_task_id,
-                       b2_storage_key_ok, b2_storage_key_alt
+                       b2_storage_key_ok, b2_storage_key_alt,
+                       encrypted_original_key_ok, encrypted_original_key_alt,
+                       package_status_ok, package_status_alt,
+                       content_key_id_ok, content_key_id_alt,
+                       packaged_storage_key_ok, packaged_storage_key_alt
                 FROM suno_tasks
                 WHERE id = $1 AND user_id = $2 AND source = $3
                 """,
@@ -1413,7 +1434,11 @@ class WebMusicService:
         row = await self._pool.fetchrow(
             """
             SELECT t.id, t.title, t.status, t.audio_url_ok, t.audio_url_alt, t.external_task_id,
-                   t.b2_storage_key_ok, t.b2_storage_key_alt
+                   t.b2_storage_key_ok, t.b2_storage_key_alt,
+                   t.encrypted_original_key_ok, t.encrypted_original_key_alt,
+                   t.package_status_ok, t.package_status_alt,
+                   t.content_key_id_ok, t.content_key_id_alt,
+                   t.packaged_storage_key_ok, t.packaged_storage_key_alt
             FROM suno_tasks t
             JOIN web_music_playlist_items i
               ON i.suno_task_id = t.id AND i.variant = $3
@@ -1436,6 +1461,7 @@ class WebMusicService:
         *,
         task_id: UUID,
         variant_key: str,
+        allow_suno_ingest: bool = False,
     ) -> tuple[bytes, str, str]:
         status = str(row["status"] or "").upper()
         if status != "SUCCESS":
@@ -1444,6 +1470,76 @@ class WebMusicService:
                 details={"status": status},
             )
 
+        title = str(row["title"] or "camxora-track").strip() or "camxora-track"
+        filename = f"{title}-{variant_key}.mp3"
+        plaintext = await self._load_plaintext_mp3_row(
+            row,
+            task_id=task_id,
+            variant_key=variant_key,
+            allow_suno_ingest=allow_suno_ingest,
+        )
+        return plaintext, filename, "audio/mpeg"
+
+    async def _maybe_decrypt_suno_export(
+        self,
+        data: bytes,
+        *,
+        task_id: UUID,
+        variant_key: str,
+    ) -> bytes:
+        from platform_api.services.audio_package_service import AudioPackageService
+        from platform_api.services.audio_packager import looks_like_camxora_audio
+
+        if not data or not looks_like_camxora_audio(data):
+            return data
+        return await AudioPackageService(self._pool).decrypt_suno_export(
+            data,
+            subject_id=task_id,
+            variant=variant_key,
+        )
+
+    async def _load_plaintext_mp3_row(
+        self,
+        row: Any,
+        *,
+        task_id: UUID,
+        variant_key: str,
+        allow_suno_ingest: bool,
+    ) -> bytes:
+        from platform_api.services.audio_package_service import AudioPackageService
+        from platform_api.services.audio_packager import looks_like_camxora_audio
+        from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+        from platform_api.services.storage_service import StorageService
+
+        enc_key = _row_value(
+            row,
+            "encrypted_original_key_ok" if variant_key == "ok" else "encrypted_original_key_alt",
+        )
+        key_id = _row_value(
+            row,
+            "content_key_id_ok" if variant_key == "ok" else "content_key_id_alt",
+        )
+        if enc_key and key_id:
+            try:
+                config = await resolve_streaming_storage_config(self._pool)
+                if config.configured:
+                    wrapped = await self._pool.fetchval(
+                        "SELECT wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
+                        key_id,
+                    )
+                    if wrapped:
+                        storage = StorageService.from_config(config)
+                        return await AudioPackageService(self._pool).decrypt_stored_original(
+                            storage, str(enc_key), wrapped
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "Encrypted original decrypt failed task=%s variant=%s: %s",
+                    task_id,
+                    variant_key,
+                    exc,
+                )
+
         b2_key = _usable_web_music_b2_key(
             row["b2_storage_key_ok"] if variant_key == "ok" else row["b2_storage_key_alt"],
             task_id,
@@ -1451,7 +1547,24 @@ class WebMusicService:
         if b2_key:
             try:
                 data = await self._download_from_backblaze(b2_key)
-                if not validate_mp3_bytes(data):
+                if looks_like_camxora_audio(data):
+                    try:
+                        data = await self._maybe_decrypt_suno_export(
+                            data,
+                            task_id=task_id,
+                            variant_key=variant_key,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "B2 ciphertext decrypt failed task=%s variant=%s: %s",
+                            task_id,
+                            variant_key,
+                            exc,
+                        )
+                        data = b""
+                if not data:
+                    pass
+                elif not validate_mp3_bytes(data):
                     logger.warning(
                         "B2 object failed MP3 validation task=%s variant=%s key=%s",
                         task_id,
@@ -1460,17 +1573,17 @@ class WebMusicService:
                     )
                     self._schedule_b2_backfill(task_id, variant_key)
                 else:
-                    title = str(row["title"] or "camxora-track").strip() or "camxora-track"
-                    filename = f"{title}-{variant_key}.mp3"
-                    await self._increment_play_count(task_id, variant_key)
-                    return data, filename, "audio/mpeg"
+                    return data
             except Exception as exc:
                 logger.warning(
-                    "B2 download failed for task=%s variant=%s, falling back to Suno: %s",
+                    "B2 download failed for task=%s variant=%s: %s",
                     task_id,
                     variant_key,
                     exc,
                 )
+
+        if not allow_suno_ingest:
+            raise NotFoundError("Audio file is not available yet. Please try again in a moment.")
 
         self._schedule_b2_backfill(task_id, variant_key)
         external_task_id = str(row["external_task_id"] or "").strip()
@@ -1494,11 +1607,7 @@ class WebMusicService:
             )
             if candidates:
                 try:
-                    data = await download_suno_mp3_bytes(candidates[0], fallback_urls=candidates[1:])
-                    title = str(row["title"] or "camxora-track").strip() or "camxora-track"
-                    filename = f"{title}-{variant_key}.mp3"
-                    await self._increment_play_count(task_id, variant_key)
-                    return data, filename, "audio/mpeg"
+                    return await download_suno_mp3_bytes(candidates[0], fallback_urls=candidates[1:])
                 except Exception as exc:
                     last_error = exc
                     logger.warning(
@@ -1510,7 +1619,59 @@ class WebMusicService:
                     )
             if attempt < 5:
                 await asyncio.sleep(2.0)
+        del last_error
         raise NotFoundError("Audio file is not available yet. Please try again in a moment.")
+
+    async def _watermark_owner_export(
+        self,
+        data: bytes,
+        *,
+        user_id: UUID,
+        task_id: UUID,
+        variant: str,
+        format: str,
+        actor: str = "owner",
+    ) -> bytes:
+        from platform_api.config import get_settings
+        from platform_api.services.content_license_service import ContentLicenseService
+        from platform_api.services.forensic_watermark import watermark_audio_bytes
+
+        licenses = ContentLicenseService(self._pool, redis=self._redis)
+        export_id = await licenses.record_export_event(
+            user_id=user_id,
+            suno_task_id=task_id,
+            variant=variant,
+            format=format,
+            actor=actor,
+        )
+        settings = get_settings()
+        secret = (settings.content_audio_kek or settings.encryption_master_key or "camxora-watermark")
+        marked, payload_hash = watermark_audio_bytes(
+            data,
+            user_id=user_id,
+            export_id=export_id or uuid4(),
+            secret=secret,
+        )
+        if export_id is not None:
+            try:
+                wm_id = await self._pool.fetchval(
+                    """
+                    INSERT INTO audio_watermarks (export_event_id, user_id, payload_hash, method)
+                    VALUES ($1, $2, $3, 'forensic_v1')
+                    RETURNING id
+                    """,
+                    export_id,
+                    user_id,
+                    payload_hash,
+                )
+                await self._pool.execute(
+                    "UPDATE export_events SET watermark_id = $2 WHERE id = $1",
+                    export_id,
+                    wm_id,
+                )
+            except Exception as exc:
+                logger.warning("audio_watermarks insert failed: %s", exc)
+        return marked
 
     async def stream_by_play_token(
         self,
@@ -1539,6 +1700,15 @@ class WebMusicService:
                 task_id,
                 variant_key,
             )
+        pkg = str(
+            _row_value(row, "package_status_ok" if variant_key == "ok" else "package_status_alt")
+            or ""
+        )
+        if pkg == "ready":
+            raise ValidationError(
+                "This track requires the encrypted player.",
+                details={"code": "encrypted_playback_required"},
+            )
         return await self._serve_mp3_row(row, task_id=task_id, variant_key=variant_key)
 
     async def download_mp3(
@@ -1555,7 +1725,20 @@ class WebMusicService:
         if variant_key not in ("ok", "alt"):
             raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
         row = await self._fetch_playable_task_row(user_id, task_id, variant_key)
-        return await self._serve_mp3_row(row, task_id=task_id, variant_key=variant_key)
+        data, filename, content_type = await self._serve_mp3_row(
+            row,
+            task_id=task_id,
+            variant_key=variant_key,
+            allow_suno_ingest=True,
+        )
+        marked = await self._watermark_owner_export(
+            data,
+            user_id=user_id,
+            task_id=task_id,
+            variant=variant_key,
+            format="mp3",
+        )
+        return marked, filename, content_type
 
     async def download_wav(
         self,
@@ -1565,7 +1748,16 @@ class WebMusicService:
         variant: str,
     ) -> tuple[bytes, str, str]:
         try:
-            return await self._download_wav_inner(user_id, task_id, variant=variant)
+            data, filename, content_type = await self._download_wav_inner(user_id, task_id, variant=variant)
+            variant_key = str(variant or "ok").strip().lower()
+            marked = await self._watermark_owner_export(
+                data,
+                user_id=user_id,
+                task_id=task_id,
+                variant=variant_key if variant_key in {"ok", "alt"} else "ok",
+                format="wav",
+            )
+            return marked, filename, content_type
         except ExternalServiceError as exc:
             logger.warning(
                 "Web music WAV upstream error task=%s variant=%s: %s",
@@ -1648,7 +1840,21 @@ class WebMusicService:
         if b2_wav_key:
             try:
                 data = await self._download_from_backblaze(b2_wav_key)
-                if validate_wav_bytes(data):
+                try:
+                    data = await self._maybe_decrypt_suno_export(
+                        data,
+                        task_id=task_id,
+                        variant_key=variant_key,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "B2 WAV decrypt failed task=%s variant=%s: %s",
+                        task_id,
+                        variant_key,
+                        exc,
+                    )
+                    data = b""
+                if data and validate_wav_bytes(data):
                     title = str(row["title"] or "camxora-track").strip() or "camxora-track"
                     filename = f"{title}-{variant_key}.wav"
                     return data, filename, "audio/wav"
@@ -1875,6 +2081,11 @@ class WebMusicService:
         if b2_lrc_key:
             try:
                 lrc_bytes = await self._download_from_backblaze(str(b2_lrc_key))
+                lrc_bytes = await self._maybe_decrypt_suno_export(
+                    lrc_bytes,
+                    task_id=task_id,
+                    variant_key=variant_key,
+                )
                 lrc_cached = lrc_bytes.decode("utf-8")
                 if looks_like_lrc(lrc_cached):
                     title = str(row["title"] or "camxora-track").strip() or "camxora-track"
@@ -1891,7 +2102,15 @@ class WebMusicService:
                         body = lrc_cached
                         filename = f"{title}.lrc"
                         content_type = "text/plain; charset=utf-8"
-                    return body.encode("utf-8"), filename, content_type
+                    return await self._finish_lyrics_export(
+                        body.encode("utf-8"),
+                        filename,
+                        content_type,
+                        user_id=user_id,
+                        task_id=task_id,
+                        variant=variant_key,
+                        format=format_key,
+                    )
             except ValidationError:
                 raise
             except Exception as exc:
@@ -1964,7 +2183,37 @@ class WebMusicService:
             body = lrc
             filename = f"{title}.lrc"
             content_type = "text/plain; charset=utf-8"
-        return body.encode("utf-8"), filename, content_type
+        return await self._finish_lyrics_export(
+            body.encode("utf-8"),
+            filename,
+            content_type,
+            user_id=user_id,
+            task_id=task_id,
+            variant=variant_key,
+            format=format_key,
+        )
+
+    async def _finish_lyrics_export(
+        self,
+        data: bytes,
+        filename: str,
+        content_type: str,
+        *,
+        user_id: UUID,
+        task_id: UUID,
+        variant: str,
+        format: str,
+    ) -> tuple[bytes, str, str]:
+        from platform_api.services.content_license_service import ContentLicenseService
+
+        await ContentLicenseService(self._pool, redis=self._redis).record_export_event(
+            user_id=user_id,
+            suno_task_id=task_id,
+            variant=variant,
+            format=format,
+            actor="owner",
+        )
+        return data, filename, content_type
 
     async def _task_payload(self, row: Any, user_id: UUID) -> dict[str, Any]:
         task_id = str(row["id"])
@@ -2001,6 +2250,7 @@ class WebMusicService:
                     "audio_url": await self._mint_owner_play_url(user_id, UUID(task_id), "ok") if ok_ready else "",
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=ok",
                     "ready": ok_ready,
+                    "package_status": str(_row_value(row, "package_status_ok") or "none"),
                     "image_url": image_ok,
                     "duration_seconds": _duration_seconds(row, "duration_ok"),
                 },
@@ -2011,6 +2261,7 @@ class WebMusicService:
                     "audio_url": await self._mint_owner_play_url(user_id, UUID(task_id), "alt") if alt_ready else "",
                     "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=alt",
                     "ready": alt_ready,
+                    "package_status": str(_row_value(row, "package_status_alt") or "none"),
                     "image_url": image_alt,
                     "duration_seconds": _duration_seconds(row, "duration_alt"),
                 },
@@ -2220,6 +2471,12 @@ class WebMusicService:
                 t.status,
                 t.audio_url_ok,
                 t.audio_url_alt,
+                t.b2_storage_key_ok,
+                t.b2_storage_key_alt,
+                t.package_status_ok,
+                t.package_status_alt,
+                t.packaged_storage_key_ok,
+                t.packaged_storage_key_alt,
                 t.image_url_ok,
                 t.image_url_alt
             FROM web_music_playlist_items i
@@ -2233,7 +2490,11 @@ class WebMusicService:
         for row in rows:
             variant = str(row["variant"] or "ok")
             task_id = str(row["suno_task_id"])
-            ready = bool(row["audio_url_ok"] if variant == "ok" else row["audio_url_alt"])
+            ready = _clip_is_playable(row, variant=variant, task_id=UUID(task_id))
+            pkg = str(
+                _row_value(row, "package_status_ok" if variant == "ok" else "package_status_alt")
+                or "none"
+            )
             image_url = str(
                 row["image_url_ok"] if variant == "ok" else row["image_url_alt"] or ""
             ).strip() or None
@@ -2252,6 +2513,7 @@ class WebMusicService:
                     "style": str(row["style"] or ""),
                     "status": str(row["status"] or "PENDING").upper(),
                     "ready": ready,
+                    "package_status": pkg,
                     "audio_url": play_url,
                     "image_url": image_url,
                     "added_at": added.isoformat() if hasattr(added, "isoformat") else str(added or ""),
@@ -2639,7 +2901,8 @@ class WebMusicService:
                     WHEN i.variant = 'ok' THEN NULLIF(t.image_url_ok, '')
                     ELSE COALESCE(NULLIF(t.image_url_alt, ''), NULLIF(t.image_url_ok, ''))
                 END AS cover_url,
-                COALESCE(pc.play_count, 0)::int AS play_count
+                COALESCE(pc.play_count, 0)::int AS play_count,
+                CASE WHEN i.variant = 'ok' THEN t.package_status_ok ELSE t.package_status_alt END AS package_status
             FROM web_music_playlist_items i
             JOIN web_music_playlists p ON p.id = i.playlist_id AND p.is_public = TRUE
             JOIN suno_tasks t ON t.id = i.suno_task_id
@@ -2648,8 +2911,14 @@ class WebMusicService:
               ON pc.task_id = i.suno_task_id AND pc.variant = i.variant
             WHERE UPPER(t.status) = 'SUCCESS'
               AND (
-                (i.variant = 'ok' AND COALESCE(t.audio_url_ok, t.b2_storage_key_ok) IS NOT NULL)
-                OR (i.variant = 'alt' AND COALESCE(t.audio_url_alt, t.b2_storage_key_alt) IS NOT NULL)
+                (i.variant = 'ok' AND (
+                    COALESCE(t.package_status_ok, 'none') = 'ready'
+                    OR COALESCE(t.b2_storage_key_ok, t.audio_url_ok) IS NOT NULL
+                ))
+                OR (i.variant = 'alt' AND (
+                    COALESCE(t.package_status_alt, 'none') = 'ready'
+                    OR COALESCE(t.b2_storage_key_alt, t.audio_url_alt) IS NOT NULL
+                ))
               )
             ORDER BY i.added_at DESC
             LIMIT $1 OFFSET $2
@@ -2665,8 +2934,14 @@ class WebMusicService:
             JOIN suno_tasks t ON t.id = i.suno_task_id
             WHERE UPPER(t.status) = 'SUCCESS'
               AND (
-                (i.variant = 'ok' AND COALESCE(t.audio_url_ok, t.b2_storage_key_ok) IS NOT NULL)
-                OR (i.variant = 'alt' AND COALESCE(t.audio_url_alt, t.b2_storage_key_alt) IS NOT NULL)
+                (i.variant = 'ok' AND (
+                    COALESCE(t.package_status_ok, 'none') = 'ready'
+                    OR COALESCE(t.b2_storage_key_ok, t.audio_url_ok) IS NOT NULL
+                ))
+                OR (i.variant = 'alt' AND (
+                    COALESCE(t.package_status_alt, 'none') = 'ready'
+                    OR COALESCE(t.b2_storage_key_alt, t.audio_url_alt) IS NOT NULL
+                ))
               )
             """
         )
@@ -2688,6 +2963,7 @@ class WebMusicService:
                     "genre": str(row["style"] or "").strip() or None,
                     "cover_url": str(row.get("cover_url") or "").strip() or None,
                     "play_url": await self._mint_public_play_url(UUID(task_id), variant),
+                    "package_status": str(row.get("package_status") or "none"),
                     "added_at": added.isoformat() if hasattr(added, "isoformat") else str(added or ""),
                     "play_count": int(row.get("play_count") or 0),
                 }

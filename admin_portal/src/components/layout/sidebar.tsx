@@ -25,6 +25,7 @@ import {
   Store,
   Radio,
   UploadCloud,
+  Shield,
   Bell,
   Download,
   LogOut,
@@ -95,6 +96,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Music Streaming', path: '/streaming', icon: Radio },
       { label: 'Streaming Jobs', path: '/streaming/upload-jobs', icon: UploadCloud },
+      { label: 'Playback Audit', path: '/streaming/playback-audit', icon: Shield },
       { label: 'Rate Limits', path: '/rate-limits', icon: Gauge },
       { label: 'Key Pool', path: '/key-pool', icon: KeySquare },
       { label: 'Job Queue', path: '/job-queue', icon: ListOrdered },

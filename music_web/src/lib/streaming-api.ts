@@ -47,6 +47,8 @@ export type StreamTrack = {
   play_count?: number;
   lyrics?: string | null;
   play_url?: string | null;
+  package_status?: string | null;
+  subject_type?: 'stream_track' | 'suno_task' | null;
   published_at?: string | null;
   created_at?: string | null;
   added_at?: string | null;
@@ -154,7 +156,7 @@ export function catalogStreamUrl(trackId: string): string {
 }
 
 const CAMXORA_AUDIO_PROXY_RE =
-  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\/(?:ok|alt))?(?:\?variant=(?:ok|alt))?|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
+  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\/(?:ok|alt))?(?:\?variant=(?:ok|alt))?|web-music\/licenses\/segments\/[A-Za-z0-9._-]+|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
 
 export function isTrustedPlayUrl(url: string): boolean {
   const text = String(url || '').trim();
@@ -183,6 +185,8 @@ export async function getPlayUrl(trackId: string) {
   }
   return response.json() as Promise<{
     url: string;
+    package_status?: string;
+    subject_type?: string;
     title?: string;
     album_id?: string | null;
     album_name?: string;

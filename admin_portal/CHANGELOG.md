@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Playback Audit** lists play and download events and can backfill leftover plaintext packages. Catalog tracks show `package_status`. Admin user-song play/download decrypts encrypted originals (no Suno URL in JSON). See `docs/changelog/2026-08-20-protected-playback.md`.
 - User detail shows Camxora Music generations in the music.camxora.com
   workspace layout (list, prompt/settings, in-page player). See
   `docs/changelog/2026-08-19-admin-user-generated-songs.md`.

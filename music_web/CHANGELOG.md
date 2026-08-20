@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Catalog and Create playback decrypt packaged audio in the player (Web Crypto + MSE). Confirmed users can listen; downloads remain owner-only for **your songs**. See `docs/changelog/2026-08-20-protected-playback.md`.
 - Unconfirmed sessions cannot play catalog or Create audio; they stay on verify-email. Paid accounts still download MP3/WAV/LRC/SRT. See `docs/changelog/2026-08-19-music-web-confirmed-listen.md`.
 - Cambodia-only access and a clear message when Create is paused after abuse. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Play/stream URLs refuse curl and Range-stitch downloads; the in-app player is unchanged. See `docs/changelog/2026-08-19-web-music-stream-stitch-pace.md`.

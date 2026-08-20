@@ -632,6 +632,16 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[web_music_get_svc] = real_web_music_service
 
+    from platform_api.routers.web_music_licenses import _get_license_service as lic_svc
+    from platform_api.services.content_license_service import ContentLicenseService
+
+    async def real_content_license_service() -> ContentLicenseService:
+        from platform_api.dependencies import get_db_pool, get_redis
+
+        return ContentLicenseService(get_db_pool(), redis=get_redis())
+
+    app.dependency_overrides[lic_svc] = real_content_license_service
+
     # --- v2_subscriptions.py ---
     from platform_api.routers.v2_subscriptions import _get_subscription_service as v2_sub_get_svc
     from platform_api.dependencies import get_v2_subscription_service

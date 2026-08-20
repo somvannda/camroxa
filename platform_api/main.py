@@ -588,9 +588,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(streaming_admin.router, prefix=settings.api_v1_prefix)
     app.include_router(streaming_library.router, prefix=settings.api_v1_prefix)
 
-    from platform_api.routers import web_music
+    from platform_api.routers import web_music, web_music_licenses
 
     app.include_router(web_music.router, prefix=settings.api_v1_prefix)
+    app.include_router(web_music_licenses.router, prefix=settings.api_v1_prefix)
 
     # --- V2 APIs for web music subscriptions and credits ---
     from platform_api.routers import v2_subscriptions, v2_credits, v2_topups, webhooks_cutluy

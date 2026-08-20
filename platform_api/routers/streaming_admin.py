@@ -71,6 +71,7 @@ class CatalogTrackResponse(BaseModel):
     cover_url: str | None = None
     has_lyrics: bool = False
     suno_image_url: str | None = None
+    package_status: str = "none"
     created_at: str | None = None
 
 
@@ -204,6 +205,7 @@ def _build_catalog_track_response(row: dict, *, cover_url: str | None) -> Catalo
         cover_url=cover_url,
         has_lyrics=bool(lyrics),
         suno_image_url=row.get("suno_image_url"),
+        package_status=str(row.get("package_status") or "none"),
         created_at=row["created_at"].isoformat() if row.get("created_at") else None,
     )
 

@@ -62,6 +62,7 @@ async def test_get_play_url_returns_proxy_path_not_origin() -> None:
 
     assert payload is not None
     assert payload["url"] == f"/api/v1/public/streaming/tracks/{track_id}/stream"
+    assert payload["package_status"] == "none"
     assert "backblaze" not in payload["url"].lower()
     assert not payload["url"].startswith("http")
     service._repo.increment_play_count.assert_not_awaited()
@@ -202,6 +203,7 @@ async def test_decorate_track_strips_origin_fields() -> None:
     assert "storage_key" not in track
     assert "suno_audio_id" not in track
     assert "suno_image_url" not in track
+    assert "cdn1.suno.ai" not in str(track)
     assert "cover_storage_key" not in track
     assert "suno_task_id" not in track
 
@@ -271,6 +273,40 @@ async def test_get_artist_strips_album_storage_keys() -> None:
     album = payload["albums"][0]
     assert "cover_storage_key" not in album
     assert album["cover_url"] == "/signed-cover"
+
+
+@pytest.mark.asyncio
+async def test_proxy_track_audio_refuses_packaged_ciphertext() -> None:
+    from platform_api.exceptions import NotFoundError
+
+    track_id = uuid4()
+    service = StreamingCatalogService(pool=AsyncMock())
+    service._repo.get_published_track = AsyncMock(
+        return_value={
+            "storage_key": "user/album/track-ok.mp3",
+            "package_status": "ready",
+        }
+    )
+    with pytest.raises(NotFoundError, match="encrypted player"):
+        await service.proxy_track_audio(track_id, range_header="bytes=0-1023")
+
+
+@pytest.mark.asyncio
+async def test_decorate_track_keeps_package_status_not_origin() -> None:
+    service = StreamingCatalogService(pool=AsyncMock())
+    service._cover_url = AsyncMock(return_value=None)
+    track = {
+        "id": uuid4(),
+        "title": "Night Drive",
+        "package_status": "ready",
+        "storage_key": "secret.mp3",
+        "audio_url_ok": "https://cdn1.suno.ai/secret.mp3",
+    }
+    await service._decorate_track(track)
+    assert track["package_status"] == "ready"
+    assert "storage_key" not in track
+    assert "audio_url_ok" not in track
+    assert "cdn1.suno.ai" not in str(track)
 
 
 @pytest.mark.asyncio
