@@ -60,6 +60,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- CutLuy pack/plan purchase returns `qr_string` so music web can draw KHQR (CutLuy pages cannot be iframed). See `docs/changelog/2026-08-20-cutluy-khqr-modal.md`.
+- CutLuy timeouts and missing `expires_at` no longer 500 on pack/plan purchase; stale pending top-ups without a payment id are cleared. See `docs/changelog/2026-08-20-cutluy-purchase-timeout.md`.
 - Stream play no longer one-shots a full MP3: `Range: bytes=0-` (and missing Range) is clamped to 256 KiB 206, and the proxy truncates origin bodies that ignore Range. See `docs/changelog/2026-08-19-web-music-stream-range-cap.md`.
 - Music-web play no longer kicks a logged-in session to login: geo gate is pure ASGI (does not wrap Range audio), `/stream/ok` and `/stream/alt` are trusted play URLs, and unconfirmed users can still listen. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Settings ignore unknown `PLATFORM_*` env vars (Telegram ops keys on production must not crash boot). Audio proxy keeps `is_missing_range` for production stream routers.

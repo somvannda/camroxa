@@ -455,6 +455,7 @@ class SubscriptionService:
             "checkout_url": payment["checkout_url"],
             "payment_id": str(payment_id),
             "expires_at": payment.get("expires_at") or "",
+            "qr_string": payment.get("qr_string") or "",
         }
 
     async def create_subscription_by_plan_id(

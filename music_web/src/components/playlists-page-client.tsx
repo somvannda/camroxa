@@ -85,11 +85,11 @@ export default function PlaylistsPageClient() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-5xl">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Library</p>
-          <h1 className="mt-1 text-3xl font-semibold text-white">Playlists</h1>
+          <h1 className="mt-1 text-2xl font-semibold text-white sm:text-3xl">Playlists</h1>
           <p className="mt-2 text-sm text-slate-400">
             Create collections of your songs and share them publicly or keep them private.
           </p>
@@ -97,7 +97,7 @@ export default function PlaylistsPageClient() {
         <button
           type="button"
           onClick={() => setShowCreate((value) => !value)}
-          className="inline-flex h-11 items-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 text-sm font-semibold text-white"
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 text-sm font-semibold text-white sm:h-11 sm:w-auto"
         >
           <Plus className="h-4 w-4" />
           New playlist
@@ -136,19 +136,19 @@ export default function PlaylistsPageClient() {
             />
             Make this playlist public
           </label>
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
               disabled={creating || !name.trim()}
               onClick={() => void onCreate()}
-              className="rounded-[7px] bg-violet-500/20 px-4 py-2 text-sm font-medium text-violet-100 disabled:opacity-50"
+              className="h-11 rounded-[7px] bg-violet-500/20 px-4 text-sm font-medium text-violet-100 disabled:opacity-50"
             >
               {creating ? 'Creating…' : 'Create playlist'}
             </button>
             <button
               type="button"
               onClick={() => setShowCreate(false)}
-              className="rounded-[7px] border border-white/10 px-4 py-2 text-sm text-slate-300"
+              className="h-11 rounded-[7px] border border-white/10 px-4 text-sm text-slate-300"
             >
               Cancel
             </button>
@@ -173,7 +173,7 @@ export default function PlaylistsPageClient() {
           {items.map((playlist) => (
             <div
               key={playlist.id}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition hover:border-violet-400/20"
+              className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-violet-400/20 sm:p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

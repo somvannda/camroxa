@@ -21,6 +21,48 @@ _FAILED_STATUSES = {"failed", "cancelled", "canceled", "declined"}
 _EXPIRED_STATUSES = {"expired"}
 
 
+_KHQR_KEYS = (
+    "qr_string",
+    "qrString",
+    "qr_string",
+    "qrString",
+    "khqr",
+    "khqr_string",
+    "emv_qr",
+    "emv",
+    "qr",
+)
+
+
+def extract_cutluy_qr_string(payload: Any) -> str | None:
+    """Return a Bakong KHQR EMV payload from a CutLuy payment object, if present."""
+    if not isinstance(payload, dict):
+        return None
+    sources: list[dict[str, Any]] = [payload]
+    for key in ("data", "payment", "result"):
+        nested = payload.get(key)
+        if isinstance(nested, dict):
+            sources.append(nested)
+            inner = nested.get("data")
+            if isinstance(inner, dict):
+                sources.append(inner)
+    for source in sources:
+        for key in _KHQR_KEYS:
+            value = source.get(key)
+            if not isinstance(value, str):
+                continue
+            text = value.strip()
+            if text.startswith("000201") and len(text) >= 20:
+                return text
+        for value in source.values():
+            if not isinstance(value, str):
+                continue
+            text = value.strip()
+            if text.startswith("000201") and len(text) >= 20:
+                return text
+    return None
+
+
 def normalize_cutluy_payment_status(raw: Any) -> str:
     """Map a CutLuy payment status string onto paid | failed | expired | pending."""
     value = str(raw or "").strip().lower()
@@ -110,6 +152,9 @@ class CutLuyService:
                     response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 payment = response.json()
+        except httpx.TimeoutException as exc:
+            logger.error("CutLuy payment create timed out: %s", exc)
+            raise ValueError("Payment provider timed out. Please try again.") from exc
         except httpx.HTTPStatusError as exc:
             logger.error(
                 "CutLuy API error: %s - %s",
@@ -121,15 +166,36 @@ class CutLuyService:
             logger.error("CutLuy unexpected error: %s", exc)
             raise
 
+        nested = payment.get("data") if isinstance(payment, dict) else None
+        if isinstance(nested, dict):
+            payment = {**payment, **nested}
         checkout_url = require_cutluy_checkout_url(
             payment.get("checkout_url") or payment.get("url")
         )
-        payment_id = validate_payment_id(str(payment.get("id") or ""))
+        payment_id = validate_payment_id(str(payment.get("id") or payment.get("payment_id") or ""))
+        expires_raw = payment.get("expires_at")
+        qr_string = extract_cutluy_qr_string(payment) or ""
+        if not qr_string:
+            logger.warning(
+                "CutLuy create omitted KHQR payload; keys=%s",
+                sorted(payment.keys()) if isinstance(payment, dict) else type(payment),
+            )
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    detail = await client.get(
+                        f"{api_base_url}/v1/payments/{payment_id}",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                    )
+                    if detail.status_code == 200:
+                        qr_string = extract_cutluy_qr_string(detail.json()) or ""
+            except Exception as exc:
+                logger.warning("CutLuy payment GET for qr_string failed: %s", exc)
 
         return {
             "checkout_url": checkout_url,
             "payment_id": payment_id,
-            "expires_at": payment.get("expires_at"),
+            "expires_at": "" if expires_raw is None else str(expires_raw),
+            "qr_string": qr_string,
         }
 
     async def create_subscription_payment(

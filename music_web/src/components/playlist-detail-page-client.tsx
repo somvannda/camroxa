@@ -260,7 +260,7 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
           }}
         />
 
-        <div className="relative mx-auto max-w-6xl px-4 pt-6 pb-8">
+        <div className="relative mx-auto max-w-6xl px-0 pb-8 pt-2 sm:pt-6">
           <Link
             href="/playlists"
             className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white"
@@ -270,7 +270,7 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
           </Link>
 
           <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-end">
-            <div className="flex h-44 w-44 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/[0.06] shadow-2xl md:h-52 md:w-52">
+            <div className="mx-auto flex h-36 w-36 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/[0.06] shadow-2xl sm:mx-0 md:h-52 md:w-52">
               {heroCover ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={heroCover} alt="" className="h-full w-full object-cover" />
@@ -281,7 +281,7 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
 
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-400">Playlist</p>
-              <h1 className="mt-2 truncate text-4xl font-semibold text-white md:text-5xl">{playlist.name}</h1>
+              <h1 className="mt-2 truncate text-3xl font-semibold text-white md:text-5xl">{playlist.name}</h1>
               {playlist.description ? (
                 <p className="mt-2 max-w-2xl text-sm text-slate-400">{playlist.description}</p>
               ) : null}
@@ -301,7 +301,7 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
                   type="button"
                   disabled={!playlistTracks.length}
                   onClick={() => onPlayAll(false)}
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-black disabled:opacity-40"
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-black disabled:opacity-40 sm:h-11 sm:w-auto"
                 >
                   <Play className="h-4 w-4 fill-current" />
                   Play
@@ -354,7 +354,7 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
         </div>
       </div>
 
-      <div className="relative mx-auto max-w-6xl px-4">
+      <div className="relative mx-auto max-w-6xl px-0">
         <div className="mt-2 hidden grid-cols-[3rem_minmax(0,1fr)_5rem_3rem] gap-3 border-b border-white/8 px-3 pb-2 text-xs uppercase tracking-wide text-slate-500 sm:grid">
           <span />
           <span>Title</span>
@@ -414,7 +414,7 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
                         }
                         void playTrack(track, playlistTracks);
                       }}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full text-white opacity-0 transition hover:bg-white/10 group-hover:opacity-100 disabled:opacity-30 sm:opacity-100"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/10 disabled:opacity-30 sm:h-8 sm:w-8"
                     >
                       {isCurrent && playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </button>
