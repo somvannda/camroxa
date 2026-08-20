@@ -220,8 +220,18 @@ def _clip_payload(
 def _generation_payload(row: Any, user_id: UUID) -> dict[str, Any]:
     task_id = str(row["id"])
     title = str(_row_get(row, "title") or "Untitled")
-    ok_ready = bool(_row_get(row, "audio_url_ok") or _row_get(row, "b2_storage_key_ok"))
-    alt_ready = bool(_row_get(row, "audio_url_alt") or _row_get(row, "b2_storage_key_alt"))
+    ok_ready = bool(
+        _row_get(row, "audio_url_ok")
+        or _row_get(row, "b2_storage_key_ok")
+        or _row_get(row, "encrypted_original_key_ok")
+        or str(_row_get(row, "package_status_ok") or "") == "ready"
+    )
+    alt_ready = bool(
+        _row_get(row, "audio_url_alt")
+        or _row_get(row, "b2_storage_key_alt")
+        or _row_get(row, "encrypted_original_key_alt")
+        or str(_row_get(row, "package_status_alt") or "") == "ready"
+    )
     image_ok = str(_row_get(row, "image_url_ok") or "").strip() or None
     image_alt = str(_row_get(row, "image_url_alt") or "").strip() or None
     return {
@@ -268,7 +278,10 @@ _GENERATION_SELECTS: tuple[str, ...] = (
            audio_url_ok, audio_url_alt, error_message, created_at,
            negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
            b2_storage_key_ok, b2_storage_key_alt, workspace_id,
-           image_url_ok, image_url_alt, duration_ok, duration_alt
+           image_url_ok, image_url_alt, duration_ok, duration_alt,
+           encrypted_original_key_ok, encrypted_original_key_alt,
+           package_status_ok, package_status_alt,
+           content_key_id_ok, content_key_id_alt
     FROM suno_tasks
     """,
     """
@@ -339,7 +352,10 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
         pool,
         """
         SELECT id, title, status, audio_url_ok, audio_url_alt,
-               b2_storage_key_ok, b2_storage_key_alt, source
+               b2_storage_key_ok, b2_storage_key_alt, source,
+               encrypted_original_key_ok, encrypted_original_key_alt,
+               content_key_id_ok, content_key_id_alt,
+               package_status_ok, package_status_alt
         FROM suno_tasks
         WHERE id = $1 AND user_id = $2
         """,
@@ -376,6 +392,30 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
 
     title = str(_row_get(row, "title") or "camxora-track").strip() or "camxora-track"
     filename = f"{title}-{variant_key}.mp3"
+    enc_key = _row_get(row, f"encrypted_original_key_{variant_key}")
+    key_id = _row_get(row, f"content_key_id_{variant_key}")
+    if enc_key and key_id:
+        try:
+            from platform_api.services.audio_package_service import AudioPackageService
+            from platform_api.services.storage_service import StorageService
+            from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+            config = await resolve_streaming_storage_config(pool)
+            if config.configured:
+                wrapped = await pool.fetchval(
+                    "SELECT wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
+                    key_id,
+                )
+                if wrapped:
+                    storage = StorageService.from_config(config)
+                    data = await AudioPackageService(pool).decrypt_stored_original(
+                        storage, str(enc_key), wrapped
+                    )
+                    if data:
+                        return data, filename, "audio/mpeg"
+        except Exception as exc:
+            logger.warning("Admin encrypted original decrypt failed task=%s: %s", task_id, exc)
+
     b2_key = _row_get(row, f"b2_storage_key_{variant_key}")
     if b2_key:
         try:
@@ -386,7 +426,28 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
             if config.configured:
                 data = await StorageService.from_config(config).download_bytes(key=str(b2_key))
                 if data:
-                    return data, filename, "audio/mpeg"
+                    from platform_api.services.audio_package_service import AudioPackageService
+                    from platform_api.services.audio_packager import looks_like_camxora_audio
+
+                    if looks_like_camxora_audio(data):
+                        if key_id:
+                            wrapped = await pool.fetchval(
+                                "SELECT wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
+                                key_id,
+                            )
+                            if wrapped:
+                                data = AudioPackageService(pool)._decrypt_with_wrapped(
+                                    data, bytes(wrapped)
+                                )
+                                if data:
+                                    return data, filename, "audio/mpeg"
+                        logger.warning(
+                            "Admin B2 object is ciphertext task=%s variant=%s",
+                            task_id,
+                            variant_key,
+                        )
+                    else:
+                        return data, filename, "audio/mpeg"
         except Exception as exc:
             logger.warning("Admin B2 audio read failed task=%s variant=%s: %s", task_id, variant_key, exc)
 
@@ -448,9 +509,15 @@ async def _load_lyrics_file(
 
             config = await resolve_streaming_storage_config(pool)
             if config.configured:
-                lrc_text = (
-                    await StorageService.from_config(config).download_bytes(key=str(b2_key))
-                ).decode("utf-8", errors="replace")
+                raw = await StorageService.from_config(config).download_bytes(key=str(b2_key))
+                from platform_api.services.audio_package_service import AudioPackageService
+
+                raw = await AudioPackageService(pool).decrypt_suno_export(
+                    raw,
+                    subject_id=task_id,
+                    variant=variant_key,
+                )
+                lrc_text = raw.decode("utf-8", errors="replace")
         except Exception as exc:
             logger.warning("Admin B2 LRC read failed task=%s: %s", task_id, exc)
 
@@ -562,7 +629,10 @@ async def stream_user_web_music_clip(
     return Response(
         content=data,
         media_type=content_type,
-        headers={"Content-Disposition": _content_disposition(filename, inline=True)},
+        headers={
+            "Content-Disposition": _content_disposition(filename, inline=True),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -579,10 +649,25 @@ async def download_user_web_music_clip(
     del ctx
     pool = get_db_pool()
     data, filename, content_type = await _load_clip_audio(pool, user_id, task_id, variant)
+    try:
+        from platform_api.services.content_license_service import ContentLicenseService
+
+        await ContentLicenseService(pool).record_export_event(
+            user_id=user_id,
+            suno_task_id=task_id,
+            variant=variant,
+            format="mp3",
+            actor="admin",
+        )
+    except Exception as exc:
+        logger.warning("Admin export_events insert failed: %s", exc)
     return Response(
         content=data,
         media_type=content_type,
-        headers={"Content-Disposition": _content_disposition(filename, inline=False)},
+        headers={
+            "Content-Disposition": _content_disposition(filename, inline=False),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 

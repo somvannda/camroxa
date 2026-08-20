@@ -29,6 +29,8 @@ class PlayUrlResponse(BaseModel):
     track_id: str
     url: str
     expires_at: str
+    package_status: str = "none"
+    subject_type: str = "stream_track"
     title: str | None = None
     album_id: str | None = None
     album_name: str | None = None

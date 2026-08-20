@@ -73,6 +73,7 @@ const ContentPoolsPage = React.lazy(() => import('@/pages/content-pools/index'))
 const ImageSamplePacksPage = React.lazy(() => import('@/pages/image-sample-packs/index'));
 const MarketplacePage = React.lazy(() => import('@/pages/marketplace/index'));
 const StreamingCatalogPage = React.lazy(() => import('@/pages/streaming/catalog'));
+const StreamingPlaybackAuditPage = React.lazy(() => import('@/pages/streaming/playback-audit'));
 const StreamingUploadJobsPage = React.lazy(() => import('@/pages/streaming/upload-jobs'));
 
 function LoadingFallback() {
@@ -133,6 +134,7 @@ function App() {
                     <Route path="/image-sample-packs" element={<ImageSamplePacksPage />} />
                     <Route path="/marketplace" element={<MarketplacePage />} />
                     <Route path="/streaming" element={<StreamingCatalogPage />} />
+                    <Route path="/streaming/playback-audit" element={<StreamingPlaybackAuditPage />} />
                     <Route path="/streaming/upload-jobs" element={<StreamingUploadJobsPage />} />
                   </Route>
                 </Route>

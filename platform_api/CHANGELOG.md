@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Protected catalog/Create playback: AES-256-GCM packages, License API sessions, owner-only watermarked downloads, and no Suno/B2 origin URLs in the browser. Unconfirmed users cannot play or export. Production leftover encrypt seals Music (`web_music`) MP3/WAV/LRC only; Studio files stay plaintext. See `docs/changelog/2026-08-20-protected-playback.md`.
 - Stream play rejects curl/Range-stitch dumps: browser audio headers are required, and unique 256 KiB windows are paced (10 / 15s). See `docs/changelog/2026-08-19-web-music-stream-stitch-pace.md`.
 - Admin blog CRUD (`/api/v1/admin/blog-posts`) now requires `Depends(require_admin)`.
   Unauthenticated list/create/update/delete previously skipped auth. See

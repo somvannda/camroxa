@@ -29,7 +29,7 @@ export default function HomeGate({
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-300/75">
             Start with a simple prompt or write lyrics and styles. Create two versions, play them,
-            and download MP3s — with Camxora.
+            and download MP3s of your songs — with Camxora.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link

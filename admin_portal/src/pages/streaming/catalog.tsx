@@ -215,6 +215,7 @@ export default function StreamingCatalogPage() {
                     <TableHead className="text-right">Plays</TableHead>
                     <TableHead>Lyrics</TableHead>
                     <TableHead>Variant</TableHead>
+                    <TableHead>Package</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -287,6 +288,9 @@ export default function StreamingCatalogPage() {
                         </TableCell>
                         <TableCell>{track.has_lyrics ? 'Yes' : 'No'}</TableCell>
                         <TableCell className="uppercase">{track.variant}</TableCell>
+                        <TableCell className="font-mono text-xs text-slate-400">
+                          {track.package_status ?? 'none'}
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant={track.publish_status === 'published' ? 'default' : 'secondary'}

@@ -110,6 +110,8 @@ function clipToTrack(generation: WebMusicGeneration, clip: WebMusicClip): Stream
     genre: generation.style,
     lyrics: generation.lyrics,
     play_url: clip.audio_url,
+    package_status: clip.package_status ?? 'none',
+    subject_type: 'suno_task',
     cover_url: clip.image_url ?? null,
     duration_seconds: clip.duration_seconds ?? null,
   };

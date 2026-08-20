@@ -29,6 +29,7 @@ export type StreamingCatalogTrack = {
   cover_url?: string | null;
   has_lyrics?: boolean;
   suno_image_url?: string | null;
+  package_status?: string | null;
   created_at?: string | null;
 };
 

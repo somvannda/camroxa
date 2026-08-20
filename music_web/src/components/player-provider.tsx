@@ -13,6 +13,12 @@ import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/components/auth-provider';
 import { catalogStreamUrl, getPlayUrl, isTrustedPlayUrl, type StreamTrack } from '@/lib/streaming-api';
+import { decryptCamxoraChunk } from '@/lib/camxora-decrypt';
+import {
+  createLicenseSession,
+  fetchEncryptedChunk,
+  sendLicenseHeartbeat,
+} from '@/lib/content-license';
 
 type PlayerState = {
   current: StreamTrack | null;
@@ -36,14 +42,6 @@ type PlayerState = {
 
 const PlayerContext = createContext<PlayerState | null>(null);
 
-function shouldUseCredentialedCors(url: string): boolean {
-  if (!url) return false;
-  return (
-    url.startsWith('/') ||
-    (typeof window !== 'undefined' && url.startsWith(window.location.origin))
-  );
-}
-
 function shuffleTracks(tracks: StreamTrack[]): StreamTrack[] {
   const copy = [...tracks];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -51,6 +49,67 @@ function shuffleTracks(tracks: StreamTrack[]): StreamTrack[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+function parsePlaybackSubject(track: StreamTrack): {
+  subjectType: 'stream_track' | 'suno_task';
+  subjectId: string;
+  variant: 'ok' | 'alt';
+} {
+  if (track.subject_type === 'suno_task' || track.id.includes(':')) {
+    const [id, variant] = track.id.split(':');
+    return {
+      subjectType: 'suno_task',
+      subjectId: id,
+      variant: variant === 'alt' ? 'alt' : 'ok',
+    };
+  }
+  return {
+    subjectType: 'stream_track',
+    subjectId: track.id,
+    variant: track.variant === 'alt' ? 'alt' : 'ok',
+  };
+}
+
+function startPositionHeartbeat(
+  audio: HTMLAudioElement,
+  session: { token: string; session_bind?: string },
+  heartbeatRef: { current: number | null },
+) {
+  let seq = 0;
+  const ping = (event: string) => {
+    seq += 1;
+    void sendLicenseHeartbeat({
+      token: session.token,
+      event,
+      positionSeconds: audio.currentTime || 0,
+      playbackRate: audio.playbackRate || 1,
+      seq,
+      sessionBind: session.session_bind,
+    });
+  };
+  window.setTimeout(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
+  heartbeatRef.current = window.setInterval(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
+  audio.addEventListener('ended', () => ping('complete'), { once: true });
+  audio.addEventListener('pause', () => ping('pause'), { once: true });
+}
+
+function appendSourceBuffer(sourceBuffer: SourceBuffer, data: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onUpdate = () => {
+      sourceBuffer.removeEventListener('updateend', onUpdate);
+      sourceBuffer.removeEventListener('error', onError);
+      resolve();
+    };
+    const onError = () => {
+      sourceBuffer.removeEventListener('updateend', onUpdate);
+      sourceBuffer.removeEventListener('error', onError);
+      reject(new Error('SourceBuffer error'));
+    };
+    sourceBuffer.addEventListener('updateend', onUpdate);
+    sourceBuffer.addEventListener('error', onError);
+    sourceBuffer.appendBuffer(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+  });
 }
 
 function readStoredVolume(): number {
@@ -65,6 +124,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const heartbeatRef = useRef<number | null>(null);
   const queueRef = useRef<StreamTrack[]>([]);
   const indexRef = useRef(-1);
   const loadTokenRef = useRef(0);
@@ -122,6 +183,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
+      if (heartbeatRef.current != null) {
+        window.clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
     };
   }, [ensureAudio]);
 
@@ -167,8 +236,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(0);
       setDuration(track.duration_seconds ?? 0);
 
+      if (heartbeatRef.current != null) {
+        window.clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+
       let url = isTrustedPlayUrl(track.play_url ?? '') ? (track.play_url as string) : '';
       let nextTrack: StreamTrack = track;
+      let packageStatus = String(track.package_status || 'none');
       const isCatalogTrack = !track.id.includes(':');
       if (!url && isCatalogTrack) {
         url = catalogStreamUrl(track.id);
@@ -182,6 +261,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           } else if (!url) {
             url = catalogStreamUrl(track.id);
           }
+          packageStatus = payload.package_status || packageStatus;
           nextTrack = {
             ...track,
             title: payload.title ?? track.title,
@@ -194,10 +274,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             play_count: payload.play_count ?? track.play_count,
             genre: payload.genre ?? track.genre,
             lyrics: payload.lyrics ?? track.lyrics,
+            package_status: packageStatus,
+            subject_type: payload.subject_type === 'suno_task' ? 'suno_task' : 'stream_track',
           };
         } catch {
           if (token !== loadTokenRef.current) return;
-          if (!url) {
+          if (!url && packageStatus !== 'ready') {
             if (!user) redirectToLogin();
             return;
           }
@@ -208,13 +290,85 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrent(nextTrack);
 
       const audio = ensureAudio();
-      if (shouldUseCredentialedCors(url)) {
-        audio.crossOrigin = 'use-credentials';
-      } else {
-        audio.removeAttribute('crossorigin');
+      audio.volume = muted ? 0 : volume;
+      audio.crossOrigin = 'use-credentials';
+
+      if (packageStatus === 'ready') {
+        try {
+          const subject = parsePlaybackSubject(nextTrack);
+          const session = await createLicenseSession({
+            subjectType: subject.subjectType,
+            subjectId: subject.subjectId,
+            variant: subject.variant,
+          });
+          if (token !== loadTokenRef.current) return;
+          if (session.ready && session.content_key && session.segment_url) {
+            const mediaSource = new MediaSource();
+            const objectUrl = URL.createObjectURL(mediaSource);
+            objectUrlRef.current = objectUrl;
+            audio.src = objectUrl;
+            await new Promise<void>((resolve, reject) => {
+              const onOpen = () => resolve();
+              mediaSource.addEventListener('sourceopen', onOpen, { once: true });
+              window.setTimeout(() => reject(new Error('MediaSource timeout')), 8000);
+            });
+            if (token !== loadTokenRef.current) return;
+            const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+            let bytesServed = 0;
+            for (let chunk = 0; chunk < 4096; chunk += 1) {
+              if (token !== loadTokenRef.current) return;
+              let encrypted: ArrayBuffer;
+              try {
+                encrypted = await fetchEncryptedChunk(session.segment_url, chunk);
+              } catch {
+                break;
+              }
+              const plain = await decryptCamxoraChunk(encrypted, session.content_key, chunk);
+              bytesServed += plain.byteLength;
+              await appendSourceBuffer(sourceBuffer, plain);
+              if (chunk === 0) {
+                try {
+                  await audio.play();
+                  if (token === loadTokenRef.current) setPlaying(true);
+                } catch {
+                  if (token === loadTokenRef.current) setPlaying(false);
+                }
+              }
+            }
+            if (mediaSource.readyState === 'open') {
+              mediaSource.endOfStream();
+            }
+            void sendLicenseHeartbeat({
+              token: session.token,
+              positionSeconds: audio.currentTime || 0,
+              playbackRate: audio.playbackRate || 1,
+              seq: 1,
+              sessionBind: session.session_bind,
+            });
+            startPositionHeartbeat(audio, session, heartbeatRef);
+            return;
+          }
+        } catch {
+          if (token !== loadTokenRef.current) return;
+        }
+      }
+
+      if (!url || !isTrustedPlayUrl(url)) {
+        if (token === loadTokenRef.current) setPlaying(false);
+        return;
+      }
+      try {
+        const subject = parsePlaybackSubject(nextTrack);
+        const session = await createLicenseSession({
+          subjectType: subject.subjectType,
+          subjectId: subject.subjectId,
+          variant: subject.variant,
+        });
+        startPositionHeartbeat(audio, session, heartbeatRef);
+      } catch {
+        /* unpackaged play still proceeds without a session */
       }
       audio.src = url;
-      audio.volume = muted ? 0 : volume;
       try {
         await audio.play();
         if (token === loadTokenRef.current) setPlaying(true);

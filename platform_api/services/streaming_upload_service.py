@@ -23,6 +23,8 @@ from platform_api.services.suno_audio_resolver import (
     refresh_suno_task_download_urls,
     variant_url_candidates,
 )
+from platform_api.services.audio_package_service import AudioPackageService
+from platform_api.services.audio_packager import GCM_MIME, looks_like_camxora_audio
 from platform_api.services.suno_lrc import looks_like_lrc
 
 
@@ -40,6 +42,38 @@ class StreamingUploadService:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
         self._repo = StreamingRepository(pool)
+
+    async def _encrypt_ingested_mp3(
+        self,
+        plaintext: bytes,
+        *,
+        subject_type: str,
+        subject_id: UUID,
+        variant: str,
+        storage_key: str,
+        storage: Any,
+        null_suno_urls: bool,
+    ) -> None:
+        try:
+            base_key = str(storage_key).rsplit(".mp3", 1)[0]
+            await AudioPackageService(self._pool).package_plaintext(
+                plaintext,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                variant=variant,
+                base_key=base_key,
+                storage=storage,
+                null_suno_urls=null_suno_urls,
+                source_key=storage_key,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Audio packaging failed subject_type=%s id=%s variant=%s: %s",
+                subject_type,
+                subject_id,
+                variant,
+                exc,
+            )
 
     def schedule_suno_streaming_upload(self, *, suno_task_id: UUID) -> None:
         asyncio.create_task(self._run_suno_streaming_upload(suno_task_id))
@@ -308,7 +342,7 @@ class StreamingUploadService:
             )
 
             await self._repo.update_album_genre(album_id, genre, genres=catalog_genres or None)
-            await self._repo.upsert_track(
+            track_id = await self._repo.upsert_track(
                 user_id=user_id,
                 album_id=album_id,
                 song_id=song_id,
@@ -327,6 +361,7 @@ class StreamingUploadService:
                 genres=catalog_genres or None,
                 suno_audio_id=suno_audio_id or None,
             )
+            del track_id
             await self._repo.mark_upload_job(
                 job_id, status="success", storage_key=storage_key, album_id=album_id
             )
@@ -395,6 +430,16 @@ class StreamingUploadService:
                     suno_task_id,
                     storage_key,
                 )
+
+            await self._encrypt_ingested_mp3(
+                data,
+                subject_type="suno_task",
+                subject_id=suno_task_id,
+                variant=variant,
+                storage_key=storage_key,
+                storage=storage,
+                null_suno_urls=True,
+            )
 
             logger.info("Web music MP3 uploaded to B2: task=%s variant=%s key=%s size=%d", 
                        suno_task_id, variant, storage_key, len(data))
@@ -532,7 +577,19 @@ class StreamingUploadService:
                     response.raise_for_status()
                     wav_data = response.content
                 
-                await storage.upload_bytes(key=wav_storage_key, data=wav_data, content_type="audio/wav")
+                wav_data = await AudioPackageService(self._pool).encrypt_suno_export(
+                    wav_data,
+                    subject_id=suno_task_id,
+                    variant=variant,
+                )
+                wav_content_type = (
+                    GCM_MIME if looks_like_camxora_audio(wav_data) else "audio/wav"
+                )
+                await storage.upload_bytes(
+                    key=wav_storage_key,
+                    data=wav_data,
+                    content_type=wav_content_type,
+                )
                 
                 # Update database with B2 WAV storage key
                 if variant == "ok":
@@ -683,10 +740,19 @@ class StreamingUploadService:
             if not config.configured:
                 return
             storage = StorageService.from_config(config)
+            lrc_bytes = lrc.encode("utf-8")
+            lrc_bytes = await AudioPackageService(self._pool).encrypt_suno_export(
+                lrc_bytes,
+                subject_id=suno_task_id,
+                variant=variant_key,
+            )
+            lrc_content_type = (
+                GCM_MIME if looks_like_camxora_audio(lrc_bytes) else "text/plain; charset=utf-8"
+            )
             await storage.upload_bytes(
                 key=storage_key,
-                data=lrc.encode("utf-8"),
-                content_type="text/plain; charset=utf-8",
+                data=lrc_bytes,
+                content_type=lrc_content_type,
             )
             await self._pool.execute(
                 f"""
@@ -970,7 +1036,7 @@ class StreamingUploadService:
                 album_slug=album_slug,
                 channel_role=channel_role,
             )
-            await self._repo.upsert_track(
+            track_id = await self._repo.upsert_track(
                 user_id=user_id,
                 album_id=album_id,
                 song_id=song_id,

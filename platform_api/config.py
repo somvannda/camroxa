@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     # Set env var PLATFORM_ENCRYPTION_MASTER_KEY to a strong random string.
     # Used to derive AES-256 encryption keys for API key values stored at rest.
     encryption_master_key: str = ""
+    # AES-256-GCM KEK for packaged audio. Falls back to encryption_master_key in local/dev.
+    content_audio_kek: str = ""
 
     # --- Email (SMTP) ---
     # Dev: use MailHog at localhost:1025 (no auth needed)

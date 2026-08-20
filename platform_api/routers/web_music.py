@@ -54,6 +54,7 @@ class WebMusicClipResponse(BaseModel):
     audio_url: str
     download_url: str
     ready: bool = False
+    package_status: str = "none"
     image_url: str | None = None
     duration_seconds: float | None = None
     title: str = ""
@@ -180,6 +181,7 @@ class WebMusicPlaylistItemResponse(BaseModel):
     style: str = ""
     status: str = ""
     ready: bool = False
+    package_status: str = "none"
     audio_url: str = ""
     image_url: str | None = None
     added_at: str | None = None
@@ -502,7 +504,10 @@ async def download_generation(
     return Response(
         content=data,
         media_type=content_type,
-        headers={"Content-Disposition": content_disposition(filename, inline=False)},
+        headers={
+            "Content-Disposition": content_disposition(filename, inline=False),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -521,7 +526,10 @@ async def download_generation_wav(
     return Response(
         content=data,
         media_type=content_type,
-        headers={"Content-Disposition": content_disposition(filename, inline=False)},
+        headers={
+            "Content-Disposition": content_disposition(filename, inline=False),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -544,7 +552,10 @@ async def download_timed_lyrics(
     return Response(
         content=data,
         media_type=content_type,
-        headers={"Content-Disposition": content_disposition(filename, inline=False)},
+        headers={
+            "Content-Disposition": content_disposition(filename, inline=False),
+            "Cache-Control": "private, no-store",
+        },
     )
 
 

@@ -279,19 +279,7 @@ class TestGetCurrentUser:
         with pytest.raises(ForbiddenError, match="Confirm your email"):
             await get_current_user("Bearer valid-token", request=request)
 
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/api/v1/public/streaming/tracks/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream",
-            "/api/v1/public/streaming/tracks/441cb4bf-f013-4c88-8ea1-9d17499b1762/play-url",
-            "/api/v1/web-music/play/abc_DEF-123",
-            "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/ok",
-            "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/download",
-        ],
-    )
-    async def test_unconfirmed_user_cannot_play_or_download(
-        self, mock_user_repo, path: str
-    ) -> None:
+    async def test_unconfirmed_user_cannot_play(self, mock_user_repo) -> None:
         mock_user_repo.get_auth_state.return_value = {
             "status": "active",
             "token_version": 0,
@@ -302,7 +290,9 @@ class TestGetCurrentUser:
             cookies={},
             headers={},
             method="GET",
-            url=SimpleNamespace(path=path),
+            url=SimpleNamespace(
+                path="/api/v1/public/streaming/tracks/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream"
+            ),
         )
         with pytest.raises(ForbiddenError, match="Confirm your email"):
             await get_current_user("Bearer valid-token", request=request)

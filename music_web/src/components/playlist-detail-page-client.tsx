@@ -42,6 +42,8 @@ function itemToTrack(item: WebMusicPlaylistItem): StreamTrack | null {
     artist_name: 'You',
     genre: item.style,
     play_url: item.audio_url,
+    package_status: item.package_status ?? 'none',
+    subject_type: 'suno_task',
     cover_url: item.image_url ?? null,
   };
 }

@@ -39,6 +39,7 @@ _PUBLIC_TRACK_KEYS = {
     "track_number",
     "tags",
     "added_at",
+    "package_status",
 }
 
 _PUBLIC_ALBUM_KEYS = {
@@ -239,12 +240,16 @@ class StreamingCatalogService:
         config = await resolve_streaming_storage_config(self._pool)
         if not config.configured:
             return None
-        if not str(track.get("storage_key") or "").strip():
+        pkg = str(track.get("package_status") or "none")
+        has_audio = bool(str(track.get("storage_key") or "").strip()) or pkg == "ready"
+        if not has_audio:
             return None
         expires_at = datetime.now(timezone.utc).timestamp() + config.stream_url_ttl_seconds
         return {
             "track_id": str(track_id),
             "url": self._catalog_stream_url(track_id),
+            "package_status": pkg,
+            "subject_type": "stream_track",
             "expires_at": datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
             "title": track.get("title"),
             "album_id": str(track["album_id"]) if track.get("album_id") else None,
@@ -284,6 +289,8 @@ class StreamingCatalogService:
         track = await self._repo.get_published_track(track_id)
         if not track:
             raise NotFoundError("Track not found or streaming is not configured.")
+        if str(track.get("package_status") or "") == "ready":
+            raise NotFoundError("This track requires the encrypted player.")
         storage_key = str(track.get("storage_key") or "").strip()
         if not storage_key:
             raise NotFoundError("Track not found or streaming is not configured.")
@@ -341,6 +348,7 @@ class StreamingCatalogService:
             if not track.get("added_at") and track.get("liked_at"):
                 track["added_at"] = track.get("liked_at")
             await self._decorate_track(track)
+        for track in rows:
             track["id"] = str(track["id"])
             if track.get("album_id"):
                 track["album_id"] = str(track["album_id"])

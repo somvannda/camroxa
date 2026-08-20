@@ -38,6 +38,7 @@ export type WebMusicPlaylistItem = {
   status?: string;
   ready?: boolean;
   audio_url?: string;
+  package_status?: string;
   image_url?: string | null;
   added_at?: string | null;
 };
