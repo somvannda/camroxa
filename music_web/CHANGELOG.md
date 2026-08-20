@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- iOS packaged play uses Web Audio after unlocking AudioContext in the tap (HTMLAudio blob/MSE is secondary). Silent looping `<audio>` was removed because it can keep WebKit outputting silence. Query `?iosPlayer=1` forces this path for desktop testing. See `docs/changelog/2026-08-20-ios-protected-playback.md`.
+- Create leftover songs no longer stay on Finishing / refuse playlist play because they shared `untitled-ok.mp3`. Those files were not encrypted; the API now re-ingests them onto unique keys. See `docs/changelog/2026-08-20-web-music-task-scoped-b2.md`.
+- Create and playlist play wait until the clip is packaged. There is no leftover plaintext play. See `docs/changelog/2026-08-20-create-packaged-only-play.md`.
+- iOS packaged play downloads the encrypted file once (`?full=1`) instead of re-fetching every 256 KiB chunk, holds a silent `<audio>` play through the tap so WebKit still allows playback after decrypt, and falls back to Web Audio if the blob element is blocked. See `docs/changelog/2026-08-20-ios-protected-playback.md`.
+- Packaged tracks now play on iOS Safari/Chrome. WebKit cannot feed MP3 into Media Source Extensions, so those browsers decrypt into a memory blob and use a real in-page `<audio playsinline>` element. Desktop Chrome still uses MSE. See `docs/changelog/2026-08-20-ios-protected-playback.md`.
+- iOS lock screen / Dynamic Island Now Playing uses the track title, artist, and full cover art (or a full-bleed Camxora icon), not the tiny SVG favicon.
+
 ### Added
 
 - Phone header shows the compact Camxora Music mark. A 7px-radius menu button sits just above the left of the player and opens the sidebar; Create fills the rest of that row. Song description on phones uses 16px text so Safari does not zoom, and the menu/Create lift above the keyboard. See `docs/changelog/2026-08-19-music-web-mobile-nav.md`.

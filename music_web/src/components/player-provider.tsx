@@ -13,12 +13,24 @@ import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/components/auth-provider';
 import { catalogStreamUrl, getPlayUrl, isTrustedPlayUrl, type StreamTrack } from '@/lib/streaming-api';
-import { decryptCamxoraChunk } from '@/lib/camxora-decrypt';
+import { decryptCamxoraChunk, decryptCamxoraPackage, looksLikeCamxoraPackage } from '@/lib/camxora-decrypt';
 import {
   createLicenseSession,
   fetchEncryptedChunk,
+  fetchEncryptedPackage,
   sendLicenseHeartbeat,
 } from '@/lib/content-license';
+import {
+  createMp3ObjectUrl,
+  isIosPackagedPlayback,
+  resumeSharedAudioContext,
+  WebAudioPlayback,
+} from '@/lib/ios-playback';
+import {
+  applyNowPlayingMetadata,
+  applyNowPlayingPosition,
+  bindNowPlayingActions,
+} from '@/lib/media-session';
 
 type PlayerState = {
   current: StreamTrack | null;
@@ -29,6 +41,7 @@ type PlayerState = {
   duration: number;
   volume: number;
   muted: boolean;
+  playError: string | null;
   playTrack: (track: StreamTrack, queue?: StreamTrack[]) => Promise<void>;
   playQueue: (tracks: StreamTrack[], startIndex?: number) => Promise<void>;
   playShuffled: (tracks: StreamTrack[]) => Promise<void>;
@@ -94,6 +107,84 @@ function startPositionHeartbeat(
   audio.addEventListener('pause', () => ping('pause'), { once: true });
 }
 
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.byteLength;
+  }
+  return out;
+}
+
+function mpegMseSupported(): boolean {
+  if (typeof window === 'undefined' || isIosPackagedPlayback()) return false;
+  const ctor =
+    (window as unknown as { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource ??
+    window.MediaSource;
+  return Boolean(ctor?.isTypeSupported?.('audio/mpeg'));
+}
+
+function prepareAudioElement(audio: HTMLAudioElement) {
+  audio.setAttribute('playsinline', 'true');
+  audio.setAttribute('webkit-playsinline', 'true');
+  audio.preload = 'auto';
+}
+
+function unlockAudioForGesture(_audio: HTMLAudioElement) {
+  resumeSharedAudioContext();
+}
+
+async function decryptPackagedMp3(
+  segmentUrl: string,
+  contentKey: string,
+  isCurrentLoad: () => boolean,
+  sequential: boolean,
+): Promise<Uint8Array> {
+  try {
+    const packaged = await fetchEncryptedPackage(segmentUrl);
+    if (!isCurrentLoad()) return new Uint8Array();
+    if (looksLikeCamxoraPackage(packaged)) {
+      return await decryptCamxoraPackage(packaged, contentKey);
+    }
+  } catch {
+    /* older APIs ignore full=1 and still return a single chunk */
+  }
+  const first = await fetchEncryptedChunk(segmentUrl, 0);
+  if (!isCurrentLoad()) return new Uint8Array();
+  const parts: Uint8Array[] = [await decryptCamxoraChunk(first.buffer, contentKey, 0)];
+  const count = first.chunkCount ?? 0;
+  if (count > 1) {
+    if (sequential) {
+      for (let chunk = 1; chunk < count; chunk += 1) {
+        if (!isCurrentLoad()) return concatBytes(parts);
+        const record = await fetchEncryptedChunk(segmentUrl, chunk);
+        parts.push(await decryptCamxoraChunk(record.buffer, contentKey, chunk));
+      }
+    } else {
+      const rest = await Promise.all(
+        Array.from({ length: count - 1 }, (_, index) => index + 1).map(async (chunk) => {
+          const record = await fetchEncryptedChunk(segmentUrl, chunk);
+          return decryptCamxoraChunk(record.buffer, contentKey, chunk);
+        }),
+      );
+      parts.push(...rest);
+    }
+  } else if (!count) {
+    for (let chunk = 1; chunk < 4096; chunk += 1) {
+      if (!isCurrentLoad()) return concatBytes(parts);
+      try {
+        const record = await fetchEncryptedChunk(segmentUrl, chunk);
+        parts.push(await decryptCamxoraChunk(record.buffer, contentKey, chunk));
+      } catch {
+        break;
+      }
+    }
+  }
+  return concatBytes(parts);
+}
+
 function appendSourceBuffer(sourceBuffer: SourceBuffer, data: Uint8Array): Promise<void> {
   return new Promise((resolve, reject) => {
     const onUpdate = () => {
@@ -130,6 +221,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const indexRef = useRef(-1);
   const loadTokenRef = useRef(0);
   const playFromIndexRef = useRef<(index: number) => Promise<void>>(async () => undefined);
+  const suppressMediaEventsRef = useRef(false);
+  const webAudioRef = useRef<WebAudioPlayback | null>(null);
 
   const [current, setCurrent] = useState<StreamTrack | null>(null);
   const [queue, setQueue] = useState<StreamTrack[]>([]);
@@ -139,27 +232,44 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.85);
   const [muted, setMuted] = useState(false);
+  const [playError, setPlayError] = useState<string | null>(null);
 
   useEffect(() => {
     setVolumeState(readStoredVolume());
   }, []);
 
   const ensureAudio = useCallback(() => {
-    if (audioRef.current) return audioRef.current;
-    const audio = new Audio();
-    audio.preload = 'metadata';
-    audioRef.current = audio;
+    const audio = audioRef.current;
+    if (!audio) {
+      throw new Error('Audio element is not ready.');
+    }
+    prepareAudioElement(audio);
     return audio;
   }, []);
 
   useEffect(() => {
-    const audio = ensureAudio();
+    const audio = audioRef.current;
+    if (!audio) return;
+    prepareAudioElement(audio);
 
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime || 0);
-    const onDuration = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onTimeUpdate = () => {
+      if (suppressMediaEventsRef.current || webAudioRef.current) return;
+      setCurrentTime(audio.currentTime || 0);
+    };
+    const onDuration = () => {
+      if (suppressMediaEventsRef.current || webAudioRef.current) return;
+      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+    };
+    const onPlay = () => {
+      if (suppressMediaEventsRef.current) return;
+      setPlaying(true);
+    };
+    const onPause = () => {
+      if (suppressMediaEventsRef.current || webAudioRef.current) return;
+      setPlaying(false);
+    };
     const onEnded = () => {
+      if (suppressMediaEventsRef.current || webAudioRef.current) return;
       const nextIndex = indexRef.current + 1;
       if (nextIndex < queueRef.current.length) {
         void playFromIndexRef.current(nextIndex);
@@ -191,13 +301,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
       }
+      webAudioRef.current?.stop();
+      webAudioRef.current = null;
     };
-  }, [ensureAudio]);
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.volume = muted ? 0 : volume;
+    const nextVolume = muted ? 0 : volume;
+    audio.volume = nextVolume;
+    webAudioRef.current?.setVolume(nextVolume);
   }, [muted, volume]);
 
   const redirectToLogin = useCallback(() => {
@@ -226,6 +340,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      const audio = ensureAudio();
+      webAudioRef.current?.stop();
+      webAudioRef.current = null;
+      if (isIosPackagedPlayback()) {
+        suppressMediaEventsRef.current = true;
+      }
+      unlockAudioForGesture(audio);
+
       const tracks = queueRef.current;
       const track = tracks[index];
       if (!track) return;
@@ -235,6 +357,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setQueueIndex(index);
       setCurrentTime(0);
       setDuration(track.duration_seconds ?? 0);
+      setPlayError(null);
 
       if (heartbeatRef.current != null) {
         window.clearInterval(heartbeatRef.current);
@@ -289,9 +412,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       setCurrent(nextTrack);
 
-      const audio = ensureAudio();
+      prepareAudioElement(audio);
       audio.volume = muted ? 0 : volume;
-      audio.crossOrigin = 'use-credentials';
 
       if (packageStatus === 'ready') {
         try {
@@ -303,40 +425,134 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           });
           if (token !== loadTokenRef.current) return;
           if (session.ready && session.content_key && session.segment_url) {
-            const mediaSource = new MediaSource();
-            const objectUrl = URL.createObjectURL(mediaSource);
-            objectUrlRef.current = objectUrl;
-            audio.src = objectUrl;
-            await new Promise<void>((resolve, reject) => {
-              const onOpen = () => resolve();
-              mediaSource.addEventListener('sourceopen', onOpen, { once: true });
-              window.setTimeout(() => reject(new Error('MediaSource timeout')), 8000);
-            });
-            if (token !== loadTokenRef.current) return;
-            const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-            let bytesServed = 0;
-            for (let chunk = 0; chunk < 4096; chunk += 1) {
-              if (token !== loadTokenRef.current) return;
-              let encrypted: ArrayBuffer;
+            audio.removeAttribute('crossorigin');
+            const isCurrentLoad = () => token === loadTokenRef.current;
+            if (mpegMseSupported()) {
               try {
-                encrypted = await fetchEncryptedChunk(session.segment_url, chunk);
+                const mediaSource = new MediaSource();
+                const objectUrl = URL.createObjectURL(mediaSource);
+                objectUrlRef.current = objectUrl;
+                audio.src = objectUrl;
+                await new Promise<void>((resolve, reject) => {
+                  const onOpen = () => resolve();
+                  mediaSource.addEventListener('sourceopen', onOpen, { once: true });
+                  window.setTimeout(() => reject(new Error('MediaSource timeout')), 8000);
+                });
+                if (!isCurrentLoad()) return;
+                const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                for (let chunk = 0; chunk < 4096; chunk += 1) {
+                  if (!isCurrentLoad()) return;
+                  let encrypted: ArrayBuffer;
+                  try {
+                    encrypted = (await fetchEncryptedChunk(session.segment_url, chunk)).buffer;
+                  } catch {
+                    break;
+                  }
+                  const plain = await decryptCamxoraChunk(encrypted, session.content_key, chunk);
+                  await appendSourceBuffer(sourceBuffer, plain);
+                  if (chunk === 0) {
+                    try {
+                      await audio.play();
+                      if (isCurrentLoad()) setPlaying(true);
+                    } catch {
+                      if (isCurrentLoad()) setPlaying(false);
+                    }
+                  }
+                }
+                if (mediaSource.readyState === 'open') {
+                  mediaSource.endOfStream();
+                }
+                void sendLicenseHeartbeat({
+                  token: session.token,
+                  positionSeconds: audio.currentTime || 0,
+                  playbackRate: audio.playbackRate || 1,
+                  seq: 1,
+                  sessionBind: session.session_bind,
+                });
+                startPositionHeartbeat(audio, session, heartbeatRef);
+                return;
               } catch {
-                break;
-              }
-              const plain = await decryptCamxoraChunk(encrypted, session.content_key, chunk);
-              bytesServed += plain.byteLength;
-              await appendSourceBuffer(sourceBuffer, plain);
-              if (chunk === 0) {
-                try {
-                  await audio.play();
-                  if (token === loadTokenRef.current) setPlaying(true);
-                } catch {
-                  if (token === loadTokenRef.current) setPlaying(false);
+                if (objectUrlRef.current) {
+                  URL.revokeObjectURL(objectUrlRef.current);
+                  objectUrlRef.current = null;
                 }
               }
             }
-            if (mediaSource.readyState === 'open') {
-              mediaSource.endOfStream();
+            if (!isCurrentLoad()) return;
+            const iosPath = isIosPackagedPlayback();
+            const mp3 = await decryptPackagedMp3(
+              session.segment_url,
+              session.content_key,
+              isCurrentLoad,
+              iosPath,
+            );
+            if (!isCurrentLoad() || mp3.byteLength < 16) {
+              suppressMediaEventsRef.current = false;
+              setPlayError('Could not decrypt this track.');
+              setPlaying(false);
+              return;
+            }
+            const mp3Copy = mp3.buffer.slice(
+              mp3.byteOffset,
+              mp3.byteOffset + mp3.byteLength,
+            ) as ArrayBuffer;
+
+            const attachWebAudio = async (): Promise<boolean> => {
+              const web = await WebAudioPlayback.fromMp3(mp3Copy, muted ? 0 : volume);
+              if (!web || !isCurrentLoad()) return false;
+              audio.pause();
+              audio.loop = false;
+              webAudioRef.current = web;
+              web.onTime = (time, dur) => {
+                setCurrentTime(time);
+                setDuration(dur);
+              };
+              web.onEnded = () => {
+                const nextIndex = indexRef.current + 1;
+                if (nextIndex < queueRef.current.length) {
+                  void playFromIndexRef.current(nextIndex);
+                  return;
+                }
+                setPlaying(false);
+                setCurrentTime(0);
+              };
+              resumeSharedAudioContext();
+              web.start(0);
+              setDuration(web.duration);
+              return true;
+            };
+
+            let started = false;
+            if (iosPath) {
+              try {
+                started = await attachWebAudio();
+              } catch (webErr) {
+                console.warn('Web Audio packaged play failed', webErr);
+              }
+            }
+            if (!started) {
+              const objectUrl = createMp3ObjectUrl(mp3Copy);
+              objectUrlRef.current = objectUrl;
+              audio.loop = false;
+              audio.src = objectUrl;
+              try {
+                await audio.play();
+                started = true;
+              } catch (playErr) {
+                console.warn('HTMLAudio packaged play failed, trying Web Audio', playErr);
+                try {
+                  started = await attachWebAudio();
+                } catch (webErr) {
+                  console.warn('Web Audio packaged play failed', webErr);
+                }
+              }
+            }
+            suppressMediaEventsRef.current = false;
+            if (!isCurrentLoad()) return;
+            setPlaying(started);
+            if (!started) {
+              setPlayError('This track could not start on this browser. Try again.');
+              return;
             }
             void sendLicenseHeartbeat({
               token: session.token,
@@ -348,11 +564,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             startPositionHeartbeat(audio, session, heartbeatRef);
             return;
           }
-        } catch {
+          suppressMediaEventsRef.current = false;
+          setPlaying(false);
+          setPlayError('Licensed audio is not ready for this track.');
+          return;
+        } catch (err) {
+          console.error('Packaged playback failed', err);
+          suppressMediaEventsRef.current = false;
           if (token !== loadTokenRef.current) return;
+          setPlaying(false);
+          setPlayError(err instanceof Error ? err.message : 'Packaged playback failed.');
+          return;
         }
       }
 
+      suppressMediaEventsRef.current = false;
+      audio.loop = false;
       if (!url || !isTrustedPlayUrl(url)) {
         if (token === loadTokenRef.current) setPlaying(false);
         return;
@@ -368,6 +595,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* unpackaged play still proceeds without a session */
       }
+      audio.crossOrigin = 'use-credentials';
       audio.src = url;
       try {
         await audio.play();
@@ -420,6 +648,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggle = useCallback(() => {
+    const web = webAudioRef.current;
+    if (web) {
+      if (web.playing) {
+        web.pause();
+        setPlaying(false);
+      } else {
+        web.start(web.currentTime);
+        setPlaying(true);
+      }
+      return;
+    }
     const audio = audioRef.current;
     if (!audio || !current) return;
     if (audio.paused) {
@@ -438,15 +677,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [playFromIndex]);
 
   const previous = useCallback(() => {
+    const web = webAudioRef.current;
     const audio = audioRef.current;
-    if (audio && audio.currentTime > 3) {
-      audio.currentTime = 0;
+    const currentPosition = web?.currentTime ?? audio?.currentTime ?? 0;
+    if (currentPosition > 3) {
+      if (web) {
+        web.seek(0);
+      } else if (audio) {
+        audio.currentTime = 0;
+      }
       setCurrentTime(0);
       return;
     }
     const prevIndex = indexRef.current - 1;
     if (prevIndex >= 0) {
       void playFromIndex(prevIndex);
+    } else if (web) {
+      web.seek(0);
+      setCurrentTime(0);
     } else if (audio) {
       audio.currentTime = 0;
       setCurrentTime(0);
@@ -454,8 +702,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [playFromIndex]);
 
   const seek = useCallback((time: number) => {
+    if (!Number.isFinite(time)) return;
+    const web = webAudioRef.current;
+    if (web) {
+      const nextTime = Math.min(Math.max(0, time), web.duration || time);
+      web.seek(nextTime);
+      setCurrentTime(nextTime);
+      return;
+    }
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(time)) return;
+    if (!audio) return;
     const max = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : time;
     const nextTime = Math.min(Math.max(0, time), max);
     audio.currentTime = nextTime;
@@ -482,6 +738,81 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   }, [volume]);
 
+  useEffect(() => {
+    applyNowPlayingMetadata(current);
+    applyNowPlayingPosition(audioRef.current, playing, { currentTime, duration });
+  }, [current, playing, currentTime, duration]);
+
+  useEffect(() => {
+    return bindNowPlayingActions({
+      play: () => {
+        const web = webAudioRef.current;
+        if (web) {
+          web.start(web.currentTime);
+          setPlaying(true);
+          return;
+        }
+        const audio = audioRef.current;
+        if (!audio) return;
+        void audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      },
+      pause: () => {
+        const web = webAudioRef.current;
+        if (web) {
+          web.pause();
+          setPlaying(false);
+          return;
+        }
+        audioRef.current?.pause();
+        setPlaying(false);
+      },
+      next: () => {
+        const nextIndex = indexRef.current + 1;
+        if (nextIndex < queueRef.current.length) {
+          void playFromIndexRef.current(nextIndex);
+        }
+      },
+      previous: () => {
+        const web = webAudioRef.current;
+        const audio = audioRef.current;
+        const currentPosition = web?.currentTime ?? audio?.currentTime ?? 0;
+        if (currentPosition > 3) {
+          if (web) web.seek(0);
+          else if (audio) audio.currentTime = 0;
+          setCurrentTime(0);
+          return;
+        }
+        const prevIndex = indexRef.current - 1;
+        if (prevIndex >= 0) {
+          void playFromIndexRef.current(prevIndex);
+        } else if (web) {
+          web.seek(0);
+          setCurrentTime(0);
+        } else if (audio) {
+          audio.currentTime = 0;
+          setCurrentTime(0);
+        }
+      },
+      seek: (time: number) => {
+        if (!Number.isFinite(time)) return;
+        const web = webAudioRef.current;
+        if (web) {
+          const nextTime = Math.min(Math.max(0, time), web.duration || time);
+          web.seek(nextTime);
+          setCurrentTime(nextTime);
+          return;
+        }
+        const audio = audioRef.current;
+        if (!audio) return;
+        const max = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : time;
+        const nextTime = Math.min(Math.max(0, time), max);
+        audio.currentTime = nextTime;
+        setCurrentTime(nextTime);
+      },
+      getCurrentTime: () => webAudioRef.current?.currentTime ?? audioRef.current?.currentTime ?? 0,
+    });
+  }, []);
+
   const value = useMemo<PlayerState>(
     () => ({
       current,
@@ -492,6 +823,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       volume,
       muted,
+      playError,
       playTrack,
       playQueue,
       playShuffled,
@@ -511,6 +843,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       volume,
       muted,
+      playError,
       playTrack,
       playQueue,
       playShuffled,
@@ -523,7 +856,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     ],
   );
 
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    (window as unknown as { __camxoraPlayer?: Record<string, unknown> }).__camxoraPlayer = {
+      playing,
+      currentTime,
+      duration,
+      playError,
+      title: current?.title ?? null,
+      iosPath: isIosPackagedPlayback(),
+      webAudio: Boolean(webAudioRef.current?.playing),
+    };
+  }, [playing, currentTime, duration, playError, current]);
+
+  return (
+    <PlayerContext.Provider value={value}>
+      <audio
+        ref={audioRef}
+        playsInline
+        preload="auto"
+        className="pointer-events-none fixed bottom-0 left-0 h-px w-px opacity-0"
+      />
+      {children}
+    </PlayerContext.Provider>
+  );
 }
 
 export function usePlayer() {

@@ -30,6 +30,7 @@ export default function PlayerBar() {
     seek,
     setVolume,
     toggleMute,
+    playError,
   } = usePlayer();
 
   const progressMax = duration > 0 ? duration : current?.duration_seconds ?? 0;
@@ -51,8 +52,10 @@ export default function PlayerBar() {
             <p className="truncate font-medium text-white">
               {current?.title ?? 'Select a track to play'}
             </p>
-            <p className="truncate text-sm text-slate-400">
-              {current
+            <p className={`truncate text-sm ${playError ? 'text-rose-400' : 'text-slate-400'}`}>
+              {playError
+                ? playError
+                : current
                 ? `${current.artist_name ?? 'Camxora Artist'} · ${current.album_name ?? 'Album'}${
                     formatGenreLabels(current) ? ` · ${formatGenreLabels(current)}` : ''
                   }`
