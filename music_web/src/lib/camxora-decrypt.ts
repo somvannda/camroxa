@@ -64,3 +64,55 @@ export async function decryptCamxoraChunk(
   );
   return new Uint8Array(plain);
 }
+
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.byteLength;
+  }
+  return out;
+}
+
+export function looksLikeCamxoraPackage(buffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(buffer);
+  return bytes.byteLength >= 15 && bytes[0] === 0x43 && bytes[1] === 0x58 && bytes[2] === 0x41 && bytes[3] === 0x31;
+}
+
+export async function decryptCamxoraPackage(
+  packageBuffer: ArrayBuffer,
+  contentKeyHex: string,
+): Promise<Uint8Array> {
+  const bytes = new Uint8Array(packageBuffer);
+  if (!looksLikeCamxoraPackage(packageBuffer)) {
+    throw new Error('Not a Camxora audio package.');
+  }
+  if (bytes[4] !== 1) {
+    throw new Error('Unsupported package version.');
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const chunkCount = view.getUint32(9, false);
+  const keyLen = view.getUint16(13, false);
+  let cursor = 15 + keyLen;
+  const parts: Uint8Array[] = [];
+  for (let index = 0; index < chunkCount; index += 1) {
+    if (cursor + NONCE_LEN + 4 > bytes.byteLength) {
+      throw new Error('Encrypted package is truncated.');
+    }
+    const tokenLen = view.getUint32(cursor + NONCE_LEN, false);
+    const recordEnd = cursor + NONCE_LEN + 4 + tokenLen;
+    if (recordEnd > bytes.byteLength) {
+      throw new Error('Encrypted package is truncated.');
+    }
+    const record = bytes.slice(cursor, recordEnd);
+    const recordBuf = record.buffer.slice(
+      record.byteOffset,
+      record.byteOffset + record.byteLength,
+    ) as ArrayBuffer;
+    parts.push(await decryptCamxoraChunk(recordBuf, contentKeyHex, index));
+    cursor = recordEnd;
+  }
+  return concatBytes(parts);
+}

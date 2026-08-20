@@ -26,6 +26,10 @@ from platform_api.services.suno_audio_resolver import (
 from platform_api.services.audio_package_service import AudioPackageService
 from platform_api.services.audio_packager import GCM_MIME, looks_like_camxora_audio
 from platform_api.services.suno_lrc import looks_like_lrc
+from platform_api.services.web_music_storage_keys import (
+    usable_web_music_b2_key,
+    web_music_object_key,
+)
 
 
 import httpx
@@ -42,6 +46,7 @@ class StreamingUploadService:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
         self._repo = StreamingRepository(pool)
+        self._web_music_backfill_inflight: set[tuple[str, str]] = set()
 
     async def _encrypt_ingested_mp3(
         self,
@@ -80,7 +85,18 @@ class StreamingUploadService:
 
     def schedule_web_music_b2_backfill(self, *, suno_task_id: UUID, variant: str | None = None) -> None:
         """Retry Backblaze upload when playback/download hits Suno fallback."""
-        asyncio.create_task(self._run_web_music_b2_backfill(suno_task_id, variant))
+        token = (str(suno_task_id), str(variant or "*"))
+        if token in self._web_music_backfill_inflight:
+            return
+        self._web_music_backfill_inflight.add(token)
+
+        async def _run() -> None:
+            try:
+                await self._run_web_music_b2_backfill(suno_task_id, variant)
+            finally:
+                self._web_music_backfill_inflight.discard(token)
+
+        asyncio.create_task(_run())
 
     async def _run_web_music_b2_backfill(self, suno_task_id: UUID, variant: str | None) -> None:
         try:
@@ -89,7 +105,8 @@ class StreamingUploadService:
                 return
             row = await self._pool.fetchrow(
                 """
-                SELECT b2_storage_key_ok, b2_storage_key_alt
+                SELECT b2_storage_key_ok, b2_storage_key_alt,
+                       package_status_ok, package_status_alt
                 FROM suno_tasks
                 WHERE id = $1
                 """,
@@ -104,8 +121,17 @@ class StreamingUploadService:
             else:
                 variants = ["ok", "alt"]
             for key in variants:
+                pkg_col = "package_status_ok" if key == "ok" else "package_status_alt"
+                if str(row.get(pkg_col) or "") == "ready":
+                    continue
                 b2_col = "b2_storage_key_ok" if key == "ok" else "b2_storage_key_alt"
-                if row.get(b2_col):
+                existing = usable_web_music_b2_key(row.get(b2_col), suno_task_id)
+                if existing:
+                    await self._package_existing_web_music_mp3(
+                        suno_task_id=suno_task_id,
+                        variant=key,
+                        storage_key=existing,
+                    )
                     continue
                 source = normalize_http_download_url(
                     refreshed.audio_url_ok if key == "ok" else refreshed.audio_url_alt
@@ -122,6 +148,30 @@ class StreamingUploadService:
                 )
         except Exception as exc:
             logger.warning("Web music B2 backfill failed task=%s: %s", suno_task_id, exc)
+
+    async def _package_existing_web_music_mp3(
+        self,
+        *,
+        suno_task_id: UUID,
+        variant: str,
+        storage_key: str,
+    ) -> None:
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            return
+        storage = StorageService.from_config(config)
+        data = await storage.download_bytes(key=storage_key)
+        if not data:
+            return
+        await self._encrypt_ingested_mp3(
+            data,
+            subject_type="suno_task",
+            subject_id=suno_task_id,
+            variant=variant,
+            storage_key=storage_key,
+            storage=storage,
+            null_suno_urls=True,
+        )
 
     async def _run_suno_streaming_upload(self, suno_task_id: UUID) -> None:
         try:
@@ -382,7 +432,7 @@ class StreamingUploadService:
         suno_task_id = UUID(str(context["suno_task_id"]))
         title = str(context.get("song_title") or "Untitled").strip() or "Untitled"
         song_slug = slugify(title, fallback="track")
-        storage_key = f"web-music/{user_id}/{song_slug}-{variant}.mp3"
+        storage_key = web_music_object_key(user_id, suno_task_id, variant, "mp3")
 
         try:
             config = await resolve_streaming_storage_config(self._pool)
@@ -570,7 +620,7 @@ class StreamingUploadService:
             if wav_url:
                 import httpx
                 
-                wav_storage_key = f"web-music/{user_id}/{song_slug}-{variant}.wav"
+                wav_storage_key = web_music_object_key(user_id, suno_task_id, variant, "wav")
                 
                 async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
                     response = await client.get(wav_url)
@@ -734,7 +784,7 @@ class StreamingUploadService:
             )
         if not looks_like_lrc(lrc):
             return
-        storage_key = f"web-music/{user_id}/{song_slug}-{variant_key}.lrc"
+        storage_key = web_music_object_key(user_id, suno_task_id, variant_key, "lrc")
         try:
             config = await resolve_streaming_storage_config(self._pool)
             if not config.configured:

@@ -84,3 +84,18 @@ def test_watermark_changes_bytes_and_is_stable_hash() -> None:
     payload = watermark_payload(user_id="user-1", export_id="export-1", secret="sekrit")
     assert payload_hash(payload) == digest
     assert embed_lsb(mp3, payload) == marked
+
+
+def test_full_segment_returns_package_not_single_chunk() -> None:
+    from platform_api.routers.web_music_licenses import build_segment_response
+
+    key = new_content_key()
+    plaintext = b"ID3" + b"\x00" * 200 + (b"mpeg-fake-audio-" * 20000)
+    blob = package_chunks(plaintext, key, key_id="unit-key")
+    full = build_segment_response(blob, chunk=0, full=True)
+    assert full.body.startswith(MAGIC_PACKAGE)
+    assert full.headers["X-Camxora-Chunk"] == "all"
+    assert decrypt_package(bytes(full.body), key) == plaintext
+    chunk = build_segment_response(blob, chunk=0, full=False)
+    assert not bytes(chunk.body).startswith(MAGIC_PACKAGE)
+    assert chunk.headers["X-Camxora-Chunk"] == "0"

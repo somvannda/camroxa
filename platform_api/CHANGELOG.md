@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Create play waits until the clip is packaged. Leftover plaintext `/stream` is no longer playable. See `docs/changelog/2026-08-20-create-packaged-only-play.md`.
+- Create leftovers no longer stay on Finishing because they shared `untitled-ok.mp3`. Ingest now uses `web-music/{user}/{task_id}/ok.mp3` and re-copies collided leftovers so playlist/Create can play. See `docs/changelog/2026-08-20-web-music-task-scoped-b2.md`.
+
 ### Security
 
 - Protected catalog/Create playback: AES-256-GCM packages, License API sessions, owner-only watermarked downloads, and no Suno/B2 origin URLs in the browser. Unconfirmed users cannot play or export. Production leftover encrypt seals Music (`web_music`) MP3/WAV/LRC only; Studio files stay plaintext. See `docs/changelog/2026-08-20-protected-playback.md`.
@@ -61,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- License segment `?full=1` returns the whole CXA1 package in one response so iOS does not wait on N full B2 downloads (one per chunk). See `docs/changelog/2026-08-20-ios-protected-playback.md`.
 - Expired/cancelled web-music plan checkout no longer 500s: reuse the unique `web_subscriptions` row instead of inserting again. See `docs/changelog/2026-08-20-web-sub-expired-repurchase.md`.
 - CutLuy pack/plan purchase returns `qr_string` so music web can draw KHQR (CutLuy pages cannot be iframed). See `docs/changelog/2026-08-20-cutluy-khqr-modal.md`.
 - CutLuy timeouts and missing `expires_at` no longer 500 on pack/plan purchase; stale pending top-ups without a payment id are cleared. See `docs/changelog/2026-08-20-cutluy-purchase-timeout.md`.

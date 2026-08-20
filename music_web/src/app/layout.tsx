@@ -28,9 +28,12 @@ export const metadata: Metadata = {
   },
   description: 'Create and stream AI-generated music with Camxora.',
   icons: {
-    icon: [{ url: '/camxora-logo.svg', type: 'image/svg+xml' }],
-    shortcut: ['/camxora-logo.svg'],
-    apple: ['/camxora-logo.svg'],
+    icon: [
+      { url: '/camxora-now-playing.png', sizes: '512x512', type: 'image/png' },
+      { url: '/camxora-logo.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: ['/camxora-now-playing.png'],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
   },
 };
 

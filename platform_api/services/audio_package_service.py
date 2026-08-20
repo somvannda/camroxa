@@ -18,6 +18,7 @@ from platform_api.services.audio_packager import (
     wrap_content_key,
 )
 from platform_api.services.content_license_service import resolve_audio_kek
+from platform_api.services.web_music_storage_keys import usable_web_music_b2_key
 
 logger = logging.getLogger(__name__)
 
@@ -379,7 +380,7 @@ class AudioPackageService:
                     if str(row[status_col] or "none") != "none":
                         continue
                     storage_key = str(row[key_col] or "").strip()
-                    if not storage_key:
+                    if not usable_web_music_b2_key(storage_key, row["id"]):
                         continue
                     try:
                         data = await storage.download_bytes(key=storage_key)

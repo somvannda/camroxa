@@ -1,5 +1,6 @@
 import { musicAuthFetch } from '@/lib/auth-fetch';
 import { decryptModuleHash } from '@/lib/camxora-decrypt';
+import { isAppleMobile } from '@/lib/ios-playback';
 
 const DEVICE_STORE = 'camxora-playback';
 const DEVICE_KEY = 'device_public_id';
@@ -15,27 +16,56 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function getOrCreateDevicePublicId(): Promise<string> {
-  const db = await openDb();
-  const existing = await new Promise<string | undefined>((resolve, reject) => {
-    const tx = db.transaction('kv', 'readonly');
-    const req = tx.objectStore('kv').get(DEVICE_KEY);
-    req.onsuccess = () => resolve(req.result as string | undefined);
-    req.onerror = () => reject(req.error);
-  });
-  if (existing && existing.length >= 8) {
-    db.close();
-    return existing;
+const DEVICE_LOCAL_KEY = 'camxora-playback-device-public-id';
+
+function readFallbackDeviceId(): string | null {
+  try {
+    const value = window.localStorage.getItem(DEVICE_LOCAL_KEY)?.trim() ?? '';
+    return value.length >= 8 ? value : null;
+  } catch {
+    return null;
   }
-  const created = crypto.randomUUID();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction('kv', 'readwrite');
-    tx.objectStore('kv').put(created, DEVICE_KEY);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-  return created;
+}
+
+function writeFallbackDeviceId(value: string): void {
+  try {
+    window.localStorage.setItem(DEVICE_LOCAL_KEY, value);
+  } catch {
+    /* private-mode Safari can throw */
+  }
+}
+
+export async function getOrCreateDevicePublicId(): Promise<string> {
+  const fallback = readFallbackDeviceId();
+  try {
+    const db = await openDb();
+    const existing = await new Promise<string | undefined>((resolve, reject) => {
+      const tx = db.transaction('kv', 'readonly');
+      const req = tx.objectStore('kv').get(DEVICE_KEY);
+      req.onsuccess = () => resolve(req.result as string | undefined);
+      req.onerror = () => reject(req.error);
+    });
+    if (existing && existing.length >= 8) {
+      db.close();
+      writeFallbackDeviceId(existing);
+      return existing;
+    }
+    const created = fallback ?? crypto.randomUUID();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').put(created, DEVICE_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    writeFallbackDeviceId(created);
+    return created;
+  } catch {
+    if (fallback) return fallback;
+    const created = crypto.randomUUID();
+    writeFallbackDeviceId(created);
+    return created;
+  }
 }
 
 export type LicenseSession = {
@@ -92,7 +122,15 @@ export async function createLicenseSession(input: {
   variant?: 'ok' | 'alt';
 }): Promise<LicenseSession> {
   const devicePublicId = await registerPlaybackDevice();
-  const wasmHash = await decryptModuleHash();
+  let wasmHash: string | undefined;
+  // iOS Web Crypto can throw or hash differently; an omitted hash uses the server default.
+  if (!isAppleMobile()) {
+    try {
+      wasmHash = await decryptModuleHash();
+    } catch {
+      wasmHash = undefined;
+    }
+  }
   const response = await musicAuthFetch('/api/v1/web-music/licenses/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -137,11 +175,27 @@ export async function sendLicenseHeartbeat(input: {
   });
 }
 
-export async function fetchEncryptedChunk(segmentUrl: string, chunk: number): Promise<ArrayBuffer> {
+export async function fetchEncryptedChunk(
+  segmentUrl: string,
+  chunk: number,
+): Promise<{ buffer: ArrayBuffer; chunkCount: number | null }> {
   const url = `${segmentUrl}${segmentUrl.includes('?') ? '&' : '?'}chunk=${chunk}`;
   const response = await musicAuthFetch(url);
   if (!response.ok) {
     throw new Error(`Segment fetch failed: ${response.status}`);
+  }
+  const countRaw = Number.parseInt(response.headers.get('X-Camxora-Chunk-Count') || '', 10);
+  return {
+    buffer: await response.arrayBuffer(),
+    chunkCount: Number.isFinite(countRaw) && countRaw > 0 ? countRaw : null,
+  };
+}
+
+export async function fetchEncryptedPackage(segmentUrl: string): Promise<ArrayBuffer> {
+  const url = `${segmentUrl}${segmentUrl.includes('?') ? '&' : '?'}full=1`;
+  const response = await musicAuthFetch(url);
+  if (!response.ok) {
+    throw new Error(`Package fetch failed: ${response.status}`);
   }
   return response.arrayBuffer();
 }
