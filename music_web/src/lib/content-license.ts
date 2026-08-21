@@ -1,6 +1,5 @@
 import { musicAuthFetch } from '@/lib/auth-fetch';
 import { decryptModuleHash } from '@/lib/camxora-decrypt';
-import { isAppleMobile } from '@/lib/ios-playback';
 
 const DEVICE_STORE = 'camxora-playback';
 const DEVICE_KEY = 'device_public_id';
@@ -16,27 +15,27 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-const DEVICE_LOCAL_KEY = 'camxora-playback-device-public-id';
-
-function readFallbackDeviceId(): string | null {
+function readStoredDeviceId(): string | null {
+  if (typeof window === 'undefined') return null;
   try {
-    const value = window.localStorage.getItem(DEVICE_LOCAL_KEY)?.trim() ?? '';
-    return value.length >= 8 ? value : null;
+    const existing = window.localStorage.getItem(DEVICE_KEY);
+    return existing && existing.length >= 8 ? existing : null;
   } catch {
     return null;
   }
 }
 
-function writeFallbackDeviceId(value: string): void {
+function writeStoredDeviceId(id: string) {
+  if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(DEVICE_LOCAL_KEY, value);
+    window.localStorage.setItem(DEVICE_KEY, id);
   } catch {
-    /* private-mode Safari can throw */
+    /* private mode may block storage */
   }
 }
 
 export async function getOrCreateDevicePublicId(): Promise<string> {
-  const fallback = readFallbackDeviceId();
+  const fromStorage = readStoredDeviceId();
   try {
     const db = await openDb();
     const existing = await new Promise<string | undefined>((resolve, reject) => {
@@ -47,10 +46,10 @@ export async function getOrCreateDevicePublicId(): Promise<string> {
     });
     if (existing && existing.length >= 8) {
       db.close();
-      writeFallbackDeviceId(existing);
+      writeStoredDeviceId(existing);
       return existing;
     }
-    const created = fallback ?? crypto.randomUUID();
+    const created = fromStorage || crypto.randomUUID();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction('kv', 'readwrite');
       tx.objectStore('kv').put(created, DEVICE_KEY);
@@ -58,12 +57,12 @@ export async function getOrCreateDevicePublicId(): Promise<string> {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-    writeFallbackDeviceId(created);
+    writeStoredDeviceId(created);
     return created;
   } catch {
-    if (fallback) return fallback;
+    if (fromStorage) return fromStorage;
     const created = crypto.randomUUID();
-    writeFallbackDeviceId(created);
+    writeStoredDeviceId(created);
     return created;
   }
 }
@@ -122,15 +121,7 @@ export async function createLicenseSession(input: {
   variant?: 'ok' | 'alt';
 }): Promise<LicenseSession> {
   const devicePublicId = await registerPlaybackDevice();
-  let wasmHash: string | undefined;
-  // iOS Web Crypto can throw or hash differently; an omitted hash uses the server default.
-  if (!isAppleMobile()) {
-    try {
-      wasmHash = await decryptModuleHash();
-    } catch {
-      wasmHash = undefined;
-    }
-  }
+  const wasmHash = await decryptModuleHash();
   const response = await musicAuthFetch('/api/v1/web-music/licenses/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -175,27 +166,56 @@ export async function sendLicenseHeartbeat(input: {
   });
 }
 
-export async function fetchEncryptedChunk(
+export function reportPlaybackTrace(input: {
+  token?: string | null;
+  event: 'play_start' | 'play_session' | 'play_path' | 'play_chunks' | 'play_decode' | 'play_ok' | 'play_error';
+  detail?: string;
+}): void {
+  void musicAuthFetch('/api/v1/web-music/licenses/client-trace', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token: input.token || undefined,
+      event: input.event,
+      detail: (input.detail || '').slice(0, 500) || undefined,
+    }),
+  }).catch(() => undefined);
+}
+
+export class SegmentOutOfRangeError extends Error {
+  constructor() {
+    super('Segment out of range');
+    this.name = 'SegmentOutOfRangeError';
+  }
+}
+
+export type EncryptedChunk = {
+  data: ArrayBuffer;
+  chunkCount: number | null;
+};
+
+export async function fetchEncryptedChunkRecord(
   segmentUrl: string,
   chunk: number,
-): Promise<{ buffer: ArrayBuffer; chunkCount: number | null }> {
+  signal?: AbortSignal,
+): Promise<EncryptedChunk> {
   const url = `${segmentUrl}${segmentUrl.includes('?') ? '&' : '?'}chunk=${chunk}`;
-  const response = await musicAuthFetch(url);
+  const response = await musicAuthFetch(url, signal ? { signal } : {});
+  if (response.status === 404) {
+    throw new SegmentOutOfRangeError();
+  }
   if (!response.ok) {
     throw new Error(`Segment fetch failed: ${response.status}`);
   }
-  const countRaw = Number.parseInt(response.headers.get('X-Camxora-Chunk-Count') || '', 10);
+  const countRaw = response.headers.get('X-Camxora-Chunk-Count');
+  const parsed = countRaw ? Number(countRaw) : NaN;
   return {
-    buffer: await response.arrayBuffer(),
-    chunkCount: Number.isFinite(countRaw) && countRaw > 0 ? countRaw : null,
+    data: await response.arrayBuffer(),
+    chunkCount: Number.isFinite(parsed) && parsed > 0 ? parsed : null,
   };
 }
 
-export async function fetchEncryptedPackage(segmentUrl: string): Promise<ArrayBuffer> {
-  const url = `${segmentUrl}${segmentUrl.includes('?') ? '&' : '?'}full=1`;
-  const response = await musicAuthFetch(url);
-  if (!response.ok) {
-    throw new Error(`Package fetch failed: ${response.status}`);
-  }
-  return response.arrayBuffer();
+export async function fetchEncryptedChunk(segmentUrl: string, chunk: number): Promise<ArrayBuffer> {
+  const record = await fetchEncryptedChunkRecord(segmentUrl, chunk);
+  return record.data;
 }

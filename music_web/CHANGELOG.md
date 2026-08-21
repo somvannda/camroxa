@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- iOS Safari/Chrome packaged play decrypts to in-memory PCM (Web Audio). No `audio/mpeg` blob URL. Desktop Chrome/Edge keep MSE. See `docs/changelog/2026-08-21-ios-safari-playback.md`.
+- iOS play no longer skip-loops Version 1/2 from a silent WAV on the shared player element. See `docs/changelog/2026-08-21-player-unlock-queue-skip.md`.
+- iOS silent progress / Safari “operation failed” during leftover decrypt: abort stale fetches and keep AudioContext running until the first PCM buffer. See `docs/changelog/2026-08-21-ios-silent-operation-error.md`.
 - iOS packaged play uses Web Audio after unlocking AudioContext in the tap (HTMLAudio blob/MSE is secondary). Silent looping `<audio>` was removed because it can keep WebKit outputting silence. Query `?iosPlayer=1` forces this path for desktop testing. See `docs/changelog/2026-08-20-ios-protected-playback.md`.
 - Create leftover songs no longer stay on Finishing / refuse playlist play because they shared `untitled-ok.mp3`. Those files were not encrypted; the API now re-ingests them onto unique keys. See `docs/changelog/2026-08-20-web-music-task-scoped-b2.md`.
 - Create and playlist play wait until the clip is packaged. There is no leftover plaintext play. See `docs/changelog/2026-08-20-create-packaged-only-play.md`.

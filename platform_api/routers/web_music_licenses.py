@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from platform_api.exceptions import ForbiddenError, NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
-from platform_api.services.audio_packager import GCM_MIME, iter_encrypted_chunks, parse_package_header
+from platform_api.services.audio_packager import GCM_MIME, parse_package_header
 from platform_api.services.content_license_service import (
     ContentLicenseService,
     decrypt_module_hash,
@@ -54,6 +54,12 @@ class HeartbeatRequest(BaseModel):
     playback_rate: float = 1.0
     seq: int = 0
     session_bind: str | None = None
+
+
+class ClientTraceRequest(BaseModel):
+    token: str | None = None
+    event: str = Field(..., min_length=1, max_length=64)
+    detail: str | None = Field(None, max_length=500)
 
 
 def _client_ip(request: Request) -> str:
@@ -133,28 +139,26 @@ async def heartbeat(
     )
 
 
+@router.post("/client-trace")
+async def client_trace(
+    body: ClientTraceRequest,
+    request: Request,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> dict[str, Any]:
+    return await service.record_client_trace(
+        UUID(ctx.user_id),
+        token=body.token,
+        event=body.event,
+        detail=body.detail,
+        user_agent=request.headers.get("user-agent"),
+        ip=_client_ip(request),
+    )
+
+
 @router.get("/module-hash")
 async def module_hash() -> dict[str, str]:
     return {"hash": decrypt_module_hash()}
-
-
-def build_segment_response(blob: bytes, *, chunk: int, full: bool) -> Response:
-    header, _ = parse_package_header(blob)
-    headers = {
-        "Cache-Control": "private, no-store",
-        "X-Camxora-Chunk-Count": str(header.chunk_count),
-        "X-Camxora-Chunk-Size": str(header.chunk_size),
-        "X-Content-Type-Options": "nosniff",
-        "Content-Disposition": "inline",
-    }
-    if full:
-        headers["X-Camxora-Chunk"] = "all"
-        return Response(content=blob, media_type=GCM_MIME, headers=headers)
-    if chunk >= header.chunk_count:
-        raise NotFoundError("Chunk out of range.")
-    records = iter_encrypted_chunks(blob)
-    headers["X-Camxora-Chunk"] = str(chunk)
-    return Response(content=records[chunk], media_type=GCM_MIME, headers=headers)
 
 
 @router.get("/segments/{token}")
@@ -164,7 +168,6 @@ async def get_segment(
     ctx: CurrentUserDep,
     service: LicenseServiceDep,
     chunk: int = Query(default=0, ge=0, le=4096),
-    full: bool = Query(default=False),
 ) -> Response:
     await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
     session = await service.resolve_session(token)
@@ -186,8 +189,26 @@ async def get_segment(
     blob = await StorageService.from_config(config).download_bytes(key=storage_key)
     if not blob:
         raise NotFoundError("Packaged audio is missing.")
-    del request
-    return build_segment_response(blob, chunk=chunk, full=full)
+    header, _ = parse_package_header(blob)
+    if chunk >= header.chunk_count:
+        raise NotFoundError("Chunk out of range.")
+    key_hex = None
+    # Prefer server unwrap so the client can decrypt; also return raw encrypted chunk.
+    # Client decrypts with session content_key. We still send ciphertext only.
+    from platform_api.services.audio_packager import iter_encrypted_chunks
+
+    records = iter_encrypted_chunks(blob)
+    payload = records[chunk]
+    headers = {
+        "Cache-Control": "private, no-store",
+        "X-Camxora-Chunk": str(chunk),
+        "X-Camxora-Chunk-Count": str(header.chunk_count),
+        "X-Camxora-Chunk-Size": str(header.chunk_size),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
+    }
+    del request, key_hex
+    return Response(content=payload, media_type=GCM_MIME, headers=headers)
 
 
 @router.post("/admin/backfill")
