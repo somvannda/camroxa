@@ -322,16 +322,19 @@ type GraphHandlers = {
   onTime?: (seconds: number) => void;
 };
 
-/** In-memory playback for Safari/iOS. No blob: or data: MP3 URL is created. */
+/** In-memory playback for Safari/iOS/Firefox. No blob: or data: MP3 URL is created. */
 export class ProtectedAudioGraph {
   private ctx: AudioContext;
   private gain: GainNode;
-  private source: AudioBufferSourceNode | null = null;
-  private buffer: AudioBuffer | null = null;
+  private buffers: AudioBuffer[] = [];
+  private timeline: number[] = [];
+  private live: AudioBufferSourceNode[] = [];
+  private totalDuration = 0;
   private startCtxTime = 0;
   private pausedAt = 0;
   private generation = 0;
   private raf = 0;
+  complete = false;
   playing = false;
   onEnded?: () => void;
   onTime?: (seconds: number) => void;
@@ -345,18 +348,17 @@ export class ProtectedAudioGraph {
   }
 
   get hasBuffer(): boolean {
-    return this.buffer != null;
+    return this.buffers.length > 0;
   }
 
   get duration(): number {
-    return this.buffer?.duration ?? 0;
+    return this.totalDuration;
   }
 
   get currentTime(): number {
-    if (!this.buffer) return 0;
-    if (!this.playing) return Math.min(this.duration, this.pausedAt);
-    const elapsed = this.ctx.currentTime - this.startCtxTime;
-    return Math.min(this.duration, Math.max(0, this.pausedAt + elapsed));
+    if (!this.hasBuffer) return 0;
+    if (!this.playing) return Math.min(this.totalDuration, this.pausedAt);
+    return Math.min(this.totalDuration, Math.max(0, this.ctx.currentTime - this.startCtxTime));
   }
 
   setGain(volume: number, muted: boolean) {
@@ -365,80 +367,144 @@ export class ProtectedAudioGraph {
   }
 
   async loadDecoded(buffer: AudioBuffer, volume: number, muted: boolean) {
-    this.stopSource(false);
-    this.buffer = buffer;
-    this.pausedAt = 0;
+    this.stopSources(false);
+    this.resetTimeline();
+    this.playing = false;
+    this.complete = true;
+    this.appendDecoded(buffer);
     this.setGain(volume, muted);
     await ensureAudioContextRunning();
     if (this.ctx.state !== 'running') {
       throw new Error('NotAllowedError: AudioContext is not running');
     }
-    this.startSource(0);
+    this.pausedAt = 0;
+    this.startFrom(0);
+  }
+
+  async startFirst(buffer: AudioBuffer, volume: number, muted: boolean) {
+    this.stopSources(false);
+    this.resetTimeline();
+    this.playing = false;
+    this.complete = false;
+    this.appendDecoded(buffer);
+    this.setGain(volume, muted);
+    await ensureAudioContextRunning();
+    if (this.ctx.state !== 'running') {
+      throw new Error('NotAllowedError: AudioContext is not running');
+    }
+    this.pausedAt = 0;
+    this.startFrom(0);
+  }
+
+  appendDecoded(buffer: AudioBuffer) {
+    if (buffer.duration <= 0) return;
+    const start = this.totalDuration;
+    this.timeline.push(start);
+    this.buffers.push(buffer);
+    this.totalDuration += buffer.duration;
+    if (this.playing) {
+      if (this.currentTime >= start - 0.05) {
+        this.startCtxTime = this.ctx.currentTime - start;
+      }
+      this.scheduleSegment(this.buffers.length - 1, start);
+    }
+  }
+
+  markComplete() {
+    this.complete = true;
   }
 
   pause() {
     if (!this.playing) return;
     this.pausedAt = this.currentTime;
-    this.stopSource(false);
+    this.stopSources(false);
     this.playing = false;
     this.stopPump();
   }
 
   async resume() {
-    if (!this.buffer || this.playing) return;
+    if (!this.hasBuffer || this.playing) return;
     await ensureAudioContextRunning();
     if (this.ctx.state !== 'running') {
       throw new Error('NotAllowedError: AudioContext is not running');
     }
-    this.startSource(this.pausedAt);
+    this.startFrom(this.pausedAt);
   }
 
   seek(time: number) {
-    if (!this.buffer) return;
-    const next = Math.min(this.duration, Math.max(0, time));
+    if (!this.hasBuffer) return;
+    const max = this.totalDuration > 0 ? this.totalDuration : time;
+    const next = Math.min(Math.max(0, time), max);
     const wasPlaying = this.playing;
-    this.stopSource(false);
+    this.stopSources(false);
     this.pausedAt = next;
     this.onTime?.(next);
-    if (wasPlaying) this.startSource(next);
+    if (wasPlaying) this.startFrom(next);
   }
 
   stop() {
-    this.stopSource(false);
-    this.buffer = null;
+    this.stopSources(false);
+    this.resetTimeline();
     this.pausedAt = 0;
     this.playing = false;
+    this.complete = false;
     this.stopPump();
   }
 
-  private startSource(offset: number) {
-    if (!this.buffer) return;
-    this.stopSource(false);
-    const gen = this.generation;
-    const source = this.ctx.createBufferSource();
-    source.buffer = this.buffer;
-    source.connect(this.gain);
-    source.onended = () => {
-      if (gen !== this.generation) return;
-      this.playing = false;
-      this.pausedAt = this.duration;
-      this.stopPump();
-      this.onTime?.(this.duration);
-      this.onEnded?.();
-    };
-    this.source = source;
+  private resetTimeline() {
+    this.buffers = [];
+    this.timeline = [];
+    this.totalDuration = 0;
+  }
+
+  private startFrom(offset: number) {
+    this.stopSources(false);
     this.pausedAt = offset;
-    this.startCtxTime = this.ctx.currentTime;
+    this.startCtxTime = this.ctx.currentTime - offset;
     this.playing = true;
-    source.start(0, offset);
+    for (let i = 0; i < this.buffers.length; i += 1) {
+      this.scheduleSegment(i, offset);
+    }
     this.startPump();
   }
 
-  private stopSource(emitEnded: boolean) {
+  private scheduleSegment(index: number, playhead: number) {
+    const buffer = this.buffers[index];
+    const segStart = this.timeline[index] ?? 0;
+    if (!buffer) return;
+    const segEnd = segStart + buffer.duration;
+    const now = this.ctx.currentTime;
+    if (segEnd <= playhead) return;
+    const skip = Math.max(0, playhead - segStart);
+    const when = this.startCtxTime + segStart + skip;
+    const gen = this.generation;
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.gain);
+    source.onended = () => {
+      if (gen !== this.generation) return;
+      if (!this.complete) return;
+      if (index !== this.buffers.length - 1) return;
+      if (this.currentTime + 0.08 < this.totalDuration) return;
+      this.playing = false;
+      this.pausedAt = this.totalDuration;
+      this.stopPump();
+      this.onTime?.(this.totalDuration);
+      this.onEnded?.();
+    };
+    this.live.push(source);
+    if (when <= now) {
+      source.start(0, skip);
+    } else {
+      source.start(when, skip);
+    }
+  }
+
+  private stopSources(emitEnded: boolean) {
     this.generation += 1;
-    const source = this.source;
-    this.source = null;
-    if (source) {
+    const sources = this.live;
+    this.live = [];
+    for (const source of sources) {
       source.onended = null;
       try {
         source.stop();

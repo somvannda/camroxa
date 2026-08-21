@@ -86,16 +86,13 @@ def test_watermark_changes_bytes_and_is_stable_hash() -> None:
     assert embed_lsb(mp3, payload) == marked
 
 
-def test_full_segment_returns_package_not_single_chunk() -> None:
-    from platform_api.routers.web_music_licenses import build_segment_response
+def test_segment_chunk_is_ciphertext_record_not_package_header() -> None:
+    from platform_api.services.audio_packager import encrypted_chunk_record, iter_encrypted_chunks
 
     key = new_content_key()
     plaintext = b"ID3" + b"\x00" * 200 + (b"mpeg-fake-audio-" * 20000)
     blob = package_chunks(plaintext, key, key_id="unit-key")
-    full = build_segment_response(blob, chunk=0, full=True)
-    assert full.body.startswith(MAGIC_PACKAGE)
-    assert full.headers["X-Camxora-Chunk"] == "all"
-    assert decrypt_package(bytes(full.body), key) == plaintext
-    chunk = build_segment_response(blob, chunk=0, full=False)
-    assert not bytes(chunk.body).startswith(MAGIC_PACKAGE)
-    assert chunk.headers["X-Camxora-Chunk"] == "0"
+    rec = encrypted_chunk_record(blob, 0)
+    assert not rec.startswith(MAGIC_PACKAGE)
+    assert rec == iter_encrypted_chunks(blob)[0]
+    assert decrypt_package(blob, key) == plaintext

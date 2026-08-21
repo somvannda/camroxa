@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Packaged Play starts after the first decrypted chunk (Web Audio progressive PCM on Safari/iOS/Firefox; MSE stays on Chrome). The player clock uses the clip’s `duration_seconds` so the bar does not grow while later chunks load. See `docs/changelog/2026-08-21-protected-playback-fast-start.md`.
+
 ### Fixed
 
 - iOS Safari/Chrome packaged play decrypts to in-memory PCM (Web Audio). No `audio/mpeg` blob URL. Desktop Chrome/Edge keep MSE. See `docs/changelog/2026-08-21-ios-safari-playback.md`.

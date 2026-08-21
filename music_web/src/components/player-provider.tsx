@@ -22,11 +22,10 @@ import {
   sendLicenseHeartbeat,
   type LicenseSession,
 } from '@/lib/content-license';
+import { Mp3PcmDecoder } from '@/lib/mp3-software-decode';
 import {
   clearHtmlAudioSrc,
-  concatBytes,
   createMpegMediaSource,
-  decodeMpegToAudioBuffer,
   ensureAudioContextRunning,
   errorDetail,
   friendlyPlaybackError,
@@ -79,6 +78,11 @@ function shuffleTracks(tracks: StreamTrack[]): StreamTrack[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+function clipDurationOf(track: { duration_seconds?: number | null } | null | undefined): number {
+  const n = Number(track?.duration_seconds);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function parsePlaybackSubject(track: StreamTrack): {
@@ -140,67 +144,71 @@ function appendSourceBuffer(sourceBuffer: SourceBuffer, data: Uint8Array): Promi
   });
 }
 
-async function collectDecryptedChunks(
+const FETCH_CONCURRENCY = 3;
+
+async function decryptOneChunk(
   session: LicenseSession,
+  chunk: number,
+  signal?: AbortSignal,
+): Promise<{ plain: Uint8Array; chunkCount: number | null }> {
+  if (!session.content_key || !session.segment_url) {
+    throw new Error('License session is missing audio.');
+  }
+  const record = await fetchEncryptedChunkRecord(session.segment_url, chunk, signal);
+  try {
+    return {
+      plain: await decryptCamxoraChunk(record.data, session.content_key, chunk),
+      chunkCount: record.chunkCount,
+    };
+  } catch (err) {
+    if (isAbortLike(err) || signal?.aborted) throw err;
+    try {
+      return {
+        plain: await decryptCamxoraChunk(record.data, session.content_key, chunk),
+        chunkCount: record.chunkCount,
+      };
+    } catch (retryErr) {
+      throw new Error(`decrypt chunk ${chunk}: ${errorDetail(retryErr)}`);
+    }
+  }
+}
+
+async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next;
+      next += 1;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
+async function loadChunkBatch(
+  session: LicenseSession,
+  start: number,
+  count: number,
   token: number,
   loadToken: { current: number },
   signal?: AbortSignal,
-): Promise<Uint8Array[]> {
-  const parts: Uint8Array[] = [];
-  if (!session.content_key || !session.segment_url) return parts;
-  reportPlaybackTrace({
-    token: session.token,
-    event: 'play_chunks',
-    detail: 'fetch_start',
-  });
-  let expected: number | null = null;
-  for (let chunk = 0; chunk < 4096; chunk += 1) {
-    if (signal?.aborted || token !== loadToken.current) {
-      reportPlaybackTrace({
-        token: session.token,
-        event: 'play_chunks',
-        detail: `superseded at=${chunk}`,
-      });
-      return parts;
-    }
-    if (expected != null && chunk >= expected) break;
+): Promise<Array<{ plain: Uint8Array; chunkCount: number | null } | null>> {
+  const indexes = Array.from({ length: count }, (_, i) => start + i);
+  return mapPool(indexes, FETCH_CONCURRENCY, async (chunk) => {
+    if (signal?.aborted || token !== loadToken.current) return null;
     await ensureAudioContextRunning();
     holdHtmlMediaGesture();
-    let record: { data: ArrayBuffer; chunkCount: number | null };
     try {
-      record = await fetchEncryptedChunkRecord(session.segment_url, chunk, signal);
+      return await decryptOneChunk(session, chunk, signal);
     } catch (err) {
-      if (isAbortLike(err) || signal?.aborted) {
-        reportPlaybackTrace({
-          token: session.token,
-          event: 'play_chunks',
-          detail: `superseded at=${chunk}`,
-        });
-        return parts;
-      }
-      if (err instanceof SegmentOutOfRangeError) break;
+      if (isAbortLike(err) || signal?.aborted || token !== loadToken.current) return null;
+      if (err instanceof SegmentOutOfRangeError) return null;
       throw err;
     }
-    if (record.chunkCount) expected = record.chunkCount;
-    try {
-      parts.push(await decryptCamxoraChunk(record.data, session.content_key, chunk));
-    } catch (err) {
-      if (isAbortLike(err) || signal?.aborted) {
-        reportPlaybackTrace({
-          token: session.token,
-          event: 'play_chunks',
-          detail: `superseded at=${chunk}`,
-        });
-        return parts;
-      }
-      try {
-        parts.push(await decryptCamxoraChunk(record.data, session.content_key, chunk));
-      } catch (retryErr) {
-        throw new Error(`decrypt chunk ${chunk}: ${errorDetail(retryErr)}`);
-      }
-    }
-  }
-  return parts;
+  });
 }
 
 async function playPackagedWithMediaSource(
@@ -210,7 +218,8 @@ async function playPackagedWithMediaSource(
   loadToken: { current: number },
   objectUrlRef: { current: string | null },
   setPlaying: (value: boolean) => void,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  onStarted: () => void,
 ): Promise<void> {
   if (!session.content_key || !session.segment_url) {
     throw new Error('License session is missing audio.');
@@ -229,27 +238,55 @@ async function playPackagedWithMediaSource(
   });
   if (token !== loadToken.current) return;
   const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-  for (let chunk = 0; chunk < 4096; chunk += 1) {
+  reportPlaybackTrace({
+    token: session.token,
+    event: 'play_chunks',
+    detail: 'fetch_start path=mse',
+  });
+  const firstAt = performance.now();
+  const first = await decryptOneChunk(session, 0, signal);
+  if (signal?.aborted || token !== loadToken.current) {
+    wipeBytes(first.plain);
+    return;
+  }
+  await appendSourceBuffer(sourceBuffer, first.plain);
+  wipeBytes(first.plain);
+  try {
+    await audio.play();
+    if (token === loadToken.current) {
+      setPlaying(true);
+      onStarted();
+      reportPlaybackTrace({
+        token: session.token,
+        event: 'play_ok',
+        detail: `path=mse first_audio_ms=${Math.round(performance.now() - firstAt)}`,
+      });
+    }
+  } catch (err) {
+    if (token === loadToken.current) setPlaying(false);
+    throw err;
+  }
+  let expected = first.chunkCount;
+  let chunk = 1;
+  while (expected == null || chunk < expected) {
     if (signal?.aborted || token !== loadToken.current) return;
-    let record: { data: ArrayBuffer };
-    try {
-      record = await fetchEncryptedChunkRecord(session.segment_url, chunk, signal);
-    } catch (err) {
-      if (isAbortLike(err) || signal?.aborted) return;
-      if (err instanceof SegmentOutOfRangeError) break;
-      throw err;
-    }
-    const plain = await decryptCamxoraChunk(record.data, session.content_key, chunk);
-    await appendSourceBuffer(sourceBuffer, plain);
-    if (chunk === 0) {
-      try {
-        await audio.play();
-        if (token === loadToken.current) setPlaying(true);
-      } catch (err) {
-        if (token === loadToken.current) setPlaying(false);
-        throw err;
+    const batch = expected == null ? FETCH_CONCURRENCY : Math.min(FETCH_CONCURRENCY, expected - chunk);
+    if (batch <= 0) break;
+    const parts = await loadChunkBatch(session, chunk, batch, token, loadToken, signal);
+    let stopped = false;
+    for (const part of parts) {
+      if (signal?.aborted || token !== loadToken.current) return;
+      if (!part) {
+        stopped = true;
+        break;
       }
+      if (part.chunkCount) expected = part.chunkCount;
+      await appendSourceBuffer(sourceBuffer, part.plain);
+      wipeBytes(part.plain);
+      chunk += 1;
+      if (expected != null && chunk >= expected) break;
     }
+    if (stopped) break;
   }
   if (mediaSource.readyState === 'open') {
     mediaSource.endOfStream();
@@ -263,38 +300,78 @@ async function playPackagedWithWebAudio(
   loadToken: { current: number },
   volume: number,
   muted: boolean,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  hooks: {
+    onFirstAudio: (firstAudioMs: number, bufferedSeconds: number) => void;
+  },
 ): Promise<void> {
-  const parts = await collectDecryptedChunks(session, token, loadToken, signal);
-  if (signal?.aborted || token !== loadToken.current) {
-    wipeBytes(parts);
-    return;
-  }
-  if (!parts.length) throw new Error('No audio chunks received.');
-  reportPlaybackTrace({
-    token: session.token,
-    event: 'play_chunks',
-    detail: `count=${parts.length} bytes=${parts.reduce((sum, part) => sum + part.byteLength, 0)}`,
-  });
-  const packed = concatBytes(parts);
-  wipeBytes(parts);
-  const copy = new ArrayBuffer(packed.byteLength);
-  new Uint8Array(copy).set(packed);
-  wipeBytes(packed);
-  const ctx = await ensureAudioContextRunning();
-  const decoded = await decodeMpegToAudioBuffer(ctx, copy);
-  reportPlaybackTrace({
-    token: session.token,
-    event: 'play_decode',
-    detail: `seconds=${decoded.duration.toFixed(1)} rate=${decoded.sampleRate} channels=${decoded.numberOfChannels} ctx=${ctx.state}`,
-  });
+  const decoder = new Mp3PcmDecoder();
   try {
-    wipeBytes(new Uint8Array(copy));
-  } catch {
-    /* decodeAudioData may detach the buffer */
+    await decoder.ensure();
+    reportPlaybackTrace({
+      token: session.token,
+      event: 'play_chunks',
+      detail: 'fetch_start path=webaudio',
+    });
+    const firstAt = performance.now();
+    const first = await decryptOneChunk(session, 0, signal);
+    if (signal?.aborted || token !== loadToken.current) {
+      wipeBytes(first.plain);
+      return;
+    }
+    const ctx = await ensureAudioContextRunning();
+    let pcm = decoder.decodeChunk(ctx, first.plain);
+    wipeBytes(first.plain);
+    let expected = first.chunkCount;
+    let chunk = 1;
+    if (!pcm) {
+      const extra = await loadChunkBatch(session, 1, 1, token, loadToken, signal);
+      const part = extra[0];
+      if (!part) throw new Error('Unable to decode the first audio chunk.');
+      if (part.chunkCount) expected = part.chunkCount;
+      pcm = decoder.decodeChunk(ctx, part.plain);
+      wipeBytes(part.plain);
+      chunk = 2;
+    }
+    if (!pcm) throw new Error('Unable to decode the first audio chunk.');
+    await graph.startFirst(pcm, volume, muted);
+    reportPlaybackTrace({
+      token: session.token,
+      event: 'play_decode',
+      detail: `chunk=0 seconds=${pcm.duration.toFixed(2)} rate=${pcm.sampleRate} ctx=${ctx.state}`,
+    });
+    hooks.onFirstAudio(Math.round(performance.now() - firstAt), graph.duration);
+    while (expected == null || chunk < expected) {
+      if (signal?.aborted || token !== loadToken.current) return;
+      const batch = expected == null ? FETCH_CONCURRENCY : Math.min(FETCH_CONCURRENCY, expected - chunk);
+      if (batch <= 0) break;
+      const parts = await loadChunkBatch(session, chunk, batch, token, loadToken, signal);
+      let stopped = false;
+      for (const part of parts) {
+        if (signal?.aborted || token !== loadToken.current) return;
+        if (!part) {
+          stopped = true;
+          break;
+        }
+        if (part.chunkCount) expected = part.chunkCount;
+        const more = decoder.decodeChunk(ctx, part.plain);
+        wipeBytes(part.plain);
+        if (more) graph.appendDecoded(more);
+        chunk += 1;
+        if (expected != null && chunk >= expected) break;
+      }
+      if (stopped) break;
+    }
+    if (signal?.aborted || token !== loadToken.current) return;
+    graph.markComplete();
+    reportPlaybackTrace({
+      token: session.token,
+      event: 'play_chunks',
+      detail: `count=${chunk} seconds=${graph.duration.toFixed(1)}`,
+    });
+  } finally {
+    decoder.free();
   }
-  if (signal?.aborted || token !== loadToken.current) return;
-  await graph.loadDecoded(decoded, volume, muted);
 }
 
 function readStoredVolume(): number {
@@ -316,6 +393,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const indexRef = useRef(-1);
   const loadTokenRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const packagedKeyRef = useRef<string | null>(null);
+  const clipDurationRef = useRef(0);
   const playFromIndexRef = useRef<(index: number) => Promise<void>>(async () => undefined);
 
   const [current, setCurrent] = useState<StreamTrack | null>(null);
@@ -356,8 +435,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(0);
     };
     graph.onTime = (seconds) => {
-      setCurrentTime(seconds);
-      if (graph.duration > 0) setDuration(graph.duration);
+      const cap = clipDurationRef.current;
+      setCurrentTime(cap > 0 ? Math.min(seconds, cap) : seconds);
     };
     graphRef.current = graph;
     return graph;
@@ -374,7 +453,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const onDuration = () => {
       if (graphRef.current?.hasBuffer) return;
       if (!shouldHandleHtmlAudioEvent(audio)) return;
-      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
+      if (clipDurationRef.current > 0) return;
+      const next = audio.duration;
+      if (!Number.isFinite(next) || next <= 0) return;
+      clipDurationRef.current = next;
+      setDuration(next);
     };
     const onPlay = () => {
       if (graphRef.current?.hasBuffer) return;
@@ -483,7 +566,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       indexRef.current = index;
       setQueueIndex(index);
       setCurrentTime(0);
-      setDuration(track.duration_seconds ?? 0);
+      const clipStart = clipDurationOf(track);
+      clipDurationRef.current = clipStart;
+      setDuration(clipStart);
       setError(null);
 
       if (heartbeatRef.current != null) {
@@ -494,7 +579,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
       }
-      graphRef.current?.stop();
+      const subjectEarly = parsePlaybackSubject(track);
+      const packagedKey = `${subjectEarly.subjectType}:${subjectEarly.subjectId}:${subjectEarly.variant}`;
+      const reusePcm =
+        !shouldUseMpegMediaSource() &&
+        packagedKeyRef.current === packagedKey &&
+        Boolean(graphRef.current?.complete && graphRef.current.hasBuffer);
+      if (!reusePcm) {
+        graphRef.current?.stop();
+        packagedKeyRef.current = null;
+      }
 
       let url = isTrustedPlayUrl(track.play_url ?? '') ? (track.play_url as string) : '';
       let nextTrack: StreamTrack = track;
@@ -539,6 +633,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (token !== loadTokenRef.current) return;
 
       setCurrent(nextTrack);
+      const clipKnown = clipDurationOf(nextTrack);
+      if (clipKnown > 0) {
+        clipDurationRef.current = clipKnown;
+        setDuration(clipKnown);
+      }
 
       audio.muted = muted;
       audio.volume = muted ? 0 : volume;
@@ -581,38 +680,70 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
               objectUrlRef,
               setPlaying,
               playAbort.signal,
+              () => {
+                if (token !== loadTokenRef.current) return;
+                releaseHtmlMediaGesture();
+                startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
+              },
             );
             if (token !== loadTokenRef.current) return;
-            releaseHtmlMediaGesture();
-            startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
           } else {
             clearHtmlAudioSrc(audio);
             const graph = ensureGraph();
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_path',
-              detail: 'path=webaudio',
-            });
-            await playPackagedWithWebAudio(
-              graph,
-              session,
-              token,
-              loadTokenRef,
-              volume,
-              muted,
-              playAbort.signal,
-            );
-            if (token !== loadTokenRef.current) return;
-            releaseAudioContextHold();
-            releaseHtmlMediaGesture();
-            if (graph.duration > 0) setDuration(graph.duration);
-            setPlaying(true);
-            startPositionHeartbeat(() => graph.currentTime, session, heartbeatRef);
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_ok',
-              detail: `path=webaudio duration=${graph.duration.toFixed(1)} ctx=${getSharedAudioContext().state}`,
-            });
+            if (reusePcm && graph.complete && graph.hasBuffer) {
+              reportPlaybackTrace({
+                token: session.token,
+                event: 'play_path',
+                detail: 'path=webaudio_ram',
+              });
+              graph.seek(0);
+              await graph.resume();
+              if (token !== loadTokenRef.current) return;
+              releaseAudioContextHold();
+              releaseHtmlMediaGesture();
+              setPlaying(true);
+              startPositionHeartbeat(() => graph.currentTime, session, heartbeatRef);
+              reportPlaybackTrace({
+                token: session.token,
+                event: 'play_ok',
+                detail: `path=webaudio_ram first_audio_ms=0 duration=${graph.duration.toFixed(1)} ctx=${getSharedAudioContext().state}`,
+              });
+            } else {
+              reportPlaybackTrace({
+                token: session.token,
+                event: 'play_path',
+                detail: 'path=webaudio',
+              });
+              await playPackagedWithWebAudio(
+                graph,
+                session,
+                token,
+                loadTokenRef,
+                volume,
+                muted,
+                playAbort.signal,
+                {
+                  onFirstAudio: (firstAudioMs, bufferedSeconds) => {
+                    if (token !== loadTokenRef.current) return;
+                    releaseAudioContextHold();
+                    releaseHtmlMediaGesture();
+                    setPlaying(true);
+                    startPositionHeartbeat(() => graph.currentTime, session, heartbeatRef);
+                    reportPlaybackTrace({
+                      token: session.token,
+                      event: 'play_ok',
+                      detail: `path=webaudio first_audio_ms=${firstAudioMs} buffered=${bufferedSeconds.toFixed(1)} clip=${(clipDurationRef.current || 0).toFixed(1)} ctx=${getSharedAudioContext().state}`,
+                    });
+                  },
+                },
+              );
+              if (token !== loadTokenRef.current) return;
+              if (graph.complete) packagedKeyRef.current = packagedKey;
+              if (graph.complete && clipDurationRef.current <= 0 && graph.duration > 0) {
+                clipDurationRef.current = graph.duration;
+                setDuration(graph.duration);
+              }
+            }
           }
           if (token !== loadTokenRef.current) return;
           void sendLicenseHeartbeat({

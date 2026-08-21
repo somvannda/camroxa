@@ -1,12 +1,86 @@
 # Protected playback — fast start on every device
 
-**Status:** Plan only (not implemented)  
+**Status:** Code on `feature/protected-playback-fast-start` (phases 0–4). Sandbox deployed 2026-08-21. Not committed. Not production.  
 **Date:** 2026-08-21  
 **Branch:** `feature/protected-playback-fast-start`  
+**Worktree:** `D:\Development\Projects\Electron\MusicGenerator-ios-safari-ship`  
 **Surfaces:** `music_web`, `platform_api`  
-**Related:** [`changelog/2026-08-20-protected-playback.md`](./changelog/2026-08-20-protected-playback.md), [`changelog/2026-08-21-ios-safari-playback.md`](./changelog/2026-08-21-ios-safari-playback.md)
+**Related:** [`changelog/2026-08-20-protected-playback.md`](./changelog/2026-08-20-protected-playback.md), [`changelog/2026-08-21-ios-safari-playback.md`](./changelog/2026-08-21-ios-safari-playback.md), [`changelog/2026-08-21-protected-playback-fast-start.md`](./changelog/2026-08-21-protected-playback-fast-start.md)
 
 This is the implementation plan so packaged Play feels fast on **desktop and phone**, without handing listeners a downloadable MP3.
+
+---
+
+## Status checklist
+
+Code for phases 0–4 is in the worktree above. This mixed `MusicGenerator` tree still has the old full-file Web Audio player unless you open that worktree.
+
+Legend: **done** = in the worktree; **partial** = coded but narrower than the plan; **pending** = not started.
+
+### Phases
+
+- [x] **0 — Traces.** `play_path=mse|webaudio|webaudio_ram`. `play_ok` includes `first_audio_ms=`. Chunk 0 decode logs `play_decode chunk=0`.
+- [x] **1 — Server package cache.** In-process CXA1 ciphertext cache keyed by `packaged_storage_key` (90s, 8 packages). Chunk 1 does not re-download the whole object in the same process.
+- [x] **2 — Parallel fetch.** Concurrency 3 on MSE and Web Audio. Decrypt retries once. Previous Play still aborted.
+- [x] **3 — Progressive Web Audio.** Safari / all iOS / Firefox decode chunk 0, start PCM, append later buffers. Chrome stays MSE. Firefox is on the same Web Audio path (not iOS-only).
+- [x] **4 — RAM replay (Web Audio only).** Same track in the same tab replays from in-memory PCM (`webaudio_ram`). Wiped on a different track.
+- [ ] **5 — Optional encrypted HTTP cache.** Stable package URL + `private, max-age` for ciphertext. Content key still memory-only. **Not started. Not required for “Play feels fast.”**
+
+### Path A — MSE (Chrome / Edge / Android Chrome)
+
+- [x] Keep MSE; start after chunk 0.
+- [x] Server serves one chunk from cached package (no per-chunk B2 GET).
+- [x] Prefetch chunks 1..N, cap 3, append in order.
+- [ ] Keep MediaSource + object URL so Play again does not re-fetch. **Pending (optional).**
+- [x] Never `createObjectURL` of `audio/mpeg` bytes.
+
+### Path B — Progressive Web Audio (Safari, iOS, Firefox)
+
+- [x] Do not wait for the full file.
+- [x] Decrypt chunk 0, strip ID3/sync, decode available frames with mpg123 (decoder kept alive so leftover frames carry into chunk 1).
+- [x] `AudioContext.resume` from the tap; start the first PCM buffer as soon as chunk 0 decodes.
+- [x] Later chunks decode in the background and schedule at the previous buffer’s end.
+- [x] Wipe MP3 bytes after each decode. PCM stays in the graph only.
+- [x] Never assign concatenated MP3 to `audio.src`.
+- [x] If context is not `running`, show “Tap play again” (existing `friendlyPlaybackError`). Do not treat suspended as success.
+
+### Shared
+
+- [x] Abort previous track fetches on a new Play.
+- [x] Parallel chunk HTTP, concurrency 3.
+- [x] RAM cache keyed by `subject_type:subject_id:variant` for the **current** Web Audio track.
+- [ ] RAM cache for **MSE** replay. **Pending.**
+- [ ] Drop RAM on page hide after TTL. **Pending** (tab close still drops it; changing tracks already clears it).
+- [x] Do not persist plaintext audio (no IndexedDB / Cache Storage / disk).
+
+### Server details
+
+- [x] In-process ciphertext cache (`encrypted_package_cache.py`).
+- [ ] Redis cache. **Skipped** — in-process is enough for now.
+- [ ] Per-chunk storage objects or B2 range reads. **Skipped** — cache + slice covers this.
+- [x] Session segment URL stays `Cache-Control: private, no-store`.
+
+### Easy-to-miss Web Audio details
+
+- [x] Incremental mpg123 across chunks (decoder instance, not a separate remainder byte buffer).
+- [x] Schedule additional sources; do not replace the whole graph on every chunk.
+- [x] Duration is the clip’s `duration_seconds` from the start. Do **not** grow the bar as chunks arrive.
+- [x] iOS gesture: first `source.start` waits only on chunk 0, not the full file.
+- [x] One track of PCM in RAM, not a decoded album queue.
+- [ ] Seek / skip into audio that is not decoded yet: show buffering or decode up to that point. **Partial** — seek is clamped to already-decoded PCM; no buffering UI.
+
+### Automated tests
+
+- [x] Theft / leak tests still pass (no origin MP3, no `blob:`/`data:audio/mpeg` play src).
+- [x] Cache unit test: loader runs once for two `get_packaged_blob` calls.
+- [ ] Mock HTTP: chunk 1 after chunk 0 must not call storage `download_bytes` a second time. **Pending** (cache is tested; the router is not).
+
+### Ship / QA (all pending)
+
+- [ ] Commit / push `feature/protected-playback-fast-start`
+- [x] Sandbox deploy: `platform_api` + file-scoped `music_web` hotfix (not a full music_web tarball from a mixed tree)
+- [ ] Manual matrix below (Chrome, Firefox, iPhone Safari at minimum)
+- [ ] Production — only after sandbox QA and an explicit request
 
 ---
 
@@ -36,10 +110,10 @@ An attacker can still record the speaker or dump RAM while a song is playing. Th
 
 There are two player engines today:
 
-| Engine | When | First sound today |
-|--------|------|-------------------|
-| **MPEG MediaSource (MSE)** | Chromium says `MediaSource.isTypeSupported('audio/mpeg')` **and** the browser is not Apple WebKit | After **chunk 0** (~256 KB). Already progressive. |
-| **Web Audio + in-memory MP3 decode** | iOS, iPad, macOS Safari, iOS Chrome/Firefox/Edge (all WebKit), Firefox (no MPEG MSE) | After **every** chunk is fetched, decrypted, concatenated, then decoded. 30–90s on a 3-minute track. |
+| Engine | When | First sound before this work | First sound in worktree |
+|--------|------|------------------------------|-------------------------|
+| **MPEG MediaSource (MSE)** | Chromium says `MediaSource.isTypeSupported('audio/mpeg')` **and** the browser is not Apple WebKit | After **chunk 0** (~256 KB). Already progressive. | Same, plus server cache + parallel prefetch. |
+| **Web Audio + in-memory MP3 decode** | iOS, iPad, macOS Safari, iOS Chrome/Firefox/Edge (all WebKit), Firefox (no MPEG MSE) | After **every** chunk, then decode. 30–90s on a 3-minute track. | After **chunk 0**, then append. |
 
 Apple WebKit must **not** use MPEG MSE (`isSafariMpegMseBroken`). Safari reports support, then fails with “The operation failed for an operation-specific reason.”
 
@@ -157,14 +231,14 @@ Phase 4 is optional. Phases 1–3 of the client plus server slice are enough for
 
 ## Implementation order (so no device is left on the slow path)
 
-| Phase | What | Who benefits | Risk |
-|-------|------|----------------|------|
-| **0** | Plan + traces: `play_path` already records `mse` / `webaudio`; add `first_audio_ms` and `chunk=0` timing | QA | None |
-| **1** | Server: one storage read (or range) per package, not per chunk | **All** | Backend only; sandbox first |
-| **2** | Parallel fetch (concurrency 3) on **both** MSE and Web Audio | All; Firefox/iOS still silent until full file until phase 3 | Abort + decrypt races (retry chunk once) |
-| **3** | Progressive Web Audio (chunk 0 → sound, then append) | **iOS, iPad, macOS Safari, Firefox desktop/Android** | Frame-split MP3, gaps, seek-before-buffered |
-| **4** | RAM cache for current track | Replay in-tab on all engines | Memory; wipe on track change |
-| **5** | (Optional) encrypted chunk HTTP cache with stable package URL | Hard refresh / return visit | Must not put key or MP3 in cache |
+| Phase | What | Status |
+|-------|------|--------|
+| **0** | Plan + traces: `first_audio_ms`, `chunk=0` | **Done** |
+| **1** | Server: one storage read per package | **Done** (in-process cache; not Redis / B2 range) |
+| **2** | Parallel fetch (concurrency 3) | **Done** |
+| **3** | Progressive Web Audio | **Done** |
+| **4** | RAM cache for current track | **Partial** (Web Audio only; MSE still re-fetches) |
+| **5** | Encrypted chunk HTTP cache | **Pending** (optional) |
 
 Do not ship phase 3 only on iOS. Firefox desktop must ship in the same change.
 
