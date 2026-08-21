@@ -12,6 +12,7 @@ import '@fontsource/outfit/700.css';
 import { PlayerProvider } from '@/components/player-provider';
 import { AuthProvider } from '@/components/auth-provider';
 import { LikesProvider } from '@/components/likes-provider';
+import { PlaylistMembershipsProvider } from '@/components/playlist-memberships-provider';
 import ShellSwitcher from '@/components/shell-switcher';
 
 export const viewport: Viewport = {
@@ -44,7 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <PlayerProvider>
             <LikesProvider>
-              <ShellSwitcher>{children}</ShellSwitcher>
+              <PlaylistMembershipsProvider>
+                <ShellSwitcher>{children}</ShellSwitcher>
+              </PlaylistMembershipsProvider>
             </LikesProvider>
           </PlayerProvider>
         </AuthProvider>

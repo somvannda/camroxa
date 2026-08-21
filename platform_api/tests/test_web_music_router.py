@@ -250,3 +250,24 @@ class TestWebMusicRouter:
             json={"mode": "simple", "prompt": "x" * 5001},
         )
         assert too_long.status_code == 422
+
+    async def test_list_playlist_memberships(
+        self, client: AsyncClient, mock_web_music_service: AsyncMock
+    ) -> None:
+        task_id = str(uuid4())
+        mock_web_music_service.list_playlist_memberships = AsyncMock(
+            return_value=[
+                {
+                    "playlist_id": str(uuid4()),
+                    "playlist_name": "Rap",
+                    "task_id": task_id,
+                    "variant": "ok",
+                }
+            ]
+        )
+        response = await client.get("/api/v1/web-music/playlists/memberships")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["items"][0]["playlist_name"] == "Rap"
+        assert payload["items"][0]["task_id"] == task_id
+        mock_web_music_service.list_playlist_memberships.assert_awaited()

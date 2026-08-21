@@ -2320,6 +2320,27 @@ class WebMusicService:
         )
         return [self._playlist_payload(row, song_count=int(row["song_count"] or 0)) for row in rows]
 
+    async def list_playlist_memberships(self, user_id: UUID) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT p.id AS playlist_id, p.name AS playlist_name, i.suno_task_id, i.variant
+            FROM web_music_playlists p
+            JOIN web_music_playlist_items i ON i.playlist_id = p.id
+            WHERE p.user_id = $1
+            ORDER BY p.updated_at DESC, i.position ASC, i.added_at ASC
+            """,
+            user_id,
+        )
+        return [
+            {
+                "playlist_id": str(row["playlist_id"]),
+                "playlist_name": str(row["playlist_name"] or "Playlist"),
+                "task_id": str(row["suno_task_id"]),
+                "variant": str(row["variant"] or "ok"),
+            }
+            for row in rows
+        ]
+
     async def create_playlist(
         self,
         user_id: UUID,
@@ -2522,7 +2543,11 @@ class WebMusicService:
             raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
         task = await self._pool.fetchrow(
             """
-            SELECT id, title, style, status, audio_url_ok, audio_url_alt, image_url_ok, image_url_alt
+            SELECT id, title, style, status, audio_url_ok, audio_url_alt,
+                   image_url_ok, image_url_alt,
+                   b2_storage_key_ok, b2_storage_key_alt,
+                   package_status_ok, package_status_alt,
+                   packaged_storage_key_ok, packaged_storage_key_alt
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -2534,7 +2559,7 @@ class WebMusicService:
             raise NotFoundError("Generation not found.")
         if str(task["status"] or "").upper() != "SUCCESS":
             raise ValidationError("Only completed songs can be added to a playlist.")
-        ready = bool(task["audio_url_ok"] if variant_key == "ok" else task["audio_url_alt"])
+        ready = _clip_is_playable(task, variant=variant_key, task_id=task_id)
         if not ready:
             raise ValidationError("This song version is not ready yet.")
 
@@ -2574,6 +2599,10 @@ class WebMusicService:
             "title": str(task["title"] or "Untitled"),
             "style": str(task["style"] or ""),
             "ready": ready,
+            "package_status": str(
+                _row_value(task, "package_status_ok" if variant_key == "ok" else "package_status_alt")
+                or "none"
+            ),
             "audio_url": await self._mint_owner_play_url(user_id, task_id, variant_key),
             "image_url": str(
                 task["image_url_ok"] if variant_key == "ok" else task["image_url_alt"] or ""

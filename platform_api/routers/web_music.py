@@ -191,6 +191,17 @@ class WebMusicPlaylistItemListResponse(BaseModel):
     items: list[WebMusicPlaylistItemResponse] = Field(default_factory=list)
 
 
+class WebMusicPlaylistMembershipResponse(BaseModel):
+    playlist_id: str
+    playlist_name: str
+    task_id: str
+    variant: str
+
+
+class WebMusicPlaylistMembershipListResponse(BaseModel):
+    items: list[WebMusicPlaylistMembershipResponse] = Field(default_factory=list)
+
+
 class WebMusicPlaylistAddItemRequest(BaseModel):
     task_id: UUID
     variant: Literal["ok", "alt"] = "ok"
@@ -694,6 +705,17 @@ async def list_playlists(
 ) -> WebMusicPlaylistListResponse:
     items = await service.list_playlists(UUID(ctx.user_id))
     return WebMusicPlaylistListResponse(items=[WebMusicPlaylistResponse(**item) for item in items])
+
+
+@router.get("/playlists/memberships", response_model=WebMusicPlaylistMembershipListResponse)
+async def list_playlist_memberships(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicPlaylistMembershipListResponse:
+    items = await service.list_playlist_memberships(UUID(ctx.user_id))
+    return WebMusicPlaylistMembershipListResponse(
+        items=[WebMusicPlaylistMembershipResponse(**item) for item in items]
+    )
 
 
 @router.post("/playlists", response_model=WebMusicPlaylistResponse, status_code=201)

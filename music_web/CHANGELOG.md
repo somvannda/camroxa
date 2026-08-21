@@ -10,12 +10,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Create playlist control confirms with a tick animation, keeps the menu open for more playlists, and shows playlist name chips on the track. See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+
 ### Changed
 
 - Packaged Play starts after the first decrypted chunk (Web Audio progressive PCM on Safari/iOS/Firefox; MSE stays on Chrome). The player clock uses the clip’s `duration_seconds` so the bar does not grow while later chunks load. See `docs/changelog/2026-08-21-protected-playback-fast-start.md`.
 
 ### Fixed
 
+- Packaged Create songs can be added to playlists again (ready check no longer requires a Suno origin URL). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
 - iOS Safari/Chrome packaged play decrypts to in-memory PCM (Web Audio). No `audio/mpeg` blob URL. Desktop Chrome/Edge keep MSE. See `docs/changelog/2026-08-21-ios-safari-playback.md`.
 - iOS play no longer skip-loops Version 1/2 from a silent WAV on the shared player element. See `docs/changelog/2026-08-21-player-unlock-queue-skip.md`.
 - iOS silent progress / Safari “operation failed” during leftover decrypt: abort stale fetches and keep AudioContext running until the first PCM buffer. See `docs/changelog/2026-08-21-ios-silent-operation-error.md`.
