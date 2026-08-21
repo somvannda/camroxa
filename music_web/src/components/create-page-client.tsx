@@ -7,7 +7,7 @@ import { Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
 import { UpgradeModal } from '@/components/upgrade-modal';
-import { AddToPlaylistButton } from '@/components/add-to-playlist-button';
+import { AddToPlaylistButton, ClipPlaylistNames } from '@/components/add-to-playlist-button';
 import {
   MusicCharCount,
   MusicCollapsibleSection,
@@ -1347,6 +1347,7 @@ export default function CreatePageClient() {
                             waitingLabel={clipWaitingLabel(generation)}
                             generating={isGeneratingStatus(generation)}
                           />
+                          <ClipPlaylistNames taskId={generation.id} variant={clip.variant} className="mt-1" />
                         </div>
                       </div>
                       <div className="hidden flex-shrink-0 items-center gap-1 sm:flex">
@@ -1393,6 +1394,11 @@ export default function CreatePageClient() {
                   model={selectedVersion.song.model}
                   waitingLabel={clipWaitingLabel(selectedVersion.song)}
                   className="text-sm text-slate-400"
+                />
+                <ClipPlaylistNames
+                  taskId={selectedVersion.song.id}
+                  variant={selectedVersion.clip.variant}
+                  className="mt-1.5"
                 />
               </div>
               <button

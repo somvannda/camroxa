@@ -24,10 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `GET /api/v1/web-music/playlists/memberships` — owner clip-to-playlist map for Create-page chips. See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
 - `POST /api/v1/web-music/licenses/client-trace` stores play stage traces in `playback_events.detail` (migration `109_playback_event_detail`). See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
 
 ### Fixed
 
+- Packaged web-music clips can be added to playlists (`add_playlist_item` uses the playback ready check, not origin URLs). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
 - Create play waits until the clip is packaged. Leftover plaintext `/stream` is no longer playable. See `docs/changelog/2026-08-20-create-packaged-only-play.md`.
 - License sessions no longer 500 on packaged play: migration `108` adds the session audit columns the player already sends. See `docs/changelog/2026-08-20-license-session-audit.md`.
 - Create leftovers no longer stay on Finishing because they shared `untitled-ok.mp3`. Ingest now uses `web-music/{user}/{task_id}/ok.mp3` and re-copies collided leftovers so playlist/Create can play. See `docs/changelog/2026-08-20-web-music-task-scoped-b2.md`.
