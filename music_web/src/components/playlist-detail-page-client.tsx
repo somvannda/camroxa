@@ -62,6 +62,7 @@ function itemToTrack(item: WebMusicPlaylistItem): StreamTrack | null {
     package_status: item.package_status ?? 'none',
     subject_type: 'suno_task',
     cover_url: item.image_url ?? null,
+    duration_seconds: item.duration_seconds,
   };
 }
 

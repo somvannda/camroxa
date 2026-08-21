@@ -322,7 +322,7 @@ class ContentLicenseService:
             )
             raise ForbiddenError("Player integrity check failed.")
 
-        key_row, package_status, packaged_key, packaged_key_b = await self._resolve_content_key(
+        key_row, package_status, packaged_key, packaged_key_b, hls_prefix = await self._resolve_content_key(
             subject_type, subject_id, variant_key
         )
         lane = "b" if (user_id.int & 1) and packaged_key_b else "a"
@@ -390,6 +390,7 @@ class ContentLicenseService:
             "content_key_id": None if key_row is None else str(key_row["id"]),
             "package_status": package_status,
             "packaged_storage_key": selected_package,
+            "hls_prefix": hls_prefix,
             "lane": lane,
             "session_bind": bind,
         }
@@ -412,6 +413,7 @@ class ContentLicenseService:
         del user_agent
         ready = package_status == "ready" and bool(selected_package) and bool(content_key_b64)
         segment_url = f"/api/v1/web-music/licenses/segments/{token}" if ready else ""
+        hls_url = f"/api/v1/web-music/licenses/hls/{token}/index.m3u8" if hls_prefix else ""
         return {
             "token": token,
             "expires_at": expires_at.isoformat(),
@@ -420,6 +422,7 @@ class ContentLicenseService:
             "content_key": content_key_b64,
             "content_key_id": None if key_row is None else str(key_row["id"]),
             "segment_url": segment_url,
+            "hls_url": hls_url,
             "lane": lane,
             "decrypt_module_hash": expected_hash,
             "ttl_seconds": SESSION_TTL_SECONDS,
@@ -431,54 +434,62 @@ class ContentLicenseService:
 
     async def _resolve_content_key(
         self, subject_type: str, subject_id: UUID, variant: str
-    ) -> tuple[Any | None, str, str | None, str | None]:
+    ) -> tuple[Any | None, str, str | None, str | None, str | None]:
         if subject_type == "stream_track":
             row = await self._pool.fetchrow(
                 """
-                SELECT package_status, content_key_id, packaged_storage_key, packaged_storage_key_b
+                SELECT package_status, content_key_id, packaged_storage_key, packaged_storage_key_b,
+                       hls_prefix, hls_status
                 FROM stream_tracks WHERE id = $1
                 """,
                 subject_id,
             )
             if row is None:
-                return None, "none", None, None
+                return None, "none", None, None, None
             key = None
             if row["content_key_id"]:
                 key = await self._pool.fetchrow(
                     "SELECT id, wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
                     row["content_key_id"],
                 )
+            hls_prefix = str(row["hls_prefix"] or "") or None if row["hls_status"] == "ready" else None
             return (
                 key,
                 str(row["package_status"] or "none"),
                 str(row["packaged_storage_key"] or "") or None,
                 str(row["packaged_storage_key_b"] or "") or None,
+                hls_prefix,
             )
         status_col = "package_status_ok" if variant == "ok" else "package_status_alt"
         key_col = "content_key_id_ok" if variant == "ok" else "content_key_id_alt"
         pkg_col = "packaged_storage_key_ok" if variant == "ok" else "packaged_storage_key_alt"
         pkg_b_col = "packaged_storage_key_ok_b" if variant == "ok" else "packaged_storage_key_alt_b"
+        hls_prefix_col = "hls_prefix_ok" if variant == "ok" else "hls_prefix_alt"
+        hls_status_col = "hls_status_ok" if variant == "ok" else "hls_status_alt"
         row = await self._pool.fetchrow(
             f"""
             SELECT {status_col} AS package_status, {key_col} AS content_key_id,
-                   {pkg_col} AS packaged_storage_key, {pkg_b_col} AS packaged_storage_key_b
+                   {pkg_col} AS packaged_storage_key, {pkg_b_col} AS packaged_storage_key_b,
+                   {hls_prefix_col} AS hls_prefix, {hls_status_col} AS hls_status
             FROM suno_tasks WHERE id = $1
             """,
             subject_id,
         )
         if row is None:
-            return None, "none", None, None
+            return None, "none", None, None, None
         key = None
         if row["content_key_id"]:
             key = await self._pool.fetchrow(
                 "SELECT id, wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
                 row["content_key_id"],
             )
+        hls_prefix = str(row["hls_prefix"] or "") or None if row["hls_status"] == "ready" else None
         return (
             key,
             str(row["package_status"] or "none"),
             str(row["packaged_storage_key"] or "") or None,
             str(row["packaged_storage_key_b"] or "") or None,
+            hls_prefix,
         )
 
     async def resolve_session(self, token: str) -> dict[str, Any] | None:

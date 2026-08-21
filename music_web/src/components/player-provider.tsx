@@ -451,13 +451,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentTime(audio.currentTime || 0);
     };
     const onDuration = () => {
+      // Duration should only come from stored duration_seconds, never from audio element
+      // This handler is kept for compatibility but does not update clipDurationRef
       if (graphRef.current?.hasBuffer) return;
       if (!shouldHandleHtmlAudioEvent(audio)) return;
-      if (clipDurationRef.current > 0) return;
-      const next = audio.duration;
-      if (!Number.isFinite(next) || next <= 0) return;
-      clipDurationRef.current = next;
-      setDuration(next);
+      // Do not update duration from audio.duration - it may be wrong for keep-alive WAV
     };
     const onPlay = () => {
       if (graphRef.current?.hasBuffer) return;
@@ -665,7 +663,40 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (session?.ready && session.content_key && session.segment_url) {
+        const useHls = isSafariMpegMseBroken() && Boolean(session.hls_url);
         try {
+          if (useHls && session.hls_url) {
+            // iOS Safari: use native HLS with session-bound playlist
+            reportPlaybackTrace({
+              token: session.token,
+              event: 'play_path',
+              detail: 'path=hls_native',
+            });
+            prepareHtmlAudio(audio);
+            audio.loop = false;
+            audio.src = session.hls_url;
+            try {
+              await audio.play();
+              if (token === loadTokenRef.current) {
+                setPlaying(true);
+                releaseHtmlMediaGesture();
+                startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
+                reportPlaybackTrace({
+                  token: session.token,
+                  event: 'play_ok',
+                  detail: 'path=hls_native',
+                });
+              }
+            } catch (err) {
+              if (token === loadTokenRef.current) {
+                setPlaying(false);
+                if (!isAbortLike(err)) {
+                  setError(friendlyPlaybackError(err));
+                }
+              }
+            }
+            return;
+          }
           if (shouldUseMpegMediaSource()) {
             reportPlaybackTrace({
               token: session.token,
@@ -739,10 +770,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
               );
               if (token !== loadTokenRef.current) return;
               if (graph.complete) packagedKeyRef.current = packagedKey;
-              if (graph.complete && clipDurationRef.current <= 0 && graph.duration > 0) {
-                clipDurationRef.current = graph.duration;
-                setDuration(graph.duration);
-              }
+              // Duration should only come from stored duration_seconds, never from graph
             }
           }
           if (token !== loadTokenRef.current) return;
