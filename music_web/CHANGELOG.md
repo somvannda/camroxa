@@ -16,10 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Playlist detail is rebuilt for phone and desktop: album-style play/shuffle, shared Select sort menu, and a DropdownMenu for remove. See `docs/changelog/2026-08-21-playlist-detail-ux.md`.
 - Packaged Play starts after the first decrypted chunk (Web Audio progressive PCM on Safari/iOS/Firefox; MSE stays on Chrome). The player clock uses the clip’s `duration_seconds` so the bar does not grow while later chunks load. See `docs/changelog/2026-08-21-protected-playback-fast-start.md`.
 
 ### Fixed
 
+- Playlist song rows no longer wrap the more/remove control under the cover art. See `docs/changelog/2026-08-21-playlist-detail-ux.md`.
 - Packaged Create songs can be added to playlists again (ready check no longer requires a Suno origin URL). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
 - iOS Safari/Chrome packaged play decrypts to in-memory PCM (Web Audio). No `audio/mpeg` blob URL. Desktop Chrome/Edge keep MSE. See `docs/changelog/2026-08-21-ios-safari-playback.md`.
 - iOS play no longer skip-loops Version 1/2 from a silent WAV on the shared player element. See `docs/changelog/2026-08-21-player-unlock-queue-skip.md`.
