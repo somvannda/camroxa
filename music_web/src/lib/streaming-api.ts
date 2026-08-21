@@ -161,6 +161,7 @@ const CAMXORA_AUDIO_PROXY_RE =
 export function isTrustedPlayUrl(url: string): boolean {
   const text = String(url || '').trim();
   if (!text) return false;
+  if (/^(blob:|data:)/i.test(text)) return false;
   let path = text;
   if (text.startsWith('http://') || text.startsWith('https://')) {
     try {

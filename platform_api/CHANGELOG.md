@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `POST /api/v1/web-music/licenses/client-trace` stores play stage traces in `playback_events.detail` (migration `109_playback_event_detail`). See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
+
 ### Fixed
 
 - Create play waits until the clip is packaged. Leftover plaintext `/stream` is no longer playable. See `docs/changelog/2026-08-20-create-packaged-only-play.md`.

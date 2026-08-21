@@ -37,6 +37,17 @@ PLAY_SOURCES = frozenset(
         "unknown",
     }
 )
+CLIENT_TRACE_EVENTS = frozenset(
+    {
+        "play_start",
+        "play_session",
+        "play_path",
+        "play_chunks",
+        "play_decode",
+        "play_ok",
+        "play_error",
+    }
+)
 
 
 def decrypt_module_hash() -> str:
@@ -520,6 +531,47 @@ class ContentLicenseService:
         del position_seconds, playback_rate, seq, is_admin, user_agent, ip
         return {"ok": True, "ttl_seconds": SESSION_TTL_SECONDS, "accepted": True}
 
+    async def record_client_trace(
+        self,
+        user_id: UUID,
+        *,
+        token: str | None,
+        event: str,
+        detail: str | None,
+        user_agent: str | None = None,
+        ip: str | None = None,
+    ) -> dict[str, Any]:
+        name = (event or "").strip()[:64]
+        if name not in CLIENT_TRACE_EVENTS:
+            name = "play_error"
+        note = (detail or "").strip()[:500] or None
+        session = await self.resolve_session(token) if token else None
+        if session is not None and str(session.get("user_id")) != str(user_id):
+            session = None
+        logger.info(
+            "music_web_play_trace user=%s event=%s detail=%s ua=%s ip=%s subject=%s/%s package=%s",
+            user_id,
+            name,
+            note or "-",
+            (user_agent or "")[:180],
+            ip or "-",
+            session.get("subject_type") if session else "-",
+            session.get("subject_id") if session else "-",
+            session.get("package_status") if session else "-",
+        )
+        await self.record_playback_event(
+            user_id=user_id,
+            device_id=UUID(str(session["device_id"])) if session and session.get("device_id") else None,
+            session_id=UUID(str(session["session_id"])) if session and session.get("session_id") else None,
+            subject_type=str(session.get("subject_type") or "") if session else None,
+            subject_id=UUID(str(session["subject_id"])) if session and session.get("subject_id") else None,
+            variant=str(session.get("variant") or "ok") if session else None,
+            event=name,
+            package_status=str(session.get("package_status") or "") if session else None,
+            detail=note,
+        )
+        return {"ok": True}
+
     async def record_playback_event(
         self,
         *,
@@ -532,15 +584,16 @@ class ContentLicenseService:
         event: str,
         bytes_served: int = 0,
         package_status: str | None = None,
+        detail: str | None = None,
     ) -> None:
         try:
             await self._pool.execute(
                 """
                 INSERT INTO playback_events (
                     user_id, device_id, session_id, subject_type, subject_id,
-                    variant, event, bytes_served, package_status
+                    variant, event, bytes_served, package_status, detail
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 """,
                 user_id,
                 device_id,
@@ -551,6 +604,7 @@ class ContentLicenseService:
                 event,
                 int(bytes_served or 0),
                 package_status,
+                detail,
             )
         except Exception as exc:
             logger.warning("playback_events insert failed: %s", exc)
@@ -599,7 +653,7 @@ class ContentLicenseService:
             rows = await self._pool.fetch(
                 """
                 SELECT id, user_id, device_id, session_id, subject_type, subject_id,
-                       variant, event, bytes_served, package_status, created_at
+                       variant, event, bytes_served, package_status, detail, created_at
                 FROM playback_events
                 WHERE user_id = $1
                 ORDER BY created_at DESC
@@ -617,7 +671,7 @@ class ContentLicenseService:
             rows = await self._pool.fetch(
                 """
                 SELECT id, user_id, device_id, session_id, subject_type, subject_id,
-                       variant, event, bytes_served, package_status, created_at
+                       variant, event, bytes_served, package_status, detail, created_at
                 FROM playback_events
                 ORDER BY created_at DESC
                 LIMIT $1 OFFSET $2
@@ -638,6 +692,7 @@ class ContentLicenseService:
                     "event": r["event"],
                     "bytes_served": int(r["bytes_served"] or 0),
                     "package_status": r["package_status"],
+                    "detail": r["detail"],
                     "created_at": r["created_at"].isoformat() if r["created_at"] else None,
                 }
                 for r in rows

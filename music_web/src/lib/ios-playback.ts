@@ -107,15 +107,6 @@ export function startSilentHold(audio: HTMLAudioElement): void {
   void audio.play().catch(() => undefined);
 }
 
-export function createMp3ObjectUrl(mp3: ArrayBuffer): string {
-  const copy = mp3.slice(0);
-  const file =
-    typeof File !== 'undefined'
-      ? new File([copy], 'track.mp3', { type: 'audio/mpeg' })
-      : new Blob([copy], { type: 'audio/mpeg' });
-  return URL.createObjectURL(file);
-}
-
 export class WebAudioPlayback {
   private readonly ctx: AudioContext;
   private readonly gain: GainNode;

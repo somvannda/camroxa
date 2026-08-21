@@ -13,19 +13,35 @@ import { useRouter } from 'next/navigation';
 
 import { useAuth } from '@/components/auth-provider';
 import { catalogStreamUrl, getPlayUrl, isTrustedPlayUrl, type StreamTrack } from '@/lib/streaming-api';
-import { decryptCamxoraChunk, decryptCamxoraPackage, looksLikeCamxoraPackage } from '@/lib/camxora-decrypt';
+import { decryptCamxoraChunk } from '@/lib/camxora-decrypt';
 import {
   createLicenseSession,
-  fetchEncryptedChunk,
-  fetchEncryptedPackage,
+  fetchEncryptedChunkRecord,
+  reportPlaybackTrace,
+  SegmentOutOfRangeError,
   sendLicenseHeartbeat,
+  type LicenseSession,
 } from '@/lib/content-license';
 import {
-  createMp3ObjectUrl,
-  isIosPackagedPlayback,
-  resumeSharedAudioContext,
-  WebAudioPlayback,
-} from '@/lib/ios-playback';
+  clearHtmlAudioSrc,
+  concatBytes,
+  createMpegMediaSource,
+  decodeMpegToAudioBuffer,
+  ensureAudioContextRunning,
+  errorDetail,
+  friendlyPlaybackError,
+  getSharedAudioContext,
+  holdHtmlMediaGesture,
+  isAbortLike,
+  prepareHtmlAudio,
+  ProtectedAudioGraph,
+  releaseAudioContextHold,
+  releaseHtmlMediaGesture,
+  shouldHandleHtmlAudioEvent,
+  shouldUseMpegMediaSource,
+  unlockMediaPlayback,
+  wipeBytes,
+} from '@/lib/mpeg-playback';
 import {
   applyNowPlayingMetadata,
   applyNowPlayingPosition,
@@ -41,6 +57,7 @@ type PlayerState = {
   duration: number;
   volume: number;
   muted: boolean;
+  error: string | null;
   playError: string | null;
   playTrack: (track: StreamTrack, queue?: StreamTrack[]) => Promise<void>;
   playQueue: (tracks: StreamTrack[], startIndex?: number) => Promise<void>;
@@ -85,7 +102,7 @@ function parsePlaybackSubject(track: StreamTrack): {
 }
 
 function startPositionHeartbeat(
-  audio: HTMLAudioElement,
+  getPosition: () => number,
   session: { token: string; session_bind?: string },
   heartbeatRef: { current: number | null },
 ) {
@@ -95,94 +112,14 @@ function startPositionHeartbeat(
     void sendLicenseHeartbeat({
       token: session.token,
       event,
-      positionSeconds: audio.currentTime || 0,
-      playbackRate: audio.playbackRate || 1,
+      positionSeconds: getPosition(),
+      playbackRate: 1,
       seq,
       sessionBind: session.session_bind,
     });
   };
   window.setTimeout(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
   heartbeatRef.current = window.setInterval(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
-  audio.addEventListener('ended', () => ping('complete'), { once: true });
-  audio.addEventListener('pause', () => ping('pause'), { once: true });
-}
-
-function concatBytes(parts: Uint8Array[]): Uint8Array {
-  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const part of parts) {
-    out.set(part, offset);
-    offset += part.byteLength;
-  }
-  return out;
-}
-
-function mpegMseSupported(): boolean {
-  if (typeof window === 'undefined' || isIosPackagedPlayback()) return false;
-  const ctor =
-    (window as unknown as { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource ??
-    window.MediaSource;
-  return Boolean(ctor?.isTypeSupported?.('audio/mpeg'));
-}
-
-function prepareAudioElement(audio: HTMLAudioElement) {
-  audio.setAttribute('playsinline', 'true');
-  audio.setAttribute('webkit-playsinline', 'true');
-  audio.preload = 'auto';
-}
-
-function unlockAudioForGesture(_audio: HTMLAudioElement) {
-  resumeSharedAudioContext();
-}
-
-async function decryptPackagedMp3(
-  segmentUrl: string,
-  contentKey: string,
-  isCurrentLoad: () => boolean,
-  sequential: boolean,
-): Promise<Uint8Array> {
-  try {
-    const packaged = await fetchEncryptedPackage(segmentUrl);
-    if (!isCurrentLoad()) return new Uint8Array();
-    if (looksLikeCamxoraPackage(packaged)) {
-      return await decryptCamxoraPackage(packaged, contentKey);
-    }
-  } catch {
-    /* older APIs ignore full=1 and still return a single chunk */
-  }
-  const first = await fetchEncryptedChunk(segmentUrl, 0);
-  if (!isCurrentLoad()) return new Uint8Array();
-  const parts: Uint8Array[] = [await decryptCamxoraChunk(first.buffer, contentKey, 0)];
-  const count = first.chunkCount ?? 0;
-  if (count > 1) {
-    if (sequential) {
-      for (let chunk = 1; chunk < count; chunk += 1) {
-        if (!isCurrentLoad()) return concatBytes(parts);
-        const record = await fetchEncryptedChunk(segmentUrl, chunk);
-        parts.push(await decryptCamxoraChunk(record.buffer, contentKey, chunk));
-      }
-    } else {
-      const rest = await Promise.all(
-        Array.from({ length: count - 1 }, (_, index) => index + 1).map(async (chunk) => {
-          const record = await fetchEncryptedChunk(segmentUrl, chunk);
-          return decryptCamxoraChunk(record.buffer, contentKey, chunk);
-        }),
-      );
-      parts.push(...rest);
-    }
-  } else if (!count) {
-    for (let chunk = 1; chunk < 4096; chunk += 1) {
-      if (!isCurrentLoad()) return concatBytes(parts);
-      try {
-        const record = await fetchEncryptedChunk(segmentUrl, chunk);
-        parts.push(await decryptCamxoraChunk(record.buffer, contentKey, chunk));
-      } catch {
-        break;
-      }
-    }
-  }
-  return concatBytes(parts);
 }
 
 function appendSourceBuffer(sourceBuffer: SourceBuffer, data: Uint8Array): Promise<void> {
@@ -203,6 +140,163 @@ function appendSourceBuffer(sourceBuffer: SourceBuffer, data: Uint8Array): Promi
   });
 }
 
+async function collectDecryptedChunks(
+  session: LicenseSession,
+  token: number,
+  loadToken: { current: number },
+  signal?: AbortSignal,
+): Promise<Uint8Array[]> {
+  const parts: Uint8Array[] = [];
+  if (!session.content_key || !session.segment_url) return parts;
+  reportPlaybackTrace({
+    token: session.token,
+    event: 'play_chunks',
+    detail: 'fetch_start',
+  });
+  let expected: number | null = null;
+  for (let chunk = 0; chunk < 4096; chunk += 1) {
+    if (signal?.aborted || token !== loadToken.current) {
+      reportPlaybackTrace({
+        token: session.token,
+        event: 'play_chunks',
+        detail: `superseded at=${chunk}`,
+      });
+      return parts;
+    }
+    if (expected != null && chunk >= expected) break;
+    await ensureAudioContextRunning();
+    holdHtmlMediaGesture();
+    let record: { data: ArrayBuffer; chunkCount: number | null };
+    try {
+      record = await fetchEncryptedChunkRecord(session.segment_url, chunk, signal);
+    } catch (err) {
+      if (isAbortLike(err) || signal?.aborted) {
+        reportPlaybackTrace({
+          token: session.token,
+          event: 'play_chunks',
+          detail: `superseded at=${chunk}`,
+        });
+        return parts;
+      }
+      if (err instanceof SegmentOutOfRangeError) break;
+      throw err;
+    }
+    if (record.chunkCount) expected = record.chunkCount;
+    try {
+      parts.push(await decryptCamxoraChunk(record.data, session.content_key, chunk));
+    } catch (err) {
+      if (isAbortLike(err) || signal?.aborted) {
+        reportPlaybackTrace({
+          token: session.token,
+          event: 'play_chunks',
+          detail: `superseded at=${chunk}`,
+        });
+        return parts;
+      }
+      try {
+        parts.push(await decryptCamxoraChunk(record.data, session.content_key, chunk));
+      } catch (retryErr) {
+        throw new Error(`decrypt chunk ${chunk}: ${errorDetail(retryErr)}`);
+      }
+    }
+  }
+  return parts;
+}
+
+async function playPackagedWithMediaSource(
+  audio: HTMLAudioElement,
+  session: LicenseSession,
+  token: number,
+  loadToken: { current: number },
+  objectUrlRef: { current: string | null },
+  setPlaying: (value: boolean) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!session.content_key || !session.segment_url) {
+    throw new Error('License session is missing audio.');
+  }
+  const mediaSource = createMpegMediaSource();
+  // MediaSource object URL is not a downloadable MP3. Never createObjectURL(audio/mpeg).
+  const objectUrl = URL.createObjectURL(mediaSource);
+  objectUrlRef.current = objectUrl;
+  prepareHtmlAudio(audio);
+  audio.loop = false;
+  audio.src = objectUrl;
+  await new Promise<void>((resolve, reject) => {
+    const onOpen = () => resolve();
+    mediaSource.addEventListener('sourceopen', onOpen, { once: true });
+    window.setTimeout(() => reject(new Error('MediaSource timeout')), 8000);
+  });
+  if (token !== loadToken.current) return;
+  const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+  for (let chunk = 0; chunk < 4096; chunk += 1) {
+    if (signal?.aborted || token !== loadToken.current) return;
+    let record: { data: ArrayBuffer };
+    try {
+      record = await fetchEncryptedChunkRecord(session.segment_url, chunk, signal);
+    } catch (err) {
+      if (isAbortLike(err) || signal?.aborted) return;
+      if (err instanceof SegmentOutOfRangeError) break;
+      throw err;
+    }
+    const plain = await decryptCamxoraChunk(record.data, session.content_key, chunk);
+    await appendSourceBuffer(sourceBuffer, plain);
+    if (chunk === 0) {
+      try {
+        await audio.play();
+        if (token === loadToken.current) setPlaying(true);
+      } catch (err) {
+        if (token === loadToken.current) setPlaying(false);
+        throw err;
+      }
+    }
+  }
+  if (mediaSource.readyState === 'open') {
+    mediaSource.endOfStream();
+  }
+}
+
+async function playPackagedWithWebAudio(
+  graph: ProtectedAudioGraph,
+  session: LicenseSession,
+  token: number,
+  loadToken: { current: number },
+  volume: number,
+  muted: boolean,
+  signal?: AbortSignal,
+): Promise<void> {
+  const parts = await collectDecryptedChunks(session, token, loadToken, signal);
+  if (signal?.aborted || token !== loadToken.current) {
+    wipeBytes(parts);
+    return;
+  }
+  if (!parts.length) throw new Error('No audio chunks received.');
+  reportPlaybackTrace({
+    token: session.token,
+    event: 'play_chunks',
+    detail: `count=${parts.length} bytes=${parts.reduce((sum, part) => sum + part.byteLength, 0)}`,
+  });
+  const packed = concatBytes(parts);
+  wipeBytes(parts);
+  const copy = new ArrayBuffer(packed.byteLength);
+  new Uint8Array(copy).set(packed);
+  wipeBytes(packed);
+  const ctx = await ensureAudioContextRunning();
+  const decoded = await decodeMpegToAudioBuffer(ctx, copy);
+  reportPlaybackTrace({
+    token: session.token,
+    event: 'play_decode',
+    detail: `seconds=${decoded.duration.toFixed(1)} rate=${decoded.sampleRate} channels=${decoded.numberOfChannels} ctx=${ctx.state}`,
+  });
+  try {
+    wipeBytes(new Uint8Array(copy));
+  } catch {
+    /* decodeAudioData may detach the buffer */
+  }
+  if (signal?.aborted || token !== loadToken.current) return;
+  await graph.loadDecoded(decoded, volume, muted);
+}
+
 function readStoredVolume(): number {
   if (typeof window === 'undefined') return 0.85;
   const raw = window.localStorage.getItem('camxora-music-volume');
@@ -215,14 +309,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const graphRef = useRef<ProtectedAudioGraph | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const heartbeatRef = useRef<number | null>(null);
   const queueRef = useRef<StreamTrack[]>([]);
   const indexRef = useRef(-1);
   const loadTokenRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
   const playFromIndexRef = useRef<(index: number) => Promise<void>>(async () => undefined);
-  const suppressMediaEventsRef = useRef(false);
-  const webAudioRef = useRef<WebAudioPlayback | null>(null);
 
   const [current, setCurrent] = useState<StreamTrack | null>(null);
   const [queue, setQueue] = useState<StreamTrack[]>([]);
@@ -232,44 +326,82 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolumeState] = useState(0.85);
   const [muted, setMuted] = useState(false);
-  const [playError, setPlayError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setVolumeState(readStoredVolume());
   }, []);
 
   const ensureAudio = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) {
-      throw new Error('Audio element is not ready.');
+    if (audioRef.current) {
+      prepareHtmlAudio(audioRef.current);
+      return audioRef.current;
     }
-    prepareAudioElement(audio);
+    const audio = new Audio();
+    prepareHtmlAudio(audio);
+    audioRef.current = audio;
     return audio;
   }, []);
 
+  const ensureGraph = useCallback(() => {
+    if (graphRef.current) return graphRef.current;
+    const graph = new ProtectedAudioGraph(getSharedAudioContext());
+    graph.onEnded = () => {
+      const nextIndex = indexRef.current + 1;
+      if (nextIndex < queueRef.current.length) {
+        void playFromIndexRef.current(nextIndex);
+        return;
+      }
+      setPlaying(false);
+      setCurrentTime(0);
+    };
+    graph.onTime = (seconds) => {
+      setCurrentTime(seconds);
+      if (graph.duration > 0) setDuration(graph.duration);
+    };
+    graphRef.current = graph;
+    return graph;
+  }, []);
+
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    prepareAudioElement(audio);
+    const audio = ensureAudio();
 
     const onTimeUpdate = () => {
-      if (suppressMediaEventsRef.current || webAudioRef.current) return;
+      if (graphRef.current?.hasBuffer) return;
+      if (!shouldHandleHtmlAudioEvent(audio)) return;
       setCurrentTime(audio.currentTime || 0);
     };
     const onDuration = () => {
-      if (suppressMediaEventsRef.current || webAudioRef.current) return;
+      if (graphRef.current?.hasBuffer) return;
+      if (!shouldHandleHtmlAudioEvent(audio)) return;
       setDuration(Number.isFinite(audio.duration) ? audio.duration : 0);
     };
     const onPlay = () => {
-      if (suppressMediaEventsRef.current) return;
+      if (graphRef.current?.hasBuffer) return;
+      if (!shouldHandleHtmlAudioEvent(audio)) return;
       setPlaying(true);
     };
     const onPause = () => {
-      if (suppressMediaEventsRef.current || webAudioRef.current) return;
+      if (graphRef.current?.hasBuffer) return;
+      if (!shouldHandleHtmlAudioEvent(audio)) return;
+      setPlaying(false);
+    };
+    const onError = () => {
+      if (graphRef.current?.hasBuffer) return;
+      if (!shouldHandleHtmlAudioEvent(audio)) return;
+      if (audio.error && isAbortLike(audio.error)) return;
+      if (audio.error) {
+        reportPlaybackTrace({
+          event: 'play_error',
+          detail: `stage=audio_element ${errorDetail(audio.error)} src=${audio.getAttribute('src') || ''}`,
+        });
+        setError(friendlyPlaybackError(audio.error));
+      }
       setPlaying(false);
     };
     const onEnded = () => {
-      if (suppressMediaEventsRef.current || webAudioRef.current) return;
+      if (graphRef.current?.hasBuffer) return;
+      if (!shouldHandleHtmlAudioEvent(audio)) return;
       const nextIndex = indexRef.current + 1;
       if (nextIndex < queueRef.current.length) {
         void playFromIndexRef.current(nextIndex);
@@ -284,6 +416,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
+    audio.addEventListener('error', onError);
     audio.addEventListener('ended', onEnded);
 
     return () => {
@@ -292,6 +425,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener('loadedmetadata', onDuration);
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('error', onError);
       audio.removeEventListener('ended', onEnded);
       if (heartbeatRef.current != null) {
         window.clearInterval(heartbeatRef.current);
@@ -301,17 +435,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
       }
-      webAudioRef.current?.stop();
-      webAudioRef.current = null;
+      graphRef.current?.stop();
+      abortRef.current?.abort();
+      releaseHtmlMediaGesture();
     };
-  }, []);
+  }, [ensureAudio]);
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-    const nextVolume = muted ? 0 : volume;
-    audio.volume = nextVolume;
-    webAudioRef.current?.setVolume(nextVolume);
+    if (audio) {
+      audio.muted = muted;
+      audio.volume = muted ? 0 : volume;
+    }
+    graphRef.current?.setGain(volume, muted);
   }, [muted, volume]);
 
   const redirectToLogin = useCallback(() => {
@@ -320,14 +456,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     router.push(`/login?next=${encodeURIComponent(next || '/')}`);
   }, [router]);
 
-  const redirectToVerifyEmail = useCallback(() => {
-    if (typeof window === 'undefined' || !user?.email) return;
-    const next = `${window.location.pathname}${window.location.search}`;
-    router.replace(
-      `/verify-email?email=${encodeURIComponent(user.email)}&next=${encodeURIComponent(next || '/')}`,
-    );
-  }, [router, user?.email]);
-
   const playFromIndex = useCallback(
     async (index: number) => {
       if (authLoading) return;
@@ -335,29 +463,28 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         redirectToLogin();
         return;
       }
-      if (user.email_confirmed === false) {
-        redirectToVerifyEmail();
-        return;
-      }
-
-      const audio = ensureAudio();
-      webAudioRef.current?.stop();
-      webAudioRef.current = null;
-      if (isIosPackagedPlayback()) {
-        suppressMediaEventsRef.current = true;
-      }
-      unlockAudioForGesture(audio);
 
       const tracks = queueRef.current;
       const track = tracks[index];
       if (!track) return;
 
+      const audio = ensureAudio();
+      audio.loop = false;
+      unlockMediaPlayback(audio);
+      reportPlaybackTrace({
+        event: 'play_start',
+        detail: `id=${track.id} packaged=${String(track.package_status || 'none')} mse=${shouldUseMpegMediaSource() ? '1' : '0'}`,
+      });
+
+      abortRef.current?.abort();
+      const playAbort = new AbortController();
+      abortRef.current = playAbort;
       const token = ++loadTokenRef.current;
       indexRef.current = index;
       setQueueIndex(index);
       setCurrentTime(0);
       setDuration(track.duration_seconds ?? 0);
-      setPlayError(null);
+      setError(null);
 
       if (heartbeatRef.current != null) {
         window.clearInterval(heartbeatRef.current);
@@ -367,6 +494,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
       }
+      graphRef.current?.stop();
 
       let url = isTrustedPlayUrl(track.play_url ?? '') ? (track.play_url as string) : '';
       let nextTrack: StreamTrack = track;
@@ -412,199 +540,156 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       setCurrent(nextTrack);
 
-      prepareAudioElement(audio);
+      audio.muted = muted;
       audio.volume = muted ? 0 : volume;
+      prepareHtmlAudio(audio);
 
-      if (packageStatus === 'ready') {
-        try {
-          const subject = parsePlaybackSubject(nextTrack);
-          const session = await createLicenseSession({
-            subjectType: subject.subjectType,
-            subjectId: subject.subjectId,
-            variant: subject.variant,
-          });
-          if (token !== loadTokenRef.current) return;
-          if (session.ready && session.content_key && session.segment_url) {
-            audio.removeAttribute('crossorigin');
-            const isCurrentLoad = () => token === loadTokenRef.current;
-            if (mpegMseSupported()) {
-              try {
-                const mediaSource = new MediaSource();
-                const objectUrl = URL.createObjectURL(mediaSource);
-                objectUrlRef.current = objectUrl;
-                audio.src = objectUrl;
-                await new Promise<void>((resolve, reject) => {
-                  const onOpen = () => resolve();
-                  mediaSource.addEventListener('sourceopen', onOpen, { once: true });
-                  window.setTimeout(() => reject(new Error('MediaSource timeout')), 8000);
-                });
-                if (!isCurrentLoad()) return;
-                const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-                for (let chunk = 0; chunk < 4096; chunk += 1) {
-                  if (!isCurrentLoad()) return;
-                  let encrypted: ArrayBuffer;
-                  try {
-                    encrypted = (await fetchEncryptedChunk(session.segment_url, chunk)).buffer;
-                  } catch {
-                    break;
-                  }
-                  const plain = await decryptCamxoraChunk(encrypted, session.content_key, chunk);
-                  await appendSourceBuffer(sourceBuffer, plain);
-                  if (chunk === 0) {
-                    try {
-                      await audio.play();
-                      if (isCurrentLoad()) setPlaying(true);
-                    } catch {
-                      if (isCurrentLoad()) setPlaying(false);
-                    }
-                  }
-                }
-                if (mediaSource.readyState === 'open') {
-                  mediaSource.endOfStream();
-                }
-                void sendLicenseHeartbeat({
-                  token: session.token,
-                  positionSeconds: audio.currentTime || 0,
-                  playbackRate: audio.playbackRate || 1,
-                  seq: 1,
-                  sessionBind: session.session_bind,
-                });
-                startPositionHeartbeat(audio, session, heartbeatRef);
-                return;
-              } catch {
-                if (objectUrlRef.current) {
-                  URL.revokeObjectURL(objectUrlRef.current);
-                  objectUrlRef.current = null;
-                }
-              }
-            }
-            if (!isCurrentLoad()) return;
-            const iosPath = isIosPackagedPlayback();
-            const mp3 = await decryptPackagedMp3(
-              session.segment_url,
-              session.content_key,
-              isCurrentLoad,
-              iosPath,
-            );
-            if (!isCurrentLoad() || mp3.byteLength < 16) {
-              suppressMediaEventsRef.current = false;
-              setPlayError('Could not decrypt this track.');
-              setPlaying(false);
-              return;
-            }
-            const mp3Copy = mp3.buffer.slice(
-              mp3.byteOffset,
-              mp3.byteOffset + mp3.byteLength,
-            ) as ArrayBuffer;
-
-            const attachWebAudio = async (): Promise<boolean> => {
-              const web = await WebAudioPlayback.fromMp3(mp3Copy, muted ? 0 : volume);
-              if (!web || !isCurrentLoad()) return false;
-              audio.pause();
-              audio.loop = false;
-              webAudioRef.current = web;
-              web.onTime = (time, dur) => {
-                setCurrentTime(time);
-                setDuration(dur);
-              };
-              web.onEnded = () => {
-                const nextIndex = indexRef.current + 1;
-                if (nextIndex < queueRef.current.length) {
-                  void playFromIndexRef.current(nextIndex);
-                  return;
-                }
-                setPlaying(false);
-                setCurrentTime(0);
-              };
-              resumeSharedAudioContext();
-              web.start(0);
-              setDuration(web.duration);
-              return true;
-            };
-
-            let started = false;
-            if (iosPath) {
-              try {
-                started = await attachWebAudio();
-              } catch (webErr) {
-                console.warn('Web Audio packaged play failed', webErr);
-              }
-            }
-            if (!started) {
-              const objectUrl = createMp3ObjectUrl(mp3Copy);
-              objectUrlRef.current = objectUrl;
-              audio.loop = false;
-              audio.src = objectUrl;
-              try {
-                await audio.play();
-                started = true;
-              } catch (playErr) {
-                console.warn('HTMLAudio packaged play failed, trying Web Audio', playErr);
-                try {
-                  started = await attachWebAudio();
-                } catch (webErr) {
-                  console.warn('Web Audio packaged play failed', webErr);
-                }
-              }
-            }
-            suppressMediaEventsRef.current = false;
-            if (!isCurrentLoad()) return;
-            setPlaying(started);
-            if (!started) {
-              setPlayError('This track could not start on this browser. Try again.');
-              return;
-            }
-            void sendLicenseHeartbeat({
-              token: session.token,
-              positionSeconds: audio.currentTime || 0,
-              playbackRate: audio.playbackRate || 1,
-              seq: 1,
-              sessionBind: session.session_bind,
-            });
-            startPositionHeartbeat(audio, session, heartbeatRef);
-            return;
-          }
-          suppressMediaEventsRef.current = false;
-          setPlaying(false);
-          setPlayError('Licensed audio is not ready for this track.');
-          return;
-        } catch (err) {
-          console.error('Packaged playback failed', err);
-          suppressMediaEventsRef.current = false;
-          if (token !== loadTokenRef.current) return;
-          setPlaying(false);
-          setPlayError(err instanceof Error ? err.message : 'Packaged playback failed.');
-          return;
-        }
-      }
-
-      suppressMediaEventsRef.current = false;
-      audio.loop = false;
-      if (!url || !isTrustedPlayUrl(url)) {
-        if (token === loadTokenRef.current) setPlaying(false);
-        return;
-      }
+      const subject = parsePlaybackSubject(nextTrack);
+      let session: LicenseSession | null = null;
       try {
-        const subject = parsePlaybackSubject(nextTrack);
-        const session = await createLicenseSession({
+        session = await createLicenseSession({
           subjectType: subject.subjectType,
           subjectId: subject.subjectId,
           variant: subject.variant,
         });
-        startPositionHeartbeat(audio, session, heartbeatRef);
-      } catch {
-        /* unpackaged play still proceeds without a session */
+      } catch (err) {
+        reportPlaybackTrace({
+          event: 'play_error',
+          detail: `stage=session ${errorDetail(err)}`,
+        });
       }
-      audio.crossOrigin = 'use-credentials';
+      if (token !== loadTokenRef.current) return;
+      reportPlaybackTrace({
+        token: session?.token,
+        event: 'play_session',
+        detail: `ready=${session?.ready ? '1' : '0'} package=${session?.package_status || packageStatus}`,
+      });
+
+      if (session?.ready && session.content_key && session.segment_url) {
+        try {
+          if (shouldUseMpegMediaSource()) {
+            reportPlaybackTrace({
+              token: session.token,
+              event: 'play_path',
+              detail: 'path=mse',
+            });
+            await playPackagedWithMediaSource(
+              audio,
+              session,
+              token,
+              loadTokenRef,
+              objectUrlRef,
+              setPlaying,
+              playAbort.signal,
+            );
+            if (token !== loadTokenRef.current) return;
+            releaseHtmlMediaGesture();
+            startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
+          } else {
+            clearHtmlAudioSrc(audio);
+            const graph = ensureGraph();
+            reportPlaybackTrace({
+              token: session.token,
+              event: 'play_path',
+              detail: 'path=webaudio',
+            });
+            await playPackagedWithWebAudio(
+              graph,
+              session,
+              token,
+              loadTokenRef,
+              volume,
+              muted,
+              playAbort.signal,
+            );
+            if (token !== loadTokenRef.current) return;
+            releaseAudioContextHold();
+            releaseHtmlMediaGesture();
+            if (graph.duration > 0) setDuration(graph.duration);
+            setPlaying(true);
+            startPositionHeartbeat(() => graph.currentTime, session, heartbeatRef);
+            reportPlaybackTrace({
+              token: session.token,
+              event: 'play_ok',
+              detail: `path=webaudio duration=${graph.duration.toFixed(1)} ctx=${getSharedAudioContext().state}`,
+            });
+          }
+          if (token !== loadTokenRef.current) return;
+          void sendLicenseHeartbeat({
+            token: session.token,
+            positionSeconds: shouldUseMpegMediaSource()
+              ? audio.currentTime || 0
+              : graphRef.current?.currentTime || 0,
+            playbackRate: 1,
+            seq: 1,
+            sessionBind: session.session_bind,
+          });
+          return;
+        } catch (err) {
+          if (token !== loadTokenRef.current || playAbort.signal.aborted) return;
+          reportPlaybackTrace({
+            token: session?.token,
+            event: 'play_error',
+            detail: `stage=packaged ${errorDetail(err)} ctx=${getSharedAudioContext().state}`,
+          });
+          if (!isAbortLike(err)) {
+            setError(friendlyPlaybackError(err));
+          }
+          setPlaying(false);
+          return;
+        }
+      }
+
+      if (!url || !isTrustedPlayUrl(url)) {
+        if (token === loadTokenRef.current) {
+          setPlaying(false);
+          setError(
+            packageStatus === 'ready'
+              ? 'This track is not ready to play yet.'
+              : 'Playback is not available for this track.',
+          );
+        }
+        return;
+      }
+      if (session) {
+        startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
+      }
+      prepareHtmlAudio(audio);
+      audio.loop = false;
+      reportPlaybackTrace({
+        token: session?.token,
+        event: 'play_path',
+        detail: `path=html url=${url}`,
+      });
       audio.src = url;
       try {
         await audio.play();
-        if (token === loadTokenRef.current) setPlaying(true);
-      } catch {
-        if (token === loadTokenRef.current) setPlaying(false);
+        if (token === loadTokenRef.current) {
+          setPlaying(true);
+          setError(null);
+          reportPlaybackTrace({
+            token: session?.token,
+            event: 'play_ok',
+            detail: 'path=html',
+          });
+        }
+      } catch (err) {
+        if (token === loadTokenRef.current) {
+          reportPlaybackTrace({
+            token: session?.token,
+            event: 'play_error',
+            detail: `stage=html_play ${errorDetail(err)}`,
+          });
+          setPlaying(false);
+          if (!isAbortLike(err)) {
+            setError(friendlyPlaybackError(err));
+          } else {
+            setError('Tap play again to start audio.');
+          }
+        }
       }
     },
-    [authLoading, ensureAudio, muted, redirectToLogin, redirectToVerifyEmail, user, volume],
+    [authLoading, ensureAudio, ensureGraph, muted, redirectToLogin, user, volume],
   );
 
   playFromIndexRef.current = playFromIndex;
@@ -648,21 +733,37 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggle = useCallback(() => {
-    const web = webAudioRef.current;
-    if (web) {
-      if (web.playing) {
-        web.pause();
+    const graph = graphRef.current;
+    if (graph?.hasBuffer) {
+      if (graph.playing) {
+        graph.pause();
         setPlaying(false);
       } else {
-        web.start(web.currentTime);
-        setPlaying(true);
+        unlockMediaPlayback(audioRef.current);
+        setError(null);
+        void graph.resume().then(() => setPlaying(true)).catch((err) => {
+          setPlaying(false);
+          setError(friendlyPlaybackError(err));
+        });
       }
       return;
     }
     const audio = audioRef.current;
     if (!audio || !current) return;
+    if (!shouldHandleHtmlAudioEvent(audio) && !graph?.hasBuffer) return;
     if (audio.paused) {
-      void audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+      unlockMediaPlayback(audio);
+      setError(null);
+      void audio
+        .play()
+        .then(() => {
+          setPlaying(true);
+          setError(null);
+        })
+        .catch((err) => {
+          setPlaying(false);
+          setError(friendlyPlaybackError(err));
+        });
     } else {
       audio.pause();
       setPlaying(false);
@@ -677,23 +778,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [playFromIndex]);
 
   const previous = useCallback(() => {
-    const web = webAudioRef.current;
+    const graph = graphRef.current;
     const audio = audioRef.current;
-    const currentPosition = web?.currentTime ?? audio?.currentTime ?? 0;
-    if (currentPosition > 3) {
-      if (web) {
-        web.seek(0);
-      } else if (audio) {
-        audio.currentTime = 0;
-      }
+    const position = graph?.hasBuffer ? graph.currentTime : audio?.currentTime || 0;
+    if (position > 3) {
+      if (graph?.hasBuffer) graph.seek(0);
+      else if (audio) audio.currentTime = 0;
       setCurrentTime(0);
       return;
     }
     const prevIndex = indexRef.current - 1;
     if (prevIndex >= 0) {
       void playFromIndex(prevIndex);
-    } else if (web) {
-      web.seek(0);
+    } else if (graph?.hasBuffer) {
+      graph.seek(0);
       setCurrentTime(0);
     } else if (audio) {
       audio.currentTime = 0;
@@ -703,10 +801,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const seek = useCallback((time: number) => {
     if (!Number.isFinite(time)) return;
-    const web = webAudioRef.current;
-    if (web) {
-      const nextTime = Math.min(Math.max(0, time), web.duration || time);
-      web.seek(nextTime);
+    const graph = graphRef.current;
+    if (graph?.hasBuffer) {
+      const max = graph.duration > 0 ? graph.duration : time;
+      const nextTime = Math.min(Math.max(0, time), max);
+      graph.seek(nextTime);
       setCurrentTime(nextTime);
       return;
     }
@@ -725,7 +824,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem('camxora-music-volume', String(nextVolume));
     }
     const audio = audioRef.current;
-    if (audio) audio.volume = muted ? 0 : nextVolume;
+    if (audio) {
+      audio.muted = muted;
+      audio.volume = muted ? 0 : nextVolume;
+    }
+    graphRef.current?.setGain(nextVolume, muted);
     if (nextVolume > 0 && muted) setMuted(false);
   }, [muted]);
 
@@ -733,7 +836,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setMuted((prev) => {
       const nextMuted = !prev;
       const audio = audioRef.current;
-      if (audio) audio.volume = nextMuted ? 0 : volume;
+      if (audio) {
+        audio.muted = nextMuted;
+        audio.volume = nextMuted ? 0 : volume;
+      }
+      graphRef.current?.setGain(volume, nextMuted);
       return nextMuted;
     });
   }, [volume]);
@@ -746,10 +853,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return bindNowPlayingActions({
       play: () => {
-        const web = webAudioRef.current;
-        if (web) {
-          web.start(web.currentTime);
-          setPlaying(true);
+        const graph = graphRef.current;
+        if (graph?.hasBuffer) {
+          if (!graph.playing) {
+            unlockMediaPlayback(audioRef.current);
+            void graph.resume().then(() => setPlaying(true)).catch(() => setPlaying(false));
+          }
           return;
         }
         const audio = audioRef.current;
@@ -757,9 +866,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         void audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
       },
       pause: () => {
-        const web = webAudioRef.current;
-        if (web) {
-          web.pause();
+        const graph = graphRef.current;
+        if (graph?.hasBuffer) {
+          graph.pause();
           setPlaying(false);
           return;
         }
@@ -773,11 +882,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
       },
       previous: () => {
-        const web = webAudioRef.current;
+        const graph = graphRef.current;
         const audio = audioRef.current;
-        const currentPosition = web?.currentTime ?? audio?.currentTime ?? 0;
+        const currentPosition = graph?.hasBuffer ? graph.currentTime : audio?.currentTime || 0;
         if (currentPosition > 3) {
-          if (web) web.seek(0);
+          if (graph?.hasBuffer) graph.seek(0);
           else if (audio) audio.currentTime = 0;
           setCurrentTime(0);
           return;
@@ -785,31 +894,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const prevIndex = indexRef.current - 1;
         if (prevIndex >= 0) {
           void playFromIndexRef.current(prevIndex);
-        } else if (web) {
-          web.seek(0);
-          setCurrentTime(0);
-        } else if (audio) {
-          audio.currentTime = 0;
-          setCurrentTime(0);
         }
       },
-      seek: (time: number) => {
-        if (!Number.isFinite(time)) return;
-        const web = webAudioRef.current;
-        if (web) {
-          const nextTime = Math.min(Math.max(0, time), web.duration || time);
-          web.seek(nextTime);
-          setCurrentTime(nextTime);
+      seek: (time) => {
+        const graph = graphRef.current;
+        if (graph?.hasBuffer) {
+          graph.seek(time);
+          setCurrentTime(graph.currentTime);
           return;
         }
         const audio = audioRef.current;
-        if (!audio) return;
-        const max = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : time;
-        const nextTime = Math.min(Math.max(0, time), max);
-        audio.currentTime = nextTime;
-        setCurrentTime(nextTime);
+        if (audio) audio.currentTime = time;
+        setCurrentTime(time);
       },
-      getCurrentTime: () => webAudioRef.current?.currentTime ?? audioRef.current?.currentTime ?? 0,
+      getCurrentTime: () =>
+        graphRef.current?.hasBuffer
+          ? graphRef.current.currentTime
+          : audioRef.current?.currentTime || 0,
     });
   }, []);
 
@@ -823,7 +924,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       volume,
       muted,
-      playError,
+      error,
+      playError: error,
       playTrack,
       playQueue,
       playShuffled,
@@ -843,7 +945,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       duration,
       volume,
       muted,
-      playError,
+      error,
       playTrack,
       playQueue,
       playShuffled,
@@ -856,26 +958,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     ],
   );
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    (window as unknown as { __camxoraPlayer?: Record<string, unknown> }).__camxoraPlayer = {
-      playing,
-      currentTime,
-      duration,
-      playError,
-      title: current?.title ?? null,
-      iosPath: isIosPackagedPlayback(),
-      webAudio: Boolean(webAudioRef.current?.playing),
-    };
-  }, [playing, currentTime, duration, playError, current]);
-
   return (
     <PlayerContext.Provider value={value}>
       <audio
-        ref={audioRef}
+        ref={(el) => {
+          if (el) {
+            audioRef.current = el;
+            prepareHtmlAudio(el);
+          }
+        }}
         playsInline
         preload="auto"
         className="pointer-events-none fixed bottom-0 left-0 h-px w-px opacity-0"
+        aria-hidden
       />
       {children}
     </PlayerContext.Provider>
