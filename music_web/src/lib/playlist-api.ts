@@ -41,6 +41,7 @@ export type WebMusicPlaylistItem = {
   package_status?: string;
   image_url?: string | null;
   added_at?: string | null;
+  duration_seconds?: number | null;
 };
 
 export type WebMusicPlaylistMembership = {

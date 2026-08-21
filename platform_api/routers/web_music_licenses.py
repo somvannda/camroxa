@@ -12,11 +12,13 @@ from pydantic import BaseModel, Field
 from platform_api.exceptions import ForbiddenError, NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
-from platform_api.services.audio_packager import GCM_MIME, parse_package_header
+from platform_api.services.audio_packager import GCM_MIME, parse_package_header, unwrap_content_key
 from platform_api.services.content_license_service import (
     ContentLicenseService,
     decrypt_module_hash,
+    resolve_audio_kek,
 )
+from platform_api.services.hls_packager import derive_hls_key, generate_session_m3u8, HLS_SEGMENT_DURATION
 
 router = APIRouter(prefix="/web-music/licenses", tags=["web-music-licenses"])
 
@@ -245,3 +247,165 @@ async def admin_export_events(
 ) -> dict[str, Any]:
     del ctx
     return await service.list_export_events(user_id=user_id, limit=limit, offset=offset)
+
+
+@router.get("/hls/{token}/index.m3u8")
+async def get_hls_playlist(
+    token: str,
+    request: Request,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> Response:
+    """Session-bound HLS master playlist for iOS Safari native playback."""
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    session = await service.resolve_session(token)
+    if session is None or str(session.get("user_id")) != ctx.user_id:
+        raise NotFoundError("License session expired or invalid.")
+    if str(session.get("purpose") or "play") not in {"play", "admin_play"}:
+        raise ForbiddenError("This license cannot stream.")
+    
+    hls_prefix = str(session.get("hls_prefix") or "").strip()
+    if not hls_prefix:
+        raise NotFoundError("HLS packaging is not ready for this track.")
+    
+    # Get segment count from storage metadata
+    from platform_api.services.storage_service import StorageService
+    from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+    from platform_api.dependencies import get_db_pool
+    
+    config = await resolve_streaming_storage_config(get_db_pool())
+    if not config.configured:
+        raise NotFoundError("Streaming storage is not configured.")
+    
+    storage = StorageService.from_config(config)
+    
+    # List segments to determine count
+    # Segments are stored as {hls_prefix}segment0.ts, segment1.ts, ...
+    segment_count = 0
+    test_index = 0
+    while test_index < 1000:  # Safety limit
+        key = f"{hls_prefix}segment{test_index}.ts"
+        exists = await storage.exists(key)
+        if not exists:
+            break
+        segment_count += 1
+        test_index += 1
+    
+    if segment_count == 0:
+        raise NotFoundError("No HLS segments found.")
+    
+    # Generate session-bound playlist
+    base_url = f"/api/v1/web-music/licenses/hls/{token}"
+    key_url = f"/api/v1/web-music/licenses/hls-key/{token}"
+    segment_url_template = f"{base_url}/segment{{}}.ts"
+    
+    playlist = generate_session_m3u8(
+        segment_count=segment_count,
+        segment_duration=HLS_SEGMENT_DURATION,
+        key_url=key_url,
+        segment_url_template=segment_url_template,
+    )
+    
+    del request
+    return Response(
+        content=playlist,
+        media_type="application/vnd.apple.mpegurl",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/hls-key/{token}")
+async def get_hls_key(
+    token: str,
+    request: Request,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> Response:
+    """Session-bound AES-128 key for HLS decryption."""
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    session = await service.resolve_session(token)
+    if session is None or str(session.get("user_id")) != ctx.user_id:
+        raise NotFoundError("License session expired or invalid.")
+    if str(session.get("purpose") or "play") not in {"play", "admin_play"}:
+        raise ForbiddenError("This license cannot stream.")
+    
+    content_key_id = session.get("content_key_id")
+    if not content_key_id:
+        raise NotFoundError("Content key not available.")
+    
+    # Fetch and unwrap content key
+    from platform_api.dependencies import get_db_pool
+    
+    pool = get_db_pool()
+    key_row = await pool.fetchrow(
+        "SELECT wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
+        UUID(str(content_key_id)),
+    )
+    if not key_row:
+        raise NotFoundError("Content key not found.")
+    
+    kek = resolve_audio_kek()
+    content_key = unwrap_content_key(kek, bytes(key_row["wrapped_key"]))
+    hls_key = derive_hls_key(content_key)
+    
+    del request
+    return Response(
+        content=hls_key,
+        media_type="application/octet-stream",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/hls/{token}/segment{segment_num}.ts")
+async def get_hls_segment(
+    token: str,
+    segment_num: int,
+    request: Request,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> Response:
+    """Serve encrypted HLS TS segment."""
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    session = await service.resolve_session(token)
+    if session is None or str(session.get("user_id")) != ctx.user_id:
+        raise NotFoundError("License session expired or invalid.")
+    if str(session.get("purpose") or "play") not in {"play", "admin_play"}:
+        raise ForbiddenError("This license cannot stream.")
+    
+    hls_prefix = str(session.get("hls_prefix") or "").strip()
+    if not hls_prefix:
+        raise NotFoundError("HLS packaging is not ready.")
+    
+    if segment_num < 0 or segment_num > 4096:
+        raise NotFoundError("Segment number out of range.")
+    
+    from platform_api.services.storage_service import StorageService
+    from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+    from platform_api.dependencies import get_db_pool
+    
+    config = await resolve_streaming_storage_config(get_db_pool())
+    if not config.configured:
+        raise NotFoundError("Streaming storage is not configured.")
+    
+    storage = StorageService.from_config(config)
+    segment_key = f"{hls_prefix}segment{segment_num}.ts"
+    
+    segment_data = await storage.download_bytes(key=segment_key)
+    if not segment_data:
+        raise NotFoundError("Segment not found.")
+    
+    del request
+    return Response(
+        content=segment_data,
+        media_type="video/MP2T",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

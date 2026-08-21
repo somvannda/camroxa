@@ -18,6 +18,7 @@ from platform_api.services.audio_packager import (
     wrap_content_key,
 )
 from platform_api.services.content_license_service import resolve_audio_kek
+from platform_api.services.hls_packager import package_audio_to_hls
 from platform_api.services.web_music_storage_keys import usable_web_music_b2_key
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,26 @@ class AudioPackageService:
         await storage.upload_bytes(key=pkg_a_key, data=package_a, content_type=GCM_MIME)
         await storage.upload_bytes(key=pkg_b_key, data=package_b, content_type=GCM_MIME)
 
+        # Package HLS segments for iOS Safari
+        hls_prefix = None
+        try:
+            hls_prefix = await self._package_hls(
+                plaintext=plaintext,
+                content_key=content_key,
+                base_key=base_key,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                variant=variant,
+                storage=storage,
+            )
+        except Exception as exc:
+            logger.warning(
+                "HLS packaging failed subject=%s id=%s: %s (CXA1 OK, continuing)",
+                subject_type,
+                subject_id,
+                exc,
+            )
+
         if subject_type == "stream_track":
             await self._pool.execute(
                 """
@@ -97,6 +118,8 @@ class AudioPackageService:
                     package_status = 'ready',
                     content_key_id = $5,
                     packaged_size_bytes = $6,
+                    hls_prefix = $7,
+                    hls_status = CASE WHEN $7 IS NOT NULL THEN 'ready' ELSE 'none' END,
                     updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -106,6 +129,7 @@ class AudioPackageService:
                 pkg_b_key,
                 key_row["id"],
                 len(package_a),
+                hls_prefix,
             )
         else:
             if variant == "ok":
@@ -118,6 +142,8 @@ class AudioPackageService:
                         package_status_ok = 'ready',
                         content_key_id_ok = $5,
                         audio_url_ok = CASE WHEN $6 THEN NULL ELSE audio_url_ok END,
+                        hls_prefix_ok = $7,
+                        hls_status_ok = CASE WHEN $7 IS NOT NULL THEN 'ready' ELSE 'none' END,
                         updated_at = NOW()
                     WHERE id = $1
                     """,
@@ -127,6 +153,7 @@ class AudioPackageService:
                     pkg_b_key,
                     key_row["id"],
                     null_suno_urls,
+                    hls_prefix,
                 )
             else:
                 await self._pool.execute(
@@ -138,6 +165,8 @@ class AudioPackageService:
                         package_status_alt = 'ready',
                         content_key_id_alt = $5,
                         audio_url_alt = CASE WHEN $6 THEN NULL ELSE audio_url_alt END,
+                        hls_prefix_alt = $7,
+                        hls_status_alt = CASE WHEN $7 IS NOT NULL THEN 'ready' ELSE 'none' END,
                         updated_at = NOW()
                     WHERE id = $1
                     """,
@@ -147,6 +176,7 @@ class AudioPackageService:
                     pkg_b_key,
                     key_row["id"],
                     null_suno_urls,
+                    hls_prefix,
                 )
         await self._pool.execute(
             """
@@ -212,6 +242,50 @@ class AudioPackageService:
             variant,
             status,
         )
+
+    async def _package_hls(
+        self,
+        *,
+        plaintext: bytes,
+        content_key: bytes,
+        base_key: str,
+        subject_type: str,
+        subject_id: UUID,
+        variant: str,
+        storage: Any,
+    ) -> str:
+        """Package audio as HLS AAC TS segments with AES-128 encryption.
+        
+        Returns the storage prefix (e.g., "hls/uuid/ok/") for the segments.
+        """
+        # Generate HLS storage prefix
+        # Format: hls/{subject_id}/{variant}/
+        hls_prefix = f"hls/{subject_id}/{variant}/"
+        
+        # Upload function for HLS segments
+        async def upload_segment(key: str, data: bytes) -> None:
+            await storage.upload_bytes(key=key, data=data, content_type="video/MP2T")
+            logger.debug("Uploaded HLS segment: %s (%d bytes)", key, len(data))
+        
+        # Package audio to HLS
+        result = await package_audio_to_hls(
+            mp3_bytes=plaintext,
+            content_key=content_key,
+            storage_prefix=hls_prefix,
+            upload_fn=upload_segment,
+        )
+        
+        logger.info(
+            "HLS packaged subject=%s id=%s variant=%s segments=%d duration=%.1fs prefix=%s",
+            subject_type,
+            subject_id,
+            variant,
+            result.segment_count,
+            result.duration_seconds,
+            hls_prefix,
+        )
+        
+        return hls_prefix
 
     async def _wrapped_key(self, key_id: Any) -> bytes | None:
         if not key_id:

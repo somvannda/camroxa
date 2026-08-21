@@ -73,6 +73,7 @@ export type LicenseSession = {
   package_status: string;
   content_key: string | null;
   segment_url: string;
+  hls_url?: string;
   lane: string;
   ttl_seconds: number;
   decrypt_module_hash: string;
