@@ -25,6 +25,8 @@ Camxora music streaming uses:
 
 See [`MUSIC_STREAMING_PORTAL_ENHANCEMENT.md`](./MUSIC_STREAMING_PORTAL_ENHANCEMENT.md) for branding, shared auth, pagination, player, lyrics, and library phases.
 
+Protected Play speed (every browser): [`PROTECTED_PLAYBACK_FAST_START.md`](./PROTECTED_PLAYBACK_FAST_START.md). Plan only until implemented.
+
 
 ```
 camxora-media/{user_id}/{album_slug}/{song_slug}-{ok|alt}.mp3

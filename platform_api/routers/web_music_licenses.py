@@ -179,6 +179,8 @@ async def get_segment(
     if not storage_key:
         raise NotFoundError("Packaged audio is not ready.")
 
+    from platform_api.services.audio_packager import encrypted_chunk_record
+    from platform_api.services.encrypted_package_cache import get_packaged_blob
     from platform_api.services.storage_service import StorageService
     from platform_api.services.streaming_config_service import resolve_streaming_storage_config
     from platform_api.dependencies import get_db_pool
@@ -186,19 +188,17 @@ async def get_segment(
     config = await resolve_streaming_storage_config(get_db_pool())
     if not config.configured:
         raise NotFoundError("Streaming storage is not configured.")
-    blob = await StorageService.from_config(config).download_bytes(key=storage_key)
+
+    async def _load() -> bytes | None:
+        return await StorageService.from_config(config).download_bytes(key=storage_key)
+
+    blob = await get_packaged_blob(storage_key, _load)
     if not blob:
         raise NotFoundError("Packaged audio is missing.")
     header, _ = parse_package_header(blob)
     if chunk >= header.chunk_count:
         raise NotFoundError("Chunk out of range.")
-    key_hex = None
-    # Prefer server unwrap so the client can decrypt; also return raw encrypted chunk.
-    # Client decrypts with session content_key. We still send ciphertext only.
-    from platform_api.services.audio_packager import iter_encrypted_chunks
-
-    records = iter_encrypted_chunks(blob)
-    payload = records[chunk]
+    payload = encrypted_chunk_record(blob, chunk)
     headers = {
         "Cache-Control": "private, no-store",
         "X-Camxora-Chunk": str(chunk),
@@ -207,7 +207,7 @@ async def get_segment(
         "X-Content-Type-Options": "nosniff",
         "Content-Disposition": "inline",
     }
-    del request, key_hex
+    del request
     return Response(content=payload, media_type=GCM_MIME, headers=headers)
 
 

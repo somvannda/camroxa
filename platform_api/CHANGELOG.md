@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `GET /api/v1/web-music/licenses/segments/{token}` caches the CXA1 package in-process (ciphertext only) so chunk 1 does not re-download the whole object. See `docs/changelog/2026-08-21-protected-playback-fast-start.md`.
+
 ### Added
 
 - `POST /api/v1/web-music/licenses/client-trace` stores play stage traces in `playback_events.detail` (migration `109_playback_event_detail`). See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
