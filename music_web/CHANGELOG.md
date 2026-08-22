@@ -10,13 +10,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Create playlist control confirms with a tick animation, keeps the menu open for more playlists, and shows playlist name chips on the track. See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+- Create / edit is one live preview: **cover**, photo, name, location, country, email, social links, bio, and typed genres (up to 10, no category dropdown). Drag photo and cover to crop. **Required:** name, location, country, genre. Photo, cover, email, bio, and links are optional. Public **More info** uses social icons aligned with email and location. Left sidebar **Artists** opens published pages. **Music on this page** sits under the preview on `/artist` so owners can attach tracks and playlists. See `docs/changelog/2026-08-20-artist-pages.md`, `docs/changelog/2026-08-20-artist-page-attach.md`, and `docs/changelog/2026-08-20-artist-page-attach-visible.md`.
+
 ### Security
 
+- Catalog and Create playback decrypt packaged audio in the player (Web Crypto + MSE). Confirmed users can listen; downloads remain owner-only for **your songs**. See `docs/changelog/2026-08-20-protected-playback.md`.
+- iOS/Safari packaged playback uses in-memory Web Audio (no downloadable MP3 blob URL). Play src still rejects `blob:` and `data:`. See `docs/changelog/2026-08-21-ios-safari-playback.md`.
 - Cambodia-only access and a clear message when Create is paused after abuse. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Sign-up errors from IP farm limits now show the API message instead of a generic 429. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
 
 ### Fixed
 
+- iOS lock screen rich Now Playing: 1024px artwork, Artist (Album) subtitle, 15s skip, smoother scrubber while locked. See `docs/changelog/2026-08-22-ios-lock-screen-rich.md`.
+- iOS Chrome deep diagnostics: `crios_sync_diag` (graph vs UI vs hold vs Media Session drift) and `crios_hold_event` (hold pause/play/seek). Safari untouched.
+- iOS Now Playing diagnostics: concrete `now_playing_diag` / `media_element_event` traces with mismatch flags; in-DOM media listener bind; native sync uses element `paused` state; lock-screen handlers for HLS/video. See `docs/changelog/2026-08-22-ios-now-playing-diagnostics.md`.
+- iOS Safari packaged playback: AES-128 HLS lane (`path=hls_aes128`) for native lock screen / Dynamic Island; falls back to MP3 stream then Web Audio. iOS Chrome keeps Web Audio. See `docs/changelog/2026-08-21-ios-hls-aes128-playback.md`.
+- iOS Safari/Chrome packaged playback revamp: native `<audio>` via session-bound `GET /licenses/play/{token}` (server decrypt, clamped ranges) instead of Web Audio + silent hold. Lock screen / Dynamic Island use real media element state. iOS Chrome (CriOS) keeps progressive Web Audio because Chrome loses the user gesture before native `play()`. See `docs/changelog/2026-08-21-ios-native-html-playback.md`.
+- iOS Safari/Chrome: progressive Web Audio after chunk 0, pinned catalog duration, in-DOM silent hold + Media Session for lock screen/Dynamic Island. Lock screen pause/play and scrubber now sync with Web Audio (blob hold, not data: URL). See `docs/changelog/2026-08-21-ios-player-responsive.md`.
+- Packaged Create songs can be added to playlists again (ready check no longer requires a Suno origin URL). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+- Playlist song rows no longer wrap the more/remove control under the cover art. See `docs/changelog/2026-08-21-playlist-detail-ux.md`.
+- iOS: abort leftover chunk fetches, keep Web Audio unlocked during load, and refuse silent `play_ok` if the audio context is suspended. See `docs/changelog/2026-08-21-ios-silent-operation-error.md`.
+- Play no longer skip-loops Version 1/2 after a silent WAV unlock on the shared player element. Sandbox traces showed `play_path=webaudio` with no chunks. See `docs/changelog/2026-08-21-player-unlock-queue-skip.md`.
+- iOS Safari play now posts stage traces to the API so sandbox journal/`playback_events` can show AbortError vs decode vs MSE. Abort no longer prints Safari’s raw sentence. See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
+- iOS Safari packaged play: skip MSE on Apple WebKit, strip ID3, and decode MP3 to PCM in memory if native decode fails. See `docs/changelog/2026-08-21-ios-safari-webaudio-decode.md`.
+- iOS Safari: Version 1 silent play and Version 2 “operation-specific reason” on Play. Safari uses Web Audio after license decrypt; Chrome keeps MSE. See `docs/changelog/2026-08-21-ios-safari-playback.md`.
+- Artist setup no longer treats placeholder text as a filled name. The account display name is prefilled as a real value. See `docs/changelog/2026-08-20-artist-pages.md`.
+- Artist page create no longer 404s on `/web-music/artist-pages`. Cover/photo can be dragged to crop. See `docs/changelog/2026-08-20-artist-pages.md`.
 - Album tracklist now keeps duration in the Time column instead of wrapping under the track number. See `docs/changelog/2026-08-17-music-web-album-tracklist-ux.md`.
 - Public recent tracks include clip duration so Explore/catalog typechecks and can show time. See `docs/changelog/2026-08-19-music-web-public-track-duration.md`.
 - Play no longer sends a logged-in listener back to login when the clip URL is `/stream/ok` or `/stream/alt`. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
@@ -31,6 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Playlist detail is rebuilt for phone and desktop: album-style play/shuffle, shared Select sort menu, and a DropdownMenu for remove. See `docs/changelog/2026-08-21-playlist-detail-ux.md`.
 - Create Simple song description follows Suno V5 limits: UI **1000** (style) with a live counter; API prompt **5000**. Simple uses the description as style. See `docs/changelog/2026-08-18-web-music-simple-prompt-suno-limits.md`.
 - Create workspace rows show each clip’s duration before Ready (for example `3:45 · Ready`). See `docs/changelog/2026-08-17-web-music-clip-duration.md`.
 - Unconfirmed music-web sessions stay on verify-email with no Create/sidebar; `/create` redirects back. See `docs/changelog/2026-08-17-music-web-email-confirm-lock.md`.

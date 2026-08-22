@@ -23,6 +23,10 @@ _CAMXORA_AUDIO_PROXY_RE = re.compile(
     r"^/api/v1/(?:"
     r"web-music/play/[A-Za-z0-9._-]+"
     r"|web-music/generations/[0-9a-fA-F-]+/stream(?:/(?:ok|alt))?(?:\?variant=(?:ok|alt))?"
+    r"|web-music/licenses/segments/[A-Za-z0-9._-]+"
+    r"|web-music/licenses/play/[A-Za-z0-9._-]+"
+    r"|web-music/licenses/hls/[A-Za-z0-9._-]+(?:/index\.m3u8|/seg[0-9]+\.ts)?"
+    r"|web-music/licenses/hls-key/[A-Za-z0-9._-]+"
     r"|public/streaming/tracks/[0-9a-fA-F-]+/stream"
     r")$"
 )

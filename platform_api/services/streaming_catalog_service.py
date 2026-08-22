@@ -29,12 +29,14 @@ _PUBLIC_TRACK_KEYS = {
     "album_genre",
     "duration_seconds",
     "play_count",
+    "valid_streams",
     "lyrics",
     "published_at",
     "created_at",
     "track_number",
     "tags",
     "added_at",
+    "package_status",
 }
 
 _PUBLIC_ALBUM_KEYS = {
@@ -89,8 +91,36 @@ class StreamingCatalogService:
         if track.get("genre") is None and track.get("album_genre"):
             track["genre"] = track.get("album_genre")
         track["play_count"] = int(track.get("play_count") or 0)
+        track["valid_streams"] = int(track.get("valid_streams") or 0)
         self._decorate_genre_fields(track)
         self._expose_public_track(track)
+
+    async def _decorate_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        await self._attach_valid_streams(tracks)
+        for track in tracks:
+            await self._decorate_track(track)
+
+    async def _attach_valid_streams(self, tracks: list[dict[str, Any]]) -> None:
+        ids = [track["id"] for track in tracks if track.get("id")]
+        if not ids:
+            return
+        try:
+            rows = await self._pool.fetch(
+                """
+                SELECT subject_id, COUNT(*) FILTER (
+                    WHERE listener_user_id <> owner_user_id
+                )::int AS valid_streams
+                FROM valid_streams
+                WHERE subject_type = 'stream_track' AND subject_id = ANY($1::uuid[])
+                GROUP BY subject_id
+                """,
+                ids,
+            )
+        except Exception:
+            return
+        counts = {row["subject_id"]: int(row["valid_streams"] or 0) for row in rows}
+        for track in tracks:
+            track["valid_streams"] = counts.get(track["id"], int(track.get("valid_streams") or 0))
 
     async def _decorate_album(self, album: dict[str, Any]) -> None:
         album["cover_url"] = await self._cover_url(album.get("cover_storage_key"))
@@ -117,8 +147,7 @@ class StreamingCatalogService:
     async def get_home(self) -> dict[str, Any]:
         recent_tracks = await self._repo.list_recent_published_tracks(limit=12)
         albums = await self._repo.list_published_albums(limit=12)
-        for track in recent_tracks:
-            await self._decorate_track(track)
+        await self._decorate_tracks(recent_tracks)
         for album in albums:
             await self._decorate_album(album)
         return {"recent_tracks": recent_tracks, "albums": albums}
@@ -143,7 +172,7 @@ class StreamingCatalogService:
         for track in tracks:
             track["album_cover_storage_key"] = album_cover_key
             track["album_genre"] = album_genre
-            await self._decorate_track(track)
+        await self._decorate_tracks(tracks)
         album["tracks"] = tracks
         return album
 
@@ -179,8 +208,7 @@ class StreamingCatalogService:
         tracks = await self._repo.list_published_tracks_by_genre(genre, limit=24, offset=0)
         for album in albums:
             await self._decorate_album(album)
-        for track in tracks:
-            await self._decorate_track(track)
+        await self._decorate_tracks(tracks)
         return {
             "genre": genre,
             "slug": match["slug"],
@@ -223,8 +251,7 @@ class StreamingCatalogService:
     async def search(self, query: str, *, limit: int = 24, offset: int = 0) -> dict[str, Any]:
         tracks = await self._repo.search_published(query, limit=limit, offset=offset)
         total = await self._repo.count_search_published(query)
-        for track in tracks:
-            await self._decorate_track(track)
+        await self._decorate_tracks(tracks)
         return {"items": tracks, "total": total, "limit": limit, "offset": offset}
 
     async def get_play_url(self, track_id: UUID) -> dict[str, Any] | None:
@@ -234,12 +261,17 @@ class StreamingCatalogService:
         config = await resolve_streaming_storage_config(self._pool)
         if not config.configured:
             return None
-        if not str(track.get("storage_key") or "").strip():
+        pkg = str(track.get("package_status") or "none")
+        has_audio = bool(str(track.get("storage_key") or "").strip()) or pkg == "ready"
+        if not has_audio:
             return None
+        await self._attach_valid_streams([track])
         expires_at = datetime.now(timezone.utc).timestamp() + config.stream_url_ttl_seconds
         return {
             "track_id": str(track_id),
             "url": self._catalog_stream_url(track_id),
+            "package_status": pkg,
+            "subject_type": "stream_track",
             "expires_at": datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
             "title": track.get("title"),
             "album_id": str(track["album_id"]) if track.get("album_id") else None,
@@ -250,6 +282,7 @@ class StreamingCatalogService:
             "cover_url": await self._cover_url(self._track_cover_key(track)),
             "duration_seconds": track.get("duration_seconds"),
             "play_count": int(track.get("play_count") or 0),
+            "valid_streams": int(track.get("valid_streams") or 0),
             "genre": track.get("genre") or track.get("album_genre"),
             "lyrics": track.get("lyrics"),
             "genres": parse_genre_list(track.get("genres"))
@@ -275,6 +308,8 @@ class StreamingCatalogService:
         track = await self._repo.get_published_track(track_id)
         if not track:
             raise NotFoundError("Track not found or streaming is not configured.")
+        if str(track.get("package_status") or "") == "ready":
+            raise NotFoundError("This track requires the encrypted player.")
         storage_key = str(track.get("storage_key") or "").strip()
         if not storage_key:
             raise NotFoundError("Track not found or streaming is not configured.")
@@ -326,7 +361,8 @@ class StreamingCatalogService:
         for track in rows:
             if not track.get("added_at") and track.get("liked_at"):
                 track["added_at"] = track.get("liked_at")
-            await self._decorate_track(track)
+        await self._decorate_tracks(rows)
+        for track in rows:
             track["id"] = str(track["id"])
             if track.get("album_id"):
                 track["album_id"] = str(track["album_id"])

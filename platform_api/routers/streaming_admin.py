@@ -68,9 +68,17 @@ class CatalogTrackResponse(BaseModel):
     genres: list[str] = Field(default_factory=list)
     duration_seconds: float | None = None
     play_count: int = 0
+    origin: str = "ai_generated"
+    valid_streams: int = 0
+    unique_listeners: int = 0
+    royalty_streams: int = 0
+    earned_usd: float = 0
+    eligible: bool = False
+    cap_remaining: int = 0
     cover_url: str | None = None
     has_lyrics: bool = False
     suno_image_url: str | None = None
+    package_status: str = "none"
     created_at: str | None = None
 
 
@@ -186,6 +194,58 @@ def _album_genres(row: dict) -> list[str]:
     return [genre] if genre else None
 
 
+async def _attach_royalty_stats(pool: Any, rows: list[dict]) -> None:
+    ids = [row["id"] for row in rows]
+    if not ids:
+        return
+    from platform_api.services.royalty_math import micros_to_usd
+    from platform_api.services.royalty_policy_service import RoyaltyPolicyService
+
+    policy = await RoyaltyPolicyService(pool).get_active()
+    document = policy["document"]
+    need_s = int(document.get("eligibility_streams") or 1000)
+    need_u = int(document.get("eligibility_unique_listeners") or 100)
+    stats = await pool.fetch(
+        """
+        SELECT subject_id,
+               COUNT(*) FILTER (WHERE listener_user_id <> owner_user_id)::int AS valid_streams,
+               COUNT(DISTINCT listener_user_id) FILTER (
+                   WHERE listener_user_id <> owner_user_id
+               )::int AS unique_listeners,
+               COUNT(*) FILTER (WHERE status = 'royalty')::int AS royalty_streams
+        FROM valid_streams
+        WHERE subject_type = 'stream_track' AND subject_id = ANY($1::uuid[])
+        GROUP BY subject_id
+        """,
+        ids,
+    )
+    earned = await pool.fetch(
+        """
+        SELECT subject_id, COALESCE(SUM(amount_micros), 0)::bigint AS earned_micros
+        FROM royalty_ledger
+        WHERE subject_type = 'stream_track' AND subject_id = ANY($1::uuid[])
+          AND entry_type = 'accrual'
+        GROUP BY subject_id
+        """,
+        ids,
+    )
+    by_id = {row["subject_id"]: dict(row) for row in stats}
+    earned_by_id = {row["subject_id"]: int(row["earned_micros"] or 0) for row in earned}
+    for row in rows:
+        stat = by_id.get(row["id"], {})
+        origin = str(row.get("origin") or "ai_generated")
+        cap = int(document["ai" if origin == "ai_generated" else "original"]["max_royalty_streams"])
+        valid = int(stat.get("valid_streams") or 0)
+        unique = int(stat.get("unique_listeners") or 0)
+        royalty = int(stat.get("royalty_streams") or 0)
+        row["valid_streams"] = valid
+        row["unique_listeners"] = unique
+        row["royalty_streams"] = royalty
+        row["earned_usd"] = round(micros_to_usd(earned_by_id.get(row["id"], 0)), 4)
+        row["eligible"] = valid >= need_s and unique >= need_u
+        row["cap_remaining"] = max(0, cap - royalty)
+
+
 def _build_catalog_track_response(row: dict, *, cover_url: str | None) -> CatalogTrackResponse:
     genres = _track_genres(row)
     lyrics = str(row.get("lyrics") or "").strip()
@@ -201,9 +261,17 @@ def _build_catalog_track_response(row: dict, *, cover_url: str | None) -> Catalo
         genres=genres,
         duration_seconds=row.get("duration_seconds"),
         play_count=int(row.get("play_count") or 0),
+        origin=str(row.get("origin") or "ai_generated"),
+        valid_streams=int(row.get("valid_streams") or 0),
+        unique_listeners=int(row.get("unique_listeners") or 0),
+        royalty_streams=int(row.get("royalty_streams") or 0),
+        earned_usd=float(row.get("earned_usd") or 0),
+        eligible=bool(row.get("eligible")),
+        cap_remaining=int(row.get("cap_remaining") or 0),
         cover_url=cover_url,
         has_lyrics=bool(lyrics),
         suno_image_url=row.get("suno_image_url"),
+        package_status=str(row.get("package_status") or "none"),
         created_at=row["created_at"].isoformat() if row.get("created_at") else None,
     )
 
@@ -267,6 +335,7 @@ async def list_streaming_catalog(
         publish_status=publish_status,
     )
     total = await repo.count_admin_catalog(q=q, publish_status=publish_status)
+    await _attach_royalty_stats(pool, rows)
     items: list[CatalogTrackResponse] = []
     for row in rows:
         cover_url = await _admin_cover_url(pool, _track_cover_key(row))

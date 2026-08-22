@@ -3526,8 +3526,30 @@ class BatchService:
                 return {}
             storage = StorageService.from_config(config)
             urls: dict[str, str] = {}
+            packaged: set[tuple[str, str]] = set()
+            try:
+                pkg_rows = await pool.fetch(
+                    """
+                    SELECT suno_task_id, variant, package_status
+                    FROM stream_tracks
+                    WHERE suno_task_id = ANY($1::uuid[])
+                    """,
+                    task_ids,
+                )
+                packaged = {
+                    (str(row["suno_task_id"]), str(row["variant"] or "ok"))
+                    for row in pkg_rows
+                    if str(row["package_status"] or "") == "ready"
+                }
+            except Exception:
+                packaged = set()
             for (task_id, track_variant), storage_key in storage_keys.items():
                 if track_variant != variant:
+                    continue
+                if (str(task_id), str(track_variant)) in packaged:
+                    continue
+                key = str(storage_key or "")
+                if key.endswith((".cxa", ".cxo")):
                     continue
                 urls[task_id] = await storage.get_signed_get_url(storage_key)
             return urls

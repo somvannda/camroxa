@@ -56,6 +56,8 @@ def test_is_camxora_audio_proxy_url() -> None:
         )
         is True
     )
+    assert is_camxora_audio_proxy_url("/api/v1/web-music/licenses/segments/abc_DEF-123") is True
+    assert is_camxora_audio_proxy_url("/api/v1/web-music/licenses/play/abc_DEF-123") is True
     assert is_camxora_audio_proxy_url("https://cdn1.suno.ai/abc-123.mp3") is False
     assert is_camxora_audio_proxy_url("https://s3.us-west-004.backblazeb2.com/secret.mp3") is False
     assert is_camxora_audio_proxy_url("/api/v1/web-music/generations/x/download") is False

@@ -22,6 +22,7 @@ export type WebMusicClip = {
   audio_url: string;
   download_url: string;
   ready: boolean;
+  package_status?: string;
   image_url?: string | null;
   duration_seconds?: number | null;
   title?: string;

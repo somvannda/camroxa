@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- Artist royalty stream accounting: server-validated heartbeats, self-play exclusion, fraud scoring, and catalog geo parity for `/public/streaming`. See `docs/changelog/2026-08-20-artist-royalty-program.md`.
+- Protected catalog/Create playback: AES-256-GCM packages, License API sessions, owner-only watermarked downloads, and no Suno/B2 origin URLs in the browser. Unconfirmed users cannot play or export. Theft-vector suite (`test_protected_playback_theft_vectors.py`) covers 1000+ Range-stitch and save-as cases. Production leftover encrypt now also seals the original MP3 object and owner WAV/LRC sidecars (SRT is derived from LRC). See `docs/changelog/2026-08-20-protected-playback.md`.
 - Admin blog CRUD (`/api/v1/admin/blog-posts`) now requires `Depends(require_admin)`.
   Unauthenticated list/create/update/delete previously skipped auth. See
   `docs/changelog/2026-08-19-admin-blog-require-admin.md`.
@@ -31,6 +33,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- AES-128 HLS lane for iOS Safari: ffmpeg packaging at ingest, session-bound `index.m3u8` + key routes, admin HLS backfill. See `docs/changelog/2026-08-21-ios-hls-aes128-playback.md`.
+- `GET /api/v1/web-music/licenses/play/{token}` — session-bound clamped MP3 stream (server-side CXA1 decrypt, 90s cache) for iOS native HTML audio playback. See `docs/changelog/2026-08-21-ios-native-html-playback.md`.
+- `GET /api/v1/web-music/playlists/memberships` — owner clip-to-playlist map for Create-page chips. Packaged clips can be added to playlists (ready check matches playback). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+- Music web play traces: `POST /api/v1/web-music/licenses/client-trace` logs `music_web_play_trace` and stores `playback_events.detail` (migration `114`). See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
+- Overview (`/api/v1/web-music/studio/*`) owner APIs, versioned royalty policy, settle worker, and admin payout/fraud/origin endpoints. Studio tracks are per version (ok/alt), with public = on a public playlist or published catalog. See `docs/changelog/2026-08-20-artist-royalty-program.md`.
+- Opt-in artist pages (`/api/v1/web-music/artist-pages`, public list/detail). Multi-page schema with admin `artist_page_limit` (default 1). Create/publish require name, location, country, and at least one genre. Cover crop, contact email, and Facebook/TikTok/Instagram/YouTube links are optional. Typed genres (up to 10) from an expanded music catalog including Khmer/SEA labels. Owners can attach tracks and playlists to a page. See `docs/changelog/2026-08-20-artist-pages.md` and `docs/changelog/2026-08-20-artist-page-attach.md`.
 - Telegram ops feed posts signup, login, paid checkout, credit spend, plan-quota
   use, and refunds to a group chat. `/stats` and `/burncredit` reply in-chat;
   burn tables also post at 10:00 PM Asia/Phnom_Penh. See
@@ -59,6 +67,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Packaged web-music clips can be added to playlists (`add_playlist_item` uses the playback ready check, not origin URLs). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+- `GET /v2/credits/balance` no longer 500s when a paid subscription is missing `last_credit_reset`. See `docs/changelog/2026-08-20-artist-pages.md`.
 - Stream play no longer one-shots a full MP3: `Range: bytes=0-` (and missing Range) is clamped to 256 KiB 206, and the proxy truncates origin bodies that ignore Range. See `docs/changelog/2026-08-19-web-music-stream-range-cap.md`.
 - Music-web play no longer kicks a logged-in session to login: geo gate is pure ASGI (does not wrap Range audio), `/stream/ok` and `/stream/alt` are trusted play URLs, and unconfirmed users can still listen. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Settings ignore unknown `PLATFORM_*` env vars (Telegram ops keys on production must not crash boot). Audio proxy keeps `is_missing_range` for production stream routers.

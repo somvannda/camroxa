@@ -7,7 +7,7 @@ import { Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
 import { UpgradeModal } from '@/components/upgrade-modal';
-import { AddToPlaylistButton } from '@/components/add-to-playlist-button';
+import { AddToPlaylistButton, ClipPlaylistNames } from '@/components/add-to-playlist-button';
 import {
   MusicCharCount,
   MusicCollapsibleSection,
@@ -110,6 +110,8 @@ function clipToTrack(generation: WebMusicGeneration, clip: WebMusicClip): Stream
     genre: generation.style,
     lyrics: generation.lyrics,
     play_url: clip.audio_url,
+    package_status: clip.package_status ?? 'none',
+    subject_type: 'suno_task',
     cover_url: clip.image_url ?? null,
     duration_seconds: clip.duration_seconds ?? null,
   };
@@ -1335,6 +1337,7 @@ export default function CreatePageClient() {
                             waitingLabel={clipWaitingLabel(generation)}
                             generating={isGeneratingStatus(generation)}
                           />
+                          <ClipPlaylistNames taskId={generation.id} variant={clip.variant} className="mt-1" />
                         </div>
                       </div>
                       <div className="flex flex-shrink-0 items-center gap-1">
@@ -1381,6 +1384,11 @@ export default function CreatePageClient() {
                   model={selectedVersion.song.model}
                   waitingLabel={clipWaitingLabel(selectedVersion.song)}
                   className="text-sm text-slate-400"
+                />
+                <ClipPlaylistNames
+                  taskId={selectedVersion.song.id}
+                  variant={selectedVersion.clip.variant}
+                  className="mt-1.5"
                 />
               </div>
             </div>

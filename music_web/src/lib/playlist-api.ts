@@ -38,8 +38,16 @@ export type WebMusicPlaylistItem = {
   status?: string;
   ready?: boolean;
   audio_url?: string;
+  package_status?: string;
   image_url?: string | null;
   added_at?: string | null;
+};
+
+export type WebMusicPlaylistMembership = {
+  playlist_id: string;
+  playlist_name: string;
+  task_id: string;
+  variant: string;
 };
 
 export type WebMusicPublicPlaylist = {
@@ -154,6 +162,14 @@ export async function listWebMusicPlaylists(): Promise<{ items: WebMusicPlaylist
   const response = await musicAuthFetch('/api/v1/web-music/playlists');
   if (!response.ok) {
     throw new Error(await readError(response, 'Unable to load playlists'));
+  }
+  return response.json();
+}
+
+export async function listWebMusicPlaylistMemberships(): Promise<{ items: WebMusicPlaylistMembership[] }> {
+  const response = await musicAuthFetch('/api/v1/web-music/playlists/memberships');
+  if (!response.ok) {
+    throw new Error(await readError(response, 'Unable to load playlist songs'));
   }
   return response.json();
 }
