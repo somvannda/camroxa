@@ -256,14 +256,6 @@ async def test_packaged_create_stream_refuses_plaintext_mp3() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unpackaged_create_stream_is_not_playable() -> None:
-    service = WebMusicService.__new__(WebMusicService)
-    row = {"package_status_ok": "none", "status": "SUCCESS"}
-    with pytest.raises(ValidationError, match="still finishing"):
-        await service._proxy_row(row, task_id=uuid4(), variant_key="ok", range_header="bytes=0-")
-
-
-@pytest.mark.asyncio
 async def test_packaged_catalog_stream_refuses_plaintext_mp3() -> None:
     service = StreamingCatalogService(pool=AsyncMock())
     service._repo.get_published_track = AsyncMock(

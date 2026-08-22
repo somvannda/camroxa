@@ -73,6 +73,9 @@ export type LicenseSession = {
   package_status: string;
   content_key: string | null;
   segment_url: string;
+  play_url?: string;
+  hls_url?: string;
+  hls_status?: string;
   lane: string;
   ttl_seconds: number;
   decrypt_module_hash: string;
@@ -168,7 +171,18 @@ export async function sendLicenseHeartbeat(input: {
 
 export function reportPlaybackTrace(input: {
   token?: string | null;
-  event: 'play_start' | 'play_session' | 'play_path' | 'play_chunks' | 'play_decode' | 'play_ok' | 'play_error';
+  event:
+    | 'play_start'
+    | 'play_session'
+    | 'play_path'
+    | 'play_chunks'
+    | 'play_decode'
+    | 'play_ok'
+    | 'play_error'
+    | 'now_playing_diag'
+    | 'media_element_event'
+    | 'crios_sync_diag'
+    | 'crios_hold_event';
   detail?: string;
 }): void {
   void musicAuthFetch('/api/v1/web-music/licenses/client-trace', {

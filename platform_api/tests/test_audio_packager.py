@@ -84,15 +84,3 @@ def test_watermark_changes_bytes_and_is_stable_hash() -> None:
     payload = watermark_payload(user_id="user-1", export_id="export-1", secret="sekrit")
     assert payload_hash(payload) == digest
     assert embed_lsb(mp3, payload) == marked
-
-
-def test_segment_chunk_is_ciphertext_record_not_package_header() -> None:
-    from platform_api.services.audio_packager import encrypted_chunk_record, iter_encrypted_chunks
-
-    key = new_content_key()
-    plaintext = b"ID3" + b"\x00" * 200 + (b"mpeg-fake-audio-" * 20000)
-    blob = package_chunks(plaintext, key, key_id="unit-key")
-    rec = encrypted_chunk_record(blob, 0)
-    assert not rec.startswith(MAGIC_PACKAGE)
-    assert rec == iter_encrypted_chunks(blob)[0]
-    assert decrypt_package(blob, key) == plaintext

@@ -18,7 +18,7 @@ from platform_api.services.audio_packager import (
     wrap_content_key,
 )
 from platform_api.services.content_license_service import resolve_audio_kek
-from platform_api.services.web_music_storage_keys import usable_web_music_b2_key
+from platform_api.services.hls_packager import HlsPackagerError, package_hls_aes128
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,13 @@ class AudioPackageService:
         await storage.upload_bytes(key=orig_key, data=original_blob, content_type=GCM_MIME)
         await storage.upload_bytes(key=pkg_a_key, data=package_a, content_type=GCM_MIME)
         await storage.upload_bytes(key=pkg_b_key, data=package_b, content_type=GCM_MIME)
+        hls_prefix = f"{base_key}.hls"
+        hls_status = await self._package_and_upload_hls(
+            ab_plaintext_variant(plaintext, lane="a"),
+            content_key,
+            storage=storage,
+            prefix=hls_prefix,
+        )
 
         if subject_type == "stream_track":
             await self._pool.execute(
@@ -97,6 +104,8 @@ class AudioPackageService:
                     package_status = 'ready',
                     content_key_id = $5,
                     packaged_size_bytes = $6,
+                    hls_storage_prefix = $7,
+                    hls_status = $8,
                     updated_at = NOW()
                 WHERE id = $1
                 """,
@@ -106,6 +115,8 @@ class AudioPackageService:
                 pkg_b_key,
                 key_row["id"],
                 len(package_a),
+                hls_prefix if hls_status == "ready" else None,
+                hls_status,
             )
         else:
             if variant == "ok":
@@ -117,7 +128,9 @@ class AudioPackageService:
                         packaged_storage_key_ok_b = $4,
                         package_status_ok = 'ready',
                         content_key_id_ok = $5,
-                        audio_url_ok = CASE WHEN $6 THEN NULL ELSE audio_url_ok END,
+                        hls_storage_prefix_ok = $6,
+                        hls_status_ok = $7,
+                        audio_url_ok = CASE WHEN $8 THEN NULL ELSE audio_url_ok END,
                         updated_at = NOW()
                     WHERE id = $1
                     """,
@@ -126,6 +139,8 @@ class AudioPackageService:
                     pkg_a_key,
                     pkg_b_key,
                     key_row["id"],
+                    hls_prefix if hls_status == "ready" else None,
+                    hls_status,
                     null_suno_urls,
                 )
             else:
@@ -137,7 +152,9 @@ class AudioPackageService:
                         packaged_storage_key_alt_b = $4,
                         package_status_alt = 'ready',
                         content_key_id_alt = $5,
-                        audio_url_alt = CASE WHEN $6 THEN NULL ELSE audio_url_alt END,
+                        hls_storage_prefix_alt = $6,
+                        hls_status_alt = $7,
+                        audio_url_alt = CASE WHEN $8 THEN NULL ELSE audio_url_alt END,
                         updated_at = NOW()
                     WHERE id = $1
                     """,
@@ -146,6 +163,8 @@ class AudioPackageService:
                     pkg_a_key,
                     pkg_b_key,
                     key_row["id"],
+                    hls_prefix if hls_status == "ready" else None,
+                    hls_status,
                     null_suno_urls,
                 )
         await self._pool.execute(
@@ -192,7 +211,133 @@ class AudioPackageService:
             "encrypted_original_storage_key": orig_key,
             "packaged_storage_key": pkg_a_key,
             "packaged_storage_key_b": pkg_b_key,
+            "hls_status": hls_status,
+            "hls_storage_prefix": hls_prefix if hls_status == "ready" else None,
         }
+
+    async def _package_and_upload_hls(
+        self,
+        mp3_bytes: bytes,
+        content_key: bytes,
+        *,
+        storage: Any,
+        prefix: str,
+    ) -> str:
+        try:
+            artifacts = package_hls_aes128(mp3_bytes, content_key)
+        except HlsPackagerError as exc:
+            logger.warning("HLS packaging skipped for %s: %s", prefix, exc)
+            return "none"
+        try:
+            for name, data in artifacts.files.items():
+                content_type = (
+                    "application/vnd.apple.mpegurl"
+                    if name.endswith(".m3u8")
+                    else "video/mp2t"
+                )
+                await storage.upload_bytes(
+                    key=f"{prefix}/{name}",
+                    data=data,
+                    content_type=content_type,
+                )
+        except Exception as exc:
+            logger.warning("HLS upload failed for %s: %s", prefix, exc)
+            return "failed"
+        return "ready"
+
+    async def backfill_hls(self, *, limit: int = 10, web_music_only: bool = True) -> dict[str, Any]:
+        from platform_api.services.audio_packager import decrypt_package, unwrap_content_key
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            return {"ready": 0, "error": "storage not configured", "web_music_only": web_music_only}
+        storage = StorageService.from_config(config)
+        kek = resolve_audio_kek()
+        ready = 0
+        # Desktop studio / catalog stream_tracks stay untouched until we opt in.
+        web_filter = "AND source = 'web_music'" if web_music_only else ""
+        task_rows = await self._pool.fetch(
+            f"""
+            SELECT id, 'ok' AS variant, packaged_storage_key_ok AS packaged_storage_key,
+                   content_key_id_ok AS content_key_id, hls_status_ok AS hls_status
+            FROM suno_tasks
+            WHERE package_status_ok = 'ready'
+              AND hls_status_ok IS DISTINCT FROM 'ready'
+              AND packaged_storage_key_ok IS NOT NULL
+              AND content_key_id_ok IS NOT NULL
+              {web_filter}
+            UNION ALL
+            SELECT id, 'alt' AS variant, packaged_storage_key_alt AS packaged_storage_key,
+                   content_key_id_alt AS content_key_id, hls_status_alt AS hls_status
+            FROM suno_tasks
+            WHERE package_status_alt = 'ready'
+              AND hls_status_alt IS DISTINCT FROM 'ready'
+              AND packaged_storage_key_alt IS NOT NULL
+              AND content_key_id_alt IS NOT NULL
+              {web_filter}
+            ORDER BY id ASC
+            LIMIT $1
+            """,
+            limit,
+        )
+        skipped = 0
+        for row in task_rows:
+            wrapped = await self._wrapped_key(row["content_key_id"])
+            pkg_key = str(row["packaged_storage_key"] or "")
+            if not wrapped or not pkg_key:
+                skipped += 1
+                continue
+            try:
+                blob = await storage.download_bytes(key=pkg_key)
+                if not blob:
+                    skipped += 1
+                    continue
+                content_key = unwrap_content_key(kek, wrapped)
+                mp3 = decrypt_package(blob, content_key)
+                prefix = f"{pkg_key}.hls"
+                status = await self._package_and_upload_hls(
+                    mp3,
+                    content_key,
+                    storage=storage,
+                    prefix=prefix,
+                )
+            except Exception as exc:
+                skipped += 1
+                logger.warning(
+                    "hls backfill skipped web clip id=%s variant=%s: %s",
+                    row["id"],
+                    row["variant"],
+                    exc,
+                )
+                continue
+            variant = str(row["variant"] or "ok")
+            if variant == "ok":
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET hls_storage_prefix_ok = $2, hls_status_ok = $3, updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    row["id"],
+                    prefix if status == "ready" else None,
+                    status,
+                )
+            else:
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET hls_storage_prefix_alt = $2, hls_status_alt = $3, updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    row["id"],
+                    prefix if status == "ready" else None,
+                    status,
+                )
+            if status == "ready":
+                ready += 1
+        return {"ready": ready, "attempted": len(task_rows), "skipped": skipped, "web_music_only": web_music_only}
 
     async def _record_job(
         self,
@@ -380,7 +525,7 @@ class AudioPackageService:
                     if str(row[status_col] or "none") != "none":
                         continue
                     storage_key = str(row[key_col] or "").strip()
-                    if not usable_web_music_b2_key(storage_key, row["id"]):
+                    if not storage_key:
                         continue
                     try:
                         data = await storage.download_bytes(key=storage_key)

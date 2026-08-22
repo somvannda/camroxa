@@ -157,14 +157,6 @@ def iter_encrypted_chunks(blob: bytes) -> list[bytes]:
     return records
 
 
-def encrypted_chunk_record(blob: bytes, index: int) -> bytes:
-    """Return one on-disk ciphertext record (nonce + len + token)."""
-    records = iter_encrypted_chunks(blob)
-    if index < 0 or index >= len(records):
-        raise IndexError("chunk index out of range.")
-    return records[index]
-
-
 def decrypt_package(blob: bytes, content_key: bytes) -> bytes:
     header, _ = parse_package_header(blob)
     return b"".join(decrypt_chunk(blob, content_key, i) for i in range(header.chunk_count))

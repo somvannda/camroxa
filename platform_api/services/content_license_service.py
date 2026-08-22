@@ -46,6 +46,10 @@ CLIENT_TRACE_EVENTS = frozenset(
         "play_decode",
         "play_ok",
         "play_error",
+        "now_playing_diag",
+        "media_element_event",
+        "crios_sync_diag",
+        "crios_hold_event",
     }
 )
 
@@ -325,6 +329,9 @@ class ContentLicenseService:
         key_row, package_status, packaged_key, packaged_key_b = await self._resolve_content_key(
             subject_type, subject_id, variant_key
         )
+        hls_status, hls_storage_prefix = await self._resolve_hls_lane(
+            subject_type, subject_id, variant_key
+        )
         lane = "b" if (user_id.int & 1) and packaged_key_b else "a"
         selected_package = packaged_key_b if lane == "b" and packaged_key_b else packaged_key
 
@@ -392,6 +399,8 @@ class ContentLicenseService:
             "packaged_storage_key": selected_package,
             "lane": lane,
             "session_bind": bind,
+            "hls_status": hls_status,
+            "hls_storage_prefix": hls_storage_prefix,
         }
         if self._redis is not None:
             await self._redis.setex(
@@ -412,6 +421,9 @@ class ContentLicenseService:
         del user_agent
         ready = package_status == "ready" and bool(selected_package) and bool(content_key_b64)
         segment_url = f"/api/v1/web-music/licenses/segments/{token}" if ready else ""
+        play_url = f"/api/v1/web-music/licenses/play/{token}" if ready else ""
+        hls_ready = ready and hls_status == "ready" and bool(hls_storage_prefix)
+        hls_url = f"/api/v1/web-music/licenses/hls/{token}/index.m3u8" if hls_ready else ""
         return {
             "token": token,
             "expires_at": expires_at.isoformat(),
@@ -420,6 +432,9 @@ class ContentLicenseService:
             "content_key": content_key_b64,
             "content_key_id": None if key_row is None else str(key_row["id"]),
             "segment_url": segment_url,
+            "play_url": play_url,
+            "hls_url": hls_url,
+            "hls_status": hls_status,
             "lane": lane,
             "decrypt_module_hash": expected_hash,
             "ttl_seconds": SESSION_TTL_SECONDS,
@@ -481,6 +496,39 @@ class ContentLicenseService:
             str(row["packaged_storage_key_b"] or "") or None,
         )
 
+    async def _resolve_hls_lane(
+        self, subject_type: str, subject_id: UUID, variant: str
+    ) -> tuple[str, str | None]:
+        if subject_type == "stream_track":
+            row = await self._pool.fetchrow(
+                """
+                SELECT hls_status, hls_storage_prefix
+                FROM stream_tracks WHERE id = $1
+                """,
+                subject_id,
+            )
+            if row is None:
+                return "none", None
+            return (
+                str(row["hls_status"] or "none"),
+                str(row["hls_storage_prefix"] or "") or None,
+            )
+        status_col = "hls_status_ok" if variant == "ok" else "hls_status_alt"
+        prefix_col = "hls_storage_prefix_ok" if variant == "ok" else "hls_storage_prefix_alt"
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT {status_col} AS hls_status, {prefix_col} AS hls_storage_prefix
+            FROM suno_tasks WHERE id = $1
+            """,
+            subject_id,
+        )
+        if row is None:
+            return "none", None
+        return (
+            str(row["hls_status"] or "none"),
+            str(row["hls_storage_prefix"] or "") or None,
+        )
+
     async def resolve_session(self, token: str) -> dict[str, Any] | None:
         if self._redis is None:
             return None
@@ -494,6 +542,97 @@ class ContentLicenseService:
         except (TypeError, ValueError, json.JSONDecodeError):
             return None
         return data if isinstance(data, dict) else None
+
+    async def load_decrypted_playback_mp3(self, session: dict[str, Any]) -> bytes:
+        from platform_api.services.audio_packager import decrypt_package
+        from platform_api.services.decrypted_play_cache import get_decrypted, put_decrypted
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+        storage_key = str(session.get("packaged_storage_key") or "").strip()
+        key_id = str(session.get("content_key_id") or "").strip()
+        if not storage_key or not key_id:
+            raise NotFoundError("Packaged audio is not ready.")
+        cache_key = f"{storage_key}:{key_id}"
+        cached = get_decrypted(cache_key)
+        if cached:
+            return cached
+        key_row = await self._pool.fetchrow(
+            "SELECT wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
+            UUID(key_id),
+        )
+        if key_row is None:
+            raise NotFoundError("Content key is missing.")
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise NotFoundError("Streaming storage is not configured.")
+        blob = await StorageService.from_config(config).download_bytes(key=storage_key)
+        if not blob:
+            raise NotFoundError("Packaged audio is missing.")
+        kek = resolve_audio_kek()
+        content_key = unwrap_content_key(kek, bytes(key_row["wrapped_key"]))
+        mp3 = decrypt_package(blob, content_key)
+        put_decrypted(cache_key, mp3)
+        return mp3
+
+    async def load_hls_aes_key(self, session: dict[str, Any]) -> bytes:
+        key_id = str(session.get("content_key_id") or "").strip()
+        if not key_id:
+            raise NotFoundError("Content key is missing.")
+        key_row = await self._pool.fetchrow(
+            "SELECT wrapped_key FROM content_keys WHERE id = $1 AND status = 'active'",
+            UUID(key_id),
+        )
+        if key_row is None:
+            raise NotFoundError("Content key is missing.")
+        from platform_api.services.hls_packager import derive_hls_aes_key
+
+        kek = resolve_audio_kek()
+        content_key = unwrap_content_key(kek, bytes(key_row["wrapped_key"]))
+        return derive_hls_aes_key(content_key)
+
+    async def load_hls_playlist(self, session: dict[str, Any], *, token: str) -> str:
+        from platform_api.services.hls_packager import rewrite_hls_playlist
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+        prefix = str(session.get("hls_storage_prefix") or "").strip()
+        if str(session.get("hls_status") or "") != "ready" or not prefix:
+            raise NotFoundError("HLS audio is not ready.")
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise NotFoundError("Streaming storage is not configured.")
+        blob = await StorageService.from_config(config).download_bytes(key=f"{prefix}/index.m3u8")
+        if not blob:
+            raise NotFoundError("HLS playlist is missing.")
+        manifest = blob.decode("utf-8", errors="replace")
+        key_url = f"/api/v1/web-music/licenses/hls-key/{token}"
+        segment_prefix = f"/api/v1/web-music/licenses/hls/{token}"
+        return rewrite_hls_playlist(
+            manifest,
+            key_url=key_url,
+            segment_url_prefix=segment_prefix,
+        )
+
+    async def load_hls_segment(self, session: dict[str, Any], filename: str) -> bytes:
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+        prefix = str(session.get("hls_storage_prefix") or "").strip()
+        if str(session.get("hls_status") or "") != "ready" or not prefix:
+            raise NotFoundError("HLS audio is not ready.")
+        name = str(filename or "").strip()
+        if not name or "/" in name or "\\" in name or ".." in name:
+            raise ValidationError("Invalid HLS segment name.")
+        if not name.endswith(".ts"):
+            raise ValidationError("Invalid HLS segment name.")
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise NotFoundError("Streaming storage is not configured.")
+        blob = await StorageService.from_config(config).download_bytes(key=f"{prefix}/{name}")
+        if not blob:
+            raise NotFoundError("HLS segment is missing.")
+        return blob
 
     async def heartbeat(
         self,

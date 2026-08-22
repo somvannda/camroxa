@@ -12,8 +12,7 @@ from fastapi.responses import Response, StreamingResponse
 from platform_api.exceptions import NotFoundError
 
 _CHUNK_SIZE = 64 * 1024
-PLAY_CHUNK_BYTES = 256 * 1024
-_PLAY_CHUNK_BYTES = PLAY_CHUNK_BYTES
+_PLAY_CHUNK_BYTES = 256 * 1024
 _RANGE_RE = re.compile(r"bytes=(\d+)-(\d*)", re.I)
 _CONTENT_RANGE_RE = re.compile(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", re.I)
 _PROXY_HEADERS = {
@@ -25,6 +24,9 @@ _CAMXORA_AUDIO_PROXY_RE = re.compile(
     r"web-music/play/[A-Za-z0-9._-]+"
     r"|web-music/generations/[0-9a-fA-F-]+/stream(?:/(?:ok|alt))?(?:\?variant=(?:ok|alt))?"
     r"|web-music/licenses/segments/[A-Za-z0-9._-]+"
+    r"|web-music/licenses/play/[A-Za-z0-9._-]+"
+    r"|web-music/licenses/hls/[A-Za-z0-9._-]+(?:/index\.m3u8|/seg[0-9]+\.ts)?"
+    r"|web-music/licenses/hls-key/[A-Za-z0-9._-]+"
     r"|public/streaming/tracks/[0-9a-fA-F-]+/stream"
     r")$"
 )

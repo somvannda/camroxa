@@ -1,4 +1,4 @@
-/** In-memory MP3 → PCM for Safari/Firefox. Never creates a blob: or data: audio URL. */
+/** In-memory MP3 → PCM for Safari. Never creates a blob: or data: audio URL. */
 
 import MPEGDecoder from '@/lib/vendor/mpg123/MPEGDecoder.js';
 import { stripToMpegSync } from '@/lib/mpeg-sync';
@@ -13,7 +13,7 @@ type MpegDecoderInstance = {
   free: () => void;
 };
 
-function pcmToAudioBuffer(
+function decodedToAudioBuffer(
   ctx: AudioContext,
   decoded: { channelData: Float32Array[]; samplesDecoded: number; sampleRate: number },
 ): AudioBuffer {
@@ -28,49 +28,48 @@ function pcmToAudioBuffer(
   return buffer;
 }
 
-export class Mp3PcmDecoder {
-  private decoder: MpegDecoderInstance | null = null;
-  private stripped = false;
+/** Keeps one mpg123 decoder alive across encrypted chunks (leftover frames carry forward). */
+export class StreamingMp3Decoder {
+  private decoder: MpegDecoderInstance;
+  private readyPromise: Promise<void>;
+  private ctx: AudioContext;
+  private firstChunk = true;
+  private freed = false;
 
-  async ensure(): Promise<void> {
-    if (this.decoder) return;
-    const decoder = new (MPEGDecoder as unknown as new () => MpegDecoderInstance)();
-    await decoder.ready;
-    this.decoder = decoder;
+  constructor(ctx: AudioContext) {
+    this.ctx = ctx;
+    this.decoder = new (MPEGDecoder as unknown as new () => MpegDecoderInstance)();
+    this.readyPromise = this.decoder.ready;
   }
 
-  decodeChunk(ctx: AudioContext, data: Uint8Array): AudioBuffer | null {
-    if (!this.decoder) throw new Error('MP3 decoder is not ready.');
-    const framed = this.stripped ? data : stripToMpegSync(data);
-    this.stripped = true;
-    if (!framed.byteLength) return null;
-    const decoded = this.decoder.decode(framed);
+  async ready(): Promise<void> {
+    await this.readyPromise;
+  }
+
+  decodeChunk(bytes: Uint8Array): AudioBuffer | null {
+    if (this.freed) return null;
+    const input = this.firstChunk ? stripToMpegSync(bytes) : bytes;
+    this.firstChunk = false;
+    const decoded = this.decoder.decode(input);
     if (!decoded.samplesDecoded || !decoded.channelData.length) return null;
-    return pcmToAudioBuffer(ctx, decoded);
+    return decodedToAudioBuffer(this.ctx, decoded);
   }
 
   free() {
-    const decoder = this.decoder;
-    this.decoder = null;
-    this.stripped = false;
-    if (decoder) {
-      try {
-        decoder.free();
-      } catch {
-        /* already freed */
-      }
-    }
+    if (this.freed) return;
+    this.freed = true;
+    this.decoder.free();
   }
 }
 
 export async function decodeMp3Software(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
-  const stream = new Mp3PcmDecoder();
+  const decoder = new StreamingMp3Decoder(ctx);
   try {
-    await stream.ensure();
-    const buffer = stream.decodeChunk(ctx, new Uint8Array(data));
+    await decoder.ready();
+    const buffer = decoder.decodeChunk(new Uint8Array(data));
     if (!buffer) throw new Error('Unable to decode audio.');
     return buffer;
   } finally {
-    stream.free();
+    decoder.free();
   }
 }

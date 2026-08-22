@@ -80,6 +80,38 @@ class StreamingUploadService:
                 exc,
             )
 
+    async def _encrypt_ingested_mp3(
+        self,
+        plaintext: bytes,
+        *,
+        subject_type: str,
+        subject_id: UUID,
+        variant: str,
+        storage_key: str,
+        storage: Any,
+        null_suno_urls: bool,
+    ) -> None:
+        try:
+            base_key = str(storage_key).rsplit(".mp3", 1)[0]
+            await AudioPackageService(self._pool).package_plaintext(
+                plaintext,
+                subject_type=subject_type,
+                subject_id=subject_id,
+                variant=variant,
+                base_key=base_key,
+                storage=storage,
+                null_suno_urls=null_suno_urls,
+                source_key=storage_key,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Audio packaging failed subject_type=%s id=%s variant=%s: %s",
+                subject_type,
+                subject_id,
+                variant,
+                exc,
+            )
+
     def schedule_suno_streaming_upload(self, *, suno_task_id: UUID) -> None:
         asyncio.create_task(self._run_suno_streaming_upload(suno_task_id))
 

@@ -37,4 +37,4 @@ Camxora Music now encrypts ingested audio at rest (CXO1) and streams a chunked A
 - `platform_api/tests/test_protected_playback_theft_vectors.py`
 - `music_web/src/lib/camxora-decrypt.ts`, `content-license.ts`, `player-provider.tsx`
 - `admin_portal/src/pages/streaming/playback-audit.tsx`
-- `scripts/deploy/nginx-camxora-sandbox.conf`, `nginx-camxora-production.conf` (Range + buffering off for License API)
+- `scripts/deploy/nginx-camxora-sandbox.conf`, `nginx-camxora-production.conf` (parity only; production not applied)

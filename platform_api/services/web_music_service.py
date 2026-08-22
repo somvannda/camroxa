@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 from datetime import date, datetime, timezone
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 from uuid import UUID, uuid4
 from urllib.parse import quote
 
@@ -41,14 +41,12 @@ from platform_api.services.suno_audio_resolver import (
 )
 from platform_api.services.streaming_upload_service import StreamingUploadService
 from platform_api.services.audio_origin_proxy import (
+    bounded_mp3_response,
     is_camxora_audio_proxy_url,
+    is_initial_play_range,
+    proxy_origin_audio,
 )
-from platform_api.services.stream_playback_guard import enforce_stream_playback_guard
 from platform_api.services.storage_service import StorageServiceError
-from platform_api.services.web_music_storage_keys import (
-    b2_key_is_task_scoped,
-    usable_web_music_b2_key,
-)
 from platform_api.services.web_music_play_tokens import (
     create_play_token,
     play_url_for_token,
@@ -61,22 +59,32 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SLIDER_VALUE = 0.5
 
 
-_b2_key_is_task_scoped = b2_key_is_task_scoped
-_usable_web_music_b2_key = usable_web_music_b2_key
+def _b2_key_is_task_scoped(storage_key: str | None, task_id: UUID) -> bool:
+    """True when the object path contains this task id (not a shared untitled-ok.mp3)."""
+    parts = [part for part in str(storage_key or "").replace("\\", "/").split("/") if part]
+    return str(task_id) in parts
+
+
+def _usable_web_music_b2_key(storage_key: Any, task_id: UUID) -> str | None:
+    key = str(storage_key or "").strip()
+    if key and _b2_key_is_task_scoped(key, task_id):
+        return key
+    return None
 
 
 def _clip_is_playable(row: Any, *, variant: str, task_id: UUID) -> bool:
-    """True when this clip is packaged. Create play never uses leftover plaintext."""
-    del task_id
+    """True when this clip can stream from our B2 (encrypted or legacy plaintext)."""
     variant_key = "alt" if str(variant or "ok").strip().lower() == "alt" else "ok"
     pkg = str(_row_value(row, "package_status_ok" if variant_key == "ok" else "package_status_alt") or "")
     if pkg == "ready":
         return True
-    return bool(
-        _row_value(
-            row, "packaged_storage_key_ok" if variant_key == "ok" else "packaged_storage_key_alt"
-        )
+    packaged = _row_value(
+        row, "packaged_storage_key_ok" if variant_key == "ok" else "packaged_storage_key_alt"
     )
+    if packaged:
+        return True
+    b2_col = "b2_storage_key_ok" if variant_key == "ok" else "b2_storage_key_alt"
+    return bool(_usable_web_music_b2_key(_row_value(row, b2_col), task_id))
 
 
 def _normalize_slider(value: float | None, *, default: float = _DEFAULT_SLIDER_VALUE) -> float:
@@ -1171,7 +1179,7 @@ class WebMusicService:
         return refreshed or row
 
     async def _ensure_stream_ready(self, row: Any) -> Any:
-        """Mark a clip Ready only after it is packaged."""
+        """Mark a clip Ready only when our B2 object exists (plaintext leftover or packaged)."""
         status = str(_row_value(row, "status") or "").strip().lower()
         if status != "success":
             return row
@@ -1185,15 +1193,14 @@ class WebMusicService:
             ("alt", "stream_ready_alt", "b2_storage_key_alt", "package_status_alt", "packaged_storage_key_alt"),
         )
         marks: dict[str, bool] = {}
-        for variant, ready_col, b2_col, pkg_col, packaged_col in variants:
-            playable = str(_row_value(row, pkg_col) or "") == "ready" or bool(
-                _row_value(row, packaged_col)
-            )
-            if playable:
-                if not bool(_row_value(row, ready_col)):
-                    marks[ready_col] = True
+        for _variant, ready_col, b2_col, pkg_col, packaged_col in variants:
+            if bool(_row_value(row, ready_col)):
                 continue
-            self._schedule_b2_backfill(task_id, variant)
+            if str(_row_value(row, pkg_col) or "") == "ready" or _row_value(row, packaged_col):
+                marks[ready_col] = True
+                continue
+            if _usable_web_music_b2_key(_row_value(row, b2_col), task_id):
+                marks[ready_col] = True
         if not marks:
             return row
         await self._pool.execute(
@@ -1264,7 +1271,6 @@ class WebMusicService:
         *,
         variant: str,
         range_header: str | None,
-        request_headers: Mapping[str, str] | None = None,
     ) -> Response:
         variant_key = str(variant or "ok").strip().lower()
         if variant_key not in ("ok", "alt"):
@@ -1275,8 +1281,6 @@ class WebMusicService:
             task_id=task_id,
             variant_key=variant_key,
             range_header=range_header,
-            session_user_id=str(user_id),
-            request_headers=request_headers,
         )
 
     async def proxy_playback_from_token(
@@ -1285,7 +1289,6 @@ class WebMusicService:
         *,
         session_user_id: str | None = None,
         range_header: str | None = None,
-        request_headers: Mapping[str, str] | None = None,
     ) -> Response:
         if not session_user_id:
             raise ForbiddenError("Sign in to play music.")
@@ -1307,8 +1310,6 @@ class WebMusicService:
             task_id=task_id,
             variant_key=variant_key,
             range_header=range_header,
-            session_user_id=session_user_id,
-            request_headers=request_headers,
         )
 
     async def _proxy_row(
@@ -1319,7 +1320,6 @@ class WebMusicService:
         variant_key: str,
         range_header: str | None,
     ) -> Response:
-        del task_id, range_header
         pkg = str(
             _row_value(
                 row,
@@ -1332,10 +1332,18 @@ class WebMusicService:
                 "This track requires the encrypted player.",
                 details={"code": "encrypted_playback_required"},
             )
-        raise ValidationError(
-            "This song is still finishing.",
-            details={"code": "packaging_in_progress"},
-        )
+        origin = await self._origin_playback_url(row, task_id=task_id, variant_key=variant_key)
+        if origin is None:
+            data, _filename, content_type = await self._serve_mp3_row(
+                row, task_id=task_id, variant_key=variant_key
+            )
+            return bounded_mp3_response(data, range_header, media_type=content_type)
+        url, source = origin
+        if is_initial_play_range(range_header):
+            await self._increment_play_count(task_id, variant_key)
+            if source == "suno":
+                self._schedule_b2_backfill(task_id, variant_key)
+        return await proxy_origin_audio(url, range_header=range_header)
 
     async def _origin_playback_url(
         self,
@@ -2497,8 +2505,6 @@ class WebMusicService:
             variant = str(row["variant"] or "ok")
             task_id = str(row["suno_task_id"])
             ready = _clip_is_playable(row, variant=variant, task_id=UUID(task_id))
-            if not ready:
-                self._schedule_b2_backfill(UUID(task_id), variant)
             pkg = str(
                 _row_value(row, "package_status_ok" if variant == "ok" else "package_status_alt")
                 or "none"

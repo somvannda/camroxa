@@ -45,6 +45,7 @@ export type StreamTrack = {
   genres?: string[];
   duration_seconds?: number | null;
   play_count?: number;
+  valid_streams?: number;
   lyrics?: string | null;
   play_url?: string | null;
   package_status?: string | null;
@@ -156,7 +157,7 @@ export function catalogStreamUrl(trackId: string): string {
 }
 
 const CAMXORA_AUDIO_PROXY_RE =
-  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\/(?:ok|alt))?(?:\?variant=(?:ok|alt))?|web-music\/licenses\/segments\/[A-Za-z0-9._-]+|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
+  /^\/api\/v1\/(?:web-music\/play\/[A-Za-z0-9._-]+|web-music\/generations\/[0-9a-fA-F-]+\/stream(?:\/(?:ok|alt))?(?:\?variant=(?:ok|alt))?|web-music\/licenses\/segments\/[A-Za-z0-9._-]+|web-music\/licenses\/play\/[A-Za-z0-9._-]+|web-music\/licenses\/hls\/[A-Za-z0-9._-]+\/index\.m3u8|web-music\/licenses\/hls\/[A-Za-z0-9._-]+\/seg[0-9]+\.ts|web-music\/licenses\/hls-key\/[A-Za-z0-9._-]+|public\/streaming\/tracks\/[0-9a-fA-F-]+\/stream)$/;
 
 export function isTrustedPlayUrl(url: string): boolean {
   const text = String(url || '').trim();

@@ -10,10 +10,6 @@ from platform_api.exceptions import NotFoundError
 from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.audio_origin_proxy import is_initial_play_range, proxy_origin_audio
 from platform_api.services.storage_service import StorageService
-from platform_api.services.stream_playback_guard import (
-    assert_browser_audio_request,
-    enforce_unique_window_pace,
-)
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
 from platform_api.services.streaming_slug import slugify
 from platform_api.services.music_genre_utils import parse_genre_list
@@ -33,6 +29,7 @@ _PUBLIC_TRACK_KEYS = {
     "album_genre",
     "duration_seconds",
     "play_count",
+    "valid_streams",
     "lyrics",
     "published_at",
     "created_at",
@@ -61,9 +58,8 @@ _PUBLIC_ALBUM_KEYS = {
 
 
 class StreamingCatalogService:
-    def __init__(self, pool: Any, redis: Any | None = None) -> None:
+    def __init__(self, pool: Any) -> None:
         self._pool = pool
-        self._redis = redis
         self._repo = StreamingRepository(pool)
 
     async def _cover_url(self, storage_key: str | None) -> str | None:
@@ -95,8 +91,36 @@ class StreamingCatalogService:
         if track.get("genre") is None and track.get("album_genre"):
             track["genre"] = track.get("album_genre")
         track["play_count"] = int(track.get("play_count") or 0)
+        track["valid_streams"] = int(track.get("valid_streams") or 0)
         self._decorate_genre_fields(track)
         self._expose_public_track(track)
+
+    async def _decorate_tracks(self, tracks: list[dict[str, Any]]) -> None:
+        await self._attach_valid_streams(tracks)
+        for track in tracks:
+            await self._decorate_track(track)
+
+    async def _attach_valid_streams(self, tracks: list[dict[str, Any]]) -> None:
+        ids = [track["id"] for track in tracks if track.get("id")]
+        if not ids:
+            return
+        try:
+            rows = await self._pool.fetch(
+                """
+                SELECT subject_id, COUNT(*) FILTER (
+                    WHERE listener_user_id <> owner_user_id
+                )::int AS valid_streams
+                FROM valid_streams
+                WHERE subject_type = 'stream_track' AND subject_id = ANY($1::uuid[])
+                GROUP BY subject_id
+                """,
+                ids,
+            )
+        except Exception:
+            return
+        counts = {row["subject_id"]: int(row["valid_streams"] or 0) for row in rows}
+        for track in tracks:
+            track["valid_streams"] = counts.get(track["id"], int(track.get("valid_streams") or 0))
 
     async def _decorate_album(self, album: dict[str, Any]) -> None:
         album["cover_url"] = await self._cover_url(album.get("cover_storage_key"))
@@ -123,8 +147,7 @@ class StreamingCatalogService:
     async def get_home(self) -> dict[str, Any]:
         recent_tracks = await self._repo.list_recent_published_tracks(limit=12)
         albums = await self._repo.list_published_albums(limit=12)
-        for track in recent_tracks:
-            await self._decorate_track(track)
+        await self._decorate_tracks(recent_tracks)
         for album in albums:
             await self._decorate_album(album)
         return {"recent_tracks": recent_tracks, "albums": albums}
@@ -149,7 +172,7 @@ class StreamingCatalogService:
         for track in tracks:
             track["album_cover_storage_key"] = album_cover_key
             track["album_genre"] = album_genre
-            await self._decorate_track(track)
+        await self._decorate_tracks(tracks)
         album["tracks"] = tracks
         return album
 
@@ -185,8 +208,7 @@ class StreamingCatalogService:
         tracks = await self._repo.list_published_tracks_by_genre(genre, limit=24, offset=0)
         for album in albums:
             await self._decorate_album(album)
-        for track in tracks:
-            await self._decorate_track(track)
+        await self._decorate_tracks(tracks)
         return {
             "genre": genre,
             "slug": match["slug"],
@@ -229,8 +251,7 @@ class StreamingCatalogService:
     async def search(self, query: str, *, limit: int = 24, offset: int = 0) -> dict[str, Any]:
         tracks = await self._repo.search_published(query, limit=limit, offset=offset)
         total = await self._repo.count_search_published(query)
-        for track in tracks:
-            await self._decorate_track(track)
+        await self._decorate_tracks(tracks)
         return {"items": tracks, "total": total, "limit": limit, "offset": offset}
 
     async def get_play_url(self, track_id: UUID) -> dict[str, Any] | None:
@@ -244,6 +265,7 @@ class StreamingCatalogService:
         has_audio = bool(str(track.get("storage_key") or "").strip()) or pkg == "ready"
         if not has_audio:
             return None
+        await self._attach_valid_streams([track])
         expires_at = datetime.now(timezone.utc).timestamp() + config.stream_url_ttl_seconds
         return {
             "track_id": str(track_id),
@@ -260,6 +282,7 @@ class StreamingCatalogService:
             "cover_url": await self._cover_url(self._track_cover_key(track)),
             "duration_seconds": track.get("duration_seconds"),
             "play_count": int(track.get("play_count") or 0),
+            "valid_streams": int(track.get("valid_streams") or 0),
             "genre": track.get("genre") or track.get("album_genre"),
             "lyrics": track.get("lyrics"),
             "genres": parse_genre_list(track.get("genres"))
@@ -280,12 +303,8 @@ class StreamingCatalogService:
         track_id: UUID,
         *,
         range_header: str | None = None,
-        session_user_id: str | None = None,
-        request_headers: Any | None = None,
     ):
         """Stream catalog audio through the API. Never return the B2 URL to the browser."""
-        if request_headers is not None:
-            assert_browser_audio_request(request_headers)
         track = await self._repo.get_published_track(track_id)
         if not track:
             raise NotFoundError("Track not found or streaming is not configured.")
@@ -301,11 +320,6 @@ class StreamingCatalogService:
         origin_url = await storage.get_signed_get_url(storage_key)
         if not origin_url:
             raise NotFoundError("Track not found or streaming is not configured.")
-        await enforce_unique_window_pace(
-            self._redis,
-            f"user:{session_user_id}:track:{track_id}",
-            range_header,
-        )
         if is_initial_play_range(range_header):
             await self._repo.increment_play_count(track_id)
         return await proxy_origin_audio(origin_url, range_header=range_header)
@@ -347,7 +361,7 @@ class StreamingCatalogService:
         for track in rows:
             if not track.get("added_at") and track.get("liked_at"):
                 track["added_at"] = track.get("liked_at")
-            await self._decorate_track(track)
+        await self._decorate_tracks(rows)
         for track in rows:
             track["id"] = str(track["id"])
             if track.get("album_id"):

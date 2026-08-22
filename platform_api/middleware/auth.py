@@ -127,7 +127,7 @@ USER_ACCESS_TOKEN_COOKIE_NAME = "camxora_access_token"
 ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
 
 # Unconfirmed users may only read profile/routing status and refresh/logout.
-# Play/stream and downloads require a confirmed email. Verify/resend are public.
+# Play and download require a confirmed email.
 _UNCONFIRMED_ALLOWED_PATHS = {
     ("GET", "/api/v1/users/me"),
     ("GET", "/users/me"),

@@ -13,7 +13,7 @@ This is the implementation plan so packaged Play feels fast on **desktop and pho
 
 ## Status checklist
 
-Code for phases 0–4 is in the worktree above. This mixed `MusicGenerator` tree still has the old full-file Web Audio player unless you open that worktree.
+Code for phases 0–4 is in the worktree above. The `bugfix/ios-player-responsive` branch in the main `MusicGenerator` tree now includes client phases 2–4 (progressive Web Audio, parallel fetch, RAM replay, duration pin, Media Session).
 
 Legend: **done** = in the worktree; **partial** = coded but narrower than the plan; **pending** = not started.
 

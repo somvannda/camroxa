@@ -65,6 +65,16 @@ desktop_release_storage/
 # Database backups (contain secrets)
 *.sql
 
+# Accidental nested checkout and local credential dumps
+/MusicGenerator/
+**/auth_tokens.dat
+
+# Abandoned rust UI scaffold (no tracked source; local cargo target only)
+camxora_rust/
+
+# Local unfinished leftovers — keep out of deploy tarballs
+.leftover/
+
 # Dev environment runtime
 .dev-pids
 

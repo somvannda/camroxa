@@ -3,9 +3,9 @@
 import Link from 'next/link';
 
 import TrackRow from '@/components/track-row';
-import { AlbumCard, ArtistCard } from '@/components/catalog-cards';
+import { AlbumCard, ArtistPageCard } from '@/components/catalog-cards';
 import { useAuth } from '@/components/auth-provider';
-import type { ExploreArtist } from '@/lib/explore-api';
+import type { ArtistPage } from '@/lib/artist-page-api';
 import type { StreamAlbum, StreamTrack } from '@/lib/streaming-api';
 
 export default function HomeGate({
@@ -15,7 +15,7 @@ export default function HomeGate({
 }: {
   tracks: StreamTrack[];
   albums: StreamAlbum[];
-  artists: ExploreArtist[];
+  artists: ArtistPage[];
 }) {
   const { user, loading } = useAuth();
 
@@ -68,12 +68,12 @@ export default function HomeGate({
           {artists.length ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {artists.map((artist) => (
-                <ArtistCard key={artist.user_id} artist={artist} />
+                <ArtistPageCard key={artist.id} page={artist} />
               ))}
             </div>
           ) : (
             <p className="rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-8 text-sm text-slate-500">
-              No creators yet. Published streaming artists and users with public playlists appear here.
+              No published artist pages yet.
             </p>
           )}
         </section>
@@ -125,12 +125,12 @@ export default function HomeGate({
         {artists.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {artists.map((artist) => (
-              <ArtistCard key={artist.user_id} artist={artist} />
+              <ArtistPageCard key={artist.id} page={artist} />
             ))}
           </div>
         ) : (
           <p className="rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-8 text-sm text-slate-500">
-            No creators yet. Published streaming artists and users with public playlists appear here.
+            No published artist pages yet.
           </p>
         )}
       </section>

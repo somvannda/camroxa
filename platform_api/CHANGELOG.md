@@ -18,37 +18,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
-
-- `GET /api/v1/web-music/licenses/segments/{token}` caches the CXA1 package in-process (ciphertext only) so chunk 1 does not re-download the whole object. See `docs/changelog/2026-08-21-protected-playback-fast-start.md`.
-
-### Added
-
-- `GET /api/v1/web-music/playlists/memberships` — owner clip-to-playlist map for Create-page chips. See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
-- `POST /api/v1/web-music/licenses/client-trace` stores play stage traces in `playback_events.detail` (migration `109_playback_event_detail`). See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
-
-### Fixed
-
-- Packaged web-music clips can be added to playlists (`add_playlist_item` uses the playback ready check, not origin URLs). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
-- Create play waits until the clip is packaged. Leftover plaintext `/stream` is no longer playable. See `docs/changelog/2026-08-20-create-packaged-only-play.md`.
-- License sessions no longer 500 on packaged play: migration `108` adds the session audit columns the player already sends. See `docs/changelog/2026-08-20-license-session-audit.md`.
-- Create leftovers no longer stay on Finishing because they shared `untitled-ok.mp3`. Ingest now uses `web-music/{user}/{task_id}/ok.mp3` and re-copies collided leftovers so playlist/Create can play. See `docs/changelog/2026-08-20-web-music-task-scoped-b2.md`.
-
 ### Security
 
-- Protected catalog/Create playback: AES-256-GCM packages, License API sessions, owner-only watermarked downloads, and no Suno/B2 origin URLs in the browser. Unconfirmed users cannot play or export. Production leftover encrypt seals Music (`web_music`) MP3/WAV/LRC only; Studio files stay plaintext. See `docs/changelog/2026-08-20-protected-playback.md`.
-- Stream play rejects curl/Range-stitch dumps: browser audio headers are required, and unique 256 KiB windows are paced (10 / 15s). See `docs/changelog/2026-08-19-web-music-stream-stitch-pace.md`.
+- Artist royalty stream accounting: server-validated heartbeats, self-play exclusion, fraud scoring, and catalog geo parity for `/public/streaming`. See `docs/changelog/2026-08-20-artist-royalty-program.md`.
+- Protected catalog/Create playback: AES-256-GCM packages, License API sessions, owner-only watermarked downloads, and no Suno/B2 origin URLs in the browser. Unconfirmed users cannot play or export. Theft-vector suite (`test_protected_playback_theft_vectors.py`) covers 1000+ Range-stitch and save-as cases. Production leftover encrypt now also seals the original MP3 object and owner WAV/LRC sidecars (SRT is derived from LRC). See `docs/changelog/2026-08-20-protected-playback.md`.
 - Admin blog CRUD (`/api/v1/admin/blog-posts`) now requires `Depends(require_admin)`.
   Unauthenticated list/create/update/delete previously skipped auth. See
   `docs/changelog/2026-08-19-admin-blog-require-admin.md`.
 - Unconfirmed accounts can only call session/profile routing endpoints until they
-  verify email. Play/stream and file downloads are blocked until confirmation.
-  See `docs/changelog/2026-08-19-music-web-confirmed-listen.md`.
+  verify email. Other authenticated routes return 403. See
+  `docs/changelog/2026-08-17-email-confirm-gate.md`.
 - Music web is Cambodia-only (`CF-IPCountry=KH`; Tor/unknown/missing country blocked). Attack-like generate/auth patterns freeze Create for 6 hours (admin can set 1/6/24/72h). Signup farm caps stay 3/hour and 5/day; freeze is extra. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Music Web free-credit farm protection: required Turnstile on web register, per-IP signup caps, and a shared 5-song/day network cap. Public music signup stays open. See `docs/changelog/2026-08-18-music-web-signup-farm-protection.md`.
 
 ### Added
 
+- AES-128 HLS lane for iOS Safari: ffmpeg packaging at ingest, session-bound `index.m3u8` + key routes, admin HLS backfill. See `docs/changelog/2026-08-21-ios-hls-aes128-playback.md`.
+- `GET /api/v1/web-music/licenses/play/{token}` — session-bound clamped MP3 stream (server-side CXA1 decrypt, 90s cache) for iOS native HTML audio playback. See `docs/changelog/2026-08-21-ios-native-html-playback.md`.
+- `GET /api/v1/web-music/playlists/memberships` — owner clip-to-playlist map for Create-page chips. Packaged clips can be added to playlists (ready check matches playback). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+- Music web play traces: `POST /api/v1/web-music/licenses/client-trace` logs `music_web_play_trace` and stores `playback_events.detail` (migration `114`). See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
+- Overview (`/api/v1/web-music/studio/*`) owner APIs, versioned royalty policy, settle worker, and admin payout/fraud/origin endpoints. Studio tracks are per version (ok/alt), with public = on a public playlist or published catalog. See `docs/changelog/2026-08-20-artist-royalty-program.md`.
+- Opt-in artist pages (`/api/v1/web-music/artist-pages`, public list/detail). Multi-page schema with admin `artist_page_limit` (default 1). Create/publish require name, location, country, and at least one genre. Cover crop, contact email, and Facebook/TikTok/Instagram/YouTube links are optional. Typed genres (up to 10) from an expanded music catalog including Khmer/SEA labels. Owners can attach tracks and playlists to a page. See `docs/changelog/2026-08-20-artist-pages.md` and `docs/changelog/2026-08-20-artist-page-attach.md`.
 - Telegram ops feed posts signup, login, paid checkout, credit spend, plan-quota
   use, and refunds to a group chat. `/stats` and `/burncredit` reply in-chat;
   burn tables also post at 10:00 PM Asia/Phnom_Penh. See
@@ -77,10 +67,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- License segment `?full=1` returns the whole CXA1 package in one response so iOS does not wait on N full B2 downloads (one per chunk). See `docs/changelog/2026-08-20-ios-protected-playback.md`.
-- Expired/cancelled web-music plan checkout no longer 500s: reuse the unique `web_subscriptions` row instead of inserting again. See `docs/changelog/2026-08-20-web-sub-expired-repurchase.md`.
-- CutLuy pack/plan purchase returns `qr_string` so music web can draw KHQR (CutLuy pages cannot be iframed). See `docs/changelog/2026-08-20-cutluy-khqr-modal.md`.
-- CutLuy timeouts and missing `expires_at` no longer 500 on pack/plan purchase; stale pending top-ups without a payment id are cleared. See `docs/changelog/2026-08-20-cutluy-purchase-timeout.md`.
+- Packaged web-music clips can be added to playlists (`add_playlist_item` uses the playback ready check, not origin URLs). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+- `GET /v2/credits/balance` no longer 500s when a paid subscription is missing `last_credit_reset`. See `docs/changelog/2026-08-20-artist-pages.md`.
 - Stream play no longer one-shots a full MP3: `Range: bytes=0-` (and missing Range) is clamped to 256 KiB 206, and the proxy truncates origin bodies that ignore Range. See `docs/changelog/2026-08-19-web-music-stream-range-cap.md`.
 - Music-web play no longer kicks a logged-in session to login: geo gate is pure ASGI (does not wrap Range audio), `/stream/ok` and `/stream/alt` are trusted play URLs, and unconfirmed users can still listen. See `docs/changelog/2026-08-18-music-web-geo-gen-freeze.md`.
 - Settings ignore unknown `PLATFORM_*` env vars (Telegram ops keys on production must not crash boot). Audio proxy keeps `is_missing_range` for production stream routers.

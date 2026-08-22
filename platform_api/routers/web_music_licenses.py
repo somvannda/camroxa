@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from platform_api.exceptions import ForbiddenError, NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.middleware.rate_limit import enforce_rate_limit_for_endpoint
+from platform_api.services.audio_origin_proxy import bounded_mp3_response
 from platform_api.services.audio_packager import GCM_MIME, parse_package_header
 from platform_api.services.content_license_service import (
     ContentLicenseService,
@@ -161,6 +162,88 @@ async def module_hash() -> dict[str, str]:
     return {"hash": decrypt_module_hash()}
 
 
+@router.get("/play/{token}")
+async def stream_play(
+    token: str,
+    request: Request,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> Response:
+    """Session-bound clamped MP3 stream for iOS native HTML audio (server-side decrypt)."""
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    session = await service.resolve_session(token)
+    if session is None or str(session.get("user_id")) != ctx.user_id:
+        raise NotFoundError("License session expired or invalid.")
+    if str(session.get("purpose") or "play") not in {"play", "admin_play"}:
+        raise ForbiddenError("This license cannot stream.")
+    mp3 = await service.load_decrypted_playback_mp3(session)
+    return bounded_mp3_response(mp3, request.headers.get("range"))
+
+
+def _hls_playback_headers(*, media_type: str) -> dict[str, str]:
+    return {
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+        "Surrogate-Control": "no-store",
+        "X-Accel-Buffering": "no",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline",
+        "Accept-Ranges": "none",
+    }
+
+
+@router.get("/hls-key/{token}")
+async def hls_key(
+    token: str,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> Response:
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    session = await service.resolve_session(token)
+    if session is None or str(session.get("user_id")) != ctx.user_id:
+        raise NotFoundError("License session expired or invalid.")
+    if str(session.get("purpose") or "play") not in {"play", "admin_play"}:
+        raise ForbiddenError("This license cannot stream.")
+    key = await service.load_hls_aes_key(session)
+    headers = _hls_playback_headers(media_type="application/octet-stream")
+    return Response(content=key, status_code=200, media_type="application/octet-stream", headers=headers)
+
+
+@router.get("/hls/{token}/index.m3u8")
+async def hls_playlist(
+    token: str,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> Response:
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    session = await service.resolve_session(token)
+    if session is None or str(session.get("user_id")) != ctx.user_id:
+        raise NotFoundError("License session expired or invalid.")
+    if str(session.get("purpose") or "play") not in {"play", "admin_play"}:
+        raise ForbiddenError("This license cannot stream.")
+    manifest = await service.load_hls_playlist(session, token=token)
+    headers = _hls_playback_headers(media_type="application/vnd.apple.mpegurl")
+    return Response(content=manifest, status_code=200, media_type="application/vnd.apple.mpegurl", headers=headers)
+
+
+@router.get("/hls/{token}/{segment_name}")
+async def hls_segment(
+    token: str,
+    segment_name: str,
+    ctx: CurrentUserDep,
+    service: LicenseServiceDep,
+) -> Response:
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_play")
+    session = await service.resolve_session(token)
+    if session is None or str(session.get("user_id")) != ctx.user_id:
+        raise NotFoundError("License session expired or invalid.")
+    if str(session.get("purpose") or "play") not in {"play", "admin_play"}:
+        raise ForbiddenError("This license cannot stream.")
+    segment = await service.load_hls_segment(session, segment_name)
+    headers = _hls_playback_headers(media_type="video/mp2t")
+    return Response(content=segment, status_code=200, media_type="video/mp2t", headers=headers)
+
+
 @router.get("/segments/{token}")
 async def get_segment(
     token: str,
@@ -179,8 +262,6 @@ async def get_segment(
     if not storage_key:
         raise NotFoundError("Packaged audio is not ready.")
 
-    from platform_api.services.audio_packager import encrypted_chunk_record
-    from platform_api.services.encrypted_package_cache import get_packaged_blob
     from platform_api.services.storage_service import StorageService
     from platform_api.services.streaming_config_service import resolve_streaming_storage_config
     from platform_api.dependencies import get_db_pool
@@ -188,17 +269,19 @@ async def get_segment(
     config = await resolve_streaming_storage_config(get_db_pool())
     if not config.configured:
         raise NotFoundError("Streaming storage is not configured.")
-
-    async def _load() -> bytes | None:
-        return await StorageService.from_config(config).download_bytes(key=storage_key)
-
-    blob = await get_packaged_blob(storage_key, _load)
+    blob = await StorageService.from_config(config).download_bytes(key=storage_key)
     if not blob:
         raise NotFoundError("Packaged audio is missing.")
     header, _ = parse_package_header(blob)
     if chunk >= header.chunk_count:
         raise NotFoundError("Chunk out of range.")
-    payload = encrypted_chunk_record(blob, chunk)
+    key_hex = None
+    # Prefer server unwrap so the client can decrypt; also return raw encrypted chunk.
+    # Client decrypts with session content_key. We still send ciphertext only.
+    from platform_api.services.audio_packager import iter_encrypted_chunks
+
+    records = iter_encrypted_chunks(blob)
+    payload = records[chunk]
     headers = {
         "Cache-Control": "private, no-store",
         "X-Camxora-Chunk": str(chunk),
@@ -207,7 +290,7 @@ async def get_segment(
         "X-Content-Type-Options": "nosniff",
         "Content-Disposition": "inline",
     }
-    del request
+    del request, key_hex
     return Response(content=payload, media_type=GCM_MIME, headers=headers)
 
 
@@ -221,6 +304,18 @@ async def admin_backfill_packages(
     from platform_api.services.audio_package_service import AudioPackageService
 
     return await AudioPackageService(get_db_pool()).backfill(limit=limit)
+
+
+@router.post("/admin/backfill-hls")
+async def admin_backfill_hls(
+    ctx: AdminDep,
+    limit: int = Query(default=10, ge=1, le=50),
+) -> dict[str, Any]:
+    del ctx
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.audio_package_service import AudioPackageService
+
+    return await AudioPackageService(get_db_pool()).backfill_hls(limit=limit)
 
 
 @router.get("/admin/playback-events")
