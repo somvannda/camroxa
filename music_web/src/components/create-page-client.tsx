@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles } from 'lucide-react';
+import { Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, X } from 'lucide-react';
 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
@@ -459,6 +459,12 @@ export default function CreatePageClient() {
     }
   }, [loading, user, router]);
 
+  useEffect(() => {
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      setMode('simple');
+    }
+  }, []);
+
   async function refreshList(workspaceId?: string | null) {
     const resolvedWorkspaceId = workspaceId ?? activeWorkspaceId ?? undefined;
     const [nextQuota, list, workspaceList, nextBalance] = await Promise.all([
@@ -875,7 +881,7 @@ export default function CreatePageClient() {
 
   return (
     <div className="mx-auto grid max-w-[1600px] gap-6 xl:grid-cols-[minmax(0,28rem)_1fr]">
-      <section className="relative flex max-h-[calc(100dvh-var(--music-header-height)-var(--music-player-height)-2.75rem)] flex-col overflow-hidden rounded-[7px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,12,24,0.92),rgba(6,8,18,0.96))] shadow-[0_24px_80px_rgba(15,22,58,0.28)] xl:sticky xl:top-0">
+      <section className="relative flex flex-col overflow-visible rounded-[7px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,12,24,0.92),rgba(6,8,18,0.96))] shadow-[0_24px_80px_rgba(15,22,58,0.28)] xl:sticky xl:top-0 xl:max-h-[calc(100dvh-var(--music-header-height)-var(--music-player-height)-2.75rem)] xl:overflow-hidden">
         <div className="shrink-0 space-y-2.5 px-3 pb-2 pt-3">
           <div className="flex items-center justify-between gap-2">
             <div className="inline-flex rounded-full border border-white/10 p-0.5 text-xs">
@@ -927,7 +933,7 @@ export default function CreatePageClient() {
                 maxLength={WEB_MUSIC_STYLE_MAX}
                 rows={8}
                 placeholder="A rainy-night synthwave song about leaving the city..."
-                className="min-h-[180px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
+                className="min-h-[180px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
               />
               <MusicCharCount value={prompt} max={WEB_MUSIC_STYLE_MAX} />
             </div>
@@ -958,7 +964,7 @@ export default function CreatePageClient() {
                     maxLength={WEB_MUSIC_LYRICS_MAX}
                     rows={7}
                     placeholder="Write lyrics, or paste a verse..."
-                    className="min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
+                    className="min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
                   />
                   <MusicCharCount value={lyrics} max={WEB_MUSIC_LYRICS_MAX} />
                 </div>
@@ -970,7 +976,7 @@ export default function CreatePageClient() {
                     maxLength={WEB_MUSIC_LYRICS_MAX}
                     rows={7}
                     placeholder="Describe the song you want the lyrics to express..."
-                    className="min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
+                    className="min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
                   />
                   <MusicCharCount value={prompt} max={WEB_MUSIC_LYRICS_MAX} />
                 </div>
@@ -1007,7 +1013,7 @@ export default function CreatePageClient() {
                   maxLength={WEB_MUSIC_STYLE_MAX}
                   rows={6}
                   placeholder="urbano, electric guitar, upbeat rock, 128 BPM, eurodance"
-                  className="min-h-[148px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-violet-400/50"
+                  className="min-h-[148px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
                 />
                 <MusicCharCount value={style} max={WEB_MUSIC_STYLE_MAX} />
               </div>
@@ -1048,7 +1054,7 @@ export default function CreatePageClient() {
                   value={negativeTags}
                   onChange={(e) => setNegativeTags(e.target.value)}
                   placeholder="choir, backing vocals, falsetto"
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none focus:border-violet-400/50"
+                  className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
                 />
               </label>
               <MusicSectionError message={stylesError} />
@@ -1140,11 +1146,16 @@ export default function CreatePageClient() {
         </div>
 
         <MusicFloatingActionBar>
+          {createError ? (
+            <p className="mb-2 text-left text-xs text-rose-300 md:mb-0 md:mt-2 md:text-center">
+              {createError}
+            </p>
+          ) : null}
           {needsUpgrade ? (
             <button
               type="button"
               onClick={() => setShowUpgradeModal(true)}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-[0_18px_44px_rgba(118,77,255,0.38)]"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-[7px] bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(118,77,255,0.4)] md:rounded-full md:shadow-[0_18px_44px_rgba(118,77,255,0.38)]"
             >
               <Sparkles className="h-4 w-4" />
               Upgrade to Pro
@@ -1154,22 +1165,21 @@ export default function CreatePageClient() {
               type="button"
               disabled={!canCreate}
               onClick={() => void onCreate()}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-[0_18px_44px_rgba(118,77,255,0.38)] disabled:opacity-50"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-[7px] bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(118,77,255,0.4)] disabled:opacity-50 md:rounded-full md:shadow-[0_18px_44px_rgba(118,77,255,0.38)]"
             >
               <Music2 className="h-4 w-4" />
               {busy ? 'Creating…' : 'Create'}
             </button>
           )}
           {needsUpgrade ? (
-            <p className="mt-2 text-center text-xs text-fuchsia-100/80">
+            <p className="mt-2 hidden text-center text-xs text-fuchsia-100/80 md:block">
               You have used today&apos;s free credits. Upgrade to Pro for more.
             </p>
           ) : null}
-          {createError ? <p className="mt-2 text-center text-xs text-rose-300">{createError}</p> : null}
         </MusicFloatingActionBar>
       </section>
 
-      <section className="min-w-0 flex gap-4 overflow-hidden music-scroll">
+      <section className="flex min-w-0 flex-col gap-4 overflow-hidden music-scroll xl:flex-row">
         {/* Main List */}
         <div className="min-w-0 flex-1 overflow-hidden">
           <div className="mb-4">
@@ -1267,10 +1277,10 @@ export default function CreatePageClient() {
                     setShowNewWorkspace((value) => !value);
                     setNewWorkspaceName('');
                   }}
-                  className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[7px] border border-violet-400/30 bg-violet-500/10 px-3 text-xs font-medium text-violet-200 transition hover:bg-violet-500/15 disabled:opacity-40"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-[7px] border border-violet-400/30 bg-violet-500/10 text-xs font-medium text-violet-200 transition hover:bg-violet-500/15 disabled:opacity-40 sm:w-auto sm:px-3"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  New workspace
+                  <span className="hidden sm:inline">New workspace</span>
                 </button>
               </div>
             </div>
@@ -1340,7 +1350,7 @@ export default function CreatePageClient() {
                           <ClipPlaylistNames taskId={generation.id} variant={clip.variant} className="mt-1" />
                         </div>
                       </div>
-                      <div className="flex flex-shrink-0 items-center gap-1">
+                      <div className="hidden flex-shrink-0 items-center gap-1 sm:flex">
                         {clipDownloadButtons(generation, clip, 'sm')}
                       </div>
                     </div>
@@ -1361,8 +1371,8 @@ export default function CreatePageClient() {
 
         {/* Right Sidebar - Version Details */}
         {selectedVersion && (
-          <div className="w-80 max-w-full flex-shrink-0 rounded-2xl border border-white/8 bg-white/[0.03] p-5 space-y-4 overflow-hidden">
-            <div className="flex items-start gap-3 min-w-0">
+          <div className="w-full max-w-full flex-shrink-0 space-y-4 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03] p-5 xl:w-80">
+            <div className="flex min-w-0 items-start gap-3">
               <ClipCoverControl
                 clip={selectedVersion.clip}
                 variant={selectedVersion.clip.variant}
@@ -1391,6 +1401,14 @@ export default function CreatePageClient() {
                   className="mt-1.5"
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => setSelectedVersion(null)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-white/10 hover:text-white xl:hidden"
+                aria-label="Close details"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
             {/* Playback & Download */}
@@ -1401,7 +1419,7 @@ export default function CreatePageClient() {
                   type="button"
                   disabled={!selectedVersion.clip.ready}
                   onClick={() => playWorkspaceClip(selectedVersion.song, selectedVersion.clip, true)}
-                  className="flex-1 inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-violet-500/20 text-white hover:bg-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-500/20 text-white hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {current?.id === `${selectedVersion.song.id}:${selectedVersion.clip.variant}` && playing ? (
                     <Pause className="h-4 w-4" />

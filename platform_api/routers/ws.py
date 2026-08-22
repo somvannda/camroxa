@@ -125,19 +125,24 @@ def _get_notification_service() -> NotificationServiceProtocol:
 
 
 def _extract_token(websocket: WebSocket) -> str | None:
-    """Extract access token from WebSocket connection query params or headers.
+    """Extract access token from WebSocket handshake.
 
     Looks for the token in:
     1. Authorization header: Bearer <access_token>
     2. Query parameter: ?token=<access_token> (legacy desktop clients)
+    3. User access cookie (music_web)
     """
     auth_header = websocket.headers.get("authorization", "")
-    if auth_header.lower().startswith("bearer "):
+    if isinstance(auth_header, str) and auth_header.lower().startswith("bearer "):
         return auth_header[7:].strip()
 
     token = websocket.query_params.get("token")
-    if token:
-        return token
+    if isinstance(token, str) and token.strip():
+        return token.strip()
+
+    cookie = websocket.cookies.get("camxora_access_token") if hasattr(websocket, "cookies") else None
+    if isinstance(cookie, str) and cookie.strip():
+        return cookie.strip()
 
     return None
 

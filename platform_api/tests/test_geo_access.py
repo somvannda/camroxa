@@ -88,6 +88,29 @@ def test_web_music_path_in_scope_on_api_host() -> None:
     assert music_web_geo_in_scope(request) is True
 
 
+def test_public_streaming_path_in_geo_scope() -> None:
+    from starlette.requests import Request
+
+    async def receive() -> dict:
+        return {"type": "http.request"}
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "https",
+        "path": "/api/v1/public/streaming/home",
+        "raw_path": b"/api/v1/public/streaming/home",
+        "query_string": b"",
+        "headers": [(b"host", b"api.camxora.com")],
+        "client": ("1.2.3.4", 1234),
+        "server": ("api.camxora.com", 443),
+    }
+    request = Request(scope, receive)
+    assert music_web_geo_in_scope(request) is True
+
+
 @pytest.mark.asyncio
 async def test_kh_header_allows_web_music(client: AsyncClient) -> None:
     resp = await client.get(

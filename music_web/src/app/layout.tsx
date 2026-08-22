@@ -1,5 +1,5 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 
 // Self-hosted fonts (no external dependency)
 import '@fontsource/inter/400.css';
@@ -12,7 +12,15 @@ import '@fontsource/outfit/700.css';
 import { PlayerProvider } from '@/components/player-provider';
 import { AuthProvider } from '@/components/auth-provider';
 import { LikesProvider } from '@/components/likes-provider';
+import { PlaylistMembershipsProvider } from '@/components/playlist-memberships-provider';
 import ShellSwitcher from '@/components/shell-switcher';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
+};
 
 export const metadata: Metadata = {
   title: {
@@ -21,9 +29,12 @@ export const metadata: Metadata = {
   },
   description: 'Create and stream AI-generated music with Camxora.',
   icons: {
-    icon: [{ url: '/camxora-logo.svg', type: 'image/svg+xml' }],
-    shortcut: ['/camxora-logo.svg'],
-    apple: ['/camxora-logo.svg'],
+    icon: [
+      { url: '/camxora-now-playing.png', sizes: '512x512', type: 'image/png' },
+      { url: '/camxora-logo.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: ['/camxora-now-playing.png'],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
   },
 };
 
@@ -34,7 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <PlayerProvider>
             <LikesProvider>
-              <ShellSwitcher>{children}</ShellSwitcher>
+              <PlaylistMembershipsProvider>
+                <ShellSwitcher>{children}</ShellSwitcher>
+              </PlaylistMembershipsProvider>
             </LikesProvider>
           </PlayerProvider>
         </AuthProvider>

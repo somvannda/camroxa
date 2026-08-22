@@ -169,6 +169,17 @@ class TopupService:
         success_url = sanitize_music_web_return_url(success_url)
         cancel_url = sanitize_music_web_return_url(cancel_url)
 
+        await self._db.execute(
+            """
+            UPDATE topup_purchases
+            SET payment_status = 'failed'
+            WHERE user_id = $1
+              AND payment_status = 'pending'
+              AND (external_payment_id IS NULL OR external_payment_id = '')
+              AND created_at < NOW() - INTERVAL '2 minutes'
+            """,
+            user_id,
+        )
         pending_count = await self._db.fetch_val(
             """
             SELECT COUNT(*)::int
@@ -210,21 +221,34 @@ class TopupService:
         )
         
         # Create CutLuy payment
-        payment = await self._cutluy.create_topup_payment(
-            user_id=user_id,
-            pack_name=pack.name,
-            amount_cents=pack.price_cents,
-            credits=pack.total_credits,
-            success_url=success_url,
-            cancel_url=cancel_url,
-            metadata={
-                "type": "topup",
-                "topup_id": str(topup_id),
-                "pack_id": str(pack.id),
-                "credits": pack.total_credits,
-            },
-            db=self._db,
-        )
+        try:
+            payment = await self._cutluy.create_topup_payment(
+                user_id=user_id,
+                pack_name=pack.name,
+                amount_cents=pack.price_cents,
+                credits=pack.total_credits,
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={
+                    "type": "topup",
+                    "topup_id": str(topup_id),
+                    "pack_id": str(pack.id),
+                    "credits": pack.total_credits,
+                },
+                db=self._db,
+            )
+        except Exception:
+            await self._db.execute(
+                """
+                UPDATE topup_purchases
+                SET payment_status = 'failed'
+                WHERE id = $1
+                  AND payment_status = 'pending'
+                  AND (external_payment_id IS NULL OR external_payment_id = '')
+                """,
+                topup_id,
+            )
+            raise
         
         # Store external payment ID
         await self._db.execute("""

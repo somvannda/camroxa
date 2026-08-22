@@ -81,6 +81,16 @@ class TestTokenExtraction:
         token = _extract_token(ws)
         assert token is None
 
+    def test_extract_from_access_cookie(self) -> None:
+        """Token is extracted from the music_web access cookie."""
+        ws = MagicMock()
+        ws.query_params = {}
+        ws.headers = {}
+        ws.cookies = {"camxora_access_token": "cookie-jwt"}
+
+        token = _extract_token(ws)
+        assert token == "cookie-jwt"
+
     def test_empty_bearer_returns_none(self) -> None:
         """Returns None when Bearer header has no actual token value."""
         ws = MagicMock()

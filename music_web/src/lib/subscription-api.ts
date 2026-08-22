@@ -141,7 +141,7 @@ export async function purchaseSubscription(input: {
   plan_id: string;
   success_url: string;
   cancel_url: string;
-}): Promise<{ checkout_url: string; payment_id: string; expires_at: string }> {
+}): Promise<{ checkout_url: string; payment_id: string; expires_at: string; qr_string?: string }> {
   return apiFetch('/api/v1/v2/subscriptions/purchase', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -190,6 +190,7 @@ export async function purchaseTopup(input: {
   checkout_url: string;
   payment_id: string;
   expires_at: string;
+  qr_string?: string;
   pack_name: string;
   credits: number;
   amount_cents: number;

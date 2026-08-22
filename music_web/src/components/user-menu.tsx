@@ -43,7 +43,7 @@ export default function UserMenu() {
               {initial}
             </span>
           )}
-          <span className="truncate">{user.display_name}</span>
+          <span className="hidden truncate min-[420px]:inline">{user.display_name}</span>
           <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition group-data-[state=open]:rotate-180 group-data-[state=open]:text-violet-200" />
         </button>
       </DropdownMenuTrigger>

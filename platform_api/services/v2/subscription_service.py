@@ -279,6 +279,44 @@ class SubscriptionService:
             user_id,
         )
 
+    _REUSABLE_CHECKOUT_STATUSES = frozenset(
+        {"pending", "expired", "cancelled", "past_due"}
+    )
+
+    async def _reset_subscription_row_to_pending(
+        self,
+        *,
+        subscription_id: str,
+        user_id: str,
+        plan: Plan,
+        billing_cycle: str,
+        period_start: datetime,
+        period_end: datetime,
+    ) -> str:
+        await self._db.execute(
+            """
+            UPDATE web_subscriptions
+            SET plan_id = $1,
+                billing_cycle = $2,
+                status = 'pending',
+                current_period_start = $3,
+                current_period_end = $4,
+                monthly_credits_granted = $5,
+                monthly_credits_used = 0,
+                external_subscription_id = NULL,
+                updated_at = NOW()
+            WHERE id = $6 AND user_id = $7 AND status <> 'active'
+            """,
+            plan.id,
+            billing_cycle,
+            period_start,
+            period_end,
+            plan.monthly_credits,
+            subscription_id,
+            user_id,
+        )
+        return subscription_id
+
     async def _upsert_pending_subscription(
         self,
         *,
@@ -289,30 +327,15 @@ class SubscriptionService:
         period_end: datetime,
         existing: dict | None,
     ) -> str:
-        if existing and existing.get("status") == "pending":
-            subscription_id = str(existing["id"])
-            await self._db.execute(
-                """
-                UPDATE web_subscriptions
-                SET plan_id = $1,
-                    billing_cycle = $2,
-                    current_period_start = $3,
-                    current_period_end = $4,
-                    monthly_credits_granted = $5,
-                    monthly_credits_used = 0,
-                    external_subscription_id = NULL,
-                    updated_at = NOW()
-                WHERE id = $6 AND user_id = $7 AND status = 'pending'
-                """,
-                plan.id,
-                billing_cycle,
-                period_start,
-                period_end,
-                plan.monthly_credits,
-                subscription_id,
-                user_id,
+        if existing and existing.get("status") in self._REUSABLE_CHECKOUT_STATUSES:
+            return await self._reset_subscription_row_to_pending(
+                subscription_id=str(existing["id"]),
+                user_id=user_id,
+                plan=plan,
+                billing_cycle=billing_cycle,
+                period_start=period_start,
+                period_end=period_end,
             )
-            return subscription_id
 
         try:
             subscription_id = await self._db.fetch_val(
@@ -339,13 +362,15 @@ class SubscriptionService:
             reused = await self._get_checkout_subscription_row(user_id)
             if reused is None:
                 raise
-            return await self._upsert_pending_subscription(
+            if reused.get("status") == "active":
+                raise ValueError("User already has an active subscription") from None
+            return await self._reset_subscription_row_to_pending(
+                subscription_id=str(reused["id"]),
                 user_id=user_id,
                 plan=plan,
                 billing_cycle=billing_cycle,
                 period_start=period_start,
                 period_end=period_end,
-                existing=reused,
             )
     
     async def create_subscription(
@@ -455,6 +480,7 @@ class SubscriptionService:
             "checkout_url": payment["checkout_url"],
             "payment_id": str(payment_id),
             "expires_at": payment.get("expires_at") or "",
+            "qr_string": payment.get("qr_string") or "",
         }
 
     async def create_subscription_by_plan_id(

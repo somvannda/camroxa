@@ -43,7 +43,15 @@ async def _platform_error_handler(request: Request, exc: PlatformAPIError) -> JS
     if exc.details is not None:
         content["error"]["details"] = exc.details
 
-    return JSONResponse(status_code=exc.status_code, content=content)
+    headers: dict[str, str] = {}
+    retry_after = getattr(exc, "retry_after", None)
+    if retry_after is not None:
+        try:
+            headers["Retry-After"] = str(int(retry_after))
+        except (TypeError, ValueError):
+            pass
+
+    return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
 
 async def _global_exception_handler(request: Request, exc: Exception) -> JSONResponse:

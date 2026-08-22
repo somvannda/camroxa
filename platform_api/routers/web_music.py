@@ -591,6 +591,7 @@ async def stream_generation_variant(
         task_id,
         variant=variant,
         range_header=range_header,
+        request_headers=request.headers,
     )
 
 
@@ -609,6 +610,7 @@ async def stream_generation(
         task_id,
         variant=variant,
         range_header=range_header,
+        request_headers=request.headers,
     )
 
 
@@ -625,6 +627,7 @@ async def play_by_token(
         token,
         session_user_id=ctx.user_id,
         range_header=range_header,
+        request_headers=request.headers,
     )
 
 

@@ -33,6 +33,7 @@ export default function SubscriptionSection() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [checkoutQrString, setCheckoutQrString] = useState<string | null>(null);
   const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<{ name: string; price: string } | null>(null);
 
@@ -92,7 +93,7 @@ export default function SubscriptionSection() {
         return;
       }
       const currentUrl = window.location.origin;
-      const { checkout_url, payment_id } = await purchaseSubscription({
+      const { checkout_url, payment_id, qr_string } = await purchaseSubscription({
         plan_id: plan.id,
         success_url: `${currentUrl}/profile?payment=success`,
         cancel_url: `${currentUrl}/profile`,
@@ -102,6 +103,7 @@ export default function SubscriptionSection() {
         price: formatPrice(plan.price_cents),
       });
       setCheckoutPaymentId(payment_id);
+      setCheckoutQrString(qr_string || null);
       setCheckoutUrl(checkout_url);
     } catch (err: unknown) {
       console.error('Purchase failed:', err);
@@ -322,12 +324,14 @@ export default function SubscriptionSection() {
       <CutluyCheckoutModal
         isOpen={Boolean(checkoutUrl)}
         checkoutUrl={checkoutUrl}
+        qrString={checkoutQrString}
         paymentId={checkoutPaymentId}
         kind="subscription"
         planName={checkoutPlan?.name}
         planPrice={checkoutPlan?.price}
         onClose={() => {
           setCheckoutUrl(null);
+          setCheckoutQrString(null);
           setCheckoutPaymentId(null);
           setCheckoutPlan(null);
           setPurchasingPlanId(null);

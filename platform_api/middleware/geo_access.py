@@ -62,6 +62,8 @@ def music_web_geo_in_scope(request: Request) -> bool:
         return True
     if path.startswith("/api/v1/web-music") or path.startswith("/web-music"):
         return True
+    if path.startswith("/api/v1/public/streaming"):
+        return True
     return False
 
 

@@ -157,6 +157,25 @@ class QuotaExceededError(PlatformAPIError):
         super().__init__(message, details=details)
 
 
+class RateLimitedError(PlatformAPIError):
+    """Client exceeded a short-window request budget (429)."""
+
+    status_code = 429
+    error_code = "RATE_LIMITED"
+
+    def __init__(
+        self,
+        message: str = "Too many requests. Please wait a moment.",
+        *,
+        retry_after: int = 2,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.retry_after = max(1, int(retry_after))
+        payload = dict(details or {})
+        payload.setdefault("retry_after", self.retry_after)
+        super().__init__(message, details=payload)
+
+
 class ExternalServiceError(PlatformAPIError):
     """Upstream AI service returned an error or is unreachable (502).
 
