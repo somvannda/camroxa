@@ -66,9 +66,6 @@ MUSIC_WEB_FILES = [
     "music_web/src/lib/vendor/mpg123/MPEGDecoder.js",
     "music_web/src/lib/vendor/mpg123/WASMAudioDecoderCommon.js",
     "music_web/src/components/player-provider.tsx",
-    "music_web/src/components/create-page-client.tsx",
-    "music_web/src/components/home-gate.tsx",
-    "music_web/src/components/playlist-detail-page-client.tsx",
 ]
 
 ADMIN_FILES = [

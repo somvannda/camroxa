@@ -3,9 +3,9 @@
 import Link from 'next/link';
 
 import TrackRow from '@/components/track-row';
-import { AlbumCard, ArtistPageCard } from '@/components/catalog-cards';
+import { AlbumCard, ArtistCard } from '@/components/catalog-cards';
 import { useAuth } from '@/components/auth-provider';
-import type { ArtistPage } from '@/lib/artist-page-api';
+import type { ExploreArtist } from '@/lib/explore-api';
 import type { StreamAlbum, StreamTrack } from '@/lib/streaming-api';
 
 export default function HomeGate({
@@ -15,7 +15,7 @@ export default function HomeGate({
 }: {
   tracks: StreamTrack[];
   albums: StreamAlbum[];
-  artists: ArtistPage[];
+  artists: ExploreArtist[];
 }) {
   const { user, loading } = useAuth();
 
@@ -68,7 +68,7 @@ export default function HomeGate({
           {artists.length ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {artists.map((artist) => (
-                <ArtistPageCard key={artist.id} page={artist} />
+                <ArtistCard key={artist.user_id} artist={artist} />
               ))}
             </div>
           ) : (
@@ -125,7 +125,7 @@ export default function HomeGate({
         {artists.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {artists.map((artist) => (
-              <ArtistPageCard key={artist.id} page={artist} />
+              <ArtistCard key={artist.user_id} artist={artist} />
             ))}
           </div>
         ) : (
