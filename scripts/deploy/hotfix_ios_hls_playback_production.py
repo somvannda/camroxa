@@ -43,7 +43,6 @@ API_FILES = [
     "platform_api/services/streaming_upload_service.py",
     "platform_api/services/batch_service.py",
     "platform_api/migrations/versions/107_protected_playback.py",
-    "platform_api/migrations/versions/114_playback_event_detail.py",
     "platform_api/migrations/versions/115_hls_playback.py",
 ]
 
@@ -66,6 +65,7 @@ MUSIC_WEB_FILES = [
     "music_web/src/lib/vendor/mpg123/MPEGDecoder.js",
     "music_web/src/lib/vendor/mpg123/WASMAudioDecoderCommon.js",
     "music_web/src/components/player-provider.tsx",
+    "music_web/src/components/home-gate.tsx",
 ]
 
 ADMIN_FILES = [
@@ -117,7 +117,12 @@ set -e
 command -v ffmpeg >/dev/null || (apt-get update -qq && apt-get install -y -qq ffmpeg)
 REPO=/opt/camxora/repo
 chown -R camxora:camxora $REPO/platform_api $REPO/music_web
-sudo -u camxora bash -lc 'cd /opt/camxora/repo/platform_api && source .venv/bin/activate && alembic upgrade 115_hls_playback'
+rm -f $REPO/platform_api/migrations/versions/114_playback_event_detail.py
+sed -i 's/114_playback_event_detail/109_playback_event_detail/g' $REPO/platform_api/migrations/versions/115_hls_playback.py
+VER=$(sudo -u postgres psql -d camxora_platform -t -A -c "SELECT version_num FROM alembic_version;")
+if [ "$VER" != "115_hls_playback" ]; then
+  sudo -u camxora bash -lc 'cd /opt/camxora/repo/platform_api && source .venv/bin/activate && alembic upgrade 115_hls_playback'
+fi
 sudo -u postgres psql -d camxora_platform -t -A -c "SELECT version_num FROM alembic_version;"
 systemctl restart camxora-api
 systemctl list-units --type=service --all --no-pager --plain 'camxora-worker*' \
