@@ -10,13 +10,22 @@
 
 ### Platform API (Backend)
 
-**Local:**
+**Linux/Mac:**
 ```bash
 cd /workspace
 export PLATFORM_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/platform_db
 export PLATFORM_REDIS_URL=redis://localhost:6379/0
 export PLATFORM_JWT_SECRET=your-secret-here
 uvicorn platform_api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Windows (from `D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3`):**
+```powershell
+cd D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3
+set PLATFORM_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/platform_db
+set PLATFORM_REDIS_URL=redis://localhost:6379/0
+set PLATFORM_JWT_SECRET=your-secret-here
+python -m uvicorn platform_api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Sandbox API:** `https://api-sandbox.camxora.com` (requires VPN or sandbox SSH)
@@ -40,9 +49,17 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 
 ### Admin Portal
 
-**Local:**
+**Linux/Mac:**
 ```bash
 cd /workspace/admin_portal
+npm install
+npm run dev
+# Opens at http://localhost:5173
+```
+
+**Windows:**
+```powershell
+cd D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3\admin_portal
 npm install
 npm run dev
 # Opens at http://localhost:5173
@@ -56,9 +73,17 @@ npm run dev
 
 ### Music Web
 
-**Local:**
+**Linux/Mac:**
 ```bash
 cd /workspace/music_web
+npm install
+npm run dev
+# Opens at http://localhost:3003
+```
+
+**Windows:**
+```powershell
+cd D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3\music_web
 npm install
 npm run dev
 # Opens at http://localhost:3003
@@ -72,7 +97,7 @@ npm run dev
 
 ### Website (Marketing)
 
-**Local:**
+**Linux/Mac:**
 ```bash
 cd /workspace/website
 npm install
@@ -80,7 +105,15 @@ npm run dev
 # Opens at http://localhost:3000
 ```
 
-**Sandbox:** `https://sandbox.camxora.com` (if deployed)
+**Windows:**
+```powershell
+cd D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3\website
+npm install
+npm run dev
+# Opens at http://localhost:3000
+```
+
+**Sandbox:** `https://sandbox.camxora.com`
 
 **Production:** `https://camxora.com` (READ-ONLY for test verification)
 
@@ -88,7 +121,7 @@ npm run dev
 
 ### User Portal
 
-**Local:**
+**Linux/Mac:**
 ```bash
 cd /workspace/user_portal
 npm install
@@ -96,15 +129,23 @@ npm run dev
 # Opens at http://localhost:3000 (default Next.js port)
 ```
 
-**Sandbox:** TBD (check deployment docs)
+**Windows:**
+```powershell
+cd D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3\user_portal
+npm install
+npm run dev
+# Opens at http://localhost:3000
+```
+
+**Sandbox:** `https://app.sandbox.camxora.com`
 
 ---
 
 ### Desktop App (Electron/Python)
 
-The desktop app mentioned as `D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3` appears to be a different local path. For the workspace version:
-
 **Electron Desktop (camxora):**
+
+Linux/Mac:
 ```bash
 cd /workspace/camxora
 npm install
@@ -112,14 +153,35 @@ npm run dev
 # Electron window opens
 ```
 
-**Python Desktop (camxora_python) - if standalone:**
+Windows:
+```powershell
+cd D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3\camxora
+npm install
+npm run dev
+# Electron window opens
+```
+
+**Python Desktop Studio (camxora_python) - if standalone:**
+
+Linux/Mac:
 ```bash
 cd /workspace/camxora_python
 pip install -e .
 python main.py
 ```
 
-**Note:** Desktop app connects to `localhost:8000` API by default. Check `.env` files for API endpoint configuration.
+Windows:
+```powershell
+cd D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3\camxora_python
+pip install -e .
+python main.py
+```
+
+**Note:** Desktop app connects to `localhost:8000` API by default. For sandbox testing, set environment variables:
+- `CAMXORA_API_BASE_URL=https://api-sandbox.camxora.com/api/v1`
+- `CAMXORA_PORTAL_BASE_URL=https://app.sandbox.camxora.com`
+
+See `.env.sandbox.example` in `camxora_python/` for reference.
 
 ---
 
@@ -603,6 +665,41 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
+#### TC-F07: Sandbox expired licenses produce 0 mintable rows
+
+- **Surface:** `platform_api` (conversion dry-run on sandbox)
+- **Preconditions:**
+  - Sandbox leftover dry-run already executed
+  - Result: 0 mintable rows found (2 expired licenses)
+- **Steps:**
+  1. Run dry-run conversion on all sandbox users
+  2. Review dry-run report
+- **Expected:**
+  - Mintable users: 0
+  - Expired licenses: 2 (or more)
+  - Reason: "All eligible licenses already converted or expired"
+  - Apply conversion NOT executed (nothing to convert)
+- **Failure Meaning:** Dry-run incorrectly reporting mintable rows for expired licenses
+
+---
+
+#### TC-F08: Conversion apply skipped when dry-run returns 0 mintable
+
+- **Surface:** `platform_api` (conversion apply)
+- **Preconditions:**
+  - Dry-run executed and returned 0 mintable rows
+  - Admin attempts to run conversion apply
+- **Steps:**
+  1. `curl -X POST http://localhost:8000/api/v1/admin/conversion/apply -d '{"confirm":true}'`
+- **Expected:**
+  - HTTP 200 or 204 No Content
+  - Response: `{"message": "No users eligible for conversion", "applied": 0}`
+  - No database writes
+  - No credits minted
+- **Failure Meaning:** Apply running even when nothing to convert; potential for errors or duplicate minting
+
+---
+
 ### Category G: Desktop App (Electron/Python)
 
 #### TC-G01: Desktop shows one credits number (not separate quota)
@@ -720,6 +817,120 @@ These are the **immutable product rules** all tests must validate against:
   - Studio: hint shows "~800 songs/mo" (`floor(8000/10)`)
   - NO "x2 for dual-channel" multiplier shown
 - **Failure Meaning:** Song hint calculation wrong or showing dual-channel multiplier
+
+---
+
+#### TC-H04: Profile addon does NOT scale monthly song limit
+
+- **Surface:** `platform_api` (entitlement service)
+- **Preconditions:**
+  - User has Starter plan: `monthly_song_limit=300` (hypothetical)
+  - User has 1 channel profile
+  - `credits_only_v3_charge` flag ON (credits-only mode)
+- **Steps:**
+  1. Check user's monthly song limit: should be 300
+  2. Purchase $5 dual-profile pack (+2 slots)
+  3. Complete onboarding for 2 new profiles
+  4. Check monthly song limit after addon activation
+- **Expected:**
+  - Monthly song limit: still 300 (unchanged)
+  - Profile slots: increased from 1 to 3
+  - Credits: unchanged (1000 from Starter plan)
+- **Failure Meaning:** Addon scaling monthly meters in credits-only mode; legacy quota logic still active
+
+---
+
+#### TC-H05: Profile addon does NOT scale monthly draft limit
+
+- **Surface:** `platform_api` (entitlement service)
+- **Preconditions:**
+  - User has Creator plan: `monthly_draft_limit=600` (hypothetical)
+  - User has 3 channel profiles
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Check user's monthly draft limit: should be 600
+  2. Purchase $10 dual-profile pack (+2 slots)
+  3. Activate addon
+  4. Check monthly draft limit
+- **Expected:**
+  - Monthly draft limit: still 600 (unchanged)
+  - NO scaling factor applied
+- **Failure Meaning:** Addon scaling draft quota in credits-only mode
+
+---
+
+#### TC-H06: Profile addon does NOT scale monthly image limit
+
+- **Surface:** `platform_api` (entitlement service)
+- **Preconditions:**
+  - User has Studio plan: `monthly_image_limit=500` (hypothetical)
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Check user's monthly image limit: should be 500
+  2. Purchase and activate +2 profile addon
+  3. Check monthly image limit
+- **Expected:**
+  - Monthly image limit: still 500 (unchanged)
+- **Failure Meaning:** Addon scaling image quota in credits-only mode
+
+---
+
+#### TC-H07: Profile addon does NOT scale monthly video limit
+
+- **Surface:** `platform_api` (entitlement service)
+- **Preconditions:**
+  - User has any plan with `monthly_video_limit=60` (hypothetical)
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Check user's monthly video limit: should be 60
+  2. Purchase and activate +4 profile addon
+  3. Check monthly video limit
+- **Expected:**
+  - Monthly video limit: still 60 (unchanged)
+  - Account-wide daily video cap stays same (not scaled)
+- **Failure Meaning:** Addon scaling video quota in credits-only mode
+
+---
+
+#### TC-H08: Profile addon does NOT scale monthly merge limit
+
+- **Surface:** `platform_api` (entitlement service)
+- **Preconditions:**
+  - User has any plan with `monthly_merge_limit=30` (hypothetical)
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Check user's monthly merge limit: should be 30
+  2. Purchase and activate +2 profile addon
+  3. Check monthly merge limit
+- **Expected:**
+  - Monthly merge limit: still 30 (unchanged)
+  - Daily merge cap stays same (not scaled)
+- **Failure Meaning:** Addon scaling merge quota in credits-only mode
+
+---
+
+#### TC-H09: Profile addon adds slots only, never credits (summary test)
+
+- **Surface:** `platform_api` (billing + entitlement)
+- **Preconditions:**
+  - User has Creator plan: 3500 credits/mo, 3 profile slots
+  - All monthly meters documented in plan row
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Snapshot: credits=3500, slots=3, all monthly meters (song/draft/image/video/merge)
+  2. Purchase $10 dual-profile pack
+  3. Complete onboarding for 2 new profiles
+  4. Snapshot: credits=?, slots=?, monthly meters=?
+- **Expected:**
+  - Credits: still 3500 (unchanged)
+  - Slots: 3 → 5 (+2)
+  - Monthly song limit: unchanged
+  - Monthly draft limit: unchanged
+  - Monthly image limit: unchanged
+  - Monthly video limit: unchanged
+  - Monthly merge limit: unchanged
+  - **Only** profile creation allowance increased
+- **Failure Meaning:** Critical product logic broken; addon packs affecting credits or quota meters
 
 ---
 
