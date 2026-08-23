@@ -6,6 +6,17 @@
 
 ---
 
+## Duke Windows Sign-In Note
+
+**How we sign in on Duke Windows:**
+- Use **local Chrome default profile** (already logged in with test accounts)
+- Admin portal: `https://admin.sandbox.camxora.com` (NOT `admin.camxora.com`)
+- Music web: `https://music.sandbox.camxora.com` (NOT `music-sandbox.camxora.com`)
+- Website: `https://sandbox.camxora.com` (NOT `camxora.com`)
+- Always verify sandbox URLs before testing to avoid production data
+
+---
+
 ## How to Run Each Surface
 
 ### Platform API (Backend)
@@ -310,6 +321,45 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
+#### TC-A06: Portal onboarding/upgrade after email confirm: no $79
+
+- **Surface:** `user_portal` (onboarding + upgrade flow)
+- **Preconditions:**
+  - New user just registered
+  - Email confirmation completed
+  - User redirected to onboarding/upgrade flow
+- **Steps:**
+  1. Complete signup at `http://localhost:3000/signup` or sandbox user portal
+  2. Verify email via link
+  3. Redirected to plan selection or onboarding
+  4. Inspect plan cards displayed
+- **Expected:**
+  - Exactly 3 plans: Starter ($10), Creator ($30), Studio ($60)
+  - NO $79 Desktop Monthly plan visible
+  - All plan cards read from API with `is_public=true` filter
+- **Failure Meaning:** Post-email-confirm flow leaking hidden plans; new users see wrong pricing
+
+---
+
+#### TC-A07: Race condition: public list never includes is_public=false
+
+- **Surface:** `platform_api` (`GET /api/v1/plans`, `GET /api/v3/plans`)
+- **Preconditions:**
+  - Database has 3 public plans + 1 hidden $79 plan
+  - Multiple concurrent API requests from different surfaces (website, music_web, user_portal)
+  - High load scenario (simulate with 50+ concurrent requests)
+- **Steps:**
+  1. Send 50 concurrent requests to `GET /api/v1/plans`
+  2. Parse all responses
+  3. Check for any response including hidden plan
+- **Expected:**
+  - 0 responses include $79 plan or any `is_public=false` plan
+  - All responses consistently return only public plans
+  - NO race condition where filter fails under load
+- **Failure Meaning:** Critical race condition; hidden plan leaking intermittently
+
+---
+
 ### Category B: Admin Portal Plan Management
 
 #### TC-B01: Admin plan catalog shows all plans (not quota editor)
@@ -363,7 +413,29 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-#### TC-B04: Admin usage/finance/user-spent reports show credits
+#### TC-B04: Admin user detail wallet + grant remaining (real user row)
+
+- **Surface:** `admin_portal` (`/users/{id}`)
+- **Preconditions:**
+  - Admin logged in to sandbox admin portal
+  - Real user exists with active Starter plan (1000 credits/month)
+  - User has consumed 300 credits this period
+- **Steps:**
+  1. Open `https://admin.sandbox.camxora.com/users/{user_id}` (or localhost)
+  2. Locate credit wallet section
+  3. Verify fields displayed
+- **Expected:**
+  - Wallet balance: 700 (1000 - 300 consumed)
+  - Grant remaining: 700 (same as balance if no bonus credits)
+  - Monthly grant: 1000 (from plan row)
+  - Next reset: <ISO8601 date of next billing cycle>
+  - NO "Add Quota" or "Top-Up Quota" button
+  - Grant/Deduct credits buttons present for admin manual adjustment
+- **Failure Meaning:** Admin UI not showing credits correctly; old quota system still visible
+
+---
+
+#### TC-B05: Admin usage/finance/user-spent reports show credits
 
 - **Surface:** `admin_portal` (`/stats`, `/finance`, `/users/{id}/usage`)
 - **Preconditions:**
@@ -376,6 +448,44 @@ These are the **immutable product rules** all tests must validate against:
   - All reports use "credits" terminology
   - No references to "quota" or "song packages"
 - **Failure Meaning:** Admin reports not migrated to credits language
+
+---
+
+#### TC-B06: Admin generate button copy: flag OFF vs flag ON
+
+- **Surface:** `admin_portal` (generation UI or feature flags page)
+- **Preconditions:**
+  - Admin logged in
+  - Access to system settings or feature flags
+- **Steps:**
+  1. Check `credits_only_v3_charge` flag status
+  2. Navigate to any generation-related admin UI (if exists)
+  3. Inspect button/link copy and help text
+- **Expected:**
+  - Flag OFF: UI shows "song packages", "quota", "top-up" terminology
+  - Flag ON: UI shows "credits", "wallet balance", "grant/deduct" terminology
+  - Generate operations reference "10 credits per song" (flag ON) or "1 song package" (flag OFF)
+- **Failure Meaning:** Admin UI not dynamically updating copy based on flag state
+
+---
+
+#### TC-B07: Production admin must not be used for sandbox verdicts
+
+- **Surface:** `admin_portal` (sandbox environment testing)
+- **Preconditions:**
+  - Tester has access to both sandbox and production admin portals
+  - Testing credits-only v3 changes
+- **Steps:**
+  1. Open sandbox admin portal: `https://admin.sandbox.camxora.com`
+  2. Verify URL in browser address bar
+  3. Complete all admin test cases (TC-B01 through TC-B06)
+  4. Document results
+- **Expected:**
+  - All admin testing uses sandbox admin portal ONLY
+  - NO production admin portal (`https://admin.camxora.com`) accessed during testing
+  - Test data: sandbox users, sandbox database, sandbox API
+  - Regression checks explicitly note "verified on sandbox only"
+- **Failure Meaning:** Testing on production risks production data corruption; critical test process violation
 
 ---
 
@@ -427,6 +537,26 @@ These are the **immutable product rules** all tests must validate against:
   - Only 10 credits charged (not 20)
   - Per-version credit cost is `10 / 2 = 5` effective cost per version
 - **Failure Meaning:** Charging per version instead of per generation request
+
+---
+
+#### TC-C03b: Flag ON: generate 10 credits = 2 versions; 402 if wallet 0
+
+- **Surface:** `platform_api` (`POST /api/v3/generation/song`)
+- **Preconditions:**
+  - `credits_only_v3_charge` flag ON
+  - Suno configured for 2 versions per generation
+  - Test with two users: User A (wallet 50 credits), User B (wallet 0)
+- **Steps:**
+  1. User A generates 1 song
+  2. Wait for completion
+  3. Verify 2 versions created
+  4. Check User A wallet: 50 → 40
+  5. User B attempts to generate 1 song
+- **Expected:**
+  - User A: 10 credits charged, 2 versions created (5 credits effective per version)
+  - User B: HTTP 402 Insufficient Credits, NO generation started, Suno NOT called
+- **Failure Meaning:** Per-version charging instead of per-generation, or insufficient funds gate not enforced
 
 ---
 
@@ -512,6 +642,29 @@ These are the **immutable product rules** all tests must validate against:
   - At least one row returned
   - `price_cents = 0`, `daily_credits > 0` (e.g., 50)
 - **Failure Meaning:** Free plan not created as plan row; legacy system still in use
+
+---
+
+#### TC-D03: Free daily grant from Free plan row, not web_music_free_daily_credits setting
+
+- **Surface:** `platform_api` (credit grant service)
+- **Preconditions:**
+  - Database has Free plan row: `price_cents=0`, `monthly_credits=0`, `daily_credits=50`
+  - System settings table may have legacy `web_music_free_daily_credits` setting (should be ignored)
+  - User assigned to Free plan
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Check system settings: `SELECT key, value FROM system_settings WHERE key = 'web_music_free_daily_credits';`
+  2. If exists, note the value (e.g., 30)
+  3. Check Free plan row: `SELECT daily_credits FROM plans WHERE price_cents = 0;` (should be 50)
+  4. User logs in at start of day
+  5. Check wallet balance after daily grant applied
+- **Expected:**
+  - Daily grant: 50 credits (from plan row `daily_credits` field)
+  - NOT 30 credits (from legacy system setting, if exists)
+  - Grant service reads plan row, NOT system_settings table
+  - Legacy setting (if exists) is ignored
+- **Failure Meaning:** Daily grant still using legacy system setting; plan row not authoritative
 
 ---
 
@@ -628,6 +781,34 @@ These are the **immutable product rules** all tests must validate against:
   - Credits minted: 0
   - Reason: "License expired; no conversion"
 - **Failure Meaning:** Converting expired licenses; revenue loss
+
+---
+
+#### TC-F04b: Expired license mint 0; conversion apply confirm-gate prevents accidental run
+
+- **Surface:** `platform_api` (conversion service)
+- **Preconditions:**
+  - User A: had legacy license expired 30 days ago, 50 song packages at expiry
+  - User B: active Starter plan, 73 song packages remaining
+  - Conversion NOT yet executed for either user
+- **Steps:**
+  1. Run dry-run conversion for User A
+  2. Verify response: mintable credits = 0 (expired license)
+  3. Run dry-run conversion for User B
+  4. Verify response: mintable credits = 730 (73 × 10)
+  5. Attempt conversion apply WITHOUT `confirmed=true` parameter
+  6. Verify rejection
+  7. Run conversion apply WITH `confirmed=true` for User B only
+  8. Check User B wallet
+  9. Attempt conversion apply again for User B
+- **Expected:**
+  - User A dry-run: 0 credits (license expired)
+  - User B dry-run: 730 credits
+  - Apply without `confirmed=true`: HTTP 400 or 403 "Confirmation required"
+  - Apply with confirmation for User B: 730 credits minted
+  - Second apply for User B: Error "Conversion already completed for this user"
+  - User A never converted (0 credits mintable; expired)
+- **Failure Meaning:** Expired licenses incorrectly converted OR confirmation gate bypassed; critical safety issue
 
 ---
 
@@ -748,7 +929,47 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-#### TC-G04: Desktop connects to API v3 endpoints
+#### TC-G04: Desktop Electron one credits number vs Plan quota
+
+- **Surface:** `camxora` (Electron desktop app)
+- **Preconditions:**
+  - Electron app running (`npm run dev` in `/workspace/camxora`)
+  - User logged in with Creator plan (3500 credits/month)
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Open Electron app
+  2. Navigate to main generation screen or account/settings
+  3. Inspect all UI elements showing credit/quota information
+- **Expected:**
+  - Single credits display: "3500 credits available" or similar
+  - NO separate "Plan quota: 350 songs/month" display
+  - NO "Drafts remaining: 600" or other quota meters
+  - All generation buttons show credit cost (e.g., "Generate Song (10 credits)")
+- **Failure Meaning:** Electron app still showing legacy plan quota UI instead of unified credits
+
+---
+
+#### TC-G05: Desktop Python (main.py) one credits number vs Plan quota
+
+- **Surface:** `camxora_python` (Python desktop studio)
+- **Preconditions:**
+  - Python app running (`python main.py` in `/workspace/camxora_python`)
+  - User logged in with Studio plan (8000 credits/month)
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Launch Python desktop app
+  2. Navigate to main generation view or settings
+  3. Inspect credit/quota displays
+- **Expected:**
+  - Single credits number: "8000 credits" or similar
+  - NO "Plan: Studio - 800 songs/month" display
+  - Generation UI shows per-operation credit cost
+  - Master template widgets used for all credit displays (no inline styles)
+- **Failure Meaning:** Python desktop app not migrated to credits-only UI
+
+---
+
+#### TC-G06: Desktop connects to API v3 endpoints
 
 - **Surface:** `camxora` (desktop app network)
 - **Preconditions:**
@@ -934,6 +1155,35 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
+#### TC-H10: Addon $5/$10 comprehensive wallet + meter verification
+
+- **Surface:** `platform_api` (billing + entitlement)
+- **Preconditions:**
+  - User has Starter plan: $10/mo, 1000 credits/mo, 1 profile slot
+  - Plan row defines all meters: song/draft/image/video/merge monthly limits
+  - User wallet balance: 1000 credits
+  - `credits_only_v3_charge` flag ON
+- **Steps:**
+  1. Document baseline: credits=1000, slots=1, all meter values
+  2. Purchase $5 dual-profile addon
+  3. Payment confirmation received
+  4. Check wallet balance
+  5. Check all monthly meter values (song/draft/image/video/merge)
+  6. Check profile slot count
+- **Expected:**
+  - Wallet balance: 1000 (unchanged)
+  - Profile slots: 1 → 3 (+2 from $5 pack)
+  - Song monthly limit: unchanged
+  - Draft monthly limit: unchanged
+  - Image monthly limit: unchanged
+  - Video monthly limit: unchanged
+  - Merge monthly limit: unchanged
+  - NO scaling factor applied to any meter
+  - Payment processed: $5 charged
+- **Failure Meaning:** Addon incorrectly modifying wallet or monthly meters; slots-only product logic violated
+
+---
+
 ### Category I: Hidden $79 Desktop Monthly Plan Renewal
 
 #### TC-I01: Hidden $79 plan renew grants 3000 credits (not 1000)
@@ -970,9 +1220,112 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-### Category J: Website Pricing Page
+#### TC-I03: Hidden $79 plan grant 3000 not 1000; unpublished on all public lists
 
-#### TC-J01: Website pricing shows 3 cards only
+- **Surface:** `platform_api` + all frontend surfaces
+- **Preconditions:**
+  - Database has $79 Desktop Monthly plan:
+    - `price_cents=7900`
+    - `monthly_credits=3000` (NOT 1000 like Starter)
+    - `is_active=true`
+    - `is_public=false`
+  - Existing subscriber on $79 plan
+- **Steps:**
+  1. Verify plan row in database: `SELECT * FROM plans WHERE price_cents = 7900;`
+  2. Check subscriber's monthly grant after renewal
+  3. Check website `/pricing` page: $79 NOT listed
+  4. Check music_web pricing modal: $79 NOT listed
+  5. Check user_portal upgrade flow: $79 NOT listed
+  6. Check public API `GET /api/v1/plans`: $79 NOT included (only `is_public=true`)
+- **Expected:**
+  - Plan row `monthly_credits=3000`, NOT 1000
+  - Subscriber receives 3000 credits on renewal
+  - $79 plan appears NOWHERE on public surfaces (website, music_web, user_portal)
+  - Public API filters out `is_public=false` plans
+  - Admin portal CAN see $79 plan with `is_public=false` flag visible
+- **Failure Meaning:** Hidden plan credit amount wrong OR leaking to public lists; critical product + billing issue
+
+---
+
+### Category J: Yearly vs Monthly Plans (Same Credits, Cash Discount Only)
+
+#### TC-J01: Yearly Starter plan grants same credits as monthly (120 credits total)
+
+- **Surface:** `platform_api` (subscription + billing)
+- **Preconditions:**
+  - Database has Starter Monthly: $10/mo → 1000 credits/month
+  - Database has Starter Yearly: $100/year → 1000 credits/month (same monthly grant)
+  - User purchases Starter Yearly
+- **Steps:**
+  1. Complete checkout for Starter Yearly plan
+  2. Check wallet monthly grant
+  3. Verify billing amount
+- **Expected:**
+  - Monthly grant: 1000 credits (same as monthly plan)
+  - Billing: $100/year (cash discount vs $120 for 12 months × $10)
+  - NO 12000 credits granted upfront
+  - Credits granted monthly on same schedule as monthly plan
+- **Failure Meaning:** Yearly plan granting different credit amount; product confusion
+
+---
+
+#### TC-J02: Yearly Creator plan grants same credits as monthly
+
+- **Surface:** `platform_api` (subscription)
+- **Preconditions:**
+  - Creator Monthly: $30/mo → 3500 credits/month
+  - Creator Yearly: $300/year → 3500 credits/month
+- **Steps:**
+  1. User subscribes to Creator Yearly
+  2. Check monthly grant on renewal cycles
+- **Expected:**
+  - Month 1 grant: 3500 credits
+  - Month 2 grant: 3500 credits (not 0)
+  - Month 12 grant: 3500 credits
+  - Total over 12 months: 42000 credits (same as monthly × 12)
+  - Cash paid: $300 (discount vs $360 for monthly)
+- **Failure Meaning:** Yearly plan credit grant logic broken
+
+---
+
+#### TC-J03: Yearly Studio plan grants same credits as monthly
+
+- **Surface:** `platform_api` (subscription)
+- **Preconditions:**
+  - Studio Monthly: $60/mo → 8000 credits/month
+  - Studio Yearly: $600/year → 8000 credits/month
+- **Steps:**
+  1. User subscribes to Studio Yearly
+  2. Verify monthly grant schedule
+- **Expected:**
+  - Monthly grant: 8000 credits every month
+  - Billing: $600/year (discount vs $720 for monthly)
+  - NO difference in credit amount between yearly and monthly
+- **Failure Meaning:** Yearly/monthly credit parity broken
+
+---
+
+#### TC-J04: Yearly plan pricing shown on website with cash discount
+
+- **Surface:** `website` (`/pricing`)
+- **Preconditions:**
+  - Website shows yearly toggle or yearly cards
+- **Steps:**
+  1. Open `http://localhost:3000/pricing`
+  2. Toggle to yearly pricing (if toggle exists)
+  3. Verify displayed amounts
+- **Expected:**
+  - Yearly prices: Starter $100/yr, Creator $300/yr, Studio $600/yr
+  - Savings badge: "Save $20/year" (or equivalent)
+  - Credit grants: "1000 credits/month", "3500 credits/month", "8000 credits/month" (same as monthly)
+  - NO "12000 credits upfront" messaging
+- **Failure Meaning:** Website misrepresenting yearly plan benefits
+
+---
+
+### Category K: Website Pricing Page
+
+#### TC-K01: Website pricing shows 3 cards only
 
 - **Surface:** `website` (`/pricing`)
 - **Preconditions:**
@@ -987,7 +1340,7 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-#### TC-J02: Website pricing dual-channel is a bullet
+#### TC-K02: Website pricing dual-channel is a bullet
 
 - **Surface:** `website` (`/pricing`)
 - **Preconditions:**
@@ -1001,9 +1354,9 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-### Category K: Music Web Pricing & Lyrics Cost
+### Category L: Music Web Pricing & Lyrics Cost
 
-#### TC-K01: Music web pricing modal shows 3 plans
+#### TC-L01: Music web pricing modal shows 3 plans
 
 - **Surface:** `music_web` (pricing modal)
 - **Preconditions:**
@@ -1019,7 +1372,7 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-#### TC-K02: Music web lyrics cost deducted from lyric amount
+#### TC-L02: Music web lyrics cost deducted from lyric amount
 
 - **Surface:** `music_web` (generation flow)
 - **Preconditions:**
@@ -1035,9 +1388,50 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-### Category L: Two Ledgers (Web vs Desktop)
+#### TC-L03: Music web Free plan card shows daily_credits (not 0)
 
-#### TC-L01: Web ledger uses integer credits
+- **Surface:** `music_web` (pricing display / account dashboard)
+- **Preconditions:**
+  - User on Free plan with `daily_credits=50` in plan row
+  - Website fixed to read `v1/plans` endpoint with `daily_credits` field
+  - music_web may still read a different field or use cached old data
+- **Steps:**
+  1. Log in to `http://localhost:3003` as Free plan user
+  2. Navigate to account/pricing page
+  3. Inspect Free plan card or current plan display
+- **Expected:**
+  - Free plan shows "50 credits/day" or similar
+  - NOT "0 credits" or blank
+  - Reads from plan row `daily_credits` field (same as website v1 API)
+- **Failure Meaning:** music_web reading wrong field; Free users see incorrect quota
+
+---
+
+#### TC-L04: Lyrics-only Create shows cost and debits plan lyric amount
+
+- **Surface:** `music_web` (lyrics generation UI + API)
+- **Preconditions:**
+  - User has 100 credits
+  - Plan defines lyrics cost = 2 credits (verify actual from plan row)
+  - User opens "Create Lyrics" flow (not full song)
+- **Steps:**
+  1. Click "Create Lyrics Only" button
+  2. Verify UI shows cost preview: "This will cost 2 credits"
+  3. Confirm generation
+  4. Wait for completion
+  5. Check wallet balance
+- **Expected:**
+  - UI preview shows correct lyric cost from plan row
+  - Balance: 100 → 98
+  - Transaction log: "lyrics_generation" with correct amount
+  - NO full song charge (10 credits) applied
+- **Failure Meaning:** Lyrics cost not shown or wrong amount debited; plan field not read
+
+---
+
+### Category M: Two Ledgers (Web vs Desktop)
+
+#### TC-M01: Web ledger uses integer credits
 
 - **Surface:** `music_web`, `user_portal` (API calls)
 - **Preconditions:**
@@ -1051,7 +1445,7 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-#### TC-L02: Desktop ledger uses micro-units
+#### TC-M02: Desktop ledger uses micro-units
 
 - **Surface:** `camxora` (desktop app)
 - **Preconditions:**
@@ -1066,7 +1460,7 @@ These are the **immutable product rules** all tests must validate against:
 
 ---
 
-#### TC-L03: One charge model enforced (flag ON)
+#### TC-M03: One charge model enforced (flag ON)
 
 - **Surface:** `platform_api` (charge service)
 - **Preconditions:**
