@@ -11,6 +11,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Generate no longer aborts the rest of a multi-day plan after one failed
+  `POST /batches`. It skips day/pair slots that already exist, retries
+  leftovers, and reports created vs still missing. See
+  `docs/changelog/2026-08-23-fill-missing-generate-batches.md`.
 - Continue Progress no longer retries image jobs that already succeeded, and
   will not start video export until a local background PNG is ready (`long_ready`).
 

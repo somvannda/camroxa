@@ -1235,16 +1235,33 @@ class CreateBatchesWorker(QThread):
         self._requests = requests
 
     def run(self) -> None:
+        from shared.lib.music_batch_plan import create_planned_batches
         from shared.models.platform import BatchCreateRequest
 
+        planned = [item for item in self._requests if isinstance(item, BatchCreateRequest)]
+        if not planned:
+            self.failed.emit("No batch runs to create.")
+            return
         try:
-            results = []
-            for request in self._requests:
-                if not isinstance(request, BatchCreateRequest):
-                    continue
-                response = self._api.create_batch(request)
-                results.append(response)
-            self.succeeded.emit(results)
+            from_date = min(str(item.from_date) for item in planned)
+            to_date = max(str(item.to_date or item.from_date) for item in planned)
+            history = self._api.list_music_history(
+                limit=100,
+                from_date=from_date,
+                to_date=to_date,
+            )
+            result = create_planned_batches(
+                self._api.create_batch,
+                planned,
+                existing_batches=list(history.batches or []),
+            )
+            if result.has_progress:
+                self.succeeded.emit(result)
+                return
+            if result.failed:
+                self.failed.emit(result.failed[0][1])
+                return
+            self.failed.emit("No batch runs to create.")
         except PlatformApiError as exc:
             self.failed.emit(str(exc))
         except Exception as exc:
