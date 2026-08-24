@@ -812,3 +812,53 @@ def get_v2_topup_service():
         cutluy=get_cutluy_service(),
         credit_service=CreditService(db=db),
     )
+
+
+def get_v3_store():
+    """Shared-DB store for credits-only v3 columns/tables."""
+    from platform_api.services.v3.store import V3BillingStore
+
+    return V3BillingStore(pool=get_db_pool())
+
+
+def get_v3_billing_service():
+    """Credits-only quote/charge/refund on the v1 wallet and Credits page."""
+    from platform_api.services.v3.credits_only_billing_service import CreditsOnlyBillingService
+
+    return CreditsOnlyBillingService(
+        store=get_v3_store(),
+        credit_repo=get_credit_repo(),
+        pricing_service=get_credit_pricing_service(),
+        enforcement=get_usage_enforcement_service(),
+    )
+
+
+def get_v3_grant_service():
+    from platform_api.services.v3.period_grant_service import PeriodGrantService
+
+    return PeriodGrantService(
+        store=get_v3_store(),
+        credit_repo=get_credit_repo(),
+        plan_repo=get_plan_repo(),
+    )
+
+
+def get_v3_conversion_service():
+    from platform_api.services.v3.quota_conversion_service import QuotaConversionService
+
+    return QuotaConversionService(
+        store=get_v3_store(),
+        credit_repo=get_credit_repo(),
+        plan_repo=get_plan_repo(),
+        usage_repo=get_usage_tracking_repo(),
+        topup_repo=get_quota_topup_repo(),
+    )
+
+
+def get_v3_web_ledger_service():
+    from platform_api.services.v3.web_ledger_conversion import WebLedgerConversionService
+
+    return WebLedgerConversionService(
+        store=get_v3_store(),
+        credit_repo=get_credit_repo(),
+    )

@@ -12,8 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Subscription, credit, and top-up calls use `/api/v2/...` instead of `/api/v1/v2/...`. See `docs/changelog/2026-08-24-api-v2-url-prefix.md`.
-- Create stays locked for **5 seconds**, then you can enqueue another song into the global paid-first Suno queue (20 paid / 2 free). Songs appear as Queued/Waiting; Suno starts them one by one. See `docs/changelog/2026-08-23-web-create-global-queue.md`.
+- Credits header / Create / profile show the v3 wallet number only. v2 balance is a hard fallback if `/api/v3/me/credits` fails. See `docs/changelog/2026-08-23-one-wallet-web-ledger.md`.
+- Create no longer treats Desktop Pro as unlimited credits. The upgrade gate follows remaining credits. See `docs/changelog/2026-08-23-web-create-v3-charge.md`.
+- Free pricing card no longer lists Desktop studio. Paid cards still include it. The home Pricing modal and profile plan grid use the same Free bullets. See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.
+- Web Music pricing cards advertise Starter / Creator / Studio. Free only if public. Dual-channel is a bullet. Song hint is floor(credits/10). See `docs/changelog/2026-08-22-credits-only-public-cards-and-addon-skus.md`.
 
 ### Added
 

@@ -40,11 +40,13 @@ const PAGE_SIZE = 25;
 const MAX_ACCOUNT_CHANNELS = 10;
 const PROFILE_ADDON_STEP = 2;
 
-const STATUS_BADGE_CLASSES: Record<License['status'], string> = {
+const STATUS_BADGE_CLASSES: Record<string, string> = {
   unassigned: 'border-slate-500/30 bg-slate-500/10 text-slate-400',
   active: 'border-green-500/30 bg-green-500/10 text-green-400',
   expired: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400',
   revoked: 'border-red-500/30 bg-red-500/10 text-red-400',
+  cancelled: 'border-red-500/30 bg-red-500/10 text-red-400',
+  pending: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
 };
 
 interface AddonSlotRowProps {
@@ -146,7 +148,7 @@ export default function SubscriptionsPage() {
       header: 'User',
       accessorFn: (row) => (
         <span className="text-slate-200">
-          {row.user_id ? (userMap.get(row.user_id) ?? row.user_id) : '—'}
+          {row.user_email || (row.user_id ? (userMap.get(row.user_id) ?? row.user_id) : '—')}
         </span>
       ),
     },
@@ -155,8 +157,17 @@ export default function SubscriptionsPage() {
       header: 'Plan',
       accessorFn: (row) => (
         <span className="text-slate-300">
-          {planMap.get(row.plan_id) ?? row.plan_id}
+          {row.plan_name || planMap.get(row.plan_id) || row.plan_id}
         </span>
+      ),
+    },
+    {
+      id: 'source',
+      header: 'Source',
+      accessorFn: (row) => (
+        <Badge variant="outline" className="border-slate-600 text-slate-300">
+          {row.source === 'web' ? 'Web' : 'Desktop'}
+        </Badge>
       ),
     },
     {
@@ -207,7 +218,7 @@ export default function SubscriptionsPage() {
       header: 'Actions',
       accessorFn: (row) => (
         <div className="flex gap-2">
-          {row.status === 'active' && (
+          {row.status === 'active' && row.source !== 'web' && (
             <>
               <Button
                 variant="outline"
@@ -333,7 +344,7 @@ export default function SubscriptionsPage() {
         description:
           field === 'pending'
             ? `Pending add-on is now ${next} (+${next} channels awaiting onboarding).`
-            : `Active add-on is now ${next} (quotas scale immediately).`,
+            : `Active add-on is now ${next} (profile slots apply immediately).`,
       });
     } catch (err) {
       const axiosError = err as AxiosError<{ error?: { message?: string } }>;
@@ -362,7 +373,12 @@ export default function SubscriptionsPage() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-100">Subscriptions</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100">Subscriptions</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Desktop licenses and CutLuy web rows on the same plans catalog.
+          </p>
+        </div>
         <Button onClick={() => setSubscribeDialogOpen(true)}>
           Subscribe User
         </Button>
@@ -400,7 +416,7 @@ export default function SubscriptionsPage() {
           <DialogHeader>
             <DialogTitle>Subscribe User to Plan</DialogTitle>
             <DialogDescription>
-              Select a user and a plan. The subscription will start immediately
+              Select a user and any active plan (including unpublished). The subscription will start immediately
               and expire based on the plan&apos;s billing cycle.
             </DialogDescription>
           </DialogHeader>
@@ -471,7 +487,7 @@ export default function SubscriptionsPage() {
             <DialogTitle>Manage profile add-ons</DialogTitle>
             <DialogDescription>
               Add or remove +2 channel bundles. Pending slots let the user create profiles but
-              quotas activate only after onboarding. Active slots scale monthly quotas immediately.
+              profiles can be created after onboarding. Active slots add profile capacity, not credits.
             </DialogDescription>
           </DialogHeader>
           {addonLicense && (
@@ -530,7 +546,7 @@ export default function SubscriptionsPage() {
                 )}
                 <p className="mt-2 text-xs text-slate-500">
                   Removing add-ons never deletes channel profiles or usage history. Reduction is
-                  blocked when the user already has more profiles than the new allowance or quota
+                  blocked when the user already has more profiles than the new allowance
                   would support.
                 </p>
               </div>
@@ -548,7 +564,7 @@ export default function SubscriptionsPage() {
 
               <AddonSlotRow
                 label="Active add-on"
-                description="Onboarded — monthly quotas scale with these channels"
+                description="Onboarded — extra profile slots (not extra credits)"
                 value={addonActive}
                 tone="active"
                 canAdd={addonRemaining >= PROFILE_ADDON_STEP}

@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Onboarding plan picker is three public credit cards. Song/draft/image comparison meters are gone. Unpublished dual-profile packs stay off public pricing. See `docs/changelog/2026-08-22-credits-only-public-cards-and-addon-skus.md`.
+
 - Email confirmation is a locked screen (no marketing nav, footer, or dashboard
   sidebar). Unconfirmed users cannot open the control panel. See
   `docs/changelog/2026-08-17-email-confirm-gate.md`.

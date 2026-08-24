@@ -27,19 +27,6 @@ function clampText(value: string, max: number): string {
   return value.length <= max ? value : value.slice(0, max);
 }
 import {
-  CREATE_HARD_LOCK_MS,
-  cooldownMsForAttempt,
-  createActionDisabled,
-  createActionLabel,
-  createStatusHint,
-  isCoolingDown,
-  isHardLocked,
-  queueLimitForUser,
-  remainingSeconds,
-  type WebMusicGenerateInput,
-} from '@/lib/create-submit-queue';
-import {
-  MusicApiError,
   createWebMusicWorkspace,
   updateWebMusicWorkspace,
   downloadWebMusicClip,
@@ -58,7 +45,7 @@ import {
   type WebMusicQuota,
   type WebMusicWorkspace,
 } from '@/lib/web-music-api';
-import { fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
+import { fetchCreditBalance, fetchSubscriptionPlans, type CreditBalance } from '@/lib/subscription-api';
 import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
 
 const STYLE_CHIPS = [
@@ -75,15 +62,12 @@ const STYLE_CHIPS = [
 ];
 
 function clipWaitingLabel(generation: WebMusicGeneration): string {
-  const status = (generation.status || '').toUpperCase();
-  if (status === 'SUCCESS') return 'Finishing';
-  if (status === 'QUEUED') return 'Queued';
-  return 'Waiting';
+  return (generation.status || '').toUpperCase() === 'SUCCESS' ? 'Finishing' : 'Waiting';
 }
 
 function isGeneratingStatus(generation: WebMusicGeneration): boolean {
   const status = (generation.status || '').toLowerCase();
-  return status === 'pending' || status === 'running' || status === 'queued';
+  return status === 'pending' || status === 'running';
 }
 
 function isOpenGeneration(item: WebMusicGeneration): boolean {
@@ -455,18 +439,14 @@ export default function CreatePageClient() {
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [renameWorkspaceName, setRenameWorkspaceName] = useState('');
   const [busy, setBusy] = useState(false);
-  const [cooldownUntil, setCooldownUntil] = useState(0);
-  const [hardLockUntil, setHardLockUntil] = useState(0);
-  const [, setCreateClock] = useState(0);
-  const inFlightRef = useRef(false);
-  const cooldownUntilRef = useRef(0);
-  const hardLockUntilRef = useRef(0);
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [lyricsError, setLyricsError] = useState<string | null>(null);
   const [stylesError, setStylesError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [quota, setQuota] = useState<WebMusicQuota | null>(null);
   const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
+  const [lyricCredits, setLyricCredits] = useState(0);
+  const [musicCredits, setMusicCredits] = useState(0);
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<{
     song: WebMusicGeneration;
@@ -489,14 +469,20 @@ export default function CreatePageClient() {
 
   async function refreshList(workspaceId?: string | null) {
     const resolvedWorkspaceId = workspaceId ?? activeWorkspaceId ?? undefined;
-    const [nextQuota, list, workspaceList, nextBalance] = await Promise.all([
+    const [nextQuota, list, workspaceList, nextBalance, nextPlans] = await Promise.all([
       fetchWebMusicQuota(),
       listWebMusicGenerations(40, 0, resolvedWorkspaceId),
       listWebMusicWorkspaces().catch(() => ({ items: [] as WebMusicWorkspace[] })),
       fetchCreditBalance().catch(() => null),
+      fetchSubscriptionPlans().catch(() => ({ plans: [] })),
     ]);
     setQuota(nextQuota);
     setCreditBalance(nextBalance);
+    const priced = nextPlans.plans.find((plan) => Number(plan.lyric_credits || 0) > 0 || Number(plan.music_credits || 0) > 0)
+      || nextPlans.plans.find((plan) => /free/i.test(plan.name))
+      || nextPlans.plans[0];
+    setLyricCredits(Number((priced && priced.lyric_credits) || 0));
+    setMusicCredits(Number((priced && priced.music_credits) || 0));
     setItems(list.items);
     setWorkspaces(workspaceList.items);
     if (!activeWorkspaceId && workspaceList.items.length) {
@@ -527,34 +513,21 @@ export default function CreatePageClient() {
     const pending = items.filter(isOpenGeneration);
     if (!pending.length) return undefined;
     const timer = window.setInterval(() => {
-      void Promise.all([
-        ...pending.map((item) => getWebMusicGeneration(item.id)),
-        fetchWebMusicQuota().catch(() => null),
-      ])
-        .then((results) => {
-          const updated = results.slice(0, pending.length) as WebMusicGeneration[];
-          const nextQuota = results[pending.length] as WebMusicQuota | null;
+      void Promise.all(pending.map((item) => getWebMusicGeneration(item.id)))
+        .then((updated) => {
           setItems((currentItems) =>
             currentItems.map((item) => updated.find((row) => row.id === item.id) ?? item),
           );
-          if (nextQuota) setQuota(nextQuota);
         })
         .catch(() => undefined);
     }, 2500);
     return () => window.clearInterval(timer);
   }, [items]);
 
-  useEffect(() => {
-    const activeUntil = Math.max(cooldownUntil, hardLockUntil);
-    if (activeUntil <= Date.now()) return undefined;
-    const timer = window.setInterval(() => setCreateClock(Date.now()), 250);
-    return () => window.clearInterval(timer);
-  }, [cooldownUntil, hardLockUntil]);
-
   const creditsPerSong = quota?.credits_per_song ?? 10;
   const totalCredits = creditBalance?.total_credits ?? quota?.credits_remaining ?? 0;
   const needsUpgrade = Boolean(
-    quota && !quota.is_pro && (quota.requires_upgrade || totalCredits < creditsPerSong),
+    quota && (quota.requires_upgrade || totalCredits < creditsPerSong),
   );
   const canDownload = Boolean(quota?.can_download ?? quota?.has_subscription ?? quota?.is_pro);
   const workspaceQueue = useMemo(() => workspaceReadyTracks(items), [items]);
@@ -730,121 +703,13 @@ export default function CreatePageClient() {
     }
   }
 
-  const formReady = useMemo(() => {
+  const canCreate = useMemo(() => {
+    if (busy || needsUpgrade) return false;
     if (mode === 'simple') return prompt.trim().length > 0;
     if (lyricsMode === 'instrumental') return style.trim().length > 0;
     if (lyricsMode === 'prompt') return style.trim().length > 0 && prompt.trim().length > 0;
     return style.trim().length > 0 && lyrics.trim().length > 0;
-  }, [mode, prompt, style, lyrics, lyricsMode]);
-
-  const nowMs = Date.now();
-  const hardLocked = isHardLocked(hardLockUntil, nowMs);
-  const coolingDown = isCoolingDown(cooldownUntil, nowMs);
-  const cooldownSeconds = remainingSeconds(cooldownUntil, nowMs);
-  const queueLimit = quota?.queue_limit ?? queueLimitForUser(Boolean(quota?.has_subscription || quota?.is_pro));
-  const queueUsed = quota?.queue_used ?? 0;
-  const createDisabled = createActionDisabled({
-    formReady,
-    needsUpgrade,
-    hardLocked,
-    busy,
-    coolingDown,
-    queueUsed,
-    queueLimit,
-  });
-  const createLabel = createActionLabel({
-    busy,
-    hardLocked,
-    coolingDown,
-    cooldownSeconds,
-    queueUsed,
-    queueLimit,
-  });
-  const createHint = createStatusHint({
-    busy,
-    coolingDown,
-    cooldownSeconds,
-    queueUsed,
-    queueLimit,
-  });
-
-  function buildCreateInput(): WebMusicGenerateInput {
-    return {
-      mode,
-      lyrics: lyricsMode === 'instrumental' ? undefined : lyricsMode === 'prompt' ? prompt : lyrics,
-      style,
-      title,
-      prompt: lyricsMode === 'prompt' ? prompt : mode === 'simple' ? prompt : undefined,
-      instrumental: lyricsMode === 'instrumental',
-      model,
-      negative_tags: negativeTags || undefined,
-      vocal_gender:
-        vocalGender === 'm' || vocalGender === 'f' || vocalGender === 'both' ? vocalGender : undefined,
-      style_weight: styleWeight ?? DEFAULT_SLIDER_VALUE,
-      weirdness_constraint: weirdnessConstraint ?? DEFAULT_SLIDER_VALUE,
-      audio_weight: audioWeight ?? DEFAULT_SLIDER_VALUE,
-      workspace_id: activeWorkspaceId || undefined,
-    };
-  }
-
-  function startCreateCooldown(ms: number) {
-    const until = Date.now() + ms;
-    cooldownUntilRef.current = until;
-    setCooldownUntil(until);
-  }
-
-  async function submitCreate(input: WebMusicGenerateInput) {
-    if (inFlightRef.current) return;
-    inFlightRef.current = true;
-    setBusy(true);
-    setCreateError(null);
-    const started = Date.now();
-    hardLockUntilRef.current = started + CREATE_HARD_LOCK_MS;
-    setHardLockUntil(hardLockUntilRef.current);
-    setCreateClock(started);
-    try {
-      const created = await generateWebMusic(input);
-      setQuota(created.quota);
-      void fetchCreditBalance()
-        .then(setCreditBalance)
-        .catch(() => undefined);
-      const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
-      const pending: WebMusicGeneration = loaded ?? {
-        id: created.task_id,
-        title: created.title,
-        lyrics: input.lyrics || '',
-        style: created.style,
-        model: input.model || model,
-        instrumental: Boolean(input.instrumental),
-        status: created.status,
-        vocal_gender: input.vocal_gender ?? null,
-        style_weight: input.style_weight ?? DEFAULT_SLIDER_VALUE,
-        weirdness_constraint: input.weirdness_constraint ?? DEFAULT_SLIDER_VALUE,
-        audio_weight: input.audio_weight ?? DEFAULT_SLIDER_VALUE,
-        negative_tags: input.negative_tags || null,
-        clips: [],
-      };
-      setItems((currentItems) => [
-        pending,
-        ...currentItems.filter((item) => item.id !== pending.id),
-      ]);
-      startCreateCooldown(cooldownMsForAttempt(null));
-    } catch (err) {
-      const apiErr = err instanceof MusicApiError ? err : null;
-      startCreateCooldown(cooldownMsForAttempt(apiErr?.retryAfterSeconds));
-      const message = err instanceof Error ? err.message : 'Create failed';
-      if (message.toLowerCase().includes('insufficient credits')) {
-        setShowUpgradeModal(true);
-      }
-      setCreateError(message);
-      void fetchWebMusicQuota()
-        .then(setQuota)
-        .catch(() => undefined);
-    } finally {
-      inFlightRef.current = false;
-      setBusy(false);
-    }
-  }
+  }, [busy, needsUpgrade, mode, prompt, style, lyrics, lyricsMode]);
 
   function buildLyricDraftPrompt(): string {
     return clampText(prompt.trim() || title.trim() || style.trim() || 'Create a song', WEB_MUSIC_LYRICS_MAX);
@@ -875,16 +740,67 @@ export default function CreatePageClient() {
     }
   }
 
-  function onCreate() {
+  async function onCreate() {
     if (needsUpgrade) {
       setShowUpgradeModal(true);
       return;
     }
-    if (!formReady) return;
-    const now = Date.now();
-    if (inFlightRef.current || isHardLocked(hardLockUntilRef.current, now)) return;
-    if (isCoolingDown(cooldownUntilRef.current, now)) return;
-    void submitCreate(buildCreateInput());
+    setBusy(true);
+    setCreateError(null);
+    try {
+      const created = await generateWebMusic({
+        mode,
+        lyrics: lyricsMode === 'instrumental' ? undefined : lyricsMode === 'prompt' ? prompt : lyrics,
+        style,
+        title,
+        prompt: lyricsMode === 'prompt' ? prompt : mode === 'simple' ? prompt : undefined,
+        instrumental: lyricsMode === 'instrumental',
+        model,
+        negative_tags: negativeTags || undefined,
+        vocal_gender:
+          vocalGender === 'm' || vocalGender === 'f' || vocalGender === 'both' ? vocalGender : undefined,
+        style_weight: styleWeight ?? DEFAULT_SLIDER_VALUE,
+        weirdness_constraint: weirdnessConstraint ?? DEFAULT_SLIDER_VALUE,
+        audio_weight: audioWeight ?? DEFAULT_SLIDER_VALUE,
+        workspace_id: activeWorkspaceId || undefined,
+      });
+      setQuota(created.quota);
+      void fetchCreditBalance()
+        .then(setCreditBalance)
+        .catch(() => undefined);
+      const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
+      const pending: WebMusicGeneration = loaded ?? {
+        id: created.task_id,
+        title: created.title,
+        lyrics,
+        style: created.style,
+        model,
+        instrumental: lyricsMode === 'instrumental',
+        status: created.status,
+        vocal_gender:
+          vocalGender === 'm' || vocalGender === 'f' || vocalGender === 'both' ? vocalGender : null,
+        style_weight: styleWeight ?? DEFAULT_SLIDER_VALUE,
+        weirdness_constraint: weirdnessConstraint ?? DEFAULT_SLIDER_VALUE,
+        audio_weight: audioWeight ?? DEFAULT_SLIDER_VALUE,
+        negative_tags: negativeTags || null,
+        clips: [],
+      };
+      setItems((currentItems) => [
+        pending,
+        ...currentItems.filter((item) => item.id !== pending.id),
+      ]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Create failed';
+      if (message.toLowerCase().includes('insufficient credits')) {
+        setShowUpgradeModal(true);
+      }
+      setCreateError(message);
+      void fetchWebMusicQuota()
+        .then(setQuota)
+        .catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
   }
 
   const activeWorkspace =
@@ -1033,7 +949,7 @@ export default function CreatePageClient() {
         ) : (
           <div className="space-y-3">
             <MusicCollapsibleSection
-              title="Lyrics"
+              title={lyricCredits > 0 ? ("Lyrics · " + String(lyricCredits) + " credits") : "Lyrics"}
               action={
                 lyricsMode === 'write' ? (
                   <button
@@ -1043,7 +959,7 @@ export default function CreatePageClient() {
                     className="inline-flex items-center gap-1 rounded-full bg-violet-500/10 px-2.5 py-1 text-[11px] text-violet-300 hover:bg-violet-500/20 hover:text-white disabled:opacity-50"
                   >
                     <Sparkles className="h-3 w-3" />
-                    {generatingDraft ? 'Generating...' : 'Auto-generate'}
+                    {generatingDraft ? 'Generating...' : lyricCredits > 0 ? ('Auto-generate · ' + String(lyricCredits) + ' credits') : 'Auto-generate'}
                   </button>
                 ) : null
               }
@@ -1255,20 +1171,18 @@ export default function CreatePageClient() {
           ) : (
             <button
               type="button"
-              disabled={createDisabled}
-              onClick={() => onCreate()}
+              disabled={!canCreate}
+              onClick={() => void onCreate()}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-[7px] bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(118,77,255,0.4)] disabled:opacity-50 md:rounded-full md:shadow-[0_18px_44px_rgba(118,77,255,0.38)]"
             >
               <Music2 className="h-4 w-4" />
-              {createLabel}
+              {busy ? 'Creating…' : musicCredits > 0 ? ('Create · ' + String(musicCredits) + ' credits') : lyricCredits > 0 ? ('Create · ' + String(lyricCredits) + ' credits') : 'Create'}
             </button>
           )}
           {needsUpgrade ? (
             <p className="mt-2 hidden text-center text-xs text-fuchsia-100/80 md:block">
               You have used today&apos;s free credits. Upgrade to Pro for more.
             </p>
-          ) : createHint ? (
-            <p className="mt-2 text-left text-xs text-slate-400 md:text-center">{createHint}</p>
           ) : null}
         </MusicFloatingActionBar>
       </section>

@@ -27,6 +27,7 @@ from platform_api.services.ai_routing_service import AIRoutingService
 from platform_api.services.batch_service import BatchService
 from platform_api.services.generation_service import GenerationService
 from platform_api.services.job_types import JOB_RETRY_SONG_SUNO, PRI_RETRY
+from platform_api.services.desktop_access import assert_paid_desktop_access
 from platform_api.services.prompt_service import PromptService
 from platform_api.services.usage_enforcement_service import UsageEnforcementService
 
@@ -246,6 +247,12 @@ async def _get_task_lookup() -> TaskLookupPort:
     )
 
 
+async def _get_license_repo():
+    from platform_api.dependencies import get_license_repo
+
+    return get_license_repo()
+
+
 # Type aliases for dependency injection
 GenerationServiceDep = Annotated[GenerationService, Depends(_get_generation_service)]
 EnforcementServiceDep = Annotated[UsageEnforcementService, Depends(_get_enforcement_service)]
@@ -255,6 +262,7 @@ ProfileServiceDep = Annotated[object, Depends(_get_profile_service)]
 BatchServiceDep = Annotated[BatchService, Depends(_get_batch_service)]
 JobQueueRepoDep = Annotated[JobQueueRepository, Depends(_get_job_queue_repo)]
 TaskLookupDep = Annotated[TaskLookupPort, Depends(_get_task_lookup)]
+LicenseRepoDep = Annotated[object, Depends(_get_license_repo)]
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
 
@@ -289,6 +297,7 @@ async def generate_draft(
     routing_service: AIRoutingServiceDep,
     prompt_service: PromptServiceDep,
     profile_service: ProfileServiceDep,
+    license_repo: LicenseRepoDep,
 ) -> DraftGenerationResponse:
     """Generate a song draft (title, album, lyrics) via LLM.
 
@@ -298,6 +307,7 @@ async def generate_draft(
     Requirements 6.1–6.4: Enforce credit balance and usage quotas before generation.
     """
     await enforce_rate_limit(http_request, ctx.user_id)
+    await assert_paid_desktop_access(ctx.user_id, license_repo)
 
     # Resolve routing — lyric/title/album slots (combined when assignments match)
     from platform_api.ai.purposes.draft_routing import build_draft_routing
@@ -707,6 +717,7 @@ async def submit_suno(
     enforcement_service: EnforcementServiceDep,
     routing_service: AIRoutingServiceDep,
     profile_service: ProfileServiceDep,
+    license_repo: LicenseRepoDep,
 ) -> SunoGenerationResponse:
     """Submit a music generation request to Suno.
 
@@ -717,6 +728,7 @@ async def submit_suno(
     Requirements 6.1–6.4: Enforce credit balance and usage quotas before generation.
     """
     await enforce_rate_limit(http_request, ctx.user_id)
+    await assert_paid_desktop_access(ctx.user_id, license_repo)
 
     await _assert_owned_channel_profile(
         profile_service,

@@ -86,9 +86,10 @@ function directionBadge(direction: string) {
 }
 
 function amountCell(row: UsageEntry) {
-  const isPlan =
-    row.billing === 'plan_allowance' ||
-    (row.direction === 'debit' && Math.abs(row.amount) < 1e-12);
+  const billing = row.billing ?? (row.metadata && typeof row.metadata.billing === 'string'
+    ? row.metadata.billing
+    : null);
+  const isPlan = billing === 'plan_allowance' || billing === 'plan_included';
   const isDebit = row.direction === 'debit' && !isPlan;
   const isRefund = row.direction === 'refund';
   const color = isPlan
@@ -518,8 +519,9 @@ export default function UsagePage() {
               Credit usage & transactions
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
-              Inspect every ledger row — wallet charges, plan allowance events, refunds, and
-              traces. Profit and revenue estimates live on Finance.
+              Ledger of wallet events: charges, refunds, period/daily grants, packs,
+              web leftover, admin adjust, and absorb. Historical plan_allowance stays
+              labeled. Grant issued on Finance is period/daily only.
             </p>
           </div>
           <div className="flex gap-2">
@@ -548,8 +550,11 @@ export default function UsagePage() {
             <div>
               <div className="font-medium text-slate-100">Billing notes</div>
               <p className="mt-1 text-slate-400">
-                Plan allowance rows may show amount 0 with list value in metadata. Filters apply to
-                the table and the quick totals below. For wallet revenue, COGS, and profit, use{' '}
+                Credits-only v3 generate rows are wallet charges (
+                <span className="font-mono text-slate-300">v3_music</span> / lyric / style).
+                Historical <span className="font-mono text-slate-300">plan_allowance</span> rows
+                stay labeled and are not rewritten as wallet debits. Period and daily grants are
+                on{' '}
                 <Link to="/finance" className="text-blue-300 hover:underline">
                   Finance
                 </Link>
@@ -637,7 +642,7 @@ export default function UsagePage() {
           )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <StatCard
             label="Billable events"
             value={summary?.billable_events ?? '—'}
@@ -651,10 +656,16 @@ export default function UsagePage() {
             hint="Actual wallet debits"
           />
           <StatCard
-            label="Plan included (list)"
+            label="Grant issued"
+            value={summary ? formatCredits(summary.grant_issued ?? 0) : '—'}
+            icon={Coins}
+            hint={`${summary?.grant_issued_events ?? 0} period/daily grants`}
+          />
+          <StatCard
+            label="Historical plan allowance (list)"
             value={summary ? formatCredits(summary.plan_included_list ?? 0) : '—'}
             icon={Activity}
-            hint={`${summary?.plan_allowance_events ?? 0} plan rows`}
+            hint={`${summary?.plan_allowance_events ?? 0} plan_allowance rows (not wallet)`}
           />
           <StatCard
             label="Refunds"
@@ -681,7 +692,7 @@ export default function UsagePage() {
                     <th className="pb-2 font-medium">Provider / Model</th>
                     <th className="pb-2 font-medium">Events</th>
                     <th className="pb-2 font-medium">Wallet charged</th>
-                    <th className="pb-2 font-medium">Plan included (list)</th>
+                    <th className="pb-2 font-medium">Historical allowance (list)</th>
                   </tr>
                 </thead>
                 <tbody>

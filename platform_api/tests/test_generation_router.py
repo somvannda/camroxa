@@ -42,6 +42,7 @@ from platform_api.routers.generation import (
     _get_ai_routing_service,
     _get_prompt_service,
     _get_profile_service,
+    _get_license_repo,
 )
 from platform_api.services.job_types import JOB_RETRY_SONG_SUNO
 
@@ -198,6 +199,13 @@ def mock_job_queue() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_license_repo() -> AsyncMock:
+    repo = AsyncMock()
+    repo.has_paid_desktop_access = AsyncMock(return_value=True)
+    return repo
+
+
+@pytest.fixture
 def app(
     mock_generation_service: AsyncMock,
     mock_enforcement_service: AsyncMock,
@@ -211,6 +219,7 @@ def app(
     mock_profile_service: AsyncMock,
     mock_batch_service: AsyncMock,
     mock_job_queue: AsyncMock,
+    mock_license_repo: AsyncMock,
 ):
     """Create a test app with all dependencies overridden."""
     application = create_app()
@@ -227,6 +236,7 @@ def app(
     application.dependency_overrides[_get_notification_port] = lambda: mock_notification
     application.dependency_overrides[_get_callback_batch_service] = lambda: mock_callback_batch_service
     application.dependency_overrides[_get_image_job_service] = lambda: mock_image_job_service
+    application.dependency_overrides[_get_license_repo] = lambda: mock_license_repo
     yield application
     application.dependency_overrides.clear()
 
@@ -574,6 +584,23 @@ class TestSubmitSuno:
             },
         )
         assert response.status_code == 422
+
+    async def test_free_user_blocked(
+        self, client: AsyncClient, mock_license_repo: AsyncMock, mock_generation_service: AsyncMock
+    ) -> None:
+        mock_license_repo.has_paid_desktop_access = AsyncMock(return_value=False)
+        response = await client.post(
+            "/api/v1/generation/suno",
+            json={
+                "model": "V5",
+                "title": "Test Song",
+                "lyrics": "La la la",
+                "style": "pop",
+            },
+        )
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "DESKTOP_PLAN_REQUIRED"
+        mock_generation_service.submit_suno.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

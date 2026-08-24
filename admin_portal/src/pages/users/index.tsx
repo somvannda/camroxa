@@ -50,37 +50,6 @@ const STATUS_BADGE_CLASSES: Record<User['status'], string> = {
   deleted: 'border-red-500/30 bg-red-500/10 text-red-400',
 };
 
-const PRODUCT_LABELS: Record<string, string> = {
-  music_web: 'Music',
-  studio: 'Studio',
-};
-
-const PRODUCT_BADGE_CLASSES: Record<string, string> = {
-  music_web: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300',
-  studio: 'border-sky-500/30 bg-sky-500/10 text-sky-300',
-};
-
-function UserTagBadges({ products }: { products?: string[] | null }) {
-  const tags = (products ?? []).map((item) => String(item).trim()).filter(Boolean);
-  if (tags.length === 0) {
-    return <span className="text-slate-500">—</span>;
-  }
-  return (
-    <div className="flex flex-wrap gap-1">
-      {tags.map((tag) => (
-        <Badge
-          key={tag}
-          variant="outline"
-          title={tag}
-          className={PRODUCT_BADGE_CLASSES[tag] ?? 'border-slate-500/30 bg-slate-500/10 text-slate-300'}
-        >
-          {PRODUCT_LABELS[tag] ?? tag}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 const createUserSchema = z.object({
   email: z.string().email('Valid email required'),
   password: z.string().min(8, 'At least 8 characters'),
@@ -190,11 +159,6 @@ export default function UsersPage() {
       sortable: true,
     },
     {
-      id: 'products',
-      header: 'Tag',
-      accessorFn: (row) => <UserTagBadges products={row.products} />,
-    },
-    {
       id: 'email_confirmed',
       header: 'Email status',
       accessorFn: (row) => (
@@ -279,25 +243,11 @@ export default function UsersPage() {
     {
       id: 'credit_balance',
       header: 'Credits',
-      accessorFn: (row) => {
-        if (row.music_credits_limit != null && row.music_credits_remaining != null) {
-          const usedToday = Math.max(0, row.music_credits_limit - row.music_credits_remaining);
-          const walletHint =
-            row.credit_balance > 0
-              ? `Studio wallet ${row.credit_balance.toLocaleString()} cr`
-              : `${row.music_credits_remaining.toLocaleString()} remaining today`;
-          return (
-            <span className="text-slate-200 font-medium" title={walletHint}>
-              {usedToday.toLocaleString()} / {row.music_credits_limit.toLocaleString()}
-            </span>
-          );
-        }
-        return (
-          <span className="text-slate-200 font-medium">
-            {row.credit_balance.toLocaleString()} cr
-          </span>
-        );
-      },
+      accessorFn: (row) => (
+        <span className="text-slate-200 font-medium">
+          {row.credit_balance.toLocaleString()} cr
+        </span>
+      ),
     },
     {
       id: 'credits_burned',
@@ -305,9 +255,6 @@ export default function UsersPage() {
       accessorFn: (row) => {
         if (row.credits_burned == null) {
           return <span className="text-slate-500">—</span>;
-        }
-        if (row.music_credits_limit != null) {
-          return <span className="text-slate-200">{row.credits_burned.toLocaleString()}</span>;
         }
         return (
           <span className="text-slate-200">

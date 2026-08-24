@@ -20,15 +20,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Web-music billing lives at `/api/v2/subscriptions`, `/api/v2/credits`, and
-  `/api/v2/topups` instead of nested `/api/v1/v2/...`. See
-  `docs/changelog/2026-08-24-api-v2-url-prefix.md`.
-- `POST /web-music/generate` enqueues a global paid-first Suno job (`web_music_generate`) instead of calling Suno on the HTTP worker. Paid cap 20, free cap 2. Desktop `suno_submit` is unchanged and still higher priority. See `docs/changelog/2026-08-23-web-create-global-queue.md`.
+- Admin user-spend uses the unified plan resolver only (no separate Music-tag web-sub path). Sandbox 500 fixed. See `docs/changelog/2026-08-23-wallet-api-audit-e2e.md`.
+- Admin user list/detail resolve Plan from license then CutLuy web sub. License list includes web subscriptions. User-spent plan filter matches that resolver. See `docs/changelog/2026-08-23-admin-users-licenses-wallet.md`.
+- CutLuy plan fulfill / renew and top-up write the shared wallet (period grant + pack lot). Web leftover conversion is a separate one-shot. Generate and web chrome no longer spend or add v2 remaining. See `docs/changelog/2026-08-23-one-wallet-web-ledger.md`.
+- `GET /api/v3/me/credits` mints the Free daily grant so web chrome can show the shared wallet after login. See `docs/changelog/2026-08-23-web-credits-v3-balance.md`.
+- Admin usage/finance summaries count v3 period/daily grants and group `v3_music` with music. See `docs/changelog/2026-08-23-admin-v3-plans-and-reports.md`.
+- When `credits_only_v3_charge` is On, Web Create uses the same charge model as desktop: plan amounts, no Pro skip, lyrics = `lyric`, Free daily via a v3 lot. CutLuy / `web_subscriptions` still debit v2 for the quoted amount. See `docs/changelog/2026-08-23-web-create-v3-charge.md`.
+- Desktop login/refresh with `X-Camxora-Client: desktop` and desktop generate doors require a paid plan. Free accounts get `403 DESKTOP_PLAN_REQUIRED`. See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.
+- Public profile-addon quotes require `is_public`. Addon slots no longer scale monthly song meters. See `docs/changelog/2026-08-22-credits-only-public-cards-and-addon-skus.md`.
+- Web Music free daily limit reads the **Free** plan `daily_credits` first. Sandbox deleted `web_music_free_daily_credits`. See `docs/changelog/2026-08-23-credits-only-sandbox-cutover.md`.
+- Sandbox Credits-page music price is **10** (was 7.5). `credits_only_v3_charge` is **On** on sandbox only after leftover mint + period grant on a dedicated test license.
 
-### Deprecated
+### Added
 
-- Nested `/api/v1/v2/...` URLs rewrite to `/api/v2/...` so old music-web bundles
-  keep working. See `docs/changelog/2026-08-24-api-v2-url-prefix.md`.
+- Credits-only **`/api/v3`** billing (quote/charge/refund, public plans that honor
+  `is_public`, leftover conversion dry-run). Uses the same Admin Credits/Plans
+  wallet tables as v1. Existing `/api/v1` generate and `/plans/public` are
+  unchanged. See `docs/changelog/2026-08-22-credits-only-api-v3.md`.
+- Flagged Generate debit via v3 (`credits_only_v3_charge`, default off). When on,
+  music/draft/image/video/merge charge the shared wallet and skip quota-first.
+  See `docs/changelog/2026-08-22-credits-only-admin-plans-and-generate-flag.md`.
+- `GET /api/v1/plans/public` requires `is_active AND is_public`. Hidden $79 /
+  channel rows no longer leak onto the website. See
+  `docs/changelog/2026-08-22-v1-plans-public-is-public.md`.
+
+### Fixed
+
+- v3 wallet / period-grant SQL no longer selects ambiguous `id` when joining
+  `plans` to `licenses`. Sandbox `credit_wallet_lots` / `billing_conversion_runs`
+  are owned by the API role.
 
 ### Security
 

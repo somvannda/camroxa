@@ -186,9 +186,7 @@ class MembershipCard(QFrame):
         meters.setContentsMargins(0, 0, 0, 0)
         meters.setSpacing(4)
         self._profiles_bar = MembershipMetricBar("Monthly profiles", bar_color="emerald")
-        self._songs_bar = MembershipMetricBar("Monthly songs", bar_color="sky")
         meters.addWidget(self._profiles_bar)
-        meters.addWidget(self._songs_bar)
         layout.addLayout(meters)
 
         grid = QGridLayout()
@@ -196,14 +194,12 @@ class MembershipCard(QFrame):
         grid.setVerticalSpacing(4)
         self._plan = SummaryField("Plan", "--")
         self._credits = SummaryField("Credits balance", "--")
-        self._song_quota = SummaryField("Song quota", "--")
         self._expiry = SummaryField("Plan expiry", "--")
         self._addon_active = SummaryField("Active add-on channels", "--")
         self._addon_pending = SummaryField("Pending add-on channels", "--")
         for field in (
             self._plan,
             self._credits,
-            self._song_quota,
             self._expiry,
             self._addon_active,
             self._addon_pending,
@@ -214,25 +210,21 @@ class MembershipCard(QFrame):
                 field_layout.setSpacing(_MEMBERSHIP_TILE_SPACING)
         grid.addWidget(self._plan, 0, 0)
         grid.addWidget(self._credits, 0, 1)
-        grid.addWidget(self._song_quota, 1, 0)
-        grid.addWidget(self._expiry, 1, 1)
-        grid.addWidget(self._addon_active, 2, 0)
-        grid.addWidget(self._addon_pending, 2, 1)
+        grid.addWidget(self._expiry, 1, 0)
+        grid.addWidget(self._addon_active, 1, 1)
+        grid.addWidget(self._addon_pending, 2, 0)
         layout.addLayout(grid)
 
     def show_loading(self) -> None:
         self._profiles_bar.set_metric("--", 0)
-        self._songs_bar.set_metric("--", 0)
         self._plan.set_value("--")
         self._credits.set_value("--")
-        self._song_quota.set_value("--")
         self._expiry.set_value("--")
         self._addon_active.set_value("--")
         self._addon_pending.set_value("--")
 
     def apply(self, data: DashboardOverview) -> None:
         me = data.me
-        stats = data.stats
         license_info = data.license
         profiles = data.profiles
 
@@ -248,38 +240,6 @@ class MembershipCard(QFrame):
         profile_used = me.channel_profile_count or len(profiles)
         self._profiles_bar.set_metric(allowance, percent_of(profile_used, profile_allowance))
 
-        quota = data.quota
-        song_quota = None
-        for candidate in (
-            quota.songs_quota if quota is not None else None,
-            stats.songs_quota,
-            license_info.monthly_song_quota if license_info else None,
-        ):
-            if candidate is not None:
-                song_quota = int(candidate)
-                break
-        songs_remaining = None
-        for candidate in (
-            quota.songs_remaining if quota is not None else None,
-            stats.songs_remaining,
-            license_info.songs_remaining if license_info else None,
-        ):
-            if candidate is not None:
-                songs_remaining = int(candidate)
-                break
-        if song_quota is None:
-            songs_used = 0
-            songs_value = "Not on plan"
-            songs_pct = 0
-        else:
-            rem = 0 if songs_remaining is None else max(0, songs_remaining)
-            songs_used = max(0, song_quota - rem)
-            songs_value = (
-                f"{format_compact_number(songs_used)} / {format_compact_number(song_quota)}"
-            )
-            songs_pct = percent_of(songs_used, max(song_quota, 1))
-        self._songs_bar.set_metric(songs_value, songs_pct)
-
         wallet = (
             license_info.wallet_balance
             if license_info and license_info.wallet_balance is not None
@@ -287,9 +247,6 @@ class MembershipCard(QFrame):
         )
         self._plan.set_value(me.plan_name or "No active plan")
         self._credits.set_value(format_compact_number(wallet))
-        self._song_quota.set_value(
-            format_compact_number(song_quota) if song_quota is not None else "Not provided"
-        )
         expiry = license_info.expiration_date if license_info else None
         self._expiry.set_value(format_friendly_expiry(expiry))
         addon_slots = (

@@ -82,6 +82,23 @@ class ForbiddenError(PlatformAPIError):
         super().__init__(message, details=details)
 
 
+class DesktopPlanRequiredError(ForbiddenError):
+    """Desktop studio requires a paid plan (403)."""
+
+    error_code = "DESKTOP_PLAN_REQUIRED"
+
+    def __init__(
+        self,
+        message: str = (
+            "Desktop studio requires a paid plan. "
+            "Choose Starter, Creator, or Studio on the web."
+        ),
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+
+
 class GeoBlockedError(PlatformAPIError):
     """Music web request is not from an allowed country (403)."""
 

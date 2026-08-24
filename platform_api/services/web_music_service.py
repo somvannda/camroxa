@@ -202,6 +202,11 @@ class WebMusicService:
         ai_routing_service: Any | None = None,
         pricing_service: Any | None = None,
         redis: Any | None = None,
+        v3_billing: Any | None = None,
+        v3_grant: Any | None = None,
+        v3_store: Any | None = None,
+        credit_repo: Any | None = None,
+        settings_repo: Any | None = None,
     ) -> None:
         self._pool = pool
         self._generation = generation_service
@@ -209,10 +214,19 @@ class WebMusicService:
         self._ai_routing = ai_routing_service
         self._pricing = pricing_service
         self._redis = redis
+        self._v3_billing = v3_billing
+        self._v3_grant = v3_grant
+        self._v3_store = v3_store
+        self._credit_repo = credit_repo
+        self._settings_repo = settings_repo
         self._upload_service = StreamingUploadService(pool)
+        self._open_charges: dict[str, Any] = {}
 
     async def usage_today(self, user_id: UUID, *, usage_date: date | None = None) -> dict[str, Any]:
         """Return credit-based quota for the create UI."""
+        if await self._credits_only_v3_enabled():
+            return await self._usage_today_v3(user_id)
+
         if self._credit_service is None:
             is_pro = await self._has_pro(user_id)
             return await self._with_queue_fields(
@@ -250,6 +264,10 @@ class WebMusicService:
                     return True
             except Exception:
                 logger.debug("Paid-queue balance check failed for %s", user_id, exc_info=True)
+        if await self._credits_only_v3_enabled():
+            _, _, paid_web = await self._web_music_charge_bridge().spendable_credits(user_id)
+            if paid_web:
+                return True
         return await self._has_pro(user_id)
 
     async def _queue_cap_for_user(self, user_id: UUID) -> int:
@@ -309,6 +327,138 @@ class WebMusicService:
         )
         return row is not None
 
+    async def _has_paid_web_subscription(self, user_id: UUID) -> bool:
+        row = await self._pool.fetchrow(
+            """
+            SELECT 1
+            FROM web_subscriptions ws
+            INNER JOIN plans p ON p.id = ws.plan_id
+            WHERE ws.user_id = $1
+              AND ws.status = 'active'
+              AND ws.current_period_end > NOW()
+              AND COALESCE(p.price_cents, 0) > 0
+            LIMIT 1
+            """,
+            user_id,
+        )
+        return row is not None
+
+    async def _credits_only_v3_enabled(self) -> bool:
+        from platform_api.services.v3.generate_charge import (
+            CREDITS_ONLY_V3_CHARGE_SETTING_KEY,
+            credits_only_v3_charge_enabled,
+            parse_bool_flag,
+        )
+
+        if self._settings_repo is not None:
+            return await credits_only_v3_charge_enabled(self._settings_repo)
+        try:
+            row = await self._pool.fetchrow(
+                "SELECT value FROM system_settings WHERE key = $1",
+                CREDITS_ONLY_V3_CHARGE_SETTING_KEY,
+            )
+            raw = row["value"] if row is not None else None
+            parsed = parse_bool_flag(raw)
+            if parsed is not None:
+                return parsed
+        except Exception:
+            logger.debug("credits_only_v3_charge lookup failed; using env default", exc_info=True)
+        return await credits_only_v3_charge_enabled(None)
+
+    def _web_music_charge_bridge(self) -> Any:
+        from platform_api.services.v3.web_music_charge import WebMusicChargeBridge
+
+        return WebMusicChargeBridge(
+            v3_billing=self._v3_billing_service(),
+            v3_grant=self._v3_grant_service(),
+            v3_store=self._v3_store_service(),
+            credit_repo=self._credit_repo_service(),
+            credit_service=self._credit_service,
+            has_paid_web_subscription=self._has_paid_web_subscription,
+        )
+
+    def _v3_billing_service(self) -> Any:
+        if self._v3_billing is not None:
+            return self._v3_billing
+        from platform_api.dependencies import get_v3_billing_service
+
+        return get_v3_billing_service()
+
+    def _v3_grant_service(self) -> Any:
+        if self._v3_grant is not None:
+            return self._v3_grant
+        from platform_api.dependencies import get_v3_grant_service
+
+        return get_v3_grant_service()
+
+    def _v3_store_service(self) -> Any:
+        if self._v3_store is not None:
+            return self._v3_store
+        from platform_api.dependencies import get_v3_store
+
+        return get_v3_store()
+
+    def _credit_repo_service(self) -> Any:
+        if self._credit_repo is not None:
+            return self._credit_repo
+        from platform_api.dependencies import get_credit_repo
+
+        return get_credit_repo()
+
+    def _public_quota(
+        self,
+        *,
+        credits_remaining: int,
+        credits_per_song: int,
+        is_pro: bool,
+        has_subscription: bool,
+        daily_free_remaining: int = 0,
+        daily_free_limit: int = 0,
+        limit: int = 0,
+        used: int = 0,
+    ) -> dict[str, Any]:
+        per_song = max(1, int(credits_per_song or WEB_MUSIC_CREDITS_PER_SONG))
+        remaining_songs = max(0, int(credits_remaining)) // per_song
+        return {
+            "limit": limit,
+            "used": used,
+            "remaining": remaining_songs,
+            "is_pro": is_pro,
+            "requires_upgrade": int(credits_remaining) < per_song,
+            "credits_remaining": int(credits_remaining),
+            "credits_per_song": per_song,
+            "has_subscription": has_subscription,
+            "can_download": is_pro or has_subscription,
+            "daily_free_remaining": daily_free_remaining,
+            "daily_free_limit": daily_free_limit,
+        }
+
+    async def _usage_today_v3(self, user_id: UUID) -> dict[str, Any]:
+        spendable, music_credits, paid_web = await self._web_music_charge_bridge().spendable_credits(
+            user_id
+        )
+        is_pro = await self._has_pro(user_id)
+        has_subscription = paid_web or await self._has_web_subscription(user_id)
+        daily_limit = 0
+        daily_remaining = 0
+        if not is_pro and not paid_web:
+            plan = await self._v3_store_service().get_active_free_plan()
+            daily_limit = int((plan or {}).get("daily_credits") or 0)
+            daily_remaining = spendable
+        return await self._with_queue_fields(
+            user_id,
+            self._public_quota(
+                credits_remaining=spendable,
+                credits_per_song=music_credits or WEB_MUSIC_CREDITS_PER_SONG,
+                is_pro=is_pro,
+                has_subscription=has_subscription,
+                daily_free_remaining=daily_remaining,
+                daily_free_limit=daily_limit,
+                limit=daily_limit if not paid_web and not is_pro else spendable,
+                used=max(0, daily_limit - daily_remaining) if daily_limit else 0,
+            ),
+        )
+
     async def _can_download(self, user_id: UUID) -> bool:
         if await self._has_pro(user_id):
             return True
@@ -351,7 +501,12 @@ class WebMusicService:
         from platform_api.services.credit_units import units_to_credits
         from platform_api.services.v2.credit_service import InsufficientCreditsError
 
-        if self._ai_routing is None or self._pricing is None or self._credit_service is None:
+        if self._ai_routing is None or self._pricing is None:
+            raise ValidationError(
+                "AI assist is not configured.",
+                details={"reason": "missing_routing_or_pricing"},
+            )
+        if self._credit_service is None and not await self._credits_only_v3_enabled():
             raise ValidationError(
                 "AI assist is not configured.",
                 details={"reason": "missing_routing_or_pricing"},
@@ -359,6 +514,24 @@ class WebMusicService:
 
         routing = await self._ai_routing.resolve(operation)
         chain = await self._ai_routing.resolve_text_chain(operation)
+
+        if await self._credits_only_v3_enabled():
+            reservation_id = str(uuid4())
+            charged = await self._web_music_charge_bridge().charge(
+                user_id,
+                operation,
+                ref_id=reservation_id,
+            )
+            self._open_charges[reservation_id] = charged
+            self._open_charges[f"text:{user_id}:{operation}"] = charged
+            return routing, chain, charged.amount_credits
+
+        if self._credit_service is None:
+            raise ValidationError(
+                "AI assist is not configured.",
+                details={"reason": "missing_routing_or_pricing"},
+            )
+
         provider = str(routing.provider)
         sub_model = str(routing.sub_model or "").strip() or None
         price_units = int(await self._pricing.get_price(provider, operation, sub_model))
@@ -390,6 +563,16 @@ class WebMusicService:
         return routing, chain, charge_amount
 
     async def _refund_text_operation(self, user_id: UUID, amount: int, source: str) -> None:
+        if await self._credits_only_v3_enabled():
+            operation = "lyric" if "lyric" in source else "style" if "style" in source else source
+            charge = self._open_charges.pop(f"text:{user_id}:{operation}", None)
+            if charge is None and "lyric" in source:
+                charge = self._open_charges.pop(f"text:{user_id}:web_music_lyrics", None)
+            if charge is None and "style" in source:
+                charge = self._open_charges.pop(f"text:{user_id}:web_music_style", None)
+            if charge is not None:
+                await self._web_music_charge_bridge().refund(user_id, charge)
+            return
         if self._credit_service is None or amount <= 0:
             return
         await self._credit_service.refund_credits(str(user_id), amount, source)
@@ -446,6 +629,7 @@ class WebMusicService:
         if not title or title == "Untitled":
             first_line = next((line.strip() for line in lyrics.splitlines() if line.strip()), "")
             title = first_line[:80] or safe_prompt[:80] or "Untitled"
+        self._open_charges.pop(f"text:{user_id}:web_music_lyrics", None)
         return lyrics[:5000], title[:200]
 
     async def generate_styles(
@@ -498,6 +682,7 @@ class WebMusicService:
         lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
         if len(lines) > 1:
             cleaned = ", ".join(lines)
+        self._open_charges.pop(f"text:{user_id}:web_music_style", None)
         return truncate_suno_style(cleaned)
     
     async def _reserve_via_credits(self, user_id: UUID, *, reservation_id: str) -> dict[str, Any]:
@@ -565,6 +750,24 @@ class WebMusicService:
         }
 
     async def _reserve_daily_slot(self, user_id: UUID, *, reservation_id: str) -> dict[str, Any]:
+        if await self._credits_only_v3_enabled():
+            charged = await self._web_music_charge_bridge().charge(
+                user_id,
+                "music",
+                ref_id=reservation_id,
+            )
+            self._open_charges[reservation_id] = charged
+            spendable, music_credits, paid_web = await self._web_music_charge_bridge().spendable_credits(
+                user_id
+            )
+            is_pro = await self._has_pro(user_id)
+            return self._public_quota(
+                credits_remaining=spendable,
+                credits_per_song=charged.amount_credits or music_credits or WEB_MUSIC_CREDITS_PER_SONG,
+                is_pro=is_pro,
+                has_subscription=paid_web or await self._has_web_subscription(user_id),
+            )
+
         if await self._has_pro(user_id):
             logger.info("Desktop Pro user %s creating on web music without credit charge", user_id)
             return self._quota_payload(limit=999, used=0, is_pro=True)
@@ -577,6 +780,11 @@ class WebMusicService:
         *,
         reference_id: str | None = None,
     ) -> None:
+        if await self._credits_only_v3_enabled():
+            charge = self._open_charges.pop(reference_id, None) if reference_id else None
+            if charge is not None:
+                await self._web_music_charge_bridge().refund(user_id, charge)
+            return
         if await self._has_pro(user_id) or self._credit_service is None:
             return
         await self._credit_service.refund_credits(
@@ -598,8 +806,12 @@ class WebMusicService:
             SET ref_id = $3
             WHERE user_id = $1
               AND ref_id = $2
-              AND reason = 'consumed_web_music_generation'
               AND direction = 'debit'
+              AND reason IN (
+                    'consumed_web_music_generation',
+                    'consumed_web_music_music',
+                    'v3_music'
+              )
             """,
             user_id,
             reservation_id,
@@ -749,6 +961,8 @@ class WebMusicService:
             raise
 
         await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
+        self._open_charges.pop(reservation_id, None)
+
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
         return {
             "task_id": str(task_id),
@@ -899,6 +1113,7 @@ class WebMusicService:
             TaskStatus.PENDING.value,
         )
         await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
+        self._open_charges.pop(reservation_id, None)
 
     async def _resolve_workspace_id(
         self,

@@ -152,7 +152,7 @@ class PlatformClient:
     ) -> httpx.Response:
         effective_timeout = timeout if timeout is not None else self._default_timeout
         url = f"{self.base_url()}{path if path.startswith('/') else f'/{path}'}"
-        headers = {"Accept": accept}
+        headers = {"Accept": accept, "X-Camxora-Client": "desktop"}
         if body is not None:
             headers["Content-Type"] = "application/json"
 

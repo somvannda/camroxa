@@ -19,6 +19,7 @@ from platform_api.config import get_settings
 from platform_api.exceptions import (
     AccountLockedError,
     AuthenticationError,
+    DesktopPlanRequiredError,
     DuplicateError,
     NotFoundError,
     ValidationError,
@@ -30,7 +31,12 @@ from platform_api.models.domain import User
 from platform_api.models.enums import UserRole, UserStatus
 from platform_api.models.products import PRODUCT_MUSIC_WEB, normalize_signup_product
 from platform_api.models.schemas import LoginRequest, TokenResponse
+from platform_api.repositories.license_repo import LicenseRepository
 from platform_api.services.auth_service import AuthService
+from platform_api.services.desktop_access import (
+    assert_paid_desktop_access,
+    is_desktop_client,
+)
 from platform_api.services.invitation_code_service import InvitationCodeService
 from platform_api.services.lockout import AccountLockout
 from platform_api.services.shared.turnstile_service import TurnstileService
@@ -130,6 +136,12 @@ async def _get_lockout() -> AccountLockout:
     raise NotImplementedError(
         "AccountLockout dependency not configured. Wire via app.dependency_overrides."
     )
+
+
+async def _get_license_repo() -> LicenseRepository:
+    from platform_api.dependencies import get_license_repo
+
+    return get_license_repo()
 
 
 async def _get_invitation_code_service() -> InvitationCodeService:
@@ -279,6 +291,7 @@ async def _set_session_for_user(
 # Type aliases for dependency injection
 AuthServiceDep = Annotated[AuthService, Depends(_get_auth_service)]
 LockoutDep = Annotated[AccountLockout, Depends(_get_lockout)]
+LicenseRepoDep = Annotated[LicenseRepository, Depends(_get_license_repo)]
 InvitationCodeServiceDep = Annotated[
     InvitationCodeService, Depends(_get_invitation_code_service)
 ]
@@ -370,6 +383,7 @@ async def login(
     auth_service: AuthServiceDep,
     lockout: LockoutDep,
     turnstile: TurnstileServiceDep,
+    license_repo: LicenseRepoDep,
     response: Response,
     http_request: Request,
 ) -> TokenResponse:
@@ -460,6 +474,12 @@ async def login(
         _log.info("Authentication successful, resetting failure counter...")
         await lockout.reset_failures(request.email)
 
+        if is_desktop_client(http_request):
+            user = await auth_service._user_repo.get_by_email(request.email)
+            if user is None:
+                raise DesktopPlanRequiredError()
+            await assert_paid_desktop_access(str(user.id), license_repo)
+
         token_response = TokenResponse(
             access_token=token_pair.access_token,
             refresh_token=token_pair.refresh_token,
@@ -471,7 +491,7 @@ async def login(
         _log.info("Login successful")
         return token_response
         
-    except (AuthenticationError, ValidationError, AccountLockedError):
+    except (AuthenticationError, ValidationError, AccountLockedError, DesktopPlanRequiredError):
         # These are expected errors, just re-raise
         raise
     except Exception as e:
@@ -706,6 +726,7 @@ async def refresh(
     request: RefreshRequest | None,
     http_request: Request,
     auth_service: AuthServiceDep,
+    license_repo: LicenseRepoDep,
     response: Response,
 ) -> TokenResponse:
     """Issue a new token pair using a valid refresh token.
@@ -721,6 +742,10 @@ async def refresh(
         raise AuthenticationError("Refresh token is required.")
 
     token_pair = await auth_service.refresh_token(refresh_token)
+
+    if is_desktop_client(http_request):
+        payload = await auth_service.validate_token(token_pair.access_token)
+        await assert_paid_desktop_access(payload.user_id, license_repo)
 
     token_response = TokenResponse(
         access_token=token_pair.access_token,

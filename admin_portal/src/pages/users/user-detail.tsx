@@ -12,7 +12,6 @@ import {
   useDeleteUser,
   useSetUserPassword,
   useUserDetails,
-  useQuotaTopup,
   useFreezeGeneration,
   useUnfreezeGeneration,
   useChannelProfileLogoBlob,
@@ -22,7 +21,8 @@ import { useFailAbsorb, useResetFailAbsorb } from '@/hooks/use-fail-absorb';
 import { useAdjustBalance } from '@/hooks/use-credits';
 import { useToast } from '@/hooks/use-toast';
 import { formatCredits } from '@/lib/credit-format';
-import type { User, QuotaPeriodSnapshot } from '@/types/models';
+import type { User } from '@/types/models';
+import { useV3UserWallet } from '@/hooks/use-v3-plans';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,14 +96,6 @@ const setPasswordSchema = z
 
 type SetPasswordFormValues = z.infer<typeof setPasswordSchema>;
 
-const quotaTopupSchema = z.object({
-  quota_kind: z.enum(['draft', 'music', 'image', 'video', 'merge']),
-  amount: z.number().int().positive('Amount must be a positive integer'),
-  reason: z.string().min(1, 'Reason is required').max(500),
-});
-
-type QuotaTopupFormValues = z.infer<typeof quotaTopupSchema>;
-
 const creditTopupSchema = z.object({
   amount: z
     .number({ invalid_type_error: 'Amount is required' })
@@ -112,22 +104,6 @@ const creditTopupSchema = z.object({
 });
 
 type CreditTopupFormValues = z.infer<typeof creditTopupSchema>;
-
-const QUOTA_KIND_LABELS: Record<QuotaTopupFormValues['quota_kind'], string> = {
-  draft: 'Draft (album / title / lyrics)',
-  music: 'Suno packages',
-  image: 'Images',
-  video: 'Export (video)',
-  merge: 'Merge',
-};
-
-const QUOTA_KIND_ORDER: QuotaTopupFormValues['quota_kind'][] = [
-  'draft',
-  'music',
-  'image',
-  'video',
-  'merge',
-];
 
 // --- Status badge styling ---
 const STATUS_BADGE_CLASSES: Record<User['status'], string> = {
@@ -200,13 +176,6 @@ function formatVideoTemplateSummary(
   return savedAt === '—' ? label : `${label} — saved ${savedAt}`;
 }
 
-function formatQuotaPeriodLabel(snapshot: QuotaPeriodSnapshot | null | undefined): string {
-  if (!snapshot?.period_start || !snapshot?.period_end) {
-    return 'No active billing period';
-  }
-  return `Period ${snapshot.period_start} → ${snapshot.period_end} (top-ups reset at period end)`;
-}
-
 function ProfileMetaRow({
   label,
   value,
@@ -238,8 +207,8 @@ export default function UserDetailPage() {
   const unfreezeGeneration = useUnfreezeGeneration();
   const deleteUser = useDeleteUser();
   const setUserPassword = useSetUserPassword();
-  const quotaTopup = useQuotaTopup(id!);
   const adjustBalance = useAdjustBalance();
+  const { data: wallet } = useV3UserWallet(id!);
   const { data: failAbsorb, isLoading: failAbsorbLoading, isError: failAbsorbError, refetch: refetchFailAbsorb } =
     useFailAbsorb(id!);
   const resetFailAbsorb = useResetFailAbsorb(id!);
@@ -250,7 +219,6 @@ export default function UserDetailPage() {
   const [freezeDialogOpen, setFreezeDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
-  const [quotaTopupOpen, setQuotaTopupOpen] = useState(false);
   const [creditTopupOpen, setCreditTopupOpen] = useState(false);
   const [failAbsorbResetOpen, setFailAbsorbResetOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
@@ -268,11 +236,6 @@ export default function UserDetailPage() {
   const passwordForm = useForm<SetPasswordFormValues>({
     resolver: zodResolver(setPasswordSchema),
     defaultValues: { password: '', confirm_password: '' },
-  });
-
-  const quotaForm = useForm<QuotaTopupFormValues>({
-    resolver: zodResolver(quotaTopupSchema),
-    defaultValues: { quota_kind: 'draft', amount: 10, reason: '' },
   });
 
   const creditForm = useForm<CreditTopupFormValues>({
@@ -323,28 +286,6 @@ export default function UserDetailPage() {
         },
       },
     );
-  };
-
-  const handleQuotaTopup = (values: QuotaTopupFormValues) => {
-    if (!id) return;
-    quotaTopup.mutate(values, {
-      onSuccess: () => {
-        toast({
-          title: 'Quota topped up',
-          description: `Added ${values.amount} ${QUOTA_KIND_LABELS[values.quota_kind]} for this billing period.`,
-        });
-        setQuotaTopupOpen(false);
-        quotaForm.reset({ quota_kind: values.quota_kind, amount: 10, reason: '' });
-        refetch();
-      },
-      onError: (err) => {
-        toast({
-          variant: 'destructive',
-          title: 'Quota top-up failed',
-          description: err instanceof Error ? err.message : 'An error occurred',
-        });
-      },
-    });
   };
 
   const handleCreditTopup = async (values: CreditTopupFormValues) => {
@@ -572,35 +513,18 @@ export default function UserDetailPage() {
             <CreditCard className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            {user.music_credits_limit != null && user.music_credits_remaining != null ? (
-              <>
-                <div className="text-2xl font-bold text-slate-100">
-                  {Math.max(0, user.music_credits_limit - user.music_credits_remaining).toLocaleString()}{' '}
-                  / {user.music_credits_limit.toLocaleString()}
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  {user.music_credits_remaining.toLocaleString()} remaining today
-                  {user.credits_burned != null
-                    ? ` · ${user.credits_burned.toLocaleString()} burned`
-                    : null}
-                  {user.credit_balance > 0
-                    ? ` · Studio wallet ${formatCredits(user.credit_balance)}`
-                    : null}
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="text-2xl font-bold text-slate-100">
-                  {formatCredits(user.credit_balance)}
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  {user.credits_burned != null
-                    ? `${user.credits_burned.toLocaleString()} cr burned · `
-                    : null}
-                  {user.total_credits_spent.toLocaleString()} spent total
-                </p>
-              </>
-            )}
+            <div className="text-2xl font-bold text-slate-100">
+              {formatCredits(wallet?.balance_credits ?? user.credit_balance)}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Wallet
+              {wallet != null
+                ? ` · period grant remaining ${formatCredits(wallet.grant_remaining_credits)}`
+                : null}
+              {user.credits_burned != null
+                ? ` · ${user.credits_burned.toLocaleString()} burned`
+                : null}
+            </p>
           </CardContent>
         </Card>
 
@@ -658,13 +582,14 @@ export default function UserDetailPage() {
 
       <UserGeneratedSongs userId={user.id} />
 
-      {/* Period quota + top-ups */}
+            {/* Wallet + period grant */}
       <Card className="border-slate-800 bg-slate-900/50">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle className="text-slate-100">Plan Quota (this period)</CardTitle>
+            <CardTitle className="text-slate-100">Wallet and period grant</CardTitle>
             <CardDescription className="text-slate-400">
-              {formatQuotaPeriodLabel(user.quota_period)}
+              Shared credits wallet. Period grant remaining is unused grant lots for this cycle.
+              Quota meters and quota top-up are retired.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -674,61 +599,65 @@ export default function UserDetailPage() {
               className="border-slate-700"
               onClick={() => setCreditTopupOpen(true)}
             >
-              Top up credits
-            </Button>
-            <Button type="button" onClick={() => setQuotaTopupOpen(true)}>
-              Top up quota
+              Adjust wallet
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {!user.quota_period?.period_start ? (
-            <p className="text-sm text-slate-500">
-              No active subscription period. Assign a plan before topping up quota.
-            </p>
-          ) : (
-            <Table>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Wallet</div>
+              <div className="mt-1 text-2xl font-semibold text-slate-100">
+                {formatCredits(wallet?.balance_credits ?? user.credit_balance)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-slate-500">Period grant remaining</div>
+              <div className="mt-1 text-2xl font-semibold text-slate-100">
+                {wallet != null ? formatCredits(wallet.grant_remaining_credits) : "—"}
+              </div>
+              {wallet?.plan?.name ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  {wallet.plan.name}
+                  {wallet.plan.monthly_credits != null
+                    ? ` · monthly grant ${wallet.plan.monthly_credits}`
+                    : null}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          {(wallet?.lots?.length ?? 0) > 0 ? (
+            <Table className="mt-4">
               <TableHeader>
                 <TableRow className="border-slate-800">
-                  <TableHead className="text-slate-400">Quota</TableHead>
-                  <TableHead className="text-slate-400">Used</TableHead>
-                  <TableHead className="text-slate-400">Base</TableHead>
-                  <TableHead className="text-slate-400">Top-up</TableHead>
-                  <TableHead className="text-slate-400">Effective</TableHead>
+                  <TableHead className="text-slate-400">Lot</TableHead>
                   <TableHead className="text-slate-400">Remaining</TableHead>
+                  <TableHead className="text-slate-400">Expires</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {QUOTA_KIND_ORDER.map((kind) => {
-                  const row = user.quota_period?.kinds?.[kind];
-                  return (
-                    <TableRow key={kind} className="border-slate-800">
-                      <TableCell className="text-slate-200">
-                        {QUOTA_KIND_LABELS[kind]}
-                      </TableCell>
-                      <TableCell className="text-slate-300">{row?.used ?? 0}</TableCell>
-                      <TableCell className="text-slate-300">
-                        {row?.base_limit == null ? 'Unlimited' : row.base_limit}
-                      </TableCell>
-                      <TableCell className="text-slate-300">
-                        {row?.topup_extra ? `+${row.topup_extra}` : '—'}
-                      </TableCell>
-                      <TableCell className="text-slate-100 font-medium">
-                        {row?.effective_limit == null ? 'Unlimited' : row.effective_limit}
-                      </TableCell>
-                      <TableCell className="text-slate-100">
-                        {row?.remaining == null ? '—' : row.remaining}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {wallet?.lots.map((lot) => (
+                  <TableRow key={lot.id} className="border-slate-800">
+                    <TableCell className="text-slate-200">{lot.tag}</TableCell>
+                    <TableCell className="text-slate-300">
+                      {formatCredits(lot.remaining_credits)}
+                    </TableCell>
+                    <TableCell className="text-slate-400">
+                      {lot.expires_at ? formatAdminDateTime(lot.expires_at) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
+          ) : (
+            <p className="mt-3 text-sm text-slate-500">
+              No grant lots yet. Period grants issue after unexpired licenses are granted (flag still Off).
+            </p>
           )}
         </CardContent>
       </Card>
 
-      {/* Fail / retry absorb (today) */}
+{/* Fail / retry absorb (today) */}
       <Card className="border-slate-800 bg-slate-900/50">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
@@ -1392,97 +1321,6 @@ export default function UserDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={quotaTopupOpen}
-        onOpenChange={(open) => {
-          setQuotaTopupOpen(open);
-          if (!open) quotaForm.reset({ quota_kind: 'draft', amount: 10, reason: '' });
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Top up plan quota</DialogTitle>
-            <DialogDescription>
-              Adds units to this user&apos;s effective period limit. Top-ups expire when the
-              billing period ends ({user.quota_period?.period_end ?? 'unknown'}).
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...quotaForm}>
-            <form onSubmit={quotaForm.handleSubmit(handleQuotaTopup)} className="space-y-4">
-              <FormField
-                control={quotaForm.control}
-                name="quota_kind"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Quota type</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select quota" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {QUOTA_KIND_ORDER.map((kind) => (
-                          <SelectItem key={kind} value={kind}>
-                            {QUOTA_KIND_LABELS[kind]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={quotaForm.control}
-                name="amount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Amount</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={field.value}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={quotaForm.control}
-                name="reason"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Reason</FormLabel>
-                    <FormControl>
-                      <Textarea placeholder="Why are you topping up this quota?" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setQuotaTopupOpen(false)}
-                  disabled={quotaTopup.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={quotaTopup.isPending}>
-                  {quotaTopup.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Apply top-up
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={creditTopupOpen}

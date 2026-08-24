@@ -826,10 +826,10 @@ class ImageView(PollablePageMixin, QScrollArea):
             except (TypeError, ValueError):
                 balance = None
             if balance is not None and balance <= 0:
-                # Plan image quota may still cover the run — warn, do not hard-block.
+                # Wallet may be $0 while included usage still covers generate — warn, do not hard-block.
                 notify_action(
-                    "Wallet shows 0 credits. Generation still uses plan image quota when available; "
-                    "if quota is also exhausted the job will fail with a clear error.",
+                    "Wallet shows 0 credits. Generation may still run; "
+                    "if it cannot, the job will fail with a clear error.",
                     tone="warning",
                 )
         return None

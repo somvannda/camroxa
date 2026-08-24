@@ -78,6 +78,7 @@ class Plan:
     plan_kind: str = "subscription"
     plan_type: str = "desktop_pro"
     monthly_credits: int | None = None
+    daily_credits: int | None = None
     features: dict[str, bool] = field(default_factory=dict)
     is_public: bool = False
     display_order: int = 0

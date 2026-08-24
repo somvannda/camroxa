@@ -43,21 +43,13 @@ import type { UserSpendItem } from '@/types/models';
 
 const PAGE_SIZE = 50;
 
-const METER_LABELS: Record<string, string> = {
-  song: 'Song',
-  draft: 'Draft',
-  image: 'Image',
-  video: 'Video',
-  merge: 'Merge',
-};
-
 interface FiltersState {
   q: string;
   planId: string;
   provider: string;
   operation: string;
-  alert: 'all' | 'over_allowance' | 'margin_risk' | 'healthy';
-  sort: 'cogs_desc' | 'wallet_desc' | 'overage_first';
+  alert: 'all' | 'margin_risk' | 'healthy';
+  sort: 'cogs_desc' | 'wallet_desc';
   dateRange: DateRangeValue;
 }
 
@@ -94,43 +86,8 @@ function filtersToParams(filters: FiltersState, page: number): UserSpendListPara
   };
 }
 
-function meterChip(key: string, item: UserSpendItem) {
-  const meter = item.meters?.[key];
-  if (!meter) return null;
-  const label = METER_LABELS[key] ?? key;
-  const pct =
-    meter.pct != null
-      ? `${Math.round(meter.pct)}%`
-      : meter.limit != null
-        ? `${meter.used}/${meter.limit}`
-        : `${meter.used}`;
-  return (
-    <span
-      key={key}
-      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-        meter.hot
-          ? 'bg-amber-500/20 text-amber-300'
-          : 'bg-slate-800 text-slate-400'
-      }`}
-      title={`${label}: ${meter.used}${meter.limit != null ? ` / ${meter.limit}` : ''}`}
-    >
-      {label[0]} {pct}
-    </span>
-  );
-}
-
 function alertBadges(item: UserSpendItem) {
   const badges: React.ReactNode[] = [];
-  if (item.alerts.over_allowance) {
-    badges.push(
-      <Badge
-        key="over"
-        className="border-transparent bg-amber-500/15 text-amber-300 hover:bg-amber-500/15"
-      >
-        Over allowance
-      </Badge>,
-    );
-  }
   if (item.alerts.margin_risk) {
     badges.push(
       <Badge
@@ -193,7 +150,7 @@ function ExpandedBreakdown({
               <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="px-3 py-2 font-medium">Provider / Op</th>
                 <th className="px-3 py-2 font-medium">Events</th>
-                <th className="px-3 py-2 font-medium">Plan $</th>
+                <th className="px-3 py-2 font-medium">Plan cash $</th>
                 <th className="px-3 py-2 font-medium">Wallet $</th>
                 <th className="px-3 py-2 font-medium">Est. COGS $</th>
                 <th className="px-3 py-2 font-medium">% of user</th>
@@ -313,8 +270,9 @@ export default function UserSpentPage() {
               Per-user estimated COGS
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
-              Highest spenders first. Expand a row for provider × operation breakdown. Alerts
-              flag plan-meter overage and margin risk (est. COGS above prorated plan revenue).
+              Highest spenders first. Plan filter uses the unified catalog (desktop
+              license or CutLuy web). Compare estimated COGS to prorated plan cash.
+              Meter chips are retired.
             </p>
           </div>
           <div className="flex gap-2">
@@ -351,13 +309,6 @@ export default function UserSpentPage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            label="Over allowance"
-            value={summary?.users_over_allowance ?? 0}
-            hint="Meter hot or soft overage"
-            icon={AlertTriangle}
-            tone="warning"
-          />
           <StatCard
             label="Margin risk"
             value={summary?.users_margin_risk ?? 0}
@@ -435,7 +386,6 @@ export default function UserSpentPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="over_allowance">Over allowance</SelectItem>
                 <SelectItem value="margin_risk">Margin risk</SelectItem>
                 <SelectItem value="healthy">Healthy</SelectItem>
               </SelectContent>
@@ -458,7 +408,6 @@ export default function UserSpentPage() {
               <SelectContent>
                 <SelectItem value="cogs_desc">Est. COGS</SelectItem>
                 <SelectItem value="wallet_desc">Wallet $</SelectItem>
-                <SelectItem value="overage_first">Overage first</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -524,8 +473,7 @@ export default function UserSpentPage() {
                   <TableHead className="text-slate-300">Plan</TableHead>
                   <TableHead className="text-right text-slate-300">Est. COGS $</TableHead>
                   <TableHead className="text-right text-slate-300">Wallet $</TableHead>
-                  <TableHead className="text-right text-slate-300">Plan included $</TableHead>
-                  <TableHead className="text-slate-300">Allowance</TableHead>
+                  <TableHead className="text-right text-slate-300">Plan cash $</TableHead>
                   <TableHead className="text-slate-300">Alert</TableHead>
                 </TableRow>
               </TableHeader>
@@ -533,12 +481,12 @@ export default function UserSpentPage() {
                 {isLoading ? (
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i} className="border-slate-800">
-                      <TableCell colSpan={8} className="h-12 animate-pulse bg-slate-900/40" />
+                      <TableCell colSpan={7} className="h-12 animate-pulse bg-slate-900/40" />
                     </TableRow>
                   ))
                 ) : items.length === 0 ? (
                   <TableRow className="border-slate-800">
-                    <TableCell colSpan={8} className="py-12 text-center text-slate-500">
+                    <TableCell colSpan={7} className="py-12 text-center text-slate-500">
                       No users with spend in this range.
                     </TableCell>
                   </TableRow>
@@ -580,18 +528,13 @@ export default function UserSpentPage() {
                             {formatDollars(item.wallet_charged_usd)}
                           </TableCell>
                           <TableCell className="text-right tabular-nums text-sky-300">
-                            {formatDollars(item.plan_included_usd)}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {Object.keys(METER_LABELS).map((k) => meterChip(k, item))}
-                            </div>
+                            {formatDollars(item.plan_revenue_usd)}
                           </TableCell>
                           <TableCell>{alertBadges(item)}</TableCell>
                         </TableRow>
                         {isOpen ? (
                           <TableRow className="border-slate-800 hover:bg-transparent">
-                            <TableCell colSpan={8} className="p-0">
+                            <TableCell colSpan={7} className="p-0">
                               <ExpandedBreakdown item={item} filters={appliedFilters} />
                             </TableCell>
                           </TableRow>

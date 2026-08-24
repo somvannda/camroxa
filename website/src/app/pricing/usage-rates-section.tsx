@@ -54,8 +54,7 @@ export async function UsageRatesSection() {
             Live per-operation costs
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200/72">
-            Plans include draft, Suno package, and image allowances. Overage and lifetime wallet
-            use the same rates — music is one charge per Suno package (Primary + Secondary channel), not per track.
+            Generate spends credits from the wallet. 10 credits is one generate (two versions). Dual-channel desktop is included, not extra credits.
           </p>
         </div>
         {rates.estimated_full_song_credits != null ? (

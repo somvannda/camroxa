@@ -33,7 +33,7 @@ _PLAN_SELECT = """
     daily_draft_limit_per_channel,
     daily_video_limit, daily_merge_limit,
     included_wallet_credits, plan_kind,
-    plan_type, monthly_credits, features, is_public, display_order,
+    plan_type, monthly_credits, daily_credits, features, is_public, display_order,
     is_active, effective_from, created_at, updated_at
 """
 
@@ -120,6 +120,7 @@ def _row_to_plan(row: Any) -> Plan:
         plan_kind=str(row.get("plan_kind") or "subscription"),
         plan_type=str(row.get("plan_type") or "desktop_pro"),
         monthly_credits=row.get("monthly_credits"),
+        daily_credits=int(row.get("daily_credits") or 0),
         features=_parse_plan_features(row.get("features")),
         is_public=bool(row.get("is_public") or False),
         display_order=int(row.get("display_order") or 0),
@@ -428,6 +429,37 @@ class LicenseRepository:
                 WHERE user_id = $1
                   AND status = 'active'
                   AND (expires_at IS NULL OR expires_at > NOW())
+            )
+            """,
+            UUID(user_id),
+        )
+        return result is True
+
+    async def has_paid_desktop_access(self, user_id: str) -> bool:
+        """True when the user has an active paid license or paid web subscription.
+
+        Free ($0) plans cannot use the desktop studio. Hidden $79 and public
+        Starter / Creator / Studio all qualify while the period is unexpired.
+        """
+        result = await self._pool.fetchval(
+            """
+            SELECT EXISTS(
+                SELECT 1
+                FROM licenses l
+                JOIN plans p ON p.id = l.plan_id
+                WHERE l.user_id = $1
+                  AND l.status = 'active'
+                  AND (l.expires_at IS NULL OR l.expires_at > NOW())
+                  AND COALESCE(p.price_cents, 0) > 0
+            )
+            OR EXISTS(
+                SELECT 1
+                FROM web_subscriptions ws
+                JOIN plans p ON p.id = ws.plan_id
+                WHERE ws.user_id = $1
+                  AND ws.status = 'active'
+                  AND ws.current_period_end > NOW()
+                  AND COALESCE(p.price_cents, 0) > 0
             )
             """,
             UUID(user_id),

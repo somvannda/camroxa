@@ -136,14 +136,6 @@ export default function FinancePage() {
 
   const walletRevenueUsd =
     gcv != null && summary ? (summary.wallet_charged ?? 0) * gcv : null;
-  const planListUsd =
-    gcv != null && summary ? (summary.plan_included_list ?? 0) * gcv : null;
-  const planDraftListUsd =
-    gcv != null && summary ? (summary.plan_draft_list ?? 0) * gcv : null;
-  const planSongListUsd =
-    gcv != null && summary ? (summary.plan_song_list ?? 0) * gcv : null;
-  const planImageListUsd =
-    gcv != null && summary ? (summary.plan_image_list ?? 0) * gcv : null;
   const absorbListUsd =
     gcv != null && summary ? (summary.platform_absorb_list ?? 0) * gcv : null;
   const subscriptionRevenueUsd =
@@ -184,8 +176,8 @@ export default function FinancePage() {
               Profit & revenue estimate
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
-              Subscription cash, wallet charges, plan-included list value (draft / song /
-              image), platform absorb, estimated provider COGS, and contribution margin —
+              Subscription cash, wallet charges, period grant issued, platform absorb,
+              estimated provider COGS, and contribution margin —
               filtered by operation and date range.
             </p>
           </div>
@@ -226,10 +218,10 @@ export default function FinancePage() {
                   where status is paid and fulfilled (cash collected).
                 </li>
                 <li>
-                  <span className="text-slate-300">Plan-included list value</span> sums{' '}
-                  <span className="font-mono text-slate-300">list_credit_units</span> on{' '}
-                  <span className="font-mono text-slate-300">plan_allowance</span> rows × GCV,
-                  split by meter coverage (draft / song package / image).
+                  <span className="text-slate-300">Grant issued</span> is period credit
+                  grants (<span className="font-mono text-slate-300">v3_period_grant</span>),
+                  not historical <span className="font-mono text-slate-300">plan_allowance</span>{' '}
+                  list value. Those old rows stay on Usage and are not rewritten as wallet.
                 </li>
                 <li>
                   <span className="text-slate-300">Platform absorb</span> = owner-paid failed /
@@ -248,7 +240,7 @@ export default function FinancePage() {
                 </li>
                 <li>
                   <span className="text-slate-300">Example</span>: SLAI channel cover at 1 cost
-                  credit × GCV $0.01 = $0.01/event. Music list 7.5 cr / cost 6 cr → $0.075 / $0.06
+                  credit × GCV $0.01 = $0.01/event. Music list 10 cr / cost 6 cr → $0.10 / $0.06
                   at GCV $0.01.
                 </li>
                 <li>
@@ -328,18 +320,13 @@ export default function FinancePage() {
             }
           />
           <StatCard
-            label="Plan included (list)"
-            value={planListUsd != null ? formatDollars(planListUsd) : '—'}
+            label="Grant issued"
+            value={summary ? formatCredits(summary.grant_issued ?? 0) : '—'}
             icon={Coins}
             hint={
               summary
-                ? [
-                    `Draft ${formatDollars(planDraftListUsd ?? 0)}`,
-                    `Song ${formatDollars(planSongListUsd ?? 0)}`,
-                    `Image ${formatDollars(planImageListUsd ?? 0)}`,
-                    `${summary.plan_allowance_events ?? 0} plan rows`,
-                  ].join(' · ')
-                : undefined
+                ? `${summary.grant_issued_events ?? 0} period/daily grants (v3). Not cash. Unused grant expires.`
+                : 'Period + daily grants (v3). Historical plan_allowance stays on Usage.'
             }
           />
           <StatCard
@@ -403,7 +390,7 @@ export default function FinancePage() {
                     <th className="pb-2 font-medium">Provider / Model</th>
                     <th className="pb-2 font-medium">Events</th>
                     <th className="pb-2 font-medium">Wallet charged</th>
-                    <th className="pb-2 font-medium">Plan included</th>
+                    <th className="pb-2 font-medium">Historical allowance</th>
                     <th className="pb-2 font-medium">Est. COGS</th>
                     <th className="pb-2 font-medium">Cost source</th>
                   </tr>

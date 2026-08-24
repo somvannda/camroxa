@@ -179,20 +179,20 @@ function formatDraftCostLine(costs?: AdminPipelineRetryCosts | null): string {
   const min = formatCredits(costs?.draft_credits_min);
   const max = formatCredits(costs?.draft_credits_max);
   if (min && max && min !== max) {
-    return `Estimated ~${min}–${max} credits (lyric ± title ± album), or plan draft allowance.`;
+    return `Estimated ~${min}–${max} credits (lyric ± title ± album), from the owner wallet.`;
   }
   if (min) {
-    return `Estimated ~${min} credits (draft), or plan draft allowance.`;
+    return `Estimated ~${min} credits (draft), from the owner wallet.`;
   }
-  return 'Estimated cost unavailable — still charges owner plan quota / wallet.';
+  return 'Estimated cost unavailable — still charges the owner wallet in credits.';
 }
 
 function formatSunoCostLine(costs?: AdminPipelineRetryCosts | null): string {
   const amount = formatCredits(costs?.suno_credits);
   if (amount) {
-    return `Estimated ~${amount} credits (1 music package: Primary + Secondary), or plan song allowance.`;
+    return `Estimated ~${amount} credits (1 music package: Primary + Secondary), from the owner wallet.`;
   }
-  return 'Estimated cost unavailable — still charges owner plan quota / wallet.';
+  return 'Estimated cost unavailable — still charges the owner wallet in credits.';
 }
 
 function formatImageCostLine(
@@ -200,7 +200,7 @@ function formatImageCostLine(
   costs?: AdminPipelineRetryCosts | null,
 ): string {
   if (!jobs.length) {
-    return 'Estimated cost unavailable — still charges owner plan quota / wallet.';
+    return 'Estimated cost unavailable — still charges the owner wallet in credits.';
   }
   let total = 0;
   let known = 0;
@@ -216,12 +216,12 @@ function formatImageCostLine(
   }
   const amount = formatCredits(total);
   if (amount && known === jobs.length) {
-    return `Estimated ~${amount} credits (${jobs.length} image job${jobs.length === 1 ? '' : 's'}), or plan image allowance.`;
+    return `Estimated ~${amount} credits (${jobs.length} image job${jobs.length === 1 ? '' : 's'}), from the owner wallet.`;
   }
   if (amount && known > 0) {
-    return `Estimated at least ~${amount} credits for ${known}/${jobs.length} priced jobs, or plan image allowance.`;
+    return `Estimated at least ~${amount} credits for ${known}/${jobs.length} priced jobs, from the owner wallet.`;
   }
-  return `Estimated cost unavailable for ${jobs.length} image job(s) — still charges owner plan quota / wallet.`;
+  return `Estimated cost unavailable for ${jobs.length} image job(s) — still charges the owner wallet in credits.`;
 }
 
 function confirmOwnerCharge(
@@ -231,7 +231,7 @@ function confirmOwnerCharge(
 ): boolean {
   const estimate = costLine ? `\n${costLine}\n` : '\n';
   return window.confirm(
-    `${action}\n\nThis charges ${userEmail}'s plan quota / wallet the same as if they retried themselves.${estimate}\nContinue?`,
+    `${action}\n\nThis charges ${userEmail}'s credits wallet the same as if they retried themselves.${estimate}\nContinue?`,
   );
 }
 
@@ -453,7 +453,7 @@ function PipelineDrawer({
               ) : null}
             </div>
             <p className="pt-1 text-[11px] text-amber-200/80">
-              Retries charge this user&apos;s plan quota / wallet (same path as desktop) unless
+              Retries charge this user&apos;s credits wallet (same path as desktop) unless
               platform-paid waive is enabled below. Confirm dialogs include estimated credit cost
               when pricing is available.
             </p>

@@ -1,8 +1,6 @@
-/** Subscription and credit management API client (`/api/v2`) */
+/** Subscription and credit management API client (v2) */
 
 import { musicAuthFetch } from '@/lib/auth-fetch';
-
-const API_V2 = '/api/v2';
 
 // ============================================================================
 // Types
@@ -14,6 +12,9 @@ export type SubscriptionPlan = {
   price_cents: number;
   billing_cycle: 'monthly' | 'yearly';
   monthly_credits: number;
+  daily_credits?: number;
+  lyric_credits?: number;
+  music_credits?: number;
   features: string[];
   display_order: number;
   is_public: boolean;
@@ -48,12 +49,74 @@ export type CreditBalance = {
   has_subscription: boolean;
   current_period_end?: string | null;
   reset_at?: string | null;
+  grant_remaining?: number;
   breakdown: {
     monthly: number;
     topup: number;
     daily_free: number;
   };
 };
+
+export type V3WalletView = {
+  balance_credits?: number;
+  grant_remaining_credits?: number;
+  plan?: {
+    name?: string;
+    monthly_credits?: number;
+    daily_credits?: number;
+  } | null;
+  lots?: Array<{
+    tag?: string;
+    remaining_credits?: number;
+  }>;
+};
+
+function asCredits(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+}
+
+export function mergeV3CreditBalance(
+  v3: V3WalletView | null,
+  v2: CreditBalance | null,
+): CreditBalance | null {
+  if (!v3 && !v2) return null;
+
+  const v3Balance = asCredits(v3?.balance_credits);
+  const grantRemaining = asCredits(v3?.grant_remaining_credits);
+  const planMonthly = asCredits(v3?.plan?.monthly_credits);
+  const planDaily = asCredits(v3?.plan?.daily_credits);
+  const dailyLot = (v3?.lots ?? [])
+    .filter((lot) => String(lot.tag || '') === 'daily_grant')
+    .reduce((sum, lot) => sum + asCredits(lot.remaining_credits), 0);
+
+  const hasPaidWeb = Boolean(v2?.has_subscription);
+  const hasPaidPlan = hasPaidWeb || planMonthly > 0 || grantRemaining > 0;
+  const total = v3Balance;
+  const dailyLimit = planDaily || asCredits(v2?.daily_free_limit);
+  const dailyRemaining = dailyLot || (!hasPaidPlan ? v3Balance : 0);
+
+  return {
+    total_credits: total,
+    monthly_credits: planMonthly || grantRemaining || asCredits(v2?.monthly_credits),
+    monthly_credits_used: Math.max(0, (planMonthly || asCredits(v2?.monthly_credits)) - grantRemaining),
+    topup_credits: hasPaidWeb && v3Balance <= 0
+      ? asCredits(v2?.topup_credits)
+      : Math.max(0, v3Balance - grantRemaining - dailyRemaining),
+    daily_free_credits: dailyRemaining,
+    daily_free_limit: dailyLimit,
+    daily_free_used: Math.max(0, dailyLimit - dailyRemaining),
+    has_subscription: hasPaidPlan,
+    current_period_end: v2?.current_period_end ?? null,
+    reset_at: v2?.reset_at ?? null,
+    grant_remaining: grantRemaining,
+    breakdown: {
+      monthly: grantRemaining,
+      topup: Math.max(0, total - grantRemaining - dailyRemaining),
+      daily_free: dailyRemaining,
+    },
+  };
+}
 
 export type CreditTransaction = {
   id: string;
@@ -123,8 +186,101 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // Subscription API
 // ============================================================================
 
+type PublicPlanRow = {
+  id: string;
+  name?: string;
+  daily_credits?: number;
+  monthly_credits?: number;
+  lyric_credits?: number;
+  music_credits?: number;
+  price_cents?: number;
+  billing_cycle_days?: number;
+  is_public?: boolean;
+  is_active?: boolean;
+};
+
+function asPublicRows(payload: unknown): PublicPlanRow[] {
+  if (Array.isArray(payload)) return payload as PublicPlanRow[];
+  if (payload && typeof payload === 'object') {
+    const rec = payload as { plans?: unknown; data?: unknown };
+    if (Array.isArray(rec.plans)) return rec.plans as PublicPlanRow[];
+    if (Array.isArray(rec.data)) return rec.data as PublicPlanRow[];
+  }
+  return [];
+}
+
+function overlayPublicPlan(plan: SubscriptionPlan, pub?: PublicPlanRow): SubscriptionPlan {
+  if (!pub) {
+    return {
+      ...plan,
+      daily_credits: Number(plan.daily_credits || 0),
+      lyric_credits: Number(plan.lyric_credits || 0),
+      music_credits: Number(plan.music_credits || 0),
+    };
+  }
+  return {
+    ...plan,
+    daily_credits: Number(pub.daily_credits ?? plan.daily_credits ?? 0),
+    monthly_credits: Number(plan.monthly_credits || pub.monthly_credits || 0),
+    lyric_credits: Number(pub.lyric_credits ?? plan.lyric_credits ?? 0),
+    music_credits: Number(pub.music_credits ?? plan.music_credits ?? 0),
+  };
+}
+
+async function fetchPublicPlanRows(): Promise<PublicPlanRow[]> {
+  for (const path of ['/api/v3/plans/public', '/api/v1/plans/public'] as const) {
+    try {
+      const rows = asPublicRows(await apiFetch<unknown>(path));
+      if (rows.length) return rows;
+    } catch {
+      /* try unauthenticated public catalog */
+    }
+    try {
+      const response = await fetch(path, { credentials: 'include' });
+      if (!response.ok) continue;
+      const rows = asPublicRows(await response.json());
+      if (rows.length) return rows;
+    } catch {
+      /* try next public catalog */
+    }
+  }
+  return [];
+}
+
 export async function fetchSubscriptionPlans(): Promise<{ plans: SubscriptionPlan[] }> {
-  return apiFetch<{ plans: SubscriptionPlan[] }>(`${API_V2}/subscriptions/plans`);
+  let data: { plans: SubscriptionPlan[] } = { plans: [] };
+  try {
+    data = await apiFetch<{ plans: SubscriptionPlan[] }>(`${API_V2}/subscriptions/plans`);
+    if (!data || !Array.isArray(data.plans)) data = { plans: [] };
+  } catch {
+    data = { plans: [] };
+  }
+  const publicRows = await fetchPublicPlanRows();
+  const byId = new Map(publicRows.map((row) => [row.id, row]));
+  const byName = new Map(publicRows.map((row) => [(row.name || '').toLowerCase(), row]));
+  const merged = data.plans.map((plan) =>
+    overlayPublicPlan(plan, byId.get(plan.id) || byName.get(plan.name.toLowerCase())),
+  );
+  const known = new Set(merged.map((plan) => plan.id));
+  for (const row of publicRows) {
+    if (row.is_public === false || row.is_active === false) continue;
+    if (known.has(row.id)) continue;
+    merged.push({
+      id: row.id,
+      name: row.name || 'Plan',
+      price_cents: Number(row.price_cents || 0),
+      billing_cycle: Number(row.billing_cycle_days || 30) >= 365 ? 'yearly' : 'monthly',
+      monthly_credits: Number(row.monthly_credits || 0),
+      daily_credits: Number(row.daily_credits || 0),
+      lyric_credits: Number(row.lyric_credits || 0),
+      music_credits: Number(row.music_credits || 0),
+      features: [],
+      display_order: 0,
+      is_public: true,
+    });
+    known.add(row.id);
+  }
+  return { plans: merged };
 }
 
 export async function fetchMySubscription(): Promise<UserSubscription | null> {
@@ -166,7 +322,16 @@ export async function cancelSubscription(input: {
 // ============================================================================
 
 export async function fetchCreditBalance(): Promise<CreditBalance> {
-  return apiFetch<CreditBalance>(`${API_V2}/credits/balance`);
+  try {
+    const v3 = await apiFetch<V3WalletView>('/api/v3/me/credits');
+    const mapped = mergeV3CreditBalance(v3, null);
+    if (!mapped) {
+      throw new Error('Failed to load credits');
+    }
+    return mapped;
+  } catch {
+    return apiFetch<CreditBalance>(`${API_V2}/credits/balance`);
+  }
 }
 
 export async function fetchCreditHistory(
@@ -304,9 +469,45 @@ export function matchCurrentPlan(
 /**
  * Format credits as songs equivalent (10 credits = 1 song)
  */
-export function creditsToSongs(credits: number): number {
-  return Math.floor(credits / 10);
+export const PUBLIC_CARD_BULLETS = [
+  'Web Create',
+  'Desktop studio',
+  'Dual channels',
+  'Top-up packs',
+] as const;
+
+export const FREE_CARD_BULLETS = [
+  'Web Create',
+  'Daily credit reset',
+  'Top-up packs',
+] as const;
+
+export function cardBulletsForPlan(plan: { name: string; price_cents: number }): readonly string[] {
+  const name = plan.name.replace(/[_-]/g, ' ').toLowerCase();
+  if (plan.price_cents <= 0 && name.includes('free')) {
+    return FREE_CARD_BULLETS;
+  }
+  return PUBLIC_CARD_BULLETS;
 }
+
+export function creditsToSongs(credits: number): number {
+  return Math.floor(Math.max(0, Number(credits) || 0) / 10);
+}
+
+export function isHiddenLegacyPrice(plan: { price_cents: number }): boolean {
+  return Number(plan.price_cents) === 7900;
+}
+
+export function publicPaidPlans(plans: SubscriptionPlan[]): SubscriptionPlan[] {
+  return plans.filter((plan) => plan.is_public && plan.price_cents > 0 && !isHiddenLegacyPrice(plan));
+}
+
+export function publicFreePlan(plans: SubscriptionPlan[]): SubscriptionPlan | undefined {
+  return plans.find(
+    (plan) => plan.is_public && plan.price_cents <= 0 && /free/i.test(plan.name),
+  );
+}
+
 
 /**
  * Format price in cents to dollars

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
-from features.dashboard.widgets.daily_channel_quota_card import DailyChannelQuotaCard
 from features.dashboard.widgets.error_banner import DashboardErrorBanner
 from features.dashboard.widgets.kpi_card import KpiCard
 from features.dashboard.widgets.recent_activity_card import RecentActivityCard
@@ -30,7 +29,7 @@ KPI_CONFIG = (
 
 
 class DashboardView(QScrollArea):
-    """Dashboard with KPI cards, usage chart, quotas, and recent activity."""
+    """Dashboard with KPI cards, usage chart, credits, and recent activity."""
 
     def __init__(
         self,
@@ -77,9 +76,6 @@ class DashboardView(QScrollArea):
         middle.addWidget(self._remaining, stretch=41)
         root.addLayout(middle)
 
-        self._daily_channels = DailyChannelQuotaCard()
-        root.addWidget(self._daily_channels)
-
         self._activity = RecentActivityCard()
         root.addWidget(self._activity)
 
@@ -124,7 +120,6 @@ class DashboardView(QScrollArea):
         self._error_banner.show()
         for card in self._kpi_cards:
             card.set_value("--")
-        self._daily_channels.apply_quota(None)
         self._activity.show_empty()
 
     def _on_loaded(self, payload: object) -> None:
@@ -152,5 +147,4 @@ class DashboardView(QScrollArea):
         self._weekly.set_usage(stats.usage_by_day)
 
         self._remaining.apply_overview(data)
-        self._daily_channels.apply_overview(data)
         self._activity.apply_overview(data)

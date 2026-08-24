@@ -21,11 +21,31 @@ const OPERATION_LABELS: Record<string, string> = {
   channel_setup: 'Channel setup',
   draft_generation_failed: 'Draft refund',
   credit_pack_purchase: 'Credit pack',
+  style: 'Style assist',
+  v3_music: 'Music',
+  v3_lyric: 'Lyrics',
+  v3_style: 'Style assist',
+  v3_period_grant: 'Period grant',
+  v3_daily_grant: 'Daily grant',
+  v3_web_remaining: 'Web leftover',
+  v3_pack: 'Credit pack',
+  web_remaining: 'Web leftover',
+  period_grant: 'Period grant',
+  daily_grant: 'Daily grant',
+  grant_expire: 'Grant expired',
 };
 
 export function formatOperationLabel(operation?: string | null): string {
   if (!operation) return 'All operations';
-  return OPERATION_LABELS[operation] ?? operation.replace(/_/g, ' ');
+  const key = operation.trim().toLowerCase();
+  if (OPERATION_LABELS[key]) return OPERATION_LABELS[key];
+  const stripped = key.startsWith('v3_refund_')
+    ? key.slice('v3_refund_'.length)
+    : key.startsWith('v3_')
+      ? key.slice(3)
+      : key;
+  if (OPERATION_LABELS[stripped]) return OPERATION_LABELS[stripped];
+  return stripped.replace(/_/g, ' ');
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -84,19 +104,22 @@ function metaListUnits(row: UsageBillingFields): number | null {
 
 /**
  * Smart cost label for usage rows.
- * Plan-included ops (amount 0 / billing=plan_allowance) show list credit value.
+ * Historical plan_allowance stays labeled. New $0 rows are wallet or plan_included.
+ * Do not rewrite historical allowance into fake wallet debits.
  */
 export function formatUsageCostLabel(row: UsageBillingFields): string {
   const billing = metaBilling(row);
   const listUnits = metaListUnits(row);
   const listLabel = formatCreditUnits(listUnits);
-  const isPlan =
-    billing === 'plan_allowance' ||
-    (row.direction === 'debit' && Math.abs(row.amount) < 1e-12);
 
-  if (isPlan) {
+  if (billing === 'plan_allowance') {
     if (listLabel) return `Plan allowance (list ${listLabel})`;
     return 'Plan allowance';
+  }
+
+  if (billing === 'plan_included') {
+    if (listLabel) return `Plan included (0, list ${listLabel})`;
+    return 'Plan included (0)';
   }
 
   if (billing === 'platform_absorb') {

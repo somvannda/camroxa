@@ -106,10 +106,12 @@ function formatLimit(value: number | null): string {
 }
 
 export function planHighlightLines(plan: PublicPlan): string[] {
+  const credits = Number(plan.monthly_credits || 0);
+  const songs = Math.floor(credits / 10);
   return [
-    `${plan.profile_allowance.toLocaleString()} channel profile${plan.profile_allowance === 1 ? "" : "s"}`,
-    `${formatLimit(plan.monthly_song_limit)} Suno packages / month`,
-    `${formatLimit(plan.monthly_image_limit)} images / month`,
-    "Desktop Studio + guided onboarding",
+    credits > 0 ? `${credits.toLocaleString()} credits / month` : "Monthly credit grant",
+    songs > 0 ? `~ ${songs.toLocaleString()} songs/mo` : "Song hint = floor(credits / 10)",
+    "Web Create + Desktop studio",
+    "Dual channels (not extra credits)",
   ];
 }

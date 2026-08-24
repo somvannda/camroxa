@@ -10,6 +10,8 @@ import {
   formatPlanDisplayName,
   calculateDiscount,
   creditsToSongs,
+  FREE_CARD_BULLETS,
+  PUBLIC_CARD_BULLETS,
   type SubscriptionPlan,
 } from '@/lib/subscription-api';
 import CutluyCheckoutModal from '@/components/cutluy-checkout-modal';
@@ -34,7 +36,7 @@ export default function PricingPageClient() {
   async function loadPlans() {
     try {
       const { plans: allPlans } = await fetchSubscriptionPlans();
-      setPlans(allPlans.filter((p) => p.is_public));
+      setPlans(allPlans.filter((p) => p.is_public && p.price_cents !== 7900));
     } catch (err) {
       console.error('Failed to load plans:', err);
     } finally {
@@ -82,6 +84,12 @@ export default function PricingPageClient() {
   const sortedPlans = [...displayPlans]
     .filter((plan) => plan.price_cents > 0)
     .sort((a, b) => a.price_cents - b.price_cents);
+  const freePlan = plans.find(
+    (plan) =>
+      plan.is_public &&
+      plan.price_cents <= 0 &&
+      plan.name.replace(/[_-]/g, " ").toLowerCase().includes("free"),
+  );
 
   // Calculate yearly discount
   const yearlyDiscount = monthlyPlans[0] && yearlyPlans[0]
@@ -138,7 +146,8 @@ export default function PricingPageClient() {
 
       {/* Plans */}
       <div className="container mx-auto px-4 pb-20">
-        <div className="grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mx-auto">
+        <div className={`grid max-w-6xl grid-cols-1 gap-6 mx-auto ${freePlan ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"}`}>
+          {freePlan ? (
           <div className="relative rounded-2xl border-2 border-purple-500/20 bg-[#0c1230] p-6 md:p-8">
             <div className="mb-4 flex justify-center">
               <div className="rounded-full bg-purple-500/20 p-3">
@@ -153,19 +162,17 @@ export default function PricingPageClient() {
               </div>
             </div>
             <div className="mb-6 border-b border-purple-500/20 pb-6 text-center">
-              <div className="text-3xl font-bold text-purple-400">50</div>
-              <div className="text-sm text-gray-400">daily credits</div>
+              <div className="text-3xl font-bold text-purple-400">{freePlan.daily_credits || freePlan.monthly_credits || 0}</div>
+              <div className="text-sm text-gray-400">{(freePlan.daily_credits || 0) > 0 ? "daily credits" : "credits"}</div>
               <div className="mt-1 text-xs text-gray-500">Resets at midnight</div>
             </div>
             <ul className="mb-8 space-y-3">
-              {['AI music generation', 'Style and lyrics assist (uses credits)', 'Daily credits reset at midnight'].map(
-                (feature) => (
+              {FREE_CARD_BULLETS.map((feature) => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-400" />
                     <span className="text-sm text-gray-300">{feature}</span>
                   </li>
-                ),
-              )}
+              ))}
             </ul>
             <button
               type="button"
@@ -181,6 +188,7 @@ export default function PricingPageClient() {
               {user ? 'Current plan' : 'Sign up free'}
             </button>
           </div>
+          ) : null}
           {sortedPlans.map((plan, index) => {
             const songs = creditsToSongs(plan.monthly_credits);
             const pricePerMonth =
@@ -236,25 +244,19 @@ export default function PricingPageClient() {
                   )}
                 </div>
 
-                {/* Songs */}
+                {/* Credits */}
                 <div className="text-center mb-6 pb-6 border-b border-purple-500/20">
-                  <div className="text-3xl font-bold text-purple-400">{songs}</div>
-                  <div className="text-sm text-gray-400">songs per month</div>
+                  <div className="text-3xl font-bold text-purple-400">{plan.monthly_credits.toLocaleString()}</div>
+                  <div className="text-sm text-gray-400">credits per month</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {plan.monthly_credits.toLocaleString()} credits
+                    ≈ {songs} songs/mo
                   </div>
                 </div>
 
                 {/* Features */}
                 <ul className="space-y-3 mb-8">
-                  <li className="flex items-start gap-3">
-                    <Check className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-300">
-                      {songs} AI-generated songs monthly
-                    </span>
-                  </li>
-                  {plan.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-start gap-3">
+                  {PUBLIC_CARD_BULLETS.map((feature) => (
+                    <li key={feature} className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
                       <span className="text-sm text-gray-300">{feature}</span>
                     </li>

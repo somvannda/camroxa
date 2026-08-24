@@ -23,6 +23,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from python_app.services.api_errors import (
     AccountLockedError,
     AuthenticationError,
+    DesktopPlanRequiredError,
     DuplicateEmailError,
     NetworkError,
     TokenExpiredError,
@@ -134,6 +135,14 @@ class LoginPageController:
                 self._ui_invoke(
                     lambda: self._show_error(
                         "Account temporarily locked. Please try again later."
+                    )
+                )
+            except DesktopPlanRequiredError as exc:
+                logger.warning("Login failed: desktop requires a paid plan")
+                self._ui_invoke(
+                    lambda: self._show_error(
+                        str(exc)
+                        or "Desktop studio requires a paid plan. Choose Starter, Creator, or Studio on the web."
                     )
                 )
             except NetworkError as exc:

@@ -102,10 +102,12 @@ def test_success_bind_membership_activity_and_profiles(qapp: QApplication) -> No
     assert "Camxora" in view._account._local_data._value.text()
     assert view._account._verification.text() == "Verified"
     assert view._membership._plan._value.text() == "Pro"
-    assert view._membership._song_quota._value.text() == "120"
+    assert view._membership._credits._value.text() == "250"
     assert "2026" in view._membership._expiry._value.text()
     assert "Dec" in view._membership._expiry._value.text()
-    assert view._membership._songs_bar._value.text() == "44 / 120"
+    assert not hasattr(view._membership, "_songs_bar")
+    assert not hasattr(view._membership, "_song_quota")
+    assert view._membership._profiles_bar._value.text() == "2 / 5"
     assert view._profiles._table.item(0, 0).text() == "OK Channel"
     assert view._profiles._table.item(0, 3).text() == "Background + Thumbnail"
     assert view._profiles._table.item(0, 4).text() == "public"
@@ -126,16 +128,11 @@ def test_membership_metric_bar_layout(qapp: QApplication) -> None:
     assert "MONTHLY SONGS" in bar._label.text().upper()
 
 
-def test_membership_uses_scaled_song_quota(qapp: QApplication) -> None:
+def test_membership_shows_wallet_not_song_quota(qapp: QApplication) -> None:
     overview = _sample_overview()
-    overview.license.monthly_song_quota = 300
-    overview.license.songs_remaining = 467
-    overview.stats.songs_quota = 1500
-    overview.stats.songs_remaining = 467
-    overview.quota.songs_quota = 1500
-    overview.quota.songs_remaining = 467
-
+    overview.license.wallet_balance = 0
+    overview.me.credit_balance = 0
     view = ProfileView(PlatformApi())
     view._apply_overview(overview)
-    assert view._membership._songs_bar._value.text() == "1,033 / 1,500"
-    assert view._membership._song_quota._value.text() == "1,500"
+    assert view._membership._credits._value.text() == "0"
+    assert not hasattr(view._membership, "_song_quota")

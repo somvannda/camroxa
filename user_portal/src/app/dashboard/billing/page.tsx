@@ -139,7 +139,7 @@ export default function DashboardBillingPage() {
           <CardHeader>
             <CardTitle className="font-display text-2xl text-white">Subscription status</CardTitle>
             <CardDescription className="text-slate-300/72">
-              Current plan details and operational allowance for your account.
+              Current plan and credit wallet. Extra channel pairs are a separate product.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
@@ -148,7 +148,7 @@ export default function DashboardBillingPage() {
               <div className="mt-2 text-2xl font-semibold text-white">{planLabel}</div>
               <div className="mt-2 text-sm text-slate-300/72">
                 {quotaChannels != null
-                  ? `${quotaChannels} active quota channels · ${creationLimit ?? quotaChannels} creation limit (max 10).`
+                  ? `${state.profiles.length} profiles · cap ${creationLimit ?? quotaChannels} (max 10). Extra pairs do not multiply credits.`
                   : "No profile allowance data available yet."}
               </div>
             </div>
@@ -161,13 +161,8 @@ export default function DashboardBillingPage() {
               }
             />
             <SummaryRow
-              label="Wallet quota balance"
-              value={
-                state.wallet?.plan_quota_remaining !== null &&
-                state.wallet?.plan_quota_remaining !== undefined
-                  ? formatCreditValue(state.wallet.plan_quota_remaining)
-                  : "Not available"
-              }
+              label="Wallet credits"
+              value={formatCreditValue(state.wallet?.balance ?? state.user.credit_balance ?? 0)}
             />
             <SummaryRow
               label="Checkout provider"
@@ -337,7 +332,7 @@ export default function DashboardBillingPage() {
           >
             <div className="text-sm font-medium text-white">Compare plans</div>
             <div className="mt-2 text-sm text-slate-300/72">
-              Review higher-tier allowances before changing subscription coverage.
+              Review Starter / Creator / Studio credit grants before changing plans.
             </div>
           </Link>
           <Link
@@ -355,7 +350,7 @@ export default function DashboardBillingPage() {
           >
             <div className="text-sm font-medium text-white">Usage ledger</div>
             <div className="mt-2 text-sm text-slate-300/72">
-              Compare plan allowance vs credits charged with your billing history.
+              Review credit charges with your billing history.
             </div>
           </Link>
           <Link

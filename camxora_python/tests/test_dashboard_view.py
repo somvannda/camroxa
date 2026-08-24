@@ -123,14 +123,6 @@ def test_success_bind_kpis(qapp: QApplication) -> None:
     assert values[4] == "2"
 
 
-def test_daily_channel_quota_card(qapp: QApplication) -> None:
-    view = DashboardView(PlatformApi())
-    view.show()
-    view._apply_overview(_sample_overview())
-    assert view._daily_channels._empty.isHidden()
-    assert view._daily_channels._rows.count() == 1
-
-
 def test_songs_bar_value_total_format(qapp: QApplication) -> None:
     row = ProgressSummaryRow("Songs", bar_color="sky")
     row.set_amounts(30, 40)
@@ -138,53 +130,26 @@ def test_songs_bar_value_total_format(qapp: QApplication) -> None:
     assert row._percent.text() == "75%"
 
 
-def test_remaining_card_shows_used_over_quota(qapp: QApplication) -> None:
+def test_remaining_card_shows_wallet_not_plan_meters(qapp: QApplication) -> None:
     view = DashboardView(PlatformApi())
     view._apply_overview(_sample_overview())
-    # 40 quota, 30 remaining → 10 used
-    assert view._remaining._songs._amount.text() == "10 / 40"
-    assert view._remaining._songs._percent.text() == "25%"
-    assert view._remaining._song_quota._value.text() == "10 of 40 used"
-    assert view._remaining._credits._amount.text() == "25 / 100"
+    assert view._remaining._wallet._value.text() == "100"
+    assert view._remaining._spent._value.text() == "25"
+    assert not hasattr(view._remaining, "_song_quota")
+    assert not hasattr(view, "_daily_channels")
 
 
-def test_remaining_card_uses_scaled_quota_not_base_plan(qapp: QApplication) -> None:
+def test_remaining_card_zero_wallet_still_shows_number(qapp: QApplication) -> None:
     overview = _sample_overview()
-    overview.license.monthly_song_quota = 300
-    overview.license.songs_remaining = 467
-    overview.license.monthly_image_quota = 120
-    overview.license.images_remaining = 189
-    overview.quota.songs_quota = 1500
-    overview.quota.songs_remaining = 467
-    overview.quota.images_quota = 600
-    overview.quota.images_remaining = 189
-    overview.quota.drafts_quota = 6300
-    overview.quota.drafts_remaining = 4086
-    overview.stats.songs_quota = 1500
-    overview.stats.songs_remaining = 467
-
+    overview.license.wallet_balance = 0
+    overview.me.credit_balance = 0
+    overview.stats.credits_spent = 0
     view = DashboardView(PlatformApi())
     view._apply_overview(overview)
-    assert view._remaining._songs._amount.text() == "1,033 / 1,500"
-    assert view._remaining._images._amount.text() == "411 / 600"
-    assert view._remaining._drafts._amount.text() == "2,214 / 6,300"
-    assert view._remaining._song_quota._value.text() == "1,033 of 1,500 used"
+    assert view._remaining._wallet._value.text() == "0"
+    assert view._remaining._spent._value.text() == "0"
 
 
-def test_remaining_card_exhausted_quota_reads_as_used(qapp: QApplication) -> None:
-    overview = _sample_overview()
-    overview.license.monthly_song_quota = 300
-    overview.license.songs_remaining = 0
-    overview.quota.songs_quota = 300
-    overview.quota.songs_remaining = 0
-    overview.stats.songs_quota = 300
-    overview.stats.songs_remaining = 0
-
-    view = DashboardView(PlatformApi())
-    view._apply_overview(overview)
-    assert view._remaining._songs._amount.text() == "300 / 300"
-    assert view._remaining._songs._percent.text() == "100%"
-    assert view._remaining._song_quota._value.text() == "300 of 300 used"
 
 
 def test_activity_loading_and_empty(qapp: QApplication) -> None:

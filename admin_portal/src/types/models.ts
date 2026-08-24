@@ -152,13 +152,16 @@ export interface License {
   license_key: string;
   plan_id: string;
   user_id: string | null;
-  status: 'unassigned' | 'active' | 'expired' | 'revoked';
+  status: 'unassigned' | 'active' | 'expired' | 'revoked' | 'cancelled' | 'pending';
   profile_addon_slots: number;
   profile_addon_pending: number;
   activated_at: string | null;
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  source?: 'desktop' | 'web';
+  user_email?: string | null;
+  plan_name?: string | null;
 }
 
 export interface Plan {
@@ -572,6 +575,8 @@ export interface UsageSummary {
   subscription_payment_count?: number;
   credit_pack_revenue_cents?: number;
   credit_pack_payment_count?: number;
+  grant_issued?: number;
+  grant_issued_events?: number;
   by_operation: UsageOperationSummary[];
 }
 

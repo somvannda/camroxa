@@ -31,6 +31,8 @@ export type PublicPlan = {
   daily_video_limit?: number;
   daily_merge_limit?: number;
   included_wallet_credits?: number;
+  monthly_credits?: number;
+  daily_credits?: number;
   offer: PublicPlanOffer | null;
 };
 

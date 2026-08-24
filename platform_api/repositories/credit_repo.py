@@ -26,6 +26,22 @@ logger = logging.getLogger(__name__)
 MAX_WALLET_BALANCE = MAX_CREDIT_UNITS
 DEFAULT_PAGE_SIZE = 50
 
+# Normalize v3 reasons (v3_music / v3_refund_lyric) onto the same op as desktop.
+_ADMIN_OPERATION_SQL = """
+COALESCE(
+    NULLIF(t.metadata->>'operation', ''),
+    NULLIF(t.metadata->>'op', ''),
+    CASE
+        WHEN t.reason LIKE 'v3_refund_%' THEN substring(t.reason from 11)
+        WHEN t.reason LIKE 'v3_%' THEN substring(t.reason from 4)
+        ELSE NULL
+    END,
+    NULLIF(split_part(t.reason, ' via ', 1), ''),
+    t.reason,
+    'unknown'
+)
+"""
+
 # usage_tracking.operation_type values rolled into User Spent meter chips.
 USER_SPEND_METER_OPS = (
     "music",
@@ -623,7 +639,15 @@ class CreditRepository:
                         THEN COALESCE((t.metadata->>'list_credit_units')::bigint, 0)
                         ELSE 0
                     END
-                ), 0)::bigint AS platform_absorb_list_units
+                ), 0)::bigint AS platform_absorb_list_units,
+                COALESCE(SUM(t.amount) FILTER (
+                    WHERE t.direction = 'credit'
+                      AND t.reason IN ('v3_period_grant', 'v3_daily_grant')
+                ), 0)::bigint AS grant_issued_units,
+                COUNT(*) FILTER (
+                    WHERE t.direction = 'credit'
+                      AND t.reason IN ('v3_period_grant', 'v3_daily_grant')
+                ) AS grant_issued_events
             FROM credit_transactions t
             JOIN users u ON u.id = t.user_id
             {where_sql}
@@ -634,12 +658,7 @@ class CreditRepository:
         by_op_rows = await self._pool.fetch(
             f"""
             SELECT
-                COALESCE(
-                    NULLIF(t.metadata->>'operation', ''),
-                    NULLIF(split_part(t.reason, ' via ', 1), ''),
-                    t.reason,
-                    'unknown'
-                ) AS operation,
+                {_ADMIN_OPERATION_SQL} AS operation,
                 COALESCE(
                     NULLIF(t.metadata->>'provider', ''),
                     NULLIF(split_part(t.reason, ' via ', 2), ''),
@@ -723,6 +742,12 @@ class CreditRepository:
             "platform_absorb_list_units": (
                 int(summary_row["platform_absorb_list_units"] or 0) if summary_row else 0
             ),
+            "grant_issued_units": (
+                int((summary_row.get("grant_issued_units") if summary_row else 0) or 0)
+            ),
+            "grant_issued_events": (
+                int((summary_row.get("grant_issued_events") if summary_row else 0) or 0)
+            ),
             "by_operation": [
                 {
                     "operation": str(row["operation"] or "unknown"),
@@ -799,6 +824,12 @@ class CreditRepository:
                       AND l.plan_id = ${arg_idx}
                       AND l.status = 'active'
                       AND (l.expires_at IS NULL OR l.expires_at > NOW())
+                    UNION ALL
+                    SELECT 1 FROM web_subscriptions ws
+                    WHERE ws.user_id = t.user_id
+                      AND ws.plan_id = ${arg_idx}
+                      AND ws.status = 'active'
+                      AND ws.current_period_end > NOW()
                 )"""
             )
             args.append(plan_id)
@@ -812,12 +843,7 @@ class CreditRepository:
                 t.user_id,
                 u.email AS user_email,
                 u.display_name AS user_display_name,
-                COALESCE(
-                    NULLIF(t.metadata->>'operation', ''),
-                    NULLIF(split_part(t.reason, ' via ', 1), ''),
-                    t.reason,
-                    'unknown'
-                ) AS operation,
+                {_ADMIN_OPERATION_SQL} AS operation,
                 COALESCE(
                     NULLIF(t.metadata->>'provider', ''),
                     NULLIF(split_part(t.reason, ' via ', 2), ''),
@@ -913,6 +939,35 @@ class CreditRepository:
         out: dict[UUID, dict[str, Any]] = {}
         for row in rows:
             out[row["user_id"]] = dict(row)
+        missing = [uid for uid in user_ids if uid not in out]
+        if missing:
+            web_rows = await self._pool.fetch(
+                """
+                SELECT DISTINCT ON (ws.user_id)
+                    ws.user_id,
+                    p.id AS plan_id,
+                    p.name AS plan_name,
+                    p.price_cents,
+                    p.billing_cycle_days,
+                    p.monthly_song_limit,
+                    p.monthly_draft_limit,
+                    p.monthly_image_limit,
+                    p.monthly_video_limit,
+                    p.monthly_merge_limit,
+                    p.profile_allowance,
+                    0 AS profile_addon_slots,
+                    ws.current_period_start AS activated_at
+                FROM web_subscriptions ws
+                INNER JOIN plans p ON p.id = ws.plan_id
+                WHERE ws.user_id = ANY($1::uuid[])
+                  AND ws.status = 'active'
+                  AND ws.current_period_end > NOW()
+                ORDER BY ws.user_id, ws.current_period_end DESC
+                """,
+                missing,
+            )
+            for row in web_rows:
+                out[row["user_id"]] = dict(row)
         return out
 
     async def list_monthly_meters_for_users(

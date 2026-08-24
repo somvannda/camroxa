@@ -1,7 +1,7 @@
 """HLS storage columns for iOS Safari AES-128 playback.
 
 Revision ID: 115_hls_playback
-Revises: 114_playback_event_detail
+Revises: 109_playback_event_detail
 Create Date: 2026-08-21
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "115_hls_playback"
-down_revision = "114_playback_event_detail"
+down_revision = "109_playback_event_detail"
 branch_labels = None
 depends_on = None
 

@@ -8,7 +8,7 @@ import { ImageGenerationSection } from './image-generation-section';
 import { MusicLanguagesSection } from './music-languages-section';
 import { SunoBlocklistSection } from './suno-blocklist-section';
 import { FailAbsorbSection } from './fail-absorb-section';
-import { MusicWebFreeCreditsSection } from '@/pages/plans/music-web-free-credits-section';
+import { MusicWebCreditsNote } from '@/pages/settings/music-web-credits-note';
 import { PaymentSection } from './payment-section';
 import { StreamingStorageSection } from './streaming-section';
 import { UserDataManagementSection } from './user-data-section';
@@ -145,7 +145,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="music-web" className="mt-6">
-          <MusicWebFreeCreditsSection />
+          <MusicWebCreditsNote />
         </TabsContent>
 
         <TabsContent value="fail-absorb" className="mt-6">
