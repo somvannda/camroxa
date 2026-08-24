@@ -1,6 +1,28 @@
 /** Same-origin music-web generation client. */
 
 import { musicAuthFetch } from '@/lib/auth-fetch';
+import { parseRetryAfterSeconds, type WebMusicGenerateInput } from '@/lib/create-submit-queue';
+
+export class MusicApiError extends Error {
+  readonly status: number;
+  readonly retryAfterSeconds: number | null;
+  readonly code: string | null;
+
+  constructor(
+    message: string,
+    status: number,
+    retryAfterSeconds: number | null = null,
+    code: string | null = null,
+  ) {
+    super(message);
+    this.name = 'MusicApiError';
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.code = code;
+  }
+}
+
+export type { WebMusicGenerateInput };
 
 export type WebMusicQuota = {
   limit: number;
@@ -14,6 +36,8 @@ export type WebMusicQuota = {
   can_download?: boolean;
   daily_free_remaining?: number;
   daily_free_limit?: number;
+  queue_limit?: number;
+  queue_used?: number;
 };
 
 export type WebMusicClip = {
@@ -53,51 +77,91 @@ export type WebMusicWorkspace = {
   created_at?: string | null;
 };
 
-async function readError(response: Response, fallback: string): Promise<string> {
+type ErrorBody = {
+  detail?:
+    | string
+    | { message?: string }
+    | Array<{ msg?: string; loc?: Array<string | number> }>;
+  error?: {
+    message?: string;
+    code?: string;
+    details?: { requires_upgrade?: boolean; retry_after?: number };
+  };
+  message?: string;
+};
+
+function retryAfterFromBody(data: ErrorBody): number | null {
+  const raw = data.error?.details?.retry_after;
+  if (raw == null) return null;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+async function readError(response: Response, fallback: string): Promise<{
+  message: string;
+  code: string | null;
+  retryAfterSeconds: number | null;
+}> {
+  const headerRetry = parseRetryAfterSeconds(response.headers.get('retry-after'));
   try {
-    const data = (await response.json()) as {
-      detail?:
-        | string
-        | { message?: string }
-        | Array<{ msg?: string; loc?: Array<string | number> }>;
-      error?: { message?: string; code?: string; details?: { requires_upgrade?: boolean } };
-      message?: string;
-    };
+    const data = (await response.json()) as ErrorBody;
+    const bodyRetry = retryAfterFromBody(data);
+    const retryAfterSeconds = headerRetry ?? bodyRetry;
     if (data.error?.code === 'GEO_BLOCKED') {
-      return data.error.message || 'This service is only available in Cambodia.';
+      return {
+        message: data.error.message || 'This service is only available in Cambodia.',
+        code: data.error.code,
+        retryAfterSeconds,
+      };
     }
     if (data.error?.code === 'GENERATION_FROZEN') {
-      return data.error.message || 'Music generation is paused. Try again later.';
+      return {
+        message: data.error.message || 'Music generation is paused. Try again later.',
+        code: data.error.code,
+        retryAfterSeconds,
+      };
     }
-    if (data.error?.message) return data.error.message;
-    if (typeof data.detail === 'string') return data.detail;
+    if (data.error?.message) {
+      return { message: data.error.message, code: data.error.code ?? null, retryAfterSeconds };
+    }
+    if (typeof data.detail === 'string') {
+      return { message: data.detail, code: data.error?.code ?? null, retryAfterSeconds };
+    }
     if (data.detail && typeof data.detail === 'object' && !Array.isArray(data.detail) && data.detail.message) {
-      return data.detail.message;
+      return { message: data.detail.message, code: data.error?.code ?? null, retryAfterSeconds };
     }
     if (Array.isArray(data.detail) && data.detail.length > 0) {
       const first = data.detail[0];
-      if (first?.msg) return first.msg;
+      if (first?.msg) {
+        return { message: first.msg, code: data.error?.code ?? null, retryAfterSeconds };
+      }
     }
-    if (typeof data.message === 'string') return data.message;
+    if (typeof data.message === 'string') {
+      return { message: data.message, code: data.error?.code ?? null, retryAfterSeconds };
+    }
   } catch {
     /* ignore */
   }
-  return fallback;
+  return { message: fallback, code: null, retryAfterSeconds: headerRetry };
+}
+
+async function rejectResponse(response: Response, fallback: string): Promise<never> {
+  const parsed = await readError(response, fallback);
+  throw new MusicApiError(parsed.message, response.status, parsed.retryAfterSeconds, parsed.code);
 }
 
 async function musicFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await musicAuthFetch(path, init);
   if (!response.ok) {
-    const message = await readError(response, `Request failed (${response.status})`);
+    const parsed = await readError(response, `Request failed (${response.status})`);
+    let message = parsed.message;
     if (response.status === 502 || response.status === 503 || response.status === 504) {
       const looksLikeGateway = /bad gateway|unprocessable|request failed/i.test(message);
-      throw new Error(
-        message && !looksLikeGateway
-          ? message
-          : 'AI assist is temporarily unavailable. Please try again in a moment.',
-      );
+      if (!message || looksLikeGateway) {
+        message = 'AI assist is temporarily unavailable. Please try again in a moment.';
+      }
     }
-    throw new Error(message);
+    throw new MusicApiError(message, response.status, parsed.retryAfterSeconds, parsed.code);
   }
   if (response.status === 204) return undefined as T;
   const contentType = response.headers.get('content-type') || '';
@@ -160,21 +224,9 @@ export async function generateWebMusicDraft(prompt: string): Promise<{ lyrics: s
   });
 }
 
-export async function generateWebMusic(input: {
-  mode: 'simple' | 'advanced';
-  lyrics?: string;
-  style?: string;
-  title?: string;
-  prompt?: string;
-  instrumental?: boolean;
-  model?: 'V5' | 'V5_5';
-  negative_tags?: string;
-  vocal_gender?: 'm' | 'f' | 'both';
-  style_weight?: number;
-  weirdness_constraint?: number;
-  audio_weight?: number;
-  workspace_id?: string;
-}): Promise<{ task_id: string; status: string; title: string; style: string; quota: WebMusicQuota }> {
+export async function generateWebMusic(
+  input: WebMusicGenerateInput,
+): Promise<{ task_id: string; status: string; title: string; style: string; quota: WebMusicQuota }> {
   return musicFetch('/api/v1/web-music/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -218,7 +270,7 @@ export async function downloadWebMusicClip(id: string, variant: string, filename
     `/api/v1/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
   );
   if (!response.ok) {
-    throw new Error(await readError(response, 'Download failed'));
+    await rejectResponse(response, 'Download failed');
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
@@ -250,7 +302,8 @@ export async function downloadWebMusicClipWav(id: string, variant: string, filen
       URL.revokeObjectURL(url);
       return;
     }
-    lastError = await readError(response, 'WAV download failed');
+    const parsed = await readError(response, 'WAV download failed');
+    lastError = parsed.message;
     const retryable = /not ready yet|try again/i.test(lastError);
     if (!retryable || attempt === maxAttempts - 1) {
       throw new Error(lastError);
@@ -272,7 +325,7 @@ export async function downloadWebMusicTimedLyrics(
     `/api/v1/web-music/generations/${id}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${encodeURIComponent(format)}`,
   );
   if (!response.ok) {
-    throw new Error(await readError(response, 'Timed lyrics download failed'));
+    await rejectResponse(response, 'Timed lyrics download failed');
   }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

@@ -142,6 +142,21 @@ class JobQueueRepository:
             return None
         return _row_to_job(row)
 
+    async def count_active_for_user(self, user_id: UUID, job_type: str) -> int:
+        """Count queued, running, or delayed jobs of one type for a user."""
+        value = await self._pool.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM job_queue
+            WHERE user_id = $1
+              AND job_type = $2
+              AND status IN ('queued', 'running', 'delayed')
+            """,
+            user_id,
+            str(job_type),
+        )
+        return int(value or 0)
+
     async def mark_done(self, job_id: UUID) -> None:
         await self._pool.execute(
             """

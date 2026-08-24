@@ -19,6 +19,7 @@ from platform_api.exceptions import (
     NotFoundError,
     PlatformAPIError,
     QuotaExceededError,
+    RateLimitedError,
     ValidationError,
 )
 from platform_api.models.enums import TaskStatus
@@ -214,7 +215,9 @@ class WebMusicService:
         """Return credit-based quota for the create UI."""
         if self._credit_service is None:
             is_pro = await self._has_pro(user_id)
-            return self._quota_payload(limit=0, used=0, is_pro=is_pro)
+            return await self._with_queue_fields(
+                user_id, self._quota_payload(limit=0, used=0, is_pro=is_pro)
+            )
 
         balance = await self._credit_service.get_detailed_balance(str(user_id))
         songs_remaining = balance.total_available // WEB_MUSIC_CREDITS_PER_SONG
@@ -222,19 +225,60 @@ class WebMusicService:
         is_pro = balance.has_subscription or await self._has_pro(user_id)
         can_download = is_pro
 
-        return {
-            "limit": balance.daily_free_limit if not balance.has_subscription else balance.monthly_granted,
-            "used": balance.daily_free_used if not balance.has_subscription else balance.monthly_used,
-            "remaining": songs_remaining,
-            "is_pro": is_pro,
-            "requires_upgrade": requires_upgrade and not await self._has_pro(user_id),
-            "credits_remaining": balance.total_available,
-            "credits_per_song": WEB_MUSIC_CREDITS_PER_SONG,
-            "has_subscription": balance.has_subscription,
-            "can_download": can_download,
-            "daily_free_remaining": balance.daily_free_remaining,
-            "daily_free_limit": balance.daily_free_limit,
-        }
+        return await self._with_queue_fields(
+            user_id,
+            {
+                "limit": balance.daily_free_limit if not balance.has_subscription else balance.monthly_granted,
+                "used": balance.daily_free_used if not balance.has_subscription else balance.monthly_used,
+                "remaining": songs_remaining,
+                "is_pro": is_pro,
+                "requires_upgrade": requires_upgrade and not await self._has_pro(user_id),
+                "credits_remaining": balance.total_available,
+                "credits_per_song": WEB_MUSIC_CREDITS_PER_SONG,
+                "has_subscription": balance.has_subscription,
+                "can_download": can_download,
+                "daily_free_remaining": balance.daily_free_remaining,
+                "daily_free_limit": balance.daily_free_limit,
+            },
+        )
+
+    async def _is_paid_queue_user(self, user_id: UUID) -> bool:
+        if self._credit_service is not None:
+            try:
+                balance = await self._credit_service.get_detailed_balance(str(user_id))
+                if bool(getattr(balance, "has_subscription", False)):
+                    return True
+            except Exception:
+                logger.debug("Paid-queue balance check failed for %s", user_id, exc_info=True)
+        return await self._has_pro(user_id)
+
+    async def _queue_cap_for_user(self, user_id: UUID) -> int:
+        from platform_api.services.job_types import (
+            WEB_MUSIC_GENERATE_QUEUE_CAP_FREE,
+            WEB_MUSIC_GENERATE_QUEUE_CAP_PAID,
+        )
+
+        if await self._is_paid_queue_user(user_id):
+            return WEB_MUSIC_GENERATE_QUEUE_CAP_PAID
+        return WEB_MUSIC_GENERATE_QUEUE_CAP_FREE
+
+    async def _active_generate_queue_count(self, user_id: UUID) -> int:
+        from platform_api.dependencies import get_job_queue_repo
+        from platform_api.services.job_types import JOB_WEB_MUSIC_GENERATE
+
+        try:
+            return await get_job_queue_repo().count_active_for_user(
+                user_id, JOB_WEB_MUSIC_GENERATE
+            )
+        except Exception:
+            logger.debug("Generate queue count failed for %s", user_id, exc_info=True)
+            return 0
+
+    async def _with_queue_fields(self, user_id: UUID, quota: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(quota)
+        payload["queue_limit"] = await self._queue_cap_for_user(user_id)
+        payload["queue_used"] = await self._active_generate_queue_count(user_id)
+        return payload
 
     async def _has_pro(self, user_id: UUID) -> bool:
         row = await self._pool.fetchrow(
@@ -633,6 +677,15 @@ class WebMusicService:
                 negative_tags=safe_negative,
             )
 
+        queue_limit = await self._queue_cap_for_user(user_id)
+        queue_used = await self._active_generate_queue_count(user_id)
+        if queue_used >= queue_limit:
+            raise RateLimitedError(
+                f"You already have {queue_used} songs waiting. Wait until one starts at Suno.",
+                retry_after=5,
+                details={"queue_used": queue_used, "queue_limit": queue_limit},
+            )
+
         reservation_id = str(uuid4())
         # Charge only after title/blocklist checks so 422s do not burn daily credits.
         quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
@@ -676,63 +729,176 @@ class WebMusicService:
             else None
         )
         try:
-            suno_request = SunoRequest(
+            task_id = await self._enqueue_web_generate(
+                user_id,
+                reservation_id=reservation_id,
                 model=normalized_model,
                 title=safe_title,
                 lyrics=safe_lyrics if not instrumental else (safe_lyrics or "Instrumental"),
                 style=safe_style,
                 instrumental=instrumental,
                 negative_tags=safe_negative or None,
-                vocal_gender=stored_vocal_gender if stored_vocal_gender in ("m", "f") else None,
+                vocal_gender=stored_vocal_gender,
                 style_weight=stored_style_weight,
                 weirdness_constraint=stored_weirdness,
                 audio_weight=stored_audio_weight,
-            )
-            
-            task_id = await self._generation.submit_suno(
-                str(user_id),
-                suno_request,
-                skip_pricing=True,
-                source=SUNO_TASK_SOURCE_WEB_MUSIC,
+                workspace_id=workspace_id,
             )
         except Exception:
             await self._release_daily_slot(user_id, reference_id=reservation_id)
             raise
 
         await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
+        resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
+        return {
+            "task_id": str(task_id),
+            "status": "QUEUED",
+            "title": safe_title,
+            "style": safe_style,
+            "quota": await self._with_queue_fields(user_id, quota),
+            "workspace_id": str(resolved_workspace_id),
+        }
 
+    async def _enqueue_web_generate(
+        self,
+        user_id: UUID,
+        *,
+        reservation_id: str,
+        model: str,
+        title: str,
+        lyrics: str,
+        style: str,
+        instrumental: bool,
+        negative_tags: str | None,
+        vocal_gender: str | None,
+        style_weight: float,
+        weirdness_constraint: float,
+        audio_weight: float,
+        workspace_id: UUID | None,
+    ) -> UUID:
+        from platform_api.dependencies import get_job_queue_repo
+        from platform_api.services.generation_service import compute_suno_request_hash
+        from platform_api.services.job_types import (
+            JOB_WEB_MUSIC_GENERATE,
+            PRI_WEB_MUSIC_FREE,
+            PRI_WEB_MUSIC_PAID,
+        )
+
+        task_id = uuid4()
+        request_hash = compute_suno_request_hash(
+            model=model,
+            title=title,
+            lyrics=lyrics,
+            style=style,
+            instrumental=instrumental,
+        )
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
         await self._pool.execute(
             """
-            UPDATE suno_tasks
-            SET workspace_id = $2,
-                negative_tags = $5,
-                vocal_gender = $6,
-                style_weight = $7,
-                weirdness_constraint = $8,
-                audio_weight = $9,
-                updated_at = NOW()
-            WHERE id = $1 AND user_id = $3 AND source = $4
+            INSERT INTO suno_tasks (
+                id, user_id, request_hash, model, title, lyrics, style,
+                instrumental, external_task_id, status, source, workspace_id,
+                negative_tags, vocal_gender, style_weight, weirdness_constraint,
+                audio_weight, created_at, updated_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7,
+                $8, NULL, $9, $10, $11,
+                $12, $13, $14, $15,
+                $16, NOW(), NOW()
+            )
             """,
-            UUID(str(task_id)),
+            task_id,
+            user_id,
+            request_hash,
+            model,
+            title,
+            lyrics,
+            style,
+            instrumental,
+            TaskStatus.PENDING.value,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
             resolved_workspace_id,
+            str(negative_tags).strip() if negative_tags else None,
+            vocal_gender,
+            style_weight,
+            weirdness_constraint,
+            audio_weight,
+        )
+        paid = await self._is_paid_queue_user(user_id)
+        await get_job_queue_repo().enqueue(
+            user_id=user_id,
+            job_type=JOB_WEB_MUSIC_GENERATE,
+            payload={
+                "user_id": str(user_id),
+                "task_id": str(task_id),
+                "reservation_id": reservation_id,
+            },
+            priority=PRI_WEB_MUSIC_PAID if paid else PRI_WEB_MUSIC_FREE,
+            max_attempts=3,
+        )
+        return task_id
+
+    async def fulfill_queued_generate(self, user_id: UUID, task_id: UUID, *, reservation_id: str) -> None:
+        """Send one queued web song to Suno. Refunds if Suno never accepts it."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, title, lyrics, style, model, instrumental, external_task_id,
+                   negative_tags, vocal_gender, style_weight, weirdness_constraint,
+                   audio_weight
+            FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
             user_id,
             SUNO_TASK_SOURCE_WEB_MUSIC,
-            str(negative_tags).strip() if negative_tags else None,
-            stored_vocal_gender,
-            stored_style_weight,
-            stored_weirdness,
-            stored_audio_weight,
         )
+        if row is None:
+            raise NotFoundError("Queued song was not found.")
+        if str(row["external_task_id"] or "").strip():
+            return
 
-        return {
-            "task_id": str(task_id),
-            "status": "PENDING",
-            "title": safe_title,
-            "style": safe_style,
-            "quota": quota,
-            "workspace_id": str(resolved_workspace_id),
-        }
+        request = SunoRequest(
+            model=str(row["model"] or "V5_5"),
+            title=str(row["title"] or ""),
+            lyrics=str(row["lyrics"] or "Instrumental"),
+            style=str(row["style"] or "Contemporary pop"),
+            instrumental=bool(row["instrumental"]),
+            negative_tags=str(row["negative_tags"] or "").strip() or None,
+            vocal_gender=str(row["vocal_gender"] or "").strip() or None,
+            style_weight=row["style_weight"],
+            weirdness_constraint=row["weirdness_constraint"],
+            audio_weight=row["audio_weight"],
+        )
+        try:
+            external_task_id = await self._generation.submit_suno_external_id(request)
+        except Exception:
+            await self._release_daily_slot(user_id, reference_id=reservation_id)
+            await self._pool.execute(
+                """
+                UPDATE suno_tasks
+                SET status = $3, error_message = $4, updated_at = NOW()
+                WHERE id = $1 AND user_id = $2
+                """,
+                task_id,
+                user_id,
+                TaskStatus.FAILED.value,
+                "Could not start this song at Suno. Credits were refunded.",
+            )
+            raise
+
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET external_task_id = $3, status = $4, error_message = NULL, updated_at = NOW()
+            WHERE id = $1 AND user_id = $2
+            """,
+            task_id,
+            user_id,
+            external_task_id,
+            TaskStatus.PENDING.value,
+        )
+        await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
 
     async def _resolve_workspace_id(
         self,

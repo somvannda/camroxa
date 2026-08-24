@@ -2900,6 +2900,25 @@ class GenerationService:
         )
         return str(task.id)
 
+    async def submit_suno_external_id(self, request: SunoRequest) -> str:
+        """Forward a prepared request to Suno and return only the external task id."""
+        suno_response = await self._call_suno(
+            model=request.model,
+            title=request.title,
+            lyrics=request.lyrics,
+            style=request.style,
+            instrumental=request.instrumental,
+            callback_url=None,
+            negative_tags=request.negative_tags,
+            vocal_gender=request.vocal_gender,
+            style_weight=request.style_weight,
+            weirdness_constraint=request.weirdness_constraint,
+            audio_weight=request.audio_weight,
+        )
+        from platform_api.clients.suno_client import extract_suno_generate_task_id
+
+        return extract_suno_generate_task_id(suno_response)
+
     # ------------------------------------------------------------------
     # submit_image (Requirements 12.1, 12.2, 12.5, 12.6, 7.2, 7.6)
     # ------------------------------------------------------------------

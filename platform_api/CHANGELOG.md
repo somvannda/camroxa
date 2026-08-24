@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- `POST /web-music/generate` enqueues a global paid-first Suno job (`web_music_generate`) instead of calling Suno on the HTTP worker. Paid cap 20, free cap 2. Desktop `suno_submit` is unchanged and still higher priority. See `docs/changelog/2026-08-23-web-create-global-queue.md`.
+
 ### Security
 
 - Artist royalty stream accounting: server-validated heartbeats, self-play exclusion, fraud scoring, and catalog geo parity for `/public/streaming`. See `docs/changelog/2026-08-20-artist-royalty-program.md`.

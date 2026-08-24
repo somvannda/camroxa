@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Create stays locked for **5 seconds**, then you can enqueue another song into the global paid-first Suno queue (20 paid / 2 free). Songs appear as Queued/Waiting; Suno starts them one by one. See `docs/changelog/2026-08-23-web-create-global-queue.md`.
+
 ### Added
 
 - Create playlist control confirms with a tick animation, keeps the menu open for more playlists, and shows playlist name chips on the track. See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.

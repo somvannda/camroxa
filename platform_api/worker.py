@@ -27,6 +27,7 @@ from platform_api.services.job_types import (
     JOB_RUN_IMAGE_JOBS,
     JOB_RUN_YOUTUBE_UPLOADS,
     JOB_SUNO_SUBMIT,
+    JOB_WEB_MUSIC_GENERATE,
     PRI_SUNO_SUBMIT,
     resolve_worker_job_types,
 )
@@ -162,6 +163,61 @@ async def _handle_draft(job: Any, payload: dict[str, Any], *, submit_suno_inline
     )
 
 
+WEB_SUNO_LOCK_KEY = "web_music:suno_submit"
+WEB_SUNO_LOCK_TTL_SECONDS = 180
+WEB_SUNO_LOCK_WAIT_SECONDS = 90
+
+
+async def _acquire_web_suno_lock(redis: Any) -> str | None:
+    if redis is None:
+        return None
+    token = f"{_worker_id()}:{id(object())}"
+    deadline = asyncio.get_running_loop().time() + WEB_SUNO_LOCK_WAIT_SECONDS
+    while asyncio.get_running_loop().time() < deadline:
+        acquired = await redis.set(WEB_SUNO_LOCK_KEY, token, nx=True, ex=WEB_SUNO_LOCK_TTL_SECONDS)
+        if acquired:
+            return token
+        await asyncio.sleep(0.5)
+    raise TimeoutError("Timed out waiting for the web Suno submit lock.")
+
+
+async def _release_web_suno_lock(redis: Any, token: str | None) -> None:
+    if redis is None or not token:
+        return
+    current = await redis.get(WEB_SUNO_LOCK_KEY)
+    if current in {token, token.encode() if isinstance(token, str) else token}:
+        await redis.delete(WEB_SUNO_LOCK_KEY)
+
+
+async def _handle_web_music_generate(job: Any, payload: dict[str, Any]) -> None:
+    from platform_api.dependencies import get_db_pool, get_generation_service, get_redis, get_v2_credit_service
+    from platform_api.services.web_music_service import WebMusicService
+
+    user_id = UUID(str(payload.get("user_id") or job.user_id))
+    task_id = UUID(str(payload.get("task_id") or job.song_id or ""))
+    reservation_id = str(payload.get("reservation_id") or task_id)
+    redis = None
+    try:
+        redis = get_redis()
+    except Exception:
+        redis = None
+    lock_token = await _acquire_web_suno_lock(redis)
+    try:
+        service = WebMusicService(
+            get_db_pool(),
+            get_generation_service(),
+            credit_service=get_v2_credit_service(),
+            redis=redis,
+        )
+        await service.fulfill_queued_generate(
+            user_id,
+            task_id,
+            reservation_id=reservation_id,
+        )
+    finally:
+        await _release_web_suno_lock(redis, lock_token)
+
+
 async def _handle_suno(job: Any, payload: dict[str, Any]) -> None:
     from platform_api.dependencies import get_batch_service
 
@@ -228,6 +284,10 @@ async def _handle_job(job: Any) -> None:
 
     if job.job_type in {JOB_SUNO_SUBMIT, JOB_RETRY_SONG_SUNO}:
         await _handle_suno(job, payload)
+        return
+
+    if job.job_type == JOB_WEB_MUSIC_GENERATE:
+        await _handle_web_music_generate(job, payload)
         return
 
     if job.job_type == JOB_RUN_IMAGE_JOBS:

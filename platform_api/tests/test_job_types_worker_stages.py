@@ -9,6 +9,7 @@ from platform_api.services.job_types import (
     JOB_EXECUTE_BATCH,
     JOB_RUN_IMAGE_JOBS,
     JOB_SUNO_SUBMIT,
+    JOB_WEB_MUSIC_GENERATE,
     PRI_EXECUTE_BATCH,
     STAGE_DRAFT_TYPES,
     STAGE_IMAGES_TYPES,
@@ -38,6 +39,7 @@ def test_resolve_worker_job_types_presets() -> None:
     assert JOB_EXECUTE_BATCH in resolve_worker_job_types("draft")
     assert JOB_DRAFT in resolve_worker_job_types("draft")
     assert JOB_SUNO_SUBMIT in resolve_worker_job_types("suno")
+    assert JOB_WEB_MUSIC_GENERATE in resolve_worker_job_types("suno")
     assert JOB_RUN_IMAGE_JOBS in resolve_worker_job_types("images")
 
 

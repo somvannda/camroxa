@@ -7,6 +7,7 @@ import os
 JOB_EXECUTE_BATCH = "execute_batch"
 JOB_DRAFT = "draft"
 JOB_SUNO_SUBMIT = "suno_submit"
+JOB_WEB_MUSIC_GENERATE = "web_music_generate"
 JOB_RETRY_SONG_DRAFT = "retry_song_draft"
 JOB_RETRY_SONG_SUNO = "retry_song_suno"
 JOB_RUN_IMAGE_JOBS = "run_image_jobs"
@@ -17,6 +18,7 @@ WORKER_JOB_TYPES = frozenset(
         JOB_EXECUTE_BATCH,
         JOB_DRAFT,
         JOB_SUNO_SUBMIT,
+        JOB_WEB_MUSIC_GENERATE,
         JOB_RETRY_SONG_DRAFT,
         JOB_RETRY_SONG_SUNO,
         JOB_RUN_IMAGE_JOBS,
@@ -29,8 +31,13 @@ WORKER_JOB_TYPES = frozenset(
 PRI_EXECUTE_BATCH = 25
 PRI_RETRY = 20
 PRI_SUNO_SUBMIT = 18
+PRI_WEB_MUSIC_PAID = 16
+PRI_WEB_MUSIC_FREE = 8
 PRI_RUN_IMAGE_JOBS = 12
 PRI_YOUTUBE_UPLOADS = 6
+
+WEB_MUSIC_GENERATE_QUEUE_CAP_PAID = 20
+WEB_MUSIC_GENERATE_QUEUE_CAP_FREE = 2
 
 
 def draft_priority_for_index(batch_index: int) -> int:
@@ -40,7 +47,7 @@ def draft_priority_for_index(batch_index: int) -> int:
 
 # Stage shards for systemd multi-worker deploy (CAMXORA_WORKER_JOB_TYPES).
 STAGE_DRAFT_TYPES = frozenset({JOB_EXECUTE_BATCH, JOB_DRAFT, JOB_RETRY_SONG_DRAFT})
-STAGE_SUNO_TYPES = frozenset({JOB_SUNO_SUBMIT, JOB_RETRY_SONG_SUNO})
+STAGE_SUNO_TYPES = frozenset({JOB_SUNO_SUBMIT, JOB_RETRY_SONG_SUNO, JOB_WEB_MUSIC_GENERATE})
 STAGE_IMAGES_TYPES = frozenset({JOB_RUN_IMAGE_JOBS, JOB_RUN_YOUTUBE_UPLOADS})
 
 STAGE_PRESETS: dict[str, frozenset[str]] = {

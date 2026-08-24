@@ -37,6 +37,9 @@ DEFAULT_RATE_WINDOW_SECONDS = 60
 SUNO_RATE_LIMIT = 20
 SUNO_RATE_WINDOW_SECONDS = 10
 
+WEB_MUSIC_GENERATE_RATE_LIMIT = 40
+WEB_MUSIC_GENERATE_RATE_WINDOW_SECONDS = 60
+
 WEB_MUSIC_DOWNLOAD_RATE_LIMIT = 30
 WEB_MUSIC_DOWNLOAD_RATE_WINDOW_SECONDS = 60
 
@@ -226,6 +229,11 @@ async def get_rate_limit_config(
             max_requests=SUNO_RATE_LIMIT,
             window_seconds=SUNO_RATE_WINDOW_SECONDS,
         )
+    elif endpoint_type == "web_music_generate":
+        config = RateLimitConfig(
+            max_requests=WEB_MUSIC_GENERATE_RATE_LIMIT,
+            window_seconds=WEB_MUSIC_GENERATE_RATE_WINDOW_SECONDS,
+        )
     elif endpoint_type == "web_music_download":
         config = RateLimitConfig(
             max_requests=WEB_MUSIC_DOWNLOAD_RATE_LIMIT,
@@ -296,6 +304,12 @@ def resolve_endpoint_type(path: str) -> str:
 
     if normalized.startswith("generation/suno") or normalized.endswith("retry-suno"):
         return "suno"
+
+    if normalized.startswith("web-music/generate") and not (
+        normalized.startswith("web-music/generate-draft")
+        or normalized.startswith("web-music/generate-styles")
+    ):
+        return "web_music_generate"
 
     if (
         normalized.startswith("generation/image")
