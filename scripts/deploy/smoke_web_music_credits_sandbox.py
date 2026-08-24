@@ -29,6 +29,8 @@ def main() -> int:
     ok = True
     checks = [
         ("GET", "/health", None, 200),
+        ("GET", "/api/v2/credits/balance", None, 401),
+        ("GET", "/api/v1/v2/credits/balance", None, 401),
         ("POST", "/api/v2/credits/consume", {"amount": 1, "reason": "test"}, 404),
         (
             "GET",

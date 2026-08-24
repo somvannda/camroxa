@@ -214,6 +214,20 @@ class TestResolveEndpointType:
 
     def test_web_music_checkout_paths(self) -> None:
         assert (
+            resolve_endpoint_type("/api/v2/subscriptions/purchase")
+            == "web_music_checkout"
+        )
+        assert resolve_endpoint_type("/api/v2/topups/purchase") == "web_music_checkout"
+        assert (
+            resolve_endpoint_type("/api/v2/subscriptions/payments/pay_abc")
+            == "web_music_checkout_status"
+        )
+        assert (
+            resolve_endpoint_type("/api/v2/topups/payments/pay_abc")
+            == "web_music_checkout_status"
+        )
+        # Legacy nested prefix (rewritten at the edge, still classified if seen raw).
+        assert (
             resolve_endpoint_type("/api/v1/v2/subscriptions/purchase")
             == "web_music_checkout"
         )
