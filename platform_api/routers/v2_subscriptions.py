@@ -21,7 +21,7 @@ from platform_api.services.v2.payment_security import sanitize_music_web_return_
 from platform_api.services.v2.subscription_service import SubscriptionService
 from platform_api.exceptions import NotFoundError, ValidationError
 
-router = APIRouter(prefix="/subscriptions", tags=["subscriptions-v2"])
+router = APIRouter(prefix="/v2/subscriptions", tags=["subscriptions-v2"])
 
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
@@ -73,6 +73,7 @@ class PlanResponse(BaseModel):
     price_cents: int
     billing_cycle: str
     monthly_credits: int
+    daily_credits: int = 0
     features: list[str]
     display_order: int
     is_public: bool
@@ -156,9 +157,10 @@ async def list_plans(service: SubscriptionServiceDep) -> PlansListResponse:
         if features_dict.get("topup"):
             result.append("Purchase additional credit packs")
         result.extend([
-            "Commercial use license",
-            "MP3 and WAV downloads",
-            "Priority support"
+            "Web Create",
+            "Desktop studio",
+            "Dual channels",
+            "Top-up packs",
         ])
         return result
     
@@ -170,6 +172,7 @@ async def list_plans(service: SubscriptionServiceDep) -> PlansListResponse:
                 price_cents=plan.price_cents,
                 billing_cycle="yearly" if plan.billing_cycle_days >= 365 else "monthly",
                 monthly_credits=plan.monthly_credits,
+                daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
                 features=format_features(plan.features or {}),
                 display_order=plan.display_order,
                 is_public=plan.is_public

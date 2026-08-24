@@ -284,6 +284,8 @@ class UsageSummaryResponse(BaseModel):
     subscription_payment_count: int = 0
     credit_pack_revenue_cents: int = 0
     credit_pack_payment_count: int = 0
+    grant_issued: float = 0
+    grant_issued_events: int = 0
     by_operation: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -1107,6 +1109,8 @@ async def get_usage(
         credit_pack_revenue_cents=int(
             sub_cash.get("credit_pack_revenue_cents") or 0
         ),
+        grant_issued=units_to_credits(int(summary_raw.get("grant_issued_units") or 0)),
+        grant_issued_events=int(summary_raw.get("grant_issued_events") or 0),
         credit_pack_payment_count=int(
             sub_cash.get("credit_pack_payment_count") or 0
         ),

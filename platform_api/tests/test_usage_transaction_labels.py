@@ -6,6 +6,7 @@ from platform_api.services.usage_transaction_labels import (
     build_draft_usage_metadata,
     build_legacy_metadata_backfill,
     enrich_transaction_for_api,
+    extract_usage_fields,
     infer_purpose,
 )
 
@@ -160,3 +161,30 @@ def test_build_legacy_metadata_backfill_for_shared_album_song() -> None:
     assert len(metadata["line_items"]) == 2
     assert metadata["batch_id"] == "batch-1"
     assert metadata["legacy_backfill"] is True
+
+
+def test_extract_v3_music_from_reason_and_op() -> None:
+    from_reason = extract_usage_fields("v3_music", {"billing": "wallet", "source": "v3"})
+    assert from_reason["operation"] == "music"
+    from_op = extract_usage_fields(
+        "v3_music",
+        {"billing": "wallet", "op": "music", "source": "v3"},
+    )
+    assert from_op["operation"] == "music"
+    refund = extract_usage_fields("v3_refund_lyric", {"source": "v3"})
+    assert refund["operation"] == "lyric"
+
+
+def test_enrich_v3_charge_uses_music_label() -> None:
+    enriched = enrich_transaction_for_api(
+        {
+            "id": "tx-v3",
+            "user_id": "user-1",
+            "amount": 100_000,
+            "direction": "debit",
+            "reason": "v3_music",
+            "metadata": {"billing": "wallet", "source": "v3", "op": "music"},
+        }
+    )
+    assert enriched["operation"] == "music"
+    assert enriched["purpose"] == "Music generation"

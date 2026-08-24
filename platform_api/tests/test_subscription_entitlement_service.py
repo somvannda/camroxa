@@ -1,4 +1,4 @@
-"""Tests for profile add-on entitlement validation."""
+﻿"""Tests for profile add-on entitlement validation."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from platform_api.models.domain import Plan
 from platform_api.services.subscription_entitlement_service import (
     effective_daily_limit_for_operation,
     effective_monthly_limit_for_operation,
+    resolve_effective_entitlements,
     validate_profile_addon_reduction,
 )
 
@@ -20,6 +21,8 @@ def _plan(profile_allowance: int = 2) -> Plan:
         profile_allowance=profile_allowance,
         is_active=True,
         monthly_song_limit=300,
+        monthly_image_limit=60,
+        monthly_draft_limit=630,
         monthly_video_limit=300,
         monthly_merge_limit=30,
         daily_song_limit_per_channel=10,
@@ -72,27 +75,28 @@ def test_active_reduction_allowed_when_profiles_fit_quota() -> None:
     )
 
 
-def test_active_addon_scales_account_wide_daily_video_merge() -> None:
+def test_active_addon_does_not_scale_daily_meters() -> None:
     plan = _plan()
-    assert effective_daily_limit_for_operation(plan, 0, "video") == 10
-    assert effective_daily_limit_for_operation(plan, 0, "video_merge") == 1
-    assert effective_daily_limit_for_operation(plan, 2, "video") == 20
-    assert effective_daily_limit_for_operation(plan, 2, "video_merge") == 2
-    assert effective_daily_limit_for_operation(plan, 4, "video") == 30
-    assert effective_daily_limit_for_operation(plan, 4, "video_merge") == 3
-    assert effective_daily_limit_for_operation(plan, 8, "video") == 50
-    assert effective_daily_limit_for_operation(plan, 8, "video_merge") == 5
+    for slots in (0, 2, 4, 8):
+        assert effective_daily_limit_for_operation(plan, slots, "video") == 10
+        assert effective_daily_limit_for_operation(plan, slots, "video_merge") == 1
+        assert effective_daily_limit_for_operation(plan, slots, "music") == 10
+        assert effective_daily_limit_for_operation(plan, slots, "background_image") == 2
+        assert effective_daily_limit_for_operation(plan, slots, "draft") == 21
 
 
-def test_active_addon_does_not_scale_per_channel_dailies() -> None:
+def test_active_addon_does_not_scale_period_meters() -> None:
     plan = _plan()
-    assert effective_daily_limit_for_operation(plan, 2, "music") == 10
-    assert effective_daily_limit_for_operation(plan, 2, "background_image") == 2
-    assert effective_daily_limit_for_operation(plan, 2, "draft") == 21
-
-
-def test_active_addon_scales_period_video_merge() -> None:
-    plan = _plan()
-    assert effective_monthly_limit_for_operation(plan, 2, "video") == 600
-    assert effective_monthly_limit_for_operation(plan, 2, "video_merge") == 60
-
+    for slots in (0, 2, 4, 8):
+        assert effective_monthly_limit_for_operation(plan, slots, "music") == plan.monthly_song_limit
+        assert effective_monthly_limit_for_operation(plan, slots, "images") == plan.monthly_image_limit
+        assert effective_monthly_limit_for_operation(plan, slots, "draft") == plan.monthly_draft_limit
+        assert effective_monthly_limit_for_operation(plan, slots, "video") == plan.monthly_video_limit
+        assert effective_monthly_limit_for_operation(plan, slots, "video_merge") == plan.monthly_merge_limit
+    entitlements = resolve_effective_entitlements(plan, addon_slots=4)
+    assert entitlements.monthly_song_limit == plan.monthly_song_limit
+    assert entitlements.monthly_image_limit == plan.monthly_image_limit
+    assert entitlements.monthly_draft_limit == plan.monthly_draft_limit
+    assert entitlements.monthly_video_limit == plan.monthly_video_limit
+    assert entitlements.monthly_merge_limit == plan.monthly_merge_limit
+    assert entitlements.quota_channels == 6

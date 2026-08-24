@@ -100,7 +100,7 @@ export function FailAbsorbSection() {
         </CardTitle>
         <CardDescription>
           Maximum platform-absorbed failed generations per user per billing day. When a plan-covered
-          generation fails, the platform refunds quota and counts it against this budget. After the
+          generation fails, the platform refunds credits and counts it against this budget. After the
           cap, the user is blocked until tomorrow (or an admin resets their counter on the user
           detail page).
         </CardDescription>

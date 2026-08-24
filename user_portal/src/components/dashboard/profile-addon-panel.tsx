@@ -88,10 +88,9 @@ export function ProfileAddonPanel({ user, profileCount }: ProfileAddonPanelProps
           <div className="mt-2 font-display text-xl font-semibold text-white">+2 channel bundles</div>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300/72">
             {profileCount} profile{profileCount === 1 ? "" : "s"} created ·{" "}
-            {quotaChannels ?? "—"} active quota channel{(quotaChannels ?? 0) === 1 ? "" : "s"} ·{" "}
-            {creationLimit ?? "—"} creation limit
-            {pending > 0 ? ` · ${pending} pending onboarding` : ""}. Quotas increase only after you
-            complete onboarding for new profiles.
+            cap {creationLimit ?? quotaChannels ?? "—"}
+            {pending > 0 ? ` · ${pending} pending onboarding` : ""}. Buying extra pairs does not
+            multiply credits.
           </p>
         </div>
         {pending >= 2 ? (
@@ -121,7 +120,7 @@ export function ProfileAddonPanel({ user, profileCount }: ProfileAddonPanelProps
         <div className="mt-4 text-sm text-slate-300/72">
           Next bundle: {quote.current_channels} → {quote.new_total_channels} channels · checkout{" "}
           {formatUsd(quote.monthly_addon_cents)} (aligned to your billing term). Pending slots let
-          you create profiles only — quotas increase after onboarding completes.
+          you create profiles only — credits do not multiply and song meters do not scale.
         </div>
       ) : !canBuyMore && pending === 0 ? (
         <div className="mt-4 text-sm text-slate-400">You have reached the 10-channel account maximum.</div>

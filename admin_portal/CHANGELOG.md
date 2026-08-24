@@ -9,8 +9,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Usage operation labels include Web leftover / credit pack. See `docs/changelog/2026-08-23-wallet-api-audit-e2e.md`.
+- `/users` drops Tag; Plan and Credits come from the unified catalog and wallet. `/licenses` lists desktop + CutLuy web subscribers. See `docs/changelog/2026-08-23-admin-users-licenses-wallet.md`.
+- `/plans` is one table of active credits-only rows with per-op amount columns. ≈ Songs is display-only. Leftover channel SKUs stay collapsed. Live-generate-path banner removed. See `docs/changelog/2026-08-23-admin-plans-table.md`.
+- `/plans` is grouped Public / Hidden / Inactive and describes the live v3 generate path. Usage and Finance label v3 charges and show grant issued. Settings Music Web points at the Free plan row. See `docs/changelog/2026-08-23-admin-v3-plans-and-reports.md`.
+- Credits-only recast: `/users/:id` wallet + grant remaining (quota table retired); `/usage` / `/finance` / `/user-spent` drop meters; copy-only on licenses, pipeline, fail-absorb.
+
+
 ### Added
 
+- **Plans** has a Credits-only billing card: period grants, per-op amounts, public/hidden,
+  and a default-off **Debit Generate via v3** flag. See
+  `docs/changelog/2026-08-22-credits-only-admin-plans-and-generate-flag.md`.
 - **Playback Audit** lists play and download events and can backfill leftover plaintext packages. Catalog tracks show `package_status`. Admin user-song play/download decrypts encrypted originals (no Suno URL in JSON). See `docs/changelog/2026-08-20-protected-playback.md`.
 - User detail shows Camxora Music generations in the music.camxora.com
   workspace layout (list, prompt/settings, in-page player). See

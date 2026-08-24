@@ -607,6 +607,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(v2_topups.router, prefix=settings.api_v2_prefix)
     app.include_router(webhooks_cutluy.router, prefix=settings.api_v1_prefix)
 
+    from platform_api.routers import v3_billing
+
+    app.include_router(v3_billing.docs_router, prefix=settings.api_v3_prefix)
+    app.include_router(v3_billing.router, prefix=settings.api_v3_prefix)
+
+    @app.get(f"{settings.api_v3_prefix}/openapi.json", include_in_schema=False)
+    async def v3_openapi() -> dict:
+        spec = app.openapi()
+        paths = {
+            path: item
+            for path, item in spec.get("paths", {}).items()
+            if str(path).startswith(settings.api_v3_prefix)
+        }
+        return {**spec, "info": {**spec.get("info", {}), "title": "Credits-only API v3"}, "paths": paths}
+
     return app
 
 

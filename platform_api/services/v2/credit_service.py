@@ -75,6 +75,21 @@ class CreditService:
         self._db = db
 
     async def daily_free_limit(self) -> int:
+        plan_row = await self._db.fetch_one(
+            """
+            SELECT daily_credits
+            FROM plans
+            WHERE lower(name) = 'free'
+              AND is_active = true
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """
+        )
+        if plan_row is not None:
+            try:
+                return max(0, int(_row_value(plan_row, "daily_credits") or 0))
+            except (TypeError, ValueError):
+                pass
         row = await self._db.fetch_one(
             "SELECT value FROM system_settings WHERE key = $1",
             WEB_MUSIC_FREE_DAILY_CREDITS_KEY,

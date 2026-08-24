@@ -110,6 +110,8 @@ class PublicPlanResponse(BaseModel):
     daily_video_limit: int = 10
     daily_merge_limit: int = 1
     included_wallet_credits: float = 0
+    monthly_credits: int = 0
+    daily_credits: int = 0
     offer: PublicPlanOfferResponse | None = None
 
 
@@ -409,12 +411,17 @@ def _plan_to_response(plan: Any, *, subscriber_count: int = 0) -> PlanResponse:
 async def list_public_plans(
     plan_repo: PlanRepoDep,
 ) -> list[PublicPlanResponse]:
-    """Return active plans and active launch offers for website/user flows."""
+    """Return active **and public** plans plus launch offers for website/user flows.
+
+    Hidden rows (``is_public=false``) stay assignable in Admin / licenses.
+    """
     plans = await plan_repo.get_all()
     public_plans = [
         plan
         for plan in subscription_plans(plans)
-        if plan.is_active and not (plan.name or "").strip().lower() == "trial"
+        if plan.is_active
+        and bool(getattr(plan, "is_public", False))
+        and not (plan.name or "").strip().lower() == "trial"
     ]
     if not public_plans:
         return []
@@ -508,9 +515,9 @@ async def get_public_profile_addon_quote(
             details={"profile_allowance": 2, "billing_cycle_days": 30},
         )
     addon_plan = find_profile_addon_plan(all_plans, addon_channels)
-    if addon_plan is None:
+    if addon_plan is None or not bool(getattr(addon_plan, "is_public", False)):
         raise NotFoundError(
-            message=f"No active profile add-on plan found for +{addon_channels} channels.",
+            message=f"No public profile add-on plan found for +{addon_channels} channels.",
             details={"addon_channels": addon_channels},
         )
 
@@ -1032,6 +1039,8 @@ def _public_plan_to_response(
         daily_video_limit=int(getattr(plan, "daily_video_limit", 10) or 10),
         daily_merge_limit=int(getattr(plan, "daily_merge_limit", 1) or 1),
         included_wallet_credits=float(getattr(plan, "included_wallet_credits", 0) or 0),
+        monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
+        daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
         offer=offer,
     )
 

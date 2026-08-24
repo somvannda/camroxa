@@ -42,7 +42,9 @@ export default function CreditBalanceCard() {
   }
 
   const totalSongs = creditsToSongs(balance.total_credits);
-  const monthlySongs = creditsToSongs(balance.monthly_credits - balance.monthly_credits_used);
+  const grantLeft =
+    balance.grant_remaining ?? Math.max(0, balance.monthly_credits - balance.monthly_credits_used);
+  const monthlySongs = creditsToSongs(grantLeft);
   const topupSongs = creditsToSongs(balance.topup_credits);
   const dailyRemaining = Math.max(0, balance.daily_free_limit - balance.daily_free_used);
   const isFreePlan = !balance.has_subscription;
@@ -58,7 +60,9 @@ export default function CreditBalanceCard() {
             <div>
               <h2 className="font-display text-xl font-semibold text-white">Credit Balance</h2>
               <p className="text-xs text-slate-400">
-                {isFreePlan ? 'Daily free credits for music creation' : 'Available for music creation'}
+                {isFreePlan
+                  ? 'Daily free credits for music creation'
+                  : 'Same wallet as desktop. CutLuy leftover still counts until one-wallet.'}
               </p>
             </div>
           </div>
@@ -91,11 +95,12 @@ export default function CreditBalanceCard() {
               <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-4 h-4 text-purple-400" />
-                  <span className="text-xs text-purple-300 font-medium">Monthly</span>
+                  <span className="text-xs text-purple-300 font-medium">Grant left</span>
                 </div>
                 <div className="text-2xl font-bold text-white">{monthlySongs}</div>
                 <div className="text-xs text-slate-400 mt-1">
-                  {balance.monthly_credits - balance.monthly_credits_used} / {balance.monthly_credits} credits
+                  {(balance.grant_remaining ?? Math.max(0, balance.monthly_credits - balance.monthly_credits_used)).toLocaleString()}
+                  {balance.monthly_credits ? ` / ${balance.monthly_credits.toLocaleString()}` : ''} credits
                 </div>
                 <div className="text-xs text-slate-500 mt-1">Resets monthly</div>
               </div>

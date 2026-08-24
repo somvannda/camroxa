@@ -23,6 +23,22 @@ _REASON_LABELS: dict[str, str] = {
     "credit_pack_purchase": "Credit pack purchase",
     "lifetime_bonus": "Lifetime plan bonus credits",
     "admin_adjustment": "Admin wallet adjustment",
+    "v3_music": "Music generation",
+    "v3_lyric": "Lyrics generation",
+    "v3_title": "Title generation",
+    "v3_album": "Album name generation",
+    "v3_style": "Style assist",
+    "v3_image": "Image generation",
+    "v3_video": "Video export",
+    "v3_merge": "Video merge",
+    "v3_period_grant": "Period grant",
+    "v3_daily_grant": "Daily grant",
+    "v3_grant_expire": "Grant expired",
+    "v3_pack": "Credit pack",
+    "v3_web_remaining": "Web leftover",
+    "v3_refund_music": "Refund: music",
+    "v3_refund_lyric": "Refund: lyrics",
+    "v3_refund_style": "Refund: style",
 }
 
 _OPERATION_LABELS: dict[str, str] = {
@@ -46,6 +62,13 @@ _OPERATION_LABELS: dict[str, str] = {
     "web_music_lyrics": "Music lyric generation",
     "web_music_style": "Music style tag generation",
     "text_generation": "Text generation",
+    "style": "Style assist",
+    "period_grant": "Period grant",
+    "daily_grant": "Daily grant",
+    "grant_expire": "Grant expired",
+    "quota_conversion": "Leftover conversion",
+    "web_remaining": "Web leftover",
+    "pack": "Credit pack",
 }
 
 
@@ -163,7 +186,7 @@ def extract_usage_fields(
     meta = _normalize_metadata(metadata)
     provider = str(meta.get("provider") or "").strip() or None
     model = str(meta.get("model") or meta.get("sub_model") or "").strip() or None
-    operation = str(meta.get("operation") or "").strip() or None
+    operation = str(meta.get("operation") or meta.get("op") or "").strip() or None
     category = str(meta.get("category") or "").strip() or None
     line_items = meta.get("line_items")
     if not isinstance(line_items, list):
@@ -178,14 +201,19 @@ def extract_usage_fields(
             provider = provider or via_match.group(2)
 
     if not operation:
-        if reason == "llm_draft":
+        reason_key = (reason or "").strip()
+        if reason_key.startswith("v3_refund_"):
+            operation = reason_key.removeprefix("v3_refund_") or None
+        elif reason_key.startswith("v3_"):
+            operation = reason_key.removeprefix("v3_") or None
+        elif reason_key == "llm_draft":
             operation = "song_draft"
-        elif reason == "suno_generation":
+        elif reason_key == "suno_generation":
             operation = "suno"
             provider = provider or "suno"
-        elif reason == "image_generation":
+        elif reason_key == "image_generation":
             operation = "image"
-        elif reason in {"draft_generation_failed", "draft_generation_error"}:
+        elif reason_key in {"draft_generation_failed", "draft_generation_error"}:
             operation = operation or "song_draft"
 
     if (not provider or not model or not line_items) and amount_units and not meta:

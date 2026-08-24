@@ -18,6 +18,20 @@ export function getWebsiteBaseUrl(): string {
   return "https://camxora.com";
 }
 
+export function getMusicWebBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_MUSIC_WEB_URL;
+  if (fromEnv?.trim()) {
+    return fromEnv.trim().replace(/\/$/, "");
+  }
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:3002";
+  }
+  if (isSandboxEnvironment()) {
+    return "https://music.sandbox.camxora.com";
+  }
+  return "https://music.camxora.com";
+}
+
 export function getUserPortalBaseUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_USER_PORTAL_URL;
   if (fromEnv?.trim()) {

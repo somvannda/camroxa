@@ -14,7 +14,13 @@ from platform_api.main import create_app
 from platform_api.models.domain import User
 from platform_api.models.enums import UserRole, UserStatus
 from platform_api.ports.auth_port import TokenPair, TokenPayload
-from platform_api.routers.auth import _get_auth_service, _get_invitation_code_service, _get_lockout, _get_current_user_id
+from platform_api.routers.auth import (
+    _get_auth_service,
+    _get_invitation_code_service,
+    _get_license_repo,
+    _get_lockout,
+    _get_current_user_id,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -83,12 +89,25 @@ def mock_invitation() -> AsyncMock:
 
 
 @pytest.fixture
-def app(mock_auth_service: AsyncMock, mock_lockout: AsyncMock, mock_invitation: AsyncMock):
+def mock_license_repo() -> AsyncMock:
+    repo = AsyncMock()
+    repo.has_paid_desktop_access = AsyncMock(return_value=True)
+    return repo
+
+
+@pytest.fixture
+def app(
+    mock_auth_service: AsyncMock,
+    mock_lockout: AsyncMock,
+    mock_invitation: AsyncMock,
+    mock_license_repo: AsyncMock,
+):
     """Create a test app with dependency overrides."""
     application = create_app()
     application.dependency_overrides[_get_auth_service] = lambda: mock_auth_service
     application.dependency_overrides[_get_lockout] = lambda: mock_lockout
     application.dependency_overrides[_get_invitation_code_service] = lambda: mock_invitation
+    application.dependency_overrides[_get_license_repo] = lambda: mock_license_repo
     application.dependency_overrides[_get_current_user_id] = lambda: "user-123"
     yield application
     application.dependency_overrides.clear()
@@ -158,6 +177,71 @@ class TestLogin:
         )
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "ACCOUNT_LOCKED"
+
+    async def test_desktop_login_blocks_free_user(
+        self,
+        client: AsyncClient,
+        mock_auth_service: AsyncMock,
+        mock_license_repo: AsyncMock,
+    ) -> None:
+        user_id = uuid4()
+        mock_auth_service._user_repo.get_by_email = AsyncMock(
+            return_value=User(
+                id=user_id,
+                email="free@example.com",
+                display_name="Free User",
+                role=UserRole.USER,
+                status=UserStatus.ACTIVE,
+            )
+        )
+        mock_license_repo.has_paid_desktop_access = AsyncMock(return_value=False)
+
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "free@example.com", "password": "ValidPass1"},
+            headers={"X-Camxora-Client": "desktop"},
+        )
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "DESKTOP_PLAN_REQUIRED"
+        mock_license_repo.has_paid_desktop_access.assert_awaited_once_with(str(user_id))
+
+    async def test_desktop_login_allows_paid_user(
+        self,
+        client: AsyncClient,
+        mock_auth_service: AsyncMock,
+        mock_license_repo: AsyncMock,
+    ) -> None:
+        user_id = uuid4()
+        mock_auth_service._user_repo.get_by_email = AsyncMock(
+            return_value=User(
+                id=user_id,
+                email="paid@example.com",
+                display_name="Paid User",
+                role=UserRole.USER,
+                status=UserStatus.ACTIVE,
+            )
+        )
+        mock_license_repo.has_paid_desktop_access = AsyncMock(return_value=True)
+
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "paid@example.com", "password": "ValidPass1"},
+            headers={"X-Camxora-Client": "desktop"},
+        )
+        assert response.status_code == 200
+        mock_license_repo.has_paid_desktop_access.assert_awaited_once_with(str(user_id))
+
+    async def test_web_login_allows_free_user(
+        self,
+        client: AsyncClient,
+        mock_license_repo: AsyncMock,
+    ) -> None:
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "free@example.com", "password": "ValidPass1"},
+        )
+        assert response.status_code == 200
+        mock_license_repo.has_paid_desktop_access.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

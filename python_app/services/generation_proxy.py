@@ -271,7 +271,10 @@ class GenerationProxy:
     ) -> httpx.Response:
         """Send a single HTTP request, translating network errors."""
         url = f"{self._base_url}{path}"
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Camxora-Client": "desktop",
+        }
 
         start_time = time.perf_counter()
         try:

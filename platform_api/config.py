@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
     api_v2_prefix: str = "/api/v2"
+    api_v3_prefix: str = "/api/v3"
 
     # --- Server ---
     host: str = "0.0.0.0"
@@ -232,6 +233,11 @@ class Settings(BaseSettings):
     # After this many platform_absorb failure events per user per UTC day,
     # further AI quota reservations are blocked until the next day.
     daily_fail_absorb_budget: int = 25
+
+    # Credits-only generate: when true, check_and_deduct / deduct_for_operation
+    # debit the shared wallet via /api/v3 instead of quota-first. Default off.
+    # Admin setting credits_only_v3_charge overrides this env flag.
+    credits_only_v3_charge: bool = False
 
     # Auto-retry failed image jobs in the background runner (attempt_count < this).
     # First try is attempt 0→1; with max=3 the job can fail twice then succeed on 3rd, or stop at FAILED.

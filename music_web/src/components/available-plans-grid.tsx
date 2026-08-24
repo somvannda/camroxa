@@ -6,6 +6,7 @@ import {
   creditsToSongs,
   formatPlanDisplayName,
   formatPrice,
+  cardBulletsForPlan,
   type SubscriptionPlan,
 } from '@/lib/subscription-api';
 
@@ -76,7 +77,9 @@ export default function AvailablePlansGrid({
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         {displayPlans.map((plan, index) => {
-          const songs = creditsToSongs(plan.monthly_credits);
+          const daily = Number(plan.daily_credits || 0);
+          const creditCount = daily > 0 ? daily : plan.monthly_credits;
+          const songs = creditsToSongs(creditCount);
           const pricePerMonth =
             plan.billing_cycle === 'yearly' ? plan.price_cents / 12 : plan.price_cents;
           const Icon = PLAN_ICONS[index] || Sparkles;
@@ -131,16 +134,13 @@ export default function AvailablePlansGrid({
               </div>
 
               <div className="mb-4 border-b border-purple-500/20 pb-4 text-center">
-                <div className="text-2xl font-bold text-purple-400">{songs}</div>
-                <div className="text-xs text-gray-400">songs per month</div>
+                <div className="text-2xl font-bold text-purple-400">{creditCount.toLocaleString()}</div>
+                <div className="text-xs text-gray-400">{daily > 0 ? 'credits per day' : 'credits per month'}</div>
+                <div className="mt-1 text-xs text-gray-500">≈ {songs} {daily > 0 ? 'songs/day' : 'songs/mo'}</div>
               </div>
 
               <ul className="mb-6 space-y-2">
-                <li className="flex items-start gap-2 text-sm text-gray-300">
-                  <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-purple-400" />
-                  {songs} AI-generated songs monthly
-                </li>
-                {plan.features.slice(0, 3).map((feature) => (
+                {cardBulletsForPlan(plan).map((feature) => (
                   <li key={feature} className="flex items-start gap-2 text-sm text-gray-300">
                     <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-purple-400" />
                     {feature}

@@ -30,7 +30,10 @@ export function useCreatePlan() {
       daily_merge_limit?: number;
       plan_kind?: 'subscription' | 'profile_addon';
     }) => httpClient.post<Plan>('/api/v1/plans', data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['plans'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      queryClient.invalidateQueries({ queryKey: ['v3-plans'] });
+    },
   });
 }
 

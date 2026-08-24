@@ -9,12 +9,13 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Desktop login shows a clear paid-plan message when a Free account tries to sign in (`X-Camxora-Client: desktop`). See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.
+- Desktop Generate chrome is credits-only (no Plan quota label). Website, user portal, and Web Music advertise Starter / Creator / Studio. Dual-channel is a bullet. Unpublished $5/$10 profile packs stay off public pricing.
+
 ### Fixed
 
-- Generate no longer aborts the rest of a multi-day plan after one failed
-  `POST /batches`. It skips day/pair slots that already exist, retries
-  leftovers, and reports created vs still missing. See
-  `docs/changelog/2026-08-23-fill-missing-generate-batches.md`.
 - Continue Progress no longer retries image jobs that already succeeded, and
   will not start video export until a local background PNG is ready (`long_ready`).
 

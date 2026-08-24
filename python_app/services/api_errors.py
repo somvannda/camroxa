@@ -73,6 +73,12 @@ class LicenseExpiredError(PlatformAPIError):
     pass
 
 
+class DesktopPlanRequiredError(PlatformAPIError):
+    """Desktop studio requires a paid plan (403)."""
+
+    pass
+
+
 class GenerationError(PlatformAPIError):
     """Generation request failed (5xx or unexpected error)."""
 

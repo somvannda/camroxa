@@ -70,6 +70,8 @@ class OperationHold:
 
     held_units: int
     plan_covered: bool
+    source: str = "v1"
+    v3_op: str | None = None
 
 
 def _absorb_budget_key(user_id: UUID, usage_date: date | None = None) -> str:
@@ -298,6 +300,7 @@ class UsageEnforcementService:
         daily_quota_bank_service: Any | None = None,
         quota_topup_service: Any | None = None,
         settings_repo: Any | None = None,
+        v3_billing: Any | None = None,
     ) -> None:
         """Build the enforcement service."""
         self._credit_repo = credit_repo
@@ -309,6 +312,7 @@ class UsageEnforcementService:
         self._daily_quota_bank_service = daily_quota_bank_service
         self._quota_topup_service = quota_topup_service
         self._settings_repo = settings_repo
+        self._v3_billing = v3_billing
 
     async def resolve_daily_fail_absorb_budget(self) -> int:
         """Return per-user daily fail/retry absorb max (admin setting > env)."""
@@ -328,6 +332,58 @@ class UsageEnforcementService:
                     if parsed is not None:
                         return parsed
         return _daily_fail_absorb_budget()
+
+    async def _credits_only_v3_enabled(self) -> bool:
+        from platform_api.services.v3.generate_charge import credits_only_v3_charge_enabled
+
+        return await credits_only_v3_charge_enabled(self._settings_repo)
+
+    async def _v3_op_if_enabled(self, operation_type: str) -> str | None:
+        if not await self._credits_only_v3_enabled():
+            return None
+        from platform_api.services.v3.generate_charge import map_v1_op_to_v3
+
+        return map_v1_op_to_v3(operation_type)
+
+    def _v3_billing_service(self) -> Any:
+        if self._v3_billing is not None:
+            return self._v3_billing
+        from platform_api.dependencies import get_v3_billing_service
+
+        return get_v3_billing_service()
+
+    async def _quote_via_v3(self, user_id: UUID, operation_type: str) -> Any:
+        from platform_api.services.v3.generate_charge import map_v1_op_to_v3
+
+        op = map_v1_op_to_v3(operation_type)
+        if op is None:
+            raise ExternalServiceError(
+                f"Operation '{operation_type}' is not mapped to credits-only billing.",
+                details={"operation_type": operation_type},
+            )
+        return await self._v3_billing_service().quote(op=op, user_id=user_id)
+
+    async def _charge_via_v3(
+        self,
+        user_id: UUID,
+        operation_type: str,
+        *,
+        ref_id: str | None = None,
+    ) -> int:
+        from platform_api.services.v3.generate_charge import map_v1_op_to_v3
+
+        op = map_v1_op_to_v3(operation_type)
+        if op is None:
+            raise ExternalServiceError(
+                f"Operation '{operation_type}' is not mapped to credits-only billing.",
+                details={"operation_type": operation_type},
+            )
+        result = await self._v3_billing_service().charge(
+            user_id=user_id,
+            op=op,
+            ref_id=ref_id,
+        )
+        return int(result.get("amount_units") or 0)
 
     async def check_and_deduct(
         self,
@@ -363,6 +419,10 @@ class UsageEnforcementService:
             InsufficientCreditsError: If credit balance is too low.
             QuotaExceededError: If daily or monthly quota is exceeded.
         """
+        if await self._v3_op_if_enabled(operation_type) is not None:
+            await self.enforce_fail_absorb_budget(user_id)
+            return await self._charge_via_v3(user_id, operation_type)
+
         # Step 1: Get pricing
         pricing_entry = await lookup_pricing_entry(
             self._pricing_repo, ai_service, operation_type, sub_model
@@ -535,6 +595,21 @@ class UsageEnforcementService:
     ) -> None:
         """Check balance and quotas before generation without deducting credits."""
         await self.enforce_fail_absorb_budget(user_id)
+        if await self._v3_op_if_enabled(operation_type) is not None:
+            quote = await self._quote_via_v3(user_id, operation_type)
+            required = int(getattr(quote, "amount_units", 0) or 0)
+            if required <= 0:
+                return
+            current_balance = await self._credit_repo.get_balance(user_id)
+            if current_balance < required:
+                raise InsufficientCreditsError(
+                    "Insufficient credits for this operation.",
+                    details={
+                        "required_credits": getattr(quote, "amount_credits", required),
+                        "current_balance": current_balance,
+                    },
+                )
+            return
         ctx = await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
         period_start = self._period_start(ctx, billing_today())
@@ -1003,7 +1078,8 @@ class UsageEnforcementService:
           ``billing=platform_absorb`` / ``outcome=failed`` so Usage/Finance
           still show provider cost when the customer is not charged.
         """
-        if counts_toward_product_quota(operation_type):
+        skip_quota_release = await self._v3_op_if_enabled(operation_type) is not None
+        if counts_toward_product_quota(operation_type) and not skip_quota_release:
             await self.release_operation_quota(
                 user_id=user_id,
                 channel_profile_id=channel_profile_id,
@@ -1247,6 +1323,16 @@ class UsageEnforcementService:
         so an empty wallet cannot race after provider COGS (H1). Plan-covered
         ops hold 0 wallet and only reserve the meter.
         """
+        v3_op = await self._v3_op_if_enabled(operation_type)
+        if v3_op is not None:
+            held = await self._charge_via_v3(user_id, operation_type)
+            return OperationHold(
+                held_units=held,
+                plan_covered=False,
+                source="v3",
+                v3_op=v3_op,
+            )
+
         await self.reserve_operation_quota(
             user_id=user_id,
             channel_profile_id=channel_profile_id,
@@ -1314,6 +1400,9 @@ class UsageEnforcementService:
         executed_model: str | None = None,
     ) -> int:
         """After a successful provider call: write plan ledger or settle wallet hold."""
+        if getattr(hold, "source", "v1") == "v3":
+            return int(hold.held_units or 0)
+
         pricing_entry = await lookup_pricing_entry(
             self._pricing_repo, ai_service, operation_type, sub_model
         )
@@ -1410,6 +1499,10 @@ class UsageEnforcementService:
         sub_model: str | None = None,
     ) -> int:
         """Deduct credits and increment usage for the provider that actually served the request."""
+        if await self._v3_op_if_enabled(operation_type) is not None:
+            await self.enforce_fail_absorb_budget(user_id)
+            return await self._charge_via_v3(user_id, operation_type)
+
         pricing_entry = await lookup_pricing_entry(
             self._pricing_repo, ai_service, operation_type, sub_model
         )

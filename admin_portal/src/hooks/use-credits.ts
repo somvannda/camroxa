@@ -149,6 +149,7 @@ export function useAdjustBalance() {
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
       queryClient.invalidateQueries({ queryKey: ['credit-packs'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['v3-user-wallet'] });
     },
   });
 }

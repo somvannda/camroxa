@@ -625,6 +625,19 @@ class SubscriptionService:
             payment_id,
         )
         logger.info("Activated subscription %s from payment %s", subscription_id, payment_id)
+        await self._sync_v3_period_grant(subscription_id)
+
+    async def _sync_v3_period_grant(self, subscription_id: str) -> None:
+        row = await self._db.fetch_one(
+            "SELECT user_id FROM web_subscriptions WHERE id = $1",
+            subscription_id,
+        )
+        if not row or not row.get("user_id"):
+            return
+        from platform_api.services.v3.wallet_sync import sync_subscription_grant
+        from uuid import UUID
+
+        await sync_subscription_grant(UUID(str(row["user_id"])))
 
     async def _mark_subscription_terminal(self, subscription_id: str, status: str) -> None:
         await self._db.execute(
@@ -763,6 +776,7 @@ class SubscriptionService:
             subscription_id=subscription.id,
             monthly_credits=subscription.monthly_credits_granted,
         )
+        await self._sync_v3_period_grant(subscription.id)
         logger.info(
             "Reset monthly allowance for yearly subscription %s at %s",
             subscription.id,
@@ -817,6 +831,7 @@ class SubscriptionService:
                 subscription_id=subscription.id,
                 monthly_credits=plan.monthly_credits,
             )
+            await self._sync_v3_period_grant(subscription.id)
             logger.info(
                 "Renewed billing period for subscription %s: %s credits",
                 subscription.id,

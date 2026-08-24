@@ -18,13 +18,6 @@ import {
 import { UsageCurveChart } from "@/components/dashboard/usage-curve-chart";
 import { Button } from "@/components/ui/button";
 
-function remainingOf(remaining: number | null | undefined, quota: number | null | undefined): string {
-  if (remaining == null && quota == null) return "Not on plan";
-  const left = formatNumber(remaining ?? 0);
-  if (quota == null) return `${left} left`;
-  return `${left} / ${formatNumber(quota)}`;
-}
-
 export default function DashboardOverviewPage() {
   const { state } = useControlPanel();
 
@@ -44,28 +37,16 @@ export default function DashboardOverviewPage() {
   const videosGenerated = studioExports + manualExports || state.stats?.videos_generated || 0;
   const generationPeak = Math.max(songsGenerated, imagesGenerated, videosGenerated, youtubeUploads, 1);
 
-  const q = state.quota;
-  const songsRemaining = q?.songs_remaining ?? state.stats?.songs_remaining ?? null;
-  const songsQuota = q?.songs_quota ?? state.stats?.songs_quota ?? null;
-  const draftsRemaining = q?.drafts_remaining ?? state.stats?.drafts_remaining ?? null;
-  const draftsQuota = q?.drafts_quota ?? state.stats?.drafts_quota ?? null;
-  const imagesRemaining = q?.images_remaining ?? state.stats?.images_remaining ?? null;
-  const imagesQuota = q?.images_quota ?? state.stats?.images_quota ?? null;
-  const videosRemaining = q?.videos_remaining ?? null;
-  const videosQuota = q?.videos_quota ?? null;
-  const mergesRemaining = q?.merges_remaining ?? null;
-  const mergesQuota = q?.merges_quota ?? null;
-
   return (
     <div className="grid gap-5">
       <SectionTitle
         title="Overview"
-        description="Your plan limits at a glance, plus 7-day production and recent studio activity."
+        description="One credit wallet plus 7-day production and recent studio activity."
       />
 
       <PanelSection
-        title="Your limits"
-        description="Remaining allowance vs plan cap. Track exports cover studio + manual renders (one shared pool)."
+        title="Credits"
+        description="Generate spends the wallet. Song / draft / image meters are not the balance."
         actions={
           <Button variant="ghost" size="sm" asChild>
             <Link href="/dashboard/billing?tab=credits">
@@ -77,74 +58,16 @@ export default function DashboardOverviewPage() {
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <StatTile
-            label="Suno packages (month)"
-            value={remainingOf(songsRemaining, songsQuota)}
-            hint="Packages left this billing period"
-          />
-          <StatTile
-            label="Images (month)"
-            value={remainingOf(imagesRemaining, imagesQuota)}
-            hint="Artwork generations left"
-          />
-          <StatTile
-            label="Drafts (month)"
-            value={remainingOf(draftsRemaining, draftsQuota)}
-            hint="Draft creations left"
-          />
-          <StatTile
-            label="Track exports (month)"
-            value={remainingOf(videosRemaining, videosQuota)}
-            hint="Studio + manual share this pool"
-          />
-          <StatTile
-            label="Merges (month)"
-            value={remainingOf(mergesRemaining, mergesQuota)}
-            hint="Video merges left this period"
-          />
-          <StatTile
             label="Wallet credits"
             value={formatCreditValue(walletBalance)}
             hint={`${planLabel} · ${state.profiles.length} channel(s)`}
           />
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <StatTile
-            label="Track exports today"
-            value={remainingOf(q?.daily_videos_remaining, q?.daily_videos_limit)}
-            hint="Account daily cap (all channels)"
-          />
-          <StatTile
-            label="Merges today"
-            value={remainingOf(q?.daily_merges_remaining, q?.daily_merges_limit)}
-            hint="Account daily merge cap"
+            label="Credits spent"
+            value={formatCreditValue(state.stats?.credits_spent ?? 0)}
+            hint="This billing period"
           />
         </div>
-        {q?.channels?.length ? (
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">Daily per channel</div>
-            <div className="mt-2 grid gap-2 text-sm">
-              {q.channels.slice(0, 4).map((channel) => (
-                <div
-                  key={channel.profile_id}
-                  className="flex flex-wrap items-center justify-between gap-2 text-slate-300"
-                >
-                  <span className="font-medium text-white">{channel.profile_name}</span>
-                  <span className="text-slate-400">
-                    Drafts {channel.daily_drafts_remaining ?? "—"}/
-                    {channel.daily_drafts_limit ?? "—"} · Songs{" "}
-                    {channel.daily_songs_remaining}/{channel.daily_songs_limit} · Images{" "}
-                    {channel.daily_images_remaining}/{channel.daily_images_limit}
-                  </span>
-                </div>
-              ))}
-              {q.channels.length > 4 ? (
-                <div className="text-xs text-slate-500">
-                  +{q.channels.length - 4} more on Billing → Credits
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </PanelSection>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -199,15 +122,6 @@ export default function DashboardOverviewPage() {
           </div>
           <div className="mt-5 grid gap-2 text-sm">
             <SummaryRow label="Credits spent" value={formatCreditValue(state.stats?.credits_spent ?? 0)} />
-            <SummaryRow
-              label="Track exports left (month)"
-              value={remainingOf(videosRemaining, videosQuota)}
-            />
-            <SummaryRow
-              label="Track exports left (today)"
-              value={remainingOf(q?.daily_videos_remaining, q?.daily_videos_limit)}
-            />
-            <SummaryRow label="Merges left (month)" value={remainingOf(mergesRemaining, mergesQuota)} />
             <SummaryRow
               label="Avg studio export (7d)"
               value={

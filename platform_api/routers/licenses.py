@@ -77,6 +77,9 @@ class LicenseResponse(BaseModel):
     expires_at: datetime | None = None
     revoked_at: datetime | None = None
     created_at: datetime
+    source: str = "desktop"
+    user_email: str | None = None
+    plan_name: str | None = None
 
 
 class UpdateProfileAddonSlotsRequest(BaseModel):
@@ -189,6 +192,7 @@ def _license_to_response(license: License) -> LicenseResponse:
         expires_at=license.expires_at,
         revoked_at=license.revoked_at,
         created_at=license.created_at,
+        source="desktop",
     )
 
 
@@ -219,14 +223,96 @@ async def list_licenses(
     page_size: int = 25,
     status: str | None = None,
 ) -> PaginatedLicensesResponse:
-    """Return a paginated list of all licenses."""
-    from fastapi import Query as Q
-    licenses, total = await license_repo.get_all_paginated(
-        page=page, page_size=page_size, status=status
-    )
+    """Desktop licenses plus CutLuy web subscriptions (one catalog)."""
+    del license_repo
+    pool = get_db_pool()
+    offset = max(0, (page - 1) * page_size)
+    status_filter = (status or "").strip() or None
+    where = "WHERE ($1::text IS NULL OR status = $1)"
+    sql = f"""
+        SELECT id, license_key, plan_id, user_id, status,
+               profile_addon_slots, profile_addon_pending,
+               activated_at, expires_at, revoked_at, created_at,
+               source, user_email, plan_name
+        FROM (
+            SELECT
+                l.id,
+                l.license_key,
+                l.plan_id,
+                l.user_id,
+                l.status::text AS status,
+                COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
+                COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending,
+                l.activated_at,
+                l.expires_at,
+                l.revoked_at,
+                l.created_at,
+                'desktop'::text AS source,
+                u.email AS user_email,
+                p.name AS plan_name
+            FROM licenses l
+            LEFT JOIN users u ON u.id = l.user_id
+            LEFT JOIN plans p ON p.id = l.plan_id
+            UNION ALL
+            SELECT
+                ws.id,
+                ''::text AS license_key,
+                ws.plan_id,
+                ws.user_id,
+                ws.status::text AS status,
+                0,
+                0,
+                ws.current_period_start,
+                ws.current_period_end,
+                NULL::timestamptz,
+                ws.created_at,
+                'web'::text AS source,
+                u.email AS user_email,
+                p.name AS plan_name
+            FROM web_subscriptions ws
+            LEFT JOIN users u ON u.id = ws.user_id
+            LEFT JOIN plans p ON p.id = ws.plan_id
+            WHERE ws.status IN ('active', 'expired', 'cancelled', 'pending')
+        ) entitlements
+        {where}
+        ORDER BY created_at DESC NULLS LAST
+        LIMIT $2 OFFSET $3
+    """
+    count_sql = f"""
+        SELECT COUNT(*) FROM (
+            SELECT l.id, l.status::text AS status
+            FROM licenses l
+            UNION ALL
+            SELECT ws.id, ws.status::text AS status
+            FROM web_subscriptions ws
+            WHERE ws.status IN ('active', 'expired', 'cancelled', 'pending')
+        ) entitlements
+        {where}
+    """
+    total = int(await pool.fetchval(count_sql, status_filter) or 0)
+    rows = await pool.fetch(sql, status_filter, page_size, offset)
+    items = [
+        LicenseResponse(
+            id=str(row["id"]),
+            license_key=str(row["license_key"] or ""),
+            plan_id=str(row["plan_id"]),
+            user_id=str(row["user_id"]) if row["user_id"] else None,
+            status=str(row["status"]),
+            profile_addon_slots=int(row["profile_addon_slots"] or 0),
+            profile_addon_pending=int(row["profile_addon_pending"] or 0),
+            activated_at=row["activated_at"],
+            expires_at=row["expires_at"],
+            revoked_at=row["revoked_at"],
+            created_at=row["created_at"],
+            source=str(row["source"] or "desktop"),
+            user_email=row["user_email"],
+            plan_name=row["plan_name"],
+        )
+        for row in rows
+    ]
     total_pages = max(1, (total + page_size - 1) // page_size)
     return PaginatedLicensesResponse(
-        items=[_license_to_response(lic) for lic in licenses],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,

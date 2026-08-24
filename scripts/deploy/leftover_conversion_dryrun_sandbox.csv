@@ -1,0 +1,3 @@
+user_id,email,plan_id,plan_name,price_cents,plan_song_limit,addon_slots,music_used,leftover_packages,credits_to_mint,existing_wallet,profile_count,addon_pending,next_grant,next_price_cents,bucket
+b1bed705-14a7-4973-8c18-ab21c9c097b1,somvannda@gmail.com,0dec7f5e-4a42-47b3-a455-0e7c3676e432,Monthly · 2-channel,7900,300,8,380,0,0,1060.0,10,0,3000,7900,expired
+ed5575fd-bc8c-4096-a2fb-d2c8f7c1e241,sommakara84@gmail.com,0dec7f5e-4a42-47b3-a455-0e7c3676e432,Monthly · 2-channel,7900,300,0,47,0,0,0.0,2,0,3000,7900,expired

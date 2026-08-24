@@ -385,6 +385,27 @@ class TopupService:
                 topup_id,
             )
         logger.info("Completed top-up %s", topup_id)
+        await self._sync_v3_pack(topup_id)
+
+    async def _sync_v3_pack(self, topup_id: str) -> None:
+        row = await self._db.fetch_one(
+            """
+            SELECT user_id, credits_purchased
+            FROM topup_purchases
+            WHERE id = $1
+            """,
+            topup_id,
+        )
+        if not row or not row.get("user_id"):
+            return
+        from platform_api.services.v3.wallet_sync import sync_topup_pack
+        from uuid import UUID
+
+        await sync_topup_pack(
+            UUID(str(row["user_id"])),
+            int(row.get("credits_purchased") or 0),
+            topup_id=str(topup_id),
+        )
 
     async def _mark_topup_terminal(
         self,

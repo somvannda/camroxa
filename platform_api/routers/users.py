@@ -690,7 +690,7 @@ async def list_users(
         )
         balances = {str(row["user_id"]): row["balance"] for row in balance_rows}
 
-        # Batch fetch active plan names
+        # License first, else active CutLuy web plan (same resolver as charge).
         plan_rows = await pool.fetch(
             """
             SELECT l.user_id, p.name as plan_name
@@ -702,15 +702,12 @@ async def list_users(
         )
         plans = {str(row["user_id"]): row["plan_name"] for row in plan_rows}
 
-        music_rows = await _fetch_optional_rows(
+        web_plan_rows = await _fetch_optional_rows(
             pool,
             """
             SELECT DISTINCT ON (ws.user_id)
                    ws.user_id,
-                   p.name AS plan_name,
-                   COALESCE(ws.monthly_credits_granted, 0)::int AS monthly_granted,
-                   COALESCE(ws.monthly_credits_used, 0)::int AS monthly_used,
-                   COALESCE(ws.topup_credits_balance, 0)::int AS topup_balance
+                   p.name AS plan_name
             FROM web_subscriptions ws
             LEFT JOIN plans p ON p.id = ws.plan_id
             WHERE ws.user_id = ANY($1)
@@ -720,28 +717,11 @@ async def list_users(
             """,
             user_ids,
         )
-        music = {
-            str(row["user_id"]): {
-                "plan_name": row["plan_name"],
-                "granted": int(row["monthly_granted"] or 0),
-                "used": int(row["monthly_used"] or 0),
-                "topup": int(row["topup_balance"] or 0),
-            }
-            for row in music_rows
+        web_plans = {
+            str(row["user_id"]): row["plan_name"]
+            for row in web_plan_rows
+            if row.get("plan_name")
         }
-
-        topup_rows = await _fetch_optional_rows(
-            pool,
-            """
-            SELECT user_id, COALESCE(SUM(credits_purchased), 0)::int AS purchased
-            FROM topup_purchases
-            WHERE user_id = ANY($1)
-              AND payment_status = 'completed'
-            GROUP BY user_id
-            """,
-            user_ids,
-        )
-        topup_purchased = {str(row["user_id"]): int(row["purchased"] or 0) for row in topup_rows}
 
         spent_rows = await pool.fetch(
             """
@@ -766,32 +746,6 @@ async def list_users(
         products_by_user = {
             str(row["id"]): [str(item) for item in (row["products"] or []) if str(item).strip()]
             for row in product_rows
-        }
-
-        from platform_api.services.billing_calendar import billing_today
-
-        daily_limit = await _web_music_daily_free_limit(pool)
-        usage_rows = await _fetch_optional_rows(
-            pool,
-            """
-            SELECT user_id,
-                   COALESCE(SUM(credits_used), 0)::int AS lifetime_used,
-                   COALESCE(
-                       SUM(credits_used) FILTER (WHERE usage_date = $2),
-                       0
-                   )::int AS today_used
-            FROM web_music_daily_usage
-            WHERE user_id = ANY($1)
-            GROUP BY user_id
-            """,
-            user_ids,
-            billing_today(),
-        )
-        daily_used = {
-            str(row["user_id"]): int(row["today_used"] or 0) for row in usage_rows
-        }
-        lifetime_used = {
-            str(row["user_id"]): int(row["lifetime_used"] or 0) for row in usage_rows
         }
 
         # Batch fetch profile counts
@@ -822,40 +776,16 @@ async def list_users(
     else:
         balances = {}
         plans = {}
-        music = {}
-        topup_purchased = {}
+        web_plans = {}
         studio_spent = {}
         products_by_user = {}
-        daily_used = {}
-        lifetime_used = {}
-        daily_limit = WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT
         profiles = {}
         verifications = {}
 
     def _list_row(user):
         uid = str(user.id)
-        music_row = music.get(uid)
-        music_remaining = None
-        music_limit = None
-        burned = None
-        plan_name = plans.get(uid)
-        products = products_by_user.get(uid, [])
-        if music_row:
-            music_remaining, music_limit, burned, paid_plan = _paid_music_credit_fields(
-                music_row,
-                int(topup_purchased.get(uid, 0)),
-            )
-            plan_name = paid_plan or plan_name
-        elif _is_music_web_user(products):
-            today = int(daily_used.get(uid, 0))
-            music_remaining, music_limit, _today_burned = _free_music_credit_fields(
-                today,
-                daily_limit,
-            )
-            burned = float(lifetime_used.get(uid, today))
-            plan_name = plan_name or "Free"
-        else:
-            burned = _studio_credits_burned(studio_spent.get(uid, 0))
+        plan_name = plans.get(uid) or web_plans.get(uid) or "Free"
+        burned = _studio_credits_burned(studio_spent.get(uid, 0))
         return _user_to_response(
             user,
             credit_balance=balances.get(uid, 0),
@@ -864,8 +794,8 @@ async def list_users(
             channel_profile_count=profiles.get(uid, 0),
             pending_verification_code=verifications.get(uid, {}).get("code"),
             verification_code_expires_at=verifications.get(uid, {}).get("expires_at"),
-            music_credits_remaining=music_remaining,
-            music_credits_limit=music_limit,
+            music_credits_remaining=None,
+            music_credits_limit=None,
             credits_burned=burned,
             products=products_by_user.get(uid, []),
         )
@@ -993,14 +923,12 @@ async def get_user_full_details(
         if str(item).strip()
     ]
 
-    music_rows = await _fetch_optional_rows(
+    web_plan_row = await _fetch_optional_row(
         pool,
         """
         SELECT DISTINCT ON (ws.user_id)
-               p.name AS plan_name,
-               COALESCE(ws.monthly_credits_granted, 0)::int AS monthly_granted,
-               COALESCE(ws.monthly_credits_used, 0)::int AS monthly_used,
-               COALESCE(ws.topup_credits_balance, 0)::int AS topup_balance
+               p.id AS plan_id,
+               p.name AS plan_name
         FROM web_subscriptions ws
         LEFT JOIN plans p ON p.id = ws.plan_id
         WHERE ws.user_id = $1
@@ -1010,60 +938,17 @@ async def get_user_full_details(
         """,
         user_id,
     )
-    topup_row = await _fetch_optional_row(
-        pool,
-        """
-        SELECT COALESCE(SUM(credits_purchased), 0)::int AS purchased
-        FROM topup_purchases
-        WHERE user_id = $1
-          AND payment_status = 'completed'
-        """,
-        user_id,
-    )
-    purchased = int((topup_row or {}).get("purchased") or 0)
+    if plan_name is None and web_plan_row and web_plan_row.get("plan_name"):
+        plan_name = web_plan_row["plan_name"]
+        plan_id = str(web_plan_row["plan_id"]) if web_plan_row.get("plan_id") else None
+    if plan_name is None:
+        plan_name = "Free"
 
     music_credits_remaining: int | None = None
     music_credits_limit: int | None = None
     credits_burned: float | None = _studio_credits_burned(
         int(spent_row["total"] or 0) if spent_row else 0
     )
-    if music_rows:
-        music_row = {
-            "plan_name": music_rows[0]["plan_name"],
-            "granted": int(music_rows[0]["monthly_granted"] or 0),
-            "used": int(music_rows[0]["monthly_used"] or 0),
-            "topup": int(music_rows[0]["topup_balance"] or 0),
-        }
-        music_credits_remaining, music_credits_limit, credits_burned, paid_plan = (
-            _paid_music_credit_fields(music_row, purchased)
-        )
-        plan_name = paid_plan or plan_name
-    elif _is_music_web_user(products):
-        from platform_api.services.billing_calendar import billing_today
-
-        daily_limit = await _web_music_daily_free_limit(pool)
-        usage_row = await _fetch_optional_row(
-            pool,
-            """
-            SELECT
-                COALESCE(SUM(credits_used), 0)::int AS lifetime_used,
-                COALESCE(
-                    SUM(credits_used) FILTER (WHERE usage_date = $2),
-                    0
-                )::int AS today_used
-            FROM web_music_daily_usage
-            WHERE user_id = $1
-            """,
-            user_id,
-            billing_today(),
-        )
-        used_today = int((usage_row or {}).get("today_used") or 0)
-        lifetime = int((usage_row or {}).get("lifetime_used") or 0)
-        music_credits_remaining, music_credits_limit, _today_burned = (
-            _free_music_credit_fields(used_today, daily_limit)
-        )
-        credits_burned = float(lifetime)
-        plan_name = plan_name or "Free"
 
     # Channel profiles
     profile_rows = await pool.fetch(

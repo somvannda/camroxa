@@ -23,11 +23,6 @@ from features.music.widgets.settings_strip import MusicSettingsStrip
 from features.music.widgets.song_editor_card import SongEditorCard
 from shared.lib.music_readiness import build_music_readiness_report
 from shared.lib.manual_asset_paths import normalize_image_source_mode
-from shared.lib.music_batch_plan import (
-    CreateBatchesResult,
-    format_create_batches_summary,
-    format_failed_create_slots,
-)
 from shared.lib.music_composer import (
     ComposerState,
     DraftPoolSeedState,
@@ -1049,27 +1044,13 @@ class MusicView(QWidget):
         preflight = self._generation_preflight
         if preflight and preflight.covered_by_subscription:
             if not self._music_settings.auto_gsuno and not self._music_settings.auto_gen_image:
-                generate_label = "Generate drafts (Plan)"
+                generate_label = "Generate drafts"
             else:
-                generate_label = "Generate (Plan quota)"
+                generate_label = "Generate"
         elif total_cost is not None:
             generate_label = f"Generate ({total_cost} Credits)"
         else:
             generate_label = "Generate"
-        if (
-            preflight is not None
-            and preflight.can_generate
-            and preflight.drafts_remaining is not None
-            and not self._music_settings.auto_gsuno
-        ):
-            self._automation_card.set_helper_text(
-                f"Drafts remaining: {preflight.drafts_remaining}"
-                + (
-                    f" · Suno packages: {preflight.songs_remaining}"
-                    if preflight.songs_remaining is not None
-                    else ""
-                )
-            )
         self._automation_card.set_generate_label(generate_label)
         overlapping = set(self._composer.primary_profile_ids) & set(self._composer.secondary_profile_ids)
         pair_mismatch = len(self._composer.primary_profile_ids) != len(self._composer.secondary_profile_ids)
@@ -1097,7 +1078,7 @@ class MusicView(QWidget):
         if base_ready and preflight is not None and not preflight.can_generate and preflight.reason:
             warnings.append(preflight.reason)
         elif base_ready and preflight is None:
-            warnings.append("Checking plan quota and credits…")
+            warnings.append("Checking credits…")
         self._automation_card.set_warning_text(" ".join(warnings))
         if base_ready:
             self._schedule_preflight_check()
@@ -1479,8 +1460,8 @@ class MusicView(QWidget):
             (
                 "Delete this batch from History?\n\n"
                 "Only batches with no successful or in-progress Suno audio can be "
-                "deleted. Draft meter leftovers may be restored; wallet credits and "
-                "song quota are not re-gifted.\n\n"
+                "deleted. Draft leftovers may be restored; wallet credits "
+                "are not re-gifted.\n\n"
                 "This cannot be undone."
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -2017,14 +1998,8 @@ class MusicView(QWidget):
         worker.finished.connect(self._finish_batch_worker)
         self._batch_worker = worker
         self._automation_card.set_generating(True)
-        log_info(
-            f"Creating {len(requests)} planned music batch run(s); "
-            "existing day/pair slots will be skipped and leftovers retried…",
-            category="music",
-        )
-        self._flash_status(
-            f"Creating {len(requests)} planned batch run{'s' if len(requests) != 1 else ''}…"
-        )
+        log_info(f"Creating {len(requests)} music batch run(s)…", category="music")
+        self._flash_status(f"Creating {len(requests)} batch run{'s' if len(requests) != 1 else ''}…")
         worker.start()
 
     def _on_batch_create_failed(self, message: str) -> None:
@@ -2035,36 +2010,21 @@ class MusicView(QWidget):
         self._automation_card.set_generating(False)
 
     def _on_batches_created(self, payload: object) -> None:
-        result: CreateBatchesResult | None = None
-        created: list[object] = []
-        if isinstance(payload, CreateBatchesResult):
-            result = payload
-            created = list(payload.created)
-        elif isinstance(payload, list) and payload:
-            created = list(payload)
-            result = CreateBatchesResult(planned=len(created), created=created)
-        else:
+        if not isinstance(payload, list) or not payload:
             return
-        if created:
-            self._error_banner.hide()
-            last = created[-1]
-            self._latest_batch_id = getattr(last, "batch_id", "") or self._latest_batch_id
-        summary = format_create_batches_summary(result)
-        if result.failed:
-            failed_slots = format_failed_create_slots(result.failed)
-            summary = f"{summary} Click Generate again to fill: {failed_slots}"
-        self._latest_batch_summary = summary
+        self._error_banner.hide()
+        run_dates = get_inclusive_date_list(self._composer.from_date, self._composer.to_date)
+        pair_count = len(self._primary_profiles())
+        self._latest_batch_id = payload[-1].batch_id
+        self._latest_batch_summary = (
+            f"Created {len(payload)} batch run{'s' if len(payload) != 1 else ''} across "
+            f"{len(run_dates)} planned day{'s' if len(run_dates) != 1 else ''} and "
+            f"{pair_count} channel pair{'s' if pair_count != 1 else ''}."
+        )
         self._last_batch_status_key = None
-        log_info(summary, category="music")
-        if result.failed and not created:
-            self._show_workspace_error(summary)
-        elif result.failed:
-            self._flash_status(summary, tone="warning", duration_ms=10000)
-        else:
-            self._error_banner.hide()
-            self._flash_status(summary, tone="success", duration_ms=6000)
-        if created:
-            self._batch_timer.start()
+        log_info(self._latest_batch_summary, category="music")
+        self._flash_status(self._latest_batch_summary, tone="success", duration_ms=6000)
+        self._batch_timer.start()
         self.refresh_history()
         self.refresh_data()
 

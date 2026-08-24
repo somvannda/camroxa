@@ -8,21 +8,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PublicPlan } from "@/lib/billing";
 import {
-  billingPriceLabel,
-  planForFamilyTerm,
-  type BillingTermKey,
-  type ChannelPlanFamily,
-} from "@/lib/plan-channel-families";
-import {
-  buildComparisonSections,
-  channelFamilyLabel,
-  groupPlansIntoChannelFamilies,
-  isFeaturedColumn,
-  planBadge,
-  type CellValue,
-  type ComparisonRow,
-} from "@/lib/plan-comparison";
-import { type PlanTermDiscounts } from "@/lib/plan-pricing";
+  PUBLIC_CARD_BULLETS,
+  creditsToSongs,
+  groupPublicPaidTiers,
+  monthlyCreditsOf,
+  publicFreePlans,
+} from "@/lib/credits-only-public";
+import { formatPlanPrice, type PlanTermDiscounts } from "@/lib/plan-pricing";
 
 type OnboardingPlanPickerProps = {
   plans: PublicPlan[];
@@ -34,203 +26,18 @@ type OnboardingPlanPickerProps = {
   onSelectPlan: (planId: string) => void;
 };
 
-function billingTermForRowLabel(label: string): BillingTermKey | null {
-  if (label === "Monthly") return "monthly";
-  if (label.startsWith("6 Months")) return "semiAnnual";
-  if (label.startsWith("Annual")) return "annual";
-  return null;
-}
-
-function ComparisonCell({ cell }: { cell: CellValue }) {
-  if (cell.kind === "check") {
-    return (
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/10 text-emerald-100">
-        <Check className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="sr-only">Included</span>
-      </span>
-    );
-  }
-
-  return <span>{cell.value}</span>;
-}
-
-function PlanHeaderCell({
-  family,
-  index,
-  total,
-}: {
-  family: ChannelPlanFamily;
-  index: number;
-  total: number;
-}) {
-  const featured = isFeaturedColumn(index, total);
-  const plan = family.representative;
-  const discounted = plan.effective_price_cents < plan.price_cents;
-
+function CardBullets() {
   return (
-    <th
-      scope="col"
-      className={cn("min-w-[140px] px-4 py-4 text-left align-bottom", featured && "bg-white/[0.04]")}
-    >
-      <div className={cn("text-sm font-semibold", featured ? "text-white" : "text-slate-100")}>
-        {channelFamilyLabel(family.channels)}
-        {planBadge(index, total)}
-      </div>
-      {discounted ? (
-        <div className="mt-1 text-xs text-fuchsia-200/90">Launch offer active</div>
-      ) : null}
-    </th>
-  );
-}
-
-function SectionHeaderRow({ title, families }: { title: string; families: ChannelPlanFamily[] }) {
-  if (title === "Summary") return null;
-
-  return (
-    <tr className="border-t border-white/10 bg-white/[0.02]">
-      <th
-        scope="row"
-        className="sticky left-0 z-10 bg-[#0b1020]/95 px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300/70 backdrop-blur"
-      >
-        {title}
-      </th>
-      {families.map((family, index) => (
-        <th
-          key={`${title}-${family.channels}`}
-          scope="col"
-          className={cn(
-            "px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400/75",
-            isFeaturedColumn(index, families.length) && "bg-white/[0.03]",
-          )}
-        >
-          {channelFamilyLabel(family.channels)}
-          {planBadge(index, families.length)}
-        </th>
+    <ul className="mb-5 space-y-2">
+      {PUBLIC_CARD_BULLETS.map((feature) => (
+        <li key={feature} className="flex items-start gap-2 text-sm text-slate-200/82">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/10 text-emerald-100">
+            <Check className="h-3 w-3" aria-hidden="true" />
+          </span>
+          <span>{feature}</span>
+        </li>
       ))}
-    </tr>
-  );
-}
-
-function ComparisonDataRow({
-  row,
-  planCount,
-  featuredIndex,
-}: {
-  row: ComparisonRow;
-  planCount: number;
-  featuredIndex: number;
-}) {
-  return (
-    <tr className="border-t border-white/6 text-sm text-slate-200/82">
-      <th
-        scope="row"
-        className={cn(
-          "sticky left-0 z-10 bg-[#0b1020]/95 px-4 py-3 text-left font-normal text-slate-300/88 backdrop-blur",
-          row.emphasized && "font-medium text-white",
-        )}
-      >
-        {row.label}
-      </th>
-      {row.values.slice(0, planCount).map((cell, index) => (
-        <td
-          key={`${row.label}-${index}`}
-          className={cn(
-            "px-4 py-3",
-            index === featuredIndex && "bg-white/[0.03] font-medium text-white",
-          )}
-        >
-          <ComparisonCell cell={cell} />
-        </td>
-      ))}
-    </tr>
-  );
-}
-
-function BillingCheckoutRow({
-  row,
-  families,
-  termDiscounts,
-  featuredIndex,
-  paidCheckoutAvailable,
-  creatingPayment,
-  selectedPlanId,
-  onSelectPlan,
-}: {
-  row: ComparisonRow;
-  families: ChannelPlanFamily[];
-  termDiscounts: PlanTermDiscounts;
-  featuredIndex: number;
-  paidCheckoutAvailable: boolean;
-  creatingPayment: boolean;
-  selectedPlanId: string | null;
-  onSelectPlan: (planId: string) => void;
-}) {
-  const billingTerm = billingTermForRowLabel(row.label);
-
-  return (
-    <tr className="border-t border-white/6 text-sm text-slate-200/82">
-      <th
-        scope="row"
-        className="sticky left-0 z-10 bg-[#0b1020]/95 px-4 py-3 text-left font-medium text-white backdrop-blur"
-      >
-        {row.label}
-      </th>
-      {families.map((family, index) => {
-        const plan = billingTerm ? planForFamilyTerm(family, billingTerm) : null;
-        const priceLabel = billingTerm ? billingPriceLabel(family, billingTerm, termDiscounts) : "—";
-        const featured = index === featuredIndex;
-        const loading = Boolean(plan && creatingPayment && selectedPlanId === plan.id);
-
-        return (
-          <td
-            key={`${row.label}-${family.channels}`}
-            className={cn("px-4 py-4 align-top", featured && "bg-white/[0.03]")}
-          >
-            <div className="grid gap-3">
-              <div className={cn("text-base font-semibold", featured && "text-white")}>{priceLabel}</div>
-              <Button
-                type="button"
-                size="sm"
-                className="w-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 text-white shadow-[0_12px_28px_rgba(118,77,255,0.22)] hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
-                onClick={() => plan && onSelectPlan(plan.id)}
-                disabled={!paidCheckoutAvailable || !plan || creatingPayment}
-              >
-                {loading
-                  ? "Starting checkout..."
-                  : paidCheckoutAvailable
-                    ? "Continue"
-                    : "Unavailable"}
-              </Button>
-            </div>
-          </td>
-        );
-      })}
-    </tr>
-  );
-}
-
-function PricingNotes({ plans }: { plans: PublicPlan[] }) {
-  const offers = plans.filter((plan) => plan.offer);
-
-  return (
-    <div className="border-t border-white/8 px-4 py-5 md:px-6">
-      <p className="text-sm leading-6 text-slate-300/72">
-        Compare plans the same way as the public pricing page. Choose a channel count and billing term
-        in the Billing section to continue to KHQR checkout.
-      </p>
-
-      {offers.length > 0 ? (
-        <div className="mt-4 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-400/8 p-4 text-sm text-fuchsia-50/90">
-          {offers.map((plan) => (
-            <div key={plan.id}>
-              {plan.name}: promotional pricing active —{" "}
-              {plan.offer?.remaining_redemptions.toLocaleString()} redemption
-              {plan.offer?.remaining_redemptions === 1 ? "" : "s"} remaining.
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    </ul>
   );
 }
 
@@ -243,9 +50,11 @@ export function OnboardingPlanPicker({
   selectedPlanId,
   onSelectPlan,
 }: OnboardingPlanPickerProps) {
-  const families = React.useMemo(() => groupPlansIntoChannelFamilies(plans), [plans]);
+  const [term, setTerm] = React.useState<"monthly" | "yearly">("monthly");
+  const families = React.useMemo(() => groupPublicPaidTiers(plans), [plans]);
+  const free = React.useMemo(() => publicFreePlans(plans)[0] as PublicPlan | undefined, [plans]);
 
-  if (families.length === 0) {
+  if (families.length === 0 && !free) {
     return (
       <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-6 text-sm text-slate-200/72">
         No subscription plans are available right now. Please try again later or contact support.
@@ -253,71 +62,104 @@ export function OnboardingPlanPicker({
     );
   }
 
-  const sections = buildComparisonSections(families, termDiscounts);
-  const featuredIndex = Math.floor((families.length - 1) / 2);
+  const yearlyDiscount = termDiscounts.annual_discount_percent;
 
   return (
     <div className="grid gap-4">
-      <div className="overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] ring-1 ring-white/6">
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full border-collapse text-left">
-            <thead className="bg-white/[0.03]">
-              <tr>
-                <th
-                  scope="col"
-                  className="sticky left-0 z-10 min-w-[220px] bg-[#0b1020]/95 px-4 py-4 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400/80 backdrop-blur"
-                >
-                  Feature
-                </th>
-                {families.map((family, index) => (
-                  <PlanHeaderCell
-                    key={family.channels}
-                    family={family}
-                    index={index}
-                    total={families.length}
-                  />
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sections.flatMap((section) => [
-                <SectionHeaderRow
-                  key={`${section.title}-header`}
-                  title={section.title}
-                  families={families}
-                />,
-                ...section.rows.map((row) =>
-                  section.title === "Billing" ? (
-                    <BillingCheckoutRow
-                      key={`${section.title}-${row.label}`}
-                      row={row}
-                      families={families}
-                      termDiscounts={termDiscounts}
-                      featuredIndex={featuredIndex}
-                      paidCheckoutAvailable={paidCheckoutAvailable}
-                      creatingPayment={creatingPayment}
-                      selectedPlanId={selectedPlanId}
-                      onSelectPlan={onSelectPlan}
-                    />
-                  ) : (
-                    <ComparisonDataRow
-                      key={`${section.title}-${row.label}`}
-                      row={row}
-                      planCount={families.length}
-                      featuredIndex={featuredIndex}
-                    />
-                  ),
-                ),
-              ])}
-            </tbody>
-          </table>
+      <div className="flex justify-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] p-1">
+          <button
+            type="button"
+            onClick={() => setTerm("monthly")}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm",
+              term === "monthly" ? "bg-white/10 text-white" : "text-slate-400",
+            )}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setTerm("yearly")}
+            className={cn(
+              "rounded-full px-4 py-1.5 text-sm",
+              term === "yearly" ? "bg-white/10 text-white" : "text-slate-400",
+            )}
+          >
+            Yearly
+            <span className="ml-2 rounded-full bg-emerald-500/80 px-2 py-0.5 text-[11px] text-white">
+              Save {yearlyDiscount}%
+            </span>
+          </button>
         </div>
+      </div>
 
-        <PricingNotes plans={plans} />
+      <div className={`grid gap-5 ${free ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"}`}>
+        {free ? (
+          <article className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 ring-1 ring-white/6">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Free</div>
+            <h3 className="mt-2 font-display text-2xl font-semibold text-white">Free</h3>
+            <div className="mt-4 text-4xl font-semibold text-white">$0</div>
+            <div className="mt-4 border-b border-white/8 pb-4 text-sm text-slate-400">
+              {Number(free.daily_credits || 0).toLocaleString()} daily credits
+            </div>
+            <div className="mt-4">
+              <CardBullets />
+            </div>
+            <p className="text-sm text-slate-400">Shown only because Free is public. Continue with a paid plan to checkout.</p>
+          </article>
+        ) : null}
+
+        {families.map((family, index) => {
+          const plan = (term === "yearly" ? family.yearly ?? family.monthly : family.monthly ?? family.representative) as PublicPlan | null;
+          if (!plan) return null;
+          const credits = monthlyCreditsOf(plan);
+          const songs = creditsToSongs(credits);
+          const featured = index === 1;
+          const loading = Boolean(creatingPayment && selectedPlanId === plan.id);
+          const price =
+            term === "yearly" && family.yearly
+              ? formatPlanPrice(family.yearly.effective_price_cents)
+              : formatPlanPrice((family.monthly ?? plan).effective_price_cents);
+          return (
+            <article
+              key={family.key}
+              className={cn(
+                "rounded-[28px] border p-6 ring-1",
+                featured
+                  ? "border-emerald-300/30 bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.03))] ring-emerald-400/15"
+                  : "border-white/10 bg-white/[0.03] ring-white/6",
+              )}
+            >
+              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                {featured ? "Most popular" : "Plan"}
+              </div>
+              <h3 className="mt-2 font-display text-2xl font-semibold text-white">{family.label}</h3>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-4xl font-semibold text-white">{price}</span>
+                <span className="text-slate-400">{term === "yearly" && family.yearly ? "/year" : "/month"}</span>
+              </div>
+              <div className="mt-5 border-b border-white/8 pb-5">
+                <div className="text-3xl font-semibold text-emerald-200">{credits.toLocaleString()}</div>
+                <div className="text-sm text-slate-400">credits / month</div>
+                <div className="mt-1 text-xs text-slate-500">~ {songs.toLocaleString()} songs/mo</div>
+              </div>
+              <CardBullets />
+              <Button
+                type="button"
+                className="w-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 text-white"
+                onClick={() => onSelectPlan(plan.id)}
+                disabled={!paidCheckoutAvailable || creatingPayment}
+              >
+                {loading ? "Starting checkout..." : paidCheckoutAvailable ? "Continue" : "Unavailable"}
+              </Button>
+            </article>
+          );
+        })}
       </div>
 
       <div className="text-center text-sm text-slate-300/72">
-        Same plan data as{" "}
+        Same three public cards as{" "}
         <Link
           href={pricingPageUrl}
           target="_blank"
@@ -326,7 +168,7 @@ export function OnboardingPlanPicker({
         >
           the public pricing page
         </Link>
-        .
+        . Hidden $79 and unpublished dual-profile packs are not listed.
       </div>
     </div>
   );

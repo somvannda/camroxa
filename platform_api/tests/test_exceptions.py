@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from platform_api.exceptions import (
     AccountLockedError,
     AuthenticationError,
+    DesktopPlanRequiredError,
     DuplicateError,
     ExternalServiceError,
     ForbiddenError,
@@ -48,6 +49,7 @@ class TestExceptionHierarchy:
             (AuthenticationError, 401, "AUTHENTICATION_ERROR"),
             (AccountLockedError, 403, "ACCOUNT_LOCKED"),
             (ForbiddenError, 403, "FORBIDDEN"),
+            (DesktopPlanRequiredError, 403, "DESKTOP_PLAN_REQUIRED"),
             (GeoBlockedError, 403, "GEO_BLOCKED"),
             (GenerationFrozenError, 403, "GENERATION_FROZEN"),
             (LicenseExpiredError, 403, "LICENSE_EXPIRED"),

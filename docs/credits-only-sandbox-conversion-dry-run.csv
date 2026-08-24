@@ -1,0 +1,2 @@
+user_id,email,plan_name,price_cents,plan_song_limit,music_used,leftover_packages,credits_to_mint,bucket,skipped,already_applied
+400f87a4-2c25-45fe-a3e5-c1f4a9d753ea,credits-cutover-test@sandbox.camxora.test,Monthly · 2-channel,7900,300,80,220,2200,monthly,False,True

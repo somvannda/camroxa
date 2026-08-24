@@ -22,11 +22,15 @@ import httpx
 from python_app.services.api_errors import (
     AccountLockedError,
     AuthenticationError,
+    DesktopPlanRequiredError,
     DuplicateEmailError,
     NetworkError,
     TokenExpiredError,
     ValidationError,
 )
+
+DESKTOP_CLIENT_HEADER = "X-Camxora-Client"
+DESKTOP_CLIENT_VALUE = "desktop"
 
 _DEFAULT_TIMEOUT = 15.0  # seconds
 
@@ -84,6 +88,7 @@ class AuthClient:
         self._client = httpx.Client(
             base_url=self._base_url,
             timeout=timeout,
+            headers={DESKTOP_CLIENT_HEADER: DESKTOP_CLIENT_VALUE},
         )
 
     # ------------------------------------------------------------------
@@ -116,7 +121,13 @@ class AuthClient:
             raise AuthenticationError(msg, status_code=401)
 
         if response.status_code == 403:
-            msg = self._extract_message(response, "Account temporarily locked")
+            code, msg = self._extract_error(response, "Account temporarily locked")
+            if code == "DESKTOP_PLAN_REQUIRED":
+                raise DesktopPlanRequiredError(
+                    msg
+                    or "Desktop studio requires a paid plan. Choose Starter, Creator, or Studio on the web.",
+                    status_code=403,
+                )
             raise AccountLockedError(msg, status_code=403)
 
         # Unexpected status — raise generic authentication error
@@ -178,6 +189,11 @@ class AuthClient:
         if response.status_code == 401:
             msg = self._extract_message(response, "Refresh token expired")
             raise TokenExpiredError(msg, status_code=401)
+
+        if response.status_code == 403:
+            code, msg = self._extract_error(response, "Desktop studio requires a paid plan")
+            if code == "DESKTOP_PLAN_REQUIRED":
+                raise DesktopPlanRequiredError(msg, status_code=403)
 
         # Unexpected status
         msg = self._extract_message(response, "Token refresh failed")
@@ -254,13 +270,21 @@ class AuthClient:
             ) from exc
 
     @staticmethod
-    def _extract_message(response: httpx.Response, default: str) -> str:
-        """Extract error message from JSON response body, or use default."""
+    def _extract_error(response: httpx.Response, default: str) -> tuple[str | None, str]:
         try:
             body = response.json()
-            return body.get("message", body.get("detail", default))
+            err = body.get("error") if isinstance(body, dict) else None
+            if isinstance(err, dict):
+                return err.get("code"), str(err.get("message") or default)
+            return None, str(body.get("message") or body.get("detail") or default)
         except Exception:  # noqa: BLE001
-            return default
+            return None, default
+
+    @staticmethod
+    def _extract_message(response: httpx.Response, default: str) -> str:
+        """Extract error message from JSON response body, or use default."""
+        _, message = AuthClient._extract_error(response, default)
+        return message
 
     @staticmethod
     def _extract_validation_errors(

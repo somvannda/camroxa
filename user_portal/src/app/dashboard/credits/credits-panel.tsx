@@ -236,7 +236,7 @@ export function CreditsPanel({
       {!embedded ? (
         <SectionTitle
           title="Credits"
-          description="Wallet balance, credit-pack redeem, and plan quota snapshot."
+          description="Wallet balance and credit-pack redeem. Generate spends credits, not plan meters."
         />
       ) : null}
 
@@ -294,7 +294,7 @@ export function CreditsPanel({
           <CardHeader>
             <CardTitle className="font-display text-2xl text-white">Credit overview</CardTitle>
             <CardDescription className="text-slate-300/72">
-              Wallet balance and plan quota snapshot.
+              Wallet balance only. Song / draft / image meters are hidden.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm text-slate-300/72">
@@ -309,106 +309,6 @@ export function CreditsPanel({
             <SummaryRow
               label="Credits spent"
               value={formatCreditValue(state.stats?.credits_spent ?? 0)}
-            />
-            <SummaryRow
-              label="Drafts remaining"
-              value={
-                state.quota?.drafts_remaining !== null &&
-                state.quota?.drafts_remaining !== undefined
-                  ? `${formatNumber(state.quota.drafts_remaining)}${
-                      state.quota.drafts_quota != null
-                        ? ` / ${formatNumber(state.quota.drafts_quota)}`
-                        : ""
-                    }`
-                  : "Not available"
-              }
-            />
-            <SummaryRow
-              label="Suno packages remaining"
-              value={
-                state.quota?.songs_remaining !== null &&
-                state.quota?.songs_remaining !== undefined
-                  ? `${formatNumber(state.quota.songs_remaining)}${
-                      state.quota.songs_quota != null
-                        ? ` / ${formatNumber(state.quota.songs_quota)}`
-                        : ""
-                    }`
-                  : "Not available"
-              }
-            />
-            <SummaryRow
-              label="Images remaining"
-              value={
-                state.quota?.images_remaining !== null &&
-                state.quota?.images_remaining !== undefined
-                  ? `${formatNumber(state.quota.images_remaining)}${
-                      state.quota.images_quota != null
-                        ? ` / ${formatNumber(state.quota.images_quota)}`
-                        : ""
-                    }`
-                  : "Not available"
-              }
-            />
-            <SummaryRow
-              label="Track exports remaining (month)"
-              value={
-                state.quota?.videos_remaining !== null &&
-                state.quota?.videos_remaining !== undefined
-                  ? `${formatNumber(state.quota.videos_remaining)}${
-                      state.quota.videos_quota != null
-                        ? ` / ${formatNumber(state.quota.videos_quota)}`
-                        : ""
-                    }`
-                  : "Not available"
-              }
-            />
-            <SummaryRow
-              label="Merges remaining (month)"
-              value={
-                state.quota?.merges_remaining !== null &&
-                state.quota?.merges_remaining !== undefined
-                  ? `${formatNumber(state.quota.merges_remaining)}${
-                      state.quota.merges_quota != null
-                        ? ` / ${formatNumber(state.quota.merges_quota)}`
-                        : ""
-                    }`
-                  : "Not available"
-              }
-            />
-            <SummaryRow
-              label="Track exports remaining (today)"
-              value={
-                state.quota?.daily_videos_remaining !== null &&
-                state.quota?.daily_videos_remaining !== undefined
-                  ? `${formatNumber(state.quota.daily_videos_remaining)}${
-                      state.quota.daily_videos_limit != null
-                        ? ` / ${formatNumber(state.quota.daily_videos_limit)}`
-                        : ""
-                    }`
-                  : "Not available"
-              }
-            />
-            <SummaryRow
-              label="Merges remaining (today)"
-              value={
-                state.quota?.daily_merges_remaining !== null &&
-                state.quota?.daily_merges_remaining !== undefined
-                  ? `${formatNumber(state.quota.daily_merges_remaining)}${
-                      state.quota.daily_merges_limit != null
-                        ? ` / ${formatNumber(state.quota.daily_merges_limit)}`
-                        : ""
-                    }`
-                  : "Not available"
-              }
-            />
-            <SummaryRow
-              label="Plan quota remaining"
-              value={
-                state.wallet?.plan_quota_remaining !== null &&
-                state.wallet?.plan_quota_remaining !== undefined
-                  ? formatCreditValue(state.wallet.plan_quota_remaining)
-                  : "Not available"
-              }
             />
           </CardContent>
         </Card>
@@ -469,40 +369,6 @@ export function CreditsPanel({
         </CardContent>
       </Card>
 
-      {state.quota?.channels?.length ? (
-        <Card className="rounded-[28px] border-white/10 bg-[linear-gradient(180deg,rgba(16,22,52,0.94),rgba(9,12,28,0.98))] shadow-[0_24px_80px_rgba(18,24,58,0.3)]">
-          <CardHeader>
-            <CardTitle className="font-display text-2xl text-white">Daily channel limits</CardTitle>
-            <CardDescription className="text-slate-300/72">
-              Per-channel song and image capacity remaining today.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {state.quota.channels.map((channel) => (
-              <div
-                key={channel.profile_id}
-                className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300/80"
-              >
-                <div className="font-medium text-white">{channel.profile_name}</div>
-                <div className="mt-2 grid gap-1 md:grid-cols-3">
-                  <div>
-                    Drafts today: {channel.daily_drafts_remaining ?? 0} /{" "}
-                    {channel.daily_drafts_limit ?? 0} remaining
-                  </div>
-                  <div>
-                    Songs today: {channel.daily_songs_remaining} / {channel.daily_songs_limit}{" "}
-                    remaining
-                  </div>
-                  <div>
-                    Images today: {channel.daily_images_remaining} / {channel.daily_images_limit}{" "}
-                    remaining
-                  </div>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
     </div>
   );
 }
