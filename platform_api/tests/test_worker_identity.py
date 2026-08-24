@@ -14,6 +14,7 @@ from platform_api.worker import _worker_id
         ("execute_batch", "draft"),
         ("draft", "draft"),
         ("suno_submit", "suno"),
+        ("web_music_generate", "suno"),
         ("run_image_jobs", "images"),
         ("run_youtube_uploads", "images"),
         ("unknown_thing", "other"),

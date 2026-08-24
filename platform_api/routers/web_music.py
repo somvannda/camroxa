@@ -68,6 +68,8 @@ class WebMusicQuotaResponse(BaseModel):
     requires_upgrade: bool = False
     can_download: bool = False
     has_subscription: bool = False
+    queue_limit: int = 2
+    queue_used: int = 0
 
 
 class WebMusicPlaylistResponse(BaseModel):

@@ -22,6 +22,8 @@ from platform_api.middleware.rate_limit import (
     DEFAULT_RATE_WINDOW_SECONDS,
     SUNO_RATE_LIMIT,
     SUNO_RATE_WINDOW_SECONDS,
+    WEB_MUSIC_GENERATE_RATE_LIMIT,
+    WEB_MUSIC_GENERATE_RATE_WINDOW_SECONDS,
     RateLimitConfig,
     RateLimiter,
     check_rate_limit,
@@ -224,6 +226,13 @@ class TestResolveEndpointType:
             resolve_endpoint_type("/api/v1/v2/topups/payments/pay_abc")
             == "web_music_checkout_status"
         )
+
+    def test_web_music_generate_enqueue_path(self) -> None:
+        assert resolve_endpoint_type("/api/v1/web-music/generate") == "web_music_generate"
+        assert resolve_endpoint_type("/api/v1/web-music/generate-draft") == "default"
+        assert resolve_endpoint_type("/api/v1/web-music/generate-styles") == "default"
+        assert WEB_MUSIC_GENERATE_RATE_LIMIT == 40
+        assert WEB_MUSIC_GENERATE_RATE_WINDOW_SECONDS == 60
 
 
 # ---------------------------------------------------------------------------
