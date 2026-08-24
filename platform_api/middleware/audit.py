@@ -20,6 +20,8 @@ from uuid import UUID
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
+from platform_api.http_paths import strip_api_version_prefix
+
 logger = logging.getLogger(__name__)
 
 # HTTP methods that represent state-changing operations
@@ -96,10 +98,7 @@ def _determine_action_type(method: str, path: str) -> str:
     Returns:
         A categorized action type string (e.g., 'auth.login', 'profile.create').
     """
-    # Normalize path
-    normalized = path.lower().strip("/")
-    if normalized.startswith("api/v1/"):
-        normalized = normalized[7:]
+    normalized = strip_api_version_prefix(path)
 
     method_upper = method.upper()
 
@@ -220,10 +219,7 @@ def _extract_target_resource(path: str) -> str | None:
     Returns:
         A resource identifier string, or None if not determinable.
     """
-    # Normalize path
-    normalized = path.strip("/")
-    if normalized.startswith("api/v1/"):
-        normalized = normalized[7:]
+    normalized = strip_api_version_prefix(path)
 
     parts = normalized.split("/")
 

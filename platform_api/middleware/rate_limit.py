@@ -24,6 +24,8 @@ from typing import Protocol
 
 from fastapi import HTTPException, Request
 
+from platform_api.http_paths import strip_api_version_prefix
+
 logger = logging.getLogger(__name__)
 
 
@@ -295,12 +297,7 @@ def resolve_endpoint_type(path: str) -> str:
     Returns:
         The endpoint type string.
     """
-    # Normalize path: strip leading slashes and API prefix
-    normalized = path.lower().strip("/")
-
-    # Remove api/v1 prefix if present
-    if normalized.startswith("api/v1/"):
-        normalized = normalized[7:]
+    normalized = strip_api_version_prefix(path)
 
     if normalized.startswith("generation/suno") or normalized.endswith("retry-suno"):
         return "suno"
@@ -328,12 +325,12 @@ def resolve_endpoint_type(path: str) -> str:
     ):
         return "llm"
 
-    if normalized.endswith("v2/subscriptions/purchase") or normalized.endswith(
-        "v2/topups/purchase"
+    if normalized.endswith("subscriptions/purchase") or normalized.endswith(
+        "topups/purchase"
     ):
         return "web_music_checkout"
 
-    if "v2/subscriptions/payments/" in normalized or "v2/topups/payments/" in normalized:
+    if "subscriptions/payments/" in normalized or "topups/payments/" in normalized:
         return "web_music_checkout_status"
 
     return "default"

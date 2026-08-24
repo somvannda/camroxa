@@ -20,7 +20,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Web-music billing lives at `/api/v2/subscriptions`, `/api/v2/credits`, and
+  `/api/v2/topups` instead of nested `/api/v1/v2/...`. See
+  `docs/changelog/2026-08-24-api-v2-url-prefix.md`.
 - `POST /web-music/generate` enqueues a global paid-first Suno job (`web_music_generate`) instead of calling Suno on the HTTP worker. Paid cap 20, free cap 2. Desktop `suno_submit` is unchanged and still higher priority. See `docs/changelog/2026-08-23-web-create-global-queue.md`.
+
+### Deprecated
+
+- Nested `/api/v1/v2/...` URLs rewrite to `/api/v2/...` so old music-web bundles
+  keep working. See `docs/changelog/2026-08-24-api-v2-url-prefix.md`.
 
 ### Security
 

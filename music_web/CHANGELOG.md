@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Subscription, credit, and top-up calls use `/api/v2/...` instead of `/api/v1/v2/...`. See `docs/changelog/2026-08-24-api-v2-url-prefix.md`.
 - Create stays locked for **5 seconds**, then you can enqueue another song into the global paid-first Suno queue (20 paid / 2 free). Songs appear as Queued/Waiting; Suno starts them one by one. See `docs/changelog/2026-08-23-web-create-global-queue.md`.
 
 ### Added

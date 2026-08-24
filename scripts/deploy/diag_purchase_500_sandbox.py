@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pull sandbox API logs for /v2/subscriptions/purchase 500."""
+"""Pull sandbox API logs for /api/v2/subscriptions/purchase 500."""
 
 from __future__ import annotations
 

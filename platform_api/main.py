@@ -470,6 +470,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(MusicWebGeoMiddleware)
 
+    # Last added = first to run: rewrite /api/v1/v2 → /api/v2 before routing.
+    from platform_api.middleware.legacy_api_paths import LegacyNestedV2PathMiddleware
+
+    app.add_middleware(LegacyNestedV2PathMiddleware)
+
     # Note: Rate limiting is implemented as a FastAPI Depends() in route handlers
     # (via RateLimiter.check()), not as ASGI middleware. The auth middleware is also
     # implemented as Depends(get_current_user). This allows fine-grained control
@@ -593,12 +598,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(web_music.router, prefix=settings.api_v1_prefix)
     app.include_router(web_music_licenses.router, prefix=settings.api_v1_prefix)
 
-    # --- V2 APIs for web music subscriptions and credits ---
+    # Web-music billing is API v2 (separate from /api/v1). CutLuy webhooks stay
+    # on v1 — that URL is already configured in CutLuy.
     from platform_api.routers import v2_subscriptions, v2_credits, v2_topups, webhooks_cutluy
 
-    app.include_router(v2_subscriptions.router, prefix=settings.api_v1_prefix)
-    app.include_router(v2_credits.router, prefix=settings.api_v1_prefix)
-    app.include_router(v2_topups.router, prefix=settings.api_v1_prefix)
+    app.include_router(v2_subscriptions.router, prefix=settings.api_v2_prefix)
+    app.include_router(v2_credits.router, prefix=settings.api_v2_prefix)
+    app.include_router(v2_topups.router, prefix=settings.api_v2_prefix)
     app.include_router(webhooks_cutluy.router, prefix=settings.api_v1_prefix)
 
     return app

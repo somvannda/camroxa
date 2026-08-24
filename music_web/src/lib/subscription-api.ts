@@ -1,6 +1,8 @@
-/** Subscription and credit management API client (v2) */
+/** Subscription and credit management API client (`/api/v2`) */
 
 import { musicAuthFetch } from '@/lib/auth-fetch';
+
+const API_V2 = '/api/v2';
 
 // ============================================================================
 // Types
@@ -122,12 +124,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // ============================================================================
 
 export async function fetchSubscriptionPlans(): Promise<{ plans: SubscriptionPlan[] }> {
-  return apiFetch<{ plans: SubscriptionPlan[] }>('/api/v1/v2/subscriptions/plans');
+  return apiFetch<{ plans: SubscriptionPlan[] }>(`${API_V2}/subscriptions/plans`);
 }
 
 export async function fetchMySubscription(): Promise<UserSubscription | null> {
   const data = await apiFetch<UserSubscription | { data?: UserSubscription | null } | null>(
-    '/api/v1/v2/subscriptions/my-subscription',
+    `${API_V2}/subscriptions/my-subscription`,
   );
   const nested =
     data && typeof data === 'object' && 'data' in data && data.data && typeof data.data === 'object'
@@ -142,7 +144,7 @@ export async function purchaseSubscription(input: {
   success_url: string;
   cancel_url: string;
 }): Promise<{ checkout_url: string; payment_id: string; expires_at: string; qr_string?: string }> {
-  return apiFetch('/api/v1/v2/subscriptions/purchase', {
+  return apiFetch(`${API_V2}/subscriptions/purchase`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -152,7 +154,7 @@ export async function purchaseSubscription(input: {
 export async function cancelSubscription(input: {
   cancel_at_period_end?: boolean;
 }): Promise<{ success: boolean; message: string; subscription: UserSubscription | null }> {
-  return apiFetch('/api/v1/v2/subscriptions/cancel', {
+  return apiFetch(`${API_V2}/subscriptions/cancel`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -164,14 +166,14 @@ export async function cancelSubscription(input: {
 // ============================================================================
 
 export async function fetchCreditBalance(): Promise<CreditBalance> {
-  return apiFetch<CreditBalance>('/api/v1/v2/credits/balance');
+  return apiFetch<CreditBalance>(`${API_V2}/credits/balance`);
 }
 
 export async function fetchCreditHistory(
   limit = 50,
   offset = 0,
 ): Promise<{ transactions: CreditTransaction[]; total: number; limit: number; offset: number }> {
-  return apiFetch(`/api/v1/v2/credits/history?limit=${limit}&offset=${offset}`);
+  return apiFetch(`${API_V2}/credits/history?limit=${limit}&offset=${offset}`);
 }
 
 // ============================================================================
@@ -179,7 +181,7 @@ export async function fetchCreditHistory(
 // ============================================================================
 
 export async function fetchCreditPacks(): Promise<{ packs: CreditPack[] }> {
-  return apiFetch<{ packs: CreditPack[] }>('/api/v1/v2/topups/packs');
+  return apiFetch<{ packs: CreditPack[] }>(`${API_V2}/topups/packs`);
 }
 
 export async function purchaseTopup(input: {
@@ -195,7 +197,7 @@ export async function purchaseTopup(input: {
   credits: number;
   amount_cents: number;
 }> {
-  return apiFetch('/api/v1/v2/topups/purchase', {
+  return apiFetch(`${API_V2}/topups/purchase`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -223,18 +225,18 @@ export function isAllowedCutluyCheckoutUrl(url: string | null | undefined): bool
 }
 
 export async function fetchSubscriptionCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
-  return apiFetch(`/api/v1/v2/subscriptions/payments/${encodeURIComponent(paymentId)}`);
+  return apiFetch(`${API_V2}/subscriptions/payments/${encodeURIComponent(paymentId)}`);
 }
 
 export async function fetchTopupCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
-  return apiFetch(`/api/v1/v2/topups/payments/${encodeURIComponent(paymentId)}`);
+  return apiFetch(`${API_V2}/topups/payments/${encodeURIComponent(paymentId)}`);
 }
 
 export async function fetchTopupHistory(
   limit = 50,
   offset = 0,
 ): Promise<{ purchases: TopupPurchase[]; total: number; limit: number; offset: number }> {
-  return apiFetch(`/api/v1/v2/topups/history?limit=${limit}&offset=${offset}`);
+  return apiFetch(`${API_V2}/topups/history?limit=${limit}&offset=${offset}`);
 }
 
 // ============================================================================

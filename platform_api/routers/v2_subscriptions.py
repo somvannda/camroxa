@@ -21,7 +21,7 @@ from platform_api.services.v2.payment_security import sanitize_music_web_return_
 from platform_api.services.v2.subscription_service import SubscriptionService
 from platform_api.exceptions import NotFoundError, ValidationError
 
-router = APIRouter(prefix="/v2/subscriptions", tags=["subscriptions-v2"])
+router = APIRouter(prefix="/subscriptions", tags=["subscriptions-v2"])
 
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 

@@ -20,7 +20,7 @@ from platform_api.services.v2.payment_security import sanitize_music_web_return_
 from platform_api.services.v2.topup_service import TopupService
 from platform_api.exceptions import NotFoundError, ValidationError
 
-router = APIRouter(prefix="/v2/topups", tags=["topups-v2"])
+router = APIRouter(prefix="/topups", tags=["topups-v2"])
 
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 

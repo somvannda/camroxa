@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
+    api_v2_prefix: str = "/api/v2"
 
     # --- Server ---
     host: str = "0.0.0.0"

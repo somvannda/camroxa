@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.services.v2.credit_service import CreditService
 
-router = APIRouter(prefix="/v2/credits", tags=["credits-v2"])
+router = APIRouter(prefix="/credits", tags=["credits-v2"])
 
 
 def _iso(value: object | None) -> str | None:
