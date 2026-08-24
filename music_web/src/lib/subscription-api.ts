@@ -1,6 +1,8 @@
-/** Subscription and credit management API client (v2) */
+/** Subscription and credit management API client (`/api/v2`) */
 
 import { musicAuthFetch } from '@/lib/auth-fetch';
+
+const API_V2 = '/api/v2';
 
 // ============================================================================
 // Types
