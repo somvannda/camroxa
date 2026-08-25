@@ -80,7 +80,9 @@ export async function registerMusicUser(input: {
   }
 }
 
-export async function sendVerificationEmail(email: string): Promise<{ message: string }> {
+export async function sendVerificationEmail(
+  email: string,
+): Promise<{ message: string; is_verified?: boolean }> {
   const response = await musicAuthFetch('/api/v3/auth/send-verification', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -89,7 +91,7 @@ export async function sendVerificationEmail(email: string): Promise<{ message: s
   if (!response.ok) {
     throw new Error(await readError(response, `Could not send verification code (${response.status})`));
   }
-  return (await response.json()) as { message: string };
+  return (await response.json()) as { message: string; is_verified?: boolean };
 }
 
 export async function verifyEmailCode(input: {

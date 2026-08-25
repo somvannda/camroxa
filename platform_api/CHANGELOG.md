@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- After the email confirmation code, `POST /auth/verify-email` sets login cookies and already-verified emails return success so music-web can open Create. Dual-mounted at `/api/v1` and `/api/v3`. See `docs/changelog/2026-08-25-verify-email-redirect-create.md`.
 - Create play Ready with Chrome “no supported source”: concurrent packaging
   left `content_key_id` pointing at an older key than the CXA1 file. Lock +
   skip-if-ready, then repair DB keys from the package header. See
