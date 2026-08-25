@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useCallback, useEffect, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useState } from 'react';
 import { LoaderCircle, Shield } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
+import GuestOnly from '@/components/guest-only';
 import TurnstileWidget from '@/components/turnstile-widget';
 import { fetchMusicUser } from '@/lib/auth-api';
 import { safeNextPath } from '@/lib/auth-redirect';
@@ -15,20 +16,13 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNextPath(params.get('next'));
-  const { login, user, loading } = useAuth();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [turnstileKey, setTurnstileKey] = useState(0);
-
-  useEffect(() => {
-    if (loading) return;
-    if (user?.email_confirmed) {
-      router.replace(next);
-    }
-  }, [loading, next, router, user?.email_confirmed]);
 
   const handleTurnstileToken = useCallback((token: string) => {
     setTurnstileToken(token);
@@ -136,7 +130,9 @@ export default function LoginPage() {
         <div className="flex min-h-[40vh] items-center justify-center text-slate-400">Loading…</div>
       }
     >
-      <LoginForm />
+      <GuestOnly>
+        <LoginForm />
+      </GuestOnly>
     </Suspense>
   );
 }
