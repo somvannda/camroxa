@@ -173,6 +173,29 @@ class AuthView(QFrame):
         self._error_label.setText(message)
         self._error_label.show()
 
+    def show_upgrade_plans_dialog(
+        self,
+        message: str,
+        *,
+        api: object | None = None,
+    ) -> None:
+        """Popup plan list on the login screen after an unpaid account is blocked."""
+        from features.account.views.upgrade_plans_dialog import UpgradePlansDialog
+        from shared.services.platform_api import PlatformApi
+
+        self.set_error(message)
+        api_client: PlatformApi
+        if isinstance(api, PlatformApi):
+            api_client = api
+        else:
+            api_client = PlatformApi()
+        dialog = UpgradePlansDialog(
+            message=message,
+            api=api_client,
+            parent=self.window(),
+        )
+        dialog.exec()
+
     def clear_error(self) -> None:
         self._error_label.clear()
         self._error_label.hide()

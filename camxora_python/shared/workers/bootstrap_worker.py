@@ -92,6 +92,22 @@ class AuthWorker(QThread):
                 return
             self.failed.emit("Unknown auth mode.")
         except PlatformApiError as exc:
+            from shared.lib.desktop_entitlement import (
+                DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
+                is_desktop_plan_required_error,
+            )
+            from shared.services.session_service import BootstrapDestination
+
+            if is_desktop_plan_required_error(exc):
+                # Login itself is rejected by v3 before tokens are issued.
+                # Treat it as a successful "stay on login" so the plans popup opens.
+                self.succeeded.emit(
+                    BootstrapResult(
+                        BootstrapDestination.LOGIN,
+                        DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
+                    )
+                )
+                return
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Request failed.")

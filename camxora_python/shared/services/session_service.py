@@ -11,6 +11,11 @@ from typing import Callable
 
 from pydantic import ValidationError
 
+from shared.lib.desktop_entitlement import (
+    DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
+    is_desktop_plan_required_error,
+    user_can_use_desktop_studio,
+)
 from shared.models.auth import AuthTokens, UserMeResponse
 from shared.models.local_workspace import LocalWorkspaceContext
 from shared.services.account_token_store import list_saved_accounts, load_saved_tokens, remember_account
@@ -20,6 +25,7 @@ from shared.services.local_user_scope import (
     get_active_workspace_context,
 )
 from shared.services.platform_api import PlatformApi
+from shared.services.platform_client import PlatformApiError
 from shared.services.secure_storage import TOKENS_STORAGE_KEY, SecureStorage
 from shared.services.workspace_cache import WorkspaceCache
 from shared.services.workspace_prefs_sync import pull_workspace_prefs_from_settings
@@ -236,16 +242,24 @@ class SessionService:
         _report("Validating session", "Checking account session.", 55)
         try:
             me = self._api.get_me()
-            self._current_user = me
-            activate_local_user_scope(me.id, self._storage)
-            self._remember_session_account(me)
-            self.workspace_cache.apply_warmup(me=me)
         except ValidationError:
             self.clear()
             _report("Opening sign in", "Session expired.", 100)
             return BootstrapResult(
                 BootstrapDestination.LOGIN,
                 message="Unable to read your account profile. Please sign in again.",
+            )
+        except PlatformApiError as exc:
+            self.clear()
+            _report("Opening sign in", "Paid plan required." if is_desktop_plan_required_error(exc) else "Session expired.", 100)
+            if is_desktop_plan_required_error(exc):
+                return BootstrapResult(
+                    BootstrapDestination.LOGIN,
+                    message=DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
+                )
+            return BootstrapResult(
+                BootstrapDestination.LOGIN,
+                message="Unable to verify your account. Please sign in again.",
             )
         except Exception:
             self.clear()
@@ -254,6 +268,19 @@ class SessionService:
                 BootstrapDestination.LOGIN,
                 message="Unable to verify your account. Please sign in again.",
             )
+
+        if not user_can_use_desktop_studio(me):
+            self.clear()
+            _report("Opening sign in", "Paid plan required.", 100)
+            return BootstrapResult(
+                BootstrapDestination.LOGIN,
+                message=DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
+            )
+
+        self._current_user = me
+        activate_local_user_scope(me.id, self._storage)
+        self._remember_session_account(me)
+        self.workspace_cache.apply_warmup(me=me)
 
         _report("Loading profiles", "Preparing your workspace.", 80)
         try:
