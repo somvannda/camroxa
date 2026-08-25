@@ -13,7 +13,10 @@ export function isUnsupportedSrcError(err: unknown, media?: HTMLMediaElement | n
         ? err.message || `Media error ${err.code}`
         : String(err || '');
   if (name === 'NotSupportedError') return true;
-  return /media error 4|media_err_src_not_supported|no supported source|format is not supported|native media load failed/i.test(
+  if (err && typeof err === 'object' && 'code' in err && Number((err as { code: unknown }).code) === 4) {
+    return true;
+  }
+  return /media error 4|media_err_src_not_supported|no supported source|format is not supported|native media load failed|native media playback failed|native play timeout/i.test(
     text,
   );
 }

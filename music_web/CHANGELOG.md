@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- iOS Chrome no longer sticks on HLS MediaError 4. CriOS tries HLS, then Web Audio; Windows Chrome stays on MSE. macOS Chrome uses HLS then CXA1 Web Audio (`macos-chrome.ts`); macOS Safari is HLS then license HTML then Web Audio. See `docs/changelog/2026-08-25-ios-chrome-player-split.md`.
 - iOS lock screen rich Now Playing: 1024px artwork, Artist (Album) subtitle, 15s skip, smoother scrubber while locked. See `docs/changelog/2026-08-22-ios-lock-screen-rich.md`.
 - iOS Chrome deep diagnostics: `crios_sync_diag` (graph vs UI vs hold vs Media Session drift) and `crios_hold_event` (hold pause/play/seek). Safari untouched.
 - iOS Now Playing diagnostics: concrete `now_playing_diag` / `media_element_event` traces with mismatch flags; in-DOM media listener bind; native sync uses element `paused` state; lock-screen handlers for HLS/video. See `docs/changelog/2026-08-22-ios-now-playing-diagnostics.md`.

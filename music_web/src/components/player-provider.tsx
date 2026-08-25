@@ -14,26 +14,19 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth-provider';
 import { catalogStreamUrl, getPlayUrl, isTrustedPlayUrl, type StreamTrack } from '@/lib/streaming-api';
 import { reportCriosHoldEvent, reportCriosSyncDiag } from '@/lib/crios-now-playing-debug';
-import { decryptCamxoraChunk } from '@/lib/camxora-decrypt';
 import {
   createLicenseSession,
-  fetchEncryptedChunkRecord,
   reportPlaybackTrace,
-  SegmentOutOfRangeError,
   sendLicenseHeartbeat,
-  type LicenseSession,
 } from '@/lib/content-license';
 import {
   assignPlayerSilentHold,
-  clearPlayerForNativeStream,
-  createMpegMediaSource,
   ensureAudioContextRunning,
   ensurePlayerSilentHoldPlaying,
   ensurePlayerSilentHoldPlayingWithLog,
   errorDetail,
   friendlyPlaybackError,
   getSharedAudioContext,
-  holdHtmlMediaGesture,
   isAbortLike,
   isIosChrome,
   isLicensedStreamSrc,
@@ -44,29 +37,27 @@ import {
   ProtectedAudioGraph,
   releaseHtmlMediaGesture,
   shouldHandleHtmlAudioEvent,
-  shouldUseHlsPlayback,
-  shouldUseIosHlsPlayback,
-  shouldUseIosNativeVideoElement,
   shouldUseMpegMediaSource,
-  shouldUseNativeHtmlPlayback,
   unlockMediaPlayback,
-  startNativePlayback,
   syncIosChromeHoldPosition,
   primeIosChromeVideoGesture,
-  waitForNativePlayReady,
-  wipeBytes,
 } from '@/lib/mpeg-playback';
+import {
+  getPlayBackend,
+  detectPlayer,
+  playerUsesNativeVideo,
+  iosChromeFriendlyError,
+  isUnsupportedSrcError,
+} from '@/lib/players';
 import {
   bindMediaSessionHandlers,
   clearMediaSession,
   installMediaSessionLockScreenKeepalive,
   installMediaSessionVisibilityRefresh,
-  publishLockScreenNowPlaying,
   setMediaSessionMetadata,
   syncMediaSessionPlayback,
 } from '@/lib/media-session';
 import { createNowPlayingReporter, formatNowPlayingDetail } from '@/lib/now-playing-debug';
-import { StreamingMp3Decoder } from '@/lib/mp3-software-decode';
 
 type PlayerState = {
   current: StreamTrack | null;
@@ -91,15 +82,6 @@ type PlayerState = {
 };
 
 const PlayerContext = createContext<PlayerState | null>(null);
-
-const CHUNK_CONCURRENCY = 3;
-
-type WebAudioRamCache = {
-  key: string;
-  buffers: AudioBuffer[];
-};
-
-let webAudioRamCache: WebAudioRamCache | null = null;
 
 function shuffleTracks(tracks: StreamTrack[]): StreamTrack[] {
   const copy = [...tracks];
@@ -153,355 +135,6 @@ function startPositionHeartbeat(
   };
   window.setTimeout(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
   heartbeatRef.current = window.setInterval(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
-}
-
-function appendSourceBuffer(sourceBuffer: SourceBuffer, data: Uint8Array): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const onUpdate = () => {
-      sourceBuffer.removeEventListener('updateend', onUpdate);
-      sourceBuffer.removeEventListener('error', onError);
-      resolve();
-    };
-    const onError = () => {
-      sourceBuffer.removeEventListener('updateend', onUpdate);
-      sourceBuffer.removeEventListener('error', onError);
-      reject(new Error('SourceBuffer error'));
-    };
-    sourceBuffer.addEventListener('updateend', onUpdate);
-    sourceBuffer.addEventListener('error', onError);
-    sourceBuffer.appendBuffer(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
-  });
-}
-
-async function fetchAndDecryptChunk(
-  session: LicenseSession,
-  chunkIndex: number,
-  signal?: AbortSignal,
-): Promise<{ data: Uint8Array; chunkCount: number | null }> {
-  if (!session.content_key || !session.segment_url) {
-    throw new Error('License session is missing audio.');
-  }
-  let record: { data: ArrayBuffer; chunkCount: number | null };
-  try {
-    record = await fetchEncryptedChunkRecord(session.segment_url, chunkIndex, signal);
-  } catch (err) {
-    if (isAbortLike(err) || signal?.aborted) throw err;
-    throw err;
-  }
-  try {
-    const plain = await decryptCamxoraChunk(record.data, session.content_key, chunkIndex);
-    return { data: plain, chunkCount: record.chunkCount };
-  } catch (err) {
-    if (isAbortLike(err) || signal?.aborted) throw err;
-    const plain = await decryptCamxoraChunk(record.data, session.content_key, chunkIndex);
-    return { data: plain, chunkCount: record.chunkCount };
-  }
-}
-
-async function fetchRemainingChunksOrdered(
-  session: LicenseSession,
-  startChunk: number,
-  initialExpected: number | null,
-  token: number,
-  loadToken: { current: number },
-  signal: AbortSignal | undefined,
-  onChunk: (index: number, data: Uint8Array) => Promise<void>,
-): Promise<number | null> {
-  let expected = initialExpected;
-  let nextFetch = startChunk;
-  let nextProcess = startChunk;
-  const pending = new Map<number, Uint8Array>();
-  const inFlight = new Set<number>();
-  let finished = expected != null && startChunk >= expected;
-  let processing = false;
-  let settled = false;
-
-  return new Promise<number | null>((resolve, reject) => {
-    const settle = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      fn();
-    };
-
-    const maybeFinish = () => {
-      if (finished && inFlight.size === 0 && !pending.has(nextProcess)) {
-        settle(() => resolve(expected));
-      }
-    };
-
-    const processLoop = async () => {
-      if (processing) return;
-      processing = true;
-      try {
-        while (pending.has(nextProcess)) {
-          if (signal?.aborted || token !== loadToken.current) {
-            settle(() => resolve(expected));
-            return;
-          }
-          const data = pending.get(nextProcess)!;
-          pending.delete(nextProcess);
-          try {
-            await onChunk(nextProcess, data);
-          } catch (err) {
-            settle(() => reject(err));
-            return;
-          }
-          nextProcess += 1;
-          if (expected != null && nextProcess >= expected) {
-            finished = true;
-          }
-        }
-      } finally {
-        processing = false;
-      }
-      maybeFinish();
-      pumpFetch();
-    };
-
-    const pumpFetch = () => {
-      if (signal?.aborted || token !== loadToken.current) {
-        finished = true;
-        maybeFinish();
-        return;
-      }
-      while (inFlight.size < CHUNK_CONCURRENCY && !finished) {
-        const idx = nextFetch;
-        if (expected != null && idx >= expected) break;
-        nextFetch += 1;
-        inFlight.add(idx);
-        fetchAndDecryptChunk(session, idx, signal)
-          .then((result) => {
-            inFlight.delete(idx);
-            if (signal?.aborted || token !== loadToken.current) {
-              wipeBytes(result.data);
-              maybeFinish();
-              return;
-            }
-            if (result.chunkCount) expected = result.chunkCount;
-            pending.set(idx, result.data);
-            void processLoop();
-          })
-          .catch((err) => {
-            inFlight.delete(idx);
-            if (err instanceof SegmentOutOfRangeError) {
-              finished = true;
-              maybeFinish();
-              pumpFetch();
-              return;
-            }
-            if (isAbortLike(err) || signal?.aborted) {
-              finished = true;
-              maybeFinish();
-              return;
-            }
-            settle(() => reject(err));
-          });
-      }
-      maybeFinish();
-    };
-
-    pumpFetch();
-  });
-}
-
-async function playPackagedWithMediaSource(
-  audio: HTMLAudioElement,
-  session: LicenseSession,
-  token: number,
-  loadToken: { current: number },
-  objectUrlRef: { current: string | null },
-  setPlaying: (value: boolean) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  if (!session.content_key || !session.segment_url) {
-    throw new Error('License session is missing audio.');
-  }
-  const mediaSource = createMpegMediaSource();
-  const objectUrl = URL.createObjectURL(mediaSource);
-  objectUrlRef.current = objectUrl;
-  prepareHtmlAudio(audio);
-  audio.loop = false;
-  audio.src = objectUrl;
-  await new Promise<void>((resolve, reject) => {
-    const onOpen = () => resolve();
-    mediaSource.addEventListener('sourceopen', onOpen, { once: true });
-    window.setTimeout(() => reject(new Error('MediaSource timeout')), 8000);
-  });
-  if (token !== loadToken.current) return;
-  const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-
-  reportPlaybackTrace({
-    token: session.token,
-    event: 'play_chunks',
-    detail: 'fetch_start',
-  });
-
-  let expected: number | null = null;
-  const first = await fetchAndDecryptChunk(session, 0, signal);
-  if (signal?.aborted || token !== loadToken.current) {
-    wipeBytes(first.data);
-    return;
-  }
-  if (first.chunkCount) expected = first.chunkCount;
-  await appendSourceBuffer(sourceBuffer, first.data);
-  wipeBytes(first.data);
-  try {
-    await audio.play();
-    if (token === loadToken.current) setPlaying(true);
-  } catch (err) {
-    if (token === loadToken.current) setPlaying(false);
-    throw err;
-  }
-
-  if (expected == null || expected > 1) {
-    expected = await fetchRemainingChunksOrdered(
-      session,
-      1,
-      expected,
-      token,
-      loadToken,
-      signal,
-      async (_index, data) => {
-        if (signal?.aborted || token !== loadToken.current) {
-          wipeBytes(data);
-          return;
-        }
-        await appendSourceBuffer(sourceBuffer, data);
-        wipeBytes(data);
-      },
-    );
-  }
-
-  if (signal?.aborted || token !== loadToken.current) return;
-  if (mediaSource.readyState === 'open') {
-    mediaSource.endOfStream();
-  }
-}
-
-async function playPackagedWithWebAudio(
-  graph: ProtectedAudioGraph,
-  audio: HTMLAudioElement,
-  session: LicenseSession,
-  token: number,
-  loadToken: { current: number },
-  volume: number,
-  muted: boolean,
-  catalogDuration: number,
-  cacheKey: string,
-  onStarted: (info: { firstAudioMs: number; fromCache: boolean }) => void,
-  signal?: AbortSignal,
-): Promise<void> {
-  const playStartMs = performance.now();
-
-  if (webAudioRamCache?.key === cacheKey && webAudioRamCache.buffers.length) {
-    graph.stop();
-    graph.setPinnedDuration(catalogDuration);
-    await graph.loadFromCache(webAudioRamCache.buffers, volume, muted);
-    graph.markComplete();
-    releaseHtmlMediaGesture();
-    onStarted({
-      firstAudioMs: Math.round(performance.now() - playStartMs),
-      fromCache: true,
-    });
-    return;
-  }
-
-  if (webAudioRamCache?.key !== cacheKey) {
-    webAudioRamCache = null;
-  }
-
-  const ramBuffers: AudioBuffer[] = [];
-  graph.stop();
-  graph.setPinnedDuration(catalogDuration);
-
-  const ctx = getSharedAudioContext();
-  const decoder = new StreamingMp3Decoder(ctx);
-  await decoder.ready();
-
-  try {
-    holdHtmlMediaGesture();
-    reportPlaybackTrace({
-      token: session.token,
-      event: 'play_chunks',
-      detail: 'fetch_start',
-    });
-
-    let fetchIdx = 0;
-    let firstBuffer: AudioBuffer | null = null;
-    let expected: number | null = null;
-
-    while (!firstBuffer && fetchIdx < 4096) {
-      if (signal?.aborted || token !== loadToken.current) {
-        return;
-      }
-      await ensureAudioContextRunning();
-      holdHtmlMediaGesture();
-
-      let result: { data: Uint8Array; chunkCount: number | null };
-      try {
-        result = await fetchAndDecryptChunk(session, fetchIdx, signal);
-      } catch (err) {
-        if (err instanceof SegmentOutOfRangeError) break;
-        throw err;
-      }
-      if (result.chunkCount) expected = result.chunkCount;
-      firstBuffer = decoder.decodeChunk(result.data);
-      wipeBytes(result.data);
-      fetchIdx += 1;
-      if (!firstBuffer && expected != null && fetchIdx >= expected) break;
-    }
-
-    if (!firstBuffer) throw new Error('No audio chunks received.');
-
-    await graph.appendDecoded(firstBuffer, volume, muted);
-    ramBuffers.push(firstBuffer);
-    releaseHtmlMediaGesture();
-
-    const firstAudioMs = Math.round(performance.now() - playStartMs);
-    reportPlaybackTrace({
-      token: session.token,
-      event: 'play_decode',
-      detail: 'chunk=0',
-    });
-    onStarted({ firstAudioMs, fromCache: false });
-
-    if (expected == null || fetchIdx < expected) {
-      expected = await fetchRemainingChunksOrdered(
-        session,
-        fetchIdx,
-        expected,
-        token,
-        loadToken,
-        signal,
-        async (_index, data) => {
-          if (signal?.aborted || token !== loadToken.current) {
-            wipeBytes(data);
-            return;
-          }
-          const buffer = decoder.decodeChunk(data);
-          wipeBytes(data);
-          if (buffer) {
-            await graph.appendDecoded(buffer, volume, muted);
-            ramBuffers.push(buffer);
-          }
-        },
-      );
-    }
-
-    if (signal?.aborted || token !== loadToken.current) {
-      return;
-    }
-
-    graph.markComplete();
-    webAudioRamCache = { key: cacheKey, buffers: ramBuffers };
-    reportPlaybackTrace({
-      token: session.token,
-      event: 'play_chunks',
-      detail: `count=${ramBuffers.length}`,
-    });
-  } finally {
-    decoder.free();
-  }
 }
 
 function readStoredVolume(): number {
@@ -673,7 +306,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const startMediaSessionTick = useCallback(() => {
     stopMediaSessionTick();
-    const intervalMs = shouldUseIosHlsPlayback() ? 400 : isIosChrome() ? 250 : 1000;
+    const playerId = detectPlayer();
+    const intervalMs = playerUsesNativeVideo(playerId) ? (playerId === 'ios-chrome' ? 250 : 400) : 1000;
     mediaTickRef.current = window.setInterval(() => {
       syncNowPlayingFromRefs('tick', document.hidden);
     }, intervalMs);
@@ -761,6 +395,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (graphRef.current?.hasBuffer) return;
       if (!shouldHandleHtmlAudioEvent(media)) return;
       if (media.error && isAbortLike(media.error)) return;
+      if (detectPlayer() === 'ios-chrome' && isUnsupportedSrcError(media.error, media)) {
+        reportPlaybackTrace({
+          event: 'play_error',
+          detail: `stage=media_element ios_chrome_defer ${errorDetail(media.error)} src=${media.getAttribute('src') || ''}`,
+        });
+        logMediaEvent('error', true);
+        setPlaying(false);
+        return;
+      }
       if (media.error) {
         reportPlaybackTrace({
           event: 'play_error',
@@ -1040,7 +683,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [current, syncNowPlayingFromRefs]);
 
   useEffect(() => {
-    if (!shouldUseIosHlsPlayback()) return () => undefined;
+    if (!playerUsesNativeVideo(detectPlayer())) return () => undefined;
     return installMediaSessionLockScreenKeepalive(() => {
       if (!current) return;
       syncNowPlayingFromRefs('ios_lock_keepalive', true);
@@ -1089,8 +732,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return null;
       });
 
-      const useHls = shouldUseIosHlsPlayback();
-      if (!useHls && !shouldUseMpegMediaSource()) {
+      const playerId = detectPlayer();
+      const backend = getPlayBackend(playerId);
+      if (!backend.usesNativeVideo && !shouldUseMpegMediaSource()) {
         if (audio instanceof HTMLAudioElement) {
           assignPlayerSilentHold(audio);
         }
@@ -1100,7 +744,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       reportPlaybackTrace({
         event: 'play_start',
-        detail: `id=${track.id} packaged=${String(track.package_status || 'none')} mse=${shouldUseMpegMediaSource() ? '1' : '0'} hls=${useHls ? '1' : '0'} crios=${isIosChrome() ? '1' : '0'}`,
+        detail: `id=${track.id} packaged=${String(track.package_status || 'none')} player=${playerId} mse=${shouldUseMpegMediaSource() ? '1' : '0'} hls=${backend.usesNativeVideo ? '1' : '0'} crios=${playerId === 'ios-chrome' ? '1' : '0'}`,
       });
 
       indexRef.current = index;
@@ -1181,204 +825,61 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
       if (session?.ready && session.token) {
         try {
-          if (shouldUseMpegMediaSource() && session.content_key && session.segment_url) {
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_path',
-              detail: 'path=mse',
-            });
-            await playPackagedWithMediaSource(
-              audio as HTMLAudioElement,
-              session,
-              token,
-              loadTokenRef,
-              objectUrlRef,
-              setPlaying,
-              playAbort.signal,
-            );
-            if (token !== loadTokenRef.current) return;
-            releaseHtmlMediaGesture();
-            startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
-          } else if (
-            shouldUseIosHlsPlayback() &&
-            session.hls_url &&
-            isTrustedPlayUrl(session.hls_url)
-          ) {
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_path',
-              detail: `path=hls_aes128 crios=${isIosChrome() ? '1' : '0'}`,
-            });
-            setMediaSessionMetadata({
-              title: nextTrack.title,
-              artist: nextTrack.artist_name,
-              album: nextTrack.album_name,
-              coverUrl: nextTrack.cover_url,
-            });
-            clearPlayerForNativeStream(audio);
-            if (audio instanceof HTMLVideoElement) prepareHtmlVideo(audio);
-            else prepareHtmlAudio(audio);
-            audio.loop = false;
-            audio.muted = muted;
-            audio.volume = muted ? 0 : volume;
-            audio.src = session.hls_url;
-            const startedAt = performance.now();
-            try {
-              await startNativePlayback(audio);
-            } catch (err) {
-              if (!isAbortLike(err)) throw err;
-            }
-            if (token !== loadTokenRef.current) return;
-            releaseHtmlMediaGesture();
-            setPlaying(true);
-            playingRef.current = true;
-            publishLockScreenNowPlaying(
-              {
-                title: nextTrack.title,
-                artist: nextTrack.artist_name,
-                album: nextTrack.album_name,
-                coverUrl: nextTrack.cover_url,
-              },
-              {
-                playing: true,
-                duration: catalogDurationRef.current,
-                position: audio.currentTime || 0,
-              },
-            );
-            syncNowPlayingFromRefs('hls_started', true);
-            startMediaSessionTick();
-            startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_ok',
-              detail: `path=hls_aes128 first_audio_ms=${Math.round(performance.now() - startedAt)} ctx=${audio instanceof HTMLVideoElement ? 'video' : 'audio'}`,
-            });
-          } else if (shouldUseNativeHtmlPlayback()) {
-            const playUrl =
-              session.play_url || `/api/v1/web-music/licenses/play/${session.token}`;
-            if (!isTrustedPlayUrl(playUrl)) {
-              throw new Error('Untrusted packaged play URL.');
-            }
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_path',
-              detail: 'path=html_native',
-            });
-            setMediaSessionMetadata({
-              title: nextTrack.title,
-              artist: nextTrack.artist_name,
-              album: nextTrack.album_name,
-              coverUrl: nextTrack.cover_url,
-            });
-            clearPlayerForNativeStream(audio);
-            if (audio instanceof HTMLVideoElement) prepareHtmlVideo(audio);
-            else prepareHtmlAudio(audio);
-            audio.loop = false;
-            audio.muted = muted;
-            audio.volume = muted ? 0 : volume;
-            audio.src = playUrl;
-            const htmlStartedAt = performance.now();
-            try {
-              await startNativePlayback(audio);
-            } catch (err) {
-              if (!isAbortLike(err)) throw err;
-            }
-            if (token !== loadTokenRef.current) return;
-            releaseHtmlMediaGesture();
-            setPlaying(true);
-            playingRef.current = true;
-            syncNowPlayingFromRefs('html_started', true);
-            startMediaSessionTick();
-            startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_ok',
-              detail: `path=html_native first_audio_ms=${Math.round(performance.now() - htmlStartedAt)} ctx=${audio instanceof HTMLVideoElement ? 'video' : 'audio'}`,
-            });
-          } else if (session.content_key && session.segment_url) {
-            const graph = ensureGraph();
-            const cacheKey = ramCacheKey(parsePlaybackSubject(nextTrack));
-            reportPlaybackTrace({
-              token: session.token,
-              event: 'play_path',
-              detail: 'path=webaudio',
-            });
-            await playPackagedWithWebAudio(
-              graph,
-              audio,
-              session,
-              token,
-              loadTokenRef,
-              volume,
-              muted,
-              catalogDurationRef.current,
-              cacheKey,
-              ({ firstAudioMs, fromCache }) => {
-                if (token !== loadTokenRef.current) return;
-                if (fromCache) {
-                  reportPlaybackTrace({
-                    token: session.token,
-                    event: 'play_path',
-                    detail: 'path=webaudio_ram',
-                  });
-                }
-                if (!graph.playing) {
-                  setPlaying(false);
-                  setError('Tap play again to start audio.');
-                  return;
-                }
-                setPlaying(true);
-                playingRef.current = true;
-                ensurePlayerSilentHoldPlaying(audio);
-                setMediaSessionMetadata({
-                  title: nextTrack.title,
-                  artist: nextTrack.artist_name,
-                  album: nextTrack.album_name,
-                  coverUrl: nextTrack.cover_url,
-                });
-                syncNowPlayingFromRefs('webaudio_started', true);
-                startMediaSessionTick();
-                startPositionHeartbeat(() => graph.currentTime, session, heartbeatRef);
-                reportPlaybackTrace({
-                  token: session.token,
-                  event: 'play_ok',
-                  detail: `path=webaudio first_audio_ms=${firstAudioMs} ctx=${getSharedAudioContext().state}`,
-                });
-                void sendLicenseHeartbeat({
-                  token: session.token,
-                  positionSeconds: graph.currentTime,
-                  playbackRate: 1,
-                  seq: 1,
-                  sessionBind: session.session_bind,
-                });
-              },
-              playAbort.signal,
-            );
-            if (token !== loadTokenRef.current) return;
-            return;
-          }
-          if (token !== loadTokenRef.current) return;
-          void sendLicenseHeartbeat({
-            token: session.token,
-            positionSeconds: audio.currentTime || 0,
-            playbackRate: 1,
-            seq: 1,
-            sessionBind: session.session_bind,
+          await backend.play({
+            playerId: backend.id,
+            media: audio,
+            session,
+            track: nextTrack,
+            token,
+            loadToken: loadTokenRef,
+            objectUrlRef,
+            signal: playAbort.signal,
+            volume,
+            muted,
+            catalogDuration: catalogDurationRef.current,
+            ensureGraph,
+            setPlaying,
+            setError,
+            playingRef,
+            heartbeatRef,
+            ramCacheKey: ramCacheKey(parsePlaybackSubject(nextTrack)),
+            startPositionHeartbeat: (getPosition) => {
+              startPositionHeartbeat(getPosition, session, heartbeatRef);
+            },
+            startMediaSessionTick,
+            syncNowPlayingFromRefs,
           });
+          if (token !== loadTokenRef.current) return;
           return;
         } catch (err) {
           if (token !== loadTokenRef.current || playAbort.signal.aborted) return;
           reportPlaybackTrace({
             token: session?.token,
             event: 'play_error',
-            detail: `stage=packaged ${errorDetail(err)} ctx=${getSharedAudioContext().state}`,
+            detail: `stage=packaged player=${playerId} ${errorDetail(err)} ctx=${getSharedAudioContext().state}`,
           });
           if (!isAbortLike(err)) {
-            setError(friendlyPlaybackError(err));
+            setError(
+              playerId === 'ios-chrome'
+                ? iosChromeFriendlyError(err, audio)
+                : friendlyPlaybackError(err),
+            );
           }
           setPlaying(false);
           return;
         }
+      }
+
+      if (packageStatus === 'ready' || playerId === 'ios-chrome' || playerId === 'macos-chrome') {
+        if (token === loadTokenRef.current) {
+          setPlaying(false);
+          setError(
+            packageStatus === 'ready'
+              ? 'This track is not ready to play yet.'
+              : 'Playback is not available for this track.',
+          );
+        }
+        return;
       }
 
       const payload = await playUrlPromise;
@@ -1398,7 +899,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (session) {
         startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
       }
-      prepareHtmlAudio(audio);
+      if (audio instanceof HTMLVideoElement) prepareHtmlVideo(audio);
+      else prepareHtmlAudio(audio);
       audio.loop = false;
       reportPlaybackTrace({
         token: session?.token,
@@ -1753,7 +1255,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <PlayerContext.Provider value={value}>
-      {shouldUseIosNativeVideoElement() ? (
+      {playerUsesNativeVideo(detectPlayer()) ? (
         <video
           ref={bindMediaRef}
           playsInline

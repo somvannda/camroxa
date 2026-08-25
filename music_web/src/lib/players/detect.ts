@@ -4,6 +4,10 @@ export const PLAYER_IDS = [
   'ios-chrome',
   'ios-safari',
   'ios-firefox',
+  'macos-chrome',
+  'macos-safari',
+  'macos-firefox',
+  'macos-edge',
   'win-chrome',
   'win-edge',
   'win-firefox',
@@ -43,6 +47,20 @@ export function isAndroidUserAgent(input: DetectInput): boolean {
   return /Android/i.test(input.userAgent || '');
 }
 
+/** Real macOS only — iPadOS “desktop” UA is iOS. */
+export function isMacOsUserAgent(input: DetectInput): boolean {
+  if (isIosUserAgent(input)) return false;
+  const ua = input.userAgent || '';
+  const platform = input.platform || '';
+  return /Macintosh|Mac OS X/i.test(ua) || platform === 'MacIntel' || platform === 'MacPPC';
+}
+
+export function isWindowsUserAgent(input: DetectInput): boolean {
+  const ua = input.userAgent || '';
+  const platform = input.platform || '';
+  return /Windows|Win32|Win64/i.test(ua) || /^Win/i.test(platform);
+}
+
 export function detectPlayer(raw?: DetectInput): PlayerId {
   const input = { ...readNavigator(), ...raw };
   const ua = input.userAgent || '';
@@ -58,14 +76,31 @@ export function detectPlayer(raw?: DetectInput): PlayerId {
     return 'android-chrome';
   }
 
-  if (/Edg(?:e|A|iOS)?\//i.test(ua) || /Edg\//i.test(ua)) return 'win-edge';
-  if (/Firefox/i.test(ua)) return 'win-firefox';
-  if (/Chrome|Chromium|CriOS/i.test(ua) && !/Edg/i.test(ua)) return 'win-chrome';
+  if (isMacOsUserAgent(input)) {
+    if (/Edg(?:e|A|iOS)?\//i.test(ua) || /Edg\//i.test(ua)) return 'macos-edge';
+    if (/Firefox/i.test(ua)) return 'macos-firefox';
+    if (/Chrome|Chromium/i.test(ua)) return 'macos-chrome';
+    return 'macos-safari';
+  }
+
+  if (isWindowsUserAgent(input)) {
+    if (/Edg(?:e|A|iOS)?\//i.test(ua) || /Edg\//i.test(ua)) return 'win-edge';
+    if (/Firefox/i.test(ua)) return 'win-firefox';
+    if (/Chrome|Chromium/i.test(ua) && !/Edg/i.test(ua)) return 'win-chrome';
+    return 'default';
+  }
+
   return 'default';
 }
 
 export function playerUsesNativeVideo(id: PlayerId): boolean {
-  return id === 'ios-chrome' || id === 'ios-safari' || id === 'ios-firefox';
+  return (
+    id === 'ios-chrome' ||
+    id === 'ios-safari' ||
+    id === 'ios-firefox' ||
+    id === 'macos-chrome' ||
+    id === 'macos-safari'
+  );
 }
 
 export function playerPrefersSilentHold(id: PlayerId): boolean {

@@ -29,5 +29,6 @@ export type PackagedPlayContext = {
 
 export type PlayBackend = {
   id: PlayerId;
+  usesNativeVideo: boolean;
   play: (ctx: PackagedPlayContext) => Promise<void>;
 };
