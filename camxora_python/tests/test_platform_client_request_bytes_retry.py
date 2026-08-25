@@ -66,7 +66,7 @@ def test_request_bytes_raises_after_exhausting_transient_retries(monkeypatch: py
 
     def _fake_send(self, path, **_kwargs):
         calls["count"] += 1
-        raise PlatformApiError(0, "Request timed out contacting https://api.camxora.com/api/v1.")
+        raise PlatformApiError(0, "Request timed out contacting https://api.camxora.com/api/v3.")
 
     monkeypatch.setattr(PlatformClient, "_send", _fake_send)
 

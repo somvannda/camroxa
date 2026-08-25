@@ -36,7 +36,7 @@ export function usePipelineBoard(params: PipelineBoardParams, enabled = true) {
       if (params.user_id) query.user_id = params.user_id;
       if (params.q) query.q = params.q;
       return httpClient.get<AdminPipelineBoardResponse>(
-        '/api/v1/admin/pipeline/board',
+        '/api/v3/admin/pipeline/board',
         query,
       );
     },
@@ -49,7 +49,7 @@ export function usePipelineBatchDetail(batchId: string | null) {
     enabled: Boolean(batchId),
     queryFn: () =>
       httpClient.get<AdminPipelineBatchDetail>(
-        `/api/v1/admin/pipeline/batches/${batchId}`,
+        `/api/v3/admin/pipeline/batches/${batchId}`,
       ),
   });
 }
@@ -60,7 +60,7 @@ export function usePipelineRetryCosts(enabled = true) {
     enabled,
     staleTime: 60_000,
     queryFn: () =>
-      httpClient.get<AdminPipelineRetryCosts>('/api/v1/admin/pipeline/retry-costs'),
+      httpClient.get<AdminPipelineRetryCosts>('/api/v3/admin/pipeline/retry-costs'),
   });
 }
 
@@ -84,7 +84,7 @@ export function useAdminRetryDraft() {
       reason?: string;
     }) =>
       httpClient.post(
-        `/api/v1/admin/pipeline/batches/${batchId}/songs/${songId}/retry-draft`,
+        `/api/v3/admin/pipeline/batches/${batchId}/songs/${songId}/retry-draft`,
         {
           waive_billing: Boolean(waiveBilling),
           reason: reason || null,
@@ -109,7 +109,7 @@ export function useAdminRetrySuno() {
       reason?: string;
     }) =>
       httpClient.post(
-        `/api/v1/admin/pipeline/batches/${batchId}/songs/${songId}/retry-suno`,
+        `/api/v3/admin/pipeline/batches/${batchId}/songs/${songId}/retry-suno`,
         {
           waive_billing: Boolean(waiveBilling),
           reason: reason || null,
@@ -135,7 +135,7 @@ export function useAdminRetryImages() {
       waiveBilling?: boolean;
       reason?: string;
     }) =>
-      httpClient.post(`/api/v1/admin/pipeline/batches/${batchId}/retry-images`, {
+      httpClient.post(`/api/v3/admin/pipeline/batches/${batchId}/retry-images`, {
         job_ids: jobIds,
         channel_role: channelRole,
         waive_billing: Boolean(waiveBilling),
@@ -150,7 +150,7 @@ export function useAdminRetryYoutube() {
   return useMutation({
     mutationFn: ({ batchId, jobId }: { batchId: string; jobId: string }) =>
       httpClient.post(
-        `/api/v1/admin/pipeline/batches/${batchId}/youtube-jobs/${jobId}/retry`,
+        `/api/v3/admin/pipeline/batches/${batchId}/youtube-jobs/${jobId}/retry`,
       ),
     onSuccess: (_data, vars) => invalidatePipeline(queryClient, vars.batchId),
   });

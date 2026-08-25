@@ -16,7 +16,7 @@ export function useAuditLog(params: AuditLogParams) {
     queryKey: ['audit-log', params],
     queryFn: async (): Promise<PaginatedResponse<AuditEntry>> => {
       const response = await httpClient.get<AuditLogApiResponse>(
-        '/api/v1/admin/audit-log',
+        '/api/v3/admin/audit-log',
         params as Record<string, unknown>,
       );
 

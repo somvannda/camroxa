@@ -25,8 +25,8 @@ class _FakeResponse:
 
 def test_desktop_release_url_for_api_base() -> None:
     assert (
-        desktop_release_url_for_api_base("https://api.camxora.com/api/v1")
-        == "https://api.camxora.com/api/v1/public/desktop-release"
+        desktop_release_url_for_api_base("https://api.camxora.com/api/v3")
+        == "https://api.camxora.com/api/v3/public/desktop-release"
     )
 
 
@@ -45,7 +45,7 @@ def test_fetch_published_desktop_release_success(monkeypatch) -> None:
         )
 
     monkeypatch.setattr("shared.services.desktop_release_client.httpx.get", fake_get)
-    release = fetch_published_desktop_release("https://api.camxora.com/api/v1")
+    release = fetch_published_desktop_release("https://api.camxora.com/api/v3")
     assert release is not None
     assert release.version == "1.2.1"
     assert release.mandatory is True
@@ -58,8 +58,8 @@ def test_fetch_published_desktop_release_404(monkeypatch) -> None:
         "shared.services.desktop_release_client.httpx.get",
         lambda *args, **kwargs: _FakeResponse(404),
     )
-    assert fetch_published_desktop_release("https://api.camxora.com/api/v1") is None
-    result = fetch_published_desktop_release_result("https://api.camxora.com/api/v1")
+    assert fetch_published_desktop_release("https://api.camxora.com/api/v3") is None
+    result = fetch_published_desktop_release_result("https://api.camxora.com/api/v3")
     assert result.status == "not_found"
     assert result.withdrawn is True
 
@@ -71,7 +71,7 @@ def test_fetch_published_desktop_release_network_error(monkeypatch) -> None:
         raise httpx.ConnectError("offline")
 
     monkeypatch.setattr("shared.services.desktop_release_client.httpx.get", fake_get)
-    result = fetch_published_desktop_release_result("https://api.camxora.com/api/v1")
+    result = fetch_published_desktop_release_result("https://api.camxora.com/api/v3")
     assert result.status == "unreachable"
     assert result.withdrawn is False
 
@@ -87,7 +87,7 @@ def test_software_update_check_worker_emits_fetch_result(monkeypatch) -> None:
         "shared.workers.software_update_check_worker.fetch_published_desktop_release_result",
         lambda _url: DesktopReleaseFetchResult(status="ok", release=release),
     )
-    worker = SoftwareUpdateCheckWorker("https://api.camxora.com/api/v1")
+    worker = SoftwareUpdateCheckWorker("https://api.camxora.com/api/v3")
     seen: list[object] = []
     worker.finished_with_offer.connect(seen.append)
     worker.run()
@@ -102,7 +102,7 @@ def test_software_update_check_worker_emits_not_found(monkeypatch) -> None:
         "shared.workers.software_update_check_worker.fetch_published_desktop_release_result",
         lambda _url: DesktopReleaseFetchResult(status="not_found"),
     )
-    worker = SoftwareUpdateCheckWorker("https://api.camxora.com/api/v1")
+    worker = SoftwareUpdateCheckWorker("https://api.camxora.com/api/v3")
     seen: list[object] = []
     worker.finished_with_offer.connect(seen.append)
     worker.run()

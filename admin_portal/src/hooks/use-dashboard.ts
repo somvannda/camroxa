@@ -10,7 +10,7 @@ function assertHealthPayload(data: unknown): HealthStatus {
     typeof (data as HealthStatus).status !== 'string'
   ) {
     throw new Error(
-      'Invalid health payload — expected Platform API JSON from /api/v1/health (not admin SPA HTML).',
+      'Invalid health payload — expected Platform API JSON from /api/v3/health (not admin SPA HTML).',
     );
   }
   return data as HealthStatus;
@@ -21,7 +21,7 @@ export function useHealthStatus() {
     queryKey: ['health'],
     // Same-origin /api/ is proxied to platform_api. Do NOT call /health on the
     // admin host — nginx serves index.html there (false "Unknown" / unreachable).
-    queryFn: async () => assertHealthPayload(await httpClient.get<HealthStatus>('/api/v1/health')),
+    queryFn: async () => assertHealthPayload(await httpClient.get<HealthStatus>('/api/v3/health')),
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
   });
@@ -31,7 +31,7 @@ export function useSunoBalance() {
   return useQuery({
     queryKey: ['suno-balance'],
     queryFn: () =>
-      httpClient.get<{ credits: number | null; status: string }>('/api/v1/admin/suno-balance'),
+      httpClient.get<{ credits: number | null; status: string }>('/api/v3/admin/suno-balance'),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
@@ -42,7 +42,7 @@ export function useProviderKeyBalances() {
     queryKey: ['provider-key-balances'],
     queryFn: () =>
       httpClient.get<ProviderKeyBalancesResponse>(
-        '/api/v1/admin/provider-key-balances?refresh=false',
+        '/api/v3/admin/provider-key-balances?refresh=false',
       ),
     refetchInterval: 20_000,
     refetchIntervalInBackground: false,
@@ -55,7 +55,7 @@ export function useForceRefreshProviderKeyBalances() {
   return useMutation({
     mutationFn: () =>
       httpClient.get<ProviderKeyBalancesResponse>(
-        '/api/v1/admin/provider-key-balances?refresh=true',
+        '/api/v3/admin/provider-key-balances?refresh=true',
       ),
     onSuccess: (data) => {
       queryClient.setQueryData(['provider-key-balances'], data);
@@ -81,6 +81,6 @@ export interface AdminOverview {
 export function useAdminOverview() {
   return useQuery({
     queryKey: ['admin-overview'],
-    queryFn: () => httpClient.get<AdminOverview>('/api/v1/admin/overview'),
+    queryFn: () => httpClient.get<AdminOverview>('/api/v3/admin/overview'),
   });
 }

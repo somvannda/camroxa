@@ -15,7 +15,7 @@ import type {
 export function useSignupMode() {
   return useQuery({
     queryKey: ['signup-mode'],
-    queryFn: () => httpClient.get<SignupModeResponse>('/api/v1/admin/invitations/signup-mode'),
+    queryFn: () => httpClient.get<SignupModeResponse>('/api/v3/admin/invitations/signup-mode'),
   });
 }
 
@@ -23,7 +23,7 @@ export function useUpdateSignupMode() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: UpdateSignupModeRequest) =>
-      httpClient.put<SignupModeResponse>('/api/v1/admin/invitations/signup-mode', payload),
+      httpClient.put<SignupModeResponse>('/api/v3/admin/invitations/signup-mode', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['signup-mode'] });
     },
@@ -33,7 +33,7 @@ export function useUpdateSignupMode() {
 export function useInvitationCodes() {
   return useQuery({
     queryKey: ['invitation-codes'],
-    queryFn: () => httpClient.get<InvitationCodeAdminItem[]>('/api/v1/admin/invitations'),
+    queryFn: () => httpClient.get<InvitationCodeAdminItem[]>('/api/v3/admin/invitations'),
   });
 }
 
@@ -41,7 +41,7 @@ export function useCreateInvitationCode() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: CreateInvitationCodeRequest) =>
-      httpClient.post<InvitationCodeCreateResponse>('/api/v1/admin/invitations', payload),
+      httpClient.post<InvitationCodeCreateResponse>('/api/v3/admin/invitations', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invitation-codes'] });
     },
@@ -52,7 +52,7 @@ export function useUpdateInvitationCode() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; payload: UpdateInvitationCodeRequest }) =>
-      httpClient.patch<void>(`/api/v1/admin/invitations/${data.id}`, data.payload),
+      httpClient.patch<void>(`/api/v3/admin/invitations/${data.id}`, data.payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invitation-codes'] });
     },
@@ -62,7 +62,7 @@ export function useUpdateInvitationCode() {
 export function useDeleteInvitationCode() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => httpClient.delete<void>(`/api/v1/admin/invitations/${id}`),
+    mutationFn: (id: string) => httpClient.delete<void>(`/api/v3/admin/invitations/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invitation-codes'] });
     },

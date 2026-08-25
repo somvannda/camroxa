@@ -180,6 +180,9 @@ export interface Plan {
   daily_draft_limit_per_channel: number;
   daily_video_limit: number;
   daily_merge_limit: number;
+  monthly_credits?: number;
+  daily_credits?: number;
+  is_public?: boolean;
   is_active: boolean;
   effective_from: string;
   created_at: string;

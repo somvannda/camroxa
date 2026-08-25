@@ -12,7 +12,7 @@ from shared.services.dpapi import dpapi_decrypt_from_base64, dpapi_encrypt_to_ba
 TOKENS_STORAGE_KEY = "camxora.auth.tokens"
 API_BASE_URL_KEY = "camxora.apiBaseUrl"
 LAST_USER_ID_KEY = "camxora.auth.lastUserId"
-DEFAULT_API_BASE_URL = "http://localhost:8000/api/v1"
+DEFAULT_API_BASE_URL = "http://localhost:8000/api/v3"
 
 
 class SecureStorage:

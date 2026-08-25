@@ -34,11 +34,11 @@ def truncate_description(text: str, max_len: int = 90) -> str:
 
 
 def resolve_marketplace_asset_url(api_base_url: str, path_or_url: str) -> str:
-    """Join API base with a relative asset path without doubling ``/api/v1``.
+    """Join API base with a relative asset path without doubling ``/api/v3``.
 
     Catalog responses return absolute-path URLs like
-    ``/api/v1/marketplace/items/{id}/preview``. The desktop client's base URL is
-    already ``http://host:port/api/v1``, so a naive concatenate produces a 404.
+    ``/api/v3/marketplace/items/{id}/preview``. The desktop client's base URL is
+    already ``http://host:port/api/v3``, so a naive concatenate produces a 404.
     """
     candidate = (path_or_url or "").strip()
     if not candidate:
@@ -49,8 +49,8 @@ def resolve_marketplace_asset_url(api_base_url: str, path_or_url: str) -> str:
     base = (api_base_url or "").strip().rstrip("/") + "/"
     path = candidate if candidate.startswith("/") else f"/{candidate}"
 
-    if base.rstrip("/").endswith("/api/v1") and path.startswith("/api/v1/"):
-        path = path[len("/api/v1") :]
+    if base.rstrip("/").endswith("/api/v3") and path.startswith("/api/v3/"):
+        path = path[len("/api/v3") :]
 
     return urljoin(base, path.lstrip("/"))
 
@@ -304,7 +304,7 @@ class MarketplaceView(QWidget):
         preview_loader: MarketplacePreviewLoader | None = None,
     ) -> None:
         super().__init__(parent)
-        self._api_base_url = api_base_url or "http://localhost:8000/api/v1"
+        self._api_base_url = api_base_url or "http://localhost:8000/api/v3"
         self._preview_loader = preview_loader or MarketplacePreviewLoader(parent=self)
         self._preview_generation = 0
         self._current_page = 1

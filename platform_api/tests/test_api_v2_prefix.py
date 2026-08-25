@@ -39,3 +39,5 @@ def test_strip_api_version_prefix() -> None:
         == "subscriptions/purchase"
     )
     assert strip_api_version_prefix("/api/v2/credits/balance") == "credits/balance"
+    assert strip_api_version_prefix("/api/v3/auth/login") == "auth/login"
+    assert strip_api_version_prefix("/api/v3/me/credits") == "me/credits"

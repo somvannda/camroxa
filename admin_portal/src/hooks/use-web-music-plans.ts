@@ -6,7 +6,7 @@ import type { WebMusicPlan, WebMusicTopupPack } from '@/types/models';
 export function useWebMusicPlans() {
   return useQuery({
     queryKey: ['web-music-plans'],
-    queryFn: () => httpClient.get<WebMusicPlan[]>('/api/v1/plans/web-music/plans'),
+    queryFn: () => httpClient.get<WebMusicPlan[]>('/api/v3/plans/web-music/plans'),
   });
 }
 
@@ -21,7 +21,7 @@ export function useCreateWebMusicPlan() {
       features: WebMusicPlan['features'];
       is_public: boolean;
       display_order: number;
-    }) => httpClient.post<WebMusicPlan>('/api/v1/plans/web-music/plans', data),
+    }) => httpClient.post<WebMusicPlan>('/api/v3/plans/web-music/plans', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['web-music-plans'] }),
   });
 }
@@ -30,7 +30,7 @@ export function useUpdateWebMusicPlan() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<Omit<WebMusicPlan, 'id' | 'subscriber_count' | 'can_delete' | 'created_at' | 'updated_at'>> }) =>
-      httpClient.patch<WebMusicPlan>(`/api/v1/plans/web-music/plans/${data.id}`, data.updates),
+      httpClient.patch<WebMusicPlan>(`/api/v3/plans/web-music/plans/${data.id}`, data.updates),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['web-music-plans'] }),
   });
 }
@@ -38,7 +38,7 @@ export function useUpdateWebMusicPlan() {
 export function useDeleteWebMusicPlan() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => httpClient.delete<void>(`/api/v1/plans/web-music/plans/${id}`),
+    mutationFn: (id: string) => httpClient.delete<void>(`/api/v3/plans/web-music/plans/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['web-music-plans'] }),
   });
 }
@@ -46,7 +46,7 @@ export function useDeleteWebMusicPlan() {
 export function useWebMusicTopups() {
   return useQuery({
     queryKey: ['web-music-topups'],
-    queryFn: () => httpClient.get<WebMusicTopupPack[]>('/api/v1/plans/web-music/topups'),
+    queryFn: () => httpClient.get<WebMusicTopupPack[]>('/api/v3/plans/web-music/topups'),
   });
 }
 
@@ -60,7 +60,7 @@ export function useCreateWebMusicTopup() {
       price_cents: number;
       display_order: number;
       is_active: boolean;
-    }) => httpClient.post<WebMusicTopupPack>('/api/v1/plans/web-music/topups', data),
+    }) => httpClient.post<WebMusicTopupPack>('/api/v3/plans/web-music/topups', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['web-music-topups'] }),
   });
 }
@@ -69,7 +69,7 @@ export function useUpdateWebMusicTopup() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<Omit<WebMusicTopupPack, 'id' | 'songs_equivalent' | 'created_at' | 'updated_at'>> }) =>
-      httpClient.patch<WebMusicTopupPack>(`/api/v1/plans/web-music/topups/${data.id}`, data.updates),
+      httpClient.patch<WebMusicTopupPack>(`/api/v3/plans/web-music/topups/${data.id}`, data.updates),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['web-music-topups'] }),
   });
 }
@@ -77,7 +77,7 @@ export function useUpdateWebMusicTopup() {
 export function useDeleteWebMusicTopup() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => httpClient.delete<void>(`/api/v1/plans/web-music/topups/${id}`),
+    mutationFn: (id: string) => httpClient.delete<void>(`/api/v3/plans/web-music/topups/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['web-music-topups'] }),
   });
 }

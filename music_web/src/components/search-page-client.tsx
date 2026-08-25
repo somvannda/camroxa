@@ -37,7 +37,7 @@ export default function SearchPageClient() {
         setError('');
         try {
           const response = await fetch(
-            `${apiBase}/api/v1/public/streaming/search?q=${encodeURIComponent(value)}&limit=${PAGE_SIZE}&offset=0`,
+            `${apiBase}/api/v3/public/streaming/search?q=${encodeURIComponent(value)}&limit=${PAGE_SIZE}&offset=0`,
           );
           if (!response.ok) throw new Error('Search failed');
           const data = (await response.json()) as { items?: StreamTrack[]; total?: number };
@@ -60,7 +60,7 @@ export default function SearchPageClient() {
     setBusy(true);
     try {
       const response = await fetch(
-        `${apiBase}/api/v1/public/streaming/search?q=${encodeURIComponent(value)}&limit=${PAGE_SIZE}&offset=${results.length}`,
+        `${apiBase}/api/v3/public/streaming/search?q=${encodeURIComponent(value)}&limit=${PAGE_SIZE}&offset=${results.length}`,
       );
       if (!response.ok) throw new Error('Search failed');
       const data = (await response.json()) as { items?: StreamTrack[]; total?: number };

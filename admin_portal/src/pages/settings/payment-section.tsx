@@ -225,7 +225,10 @@ export function PaymentSection() {
               </li>
               <li>
                 Under CutLuy <span className="text-slate-200">Webhooks</span>, set the callback URL to{' '}
-                <code className="text-slate-200">https://api.sandbox.camxora.com/api/v1/billing/webhooks/cutluy</code>{' '}
+                <code className="text-slate-200">https://api.sandbox.camxora.com/api/v3/webhooks/cutluy</code>{' '}
+                (music CutLuy) or{' '}
+                <code className="text-slate-200">https://api.sandbox.camxora.com/api/v3/billing/webhooks/cutluy</code>{' '}
+                (desktop billing).
                 (production: replace <code className="text-slate-200">api.sandbox</code> with your API host).
               </li>
               <li>
@@ -335,8 +338,10 @@ export function PaymentSection() {
                 />
                 <p className="text-xs text-slate-500">
                   In CutLuy Dashboard → Webhooks, set URL to{' '}
-                  <code className="text-slate-300">https://api.sandbox.camxora.com/api/v1/billing/webhooks/cutluy</code>.
-                  Credit pack purchase stays disabled until a verified pack product path exists.
+                  <code className="text-slate-300">https://api.sandbox.camxora.com/api/v3/webhooks/cutluy</code>{' '}
+                  (music) or{' '}
+                  <code className="text-slate-300">https://api.sandbox.camxora.com/api/v3/billing/webhooks/cutluy</code>{' '}
+                  (desktop billing). Legacy v1 webhook paths remain dual-mounted during transition.
                 </p>
               </div>
 

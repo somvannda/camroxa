@@ -14,7 +14,7 @@ export function useUserClientLogs(userId: string, params: ClientLogListParams) {
     enabled: Boolean(userId),
     queryFn: () =>
       httpClient.get<PaginatedResponse<ClientLogBatchSummary>>(
-        `/api/v1/admin/users/${userId}/client-logs`,
+        `/api/v3/admin/users/${userId}/client-logs`,
         params as Record<string, unknown>,
       ),
   });
@@ -25,6 +25,6 @@ export function useClientLogBatch(batchId: string | null) {
     queryKey: ['client-log-batch', batchId],
     enabled: Boolean(batchId),
     queryFn: () =>
-      httpClient.get<ClientLogDetail>(`/api/v1/admin/client-logs/${batchId}`),
+      httpClient.get<ClientLogDetail>(`/api/v3/admin/client-logs/${batchId}`),
   });
 }

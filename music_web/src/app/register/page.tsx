@@ -2,24 +2,19 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useCallback, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useEffect, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
 import TurnstileWidget from '@/components/turnstile-widget';
-
-function safeNextPath(raw: string | null): string {
-  if (!raw) return '/create';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/create';
-  return raw;
-}
+import { safeNextPath } from '@/lib/auth-redirect';
 
 function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNextPath(params.get('next'));
-  const { register } = useAuth();
+  const { register, user, loading } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,6 +26,13 @@ function RegisterForm() {
   const handleTurnstileToken = useCallback((token: string) => {
     setTurnstileToken(token);
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (user?.email_confirmed) {
+      router.replace(next);
+    }
+  }, [loading, next, router, user?.email_confirmed]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();

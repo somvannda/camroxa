@@ -62,4 +62,4 @@ def test_login_invalid_credentials(temp_storage: SecureStorage) -> None:
 def test_api_health_url() -> None:
     from shared.services.api_health import health_url_for_api_base
 
-    assert health_url_for_api_base("http://localhost:8000/api/v1") == "http://localhost:8000/health"
+    assert health_url_for_api_base("http://localhost:8000/api/v3") == "http://localhost:8000/health"

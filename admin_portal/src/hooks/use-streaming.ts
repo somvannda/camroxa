@@ -82,7 +82,7 @@ function invalidateCatalog(queryClient: ReturnType<typeof useQueryClient>) {
 export function useStreamingConfig() {
   return useQuery({
     queryKey: ['streaming-config'],
-    queryFn: () => httpClient.get<StreamingConfig>('/api/v1/admin/streaming/config'),
+    queryFn: () => httpClient.get<StreamingConfig>('/api/v3/admin/streaming/config'),
   });
 }
 
@@ -97,7 +97,7 @@ export function useUpdateStreamingConfig() {
       endpoint: string;
       cdn_base_url: string;
       stream_url_ttl_seconds: number;
-    }) => httpClient.put<StreamingConfig>('/api/v1/admin/streaming/config', payload),
+    }) => httpClient.put<StreamingConfig>('/api/v3/admin/streaming/config', payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['streaming-config'] }),
   });
 }
@@ -150,7 +150,7 @@ export function useStreamingCatalog(params: StreamingCatalogListParams) {
       queryParams.publish_status ?? '',
     ],
     queryFn: () =>
-      httpClient.get<StreamingCatalogPage>('/api/v1/admin/streaming/catalog', queryParams),
+      httpClient.get<StreamingCatalogPage>('/api/v3/admin/streaming/catalog', queryParams),
   });
 }
 
@@ -166,7 +166,7 @@ export function useStreamingAlbums(params: StreamingCatalogListParams) {
     ],
     queryFn: () =>
       httpClient.get<StreamingAlbumsPage>(
-        '/api/v1/admin/streaming/catalog/albums',
+        '/api/v3/admin/streaming/catalog/albums',
         queryParams,
       ),
   });
@@ -177,7 +177,7 @@ export function useStreamingUploadJobs(status?: string) {
     queryKey: ['streaming-upload-jobs', status ?? 'all'],
     queryFn: async () => {
       const data = await httpClient.get<{ items: StreamingUploadJob[] }>(
-        '/api/v1/admin/streaming/upload-jobs',
+        '/api/v3/admin/streaming/upload-jobs',
         { limit: 200, ...(status ? { status } : {}) },
       );
       return data.items ?? [];
@@ -189,7 +189,7 @@ export function useUnpublishTrack() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (trackId: string) =>
-      httpClient.post(`/api/v1/admin/streaming/tracks/${trackId}/unpublish`),
+      httpClient.post(`/api/v3/admin/streaming/tracks/${trackId}/unpublish`),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }
@@ -199,7 +199,7 @@ export function useRepublishTrack() {
   return useMutation({
     mutationFn: ({ trackId, force = false }: { trackId: string; force?: boolean }) =>
       httpClient.post(
-        `/api/v1/admin/streaming/tracks/${trackId}/republish${force ? '?force=true' : ''}`,
+        `/api/v3/admin/streaming/tracks/${trackId}/republish${force ? '?force=true' : ''}`,
       ),
     onSuccess: () => invalidateCatalog(queryClient),
   });
@@ -209,7 +209,7 @@ export function useDeleteTrack() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (trackId: string) =>
-      httpClient.delete(`/api/v1/admin/streaming/tracks/${trackId}`),
+      httpClient.delete(`/api/v3/admin/streaming/tracks/${trackId}`),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }
@@ -218,7 +218,7 @@ export function useUnpublishAlbum() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (albumId: string) =>
-      httpClient.post(`/api/v1/admin/streaming/albums/${albumId}/unpublish`),
+      httpClient.post(`/api/v3/admin/streaming/albums/${albumId}/unpublish`),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }
@@ -228,7 +228,7 @@ export function useRepublishAlbum() {
   return useMutation({
     mutationFn: ({ albumId, force = false }: { albumId: string; force?: boolean }) =>
       httpClient.post(
-        `/api/v1/admin/streaming/albums/${albumId}/republish${force ? '?force=true' : ''}`,
+        `/api/v3/admin/streaming/albums/${albumId}/republish${force ? '?force=true' : ''}`,
       ),
     onSuccess: () => invalidateCatalog(queryClient),
   });
@@ -238,7 +238,7 @@ export function useDeleteAlbum() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (albumId: string) =>
-      httpClient.delete(`/api/v1/admin/streaming/albums/${albumId}`),
+      httpClient.delete(`/api/v3/admin/streaming/albums/${albumId}`),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }
@@ -247,7 +247,7 @@ export function useRetryUploadJob() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (jobId: string) =>
-      httpClient.post(`/api/v1/admin/streaming/upload-jobs/${jobId}/retry`),
+      httpClient.post(`/api/v3/admin/streaming/upload-jobs/${jobId}/retry`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['streaming-upload-jobs'] });
       invalidateCatalog(queryClient);
@@ -270,7 +270,7 @@ export function useSyncTrackMetadata() {
   return useMutation({
     mutationFn: (trackId: string) =>
       httpClient.post<{ ok: boolean; track_id?: string; genre?: string | null }>(
-        `/api/v1/admin/streaming/tracks/${trackId}/sync-metadata`,
+        `/api/v3/admin/streaming/tracks/${trackId}/sync-metadata`,
       ),
     onSuccess: () => invalidateCatalog(queryClient),
   });
@@ -281,7 +281,7 @@ export function useSyncAllMetadata() {
   return useMutation({
     mutationFn: (limit?: number) =>
       httpClient.post<{ ok: boolean; synced: number; failed: Array<{ track_id: string; error: string }>; total: number }>(
-        `/api/v1/admin/streaming/catalog/sync-metadata?limit=${limit ?? 100}`,
+        `/api/v3/admin/streaming/catalog/sync-metadata?limit=${limit ?? 100}`,
       ),
     onSuccess: () => invalidateCatalog(queryClient),
   });
@@ -292,7 +292,7 @@ export function useUpdateTrackGenre() {
   return useMutation({
     mutationFn: (payload: { trackId: string; genre: string }) =>
       httpClient.patch<StreamingCatalogTrack>(
-        `/api/v1/admin/streaming/tracks/${payload.trackId}`,
+        `/api/v3/admin/streaming/tracks/${payload.trackId}`,
         { genre: payload.genre },
       ),
     onSuccess: () => invalidateCatalog(queryClient),

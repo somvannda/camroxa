@@ -11,7 +11,7 @@ def test_connect_error_message_local_keeps_dev_hint(monkeypatch) -> None:
         "shared.services.platform_client.is_api_url_locked",
         lambda: False,
     )
-    msg = _connect_error_message("http://localhost:8000/api/v1")
+    msg = _connect_error_message("http://localhost:8000/api/v3")
     assert "Start platform_api" in msg
     assert "uvicorn" in msg
 
@@ -21,11 +21,11 @@ def test_connect_error_message_release_hides_uvicorn(monkeypatch) -> None:
         "shared.services.platform_client.is_api_url_locked",
         lambda: True,
     )
-    msg = _connect_error_message("https://api.camxora.com/api/v1")
+    msg = _connect_error_message("https://api.camxora.com/api/v3")
     assert "uvicorn" not in msg
     assert "port 8000" not in msg
     assert "Cannot reach Camxora servers" in msg
-    assert "https://api.camxora.com/api/v1" in msg
+    assert "https://api.camxora.com/api/v3" in msg
 
 
 def test_health_unreachable_message_release(monkeypatch) -> None:
@@ -33,6 +33,6 @@ def test_health_unreachable_message_release(monkeypatch) -> None:
         "shared.services.api_health.is_api_url_locked",
         lambda: True,
     )
-    msg = _unreachable_message("https://api.sandbox.camxora.com/api/v1")
+    msg = _unreachable_message("https://api.sandbox.camxora.com/api/v3")
     assert "uvicorn" not in msg
     assert "Cannot reach Camxora servers" in msg

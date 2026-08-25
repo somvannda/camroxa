@@ -11,10 +11,10 @@ from shared.services.secure_storage import DEFAULT_API_BASE_URL
 
 
 def health_url_for_api_base(api_base_url: str) -> str:
-    """Build the root /health URL from an /api/v1 base URL."""
+    """Build the root /health URL from an /api/v3 base URL."""
     parsed = urlparse(api_base_url.rstrip("/"))
-    if parsed.path.endswith("/api/v1"):
-        root = api_base_url[: -len("/api/v1")]
+    if parsed.path.endswith("/api/v3"):
+        root = api_base_url[: -len("/api/v3")]
     else:
         root = f"{parsed.scheme}://{parsed.netloc}"
     return f"{root.rstrip('/')}/health"

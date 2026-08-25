@@ -102,7 +102,7 @@ export type SendPushNotificationResponse = {
 export function useSoftwareUpdateConfig() {
   return useQuery({
     queryKey: ['desktop-software-update'],
-    queryFn: () => httpClient.get<SoftwareUpdateConfig>('/api/v1/admin/desktop/software-update'),
+    queryFn: () => httpClient.get<SoftwareUpdateConfig>('/api/v3/admin/desktop/software-update'),
   });
 }
 
@@ -110,7 +110,7 @@ export function useUpdateSoftwareUpdateConfig() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UpdateSoftwareUpdateConfigInput) =>
-      httpClient.put<SoftwareUpdateConfig>('/api/v1/admin/desktop/software-update', data),
+      httpClient.put<SoftwareUpdateConfig>('/api/v3/admin/desktop/software-update', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
       queryClient.invalidateQueries({ queryKey: ['system-settings'] });
@@ -123,7 +123,7 @@ export function usePublishSoftwareUpdate() {
   return useMutation({
     mutationFn: (input?: PublishSoftwareUpdateInput) =>
       httpClient.post<PublishSoftwareUpdateResponse>(
-        '/api/v1/admin/desktop/software-update/publish',
+        '/api/v3/admin/desktop/software-update/publish',
         input ?? {},
       ),
     onSuccess: () => {
@@ -138,7 +138,7 @@ export function useUnpublishSoftwareUpdate() {
   return useMutation({
     mutationFn: () =>
       httpClient.post<UnpublishSoftwareUpdateResponse>(
-        '/api/v1/admin/desktop/software-update/unpublish',
+        '/api/v3/admin/desktop/software-update/unpublish',
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
@@ -153,7 +153,7 @@ export function useDraftDesktopInstaller() {
   return useMutation({
     mutationFn: (filename: string) =>
       httpClient.post<DraftInstallerResponse>(
-        `/api/v1/admin/desktop/software-update/installers/${encodeURIComponent(filename)}/draft`,
+        `/api/v3/admin/desktop/software-update/installers/${encodeURIComponent(filename)}/draft`,
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-software-update'] });
@@ -168,7 +168,7 @@ export function usePublishDesktopInstaller() {
   return useMutation({
     mutationFn: (payload: { filename: string; body: PublishInstallerInput }) =>
       httpClient.post<PublishSoftwareUpdateResponse>(
-        `/api/v1/admin/desktop/software-update/installers/${encodeURIComponent(payload.filename)}/publish`,
+        `/api/v3/admin/desktop/software-update/installers/${encodeURIComponent(payload.filename)}/publish`,
         payload.body,
       ),
     onSuccess: () => {
@@ -189,7 +189,7 @@ export function useUploadDesktopSoftwareUpdate() {
         form.append('version', payload.version.trim());
       }
       return httpClient.post<UploadDesktopSoftwareUpdateResponse>(
-        '/api/v1/admin/desktop/software-update/upload',
+        '/api/v3/admin/desktop/software-update/upload',
         form,
       );
     },
@@ -205,7 +205,7 @@ export function useDesktopInstallers() {
     queryKey: ['desktop-installers'],
     queryFn: () =>
       httpClient.get<{ items: DesktopInstallerFile[] }>(
-        '/api/v1/admin/desktop/software-update/installers',
+        '/api/v3/admin/desktop/software-update/installers',
       ),
   });
 }
@@ -215,7 +215,7 @@ export function useDeleteDesktopInstaller() {
   return useMutation({
     mutationFn: (filename: string) =>
       httpClient.delete<DeleteDesktopInstallerResponse>(
-        `/api/v1/admin/desktop/software-update/installers/${encodeURIComponent(filename)}`,
+        `/api/v3/admin/desktop/software-update/installers/${encodeURIComponent(filename)}`,
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-installers'] });
@@ -230,7 +230,7 @@ export function usePushNotificationHistory() {
     queryKey: ['desktop-push-notification-history'],
     queryFn: () =>
       httpClient.get<{ items: PushNotificationHistoryItem[] }>(
-        '/api/v1/admin/desktop/push-notifications/history',
+        '/api/v3/admin/desktop/push-notifications/history',
       ),
   });
 }
@@ -239,7 +239,7 @@ export function useSendPushNotification() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: SendPushNotificationInput) =>
-      httpClient.post<SendPushNotificationResponse>('/api/v1/admin/desktop/push-notifications', data),
+      httpClient.post<SendPushNotificationResponse>('/api/v3/admin/desktop/push-notifications', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['desktop-push-notification-history'] });
     },

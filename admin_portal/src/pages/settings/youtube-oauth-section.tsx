@@ -228,10 +228,10 @@ export function YouTubeOAuthSection() {
                 In Google Cloud Console → OAuth client → Authorized redirect URIs, add your public API callback exactly:
               </p>
               <code className="mt-2 block break-all rounded bg-slate-900 px-2 py-1 text-[11px] text-emerald-300">
-                https://api.sandbox.camxora.com/api/v1/youtube/oauth/callback
+                https://api.sandbox.camxora.com/api/v3/youtube/oauth/callback
               </code>
               <p className="mt-2 text-xs leading-5 text-slate-500">
-                Production uses <span className="text-slate-300">https://api.camxora.com/api/v1/youtube/oauth/callback</span>.
+                Production uses <span className="text-slate-300">https://api.camxora.com/api/v3/youtube/oauth/callback</span>.
                 Do not register the user portal host (<span className="text-slate-300">app.*</span>) — OAuth must hit the API domain.
               </p>
             </div>

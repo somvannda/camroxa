@@ -10,8 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- After the email confirmation code, users go to Create logged in, instead of landing on the register form. Already-verified sessions skip the code screen. See `docs/changelog/2026-08-25-verify-email-redirect-create.md`.
+
 ### Changed
 
+- All API calls target `/api/v3` only. `subscription-api.ts` constant renamed `API_V3`; v1 plan fallback removed. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Credits header / Create / profile show the v3 wallet number only. v2 balance is a hard fallback if `/api/v3/me/credits` fails. See `docs/changelog/2026-08-23-one-wallet-web-ledger.md`.
 - Create no longer treats Desktop Pro as unlimited credits. The upgrade gate follows remaining credits. See `docs/changelog/2026-08-23-web-create-v3-charge.md`.
 - Free pricing card no longer lists Desktop studio. Paid cards still include it. The home Pricing modal and profile plan grid use the same Free bullets. See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.

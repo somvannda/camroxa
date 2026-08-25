@@ -40,6 +40,10 @@ API_URL=https://api.sandbox.camxora.com
 
 tar -xzf /tmp/camxora-src.tar.gz -C $REPO music_web
 chown -R camxora:camxora $REPO/music_web
+# Remote-only modules (studio/artist pages from other branches) may still
+# hardcode /api/v1; rewrite before build so sandbox stays on /api/v3.
+find $REPO/music_web/src -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' \) \
+  -print0 2>/dev/null | xargs -0 -r sed -i 's|/api/v1|/api/v3|g'
 
 # Update sandbox nginx site only; never enable if TLS certs are missing
 # (avoids breaking production when this script is mis-targeted).

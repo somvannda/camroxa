@@ -58,7 +58,7 @@ def test_fetch_catalog_success_parses_items() -> None:
                     "description": "Bass drop",
                     "kind": "video",
                     "price": 0,
-                    "preview_url": "/api/v1/marketplace/items/a1/preview",
+                    "preview_url": "/api/v3/marketplace/items/a1/preview",
                     "tags": ["bass"],
                 }
             ],

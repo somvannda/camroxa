@@ -15,7 +15,7 @@ export function useDescriptions() {
   return useQuery({
     queryKey: ['descriptions'],
     queryFn: () =>
-      httpClient.get<MusicDescription[]>('/api/v1/prompts/descriptions'),
+      httpClient.get<MusicDescription[]>('/api/v3/prompts/descriptions'),
   });
 }
 
@@ -23,7 +23,7 @@ export function useCreateDescription() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreatePromptRequest) =>
-      httpClient.post<MusicDescription>('/api/v1/prompts/descriptions', data),
+      httpClient.post<MusicDescription>('/api/v3/prompts/descriptions', data),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['descriptions'] }),
   });
@@ -33,7 +33,7 @@ export function useUserOwnedDescriptions() {
   return useQuery({
     queryKey: ['descriptions', 'user-prompts'],
     queryFn: () =>
-      httpClient.get<AdminUserOwnedPrompt[]>('/api/v1/prompts/descriptions/user-prompts'),
+      httpClient.get<AdminUserOwnedPrompt[]>('/api/v3/prompts/descriptions/user-prompts'),
   });
 }
 
@@ -42,7 +42,7 @@ export function useUpdateDescription() {
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<CreatePromptRequest> }) =>
       httpClient.put<MusicDescription>(
-        `/api/v1/prompts/descriptions/${data.id}`,
+        `/api/v3/prompts/descriptions/${data.id}`,
         data.updates,
       ),
     onSuccess: () =>
@@ -54,7 +54,7 @@ export function useDeleteDescription() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.delete(`/api/v1/prompts/descriptions/${id}`),
+      httpClient.delete(`/api/v3/prompts/descriptions/${id}`),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['descriptions'] }),
   });
@@ -66,7 +66,7 @@ export function useStructures() {
   return useQuery({
     queryKey: ['structures'],
     queryFn: () =>
-      httpClient.get<MusicStructure[]>('/api/v1/prompts/structures'),
+      httpClient.get<MusicStructure[]>('/api/v3/prompts/structures'),
   });
 }
 
@@ -74,7 +74,7 @@ export function useCreateStructure() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreatePromptRequest) =>
-      httpClient.post<MusicStructure>('/api/v1/prompts/structures', data),
+      httpClient.post<MusicStructure>('/api/v3/prompts/structures', data),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['structures'] }),
   });
@@ -84,7 +84,7 @@ export function useUserOwnedStructures() {
   return useQuery({
     queryKey: ['structures', 'user-prompts'],
     queryFn: () =>
-      httpClient.get<AdminUserOwnedPrompt[]>('/api/v1/prompts/structures/user-prompts'),
+      httpClient.get<AdminUserOwnedPrompt[]>('/api/v3/prompts/structures/user-prompts'),
   });
 }
 
@@ -93,7 +93,7 @@ export function useUpdateStructure() {
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<CreatePromptRequest> }) =>
       httpClient.put<MusicStructure>(
-        `/api/v1/prompts/structures/${data.id}`,
+        `/api/v3/prompts/structures/${data.id}`,
         data.updates,
       ),
     onSuccess: () =>
@@ -105,7 +105,7 @@ export function useDeleteStructure() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.delete(`/api/v1/prompts/structures/${id}`),
+      httpClient.delete(`/api/v3/prompts/structures/${id}`),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['structures'] }),
   });
@@ -117,7 +117,7 @@ export function useMoods() {
   return useQuery({
     queryKey: ['moods'],
     queryFn: () =>
-      httpClient.get<MusicMood[]>('/api/v1/prompts/moods'),
+      httpClient.get<MusicMood[]>('/api/v3/prompts/moods'),
   });
 }
 
@@ -125,7 +125,7 @@ export function useCreateMood() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreatePromptRequest) =>
-      httpClient.post<MusicMood>('/api/v1/prompts/moods', data),
+      httpClient.post<MusicMood>('/api/v3/prompts/moods', data),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['moods'] }),
   });
@@ -135,7 +135,7 @@ export function useAdminUserMoods() {
   return useQuery({
     queryKey: ['moods', 'user-prompts'],
     queryFn: () =>
-      httpClient.get<AdminUserOwnedPrompt[]>('/api/v1/prompts/moods/user-prompts'),
+      httpClient.get<AdminUserOwnedPrompt[]>('/api/v3/prompts/moods/user-prompts'),
   });
 }
 
@@ -144,7 +144,7 @@ export function useUpdateMood() {
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<CreatePromptRequest> }) =>
       httpClient.put<MusicMood>(
-        `/api/v1/prompts/moods/${data.id}`,
+        `/api/v3/prompts/moods/${data.id}`,
         data.updates,
       ),
     onSuccess: () =>
@@ -156,7 +156,7 @@ export function useDeleteMood() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.delete(`/api/v1/prompts/moods/${id}`),
+      httpClient.delete(`/api/v3/prompts/moods/${id}`),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['moods'] }),
   });
@@ -167,7 +167,7 @@ export function useDescriptionUsage(id: string | null) {
     queryKey: ['description-usage', id],
     enabled: Boolean(id),
     queryFn: () =>
-      httpClient.get<PromptUsageResponse>(`/api/v1/prompts/descriptions/${id}/usage`),
+      httpClient.get<PromptUsageResponse>(`/api/v3/prompts/descriptions/${id}/usage`),
   });
 }
 
@@ -176,7 +176,7 @@ export function useStructureUsage(id: string | null) {
     queryKey: ['structure-usage', id],
     enabled: Boolean(id),
     queryFn: () =>
-      httpClient.get<PromptUsageResponse>(`/api/v1/prompts/structures/${id}/usage`),
+      httpClient.get<PromptUsageResponse>(`/api/v3/prompts/structures/${id}/usage`),
   });
 }
 
@@ -185,6 +185,6 @@ export function useMoodUsage(id: string | null) {
     queryKey: ['mood-usage', id],
     enabled: Boolean(id),
     queryFn: () =>
-      httpClient.get<PromptUsageResponse>(`/api/v1/prompts/moods/${id}/usage`),
+      httpClient.get<PromptUsageResponse>(`/api/v3/prompts/moods/${id}/usage`),
   });
 }

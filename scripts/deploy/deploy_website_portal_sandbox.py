@@ -62,6 +62,8 @@ SITE_URL=https://sandbox.camxora.com
 PORTAL_URL=https://app.sandbox.camxora.com
 
 tar -xzf /tmp/camxora-web-portal.tar.gz -C $REPO website user_portal
+# Drop orphaned remote-only sources that break builds (e.g. old quota page).
+rm -rf $REPO/user_portal/src/app/dashboard/quota
 chown -R camxora:camxora $REPO/website $REPO/user_portal
 
 sudo -u camxora bash -lc "
@@ -70,7 +72,7 @@ sudo -u camxora bash -lc "
   rm -rf .next
   npm ci || npm install --no-audit --no-fund
   cat > .env.production <<ENVEOF
-NEXT_PUBLIC_PLATFORM_API_BASE_URL=$API_URL/api/v1
+NEXT_PUBLIC_PLATFORM_API_BASE_URL=$API_URL/api/v3
 NEXT_PUBLIC_API_BASE_URL=$API_URL
 NEXT_PUBLIC_SITE_URL=$SITE_URL
 NEXT_PUBLIC_USER_PORTAL_URL=$PORTAL_URL
@@ -88,6 +90,7 @@ sudo -u camxora bash -lc "
 NEXT_PUBLIC_CAMXORA_ENV=sandbox
 NEXT_PUBLIC_WEBSITE_URL=$SITE_URL
 NEXT_PUBLIC_USER_PORTAL_URL=$PORTAL_URL
+NEXT_PUBLIC_PLATFORM_API_BASE_URL=$API_URL/api/v3
 ENVEOF
   npm run build
 "

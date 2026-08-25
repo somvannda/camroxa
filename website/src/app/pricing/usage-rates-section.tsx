@@ -22,8 +22,8 @@ function platformApiBaseUrl(): string {
   return (
     process.env.NEXT_PUBLIC_PLATFORM_API_BASE_URL ??
     (process.env.NODE_ENV === "development"
-      ? "http://localhost:8000/api/v1"
-      : "https://api.camxora.com/api/v1")
+      ? "http://localhost:8000/api/v3"
+      : "https://api.camxora.com/api/v3")
   );
 }
 

@@ -16,7 +16,7 @@ class _MemoryStorage(SecureStorage):
 
     def __init__(self) -> None:
         self._data: dict[str, str] = {}
-        self._api_base_url = "http://localhost:8000/api/v1"
+        self._api_base_url = "http://localhost:8000/api/v3"
 
     def get(self, key: str) -> str | None:
         return self._data.get(key)

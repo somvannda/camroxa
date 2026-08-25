@@ -11,8 +11,8 @@ export function resolvePlatformApiBaseUrl(): string {
   }
 
   if (process.env.NODE_ENV === "development") {
-    return "http://localhost:8000/api/v1";
+    return "http://localhost:8000/api/v3";
   }
 
-  return "https://api.camxora.com/api/v1";
+  return "https://api.camxora.com/api/v3";
 }
