@@ -40,6 +40,8 @@ class UserMeResponse(BaseModel):
     display_name: str
     credit_balance: float
     plan_name: str | None = None
+    role: str | None = None
+    onboarding_paid: bool = False
     profile_allowance: int | None = None
     profile_addon_slots: int = 0
     profile_addon_pending: int = 0
@@ -109,3 +111,55 @@ class RegisterRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class PublicPlanOffer(BaseModel):
+    id: str
+    promo_price_cents: int
+    max_redemptions: int = 0
+    current_redemptions: int = 0
+    remaining_redemptions: int = 0
+    is_active: bool = True
+
+
+class PublicPlanTermDiscounts(BaseModel):
+    semi_annual_discount_percent: int = 15
+    annual_discount_percent: int = 25
+
+
+class PublicPlan(BaseModel):
+    """Public catalog plan from GET /plans/public (API v3)."""
+
+    id: str
+    name: str
+    price_cents: int
+    effective_price_cents: int = 0
+    billing_cycle_days: int | None = None
+    profile_allowance: int = 0
+    monthly_song_limit: int | None = None
+    monthly_image_limit: int | None = None
+    monthly_draft_limit: int | None = None
+    monthly_video_limit: int | None = None
+    monthly_merge_limit: int | None = None
+    daily_song_limit_per_channel: int = 0
+    daily_image_limit_per_channel: int = 0
+    monthly_credits: int = 0
+    daily_credits: int = 0
+    offer: PublicPlanOffer | None = None
+
+    model_config = {"extra": "ignore"}
+
+
+class WebMusicSubscriptionPlan(BaseModel):
+    """Public paid plan for the desktop Choose Your Plan dialog."""
+
+    id: str
+    name: str
+    price_cents: int
+    billing_cycle: str = "monthly"
+    monthly_credits: int = 0
+    features: list[str] = Field(default_factory=list)
+    display_order: int = 0
+    is_public: bool = True
+
+    model_config = {"extra": "ignore"}

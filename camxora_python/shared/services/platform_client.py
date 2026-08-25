@@ -23,6 +23,19 @@ class PlatformApiError(Exception):
         self.status = status
         self.payload = payload
 
+    @property
+    def error_code(self) -> str | None:
+        """``error.code`` from the platform_api JSON envelope, if present."""
+        payload = self.payload
+        if not isinstance(payload, dict):
+            return None
+        nested = payload.get("error")
+        if isinstance(nested, dict):
+            code = nested.get("code")
+            if isinstance(code, str) and code.strip():
+                return code.strip()
+        return None
+
 
 def _connect_error_message(api_base_url: str) -> str:
     """User-facing connect failure; keep uvicorn/port hints for local/dev only."""

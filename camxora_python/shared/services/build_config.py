@@ -126,6 +126,32 @@ def get_onboarding_url() -> str:
     return f"{get_portal_base_url()}/onboarding"
 
 
+def get_music_web_base_url() -> str:
+    """Music web (Create + Choose Your Plan pricing)."""
+    bundled = _load_bundled_env()
+    raw = (
+        os.environ.get("CAMXORA_MUSIC_WEB_BASE_URL")
+        or bundled.get("CAMXORA_MUSIC_WEB_BASE_URL")
+        or ""
+    ).strip().rstrip("/")
+    if raw:
+        return raw
+    env = build_environment()
+    if env == "sandbox":
+        return "https://music.sandbox.camxora.com"
+    if env == "production":
+        return "https://music.camxora.com"
+    return "http://localhost:3002"
+
+
+def get_pricing_url(*, embed: bool = False) -> str:
+    """Music web plans UI opened from the desktop Choose Your Plan dialog."""
+    base = get_music_web_base_url()
+    if embed:
+        return f"{base}/pricing/embed"
+    return f"{base}/pricing"
+
+
 def build_label() -> str:
     env = build_environment()
     if env == "sandbox":

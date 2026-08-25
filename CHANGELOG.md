@@ -9,6 +9,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Desktop login again opens the native **Choose Your Plan** popup when the
+  account is not Starter, Creator, or Studio. Catalog loads from `/api/v3`.
+  See `docs/changelog/2026-08-25-desktop-restore-plans-popup.md`.
+
 ### Changed
 
 - All API calls now target `/api/v3` exclusively. Default base URL, env examples, sandbox/production shortcuts, WebSocket helper, health-URL extractor, and marketplace asset resolver all updated. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.

@@ -13,6 +13,7 @@ def _clear_build_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CAMXORA_BUILD_ENV", raising=False)
     monkeypatch.delenv("CAMXORA_API_BASE_URL", raising=False)
     monkeypatch.delenv("CAMXORA_PORTAL_BASE_URL", raising=False)
+    monkeypatch.delenv("CAMXORA_MUSIC_WEB_BASE_URL", raising=False)
     monkeypatch.setattr(build_config, "is_frozen_runtime", lambda: False)
 
 
@@ -37,6 +38,10 @@ def test_portal_url_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CAMXORA_BUILD_ENV", "sandbox")
     assert build_config.get_portal_base_url() == "https://app.sandbox.camxora.com"
     assert build_config.get_onboarding_url().endswith("/onboarding")
+    assert build_config.get_music_web_base_url() == "https://music.sandbox.camxora.com"
+    assert build_config.get_pricing_url(embed=True) == (
+        "https://music.sandbox.camxora.com/pricing/embed"
+    )
 
 
 def test_footer_badge_hidden_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
