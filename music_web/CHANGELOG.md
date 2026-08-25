@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- After the email confirmation code, users go to Create logged in, instead of landing on the register form. Already-verified sessions skip the code screen. See `docs/changelog/2026-08-25-verify-email-redirect-create.md`.
+
 ### Changed
 
 - All API calls target `/api/v3` only. `subscription-api.ts` constant renamed `API_V3`; v1 plan fallback removed. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.

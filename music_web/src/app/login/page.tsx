@@ -2,31 +2,33 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useCallback, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useEffect, useState } from 'react';
 import { LoaderCircle, Shield } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
 import TurnstileWidget from '@/components/turnstile-widget';
 import { fetchMusicUser } from '@/lib/auth-api';
-
-function safeNextPath(raw: string | null): string {
-  if (!raw) return '/create';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/';
-  return raw;
-}
+import { safeNextPath } from '@/lib/auth-redirect';
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNextPath(params.get('next'));
-  const { login } = useAuth();
+  const { login, user, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [turnstileKey, setTurnstileKey] = useState(0);
+
+  useEffect(() => {
+    if (loading) return;
+    if (user?.email_confirmed) {
+      router.replace(next);
+    }
+  }, [loading, next, router, user?.email_confirmed]);
 
   const handleTurnstileToken = useCallback((token: string) => {
     setTurnstileToken(token);
