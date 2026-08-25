@@ -91,6 +91,11 @@ async def list_public_plans(store: StoreDep) -> list[dict[str, Any]]:
     return await store.list_public_plans()
 
 
+@router.get("/admin/plans", summary="List all plans including v3 grant / per-op fields")
+async def list_admin_plans(ctx: AdminDep, store: StoreDep) -> list[dict[str, Any]]:
+    return await store.list_plans()
+
+
 @router.get("/admin/plans/{plan_id}", summary="Get one plan including v3 grant fields")
 async def get_admin_plan(plan_id: UUID, ctx: AdminDep, store: StoreDep) -> dict[str, Any]:
     plan = await store.get_plan(plan_id)

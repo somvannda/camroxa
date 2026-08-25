@@ -41,6 +41,8 @@ def main() -> int:
 set -e
 REPO=/opt/camxora/repo
 tar -xzf /tmp/camxora-admin.tar.gz -C $REPO
+# Drop remote-only orphans that break tsc (not present in this branch).
+rm -f $REPO/admin_portal/src/lib/auth.test.ts
 chown -R camxora:camxora $REPO/admin_portal
 sudo -u camxora bash -lc 'cd /opt/camxora/repo/admin_portal && (npm ci || npm install --no-audit --no-fund) && npm run build'
 echo ADMIN_SYNC_DONE

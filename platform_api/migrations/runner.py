@@ -134,10 +134,24 @@ def _upgrade_head_sync(current_revs: set[str] | None = None) -> None:
     cfg = Config(str(alembic_ini))
     cfg.set_main_option("sqlalchemy.url", get_settings().database_url)
     script = ScriptDirectory.from_config(cfg)
+    current = current_revs or set()
+    known = {rev.revision for rev in script.walk_revisions()}
+    unknown = sorted(current - known)
+    if unknown:
+        # DB already applied a revision this checkout does not ship (e.g. 117
+        # applied, then workers restart from a tree that only has 116). Alembic
+        # would try to "upgrade" to the older local head and hang while serving
+        # "Database pool not initialized" 500s. Skip until files are synced.
+        logger.error(
+            "Skipping auto-upgrade: alembic_version has revision(s) missing "
+            "from local migrations (%s). Sync migration files and restart.",
+            ", ".join(unknown),
+        )
+        return
     target = upgrade_revision_target(
         _revision_map(script),
         list(script.get_heads()),
-        current_revs or set(),
+        current,
     )
     logger.info("Running database migrations (alembic upgrade %s)...", target)
     command.upgrade(cfg, target)

@@ -1,8 +1,8 @@
-/** Subscription and credit management API client (`/api/v2`) */
+/** Subscription and credit management API client (`/api/v3`) */
 
 import { musicAuthFetch } from '@/lib/auth-fetch';
 
-const API_V2 = '/api/v2';
+const API_V3 = '/api/v3';
 
 // ============================================================================
 // Types
@@ -230,21 +230,21 @@ function overlayPublicPlan(plan: SubscriptionPlan, pub?: PublicPlanRow): Subscri
 }
 
 async function fetchPublicPlanRows(): Promise<PublicPlanRow[]> {
-  for (const path of ['/api/v3/plans/public', '/api/v1/plans/public'] as const) {
-    try {
-      const rows = asPublicRows(await apiFetch<unknown>(path));
-      if (rows.length) return rows;
-    } catch {
-      /* try unauthenticated public catalog */
-    }
-    try {
-      const response = await fetch(path, { credentials: 'include' });
-      if (!response.ok) continue;
+  const path = '/api/v3/plans/public';
+  try {
+    const rows = asPublicRows(await apiFetch<unknown>(path));
+    if (rows.length) return rows;
+  } catch {
+    /* try unauthenticated public catalog */
+  }
+  try {
+    const response = await fetch(path, { credentials: 'include' });
+    if (response.ok) {
       const rows = asPublicRows(await response.json());
       if (rows.length) return rows;
-    } catch {
-      /* try next public catalog */
     }
+  } catch {
+    /* no public catalog available */
   }
   return [];
 }
@@ -252,7 +252,7 @@ async function fetchPublicPlanRows(): Promise<PublicPlanRow[]> {
 export async function fetchSubscriptionPlans(): Promise<{ plans: SubscriptionPlan[] }> {
   let data: { plans: SubscriptionPlan[] } = { plans: [] };
   try {
-    data = await apiFetch<{ plans: SubscriptionPlan[] }>(`${API_V2}/subscriptions/plans`);
+    data = await apiFetch<{ plans: SubscriptionPlan[] }>(`${API_V3}/subscriptions/plans`);
     if (!data || !Array.isArray(data.plans)) data = { plans: [] };
   } catch {
     data = { plans: [] };
@@ -287,7 +287,7 @@ export async function fetchSubscriptionPlans(): Promise<{ plans: SubscriptionPla
 
 export async function fetchMySubscription(): Promise<UserSubscription | null> {
   const data = await apiFetch<UserSubscription | { data?: UserSubscription | null } | null>(
-    `${API_V2}/subscriptions/my-subscription`,
+    `${API_V3}/subscriptions/my-subscription`,
   );
   const nested =
     data && typeof data === 'object' && 'data' in data && data.data && typeof data.data === 'object'
@@ -302,7 +302,7 @@ export async function purchaseSubscription(input: {
   success_url: string;
   cancel_url: string;
 }): Promise<{ checkout_url: string; payment_id: string; expires_at: string; qr_string?: string }> {
-  return apiFetch(`${API_V2}/subscriptions/purchase`, {
+  return apiFetch(`${API_V3}/subscriptions/purchase`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -312,7 +312,7 @@ export async function purchaseSubscription(input: {
 export async function cancelSubscription(input: {
   cancel_at_period_end?: boolean;
 }): Promise<{ success: boolean; message: string; subscription: UserSubscription | null }> {
-  return apiFetch(`${API_V2}/subscriptions/cancel`, {
+  return apiFetch(`${API_V3}/subscriptions/cancel`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -332,7 +332,7 @@ export async function fetchCreditBalance(): Promise<CreditBalance> {
     }
     return mapped;
   } catch {
-    return apiFetch<CreditBalance>(`${API_V2}/credits/balance`);
+    return apiFetch<CreditBalance>(`${API_V3}/credits/balance`);
   }
 }
 
@@ -340,7 +340,7 @@ export async function fetchCreditHistory(
   limit = 50,
   offset = 0,
 ): Promise<{ transactions: CreditTransaction[]; total: number; limit: number; offset: number }> {
-  return apiFetch(`${API_V2}/credits/history?limit=${limit}&offset=${offset}`);
+  return apiFetch(`${API_V3}/credits/history?limit=${limit}&offset=${offset}`);
 }
 
 // ============================================================================
@@ -348,7 +348,7 @@ export async function fetchCreditHistory(
 // ============================================================================
 
 export async function fetchCreditPacks(): Promise<{ packs: CreditPack[] }> {
-  return apiFetch<{ packs: CreditPack[] }>(`${API_V2}/topups/packs`);
+  return apiFetch<{ packs: CreditPack[] }>(`${API_V3}/topups/packs`);
 }
 
 export async function purchaseTopup(input: {
@@ -364,7 +364,7 @@ export async function purchaseTopup(input: {
   credits: number;
   amount_cents: number;
 }> {
-  return apiFetch(`${API_V2}/topups/purchase`, {
+  return apiFetch(`${API_V3}/topups/purchase`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -392,18 +392,18 @@ export function isAllowedCutluyCheckoutUrl(url: string | null | undefined): bool
 }
 
 export async function fetchSubscriptionCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
-  return apiFetch(`${API_V2}/subscriptions/payments/${encodeURIComponent(paymentId)}`);
+  return apiFetch(`${API_V3}/subscriptions/payments/${encodeURIComponent(paymentId)}`);
 }
 
 export async function fetchTopupCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
-  return apiFetch(`${API_V2}/topups/payments/${encodeURIComponent(paymentId)}`);
+  return apiFetch(`${API_V3}/topups/payments/${encodeURIComponent(paymentId)}`);
 }
 
 export async function fetchTopupHistory(
   limit = 50,
   offset = 0,
 ): Promise<{ purchases: TopupPurchase[]; total: number; limit: number; offset: number }> {
-  return apiFetch(`${API_V2}/topups/history?limit=${limit}&offset=${offset}`);
+  return apiFetch(`${API_V3}/topups/history?limit=${limit}&offset=${offset}`);
 }
 
 // ============================================================================

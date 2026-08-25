@@ -1,6 +1,6 @@
 /**
  * Resolve API base URL for User Portal.
- * In production, prefer same-origin `/api/v1` so nginx can proxy to the platform API
+ * In production, prefer same-origin `/api/v3` so nginx can proxy to the platform API
  * and auth cookies stay first-party. Set NEXT_PUBLIC_PLATFORM_API_BASE_URL only when
  * the API is on a different host without a reverse-proxy `/api` route.
  */
@@ -10,9 +10,9 @@ export function resolvePlatformApiBaseUrl(): string {
     return configured.replace(/\/$/, "");
   }
   if (process.env.NODE_ENV === "production") {
-    return "/api/v1";
+    return "/api/v3";
   }
-  return "http://localhost:8000/api/v1";
+  return "http://localhost:8000/api/v3";
 }
 
 export const PLATFORM_API_BASE_URL = resolvePlatformApiBaseUrl();

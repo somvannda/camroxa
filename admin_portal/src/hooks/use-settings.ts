@@ -15,7 +15,7 @@ interface SystemSettingsResponse {
 export function useSystemSettings() {
   return useQuery({
     queryKey: ['system-settings'],
-    queryFn: () => httpClient.get<SystemSettingsResponse>('/api/v1/admin/system-settings'),
+    queryFn: () => httpClient.get<SystemSettingsResponse>('/api/v3/admin/system-settings'),
   });
 }
 
@@ -23,7 +23,7 @@ export function useUpsertSetting() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { key: string; value: string; value_type?: string }) =>
-      httpClient.put<SystemSetting>('/api/v1/admin/system-settings', {
+      httpClient.put<SystemSetting>('/api/v3/admin/system-settings', {
         key: data.key,
         value: data.value,
         value_type: data.value_type ?? 'string',
@@ -36,7 +36,7 @@ export function useDeleteSetting() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (key: string) =>
-      httpClient.delete(`/api/v1/admin/system-settings/${key}`),
+      httpClient.delete(`/api/v3/admin/system-settings/${key}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['system-settings'] }),
   });
 }

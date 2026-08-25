@@ -1255,7 +1255,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             });
           } else if (shouldUseNativeHtmlPlayback()) {
             const playUrl =
-              session.play_url || `/api/v1/web-music/licenses/play/${session.token}`;
+              session.play_url || `/api/v3/web-music/licenses/play/${session.token}`;
             if (!isTrustedPlayUrl(playUrl)) {
               throw new Error('Untrusted packaged play URL.');
             }

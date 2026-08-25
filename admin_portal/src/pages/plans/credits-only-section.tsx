@@ -80,21 +80,25 @@ function formatBilling(days: number | null): string {
 }
 
 function formatGrant(plan: V3Plan): string {
-  if (plan.monthly_credits <= 0 && plan.daily_credits > 0) {
-    return `${plan.daily_credits.toLocaleString()} / day`;
+  const monthly = Number(plan.monthly_credits ?? 0);
+  const daily = Number(plan.daily_credits ?? 0);
+  if (monthly <= 0 && daily > 0) {
+    return `${daily.toLocaleString()} / day`;
   }
-  if (plan.daily_credits > 0) {
-    return `${plan.monthly_credits.toLocaleString()} / period + ${plan.daily_credits.toLocaleString()} / day`;
+  if (daily > 0) {
+    return `${monthly.toLocaleString()} / period + ${daily.toLocaleString()} / day`;
   }
-  return `${plan.monthly_credits.toLocaleString()} / period`;
+  return `${monthly.toLocaleString()} / period`;
 }
 
 function formatApproxSongs(plan: V3Plan): string {
-  if (plan.monthly_credits > 0) {
-    return String(Math.floor(plan.monthly_credits / 10));
+  const monthly = Number(plan.monthly_credits ?? 0);
+  const daily = Number(plan.daily_credits ?? 0);
+  if (monthly > 0) {
+    return String(Math.floor(monthly / 10));
   }
-  if (plan.daily_credits > 0) {
-    return `${Math.floor(plan.daily_credits / 10)}/day`;
+  if (daily > 0) {
+    return `${Math.floor(daily / 10)}/day`;
   }
   return '—';
 }

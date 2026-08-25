@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- All API calls target `/api/v3` only (`platform-api-base.ts` and pricing pages updated). See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - `/pricing` matches music web: purple/pink cards, monthly/yearly toggle, same credits and bullets. Free no longer lists Desktop studio. See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.
 - `/pricing` shows Starter / Creator / Studio credit cards (dual-channel is a bullet). Quota comparison and public $5/$10 addon table are hidden. See `docs/changelog/2026-08-22-credits-only-public-cards-and-addon-skus.md`.
 

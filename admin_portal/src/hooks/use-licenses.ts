@@ -14,7 +14,7 @@ export function useLicenses(params?: LicenseListParams) {
     queryKey: ['licenses', params],
     queryFn: () =>
       httpClient.get<PaginatedResponse<License>>(
-        '/api/v1/licenses',
+        '/api/v3/licenses',
         params as Record<string, unknown>,
       ),
   });
@@ -24,7 +24,7 @@ export function useCreateLicense() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateLicenseRequest) =>
-      httpClient.post('/api/v1/licenses', data),
+      httpClient.post('/api/v3/licenses', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['licenses'] }),
   });
 }
@@ -33,7 +33,7 @@ export function useAssignLicense() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; user_id: string }) =>
-      httpClient.post(`/api/v1/licenses/${data.id}/assign`, {
+      httpClient.post(`/api/v3/licenses/${data.id}/assign`, {
         user_id: data.user_id,
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['licenses'] }),
@@ -44,7 +44,7 @@ export function useRevokeLicense() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.post(`/api/v1/licenses/${id}/revoke`),
+      httpClient.post(`/api/v3/licenses/${id}/revoke`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['licenses'] }),
   });
 }
@@ -58,7 +58,7 @@ export function useUpdateProfileAddonSlots() {
       profile_addon_slots?: number;
       add_channels?: number;
     }) =>
-      httpClient.patch(`/api/v1/licenses/${data.id}/profile-addon-slots`, {
+      httpClient.patch(`/api/v3/licenses/${data.id}/profile-addon-slots`, {
         ...(data.profile_addon_pending !== undefined
           ? { profile_addon_pending: data.profile_addon_pending }
           : {}),

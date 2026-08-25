@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `/api/v3` is the full canonical API surface (dual-mount of former v1 routers + CutLuy billing + webhooks + wallet). `/api/v1` and `/api/v2` remain temporary. See `docs/changelog/2026-08-25-api-v3-superset-dual-mount.md`.
+- Sandbox credits-only billing cutover: plan grants locked (incl. hidden $79 → 3000 monthly credits), leftover mint idempotent, `credits_only_v3_charge` On. See `docs/changelog/2026-08-25-sandbox-billing-cutover-v3.md`.
+- Fix Free daily mint (`daily_grant` lot tag) and streaming likes wiring that caused music web `/me/credits`, `/web-music/quota`, and `/streaming/library/likes/ids` 500s. See `docs/changelog/2026-08-25-fix-v3-daily-grant-and-likes.md`.
+- `GET /api/v3/subscriptions/plans` includes `daily_credits` from DB (was always `0` for Free). Same incomplete-payload class as admin credits-only.
 - Admin user-spend uses the unified plan resolver only (no separate Music-tag web-sub path). Sandbox 500 fixed. See `docs/changelog/2026-08-23-wallet-api-audit-e2e.md`.
 - Admin user list/detail resolve Plan from license then CutLuy web sub. License list includes web subscriptions. User-spent plan filter matches that resolver. See `docs/changelog/2026-08-23-admin-users-licenses-wallet.md`.
 - CutLuy plan fulfill / renew and top-up write the shared wallet (period grant + pack lot). Web leftover conversion is a separate one-shot. Generate and web chrome no longer spend or add v2 remaining. See `docs/changelog/2026-08-23-one-wallet-web-ledger.md`.

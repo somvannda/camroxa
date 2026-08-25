@@ -17,7 +17,7 @@ export function useAIRoutingAssignments() {
   return useQuery({
     queryKey: aiRoutingKeys.assignments(),
     queryFn: () =>
-      httpClient.get<AssignmentsResponse>('/api/v1/admin/ai-routing'),
+      httpClient.get<AssignmentsResponse>('/api/v3/admin/ai-routing'),
   });
 }
 
@@ -25,7 +25,7 @@ export function useAIRoutingProviders() {
   return useQuery({
     queryKey: aiRoutingKeys.providers(),
     queryFn: () =>
-      httpClient.get<ProvidersResponse>('/api/v1/admin/ai-routing/providers'),
+      httpClient.get<ProvidersResponse>('/api/v3/admin/ai-routing/providers'),
   });
 }
 
@@ -33,7 +33,7 @@ export function useAIRoutingAudit() {
   return useQuery({
     queryKey: aiRoutingKeys.audit(),
     queryFn: () =>
-      httpClient.get<AIRoutingAuditResponse>('/api/v1/admin/ai-routing/audit'),
+      httpClient.get<AIRoutingAuditResponse>('/api/v3/admin/ai-routing/audit'),
   });
 }
 
@@ -56,7 +56,7 @@ export function useSaveAIRoutingAssignments() {
       image_fallback_chain?: OperationAssignment[];
     }) =>
       httpClient.put<{ pricing_sync?: { created_count?: number } }>(
-        '/api/v1/admin/ai-routing',
+        '/api/v3/admin/ai-routing',
         payload,
       ),
     onSuccess: () => {

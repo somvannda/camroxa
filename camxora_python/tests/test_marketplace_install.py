@@ -187,7 +187,7 @@ def test_install_surfaces_auth_error(isolated_store: VideoLocalStore) -> None:
 
 def test_install_surfaces_network_error(isolated_store: VideoLocalStore) -> None:
     client = _FakePlatformClient(
-        error=PlatformApiError(0, "Cannot connect to http://localhost:8000/api/v1. Start platform_api.")
+        error=PlatformApiError(0, "Cannot connect to http://localhost:8000/api/v3. Start platform_api.")
     )
     coord = _coordinator(client, isolated_store)
 

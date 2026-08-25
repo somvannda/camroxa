@@ -87,7 +87,7 @@ export type LicenseSession = {
 
 export async function registerPlaybackDevice(): Promise<string> {
   const devicePublicId = await getOrCreateDevicePublicId();
-  const response = await musicAuthFetch('/api/v1/web-music/licenses/devices/register', {
+  const response = await musicAuthFetch('/api/v3/web-music/licenses/devices/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ device_public_id: devicePublicId, platform: 'music_web' }),
@@ -125,7 +125,7 @@ export async function createLicenseSession(input: {
 }): Promise<LicenseSession> {
   const devicePublicId = await registerPlaybackDevice();
   const wasmHash = await decryptModuleHash();
-  const response = await musicAuthFetch('/api/v1/web-music/licenses/sessions', {
+  const response = await musicAuthFetch('/api/v3/web-music/licenses/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -154,7 +154,7 @@ export async function sendLicenseHeartbeat(input: {
   seq?: number;
   sessionBind?: string;
 }): Promise<void> {
-  await musicAuthFetch('/api/v1/web-music/licenses/heartbeat', {
+  await musicAuthFetch('/api/v3/web-music/licenses/heartbeat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -185,7 +185,7 @@ export function reportPlaybackTrace(input: {
     | 'crios_hold_event';
   detail?: string;
 }): void {
-  void musicAuthFetch('/api/v1/web-music/licenses/client-trace', {
+  void musicAuthFetch('/api/v3/web-music/licenses/client-trace', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

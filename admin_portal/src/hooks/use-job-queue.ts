@@ -19,7 +19,7 @@ export function useJobQueueMetrics() {
   return useQuery({
     queryKey: jobQueueKeys.metrics,
     queryFn: () =>
-      httpClient.get<JobQueueMetricsResponse>('/api/v1/admin/job-queue/metrics'),
+      httpClient.get<JobQueueMetricsResponse>('/api/v3/admin/job-queue/metrics'),
     refetchInterval: 8_000,
     refetchIntervalInBackground: false,
   });
@@ -36,7 +36,7 @@ export function useJobQueueJobs(params: JobQueueJobsParams) {
       if (params.job_type) query.job_type = params.job_type;
       if (params.user) query.user = params.user;
       return httpClient.get<JobQueueJobsResponse>(
-        '/api/v1/admin/job-queue/jobs',
+        '/api/v3/admin/job-queue/jobs',
         query,
       );
     },
@@ -50,7 +50,7 @@ export function useRecentImageFailures(hours = 24) {
     queryKey: jobQueueKeys.imageFailures(hours),
     queryFn: () =>
       httpClient.get<ImageJobFailuresResponse>(
-        '/api/v1/admin/job-queue/image-failures',
+        '/api/v3/admin/job-queue/image-failures',
         { hours, limit: 30 },
       ),
     refetchInterval: 15_000,

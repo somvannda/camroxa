@@ -347,7 +347,7 @@ export function UserGeneratedSongs({ userId }: { userId: string }) {
   async function loadAndPlay(version: SelectedVersion) {
     const audio = audioRef.current;
     if (!audio) return;
-    const url = `/api/v1/users/${userId}/web-music/generations/${version.song.id}/audio?variant=${version.clip.variant}`;
+    const url = `/api/v3/users/${userId}/web-music/generations/${version.song.id}/audio?variant=${version.clip.variant}`;
     try {
       const response = await apiClient.get(url, { responseType: 'blob' });
       const blob = response.data as Blob;
@@ -413,12 +413,12 @@ export function UserGeneratedSongs({ userId }: { userId: string }) {
       const title = clipDisplayTitle(song, clip);
       if (kind === 'mp3') {
         await downloadAuthenticated(
-          `/api/v1/users/${userId}/web-music/generations/${song.id}/download?variant=${clip.variant}`,
+          `/api/v3/users/${userId}/web-music/generations/${song.id}/download?variant=${clip.variant}`,
           `${title}.mp3`,
         );
       } else {
         await downloadAuthenticated(
-          `/api/v1/users/${userId}/web-music/generations/${song.id}/timed-lyrics?variant=${clip.variant}&format=${kind}`,
+          `/api/v3/users/${userId}/web-music/generations/${song.id}/timed-lyrics?variant=${clip.variant}&format=${kind}`,
           `${title}.${kind}`,
         );
       }

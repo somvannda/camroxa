@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- All API calls target `/api/v3` only; all hooks, pages, and http-client updated. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Usage operation labels include Web leftover / credit pack. See `docs/changelog/2026-08-23-wallet-api-audit-e2e.md`.
 - `/users` drops Tag; Plan and Credits come from the unified catalog and wallet. `/licenses` lists desktop + CutLuy web subscribers. See `docs/changelog/2026-08-23-admin-users-licenses-wallet.md`.
 - `/plans` is one table of active credits-only rows with per-op amount columns. ≈ Songs is display-only. Leftover channel SKUs stay collapsed. Live-generate-path banner removed. See `docs/changelog/2026-08-23-admin-plans-table.md`.

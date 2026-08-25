@@ -80,11 +80,11 @@ def run() -> int:
 
     if env_arg == "sandbox":
         os.environ["CAMXORA_BUILD_ENV"] = "sandbox"
-        os.environ["CAMXORA_API_BASE_URL"] = "https://api.sandbox.camxora.com/api/v1"
+        os.environ["CAMXORA_API_BASE_URL"] = "https://api.sandbox.camxora.com/api/v3"
         os.environ["CAMXORA_PORTAL_BASE_URL"] = "https://app.sandbox.camxora.com"
     elif env_arg == "production":
         os.environ["CAMXORA_BUILD_ENV"] = "production"
-        os.environ["CAMXORA_API_BASE_URL"] = "https://api.camxora.com/api/v1"
+        os.environ["CAMXORA_API_BASE_URL"] = "https://api.camxora.com/api/v3"
         os.environ["CAMXORA_PORTAL_BASE_URL"] = "https://app.camxora.com"
 
     load_desktop_env()

@@ -15,7 +15,7 @@ export function useUsers(params: UserListParams) {
   return useQuery({
     queryKey: ['users', params],
     queryFn: async () => {
-      const resp = await httpClient.get<UsersApiResponse>('/api/v1/users', params as Record<string, unknown>);
+      const resp = await httpClient.get<UsersApiResponse>('/api/v3/users', params as Record<string, unknown>);
       // Map API response (uses 'users' key) to PaginatedResponse format (uses 'items' key)
       return {
         items: resp.users,
@@ -32,7 +32,7 @@ export function useUpdateUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<User> }) =>
-      httpClient.patch<User>(`/api/v1/users/${data.id}`, data.updates),
+      httpClient.patch<User>(`/api/v3/users/${data.id}`, data.updates),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 }
@@ -41,7 +41,7 @@ export function useSetUserPassword() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; password: string }) =>
-      httpClient.post(`/api/v1/users/${data.id}/set-password`, { password: data.password }),
+      httpClient.post(`/api/v3/users/${data.id}/set-password`, { password: data.password }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['users', variables.id, 'details'] });
@@ -53,7 +53,7 @@ export function useSuspendUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; reason: string }) =>
-      httpClient.post(`/api/v1/users/${data.id}/suspend`, { reason: data.reason }),
+      httpClient.post(`/api/v3/users/${data.id}/suspend`, { reason: data.reason }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 }
@@ -62,7 +62,7 @@ export function useReactivateUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.post(`/api/v1/users/${id}/reactivate`),
+      httpClient.post(`/api/v3/users/${id}/reactivate`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 }
@@ -71,7 +71,7 @@ export function useFreezeGeneration() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; hours: number; reason: string }) =>
-      httpClient.post(`/api/v1/users/${data.id}/freeze-generation`, {
+      httpClient.post(`/api/v3/users/${data.id}/freeze-generation`, {
         hours: data.hours,
         reason: data.reason,
       }),
@@ -86,7 +86,7 @@ export function useUnfreezeGeneration() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.post(`/api/v1/users/${id}/unfreeze-generation`),
+      httpClient.post(`/api/v3/users/${id}/unfreeze-generation`),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['users', variables, 'details'] });
@@ -98,7 +98,7 @@ export function useDeleteUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.delete(`/api/v1/users/${id}`),
+      httpClient.delete(`/api/v3/users/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 }
@@ -107,7 +107,7 @@ export function useDeleteUser() {
 export function useUserDetails(id: string) {
   return useQuery({
     queryKey: ['users', id, 'details'],
-    queryFn: () => httpClient.get<UserFullDetail>(`/api/v1/users/${id}/details`),
+    queryFn: () => httpClient.get<UserFullDetail>(`/api/v3/users/${id}/details`),
     enabled: !!id,
   });
 }
@@ -119,7 +119,7 @@ export function useQuotaTopup(userId: string) {
       quota_kind: 'draft' | 'music' | 'image' | 'video' | 'merge';
       amount: number;
       reason: string;
-    }) => httpClient.post(`/api/v1/users/${userId}/quota-topups`, data),
+    }) => httpClient.post(`/api/v3/users/${userId}/quota-topups`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users', userId, 'details'] });
       queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -132,7 +132,7 @@ export function useChannelProfileLogoBlob(profileId: string) {
     queryKey: ['channel-profiles', profileId, 'logo-blob'],
     queryFn: async () => {
       const resp = await apiClient.get(
-        `/api/v1/media/channel-profiles/${profileId}/logo`,
+        `/api/v3/media/channel-profiles/${profileId}/logo`,
         { responseType: 'blob' },
       );
       return resp.data as Blob;
@@ -147,7 +147,7 @@ export function useChannelProfileCoverBlob(profileId: string, index: number) {
     queryKey: ['channel-profiles', profileId, 'cover-blob', index],
     queryFn: async () => {
       const resp = await apiClient.get(
-        `/api/v1/media/channel-profiles/${profileId}/covers/${index}`,
+        `/api/v3/media/channel-profiles/${profileId}/covers/${index}`,
         { responseType: 'blob' },
       );
       return resp.data as Blob;
@@ -198,7 +198,7 @@ export function useUserWebMusicWorkspaces(userId: string) {
     queryKey: ['users', userId, 'web-music', 'workspaces'],
     queryFn: () =>
       httpClient.get<{ items: AdminWebMusicWorkspace[] }>(
-        `/api/v1/users/${userId}/web-music/workspaces`,
+        `/api/v3/users/${userId}/web-music/workspaces`,
       ),
     enabled: !!userId,
   });
@@ -209,7 +209,7 @@ export function useUserWebMusicGenerations(userId: string, workspaceId?: string)
     queryKey: ['users', userId, 'web-music', 'generations', workspaceId ?? 'all'],
     queryFn: () =>
       httpClient.get<{ items: AdminWebMusicGeneration[]; total: number }>(
-        `/api/v1/users/${userId}/web-music/generations`,
+        `/api/v3/users/${userId}/web-music/generations`,
         {
           limit: 40,
           offset: 0,

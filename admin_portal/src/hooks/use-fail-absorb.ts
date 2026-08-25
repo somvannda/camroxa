@@ -16,7 +16,7 @@ export function useFailAbsorb(userId: string) {
   return useQuery({
     queryKey: ['users', userId, 'fail-absorb'],
     queryFn: () =>
-      httpClient.get<FailAbsorbStatus>(`/api/v1/users/${userId}/fail-absorb`),
+      httpClient.get<FailAbsorbStatus>(`/api/v3/users/${userId}/fail-absorb`),
     enabled: !!userId,
     refetchInterval: 30_000,
   });
@@ -26,7 +26,7 @@ export function useResetFailAbsorb(userId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      httpClient.post<FailAbsorbStatus>(`/api/v1/users/${userId}/fail-absorb/reset`),
+      httpClient.post<FailAbsorbStatus>(`/api/v3/users/${userId}/fail-absorb/reset`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users', userId, 'fail-absorb'] });
     },

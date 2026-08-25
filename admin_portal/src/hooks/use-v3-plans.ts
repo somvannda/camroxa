@@ -6,7 +6,7 @@ import type { V3Plan, V3PlanPatch, V3WalletView } from '@/types/v3-billing';
 export function useV3Plans() {
   return useQuery({
     queryKey: ['v3-plans'],
-    queryFn: () => httpClient.get<V3Plan[]>('/api/v3/plans'),
+    queryFn: () => httpClient.get<V3Plan[]>('/api/v3/admin/plans'),
   });
 }
 

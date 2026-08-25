@@ -66,12 +66,15 @@ class Plan:
     features: dict
     is_public: bool
     display_order: int
+    daily_credits: int = 0
 
 
 def _row_to_plan(row: dict) -> Plan:
     data = dict(row)
     data["id"] = str(data["id"])
     data["features"] = _parse_features(data.get("features"))
+    data["daily_credits"] = int(data.get("daily_credits") or 0)
+    data["monthly_credits"] = int(data.get("monthly_credits") or 0)
     return Plan(**data)
 
 
@@ -142,7 +145,8 @@ class SubscriptionService:
         query = """
             SELECT 
                 id, name, plan_type, price_cents, billing_cycle_days,
-                monthly_credits, monthly_song_limit AS monthly_song_quota, features, 
+                monthly_credits, COALESCE(daily_credits, 0) AS daily_credits,
+                monthly_song_limit AS monthly_song_quota, features, 
                 is_public, display_order
             FROM plans
             WHERE plan_type = $1
@@ -164,7 +168,8 @@ class SubscriptionService:
         row = await self._db.fetch_one("""
             SELECT 
                 id, name, plan_type, price_cents, billing_cycle_days,
-                monthly_credits, monthly_song_limit AS monthly_song_quota, features,
+                monthly_credits, COALESCE(daily_credits, 0) AS daily_credits,
+                monthly_song_limit AS monthly_song_quota, features,
                 is_public, display_order
             FROM plans
             WHERE id = $1 AND is_active = true
@@ -177,7 +182,8 @@ class SubscriptionService:
         row = await self._db.fetch_one("""
             SELECT 
                 id, name, plan_type, price_cents, billing_cycle_days,
-                monthly_credits, monthly_song_limit AS monthly_song_quota, features,
+                monthly_credits, COALESCE(daily_credits, 0) AS daily_credits,
+                monthly_song_limit AS monthly_song_quota, features,
                 is_public, display_order
             FROM plans
             WHERE name = $1 AND is_active = true

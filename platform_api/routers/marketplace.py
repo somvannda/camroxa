@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, Query, UploadFile, File
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from platform_api.http_paths import API_V3_PREFIX
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.marketplace_service import (
     MarketplaceItemUpdate,
@@ -114,7 +115,7 @@ def _item_to_response(item, request_path: str = "") -> MarketplaceItemResponse:
         tags=item.tags,
         status=item.status,
         price=item.price,
-        preview_url=f"/api/v1/marketplace/items/{item.id}/preview",
+        preview_url=f"{API_V3_PREFIX}/marketplace/items/{item.id}/preview",
         created_at=item.created_at.isoformat(),
     )
 

@@ -21,7 +21,7 @@ export function useMarketplaceItems(page: number = 1) {
     queryKey: marketplaceKeys.list(page),
     queryFn: () =>
       httpClient.get<MarketplaceListResponse>(
-        '/api/v1/marketplace/admin/items',
+        '/api/v3/marketplace/admin/items',
         { page, page_size: 25 },
       ),
   });
@@ -36,7 +36,7 @@ export function useUploadTemplate() {
       const formData = new FormData();
       formData.append('file', file);
       const response = await apiClient.post<MarketplaceItem>(
-        '/api/v1/marketplace/upload',
+        '/api/v3/marketplace/upload',
         formData,
       );
       return response.data;
@@ -53,7 +53,7 @@ export function useToggleStatus(id: string) {
     mutationFn: (newStatus: 'enabled' | 'disabled') => {
       const action = newStatus === 'enabled' ? 'enable' : 'disable';
       return httpClient.post<MarketplaceItem>(
-        `/api/v1/marketplace/items/${id}/${action}`,
+        `/api/v3/marketplace/items/${id}/${action}`,
       );
     },
     onSuccess: () => {
@@ -66,7 +66,7 @@ export function useDeleteItem(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      httpClient.delete<{ ok: boolean }>(`/api/v1/marketplace/items/${id}`),
+      httpClient.delete<{ ok: boolean }>(`/api/v3/marketplace/items/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: marketplaceKeys.all });
     },
@@ -78,7 +78,7 @@ export function useUpdateItem(id: string) {
   return useMutation({
     mutationFn: (update: MarketplaceItemUpdate) =>
       httpClient.patch<MarketplaceItem>(
-        `/api/v1/marketplace/items/${id}`,
+        `/api/v3/marketplace/items/${id}`,
         update,
       ),
     onSuccess: () => {
@@ -94,7 +94,7 @@ export function useUploadPreview(id: string) {
       const formData = new FormData();
       formData.append('file', file);
       const response = await apiClient.post<MarketplaceItem>(
-        `/api/v1/marketplace/items/${id}/preview`,
+        `/api/v3/marketplace/items/${id}/preview`,
         formData,
       );
       return response.data;

@@ -26,9 +26,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchAdminSession = useCallback(async (): Promise<AdminSession | null> => {
     try {
-      const response = await apiClient.get<AdminSession>('/api/v1/users/me');
+      const response = await apiClient.get<AdminSession>('/api/v3/users/me');
       if (response.data.role !== 'admin') {
-        await apiClient.post('/api/v1/auth/logout').catch(() => undefined);
+        await apiClient.post('/api/v3/auth/logout').catch(() => undefined);
         clearTokens();
         return null;
       }
@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (email: string, password: string): Promise<void> => {
-      const { data } = await apiClient.post<TokenPair>('/api/v1/auth/login', {
+      const { data } = await apiClient.post<TokenPair>('/api/v3/auth/login', {
         email,
         password,
       });
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async (): Promise<void> => {
     try {
-      await apiClient.post('/api/v1/auth/logout');
+      await apiClient.post('/api/v3/auth/logout');
     } catch {
       // Best-effort: still clear local state even if logout API call fails
     }
