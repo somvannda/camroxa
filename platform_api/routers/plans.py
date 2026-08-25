@@ -69,6 +69,9 @@ class PlanResponse(BaseModel):
     daily_draft_limit_per_channel: int = 300
     daily_video_limit: int = 10
     daily_merge_limit: int = 1
+    monthly_credits: int = 0
+    daily_credits: int = 0
+    is_public: bool = False
     is_active: bool
     effective_from: datetime
     created_at: datetime
@@ -386,6 +389,9 @@ def _plan_to_response(plan: Any, *, subscriber_count: int = 0) -> PlanResponse:
         ),
         daily_video_limit=int(getattr(plan, "daily_video_limit", 10) or 10),
         daily_merge_limit=int(getattr(plan, "daily_merge_limit", 1) or 1),
+        monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
+        daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+        is_public=bool(getattr(plan, "is_public", False)),
         is_active=plan.is_active,
         effective_from=plan.effective_from,
         created_at=plan.created_at,

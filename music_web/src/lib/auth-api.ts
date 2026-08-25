@@ -50,7 +50,7 @@ export async function loginMusicUser(input: {
   password: string;
   cf_turnstile_response?: string;
 }): Promise<TokenResponse> {
-  const response = await musicAuthFetch('/api/v1/auth/login', {
+  const response = await musicAuthFetch('/api/v3/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -67,7 +67,7 @@ export async function registerMusicUser(input: {
   display_name: string;
   cf_turnstile_response?: string;
 }): Promise<void> {
-  const response = await musicAuthFetch('/api/v1/auth/register', {
+  const response = await musicAuthFetch('/api/v3/auth/register', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -81,7 +81,7 @@ export async function registerMusicUser(input: {
 }
 
 export async function sendVerificationEmail(email: string): Promise<{ message: string }> {
-  const response = await musicAuthFetch('/api/v1/auth/send-verification', {
+  const response = await musicAuthFetch('/api/v3/auth/send-verification', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -96,7 +96,7 @@ export async function verifyEmailCode(input: {
   email: string;
   code: string;
 }): Promise<{ message: string; is_verified?: boolean }> {
-  const response = await musicAuthFetch('/api/v1/auth/verify-email', {
+  const response = await musicAuthFetch('/api/v3/auth/verify-email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -108,7 +108,7 @@ export async function verifyEmailCode(input: {
 }
 
 export async function fetchMusicUser(): Promise<MusicUser | null> {
-  const response = await musicAuthFetch('/api/v1/users/me', { method: 'GET' });
+  const response = await musicAuthFetch('/api/v3/users/me', { method: 'GET' });
   if (response.status === 401) return null;
   if (!response.ok) {
     throw new Error(await readError(response, `Session check failed (${response.status})`));
@@ -127,13 +127,13 @@ export async function fetchMusicUser(): Promise<MusicUser | null> {
 
 export function getUserAvatarUrl(userId: string, cacheKey?: string | number | null): string {
   const suffix = cacheKey ? `?v=${encodeURIComponent(String(cacheKey))}` : '';
-  return apiPath(`/api/v1/media/users/${encodeURIComponent(userId)}/avatar${suffix}`);
+  return apiPath(`/api/v3/media/users/${encodeURIComponent(userId)}/avatar${suffix}`);
 }
 
 export async function updateMusicUserProfile(input: {
   display_name?: string;
 }): Promise<MusicUser> {
-  const response = await musicAuthFetch('/api/v1/users/me', {
+  const response = await musicAuthFetch('/api/v3/users/me', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -156,7 +156,7 @@ export async function updateMusicUserProfile(input: {
 export async function uploadMusicUserAvatar(file: File): Promise<MusicUser> {
   const formData = new FormData();
   formData.append('file', file);
-  const response = await musicAuthFetch('/api/v1/users/me/avatar', {
+  const response = await musicAuthFetch('/api/v3/users/me/avatar', {
     method: 'POST',
     body: formData,
   });
@@ -176,7 +176,7 @@ export async function uploadMusicUserAvatar(file: File): Promise<MusicUser> {
 }
 
 export async function logoutMusicUser(): Promise<void> {
-  const response = await musicAuthFetch('/api/v1/auth/logout', { method: 'POST' });
+  const response = await musicAuthFetch('/api/v3/auth/logout', { method: 'POST' });
   if (!response.ok && response.status !== 401) {
     throw new Error(await readError(response, `Sign out failed (${response.status})`));
   }

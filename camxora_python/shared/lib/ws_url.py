@@ -6,7 +6,7 @@ import urllib.parse
 
 
 def build_platform_ws_url(api_base_url: str, access_token: str | None = None) -> str:
-    """Convert REST base URL to /api/v1/ws URL.
+    """Convert REST base URL to /api/v3/ws URL.
 
     Prefer Authorization headers at connect time. Legacy callers may still pass
     ``access_token`` to append ``?token=`` for backward compatibility.
@@ -15,10 +15,10 @@ def build_platform_ws_url(api_base_url: str, access_token: str | None = None) ->
     if not base:
         raise ValueError("API base URL is required.")
 
-    if base.endswith("/api/v1"):
+    if base.endswith("/api/v3"):
         rest_prefix = base
     else:
-        rest_prefix = f"{base}/api/v1"
+        rest_prefix = f"{base}/api/v3"
 
     ws_prefix = rest_prefix.replace("https://", "wss://").replace("http://", "ws://")
     ws_url = f"{ws_prefix}/ws"

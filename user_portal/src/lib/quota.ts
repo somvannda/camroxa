@@ -31,6 +31,9 @@ export type QuotaStatus = {
   daily_videos_limit?: number | null;
   daily_merges_remaining?: number | null;
   daily_merges_limit?: number | null;
+  daily_songs_limit_per_channel?: number | null;
+  daily_images_limit_per_channel?: number | null;
+  daily_drafts_limit_per_channel?: number | null;
   wallet_balance: number;
   channels: ChannelDailyQuota[];
 };

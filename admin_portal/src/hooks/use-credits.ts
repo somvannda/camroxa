@@ -16,7 +16,7 @@ import type { CreditPricing, CreditPack, ModelCost, ServiceAvailabilityEntry, Gl
 export function usePricing() {
   return useQuery({
     queryKey: ['pricing'],
-    queryFn: () => httpClient.get<CreditPricing[]>('/api/v1/credits/pricing'),
+    queryFn: () => httpClient.get<CreditPricing[]>('/api/v3/credits/pricing'),
   });
 }
 
@@ -24,7 +24,7 @@ export function useCreatePricing() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreatePricingRequest) =>
-      httpClient.post<CreditPricing>('/api/v1/credits/pricing', data),
+      httpClient.post<CreditPricing>('/api/v3/credits/pricing', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pricing'] }),
   });
 }
@@ -33,7 +33,7 @@ export function useUpdatePricing() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreatePricingRequest) =>
-      httpClient.put<CreditPricing>('/api/v1/credits/pricing', data),
+      httpClient.put<CreditPricing>('/api/v3/credits/pricing', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pricing'] }),
   });
 }
@@ -43,7 +43,7 @@ export function useDeletePricing() {
   return useMutation({
     mutationFn: (data: { ai_service: string; operation_type: string; sub_model?: string }) =>
       httpClient.delete(
-        `/api/v1/credits/pricing?ai_service=${encodeURIComponent(data.ai_service)}&operation_type=${encodeURIComponent(data.operation_type)}&sub_model=${encodeURIComponent(data.sub_model ?? '')}`,
+        `/api/v3/credits/pricing?ai_service=${encodeURIComponent(data.ai_service)}&operation_type=${encodeURIComponent(data.operation_type)}&sub_model=${encodeURIComponent(data.sub_model ?? '')}`,
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pricing'] }),
   });
@@ -57,7 +57,7 @@ export function useDeleteAllPricing() {
         ? `?ai_service=${encodeURIComponent(ai_service)}`
         : '';
       return httpClient.delete<{ deleted_count: number }>(
-        `/api/v1/credits/pricing/all${params}`,
+        `/api/v3/credits/pricing/all${params}`,
       );
     },
     onSuccess: () => {
@@ -74,7 +74,7 @@ export function useApprovePricing() {
       ai_service?: string;
       operation_type?: string;
       entries?: Array<{ ai_service: string; operation_type: string; sub_model?: string }>;
-    }) => httpClient.post('/api/v1/credits/pricing/approve', data),
+    }) => httpClient.post('/api/v3/credits/pricing/approve', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
       queryClient.invalidateQueries({ queryKey: ['ai-routing', 'audit'] });
@@ -85,7 +85,7 @@ export function useApprovePricing() {
 export function useSyncRoutingPricing() {
   const queryClient = useQueryClient();
   return useMutation<{ created_count?: number }, Error, void>({
-    mutationFn: () => httpClient.post<{ created_count?: number }>('/api/v1/admin/ai-routing/sync-pricing', {}),
+    mutationFn: () => httpClient.post<{ created_count?: number }>('/api/v3/admin/ai-routing/sync-pricing', {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
       queryClient.invalidateQueries({ queryKey: ['ai-routing', 'audit'] });
@@ -96,14 +96,14 @@ export function useSyncRoutingPricing() {
 export function useAdminCreditPacks() {
   return useQuery({
     queryKey: ['credit-packs', 'admin'],
-    queryFn: () => httpClient.get<CreditPack[]>('/api/v1/credits/admin/packs'),
+    queryFn: () => httpClient.get<CreditPack[]>('/api/v3/credits/admin/packs'),
   });
 }
 
 export function usePacks() {
   return useQuery({
     queryKey: ['credit-packs', 'storefront'],
-    queryFn: () => httpClient.get<CreditPack[]>('/api/v1/credits/packs'),
+    queryFn: () => httpClient.get<CreditPack[]>('/api/v3/credits/packs'),
   });
 }
 
@@ -111,7 +111,7 @@ export function useCreateCreditPack() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateCreditPackRequest) =>
-      httpClient.post<CreditPack>('/api/v1/credits/admin/packs', data),
+      httpClient.post<CreditPack>('/api/v3/credits/admin/packs', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit-packs'] });
     },
@@ -122,7 +122,7 @@ export function useUpdateCreditPack() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UpdateCreditPackRequest) =>
-      httpClient.put<CreditPack>('/api/v1/credits/admin/packs', data),
+      httpClient.put<CreditPack>('/api/v3/credits/admin/packs', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit-packs'] });
     },
@@ -133,7 +133,7 @@ export function useDeleteCreditPack() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (packId: string) =>
-      httpClient.delete(`/api/v1/credits/admin/packs?pack_id=${encodeURIComponent(packId)}`),
+      httpClient.delete(`/api/v3/credits/admin/packs?pack_id=${encodeURIComponent(packId)}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['credit-packs'] });
     },
@@ -144,7 +144,7 @@ export function useAdjustBalance() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreditAdjustmentRequest) =>
-      httpClient.post('/api/v1/credits/adjust', data),
+      httpClient.post('/api/v3/credits/adjust', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
       queryClient.invalidateQueries({ queryKey: ['credit-packs'] });
@@ -158,7 +158,7 @@ export function useServiceAvailability() {
   return useQuery({
     queryKey: ['service-availability'],
     queryFn: () =>
-      httpClient.get<ServiceAvailabilityEntry[]>('/api/v1/credits/service-availability'),
+      httpClient.get<ServiceAvailabilityEntry[]>('/api/v3/credits/service-availability'),
   });
 }
 
@@ -166,7 +166,7 @@ export function useGlobalCreditValue() {
   return useQuery({
     queryKey: ['global-credit-value'],
     queryFn: () =>
-      httpClient.get<GlobalCreditValueResponse>('/api/v1/credits/global-credit-value'),
+      httpClient.get<GlobalCreditValueResponse>('/api/v3/credits/global-credit-value'),
   });
 }
 
@@ -174,7 +174,7 @@ export function useUpdateGlobalCreditValue() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UpdateGlobalCreditValueRequest) =>
-      httpClient.put<GlobalCreditValueResponse>('/api/v1/credits/global-credit-value', data),
+      httpClient.put<GlobalCreditValueResponse>('/api/v3/credits/global-credit-value', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['global-credit-value'] });
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
@@ -185,7 +185,7 @@ export function useUpdateGlobalCreditValue() {
 export function useModelCosts() {
   return useQuery({
     queryKey: ['model-costs'],
-    queryFn: () => httpClient.get<ModelCost[]>('/api/v1/credits/model-costs'),
+    queryFn: () => httpClient.get<ModelCost[]>('/api/v3/credits/model-costs'),
   });
 }
 
@@ -193,7 +193,7 @@ export function useCreateModelCost() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateModelCostRequest) =>
-      httpClient.post<ModelCost>('/api/v1/credits/model-costs', data),
+      httpClient.post<ModelCost>('/api/v3/credits/model-costs', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['model-costs'] }),
   });
 }
@@ -202,7 +202,7 @@ export function useUpdateModelCost() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateModelCostRequest) =>
-      httpClient.put<ModelCost>('/api/v1/credits/model-costs', data),
+      httpClient.put<ModelCost>('/api/v3/credits/model-costs', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['model-costs'] }),
   });
 }
@@ -212,7 +212,7 @@ export function useDeleteModelCost() {
   return useMutation({
     mutationFn: (data: { ai_service: string; operation_type: string; sub_model?: string }) =>
       httpClient.delete(
-        `/api/v1/credits/model-costs?ai_service=${encodeURIComponent(data.ai_service)}&operation_type=${encodeURIComponent(data.operation_type)}&sub_model=${encodeURIComponent(data.sub_model ?? '')}`,
+        `/api/v3/credits/model-costs?ai_service=${encodeURIComponent(data.ai_service)}&operation_type=${encodeURIComponent(data.operation_type)}&sub_model=${encodeURIComponent(data.sub_model ?? '')}`,
       ),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['model-costs'] }),
   });
@@ -227,7 +227,7 @@ export function useSeedModelCosts() {
   >({
     mutationFn: (overwrite = false) =>
       httpClient.post<{ seeded_count: number; skipped_existing_count: number }>(
-        `/api/v1/credits/model-costs/seed?overwrite=${overwrite}`,
+        `/api/v3/credits/model-costs/seed?overwrite=${overwrite}`,
         {},
       ),
     onSuccess: () => {
@@ -242,7 +242,7 @@ export function useGeneratePricing() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: GeneratePricingRequest) =>
-      httpClient.post('/api/v1/credits/pricing/generate', data),
+      httpClient.post('/api/v3/credits/pricing/generate', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
       queryClient.invalidateQueries({ queryKey: ['ai-routing', 'audit'] });
@@ -255,7 +255,7 @@ export function useRegistryPricingGaps() {
   return useQuery({
     queryKey: ['registry-pricing-gaps'],
     queryFn: () =>
-      httpClient.get<RegistryPricingGapsResponse>('/api/v1/credits/pricing/registry-gaps'),
+      httpClient.get<RegistryPricingGapsResponse>('/api/v3/credits/pricing/registry-gaps'),
   });
 }
 
@@ -263,7 +263,7 @@ export function useSeedRegistryPricing() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: SeedRegistryPricingRequest) =>
-      httpClient.post('/api/v1/credits/pricing/seed-from-registry', data),
+      httpClient.post('/api/v3/credits/pricing/seed-from-registry', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pricing'] });
       queryClient.invalidateQueries({ queryKey: ['registry-pricing-gaps'] });

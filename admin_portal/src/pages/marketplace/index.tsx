@@ -33,8 +33,10 @@ const PAGE_SIZE = 25;
 /** Resolve preview_url to a full URL that the browser can load as an img src. */
 function resolvePreviewUrl(previewUrl: string): string {
   if (previewUrl.startsWith('http')) return previewUrl;
+  // API historically returned /api/v1/...; normalize to canonical /api/v3.
+  const normalized = previewUrl.replace(/^\/api\/v1\//, '/api/v3/');
   const apiBase = resolveApiBaseUrl();
-  return `${apiBase}${previewUrl}`;
+  return `${apiBase}${normalized}`;
 }
 
 const STATUS_CLASSES: Record<MarketplaceItem['status'], string> = {

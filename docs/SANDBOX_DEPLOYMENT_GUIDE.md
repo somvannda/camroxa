@@ -409,7 +409,7 @@ In [CutLuy Dashboard](https://cutluy.com) → Webhooks:
 
 | Setting | Value |
 |---------|-------|
-| URL | `https://api.sandbox.camxora.com/api/v1/billing/webhooks/cutluy` |
+| URL | `https://api.sandbox.camxora.com/api/v3/webhooks/cutluy` (music) or `https://api.sandbox.camxora.com/api/v3/billing/webhooks/cutluy` (desktop billing) |
 | Events | Payment completed / failed (as offered) |
 | Secret | Copy to `PLATFORM_CUTLUY_WEBHOOK_SECRET` |
 

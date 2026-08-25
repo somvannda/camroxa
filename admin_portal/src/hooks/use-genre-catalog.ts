@@ -24,7 +24,7 @@ export function useGenreCatalogSearch(query: string, category?: string) {
       if (category) params.set('category', category);
       params.set('limit', '30');
       return httpClient.get<GenreCatalogResponse>(
-        `/api/v1/prompts/genre-catalog?${params.toString()}`,
+        `/api/v3/prompts/genre-catalog?${params.toString()}`,
       );
     },
     staleTime: 60_000,
@@ -35,7 +35,7 @@ export function useGenreCatalogCategories() {
   return useQuery({
     queryKey: ['genre-catalog-categories'],
     queryFn: () =>
-      httpClient.get<GenreCatalogResponse>('/api/v1/prompts/genre-catalog?limit=1').then(
+      httpClient.get<GenreCatalogResponse>('/api/v3/prompts/genre-catalog?limit=1').then(
         (response) => response.categories,
       ),
     staleTime: 300_000,

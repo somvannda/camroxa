@@ -23,7 +23,7 @@ export type UpdateCutluyBillingConfigInput = {
 export function useCutluyBillingConfig() {
   return useQuery({
     queryKey: ['billing-cutluy-config'],
-    queryFn: () => httpClient.get<CutluyBillingConfig>('/api/v1/admin/billing/cutluy-config'),
+    queryFn: () => httpClient.get<CutluyBillingConfig>('/api/v3/admin/billing/cutluy-config'),
   });
 }
 
@@ -31,7 +31,7 @@ export function useUpdateCutluyBillingConfig() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UpdateCutluyBillingConfigInput) =>
-      httpClient.put<CutluyBillingConfig>('/api/v1/admin/billing/cutluy-config', data),
+      httpClient.put<CutluyBillingConfig>('/api/v3/admin/billing/cutluy-config', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing-cutluy-config'] });
       queryClient.invalidateQueries({ queryKey: ['system-settings'] });

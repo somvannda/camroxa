@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class PushNotificationWorker(QThread):
-    """Maintains a persistent /api/v1/ws connection for server push events."""
+    """Maintains a persistent /api/v3/ws connection for server push events."""
 
     notification_received = Signal(str, object)
     connection_state_changed = Signal(str)

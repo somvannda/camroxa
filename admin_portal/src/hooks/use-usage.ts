@@ -8,7 +8,7 @@ export function useUsage(params: UsageListParams) {
     queryKey: ['usage', params],
     queryFn: () =>
       httpClient.get<UsageListResponse>(
-        '/api/v1/admin/usage',
+        '/api/v3/admin/usage',
         params as Record<string, unknown>,
       ),
   });
@@ -17,7 +17,7 @@ export function useUsage(params: UsageListParams) {
 export function useUsageFilters() {
   return useQuery({
     queryKey: ['usage-filters'],
-    queryFn: () => httpClient.get<UsageFiltersResponse>('/api/v1/admin/usage/filters'),
+    queryFn: () => httpClient.get<UsageFiltersResponse>('/api/v3/admin/usage/filters'),
     staleTime: 60_000,
   });
 }
@@ -52,7 +52,7 @@ export function useExportTelemetry(params?: { user_id?: string; operation_type?:
     queryKey: ['export-telemetry', params],
     queryFn: () =>
       httpClient.get<ExportTelemetryListResponse>(
-        '/api/v1/admin/export-telemetry',
+        '/api/v3/admin/export-telemetry',
         (params ?? {}) as Record<string, unknown>,
       ),
     staleTime: 15_000,

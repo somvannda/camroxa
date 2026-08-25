@@ -218,9 +218,9 @@ class DuplicateItemError(DuplicateError):
 
 
 class FileUnavailableError(PlatformAPIError):
-    """File missing on disk (500)."""
+    """File missing on disk (404)."""
 
-    status_code = 500
+    status_code = 404
     error_code = "FILE_UNAVAILABLE"
 
     def __init__(self, item_id: UUID) -> None:

@@ -12,23 +12,23 @@ async function libraryFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function fetchLikedTrackIds(): Promise<string[]> {
   const data = await libraryFetch<{ track_ids: string[] }>(
-    '/api/v1/streaming/library/likes/ids',
+    '/api/v3/streaming/library/likes/ids',
   );
   return data.track_ids ?? [];
 }
 
 export async function fetchLikedTracks(limit = 50, offset = 0): Promise<Paginated<StreamTrack>> {
   return libraryFetch<Paginated<StreamTrack>>(
-    `/api/v1/streaming/library/likes?limit=${limit}&offset=${offset}`,
+    `/api/v3/streaming/library/likes?limit=${limit}&offset=${offset}`,
   );
 }
 
 export async function likeTrack(trackId: string): Promise<void> {
-  await libraryFetch(`/api/v1/streaming/library/likes/${trackId}`, { method: 'PUT' });
+  await libraryFetch(`/api/v3/streaming/library/likes/${trackId}`, { method: 'PUT' });
 }
 
 export async function unlikeTrack(trackId: string): Promise<void> {
-  await libraryFetch(`/api/v1/streaming/library/likes/${trackId}`, { method: 'DELETE' });
+  await libraryFetch(`/api/v3/streaming/library/likes/${trackId}`, { method: 'DELETE' });
 }
 
 function isWebMusicLikeKey(trackId: string): boolean {
@@ -37,20 +37,20 @@ function isWebMusicLikeKey(trackId: string): boolean {
 }
 
 export async function fetchWebMusicLikedKeys(): Promise<string[]> {
-  const data = await libraryFetch<{ keys: string[] }>('/api/v1/web-music/likes/keys');
+  const data = await libraryFetch<{ keys: string[] }>('/api/v3/web-music/likes/keys');
   return data.keys ?? [];
 }
 
 export async function likeWebMusicTrack(taskId: string, variant: string): Promise<void> {
   await libraryFetch(
-    `/api/v1/web-music/generations/${encodeURIComponent(taskId)}/like?variant=${encodeURIComponent(variant)}`,
+    `/api/v3/web-music/generations/${encodeURIComponent(taskId)}/like?variant=${encodeURIComponent(variant)}`,
     { method: 'PUT' },
   );
 }
 
 export async function unlikeWebMusicTrack(taskId: string, variant: string): Promise<void> {
   await libraryFetch(
-    `/api/v1/web-music/generations/${encodeURIComponent(taskId)}/like?variant=${encodeURIComponent(variant)}`,
+    `/api/v3/web-music/generations/${encodeURIComponent(taskId)}/like?variant=${encodeURIComponent(variant)}`,
     { method: 'DELETE' },
   );
 }

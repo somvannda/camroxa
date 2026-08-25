@@ -73,7 +73,7 @@ async function refreshAccessToken(): Promise<string> {
     const { data } = await apiClient.post<{
       access_token: string;
       refresh_token: string;
-    }>('/api/v1/auth/refresh', {});
+    }>('/api/v3/auth/refresh', {});
 
     setTokens(data.access_token, data.refresh_token);
     processPendingRequests(data.access_token);
@@ -95,7 +95,7 @@ apiClient.interceptors.response.use(
       | (InternalAxiosRequestConfig & { _retry?: boolean })
       | undefined;
 
-    if (error.response?.status === 403 && originalRequest?.url?.includes('/api/v1/admin/')) {
+    if (error.response?.status === 403 && originalRequest?.url?.includes('/api/v3/admin/')) {
       clearTokens();
       window.location.href = '/login';
       return Promise.reject(error);

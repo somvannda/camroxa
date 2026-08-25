@@ -170,15 +170,15 @@ async function musicFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchWebMusicQuota(): Promise<WebMusicQuota> {
-  return musicFetch<WebMusicQuota>('/api/v1/web-music/quota');
+  return musicFetch<WebMusicQuota>('/api/v3/web-music/quota');
 }
 
 export async function listWebMusicWorkspaces(): Promise<{ items: WebMusicWorkspace[] }> {
-  return musicFetch('/api/v1/web-music/workspaces');
+  return musicFetch('/api/v3/web-music/workspaces');
 }
 
 export async function createWebMusicWorkspace(name: string): Promise<WebMusicWorkspace> {
-  return musicFetch('/api/v1/web-music/workspaces', {
+  return musicFetch('/api/v3/web-music/workspaces', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -189,7 +189,7 @@ export async function updateWebMusicWorkspace(
   workspaceId: string,
   name: string,
 ): Promise<WebMusicWorkspace> {
-  return musicFetch(`/api/v1/web-music/workspaces/${encodeURIComponent(workspaceId)}`, {
+  return musicFetch(`/api/v3/web-music/workspaces/${encodeURIComponent(workspaceId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -203,7 +203,7 @@ export async function generateWebMusicStyles(input: {
   description?: string;
   prompt?: string;
 }): Promise<{ style: string; credits_charged?: number }> {
-  return musicFetch('/api/v1/web-music/generate-styles', {
+  return musicFetch('/api/v3/web-music/generate-styles', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -217,7 +217,7 @@ export async function generateWebMusicStyles(input: {
 }
 
 export async function generateWebMusicDraft(prompt: string): Promise<{ lyrics: string; title: string }> {
-  return musicFetch('/api/v1/web-music/generate-draft', {
+  return musicFetch('/api/v3/web-music/generate-draft', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
@@ -227,7 +227,7 @@ export async function generateWebMusicDraft(prompt: string): Promise<{ lyrics: s
 export async function generateWebMusic(
   input: WebMusicGenerateInput,
 ): Promise<{ task_id: string; status: string; title: string; style: string; quota: WebMusicQuota }> {
-  return musicFetch('/api/v1/web-music/generate', {
+  return musicFetch('/api/v3/web-music/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -245,12 +245,12 @@ export async function listWebMusicGenerations(
   });
   if (workspaceId) params.set('workspace_id', workspaceId);
   return musicFetch<{ items: WebMusicGeneration[]; total: number }>(
-    `/api/v1/web-music/generations?${params.toString()}`,
+    `/api/v3/web-music/generations?${params.toString()}`,
   );
 }
 
 export async function getWebMusicGeneration(id: string): Promise<WebMusicGeneration> {
-  return musicFetch<WebMusicGeneration>(`/api/v1/web-music/generations/${id}`);
+  return musicFetch<WebMusicGeneration>(`/api/v3/web-music/generations/${id}`);
 }
 
 export async function updateWebMusicGenerationTitle(
@@ -258,7 +258,7 @@ export async function updateWebMusicGenerationTitle(
   title: string,
   variant?: string,
 ): Promise<WebMusicGeneration> {
-  return musicFetch<WebMusicGeneration>(`/api/v1/web-music/generations/${encodeURIComponent(id)}`, {
+  return musicFetch<WebMusicGeneration>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, ...(variant ? { variant } : {}) }),
@@ -267,7 +267,7 @@ export async function updateWebMusicGenerationTitle(
 
 export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
   const response = await musicAuthFetch(
-    `/api/v1/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
+    `/api/v3/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
   );
   if (!response.ok) {
     await rejectResponse(response, 'Download failed');
@@ -288,7 +288,7 @@ export async function downloadWebMusicClipWav(id: string, variant: string, filen
   let lastError = 'WAV download failed';
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const response = await musicAuthFetch(
-      `/api/v1/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
+      `/api/v3/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
     );
     if (response.ok) {
       const blob = await response.blob();
@@ -322,7 +322,7 @@ export async function downloadWebMusicTimedLyrics(
   filename: string,
 ): Promise<void> {
   const response = await musicAuthFetch(
-    `/api/v1/web-music/generations/${id}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${encodeURIComponent(format)}`,
+    `/api/v3/web-music/generations/${id}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${encodeURIComponent(format)}`,
   );
   if (!response.ok) {
     await rejectResponse(response, 'Timed lyrics download failed');

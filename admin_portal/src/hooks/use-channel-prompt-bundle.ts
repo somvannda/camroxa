@@ -73,7 +73,7 @@ export function useChannelPromptBundle(matchKey: string | null) {
   const load = useCallback(async (key: string) => {
     setIsLoading(true);
     try {
-      const all = await httpClient.get<ChannelPrompt[]>('/api/v1/channel-prompts');
+      const all = await httpClient.get<ChannelPrompt[]>('/api/v3/channel-prompts');
       const matched = all.filter(p => p.match_key === key);
       const next = emptyBundle();
 
@@ -146,7 +146,7 @@ export function useChannelPromptBundle(matchKey: string | null) {
     }
 
     if (variant.id) {
-      await httpClient.delete(`/api/v1/channel-prompts/${variant.id}`);
+      await httpClient.delete(`/api/v3/channel-prompts/${variant.id}`);
     }
 
     setPrompts(prev => {
@@ -175,11 +175,11 @@ export function useChannelPromptBundle(matchKey: string | null) {
 
         try {
           if (variant.id) {
-            await httpClient.put(`/api/v1/channel-prompts/${variant.id}`, {
+            await httpClient.put(`/api/v3/channel-prompts/${variant.id}`, {
               content: variant.content.trim(),
             });
           } else {
-            const created = await httpClient.post<ChannelPrompt>('/api/v1/channel-prompts', {
+            const created = await httpClient.post<ChannelPrompt>('/api/v3/channel-prompts', {
               name: makeVariantName(category, key, index),
               content: variant.content.trim(),
               category: variant.category,
@@ -222,7 +222,7 @@ export function useChannelPromptBundle(matchKey: string | null) {
 
   const generatePrompt = useCallback(async (category: string, genre: string, currentMatchKey?: string | null) => {
     const response = await httpClient.post<{ content: string; category: string }>(
-      '/api/v1/channel-prompts/generate',
+      '/api/v3/channel-prompts/generate',
       { category, genre, match_key: currentMatchKey ?? null },
     );
     return response.content;

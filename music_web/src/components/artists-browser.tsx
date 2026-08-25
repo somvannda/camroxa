@@ -35,7 +35,7 @@ export default function ArtistsBrowser({ initialItems, total }: Props) {
         renderItem={(artist) => <ArtistCard key={artist.user_id} artist={artist} />}
         loadMore={async (offset) => {
           const [streamingPage, webMusicPage] = await Promise.all([
-            fetch(`${streamingApiBase}/api/v1/public/streaming/artists?limit=${PAGE_SIZE}&offset=${offset}`).then(
+            fetch(`${streamingApiBase}/api/v3/public/streaming/artists?limit=${PAGE_SIZE}&offset=${offset}`).then(
               (response) => (response.ok ? response.json() : { items: [], total: 0 }),
             ),
             listPublicArtists(PAGE_SIZE, offset).catch(() => ({ items: [], total: 0 })),

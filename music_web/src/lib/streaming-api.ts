@@ -117,43 +117,43 @@ export type StreamGenreDetail = StreamGenre & {
 
 export async function getStreamingHome() {
   return fetchJson<{ recent_tracks: StreamTrack[]; albums: StreamAlbum[] }>(
-    '/api/v1/public/streaming/home',
+    '/api/v3/public/streaming/home',
   );
 }
 
 export async function listAlbums(limit = 24, offset = 0) {
   return fetchJson<Paginated<StreamAlbum>>(
-    `/api/v1/public/streaming/albums?limit=${limit}&offset=${offset}`,
+    `/api/v3/public/streaming/albums?limit=${limit}&offset=${offset}`,
   );
 }
 
 export async function listArtists(limit = 48, offset = 0) {
   return fetchJson<Paginated<StreamArtist>>(
-    `/api/v1/public/streaming/artists?limit=${limit}&offset=${offset}`,
+    `/api/v3/public/streaming/artists?limit=${limit}&offset=${offset}`,
   );
 }
 
 export async function searchCatalog(query: string, limit = 24, offset = 0) {
   const q = encodeURIComponent(query);
   return fetchJson<Paginated<StreamTrack>>(
-    `/api/v1/public/streaming/search?q=${q}&limit=${limit}&offset=${offset}`,
+    `/api/v3/public/streaming/search?q=${q}&limit=${limit}&offset=${offset}`,
   );
 }
 
 export async function getAlbum(albumId: string) {
   return fetchJson<StreamAlbum & { tracks: StreamTrack[] }>(
-    `/api/v1/public/streaming/albums/${albumId}`,
+    `/api/v3/public/streaming/albums/${albumId}`,
   );
 }
 
 export async function getArtist(userId: string) {
   return fetchJson<{ user_id: string; artist_name?: string; albums: StreamAlbum[] }>(
-    `/api/v1/public/streaming/artists/${userId}`,
+    `/api/v3/public/streaming/artists/${userId}`,
   );
 }
 
 export function catalogStreamUrl(trackId: string): string {
-  return `/api/v1/public/streaming/tracks/${trackId}/stream`;
+  return `/api/v3/public/streaming/tracks/${trackId}/stream`;
 }
 
 const CAMXORA_AUDIO_PROXY_RE =
@@ -180,7 +180,7 @@ export function isTrustedPlayUrl(url: string): boolean {
 
 export async function getPlayUrl(trackId: string) {
   const response = await musicAuthFetch(
-    `/api/v1/public/streaming/tracks/${encodeURIComponent(trackId)}/play-url`,
+    `/api/v3/public/streaming/tracks/${encodeURIComponent(trackId)}/play-url`,
   );
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
@@ -203,9 +203,9 @@ export async function getPlayUrl(trackId: string) {
 }
 
 export async function getGenres() {
-  return fetchJson<{ items: StreamGenre[] }>('/api/v1/public/streaming/genres');
+  return fetchJson<{ items: StreamGenre[] }>('/api/v3/public/streaming/genres');
 }
 
 export async function getGenre(slug: string) {
-  return fetchJson<StreamGenreDetail>(`/api/v1/public/streaming/genres/${slug}`);
+  return fetchJson<StreamGenreDetail>(`/api/v3/public/streaming/genres/${slug}`);
 }

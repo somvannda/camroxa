@@ -3,9 +3,9 @@
 const USER_CONTEXT_HEADER = 'X-Portal-Context';
 
 const SKIP_REFRESH_PATHS = [
-  '/api/v1/auth/login',
-  '/api/v1/auth/register',
-  '/api/v1/auth/refresh',
+  '/api/v3/auth/login',
+  '/api/v3/auth/register',
+  '/api/v3/auth/refresh',
 ];
 
 export function apiPath(path: string): string {
@@ -23,7 +23,7 @@ async function refreshAccessCookie(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
-        const response = await fetch(apiPath('/api/v1/auth/refresh'), {
+        const response = await fetch(apiPath('/api/v3/auth/refresh'), {
           method: 'POST',
           credentials: 'include',
           headers: {

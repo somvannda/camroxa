@@ -6,7 +6,7 @@ import type { Plan, PlanOffer } from '@/types/models';
 export function usePlans() {
   return useQuery({
     queryKey: ['plans'],
-    queryFn: () => httpClient.get<Plan[]>('/api/v1/plans'),
+    queryFn: () => httpClient.get<Plan[]>('/api/v3/plans'),
   });
 }
 
@@ -29,7 +29,7 @@ export function useCreatePlan() {
       daily_video_limit?: number;
       daily_merge_limit?: number;
       plan_kind?: 'subscription' | 'profile_addon';
-    }) => httpClient.post<Plan>('/api/v1/plans', data),
+    }) => httpClient.post<Plan>('/api/v3/plans', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plans'] });
       queryClient.invalidateQueries({ queryKey: ['v3-plans'] });
@@ -41,7 +41,7 @@ export function useUpdatePlan() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<Plan> }) =>
-      httpClient.patch<Plan>(`/api/v1/plans/${data.id}`, data.updates),
+      httpClient.patch<Plan>(`/api/v3/plans/${data.id}`, data.updates),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['plans'] }),
   });
 }
@@ -49,7 +49,7 @@ export function useUpdatePlan() {
 export function useDeletePlan() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => httpClient.delete<void>(`/api/v1/plans/${id}`),
+    mutationFn: (id: string) => httpClient.delete<void>(`/api/v3/plans/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plans'] });
       queryClient.invalidateQueries({ queryKey: ['offers'] });
@@ -60,7 +60,7 @@ export function useDeletePlan() {
 export function useOffers() {
   return useQuery({
     queryKey: ['offers'],
-    queryFn: () => httpClient.get<PlanOffer[]>('/api/v1/plans/offers'),
+    queryFn: () => httpClient.get<PlanOffer[]>('/api/v3/plans/offers'),
   });
 }
 
@@ -68,7 +68,7 @@ export function useCreateOffer() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateOfferRequest) =>
-      httpClient.post<PlanOffer>('/api/v1/plans/offers', data),
+      httpClient.post<PlanOffer>('/api/v3/plans/offers', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['offers'] }),
   });
 }
@@ -81,7 +81,7 @@ export type PlanTermDiscounts = {
 export function usePlanTermDiscounts() {
   return useQuery({
     queryKey: ['plan-term-discounts'],
-    queryFn: () => httpClient.get<PlanTermDiscounts>('/api/v1/plans/term-discounts'),
+    queryFn: () => httpClient.get<PlanTermDiscounts>('/api/v3/plans/term-discounts'),
   });
 }
 
@@ -89,7 +89,7 @@ export function useUpdatePlanTermDiscounts() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: PlanTermDiscounts) =>
-      httpClient.put<PlanTermDiscounts>('/api/v1/plans/term-discounts', data),
+      httpClient.put<PlanTermDiscounts>('/api/v3/plans/term-discounts', data),
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ['plan-term-discounts'] });
           queryClient.invalidateQueries({ queryKey: ['plans'] });
@@ -102,7 +102,7 @@ export function useSyncTermPlanPrices() {
   return useMutation({
     mutationFn: () =>
       httpClient.post<{ updated_plan_ids: string[]; skipped: string[] }>(
-        '/api/v1/plans/sync-term-prices',
+        '/api/v3/plans/sync-term-prices',
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plans'] });
@@ -126,7 +126,7 @@ export function usePlanPriceDrift() {
     queryKey: ['plan-price-drift'],
     queryFn: () =>
       httpClient.get<{ drift_count: number; items: PlanPriceDriftItem[] }>(
-        '/api/v1/plans/term-price-drift',
+        '/api/v3/plans/term-price-drift',
       ),
   });
 }

@@ -39,7 +39,7 @@ export function usePlaybackEvents(params: { userId?: string; limit: number; offs
   return useQuery({
     queryKey: ['playback-events', params.userId ?? '', params.limit, params.offset],
     queryFn: () =>
-      httpClient.get<EventPage<PlaybackEvent>>('/api/v1/web-music/licenses/admin/playback-events', {
+      httpClient.get<EventPage<PlaybackEvent>>('/api/v3/web-music/licenses/admin/playback-events', {
         user_id: params.userId || undefined,
         limit: params.limit,
         offset: params.offset,
@@ -51,7 +51,7 @@ export function useExportEvents(params: { userId?: string; limit: number; offset
   return useQuery({
     queryKey: ['export-events', params.userId ?? '', params.limit, params.offset],
     queryFn: () =>
-      httpClient.get<EventPage<ExportEvent>>('/api/v1/web-music/licenses/admin/export-events', {
+      httpClient.get<EventPage<ExportEvent>>('/api/v3/web-music/licenses/admin/export-events', {
         user_id: params.userId || undefined,
         limit: params.limit,
         offset: params.offset,
@@ -64,7 +64,7 @@ export function useBackfillAudioPackages() {
   return useMutation({
     mutationFn: (limit: number) =>
       httpClient.post<{ packaged: number }>(
-        `/api/v1/web-music/licenses/admin/backfill?limit=${limit}`,
+        `/api/v3/web-music/licenses/admin/backfill?limit=${limit}`,
         {},
       ),
     onSuccess: () => {

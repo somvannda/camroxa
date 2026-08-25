@@ -154,3 +154,29 @@ def test_merge_revision_is_not_treated_as_a_sibling_fork() -> None:
         "103_merge": ("084_a", "091"),
     }
     assert runner.leftover_fork_revisions(graph, {"103_merge"}) == set()
+
+
+def test_upgrade_head_sync_skips_when_db_revision_missing_locally() -> None:
+    """DB ahead of this checkout must not try to downgrade to an older local head."""
+    script = MagicMock()
+    script.walk_revisions.return_value = [
+        MagicMock(revision="116_credits_only_v3", down_revision="115_hls_playback"),
+    ]
+    script.get_heads.return_value = ["116_credits_only_v3"]
+    alembic_ini = MagicMock()
+    alembic_ini.is_file.return_value = True
+    platform_root = MagicMock()
+    platform_root.__truediv__.return_value = alembic_ini
+
+    with (
+        patch("platform_api.migrations.runner.Path") as path_cls,
+        patch("platform_api.migrations.runner.Config"),
+        patch("platform_api.migrations.runner.ScriptDirectory.from_config", return_value=script),
+        patch("platform_api.migrations.runner.command.upgrade") as upgrade_mock,
+        patch("platform_api.migrations.runner.get_settings") as settings_mock,
+    ):
+        path_cls.return_value.resolve.return_value.parents = [None, platform_root]
+        settings_mock.return_value = MagicMock(database_url="postgresql+asyncpg://u:p@localhost/db")
+        runner._upgrade_head_sync({"117_daily_grant_lot_tag"})
+
+    upgrade_mock.assert_not_called()

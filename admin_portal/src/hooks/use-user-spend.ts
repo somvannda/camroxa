@@ -8,7 +8,7 @@ export function useUserSpend(params: UserSpendListParams) {
     queryKey: ['user-spend', params],
     queryFn: () =>
       httpClient.get<UserSpendListResponse>(
-        '/api/v1/admin/user-spend',
+        '/api/v3/admin/user-spend',
         params as Record<string, unknown>,
       ),
   });

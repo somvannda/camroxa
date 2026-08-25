@@ -14,10 +14,10 @@ function resolveMiddlewareApiBase(request: NextRequest): string {
 
   // Loopback API avoids edge middleware TLS/DNS issues on the VPS.
   if (process.env.NODE_ENV === "production") {
-    return "http://127.0.0.1:8100/api/v1";
+    return "http://127.0.0.1:8100/api/v3";
   }
 
-  return `${request.nextUrl.origin}/api/v1`;
+  return `${request.nextUrl.origin}/api/v3`;
 }
 
 async function fetchSignupMode(apiBase: string): Promise<"open" | "invite_only" | null> {

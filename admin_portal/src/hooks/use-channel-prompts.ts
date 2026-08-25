@@ -15,7 +15,7 @@ export function useChannelPrompts() {
   return useQuery({
     queryKey: ['channel-prompts'],
     queryFn: () =>
-      httpClient.get<ChannelPrompt[]>('/api/v1/channel-prompts'),
+      httpClient.get<ChannelPrompt[]>('/api/v3/channel-prompts'),
   });
 }
 
@@ -23,7 +23,7 @@ export function useCreateChannelPrompt() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateChannelPromptRequest) =>
-      httpClient.post<ChannelPrompt>('/api/v1/channel-prompts', data),
+      httpClient.post<ChannelPrompt>('/api/v3/channel-prompts', data),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['channel-prompts'] }),
   });
@@ -34,7 +34,7 @@ export function useUpdateChannelPrompt() {
   return useMutation({
     mutationFn: (data: { id: string; updates: Partial<CreateChannelPromptRequest> }) =>
       httpClient.put<ChannelPrompt>(
-        `/api/v1/channel-prompts/${data.id}`,
+        `/api/v3/channel-prompts/${data.id}`,
         data.updates,
       ),
     onSuccess: () =>
@@ -46,7 +46,7 @@ export function useDeleteChannelPrompt() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      httpClient.delete(`/api/v1/channel-prompts/${id}`),
+      httpClient.delete(`/api/v3/channel-prompts/${id}`),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['channel-prompts'] }),
   });

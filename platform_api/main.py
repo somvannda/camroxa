@@ -524,103 +524,128 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from platform_api.wire_dependencies import wire_all_dependencies
     wire_all_dependencies(app)
 
-    # Health check at root (no auth, no API prefix).
-    # Root /health for probes; also under api_v1 so same-origin admin/user
-    # portals can reach it via nginx /api/ proxy (admin /health is SPA HTML).
-    app.include_router(health.router)
-    app.include_router(health.router, prefix=settings.api_v1_prefix)
-
-    app.include_router(auth.router, prefix=settings.api_v1_prefix)
-    app.include_router(billing.router, prefix=settings.api_v1_prefix)
-    app.include_router(users.router, prefix=settings.api_v1_prefix)
-    app.include_router(licenses.router, prefix=settings.api_v1_prefix)
-    app.include_router(plans.router, prefix=settings.api_v1_prefix)
-    app.include_router(credits.router, prefix=settings.api_v1_prefix)
-    app.include_router(profiles.router, prefix=settings.api_v1_prefix)
     from platform_api.routers import profile_video_templates
-
-    app.include_router(profile_video_templates.router, prefix=settings.api_v1_prefix)
-    app.include_router(prompts.router, prefix=settings.api_v1_prefix)
-    app.include_router(redeem_codes.router, prefix=settings.api_v1_prefix)
-    app.include_router(generation.router, prefix=settings.api_v1_prefix)
-    app.include_router(batch.router, prefix=settings.api_v1_prefix)
-    app.include_router(content_pools.router, prefix=settings.api_v1_prefix)
-    app.include_router(callbacks.router, prefix=settings.api_v1_prefix)
-    app.include_router(control_panel.router, prefix=settings.api_v1_prefix)
-    app.include_router(ws.router, prefix=settings.api_v1_prefix)
-    app.include_router(settings_router.router, prefix=settings.api_v1_prefix)
-    app.include_router(stats.router, prefix=settings.api_v1_prefix)
-    app.include_router(progress.router, prefix=settings.api_v1_prefix)
-    app.include_router(youtube.router, prefix=settings.api_v1_prefix)
-    app.include_router(admin.router, prefix=settings.api_v1_prefix)
-    app.include_router(admin_pipeline.router, prefix=settings.api_v1_prefix)
-    app.include_router(admin_invitations.router, prefix=settings.api_v1_prefix)
-    app.include_router(blog_posts.router, prefix=settings.api_v1_prefix)
-    app.include_router(admin_content_pools.router, prefix=settings.api_v1_prefix)
     from platform_api.routers import client_logs
-
-    app.include_router(client_logs.router, prefix=settings.api_v1_prefix)
-    app.include_router(key_pool.router, prefix=settings.api_v1_prefix)
-    app.include_router(media.router, prefix=settings.api_v1_prefix)
-    app.include_router(music_history.router, prefix=settings.api_v1_prefix)
-    from platform_api.routers import admin_music_languages, music_languages, suno_blocklist, suno_blocklist_admin
-
-    app.include_router(music_languages.router, prefix=settings.api_v1_prefix)
-    app.include_router(admin_music_languages.router, prefix=settings.api_v1_prefix)
-    app.include_router(suno_blocklist.router, prefix=settings.api_v1_prefix)
-    app.include_router(suno_blocklist_admin.router, prefix=settings.api_v1_prefix)
-    app.include_router(music_downloads.router, prefix=settings.api_v1_prefix)
-    app.include_router(image_jobs.router, prefix=settings.api_v1_prefix)
-    app.include_router(image_sample_packs.router, prefix=settings.api_v1_prefix)
-    app.include_router(admin_image_sample_packs.router, prefix=settings.api_v1_prefix)
-
+    from platform_api.routers import (
+        admin_music_languages,
+        music_languages,
+        suno_blocklist,
+        suno_blocklist_admin,
+    )
     from platform_api.routers import channel_setup
-    app.include_router(channel_setup.router, prefix=settings.api_v1_prefix)
-
     from platform_api.routers import channel_prompts
-    app.include_router(channel_prompts.router, prefix=settings.api_v1_prefix)
-
     from platform_api.routers import ai_routing
-    app.include_router(ai_routing.router, prefix=settings.api_v1_prefix)
-
     from platform_api.routers import marketplace
-    app.include_router(marketplace.router, prefix=settings.api_v1_prefix)
-
-    from platform_api.routers import public_desktop, streaming_public, streaming_admin, streaming_library
-
-    app.include_router(public_desktop.router, prefix=settings.api_v1_prefix)
-    app.include_router(streaming_public.router, prefix=settings.api_v1_prefix)
-    app.include_router(streaming_admin.router, prefix=settings.api_v1_prefix)
-    app.include_router(streaming_library.router, prefix=settings.api_v1_prefix)
-
+    from platform_api.routers import (
+        public_desktop,
+        streaming_public,
+        streaming_admin,
+        streaming_library,
+    )
     from platform_api.routers import web_music, web_music_licenses
-
-    app.include_router(web_music.router, prefix=settings.api_v1_prefix)
-    app.include_router(web_music_licenses.router, prefix=settings.api_v1_prefix)
-
-    # Web-music billing is API v2 (separate from /api/v1). CutLuy webhooks stay
-    # on v1 — that URL is already configured in CutLuy.
     from platform_api.routers import v2_subscriptions, v2_credits, v2_topups, webhooks_cutluy
-
-    app.include_router(v2_subscriptions.router, prefix=settings.api_v2_prefix)
-    app.include_router(v2_credits.router, prefix=settings.api_v2_prefix)
-    app.include_router(v2_topups.router, prefix=settings.api_v2_prefix)
-    app.include_router(webhooks_cutluy.router, prefix=settings.api_v1_prefix)
-
     from platform_api.routers import v3_billing
 
-    app.include_router(v3_billing.docs_router, prefix=settings.api_v3_prefix)
-    app.include_router(v3_billing.router, prefix=settings.api_v3_prefix)
+    v1 = settings.api_v1_prefix
+    v2 = settings.api_v2_prefix
+    v3 = settings.api_v3_prefix
 
-    @app.get(f"{settings.api_v3_prefix}/openapi.json", include_in_schema=False)
+    def _mount(router, *prefixes: str) -> None:
+        for prefix in prefixes:
+            app.include_router(router, prefix=prefix)
+
+    # Health: root probes + same-origin under v1/v3 (admin /health is SPA HTML).
+    app.include_router(health.router)
+    _mount(health.router, v1, v3)
+
+    # Former v1 surface — dual-mounted on /api/v1 (temporary) and /api/v3 (canonical).
+    _core = (
+        auth.router,
+        billing.router,
+        users.router,
+        licenses.router,
+        plans.router,
+        credits.router,
+        profiles.router,
+        profile_video_templates.router,
+        prompts.router,
+        redeem_codes.router,
+        generation.router,
+        batch.router,
+        content_pools.router,
+        callbacks.router,
+        control_panel.router,
+        ws.router,
+        settings_router.router,
+        stats.router,
+        progress.router,
+        youtube.router,
+        admin.router,
+        admin_pipeline.router,
+        admin_invitations.router,
+        blog_posts.router,
+        admin_content_pools.router,
+        client_logs.router,
+        key_pool.router,
+        media.router,
+        music_history.router,
+        music_languages.router,
+        admin_music_languages.router,
+        suno_blocklist.router,
+        suno_blocklist_admin.router,
+        music_downloads.router,
+        image_jobs.router,
+        image_sample_packs.router,
+        admin_image_sample_packs.router,
+        channel_setup.router,
+        channel_prompts.router,
+        ai_routing.router,
+        marketplace.router,
+        public_desktop.router,
+        streaming_public.router,
+        streaming_admin.router,
+        streaming_library.router,
+        web_music.router,
+        web_music_licenses.router,
+        webhooks_cutluy.router,
+    )
+    for router in _core:
+        app.include_router(router, prefix=v1)
+
+    # CutLuy billing: temporary /api/v2 + canonical /api/v3 (resource prefixes).
+    # On v3, mount these *before* the dual-mounted v1 credits router so
+    # /credits/balance|history prefer the CutLuy ledger handlers.
+    _cutluy_billing = (
+        v2_subscriptions.router,
+        v2_credits.router,
+        v2_topups.router,
+    )
+    for router in _cutluy_billing:
+        app.include_router(router, prefix=v2)
+        app.include_router(router, prefix=v3)
+
+    for router in _core:
+        app.include_router(router, prefix=v3)
+
+    # Unified wallet (v3-only). Registered after core so unique paths
+    # (/me/credits, /billing/quote|charge|refund, admin grants) are available;
+    # overlapping /plans/public and /credits/pricing keep the earlier core handlers.
+    app.include_router(v3_billing.docs_router, prefix=v3)
+    app.include_router(v3_billing.router, prefix=v3)
+
+    @app.get(f"{v3}/openapi.json", include_in_schema=False)
     async def v3_openapi() -> dict:
         spec = app.openapi()
         paths = {
             path: item
             for path, item in spec.get("paths", {}).items()
-            if str(path).startswith(settings.api_v3_prefix)
+            if str(path).startswith(v3)
         }
-        return {**spec, "info": {**spec.get("info", {}), "title": "Credits-only API v3"}, "paths": paths}
+        return {
+            **spec,
+            "info": {**spec.get("info", {}), "title": "Credits-only API v3"},
+            "paths": paths,
+        }
 
     return app
 

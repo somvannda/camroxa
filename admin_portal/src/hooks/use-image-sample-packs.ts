@@ -17,7 +17,7 @@ export function useImageSamplePacks() {
   return useQuery({
     queryKey: imageSamplePackKeys.list(),
     queryFn: () =>
-      httpClient.get<ImageSamplePackListResponse>('/api/v1/admin/image-sample-packs'),
+      httpClient.get<ImageSamplePackListResponse>('/api/v3/admin/image-sample-packs'),
   });
 }
 
@@ -25,7 +25,7 @@ export function useCreateImageSamplePack() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: ImageSamplePackCreateRequest) =>
-      httpClient.post<ImageSamplePackRecord>('/api/v1/admin/image-sample-packs', payload),
+      httpClient.post<ImageSamplePackRecord>('/api/v3/admin/image-sample-packs', payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imageSamplePackKeys.all });
     },
@@ -37,7 +37,7 @@ export function useUpdateImageSamplePack() {
   return useMutation({
     mutationFn: (payload: { packId: string; patch: ImageSamplePackUpdateRequest }) =>
       httpClient.patch<ImageSamplePackRecord>(
-        `/api/v1/admin/image-sample-packs/${payload.packId}`,
+        `/api/v3/admin/image-sample-packs/${payload.packId}`,
         payload.patch,
       ),
     onSuccess: () => {
@@ -50,7 +50,7 @@ export function useDeleteImageSamplePack() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (packId: string) =>
-      httpClient.delete<{ ok: boolean }>(`/api/v1/admin/image-sample-packs/${packId}`),
+      httpClient.delete<{ ok: boolean }>(`/api/v3/admin/image-sample-packs/${packId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: imageSamplePackKeys.all });
     },
@@ -79,8 +79,8 @@ export function useUploadImageSamplePack() {
       if (payload.version_label) form.append('version_label', payload.version_label);
       if (payload.notes) form.append('notes', payload.notes);
       const path = payload.packId
-        ? `/api/v1/admin/image-sample-packs/${payload.packId}/upload`
-        : '/api/v1/admin/image-sample-packs/upload';
+        ? `/api/v3/admin/image-sample-packs/${payload.packId}/upload`
+        : '/api/v3/admin/image-sample-packs/upload';
       const response = await apiClient.post<ImageSamplePackRecord>(path, form);
       return response.data;
     },
@@ -119,8 +119,8 @@ export function useImportImageSamplePackUrl() {
             }),
       };
       const path = payload.packId
-        ? `/api/v1/admin/image-sample-packs/${payload.packId}/import-url`
-        : '/api/v1/admin/image-sample-packs/import-url';
+        ? `/api/v3/admin/image-sample-packs/${payload.packId}/import-url`
+        : '/api/v3/admin/image-sample-packs/import-url';
       return httpClient.post<ImageSamplePackRecord>(path, body);
     },
     onSuccess: () => {

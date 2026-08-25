@@ -23,14 +23,14 @@ const contentPoolKeys = {
 export function useContentPoolStats() {
   return useQuery({
     queryKey: contentPoolKeys.stats(),
-    queryFn: () => httpClient.get<ContentPoolStatsResponse>('/api/v1/admin/content-pools/stats'),
+    queryFn: () => httpClient.get<ContentPoolStatsResponse>('/api/v3/admin/content-pools/stats'),
   });
 }
 
 export function useContentPoolItems(kind: ContentPoolKind, limit: number, offset: number) {
   return useQuery({
     queryKey: contentPoolKeys.list(kind, limit, offset),
-    queryFn: () => httpClient.get<ContentPoolListResponse>(`/api/v1/admin/content-pools/${kind}`, { limit, offset }),
+    queryFn: () => httpClient.get<ContentPoolListResponse>(`/api/v3/admin/content-pools/${kind}`, { limit, offset }),
     enabled: !!kind,
   });
 }
@@ -39,7 +39,7 @@ export function useGenerateContentPool(kind: ContentPoolKind) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: { count: number; presetPackId?: string | null }) =>
-      httpClient.post<GenerateContentPoolResponse>(`/api/v1/admin/content-pools/${kind}/generate`, {
+      httpClient.post<GenerateContentPoolResponse>(`/api/v3/admin/content-pools/${kind}/generate`, {
         count: payload.count,
         preset_pack_id: payload.presetPackId ?? null,
       }),
@@ -53,7 +53,7 @@ export function useImportContentPool(kind: ContentPoolKind) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (text: string) =>
-      httpClient.post<{ inserted: number }>(`/api/v1/admin/content-pools/${kind}/import`, { text }),
+      httpClient.post<{ inserted: number }>(`/api/v3/admin/content-pools/${kind}/import`, { text }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: contentPoolKeys.all });
     },
@@ -64,7 +64,7 @@ export function useUpdateContentPoolItem(kind: ContentPoolKind) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: { itemId: number; text: string; secondaryText?: string | null }) =>
-      httpClient.patch<ContentPoolRow>(`/api/v1/admin/content-pools/${kind}/${payload.itemId}`, {
+      httpClient.patch<ContentPoolRow>(`/api/v3/admin/content-pools/${kind}/${payload.itemId}`, {
         text: payload.text,
         secondary_text: payload.secondaryText ?? null,
       }),
@@ -78,7 +78,7 @@ export function useDeleteContentPoolItem(kind: ContentPoolKind) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (itemId: number) =>
-      httpClient.delete<void>(`/api/v1/admin/content-pools/${kind}/${itemId}`),
+      httpClient.delete<void>(`/api/v3/admin/content-pools/${kind}/${itemId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: contentPoolKeys.all });
     },
@@ -89,7 +89,7 @@ export function useClearContentPool(kind: ContentPoolKind) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      httpClient.post<{ ok: boolean }>(`/api/v1/admin/content-pools/${kind}/clear`),
+      httpClient.post<{ ok: boolean }>(`/api/v3/admin/content-pools/${kind}/clear`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: contentPoolKeys.all });
     },
@@ -100,7 +100,7 @@ export function useContentPoolPresetPacks(kind: ContentPoolKind) {
   return useQuery({
     queryKey: contentPoolKeys.presetPacks(kind),
     queryFn: () =>
-      httpClient.get<ContentPoolPresetPackListResponse>(`/api/v1/admin/content-pools/preset-packs/${kind}`),
+      httpClient.get<ContentPoolPresetPackListResponse>(`/api/v3/admin/content-pools/preset-packs/${kind}`),
     enabled: !!kind,
   });
 }
@@ -114,7 +114,7 @@ export function useCreateContentPoolPresetPack(kind: ContentPoolKind) {
       isActive: boolean;
       config: ContentPoolPresetConfig;
     }) =>
-      httpClient.post<ContentPoolPresetPack>(`/api/v1/admin/content-pools/preset-packs/${kind}`, {
+      httpClient.post<ContentPoolPresetPack>(`/api/v3/admin/content-pools/preset-packs/${kind}`, {
         name: payload.name,
         description: payload.description,
         is_active: payload.isActive,
@@ -137,7 +137,7 @@ export function useUpdateContentPoolPresetPack(kind: ContentPoolKind) {
       config: ContentPoolPresetConfig;
     }) =>
       httpClient.patch<ContentPoolPresetPack>(
-        `/api/v1/admin/content-pools/preset-packs/${kind}/${payload.presetPackId}`,
+        `/api/v3/admin/content-pools/preset-packs/${kind}/${payload.presetPackId}`,
         {
           name: payload.name,
           description: payload.description,
@@ -155,7 +155,7 @@ export function useDeleteContentPoolPresetPack(kind: ContentPoolKind) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (presetPackId: string) =>
-      httpClient.delete<void>(`/api/v1/admin/content-pools/preset-packs/${kind}/${presetPackId}`),
+      httpClient.delete<void>(`/api/v3/admin/content-pools/preset-packs/${kind}/${presetPackId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: contentPoolKeys.presetPacks(kind) });
     },
@@ -166,7 +166,7 @@ export function useGenerateContentPoolPresetBanks(kind: ContentPoolKind) {
   return useMutation({
     mutationFn: (payload: { targetCount: number }) =>
       httpClient.post<GeneratePresetPackBanksResponse>(
-        `/api/v1/admin/content-pools/preset-packs/${kind}/generate-banks`,
+        `/api/v3/admin/content-pools/preset-packs/${kind}/generate-banks`,
         {
           target_count: payload.targetCount,
         },

@@ -28,7 +28,7 @@ export function useProviderKeys(provider: string) {
   return useQuery({
     queryKey: keyPoolKeys.keys(provider),
     queryFn: () =>
-      httpClient.get<ApiKeyEntry[]>(`/api/v1/admin/key-pool/${provider}/keys`),
+      httpClient.get<ApiKeyEntry[]>(`/api/v3/admin/key-pool/${provider}/keys`),
     enabled: !!provider,
     retry: 1,
   });
@@ -38,7 +38,7 @@ export function useProviderConfig(provider: string) {
   return useQuery({
     queryKey: keyPoolKeys.config(provider),
     queryFn: () =>
-      httpClient.get<ProviderConfig>(`/api/v1/admin/key-pool/${provider}/config`),
+      httpClient.get<ProviderConfig>(`/api/v3/admin/key-pool/${provider}/config`),
     enabled: !!provider,
   });
 }
@@ -47,7 +47,7 @@ export function useProviderHealth(provider: string) {
   return useQuery({
     queryKey: keyPoolKeys.health(provider),
     queryFn: () =>
-      httpClient.get<ProviderHealth>(`/api/v1/admin/key-pool/${provider}/health`),
+      httpClient.get<ProviderHealth>(`/api/v3/admin/key-pool/${provider}/health`),
     enabled: !!provider,
     refetchInterval: 5000,
   });
@@ -57,7 +57,7 @@ export function useAllProvidersHealth() {
   return useQuery({
     queryKey: keyPoolKeys.allHealth(),
     queryFn: () =>
-      httpClient.get<AllProvidersHealth>('/api/v1/admin/key-pool/health'),
+      httpClient.get<AllProvidersHealth>('/api/v3/admin/key-pool/health'),
     refetchInterval: 5000,
     retry: 1,
     refetchOnWindowFocus: false,
@@ -68,7 +68,7 @@ export function useProviderEvents(provider: string) {
   return useQuery({
     queryKey: keyPoolKeys.events(provider),
     queryFn: () =>
-      httpClient.get<KeyStatusEvent[]>(`/api/v1/admin/key-pool/${provider}/events`),
+      httpClient.get<KeyStatusEvent[]>(`/api/v3/admin/key-pool/${provider}/events`),
     enabled: !!provider,
   });
 }
@@ -79,7 +79,7 @@ export function useAddKey(provider: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: AddKeyRequest) =>
-      httpClient.post<ApiKeyEntry>(`/api/v1/admin/key-pool/${provider}/keys`, data),
+      httpClient.post<ApiKeyEntry>(`/api/v3/admin/key-pool/${provider}/keys`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.keys(provider) });
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.health(provider) });
@@ -93,7 +93,7 @@ export function useUpdateKey(provider: string) {
   return useMutation({
     mutationFn: (data: { keyId: string; updates: UpdateKeyRequest }) =>
       httpClient.patch<ApiKeyEntry>(
-        `/api/v1/admin/key-pool/keys/${data.keyId}`,
+        `/api/v3/admin/key-pool/keys/${data.keyId}`,
         data.updates,
       ),
     onSuccess: () => {
@@ -106,7 +106,7 @@ export function useDeleteKey(provider: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (keyId: string) =>
-      httpClient.delete(`/api/v1/admin/key-pool/keys/${keyId}`),
+      httpClient.delete(`/api/v3/admin/key-pool/keys/${keyId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.keys(provider) });
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.health(provider) });
@@ -119,7 +119,7 @@ export function useEnableKey(provider: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (keyId: string) =>
-      httpClient.post(`/api/v1/admin/key-pool/keys/${keyId}/enable`),
+      httpClient.post(`/api/v3/admin/key-pool/keys/${keyId}/enable`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.keys(provider) });
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.health(provider) });
@@ -133,7 +133,7 @@ export function useDisableKey(provider: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (keyId: string) =>
-      httpClient.post(`/api/v1/admin/key-pool/keys/${keyId}/disable`),
+      httpClient.post(`/api/v3/admin/key-pool/keys/${keyId}/disable`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.keys(provider) });
       queryClient.invalidateQueries({ queryKey: keyPoolKeys.health(provider) });
@@ -148,7 +148,7 @@ export function useUpdateProviderConfig(provider: string) {
   return useMutation({
     mutationFn: (data: ProviderConfigRequest) =>
       httpClient.put<ProviderConfig>(
-        `/api/v1/admin/key-pool/${provider}/config`,
+        `/api/v3/admin/key-pool/${provider}/config`,
         data,
       ),
     onSuccess: () => {

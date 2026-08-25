@@ -19,7 +19,7 @@ interface YouTubeOAuthAppsResponse {
 export function useYouTubeOAuthApps() {
   return useQuery({
     queryKey: ['youtube-oauth-apps'],
-    queryFn: () => httpClient.get<YouTubeOAuthAppsResponse>('/api/v1/admin/youtube-oauth-apps'),
+    queryFn: () => httpClient.get<YouTubeOAuthAppsResponse>('/api/v3/admin/youtube-oauth-apps'),
   });
 }
 
@@ -31,7 +31,7 @@ export function useCreateYouTubeOAuthApp() {
       client_id: string;
       client_secret: string;
       is_default: boolean;
-    }) => httpClient.post<YouTubeOAuthApp>('/api/v1/admin/youtube-oauth-apps', data),
+    }) => httpClient.post<YouTubeOAuthApp>('/api/v3/admin/youtube-oauth-apps', data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['youtube-oauth-apps'] }),
   });
 }
@@ -46,7 +46,7 @@ export function useUpdateYouTubeOAuthApp() {
       client_secret?: string;
       is_default?: boolean;
     }) =>
-      httpClient.patch<YouTubeOAuthApp>(`/api/v1/admin/youtube-oauth-apps/${data.id}`, {
+      httpClient.patch<YouTubeOAuthApp>(`/api/v3/admin/youtube-oauth-apps/${data.id}`, {
         name: data.name,
         client_id: data.client_id,
         client_secret: data.client_secret,
@@ -59,7 +59,7 @@ export function useUpdateYouTubeOAuthApp() {
 export function useDeleteYouTubeOAuthApp() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => httpClient.delete<{ message: string }>(`/api/v1/admin/youtube-oauth-apps/${id}`),
+    mutationFn: (id: string) => httpClient.delete<{ message: string }>(`/api/v3/admin/youtube-oauth-apps/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['youtube-oauth-apps'] }),
   });
 }

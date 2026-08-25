@@ -134,7 +134,7 @@ export default function UsersPage() {
     if (!userToDelete) return;
     setIsDeleting(true);
     try {
-      await httpClient.delete(`/api/v1/users/${userToDelete.id}/permanent`);
+      await httpClient.delete(`/api/v3/users/${userToDelete.id}/permanent`);
       toast({ title: 'User permanently deleted' });
       setDeleteDialogOpen(false);
       setUserToDelete(null);
@@ -358,7 +358,7 @@ export default function UsersPage() {
   const handleCreateUser = async (values: CreateUserFormValues) => {
     setIsCreating(true);
     try {
-      await httpClient.post('/api/v1/auth/register', values);
+      await httpClient.post('/api/v3/auth/register', values);
       toast({ title: 'User created successfully' });
       setCreateDialogOpen(false);
       createForm.reset();

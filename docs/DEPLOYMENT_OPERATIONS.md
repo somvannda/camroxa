@@ -220,7 +220,7 @@ Nginx timed out before the API response reached the browser. The API may still h
 
 ### Billing (if enabled)
 
-- [ ] CutLuy webhook URL points to `https://api.<env>.camxora.com/api/v1/billing/webhooks/cutluy`
+- [ ] CutLuy webhook URL points to `https://api.<env>.camxora.com/api/v3/webhooks/cutluy` (music) and/or `https://api.<env>.camxora.com/api/v3/billing/webhooks/cutluy` (desktop billing). `/api/v1/...` remains dual-mounted during transition.
 - [ ] Test payment → subscription active
 
 ---

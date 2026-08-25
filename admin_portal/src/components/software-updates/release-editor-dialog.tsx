@@ -300,7 +300,7 @@ export function ReleaseEditorDialog({
               id="release-download-url"
               value={downloadUrl}
               onChange={(e) => setDownloadUrl(e.target.value)}
-              placeholder="https://api.camxora.com/api/v1/public/desktop-release/files/CamxoraSetup-1.0.15.exe"
+              placeholder="https://api.camxora.com/api/v3/public/desktop-release/files/CamxoraSetup-1.0.15.exe"
               disabled={isBusy}
             />
             <p className="text-xs text-slate-500">

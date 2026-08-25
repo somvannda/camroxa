@@ -32,7 +32,7 @@ export default function AlbumsBrowser({ initialItems, total }: Props) {
         renderItem={(album) => <AlbumCard key={album.id} album={album} />}
         loadMore={async (offset) => {
           const response = await fetch(
-            `${apiBase}/api/v1/public/streaming/albums?limit=${PAGE_SIZE}&offset=${offset}`,
+            `${apiBase}/api/v3/public/streaming/albums?limit=${PAGE_SIZE}&offset=${offset}`,
           );
           if (!response.ok) throw new Error('Failed to load albums');
           return response.json();

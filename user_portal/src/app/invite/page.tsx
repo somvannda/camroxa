@@ -9,7 +9,7 @@ async function fetchSignupMode(): Promise<"open" | "invite_only" | null> {
   const apiBase =
     process.env.PLATFORM_API_INTERNAL_URL?.trim() ||
     process.env.NEXT_PUBLIC_PLATFORM_API_BASE_URL?.trim() ||
-    (process.env.NODE_ENV === "production" ? "http://127.0.0.1:8100/api/v1" : "http://localhost:8000/api/v1");
+    (process.env.NODE_ENV === "production" ? "http://127.0.0.1:8100/api/v3" : "http://localhost:8000/api/v3");
 
   try {
     const response = await fetch(`${apiBase.replace(/\/$/, "")}/auth/signup-mode`, {
