@@ -30,6 +30,28 @@ from platform_api.services.suno_status_messages import (
 logger = logging.getLogger(__name__)
 
 
+def _schedule_audio_ingest_after_success(
+    *,
+    source: str,
+    has_song: bool,
+    task_id: UUID,
+) -> None:
+    """Kick storage ingest after Suno SUCCESS.
+
+    Desktop catalog tasks use the streaming-upload path. Web Create must use the
+    web-music B2 backfill — the catalog uploader is skipped for `web_music`.
+    """
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.streaming_upload_service import StreamingUploadService
+
+    service = StreamingUploadService(get_db_pool())
+    if str(source or "").strip().lower() == "web_music":
+        service.schedule_web_music_b2_backfill(suno_task_id=task_id)
+        return
+    if has_song:
+        service.schedule_suno_streaming_upload(suno_task_id=task_id)
+
+
 async def _refund_web_music_generation_on_failure(
     pool: Any,
     *,
@@ -695,14 +717,14 @@ async def suno_callback(
     if persist_status == TaskStatus.SUCCESS and (audio_url_ok or audio_url_alt):
         task_source = str(task_data.get("source") or "").strip().lower()
         has_song = bool(task_data.get("song_id"))
-        if task_source != "web_music" and has_song:
-            try:
-                from platform_api.dependencies import get_db_pool
-                from platform_api.services.streaming_upload_service import StreamingUploadService
-
-                StreamingUploadService(get_db_pool()).schedule_suno_streaming_upload(suno_task_id=task_id)
-            except Exception as exc:
-                logger.warning("Failed to schedule streaming upload for task %s: %s", task_id, exc)
+        try:
+            _schedule_audio_ingest_after_success(
+                source=task_source,
+                has_song=has_song,
+                task_id=task_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to schedule streaming upload for task %s: %s", task_id, exc)
 
     song_id_value = task_data.get("song_id")
     batch_id_value = task_data.get("batch_id")

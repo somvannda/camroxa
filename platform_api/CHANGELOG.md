@@ -50,6 +50,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Create play Ready with Chrome “no supported source”: concurrent packaging
+  left `content_key_id` pointing at an older key than the CXA1 file. Lock +
+  skip-if-ready, then repair DB keys from the package header. See
+  `docs/changelog/2026-08-25-web-music-play-key-mismatch.md`.
+- Library likes 500: `StreamingCatalogService` now accepts the `redis=`
+  kwarg `wire_dependencies` already passes. API restart after the ingest
+  hotfix loaded the mismatch. See `docs/changelog/2026-08-25-web-music-finishing-b2-ingest.md`.
+- Web Create SUCCESS now starts Backblaze ingest. The Suno callback had skipped
+  `web_music`, so clips could stay on Finishing forever. Create poll retries
+  unready SUCCESS clips. See `docs/changelog/2026-08-25-web-music-finishing-b2-ingest.md`.
 - v3 wallet / period-grant SQL no longer selects ambiguous `id` when joining
   `plans` to `licenses`. Sandbox `credit_wallet_lots` / `billing_conversion_runs`
   are owned by the API role.

@@ -45,7 +45,69 @@ class AudioPackageService:
             logger.info("Skip packaging already-encrypted object subject=%s", subject_id)
             return {"status": "ready", "skipped": True}
 
-        await self._pool.execute(
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "SELECT pg_advisory_lock(hashtext($1::text), hashtext($2::text))",
+                str(subject_id),
+                f"{subject_type}:{variant}",
+            )
+            try:
+                if subject_type == "stream_track":
+                    existing = await conn.fetchrow(
+                        "SELECT package_status, packaged_storage_key FROM stream_tracks WHERE id = $1",
+                        subject_id,
+                    )
+                else:
+                    status_col = "package_status_ok" if variant == "ok" else "package_status_alt"
+                    pkg_col = "packaged_storage_key_ok" if variant == "ok" else "packaged_storage_key_alt"
+                    existing = await conn.fetchrow(
+                        f"SELECT {status_col} AS package_status, {pkg_col} AS packaged_storage_key FROM suno_tasks WHERE id = $1",
+                        subject_id,
+                    )
+                if (
+                    existing is not None
+                    and str(existing["package_status"] or "") == "ready"
+                    and existing["packaged_storage_key"]
+                ):
+                    logger.info(
+                        "Skip packaging already-ready subject=%s variant=%s",
+                        subject_id,
+                        variant,
+                    )
+                    return {"status": "ready", "skipped": True}
+
+                return await self._package_plaintext_body(
+                    conn,
+                    plaintext,
+                    subject_type=subject_type,
+                    subject_id=subject_id,
+                    variant=variant,
+                    base_key=base_key,
+                    storage=storage,
+                    null_suno_urls=null_suno_urls,
+                    source_key=source_key,
+                )
+            finally:
+                await conn.execute(
+                    "SELECT pg_advisory_unlock(hashtext($1::text), hashtext($2::text))",
+                    str(subject_id),
+                    f"{subject_type}:{variant}",
+                )
+
+    async def _package_plaintext_body(
+        self,
+        conn: Any,
+        plaintext: bytes,
+        *,
+        subject_type: str,
+        subject_id: UUID,
+        variant: str,
+        base_key: str,
+        storage: Any,
+        null_suno_urls: bool,
+        source_key: str | None,
+    ) -> dict[str, Any]:
+        await conn.execute(
             """
             INSERT INTO audio_package_jobs (subject_type, subject_id, variant, status, attempt_count)
             VALUES ($1, $2, $3, 'running', 1)
@@ -57,7 +119,7 @@ class AudioPackageService:
         kek = resolve_audio_kek()
         content_key = new_content_key()
         wrapped = wrap_content_key(kek, content_key)
-        key_row = await self._pool.fetchrow(
+        key_row = await conn.fetchrow(
             """
             INSERT INTO content_keys (
                 subject_type, subject_id, variant, wrapped_key, key_version, status
@@ -95,7 +157,7 @@ class AudioPackageService:
         )
 
         if subject_type == "stream_track":
-            await self._pool.execute(
+            await conn.execute(
                 """
                 UPDATE stream_tracks
                 SET encrypted_original_storage_key = $2,
@@ -120,7 +182,7 @@ class AudioPackageService:
             )
         else:
             if variant == "ok":
-                await self._pool.execute(
+                await conn.execute(
                     """
                     UPDATE suno_tasks
                     SET encrypted_original_key_ok = $2,
@@ -144,7 +206,7 @@ class AudioPackageService:
                     null_suno_urls,
                 )
             else:
-                await self._pool.execute(
+                await conn.execute(
                     """
                     UPDATE suno_tasks
                     SET encrypted_original_key_alt = $2,
@@ -167,7 +229,7 @@ class AudioPackageService:
                     hls_status,
                     null_suno_urls,
                 )
-        await self._pool.execute(
+        await conn.execute(
             """
             UPDATE audio_package_jobs
             SET status = 'ready', updated_at = NOW()
@@ -191,11 +253,15 @@ class AudioPackageService:
         if source_key and source_key not in {orig_key, pkg_a_key, pkg_b_key}:
             try:
                 await storage.upload_bytes(key=source_key, data=original_blob, content_type=GCM_MIME)
-                await self._record_job(
+                await conn.execute(
+                    """
+                    INSERT INTO audio_package_jobs (subject_type, subject_id, variant, status, attempt_count)
+                    VALUES ($1, $2, $3, $4, 1)
+                    """,
                     f"{subject_type}_source",
                     subject_id,
                     variant,
-                    status="ready",
+                    "ready",
                 )
             except Exception as exc:
                 logger.warning(
