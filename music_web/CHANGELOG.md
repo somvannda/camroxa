@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Signed-in users who open `/login` or `/register` are sent to Create (or a safe `?next=`). Unconfirmed sessions go to email verification instead of seeing another signup form. See `docs/changelog/2026-08-25-music-web-guest-only-auth.md`.
 - After the email confirmation code, users go to Create logged in, instead of landing on the register form. Already-verified sessions skip the code screen. See `docs/changelog/2026-08-25-verify-email-redirect-create.md`.
 
 ### Changed
