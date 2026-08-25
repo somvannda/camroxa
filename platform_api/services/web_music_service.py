@@ -1321,6 +1321,7 @@ class WebMusicService:
         row = await self._ensure_cover_urls(row)
         row = await self._ensure_durations(row)
         row = await self._ensure_stream_ready(row)
+        self._schedule_ingest_if_unready(row)
         return await self._task_payload(row, user_id)
 
     async def update_generation_title(
@@ -1761,6 +1762,23 @@ class WebMusicService:
                     exc,
                 )
         return None
+
+    def _schedule_ingest_if_unready(self, row: Any) -> None:
+        """Retry B2 ingest when SUCCESS already landed but Create is still Finishing."""
+        status = str(_row_value(row, "status") or "").strip().lower()
+        if status != "success":
+            return
+        try:
+            task_id = row["id"] if isinstance(row["id"], UUID) else UUID(str(row["id"]))
+        except (KeyError, TypeError, ValueError):
+            return
+        for variant in ("ok", "alt"):
+            if _clip_is_playable(row, variant=variant, task_id=task_id):
+                continue
+            url_col = "audio_url_ok" if variant == "ok" else "audio_url_alt"
+            if not str(_row_value(row, url_col) or "").strip():
+                continue
+            self._schedule_b2_backfill(task_id, variant)
 
     def _schedule_b2_backfill(self, task_id: UUID, variant: str) -> None:
         try:
