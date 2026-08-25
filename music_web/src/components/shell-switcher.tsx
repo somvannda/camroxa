@@ -12,6 +12,7 @@ import Sidebar from '@/components/sidebar';
 import SiteFooter from '@/components/site-footer';
 import SiteHeader from '@/components/site-header';
 import PricingModal from '@/components/pricing-modal';
+import { DEFAULT_POST_AUTH_PATH, safeNextPath } from '@/lib/auth-redirect';
 import { useMobileKeyboardInset } from '@/lib/use-mobile-keyboard-inset';
 
 function MarketingHeader() {
@@ -124,12 +125,18 @@ export default function ShellSwitcher({ children }: { children: ReactNode }) {
     (pathname === '/' || isAuthPage || pathname === '/explore' || pathname === '/create');
 
   useEffect(() => {
-    if (loading || !needsConfirm || !user) return;
-    if (pathname === '/verify-email') return;
-    const next = pathname.startsWith('/') && !pathname.startsWith('//') ? pathname : '/create';
-    router.replace(
-      `/verify-email?email=${encodeURIComponent(user.email)}&next=${encodeURIComponent(next)}`,
-    );
+    if (loading || !user) return;
+    if (needsConfirm) {
+      if (pathname === '/verify-email') return;
+      const next = safeNextPath(pathname);
+      router.replace(
+        `/verify-email?email=${encodeURIComponent(user.email)}&next=${encodeURIComponent(next)}`,
+      );
+      return;
+    }
+    if (pathname === '/login' || pathname === '/register') {
+      router.replace(DEFAULT_POST_AUTH_PATH);
+    }
   }, [loading, needsConfirm, pathname, router, user]);
 
   if (needsConfirm) {
