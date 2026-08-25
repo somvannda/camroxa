@@ -9,6 +9,11 @@ import pytest
 from platform_api.services.streaming_catalog_service import StreamingCatalogService
 
 
+def test_catalog_service_accepts_redis_kwarg() -> None:
+    service = StreamingCatalogService(pool=AsyncMock(), redis=object())
+    assert service._redis is not None
+
+
 @pytest.mark.asyncio
 async def test_list_genres_adds_slug() -> None:
     service = StreamingCatalogService(pool=AsyncMock())

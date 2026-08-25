@@ -2,6 +2,8 @@
 
 from uuid import uuid4
 
+import pytest
+
 from platform_api.services.audio_packager import (
     MAGIC_ORIGINAL,
     MAGIC_PACKAGE,
@@ -84,3 +86,38 @@ def test_watermark_changes_bytes_and_is_stable_hash() -> None:
     payload = watermark_payload(user_id="user-1", export_id="export-1", secret="sekrit")
     assert payload_hash(payload) == digest
     assert embed_lsb(mp3, payload) == marked
+
+
+@pytest.mark.asyncio
+async def test_package_plaintext_skips_when_already_ready() -> None:
+    from platform_api.services.audio_package_service import AudioPackageService
+
+    class _Conn:
+        async def execute(self, *_a, **_k):
+            return None
+
+        async def fetchrow(self, *_a, **_k):
+            return {"package_status": "ready", "packaged_storage_key": "web-music/x/ok.cxa"}
+
+    class _Acquire:
+        async def __aenter__(self):
+            return _Conn()
+
+        async def __aexit__(self, *_a):
+            return False
+
+    class _Pool:
+        def acquire(self):
+            return _Acquire()
+
+    service = AudioPackageService(_Pool())
+    result = await service.package_plaintext(
+        b"ID3" + b"\x00" * 32,
+        subject_type="suno_task",
+        subject_id=uuid4(),
+        variant="ok",
+        base_key="web-music/x/ok",
+        storage=object(),
+    )
+    assert result["status"] == "ready"
+    assert result["skipped"] is True

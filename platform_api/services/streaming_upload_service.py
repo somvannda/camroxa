@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -36,6 +37,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+WEB_MUSIC_B2_BACKFILL_COOLDOWN_S = 20.0
+
 _IMAGE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
     "Accept": "image/*,*/*;q=0.8",
@@ -47,6 +50,7 @@ class StreamingUploadService:
         self._pool = pool
         self._repo = StreamingRepository(pool)
         self._web_music_backfill_inflight: set[tuple[str, str]] = set()
+        self._web_music_backfill_last: dict[tuple[str, str], float] = {}
 
     async def _encrypt_ingested_mp3(
         self,
@@ -120,7 +124,12 @@ class StreamingUploadService:
         token = (str(suno_task_id), str(variant or "*"))
         if token in self._web_music_backfill_inflight:
             return
+        now = time.monotonic()
+        last = self._web_music_backfill_last.get(token, 0.0)
+        if last and (now - last) < WEB_MUSIC_B2_BACKFILL_COOLDOWN_S:
+            return
         self._web_music_backfill_inflight.add(token)
+        self._web_music_backfill_last[token] = now
 
         async def _run() -> None:
             try:

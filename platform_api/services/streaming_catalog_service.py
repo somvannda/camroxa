@@ -58,8 +58,9 @@ _PUBLIC_ALBUM_KEYS = {
 
 
 class StreamingCatalogService:
-    def __init__(self, pool: Any) -> None:
+    def __init__(self, pool: Any, redis: Any | None = None) -> None:
         self._pool = pool
+        self._redis = redis
         self._repo = StreamingRepository(pool)
 
     async def _cover_url(self, storage_key: str | None) -> str | None:
