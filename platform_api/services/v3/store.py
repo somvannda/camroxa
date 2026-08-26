@@ -216,6 +216,39 @@ class V3BillingStore:
         )
         return dict(row)
 
+    async def insert_lot_if_absent(
+        self,
+        *,
+        user_id: UUID,
+        tag: str,
+        amount_units: int,
+        expires_at: datetime | None,
+        period_start: date | None,
+    ) -> dict[str, Any] | None:
+        """Insert a grant lot, or return None if the unique (user, period) lot exists.
+
+        Call this *before* add_credits. A rejected lot must not leave a wallet credit.
+        """
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO credit_wallet_lots (
+                id, user_id, tag, amount_units, remaining_units,
+                expires_at, period_start, created_at
+            )
+            VALUES ($1, $2, $3, $4, $4, $5, $6, NOW())
+            ON CONFLICT DO NOTHING
+            RETURNING id, user_id, tag, amount_units, remaining_units,
+                      expires_at, period_start, created_at
+            """,
+            uuid4(),
+            user_id,
+            tag,
+            amount_units,
+            expires_at,
+            period_start,
+        )
+        return dict(row) if row is not None else None
+
     async def find_period_grant(self, user_id: UUID, period_start: date) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             """

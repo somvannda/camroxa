@@ -27,6 +27,7 @@ APPLY = "1" if "--apply" in sys.argv else "0"
 FLAG_ON = "1" if "--flag-on" in sys.argv else "0"
 REMOTE_SH = DEPLOY / "_credits_only_sandbox_cutover_remote.sh"
 REMOTE_PY = DEPLOY / "_credits_only_sandbox_cutover.py"
+SNAPSHOT_PY = DEPLOY / "_credits_cutover_snapshot.py"
 
 
 def _secrets_path() -> Path:
@@ -64,6 +65,8 @@ def main() -> int:
             remote.write(REMOTE_SH.read_bytes().replace(b"\r\n", b"\n"))
         with sftp.file("/tmp/credits_only_sandbox_cutover.py", "wb") as remote:
             remote.write(REMOTE_PY.read_bytes().replace(b"\r\n", b"\n"))
+        with sftp.file("/tmp/credits_cutover_snapshot.py", "wb") as remote:
+            remote.write(SNAPSHOT_PY.read_bytes().replace(b"\r\n", b"\n"))
         sftp.close()
         cmd = (
             "chmod +x /tmp/credits_only_sandbox_cutover.sh && "

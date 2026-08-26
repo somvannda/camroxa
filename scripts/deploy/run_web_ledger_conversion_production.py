@@ -25,6 +25,7 @@ from deploy import ensure_deploy_key, ssh_connect  # noqa: E402
 
 PRODUCTION_HOST = "82.197.71.248"
 REMOTE_PY = DEPLOY / "_web_ledger_conversion.py"
+SNAPSHOT_PY = DEPLOY / "_credits_cutover_snapshot.py"
 
 
 def load_production() -> dict[str, str]:
@@ -69,6 +70,8 @@ def main() -> int:
         sftp = client.open_sftp()
         with sftp.file("/tmp/web_ledger_conversion.py", "wb") as remote:
             remote.write(REMOTE_PY.read_bytes().replace(b"\r\n", b"\n"))
+        with sftp.file("/tmp/credits_cutover_snapshot.py", "wb") as remote:
+            remote.write(SNAPSHOT_PY.read_bytes().replace(b"\r\n", b"\n"))
         sftp.close()
         cmd = f"""
 set -e
@@ -80,7 +83,12 @@ if ip -4 addr | grep -q '46.250.235.83'; then
   echo Refusing sandbox host
   exit 1
 fi
+echo "=== credits snapshot before leftover apply ==="
+python3 /tmp/credits_cutover_snapshot.py dump /tmp/credits-snapshot-before.csv
 sudo -u camxora bash -lc "cd /opt/camxora/repo && source platform_api/.venv/bin/activate && export PYTHONPATH=/opt/camxora/repo && APPLY={apply} python /tmp/web_ledger_conversion.py"
+echo "=== credits snapshot after leftover apply ==="
+python3 /tmp/credits_cutover_snapshot.py dump /tmp/credits-snapshot-after.csv
+python3 /tmp/credits_cutover_snapshot.py diff /tmp/credits-snapshot-before.csv /tmp/credits-snapshot-after.csv
 echo WEB_LEDGER_PRODUCTION_OK
 """
         _, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=180)

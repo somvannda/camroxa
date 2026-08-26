@@ -83,3 +83,6 @@ camxora_rust/
 .deploy/camxora_deploy_ed25519
 .deploy/camxora_deploy_ed25519.pub
 scripts/deploy/.venv/
+
+# Credit cutover snapshots (every user email + wallet)
+scripts/deploy/out/

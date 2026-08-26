@@ -57,5 +57,12 @@ WHERE COALESCE(plan_kind, 'subscription') = 'subscription'
 ORDER BY profile_allowance, billing_cycle_days, name;
 "
 
+echo "=== credits snapshot before leftover apply ==="
+python3 /tmp/credits_cutover_snapshot.py dump /tmp/credits-snapshot-before.csv
+
 sudo -u camxora bash -lc "cd /opt/camxora/repo && source platform_api/.venv/bin/activate && export PYTHONPATH=/opt/camxora/repo && APPLY=$APPLY FLAG_ON=$FLAG_ON python /tmp/credits_only_sandbox_cutover.py"
+
+echo "=== credits snapshot after leftover apply ==="
+python3 /tmp/credits_cutover_snapshot.py dump /tmp/credits-snapshot-after.csv
+python3 /tmp/credits_cutover_snapshot.py diff /tmp/credits-snapshot-before.csv /tmp/credits-snapshot-after.csv
 echo SANDBOX_CUTOVER_PHASE_DONE

@@ -25,6 +25,7 @@ SANDBOX_HOST = "46.250.235.83"
 APPLY = "1" if "--apply" in sys.argv else "0"
 REMOTE_SH = DEPLOY / "_web_ledger_conversion_sandbox.sh"
 REMOTE_PY = DEPLOY / "_web_ledger_conversion.py"
+SNAPSHOT_PY = DEPLOY / "_credits_cutover_snapshot.py"
 
 
 def load_sandbox() -> dict[str, str]:
@@ -62,6 +63,8 @@ def main() -> int:
             remote.write(REMOTE_SH.read_bytes().replace(b"\r\n", b"\n"))
         with sftp.file("/tmp/web_ledger_conversion.py", "wb") as remote:
             remote.write(REMOTE_PY.read_bytes().replace(b"\r\n", b"\n"))
+        with sftp.file("/tmp/credits_cutover_snapshot.py", "wb") as remote:
+            remote.write(SNAPSHOT_PY.read_bytes().replace(b"\r\n", b"\n"))
         sftp.close()
         cmd = (
             "chmod +x /tmp/web_ledger_conversion_sandbox.sh && "
