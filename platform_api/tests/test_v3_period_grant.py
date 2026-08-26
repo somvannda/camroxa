@@ -65,6 +65,16 @@ class FakeStore:
         self.lots.append(lot)
         return lot
 
+    async def insert_lot_if_absent(self, **kwargs) -> dict | None:
+        tag = kwargs["tag"]
+        period_start = kwargs.get("period_start")
+        user_id = kwargs["user_id"]
+        if tag == "daily_grant" and await self.find_daily_grant(user_id, period_start):
+            return None
+        if tag == "grant" and await self.find_period_grant(user_id, period_start):
+            return None
+        return await self.insert_lot(**kwargs)
+
     async def expired_grant_lots(self, user_id: UUID | None = None) -> list[dict]:
         return []
 
@@ -142,3 +152,60 @@ async def test_period_grant_uses_paid_web_plan() -> None:
     assert second["granted"] is False
     assert second["reason"] == "already_granted"
     assert wallet.balance == credits_to_units(1000)
+
+
+@pytest.mark.asyncio
+async def test_daily_grant_does_not_credit_when_lot_insert_fails() -> None:
+    """Regression: wallet must not move if the daily_grant lot is rejected."""
+    wallet = FakeWallet()
+    store = FakeStore(_free_plan())
+
+    async def boom(**kwargs):
+        raise RuntimeError("lot tag rejected")
+
+    store.insert_lot_if_absent = boom  # type: ignore[method-assign]
+    service = PeriodGrantService(store=store, credit_repo=wallet)
+
+    with pytest.raises(RuntimeError, match="lot tag rejected"):
+        await service.ensure_daily_grant(USER_ID)
+    assert wallet.balance == 0
+    assert wallet.txs == []
+
+
+@pytest.mark.asyncio
+async def test_daily_grant_race_conflict_does_not_credit() -> None:
+    wallet = FakeWallet()
+    store = FakeStore(_free_plan())
+
+    async def miss(user_id, period_start):
+        return None
+
+    async def conflict(**kwargs):
+        return None
+
+    store.find_daily_grant = miss  # type: ignore[method-assign]
+    store.insert_lot_if_absent = conflict  # type: ignore[method-assign]
+    service = PeriodGrantService(store=store, credit_repo=wallet)
+
+    result = await service.ensure_daily_grant(USER_ID)
+    assert result["granted"] is False
+    assert result["reason"] == "already_granted"
+    assert wallet.balance == 0
+    assert wallet.txs == []
+
+
+@pytest.mark.asyncio
+async def test_period_grant_does_not_credit_when_lot_insert_fails() -> None:
+    wallet = FakeWallet()
+    store = FakeStore(_paid_plan())
+
+    async def boom(**kwargs):
+        raise RuntimeError("lot insert failed")
+
+    store.insert_lot_if_absent = boom  # type: ignore[method-assign]
+    service = PeriodGrantService(store=store, credit_repo=wallet)
+
+    with pytest.raises(RuntimeError, match="lot insert failed"):
+        await service.ensure_period_grant(USER_ID)
+    assert wallet.balance == 0
+    assert wallet.txs == []

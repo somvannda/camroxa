@@ -78,18 +78,26 @@ class PeriodGrantService:
         units = credits_to_units(monthly)
         cycle_days = int(plan.get("billing_cycle_days") or 30)
         expires_at = datetime.now(timezone.utc) + timedelta(days=max(1, cycle_days))
-        await self._credit_repo.add_credits(
-            user_id,
-            units,
-            reason="v3_period_grant",
-            ref_id=f"grant:{user_id}:{period_start.isoformat()}",
-        )
-        lot = await self._store.insert_lot(
+        lot = await self._store.insert_lot_if_absent(
             user_id=user_id,
             tag="grant",
             amount_units=units,
             expires_at=expires_at,
             period_start=period_start,
+        )
+        if lot is None:
+            return {
+                "granted": False,
+                "reason": "already_granted",
+                "user_id": str(user_id),
+                "plan_id": plan["id"],
+                "period_start": period_start.isoformat(),
+            }
+        await self._credit_repo.add_credits(
+            user_id,
+            units,
+            reason="v3_period_grant",
+            ref_id=f"grant:{user_id}:{period_start.isoformat()}",
         )
         return {
             "granted": True,
@@ -136,18 +144,28 @@ class PeriodGrantService:
 
         units = credits_to_units(daily)
         expires_at = next_billing_midnight(from_date=period_start)
-        await self._credit_repo.add_credits(
-            user_id,
-            units,
-            reason="v3_daily_grant",
-            ref_id=f"daily:{user_id}:{period_start.isoformat()}",
-        )
-        lot = await self._store.insert_lot(
+        # Lot first: if the unique daily index rejects (or the tag is invalid),
+        # the wallet must not move. Crediting first is how Free users stacked 50.
+        lot = await self._store.insert_lot_if_absent(
             user_id=user_id,
             tag="daily_grant",
             amount_units=units,
             expires_at=expires_at,
             period_start=period_start,
+        )
+        if lot is None:
+            return {
+                "granted": False,
+                "reason": "already_granted",
+                "user_id": str(user_id),
+                "plan_id": plan["id"],
+                "period_start": period_start.isoformat(),
+            }
+        await self._credit_repo.add_credits(
+            user_id,
+            units,
+            reason="v3_daily_grant",
+            ref_id=f"daily:{user_id}:{period_start.isoformat()}",
         )
         return {
             "granted": True,

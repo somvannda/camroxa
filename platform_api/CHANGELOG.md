@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Free daily mint no longer stacks 50 credits on every `/me/credits` poll. Lot insert happens first; sandbox `duke@test.com` 4,150 was 83 stacked daily grants. Cutover now snapshots every wallet before/after leftover apply. See `docs/changelog/2026-08-25-daily-grant-idempotent-and-cutover-snapshot.md`.
+
 ### Changed
 
 - Cutover: JSON media URLs, Suno callbacks, YouTube OAuth, desktop-release links, geo/auth, and nginx stream/WS are `/api/v3` only. See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
