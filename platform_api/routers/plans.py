@@ -19,6 +19,10 @@ from platform_api.dependencies import get_ai_routing_service, get_credit_pricing
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.repositories.license_repo import PlanRepository
+from platform_api.services.pricing_display import (
+    resolve_pricing_credit_lines,
+    resolve_pricing_features,
+)
 from platform_api.services.plan_term_discount_service import (
     PlanTermDiscounts,
     load_plan_term_discounts,
@@ -115,6 +119,8 @@ class PublicPlanResponse(BaseModel):
     included_wallet_credits: float = 0
     monthly_credits: int = 0
     daily_credits: int = 0
+    pricing_features: list[str] = Field(default_factory=list)
+    pricing_credit_lines: list[str] = Field(default_factory=list)
     offer: PublicPlanOfferResponse | None = None
 
 
@@ -1047,6 +1053,17 @@ def _public_plan_to_response(
         included_wallet_credits=float(getattr(plan, "included_wallet_credits", 0) or 0),
         monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
         daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+        pricing_features=resolve_pricing_features(
+            getattr(plan, "pricing_features", None),
+            name=str(getattr(plan, "name", "") or ""),
+            price_cents=int(getattr(plan, "price_cents", 0) or 0),
+            daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+        ),
+        pricing_credit_lines=resolve_pricing_credit_lines(
+            getattr(plan, "pricing_credit_lines", None),
+            monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
+            daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+        ),
         offer=offer,
     )
 

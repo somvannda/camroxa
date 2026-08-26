@@ -192,6 +192,9 @@ class FakePlanRepo:
     async def get_all(self) -> list[Plan]:
         return list(self.plans.values())
 
+    async def get_subscriber_counts(self, plan_ids: list[UUID]) -> dict[UUID, int]:
+        return {}
+
     async def get_user_active_subscription_context(self, user_id: UUID):
         if self.plan is None:
             return None
@@ -227,6 +230,8 @@ def _v3_plan(**overrides) -> dict:
         "image_credits": None,
         "video_credits": None,
         "merge_credits": None,
+        "pricing_features": [],
+        "pricing_credit_lines": [],
         "created_at": NOW,
         "updated_at": NOW,
     }
@@ -426,7 +431,8 @@ async def test_v3_routes_and_v1_public_shape_unchanged() -> None:
         v1_item = v1_public.json()[0]
         assert "monthly_song_limit" in v1_item
         assert "music_credits" not in v1_item
-        assert "monthly_credits" not in v1_item
+        assert "pricing_features" in v1_item
+        assert "pricing_credit_lines" in v1_item
 
         v3_public = await client.get("/api/v3/plans/public")
         assert v3_public.status_code == 200
@@ -439,9 +445,16 @@ async def test_v3_routes_and_v1_public_shape_unchanged() -> None:
 
         patched = await client.patch(
             f"/api/v3/admin/plans/{hidden['id']}",
-            json={"music_credits": 10, "monthly_credits": 3000},
+            json={
+                "music_credits": 10,
+                "monthly_credits": 3000,
+                "pricing_features": ["Web Create", "Custom desktop perk"],
+                "pricing_credit_lines": ["credits per month", "Custom song hint"],
+            },
         )
         assert patched.status_code == 200
+        assert patched.json()["pricing_features"] == ["Web Create", "Custom desktop perk"]
+        assert patched.json()["pricing_credit_lines"] == ["credits per month", "Custom song hint"]
         quote = await client.post("/api/v3/billing/quote", json={"op": "music"})
         assert quote.status_code == 200
         assert quote.json()["amount_credits"] == 10

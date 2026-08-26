@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PublicPlan } from "@/lib/billing";
 import {
-  PUBLIC_CARD_BULLETS,
-  creditsToSongs,
+  cardBulletsForPlan,
+  creditCaptionLines,
+  creditHeadlineNumber,
   groupPublicPaidTiers,
-  monthlyCreditsOf,
   publicFreePlans,
 } from "@/lib/credits-only-public";
 import { formatPlanPrice, type PlanTermDiscounts } from "@/lib/plan-pricing";
@@ -26,10 +26,10 @@ type OnboardingPlanPickerProps = {
   onSelectPlan: (planId: string) => void;
 };
 
-function CardBullets() {
+function CardBullets({ plan }: { plan: PublicPlan }) {
   return (
     <ul className="mb-5 space-y-2">
-      {PUBLIC_CARD_BULLETS.map((feature) => (
+      {cardBulletsForPlan(plan).map((feature) => (
         <li key={feature} className="flex items-start gap-2 text-sm text-slate-200/82">
           <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/10 text-emerald-100">
             <Check className="h-3 w-3" aria-hidden="true" />
@@ -100,11 +100,21 @@ export function OnboardingPlanPicker({
             <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Free</div>
             <h3 className="mt-2 font-display text-2xl font-semibold text-white">Free</h3>
             <div className="mt-4 text-4xl font-semibold text-white">$0</div>
-            <div className="mt-4 border-b border-white/8 pb-4 text-sm text-slate-400">
-              {Number(free.daily_credits || 0).toLocaleString()} daily credits
+            <div className="mt-4 border-b border-white/8 pb-4">
+              <div className="text-3xl font-semibold text-emerald-200">
+                {creditHeadlineNumber(free).toLocaleString()}
+              </div>
+              {creditCaptionLines(free).map((line, index) => (
+                <div
+                  key={`${line}-${index}`}
+                  className={index === 0 ? "text-sm text-slate-400" : "mt-1 text-xs text-slate-500"}
+                >
+                  {line}
+                </div>
+              ))}
             </div>
             <div className="mt-4">
-              <CardBullets />
+              <CardBullets plan={free} />
             </div>
             <p className="text-sm text-slate-400">Shown only because Free is public. Continue with a paid plan to checkout.</p>
           </article>
@@ -113,8 +123,6 @@ export function OnboardingPlanPicker({
         {families.map((family, index) => {
           const plan = (term === "yearly" ? family.yearly ?? family.monthly : family.monthly ?? family.representative) as PublicPlan | null;
           if (!plan) return null;
-          const credits = monthlyCreditsOf(plan);
-          const songs = creditsToSongs(credits);
           const featured = index === 1;
           const loading = Boolean(creatingPayment && selectedPlanId === plan.id);
           const price =
@@ -140,11 +148,19 @@ export function OnboardingPlanPicker({
                 <span className="text-slate-400">{term === "yearly" && family.yearly ? "/year" : "/month"}</span>
               </div>
               <div className="mt-5 border-b border-white/8 pb-5">
-                <div className="text-3xl font-semibold text-emerald-200">{credits.toLocaleString()}</div>
-                <div className="text-sm text-slate-400">credits / month</div>
-                <div className="mt-1 text-xs text-slate-500">~ {songs.toLocaleString()} songs/mo</div>
+                <div className="text-3xl font-semibold text-emerald-200">
+                  {creditHeadlineNumber(plan).toLocaleString()}
+                </div>
+                {creditCaptionLines(plan).map((line, index) => (
+                  <div
+                    key={`${line}-${index}`}
+                    className={index === 0 ? "text-sm text-slate-400" : "mt-1 text-xs text-slate-500"}
+                  >
+                    {line}
+                  </div>
+                ))}
               </div>
-              <CardBullets />
+              <CardBullets plan={plan} />
               <Button
                 type="button"
                 className="w-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 text-white"

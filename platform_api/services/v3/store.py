@@ -11,20 +11,50 @@ V3_PLAN_SELECT = """
     monthly_song_limit, monthly_credits, daily_credits, is_public, is_active,
     plan_kind, plan_type, lyric_credits, title_credits, album_credits,
     music_credits, style_credits, image_credits, video_credits, merge_credits,
-    created_at, updated_at
+    pricing_features, pricing_credit_lines, created_at, updated_at
 """
 
 
-def row_to_plan_dict(row: Any) -> dict[str, Any]:
+def row_to_plan_dict(
+    row: Any,
+    *,
+    public: bool = False,
+    credits_per_generate: int | float | None = None,
+) -> dict[str, Any]:
+    from platform_api.services.pricing_display import (
+        normalize_pricing_features,
+        resolve_pricing_credit_lines,
+        resolve_pricing_features,
+    )
+
+    name = row["name"]
+    price_cents = int(row["price_cents"] or 0)
+    daily_credits = int(row["daily_credits"] or 0) if row.get("daily_credits") is not None else 0
+    monthly_credits = int(row["monthly_credits"] or 0) if row.get("monthly_credits") is not None else 0
+    pricing_features = normalize_pricing_features(row.get("pricing_features"))
+    pricing_credit_lines = normalize_pricing_features(row.get("pricing_credit_lines"))
+    if public:
+        pricing_features = resolve_pricing_features(
+            pricing_features,
+            name=str(name or ""),
+            price_cents=price_cents,
+            daily_credits=daily_credits,
+        )
+        pricing_credit_lines = resolve_pricing_credit_lines(
+            pricing_credit_lines,
+            monthly_credits=monthly_credits,
+            daily_credits=daily_credits,
+            credits_per_generate=credits_per_generate,
+        )
     return {
         "id": str(row["id"]),
-        "name": row["name"],
-        "price_cents": int(row["price_cents"] or 0),
+        "name": name,
+        "price_cents": price_cents,
         "billing_cycle_days": row.get("billing_cycle_days"),
         "profile_allowance": int(row["profile_allowance"] or 0),
         "monthly_song_limit": row.get("monthly_song_limit"),
-        "monthly_credits": int(row["monthly_credits"] or 0) if row.get("monthly_credits") is not None else 0,
-        "daily_credits": int(row["daily_credits"] or 0) if row.get("daily_credits") is not None else 0,
+        "monthly_credits": monthly_credits,
+        "daily_credits": daily_credits,
         "is_public": bool(row.get("is_public")),
         "is_active": bool(row["is_active"]),
         "plan_kind": str(row.get("plan_kind") or "subscription"),
@@ -37,6 +67,9 @@ def row_to_plan_dict(row: Any) -> dict[str, Any]:
         "image_credits": row.get("image_credits"),
         "video_credits": row.get("video_credits"),
         "merge_credits": row.get("merge_credits"),
+        "pricing_features": pricing_features,
+        "pricing_credit_lines": pricing_credit_lines,
+        "credits_per_generate": credits_per_generate,
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -58,7 +91,11 @@ class V3BillingStore:
         )
         return [row_to_plan_dict(row) for row in rows]
 
-    async def list_public_plans(self) -> list[dict[str, Any]]:
+    async def list_public_plans(
+        self,
+        *,
+        credits_per_generate: int | float | None = None,
+    ) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             f"""
             SELECT {V3_PLAN_SELECT}
@@ -67,7 +104,10 @@ class V3BillingStore:
             ORDER BY display_order ASC NULLS LAST, price_cents ASC, name ASC
             """
         )
-        return [row_to_plan_dict(row) for row in rows]
+        return [
+            row_to_plan_dict(row, public=True, credits_per_generate=credits_per_generate)
+            for row in rows
+        ]
 
     async def get_plan(self, plan_id: UUID) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(

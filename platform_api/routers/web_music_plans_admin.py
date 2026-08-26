@@ -14,6 +14,7 @@ from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.repositories.credit_repo import CreditRepository
 from platform_api.repositories.license_repo import PlanRepository
+from platform_api.services.pricing_display import credits_to_songs
 
 router = APIRouter(prefix="/web-music", tags=["web-music-plans-admin"])
 
@@ -153,7 +154,7 @@ def _pack_to_response(row: dict[str, Any]) -> WebMusicTopupPackResponse:
         price_cents=int(row["price_cents"]),
         display_order=int(row.get("display_order") or 0),
         is_active=bool(row.get("is_active")),
-        songs_equivalent=max(0, credits // 10),
+        songs_equivalent=credits_to_songs(credits),
         created_at=row["created_at"].isoformat(),
         updated_at=row["updated_at"].isoformat(),
     )

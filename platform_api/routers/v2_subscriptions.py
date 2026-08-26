@@ -9,7 +9,7 @@ Handles:
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
@@ -20,7 +20,10 @@ from platform_api.middleware.rate_limit import enforce_rate_limit
 from platform_api.services.v2.payment_security import sanitize_music_web_return_url
 from platform_api.services.v2.subscription_service import SubscriptionService
 from platform_api.exceptions import NotFoundError, ValidationError
-
+from platform_api.services.pricing_display import (
+    resolve_pricing_credit_lines,
+    resolve_pricing_features,
+)
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions-v2"])
 
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
@@ -75,6 +78,7 @@ class PlanResponse(BaseModel):
     monthly_credits: int
     daily_credits: int = 0
     features: list[str]
+    pricing_credit_lines: list[str] = Field(default_factory=list)
     display_order: int
     is_public: bool
 
@@ -147,23 +151,6 @@ async def list_plans(service: SubscriptionServiceDep) -> PlansListResponse:
     """
     plans = await service.get_plans(is_public=True)
     
-    def format_features(features_dict: dict | None) -> list[str]:
-        """Convert features dict to user-friendly list."""
-        result = []
-        if features_dict.get("music"):
-            result.append("High-quality AI music generation")
-        if features_dict.get("images"):
-            result.append("AI image generation")
-        if features_dict.get("topup"):
-            result.append("Purchase additional credit packs")
-        result.extend([
-            "Web Create",
-            "Desktop studio",
-            "Dual channels",
-            "Top-up packs",
-        ])
-        return result
-    
     return PlansListResponse(
         plans=[
             PlanResponse(
@@ -173,7 +160,17 @@ async def list_plans(service: SubscriptionServiceDep) -> PlansListResponse:
                 billing_cycle="yearly" if plan.billing_cycle_days >= 365 else "monthly",
                 monthly_credits=plan.monthly_credits,
                 daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
-                features=format_features(plan.features or {}),
+                features=resolve_pricing_features(
+                    getattr(plan, "pricing_features", None),
+                    name=plan.name,
+                    price_cents=plan.price_cents,
+                    daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+                ),
+                pricing_credit_lines=resolve_pricing_credit_lines(
+                    getattr(plan, "pricing_credit_lines", None),
+                    monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
+                    daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+                ),
                 display_order=plan.display_order,
                 is_public=plan.is_public
             )

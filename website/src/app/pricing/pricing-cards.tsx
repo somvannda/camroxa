@@ -4,13 +4,12 @@ import { useState } from "react";
 import { Check, Crown, Gift, Sparkles, Zap } from "lucide-react";
 
 import {
-  FREE_CARD_BULLETS,
-  PUBLIC_CARD_BULLETS,
+  cardBulletsForPlan,
   calculateYearlyDiscount,
-  creditsToSongs,
+  creditCaptionLines,
+  creditHeadlineNumber,
   formatMusicWebPrice,
   groupPublicPaidTiers,
-  monthlyCreditsOf,
   publicFreePlans,
   type PublicCatalogPlan,
 } from "@/lib/credits-only-public";
@@ -101,15 +100,19 @@ export function PricingCards({
             </div>
             <div className="mb-6 border-b border-purple-500/20 pb-6 text-center">
               <div className="text-3xl font-bold text-purple-400">
-                {Number(free.daily_credits || free.monthly_credits || 0)}
+                {creditHeadlineNumber(free).toLocaleString()}
               </div>
-              <div className="text-sm text-gray-400">
-                {Number(free.daily_credits || 0) > 0 ? "daily credits" : "credits"}
-              </div>
-              <div className="mt-1 text-xs text-gray-500">Resets at midnight</div>
+              {creditCaptionLines(free).map((line, index) => (
+                <div
+                  key={`${line}-${index}`}
+                  className={index === 0 ? "text-sm text-gray-400" : "mt-1 text-xs text-gray-500"}
+                >
+                  {line}
+                </div>
+              ))}
             </div>
             <ul className="mb-8 space-y-3">
-              {FREE_CARD_BULLETS.map((feature) => (
+              {cardBulletsForPlan(free).map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-400" />
                   <span className="text-sm text-gray-300">{feature}</span>
@@ -131,8 +134,6 @@ export function PricingCards({
               ? family.yearly ?? family.monthly ?? family.representative
               : family.monthly ?? family.yearly ?? family.representative
           ) as PublicPlan;
-          const credits = monthlyCreditsOf(plan);
-          const songs = creditsToSongs(credits);
           const isPopular = index === 1;
           const Icon = ICONS[Math.min(index, ICONS.length - 1)];
           const pricePerMonth =
@@ -181,13 +182,19 @@ export function PricingCards({
               </div>
               <div className="mb-6 border-b border-purple-500/20 pb-6 text-center">
                 <div className="text-3xl font-bold text-purple-400">
-                  {credits.toLocaleString()}
+                  {creditHeadlineNumber(plan).toLocaleString()}
                 </div>
-                <div className="text-sm text-gray-400">credits per month</div>
-                <div className="mt-1 text-xs text-gray-500">≈ {songs} songs/mo</div>
+                {creditCaptionLines(plan).map((line, index) => (
+                  <div
+                    key={`${line}-${index}`}
+                    className={index === 0 ? "text-sm text-gray-400" : "mt-1 text-xs text-gray-500"}
+                  >
+                    {line}
+                  </div>
+                ))}
               </div>
               <ul className="mb-8 space-y-3">
-                {PUBLIC_CARD_BULLETS.map((feature) => (
+                {cardBulletsForPlan(plan).map((feature) => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-400" />
                     <span className="text-sm text-gray-300">{feature}</span>

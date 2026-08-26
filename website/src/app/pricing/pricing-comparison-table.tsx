@@ -2,10 +2,10 @@ import { Check } from "lucide-react";
 
 import { formatPlanPrice, type PlanTermDiscounts } from "@/lib/plan-pricing";
 import {
-  PUBLIC_CARD_BULLETS,
-  creditsToSongs,
+  cardBulletsForPlan,
+  creditCaptionLines,
+  creditHeadlineNumber,
   groupPublicPaidTiers,
-  monthlyCreditsOf,
   publicFreePlans,
   type PublicCatalogPlan,
 } from "@/lib/credits-only-public";
@@ -35,10 +35,10 @@ export type PublicPlan = PublicCatalogPlan & {
   offer: PublicPlanOffer | null;
 };
 
-function CardBullets() {
+function CardBullets({ plan }: { plan: PublicCatalogPlan }) {
   return (
     <ul className="mb-2 space-y-2">
-      {PUBLIC_CARD_BULLETS.map((feature) => (
+      {cardBulletsForPlan(plan).map((feature) => (
         <li key={feature} className="flex items-start gap-2 text-sm text-slate-200/82">
           <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/10 text-emerald-100">
             <Check className="h-3 w-3" aria-hidden="true" />
@@ -51,7 +51,6 @@ function CardBullets() {
 }
 
 function FreeCard({ plan }: { plan: PublicPlan }) {
-  const daily = Math.max(0, Number(plan.daily_credits || 0));
   return (
     <article className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 ring-1 ring-white/6">
       <div className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Free</div>
@@ -61,12 +60,21 @@ function FreeCard({ plan }: { plan: PublicPlan }) {
         <span className="text-slate-400">/month</span>
       </div>
       <div className="mt-5 border-b border-white/8 pb-5">
-        <div className="text-3xl font-semibold text-emerald-200">{daily.toLocaleString()}</div>
-        <div className="text-sm text-slate-400">daily credits</div>
+        <div className="text-3xl font-semibold text-emerald-200">
+          {creditHeadlineNumber(plan).toLocaleString()}
+        </div>
+        {creditCaptionLines(plan).map((line, index) => (
+          <div
+            key={`${line}-${index}`}
+            className={index === 0 ? "text-sm text-slate-400" : "mt-1 text-xs text-slate-500"}
+          >
+            {line}
+          </div>
+        ))}
       </div>
       <p className="mt-4 text-sm text-slate-300/75">Shown only because the Free plan is public.</p>
       <div className="mt-5">
-        <CardBullets />
+        <CardBullets plan={plan} />
       </div>
     </article>
   );
@@ -90,8 +98,6 @@ export function PricingComparisonTable({
         {free ? <FreeCard plan={free} /> : null}
         {families.map((family, index) => {
           const plan = (family.monthly ?? family.representative) as PublicPlan;
-          const credits = monthlyCreditsOf(plan);
-          const songs = creditsToSongs(credits);
           const featured = index === 1;
           const discounted = plan.effective_price_cents < plan.price_cents;
           return (
@@ -119,20 +125,29 @@ export function PricingComparisonTable({
                 <div className="mt-1 text-xs text-fuchsia-200/90">Launch offer active</div>
               ) : null}
               <div className="mt-5 border-b border-white/8 pb-5">
-                <div className="text-3xl font-semibold text-emerald-200">{credits.toLocaleString()}</div>
-                <div className="text-sm text-slate-400">credits / month</div>
-                <div className="mt-1 text-xs text-slate-500">~ {songs.toLocaleString()} songs/mo</div>
+                <div className="text-3xl font-semibold text-emerald-200">
+                  {creditHeadlineNumber(plan).toLocaleString()}
+                </div>
+                {creditCaptionLines(plan).map((line, index) => (
+                  <div
+                    key={`${line}-${index}`}
+                    className={index === 0 ? "text-sm text-slate-400" : "mt-1 text-xs text-slate-500"}
+                  >
+                    {line}
+                  </div>
+                ))}
               </div>
               <div className="mt-5">
-                <CardBullets />
+                <CardBullets plan={plan} />
               </div>
             </article>
           );
         })}
       </div>
       <p className="text-sm leading-6 text-slate-300/70">
-        Dual-channel desktop is included on every card, not a separate plan name. Song hint is
-        floor(monthly credits / 10). Hidden $79 desktop rows stay off this page.
+        Dual-channel desktop is included on every card, not a separate plan name. Song hint uses
+        the Credits-page music cost (one generate returns two songs). Hidden $79 desktop rows stay
+        off this page.
       </p>
     </div>
   );

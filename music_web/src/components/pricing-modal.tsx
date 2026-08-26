@@ -10,9 +10,9 @@ import {
   calculateDiscount,
   formatPrice,
   formatPlanDisplayName,
-  FREE_CARD_BULLETS,
-  PUBLIC_CARD_BULLETS,
-  creditsToSongs,
+  cardBulletsForPlan,
+  creditCaptionLines,
+  creditHeadlineNumber,
   type SubscriptionPlan,
 } from '@/lib/subscription-api';
 import CutluyCheckoutModal from '@/components/cutluy-checkout-modal';
@@ -214,12 +214,23 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                   </div>
                 </div>
                 <div className="mt-4 rounded-lg bg-white/5 p-3">
-                  <div className="text-sm text-slate-400">Daily Credits</div>
-                  <div className="mt-1 text-2xl font-bold text-white">{freePlan.daily_credits || freePlan.monthly_credits || 0}</div>
-                  <div className="text-xs text-slate-500">Credit reset daily</div>
+                  {(() => {
+                    const [unit, ...hints] = creditCaptionLines(freePlan);
+                    return (
+                      <>
+                        <div className="text-sm text-slate-400">{unit}</div>
+                        <div className="mt-1 text-2xl font-bold text-white">
+                          {creditHeadlineNumber(freePlan).toLocaleString()}
+                        </div>
+                        {hints.map((line) => (
+                          <div key={line} className="text-xs text-slate-500">{line}</div>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
                 <ul className="mt-6 flex-1 space-y-3">
-                  {FREE_CARD_BULLETS.map((feature) => (
+                  {cardBulletsForPlan(freePlan).map((feature) => (
                     <li key={feature} className="flex items-start gap-2 text-sm text-slate-300">
                       <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-400" />
                       <span>{feature}</span>
@@ -302,15 +313,24 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                     </div>
 
                     <div className="mt-4 rounded-lg bg-white/5 p-3">
-                      <div className="text-sm text-slate-400">Monthly Credits</div>
-                      <div className="mt-1 text-2xl font-bold text-white">
-                        {plan.monthly_credits.toLocaleString()}
-                      </div>
-                      <div className="text-xs text-slate-500">~ {creditsToSongs(plan.monthly_credits)} songs/mo</div>
+                      {(() => {
+                        const [unit, ...hints] = creditCaptionLines(plan);
+                        return (
+                          <>
+                            <div className="text-sm text-slate-400">{unit}</div>
+                            <div className="mt-1 text-2xl font-bold text-white">
+                              {creditHeadlineNumber(plan).toLocaleString()}
+                            </div>
+                            {hints.map((line) => (
+                              <div key={line} className="text-xs text-slate-500">{line}</div>
+                            ))}
+                          </>
+                        );
+                      })()}
                     </div>
 
                     <ul className="mt-6 flex-1 space-y-3">
-                      {PUBLIC_CARD_BULLETS.map((feature) => (
+                      {cardBulletsForPlan(plan).map((feature) => (
                         <li key={feature} className="flex items-start gap-2 text-sm text-slate-300">
                           <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-400" />
                           <span>{feature}</span>

@@ -17,6 +17,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Choose Your Plan song hints are ×2 (one generate = two songs) and use Admin feature lines when the catalog sends them. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 - Sandbox desktop env now points at `/api/v3` (`camxora_python/.env.sandbox`). See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
 - All API calls now target `/api/v3` exclusively. Default base URL, env examples, sandbox/production shortcuts, WebSocket helper, health-URL extractor, and marketplace asset resolver all updated. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Desktop login shows a clear paid-plan message when a Free account tries to sign in (`X-Camxora-Client: desktop`). See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.

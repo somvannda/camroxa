@@ -33,6 +33,8 @@ PATCHABLE_PLAN_FIELDS = frozenset(
         "daily_credits",
         "is_public",
         "is_active",
+        "pricing_features",
+        "pricing_credit_lines",
         *PLAN_OP_COLUMNS.values(),
     }
 )

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
+from platform_api.services.pricing_display import credits_to_songs
 from platform_api.services.v2.payment_security import sanitize_music_web_return_url
 from platform_api.services.v2.topup_service import TopupService
 from platform_api.exceptions import NotFoundError, ValidationError
@@ -108,7 +109,7 @@ async def list_packs(service: TopupServiceDep) -> CreditPacksListResponse:
     Each pack shows:
     - Credits amount
     - Price in cents
-    - Songs equivalent (assuming 10 credits per song)
+    - Songs equivalent (10 credits = 1 generate = 2 songs)
     """
     packs = await service.get_credit_packs()
     
@@ -122,7 +123,7 @@ async def list_packs(service: TopupServiceDep) -> CreditPacksListResponse:
                 total_credits=pack.total_credits,
                 price_cents=pack.price_cents,
                 display_order=pack.display_order,
-                songs_equivalent=pack.total_credits // 10
+                songs_equivalent=credits_to_songs(pack.total_credits)
             )
             for pack in packs
         ]

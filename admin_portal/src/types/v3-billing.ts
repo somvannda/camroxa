@@ -32,6 +32,8 @@ export type V3Plan = {
   image_credits: number | null;
   video_credits: number | null;
   merge_credits: number | null;
+  pricing_features?: string[];
+  pricing_credit_lines?: string[];
 };
 
 export type V3PlanPatch = {
@@ -47,6 +49,8 @@ export type V3PlanPatch = {
   image_credits?: number | null;
   video_credits?: number | null;
   merge_credits?: number | null;
+  pricing_features?: string[];
+  pricing_credit_lines?: string[];
 };
 
 export const CREDITS_ONLY_V3_CHARGE_SETTING_KEY = 'credits_only_v3_charge';

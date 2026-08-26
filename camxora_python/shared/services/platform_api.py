@@ -198,7 +198,8 @@ class PlatformApi:
                     price_cents=int(item.effective_price_cents or item.price_cents),
                     billing_cycle=cycle,
                     monthly_credits=int(item.monthly_credits or 0),
-                    features=[],
+                    credits_per_generate=float(getattr(item, "credits_per_generate", 10) or 10),
+                    features=list(item.pricing_features or []),
                     display_order=int(item.price_cents or 0),
                     is_public=True,
                 )

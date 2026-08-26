@@ -33,6 +33,7 @@ import {
   emptyCreditsOnlyForm,
   formFromCredits,
   parseOptionalCredits,
+  pricingFeaturesFromText,
   type CreditsOnlyFormValues,
 } from '@/pages/plans/credits-only-plan-fields';
 import { V3_PLAN_OPS, type V3Plan, type V3PlanPatch } from '@/types/v3-billing';
@@ -48,6 +49,8 @@ function buildPatch(values: CreditsOnlyFormValues): V3PlanPatch | null {
     daily_credits: daily,
     is_public: values.is_public,
     is_active: values.is_active,
+    pricing_features: pricingFeaturesFromText(values.pricing_features),
+    pricing_credit_lines: pricingFeaturesFromText(values.pricing_credit_lines),
   };
   for (const op of V3_PLAN_OPS) {
     const parsed = parseOptionalCredits(values.ops[op]);
@@ -95,10 +98,10 @@ function formatApproxSongs(plan: V3Plan): string {
   const monthly = Number(plan.monthly_credits ?? 0);
   const daily = Number(plan.daily_credits ?? 0);
   if (monthly > 0) {
-    return String(Math.floor(monthly / 10));
+    return String(Math.floor(monthly / 10) * 2);
   }
   if (daily > 0) {
-    return `${Math.floor(daily / 10)}/day`;
+    return `${Math.floor(daily / 10) * 2}/day`;
   }
   return '—';
 }
@@ -165,7 +168,7 @@ function PlansTable({
           <TableHead>Price</TableHead>
           <TableHead>Billing</TableHead>
           <TableHead className="text-right">Grant</TableHead>
-          <TableHead className="text-right" title="Display only. floor(grant / 10). Not a quota.">
+          <TableHead className="text-right" title="Display only. floor(grant / 10) × 2 songs. Not a quota.">
             ≈ Songs
           </TableHead>
           {OP_COLUMNS.map((column) => (
@@ -377,7 +380,7 @@ export function CreditsOnlySection() {
             <div>
               <CardTitle className="text-lg text-slate-100">Credits-only catalog</CardTitle>
               <CardDescription className="mt-1.5">
-                Live rows only. ≈ Songs is display-only: floor(grant / 10). It is not a quota.
+                Live rows only. ≈ Songs is display-only: floor(grant / 10) × 2. It is not a quota.
                 Per-op 0 = included. Empty (—) falls back to the Credits page. Extra profiles do
                 not multiply credits.
               </CardDescription>

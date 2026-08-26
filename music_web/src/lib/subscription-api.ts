@@ -18,6 +18,9 @@ export type SubscriptionPlan = {
   lyric_credits?: number;
   music_credits?: number;
   features: string[];
+  pricing_features?: string[];
+  pricing_credit_lines?: string[];
+  credits_per_generate?: number;
   display_order: number;
   is_public: boolean;
 };
@@ -199,6 +202,10 @@ type PublicPlanRow = {
   billing_cycle_days?: number;
   is_public?: boolean;
   is_active?: boolean;
+  pricing_features?: string[];
+  pricing_credit_lines?: string[];
+  features?: string[];
+  credits_per_generate?: number;
 };
 
 function asPublicRows(payload: unknown): PublicPlanRow[] {
@@ -218,14 +225,22 @@ function overlayPublicPlan(plan: SubscriptionPlan, pub?: PublicPlanRow): Subscri
       daily_credits: Number(plan.daily_credits || 0),
       lyric_credits: Number(plan.lyric_credits || 0),
       music_credits: Number(plan.music_credits || 0),
+      credits_per_generate: Number(plan.credits_per_generate || plan.music_credits || 10),
     };
   }
+  const bullets = normalizeFeatureLines(pub.pricing_features ?? pub.features ?? plan.features);
+  const creditLines = normalizeFeatureLines(pub.pricing_credit_lines ?? plan.pricing_credit_lines);
   return {
     ...plan,
     daily_credits: Number(pub.daily_credits ?? plan.daily_credits ?? 0),
     monthly_credits: Number(plan.monthly_credits || pub.monthly_credits || 0),
     lyric_credits: Number(pub.lyric_credits ?? plan.lyric_credits ?? 0),
     music_credits: Number(pub.music_credits ?? plan.music_credits ?? 0),
+    credits_per_generate: Number(
+      pub.credits_per_generate ?? plan.credits_per_generate ?? pub.music_credits ?? plan.music_credits ?? 10,
+    ),
+    features: bullets.length ? bullets : plan.features,
+    pricing_credit_lines: creditLines.length ? creditLines : plan.pricing_credit_lines,
   };
 }
 
@@ -276,7 +291,8 @@ export async function fetchSubscriptionPlans(): Promise<{ plans: SubscriptionPla
       daily_credits: Number(row.daily_credits || 0),
       lyric_credits: Number(row.lyric_credits || 0),
       music_credits: Number(row.music_credits || 0),
-      features: [],
+      features: normalizeFeatureLines(row.pricing_features ?? row.features),
+      pricing_credit_lines: normalizeFeatureLines(row.pricing_credit_lines),
       display_order: 0,
       is_public: true,
     });
@@ -469,7 +485,7 @@ export function matchCurrentPlan(
 }
 
 /**
- * Format credits as songs equivalent (10 credits = 1 song)
+ * Format credits as songs equivalent (10 credits = 1 generate = 2 songs)
  */
 export const PUBLIC_CARD_BULLETS = [
   'Web Create',
@@ -484,7 +500,18 @@ export const FREE_CARD_BULLETS = [
   'Top-up packs',
 ] as const;
 
-export function cardBulletsForPlan(plan: { name: string; price_cents: number }): readonly string[] {
+export function normalizeFeatureLines(value?: string[] | null): string[] {
+  return [...new Set((value ?? []).map((line) => String(line).trim()).filter(Boolean))];
+}
+
+export function cardBulletsForPlan(plan: {
+  name: string;
+  price_cents: number;
+  features?: string[];
+  pricing_features?: string[];
+}): readonly string[] {
+  const fromApi = normalizeFeatureLines(plan.pricing_features ?? plan.features);
+  if (fromApi.length) return fromApi;
   const name = plan.name.replace(/[_-]/g, ' ').toLowerCase();
   if (plan.price_cents <= 0 && name.includes('free')) {
     return FREE_CARD_BULLETS;
@@ -492,8 +519,46 @@ export function cardBulletsForPlan(plan: { name: string; price_cents: number }):
   return PUBLIC_CARD_BULLETS;
 }
 
-export function creditsToSongs(credits: number): number {
-  return Math.floor(Math.max(0, Number(credits) || 0) / 10);
+export function creditHeadlineNumber(plan: {
+  monthly_credits?: number;
+  daily_credits?: number;
+}): number {
+  const daily = Number(plan.daily_credits || 0);
+  if (daily > 0) return daily;
+  return Number(plan.monthly_credits || 0);
+}
+
+export function creditCaptionLines(plan: {
+  monthly_credits?: number;
+  daily_credits?: number;
+  pricing_credit_lines?: string[];
+  credits_per_generate?: number;
+  music_credits?: number;
+}): string[] {
+  const unique = normalizeFeatureLines(plan.pricing_credit_lines);
+  if (unique.length) return unique;
+  const daily = Number(plan.daily_credits || 0);
+  const monthly = Number(plan.monthly_credits || 0);
+  const perGenerate = plan.credits_per_generate ?? plan.music_credits;
+  if (daily > 0) {
+    return [
+      "daily credits",
+      `≈ ${creditsToSongs(daily, perGenerate).toLocaleString("en-US")} songs/day`,
+      "Resets at midnight",
+    ];
+  }
+  if (monthly > 0) {
+    return [
+      "credits per month",
+      `≈ ${creditsToSongs(monthly, perGenerate).toLocaleString("en-US")} songs/mo`,
+    ];
+  }
+  return ["credits"];
+}
+
+export function creditsToSongs(credits: number, creditsPerGenerate = 10): number {
+  const per = Number(creditsPerGenerate) > 0 ? Number(creditsPerGenerate) : 10;
+  return Math.floor(Math.max(0, Number(credits) || 0) / per) * 2;
 }
 
 export function isHiddenLegacyPrice(plan: { price_cents: number }): boolean {

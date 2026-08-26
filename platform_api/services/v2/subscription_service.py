@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import asyncpg
 
@@ -67,6 +67,8 @@ class Plan:
     is_public: bool
     display_order: int
     daily_credits: int = 0
+    pricing_features: list[str] = field(default_factory=list)
+    pricing_credit_lines: list[str] = field(default_factory=list)
 
 
 def _row_to_plan(row: dict) -> Plan:
@@ -75,6 +77,10 @@ def _row_to_plan(row: dict) -> Plan:
     data["features"] = _parse_features(data.get("features"))
     data["daily_credits"] = int(data.get("daily_credits") or 0)
     data["monthly_credits"] = int(data.get("monthly_credits") or 0)
+    from platform_api.services.pricing_display import normalize_pricing_features
+
+    data["pricing_features"] = normalize_pricing_features(data.get("pricing_features"))
+    data["pricing_credit_lines"] = normalize_pricing_features(data.get("pricing_credit_lines"))
     return Plan(**data)
 
 
@@ -146,7 +152,9 @@ class SubscriptionService:
             SELECT 
                 id, name, plan_type, price_cents, billing_cycle_days,
                 monthly_credits, COALESCE(daily_credits, 0) AS daily_credits,
-                monthly_song_limit AS monthly_song_quota, features, 
+                monthly_song_limit AS monthly_song_quota, features,
+                COALESCE(pricing_features, '{}'::text[]) AS pricing_features,
+                COALESCE(pricing_credit_lines, '{}'::text[]) AS pricing_credit_lines,
                 is_public, display_order
             FROM plans
             WHERE plan_type = $1
@@ -170,6 +178,8 @@ class SubscriptionService:
                 id, name, plan_type, price_cents, billing_cycle_days,
                 monthly_credits, COALESCE(daily_credits, 0) AS daily_credits,
                 monthly_song_limit AS monthly_song_quota, features,
+                COALESCE(pricing_features, '{}'::text[]) AS pricing_features,
+                COALESCE(pricing_credit_lines, '{}'::text[]) AS pricing_credit_lines,
                 is_public, display_order
             FROM plans
             WHERE id = $1 AND is_active = true
@@ -184,6 +194,8 @@ class SubscriptionService:
                 id, name, plan_type, price_cents, billing_cycle_days,
                 monthly_credits, COALESCE(daily_credits, 0) AS daily_credits,
                 monthly_song_limit AS monthly_song_quota, features,
+                COALESCE(pricing_features, '{}'::text[]) AS pricing_features,
+                COALESCE(pricing_credit_lines, '{}'::text[]) AS pricing_credit_lines,
                 is_public, display_order
             FROM plans
             WHERE name = $1 AND is_active = true

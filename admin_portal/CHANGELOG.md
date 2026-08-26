@@ -9,7 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Credits-only plan editor has **Pricing page features** and **Pricing credit captions** textareas (one line per bullet / caption). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
+
 ### Changed
+
+- ≈ Songs is floor(grant / 10) × 2. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 - All API calls target `/api/v3` only; all hooks, pages, and http-client updated. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Usage operation labels include Web leftover / credit pack. See `docs/changelog/2026-08-23-wallet-api-audit-e2e.md`.
 - `/users` drops Tag; Plan and Credits come from the unified catalog and wallet. `/licenses` lists desktop + CutLuy web subscribers. See `docs/changelog/2026-08-23-admin-users-licenses-wallet.md`.

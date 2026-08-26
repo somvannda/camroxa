@@ -80,6 +80,8 @@ class Plan:
     monthly_credits: int | None = None
     daily_credits: int | None = None
     features: dict[str, bool] = field(default_factory=dict)
+    pricing_features: list[str] = field(default_factory=list)
+    pricing_credit_lines: list[str] = field(default_factory=list)
     is_public: bool = False
     display_order: int = 0
     is_active: bool = True

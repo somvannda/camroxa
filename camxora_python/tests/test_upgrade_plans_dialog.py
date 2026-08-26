@@ -18,8 +18,9 @@ def test_format_subscription_price() -> None:
 
 
 def test_credits_to_songs() -> None:
-    assert credits_to_songs(1000) == 100
-    assert credits_to_songs(3500) == 350
+    assert credits_to_songs(1000) == 200
+    assert credits_to_songs(3500) == 700
+    assert credits_to_songs(50) == 10
 
 
 def test_format_plan_display_name() -> None:

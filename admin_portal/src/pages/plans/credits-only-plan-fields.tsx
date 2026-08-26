@@ -1,5 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { V3_PLAN_OPS, type V3PlanOp } from '@/types/v3-billing';
 
 export type CreditsOnlyFormValues = {
@@ -7,8 +8,21 @@ export type CreditsOnlyFormValues = {
   daily_credits: string;
   is_public: boolean;
   is_active: boolean;
+  pricing_features: string;
+  pricing_credit_lines: string;
   ops: Record<V3PlanOp, string>;
 };
+
+export function pricingFeaturesToText(lines?: string[] | null): string {
+  return (lines ?? []).map((line) => line.trim()).filter(Boolean).join('\n');
+}
+
+export function pricingFeaturesFromText(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
 
 const OP_LABELS: Record<V3PlanOp, string> = {
   lyric: 'Lyric',
@@ -27,6 +41,8 @@ export function emptyCreditsOnlyForm(): CreditsOnlyFormValues {
     daily_credits: '0',
     is_public: false,
     is_active: true,
+    pricing_features: '',
+    pricing_credit_lines: '',
     ops: {
       lyric: '',
       title: '',
@@ -45,6 +61,8 @@ export function formFromCredits(plan: {
   daily_credits?: number | null;
   is_public?: boolean;
   is_active?: boolean;
+  pricing_features?: string[] | null;
+  pricing_credit_lines?: string[] | null;
   lyric_credits?: number | null;
   title_credits?: number | null;
   album_credits?: number | null;
@@ -61,6 +79,8 @@ export function formFromCredits(plan: {
     daily_credits: String(plan.daily_credits ?? 0),
     is_public: Boolean(plan.is_public),
     is_active: plan.is_active !== false,
+    pricing_features: pricingFeaturesToText(plan.pricing_features),
+    pricing_credit_lines: pricingFeaturesToText(plan.pricing_credit_lines),
     ops: {
       lyric: opValue(plan.lyric_credits),
       title: opValue(plan.title_credits),
@@ -90,10 +110,15 @@ export function CreditsOnlyPlanFields({
   onChange: (next: CreditsOnlyFormValues) => void;
 }) {
   const monthly = Number.parseInt(values.monthly_credits, 10);
+  const daily = Number.parseInt(values.daily_credits, 10);
   const songPreview =
     Number.isInteger(monthly) && monthly >= 0
-      ? `≈ ${Math.floor(monthly / 10)} songs (10 credits = 1 generate = 2 versions)`
+      ? `≈ ${Math.floor(monthly / 10) * 2} songs (10 credits = 1 generate = 2 songs)`
       : 'Enter a whole number of monthly credits.';
+  const dailySongPreview =
+    Number.isInteger(daily) && daily > 0
+      ? `≈ ${Math.floor(daily / 10) * 2} songs/day`
+      : null;
 
   return (
     <div className="space-y-4 rounded-lg border border-violet-500/20 bg-violet-500/5 p-4">
@@ -126,7 +151,45 @@ export function CreditsOnlyPlanFields({
             value={values.daily_credits}
             onChange={(e) => onChange({ ...values, daily_credits: e.target.value })}
           />
+          {dailySongPreview ? <p className="text-xs text-slate-500">{dailySongPreview}</p> : null}
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="v3-pricing-features">Pricing page features</Label>
+        <Textarea
+          id="v3-pricing-features"
+          rows={5}
+          value={values.pricing_features}
+          onChange={(e) => onChange({ ...values, pricing_features: e.target.value })}
+          placeholder={'Web Create\nDesktop studio\nDual channels\nTop-up packs'}
+        />
+        <p className="text-xs text-slate-500">
+          One line per bullet on /pricing. Empty lines are ignored. Leave blank to use the default
+          Free or paid list.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="v3-pricing-credit-lines">Pricing credit captions</Label>
+        <Textarea
+          id="v3-pricing-credit-lines"
+          rows={4}
+          value={values.pricing_credit_lines}
+          onChange={(e) => onChange({ ...values, pricing_credit_lines: e.target.value })}
+          placeholder={
+            Number.isInteger(daily) && daily > 0
+              ? ['daily credits', `≈ ${Math.floor(daily / 10) * 2} songs/day`, 'Resets at midnight'].join('\n')
+              : Number.isInteger(monthly) && monthly > 0
+                ? ['credits per month', `≈ ${Math.floor(monthly / 10) * 2} songs/mo`].join('\n')
+                : 'credits'
+          }
+        />
+        <p className="text-xs text-slate-500">
+          Lines under the big credit number. First line is the unit label; extra lines are the
+          gray hints. Leave blank to follow daily/monthly credits (no midnight text when daily is
+          0).
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-6">
