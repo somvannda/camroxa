@@ -145,6 +145,9 @@ class PublicPlan(BaseModel):
     daily_image_limit_per_channel: int = 0
     monthly_credits: int = 0
     daily_credits: int = 0
+    pricing_features: list[str] = Field(default_factory=list)
+    pricing_credit_lines: list[str] = Field(default_factory=list)
+    credits_per_generate: float = 10
     offer: PublicPlanOffer | None = None
 
     model_config = {"extra": "ignore"}
@@ -158,6 +161,7 @@ class WebMusicSubscriptionPlan(BaseModel):
     price_cents: int
     billing_cycle: str = "monthly"
     monthly_credits: int = 0
+    credits_per_generate: float = 10
     features: list[str] = Field(default_factory=list)
     display_order: int = 0
     is_public: bool = True

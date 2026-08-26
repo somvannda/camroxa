@@ -32,8 +32,12 @@ def format_subscription_price(cents: int) -> str:
     return f"${max(0, int(cents)) / 100.0:,.2f}"
 
 
-def credits_to_songs(credits: int) -> int:
-    return max(0, int(credits)) // CREDITS_PER_SONG
+def credits_to_songs(credits: int, credits_per_generate: float | int | None = None) -> int:
+    per = float(credits_per_generate or CREDITS_PER_SONG)
+    if per <= 0:
+        per = float(CREDITS_PER_SONG)
+    generates = int(max(0, int(credits)) / per)
+    return generates * 2
 
 
 def format_plan_display_name(plan_name: str) -> str:
@@ -472,7 +476,7 @@ class UpgradePlansDialog(QDialog):
 
     def _paid_card(self, plan: WebMusicSubscriptionPlan) -> QFrame:
         display_name = format_plan_display_name(plan.name)
-        songs = credits_to_songs(plan.monthly_credits)
+        songs = credits_to_songs(plan.monthly_credits, plan.credits_per_generate)
         cycle_suffix = "/mo" if self._billing_cycle == "monthly" else "/yr"
 
         card = QFrame()

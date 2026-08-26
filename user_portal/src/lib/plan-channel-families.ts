@@ -107,10 +107,11 @@ function formatLimit(value: number | null): string {
 
 export function planHighlightLines(plan: PublicPlan): string[] {
   const credits = Number(plan.monthly_credits || 0);
-  const songs = Math.floor(credits / 10);
+  const perGenerate = Number(plan.credits_per_generate || 10);
+  const songs = Math.floor(credits / (perGenerate > 0 ? perGenerate : 10)) * 2;
   return [
     credits > 0 ? `${credits.toLocaleString()} credits / month` : "Monthly credit grant",
-    songs > 0 ? `~ ${songs.toLocaleString()} songs/mo` : "Song hint = floor(credits / 10)",
+    songs > 0 ? `~ ${songs.toLocaleString()} songs/mo` : "Song hint = floor(credits / 10) × 2",
     "Web Create + Desktop studio",
     "Dual channels (not extra credits)",
   ];

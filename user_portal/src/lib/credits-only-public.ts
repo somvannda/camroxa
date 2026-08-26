@@ -1,11 +1,19 @@
 /** Public catalog helpers — Starter / Creator / Studio (+ Free only if public). */
 
-export const CREDITS_PER_SONG = 10;
+export const CREDITS_PER_GENERATE = 10;
+export const SONGS_PER_GENERATE = 2;
+export const CREDITS_PER_SONG = CREDITS_PER_GENERATE;
 
 export const PUBLIC_CARD_BULLETS = [
   'Web Create',
   'Desktop studio',
   'Dual channels',
+  'Top-up packs',
+] as const;
+
+export const FREE_CARD_BULLETS = [
+  'Web Create',
+  'Daily credit reset',
   'Top-up packs',
 ] as const;
 
@@ -20,10 +28,59 @@ export type PublicCatalogPlan = {
   monthly_credits?: number;
   daily_credits?: number;
   monthly_song_limit?: number | null;
+  pricing_features?: string[];
+  pricing_credit_lines?: string[];
+  features?: string[];
+  credits_per_generate?: number;
 };
 
-export function creditsToSongs(credits: number): number {
-  return Math.floor(Math.max(0, Number(credits) || 0) / CREDITS_PER_SONG);
+export function creditsToSongs(
+  credits: number,
+  creditsPerGenerate: number = CREDITS_PER_GENERATE,
+): number {
+  const per = Number(creditsPerGenerate) > 0 ? Number(creditsPerGenerate) : CREDITS_PER_GENERATE;
+  return Math.floor(Math.max(0, Number(credits) || 0) / per) * SONGS_PER_GENERATE;
+}
+
+export function creditHeadlineNumber(plan: Pick<PublicCatalogPlan, "monthly_credits" | "daily_credits">): number {
+  const daily = Number(plan.daily_credits || 0);
+  if (daily > 0) return daily;
+  return Number(plan.monthly_credits || 0);
+}
+
+export function creditCaptionLines(plan: Pick<PublicCatalogPlan, "monthly_credits" | "daily_credits" | "pricing_credit_lines" | "credits_per_generate">): string[] {
+  const unique = [
+    ...new Set((plan.pricing_credit_lines ?? []).map((line) => String(line).trim()).filter(Boolean)),
+  ];
+  if (unique.length) return unique;
+  const daily = Number(plan.daily_credits || 0);
+  const monthly = Number(plan.monthly_credits || 0);
+  const perGenerate = plan.credits_per_generate;
+  if (daily > 0) {
+    return [
+      "daily credits",
+      `≈ ${creditsToSongs(daily, perGenerate).toLocaleString("en-US")} songs/day`,
+      "Resets at midnight",
+    ];
+  }
+  if (monthly > 0) {
+    return [
+      "credits per month",
+      `≈ ${creditsToSongs(monthly, perGenerate).toLocaleString("en-US")} songs/mo`,
+    ];
+  }
+  return ["credits"];
+}
+
+export function cardBulletsForPlan(plan: PublicCatalogPlan): string[] {
+  const raw = plan.pricing_features?.length ? plan.pricing_features : plan.features;
+  const unique = [...new Set((raw ?? []).map((line) => String(line).trim()).filter(Boolean))];
+  if (unique.length) return unique;
+  const name = (plan.name || '').toLowerCase();
+  if (Number(plan.price_cents) <= 0 && name.includes('free')) {
+    return [...FREE_CARD_BULLETS];
+  }
+  return [...PUBLIC_CARD_BULLETS];
 }
 
 export function isHiddenLegacyPrice(plan: PublicCatalogPlan): boolean {

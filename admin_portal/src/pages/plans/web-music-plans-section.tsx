@@ -325,7 +325,7 @@ export function WebMusicPlansSection() {
             </CardTitle>
             <CardDescription className="mt-1 max-w-2xl">
               Manage music.camxora.com subscription tiers separately from desktop channel plans.
-              Credits renew each billing period; 10 credits = 1 song generation.
+              Credits renew each billing period; 10 credits = 1 generate = 2 songs.
             </CardDescription>
           </div>
           <Button size="sm" onClick={openCreatePlan}>

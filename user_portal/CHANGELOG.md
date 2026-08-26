@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Onboarding plan cards use Admin feature lines, credit captions, and ×2 song hints. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 - All API calls target `/api/v3` only (`platform-api.ts`, `middleware.ts`, invite page updated). See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Onboarding plan picker is three public credit cards. Song/draft/image comparison meters are gone. Unpublished dual-profile packs stay off public pricing. See `docs/changelog/2026-08-22-credits-only-public-cards-and-addon-skus.md`.
 

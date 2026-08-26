@@ -33,6 +33,9 @@ export type PublicPlan = {
   included_wallet_credits?: number;
   monthly_credits?: number;
   daily_credits?: number;
+  pricing_features?: string[];
+  pricing_credit_lines?: string[];
+  credits_per_generate?: number;
   offer: PublicPlanOffer | null;
 };
 

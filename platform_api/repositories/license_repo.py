@@ -33,7 +33,7 @@ _PLAN_SELECT = """
     daily_draft_limit_per_channel,
     daily_video_limit, daily_merge_limit,
     included_wallet_credits, plan_kind,
-    plan_type, monthly_credits, daily_credits, features, is_public, display_order,
+    plan_type, monthly_credits, daily_credits, features, pricing_features, pricing_credit_lines, is_public, display_order,
     is_active, effective_from, created_at, updated_at
 """
 
@@ -98,6 +98,12 @@ def _parse_plan_features(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _parse_pricing_features(value: Any) -> list[str]:
+    from platform_api.services.pricing_display import normalize_pricing_features
+
+    return normalize_pricing_features(value)
+
+
 def _row_to_plan(row: Any) -> Plan:
     """Convert an asyncpg Record to a Plan domain object."""
     return Plan(
@@ -122,6 +128,8 @@ def _row_to_plan(row: Any) -> Plan:
         monthly_credits=row.get("monthly_credits"),
         daily_credits=int(row.get("daily_credits") or 0),
         features=_parse_plan_features(row.get("features")),
+        pricing_features=_parse_pricing_features(row.get("pricing_features")),
+        pricing_credit_lines=_parse_pricing_features(row.get("pricing_credit_lines")),
         is_public=bool(row.get("is_public") or False),
         display_order=int(row.get("display_order") or 0),
         is_active=row["is_active"],

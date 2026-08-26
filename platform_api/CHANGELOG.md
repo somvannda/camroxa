@@ -18,6 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Plans store `pricing_features` (one line per /pricing bullet) and `pricing_credit_lines` (captions under the credit number). Admin can patch both. Public catalog returns them. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
+
+### Changed
+
+- Song hints use 10 credits = 1 generate = 2 songs (Free 50 → 10 songs/day). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
+
 ### Fixed
 
 - Free daily mint no longer stacks 50 credits on every `/me/credits` poll. Lot insert happens first; sandbox `duke@test.com` 4,150 was 83 stacked daily grants. Cutover now snapshots every wallet before/after leftover apply. See `docs/changelog/2026-08-25-daily-grant-idempotent-and-cutover-snapshot.md`.

@@ -9,9 +9,9 @@ import {
   formatPrice,
   formatPlanDisplayName,
   calculateDiscount,
-  creditsToSongs,
-  FREE_CARD_BULLETS,
-  PUBLIC_CARD_BULLETS,
+  cardBulletsForPlan,
+  creditCaptionLines,
+  creditHeadlineNumber,
   type SubscriptionPlan,
 } from '@/lib/subscription-api';
 import CutluyCheckoutModal from '@/components/cutluy-checkout-modal';
@@ -162,12 +162,20 @@ export default function PricingPageClient() {
               </div>
             </div>
             <div className="mb-6 border-b border-purple-500/20 pb-6 text-center">
-              <div className="text-3xl font-bold text-purple-400">{freePlan.daily_credits || freePlan.monthly_credits || 0}</div>
-              <div className="text-sm text-gray-400">{(freePlan.daily_credits || 0) > 0 ? "daily credits" : "credits"}</div>
-              <div className="mt-1 text-xs text-gray-500">Resets at midnight</div>
+              <div className="text-3xl font-bold text-purple-400">
+                {creditHeadlineNumber(freePlan).toLocaleString()}
+              </div>
+              {creditCaptionLines(freePlan).map((line, index) => (
+                <div
+                  key={`${line}-${index}`}
+                  className={index === 0 ? "text-sm text-gray-400" : "mt-1 text-xs text-gray-500"}
+                >
+                  {line}
+                </div>
+              ))}
             </div>
             <ul className="mb-8 space-y-3">
-              {FREE_CARD_BULLETS.map((feature) => (
+              {cardBulletsForPlan(freePlan).map((feature) => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-400" />
                     <span className="text-sm text-gray-300">{feature}</span>
@@ -190,7 +198,6 @@ export default function PricingPageClient() {
           </div>
           ) : null}
           {sortedPlans.map((plan, index) => {
-            const songs = creditsToSongs(plan.monthly_credits);
             const pricePerMonth =
               plan.billing_cycle === 'yearly'
                 ? plan.price_cents / 12
@@ -246,16 +253,22 @@ export default function PricingPageClient() {
 
                 {/* Credits */}
                 <div className="text-center mb-6 pb-6 border-b border-purple-500/20">
-                  <div className="text-3xl font-bold text-purple-400">{plan.monthly_credits.toLocaleString()}</div>
-                  <div className="text-sm text-gray-400">credits per month</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    ≈ {songs} songs/mo
+                  <div className="text-3xl font-bold text-purple-400">
+                    {creditHeadlineNumber(plan).toLocaleString()}
                   </div>
+                  {creditCaptionLines(plan).map((line, index) => (
+                    <div
+                      key={`${line}-${index}`}
+                      className={index === 0 ? "text-sm text-gray-400" : "text-xs text-gray-500 mt-1"}
+                    >
+                      {line}
+                    </div>
+                  ))}
                 </div>
 
                 {/* Features */}
                 <ul className="space-y-3 mb-8">
-                  {PUBLIC_CARD_BULLETS.map((feature) => (
+                  {cardBulletsForPlan(plan).map((feature) => (
                     <li key={feature} className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
                       <span className="text-sm text-gray-300">{feature}</span>

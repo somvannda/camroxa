@@ -29,11 +29,11 @@ function songPreview(credits: number): string {
   if (credits <= 0) {
     return 'Listen-only until they subscribe (no free generations).';
   }
-  const songs = Math.floor(credits / WEB_MUSIC_CREDITS_PER_SONG);
+  const songs = Math.floor(credits / WEB_MUSIC_CREDITS_PER_SONG) * 2;
   const leftover = credits % WEB_MUSIC_CREDITS_PER_SONG;
   const songLabel = songs === 1 ? '1 song' : `${songs} songs`;
   if (leftover === 0) {
-    return `≈ ${songLabel}/day (${WEB_MUSIC_CREDITS_PER_SONG} credits per song).`;
+    return `≈ ${songLabel}/day (10 credits = 1 generate = 2 songs).`;
   }
   return `≈ ${songLabel}/day plus ${leftover} leftover credit${leftover === 1 ? '' : 's'} for style/lyrics assist.`;
 }

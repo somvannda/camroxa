@@ -19,6 +19,7 @@ from platform_api.dependencies import (
 )
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
+from platform_api.services.pricing_display import normalize_pricing_features
 from platform_api.services.v3.ops import PATCHABLE_PLAN_FIELDS, SUPPORTED_OPS
 
 router = APIRouter(tags=["credits-only-v3"])
@@ -61,6 +62,8 @@ class PlanPatchRequest(BaseModel):
     daily_credits: int | None = Field(default=None, ge=0)
     is_public: bool | None = None
     is_active: bool | None = None
+    pricing_features: list[str] | None = None
+    pricing_credit_lines: list[str] | None = None
     lyric_credits: int | None = Field(default=None, ge=0)
     title_credits: int | None = Field(default=None, ge=0)
     album_credits: int | None = Field(default=None, ge=0)
@@ -115,6 +118,10 @@ async def patch_admin_plan(
     unknown = set(fields) - PATCHABLE_PLAN_FIELDS
     if unknown:
         raise ValidationError("Unsupported plan fields.", details={"fields": sorted(unknown)})
+    if "pricing_features" in fields:
+        fields["pricing_features"] = normalize_pricing_features(fields.get("pricing_features"))
+    if "pricing_credit_lines" in fields:
+        fields["pricing_credit_lines"] = normalize_pricing_features(fields.get("pricing_credit_lines"))
     plan = await store.patch_plan(plan_id, fields)
     if plan is None:
         raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})
@@ -140,7 +147,7 @@ async def user_credits(user_id: UUID, ctx: AdminDep, billing: BillingDep, grants
     return await billing.wallet_view(user_id)
 
 
-@router.post("/billing/quote", summary="Credits for an op: plan override or Credits page")
+@router.post("/billing/quote", summary="Credits for an op from the Credits page list price")
 async def quote(body: QuoteRequest, ctx: UserDep, billing: BillingDep) -> dict[str, Any]:
     target = body.user_id
     if ctx.role != "admin" or target is None:
