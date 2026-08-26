@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from platform_api.http_paths import (
     API_V3_PREFIX,
+    canonical_api_path,
     strip_api_version_prefix,
 )
 from platform_api.routers import v2_credits, v2_subscriptions, v2_topups
@@ -13,6 +14,11 @@ def test_v2_routers_use_resource_prefixes_not_nested_versions() -> None:
     assert v2_subscriptions.router.prefix == "/subscriptions"
     assert v2_credits.router.prefix == "/credits"
     assert v2_topups.router.prefix == "/topups"
+
+
+def test_canonical_api_path_uses_v3() -> None:
+    assert canonical_api_path("web-music/play/tok") == "/api/v3/web-music/play/tok"
+    assert canonical_api_path("/me/credits") == "/api/v3/me/credits"
 
 
 def test_strip_api_version_prefix_includes_v3() -> None:

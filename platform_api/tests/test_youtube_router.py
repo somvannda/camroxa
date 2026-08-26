@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from platform_api.dependencies import get_db_pool
 from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.routers.youtube import (
@@ -90,10 +91,21 @@ def mock_job_queue() -> AsyncMock:
     return queue
 
 
+class _FakeDbPool:
+    async def fetchrow(self, query: str, *args):
+        return None
+
+
 @pytest.fixture
-def app(mock_youtube_connection_service: AsyncMock, mock_job_queue: AsyncMock):
+def app(
+    mock_youtube_connection_service: AsyncMock,
+    mock_job_queue: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("PLATFORM_PUBLIC_API_BASE_URL", "http://test")
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: USER_CONTEXT
+    application.dependency_overrides[get_db_pool] = lambda: _FakeDbPool()
     application.dependency_overrides[_get_youtube_connection_service] = (
         lambda: mock_youtube_connection_service
     )
@@ -139,13 +151,13 @@ class TestYouTubeRouter:
         assert str(call.kwargs["profile_id"]) == profile_id
         assert (
             call.kwargs["callback_url"]
-            == "http://test/api/v1/youtube/oauth/callback"
+            == "http://test/api/v3/youtube/oauth/callback"
         )
 
     async def test_renders_callback_page(
         self, client: AsyncClient, mock_youtube_connection_service: AsyncMock
     ) -> None:
-        response = await client.get("/api/v1/youtube/oauth/callback?state=abc123")
+        response = await client.get("/api/v3/youtube/oauth/callback?state=abc123")
 
         assert response.status_code == 200
         assert "YouTube connected" in response.text
@@ -156,7 +168,7 @@ class TestYouTubeRouter:
         assert call.kwargs["state_token"] == "abc123"
         assert (
             call.kwargs["callback_url"]
-            == "http://test/api/v1/youtube/oauth/callback"
+            == "http://test/api/v3/youtube/oauth/callback"
         )
 
     async def test_selects_channel(

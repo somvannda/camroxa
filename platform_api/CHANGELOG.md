@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Cutover: JSON media URLs, Suno callbacks, YouTube OAuth, desktop-release links, geo/auth, and nginx stream/WS are `/api/v3` only. See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
 - `/api/v3` is the full canonical API surface (dual-mount of former v1 routers + CutLuy billing + webhooks + wallet). `/api/v1` and `/api/v2` remain temporary. See `docs/changelog/2026-08-25-api-v3-superset-dual-mount.md`.
 - Sandbox credits-only billing cutover: plan grants locked (incl. hidden $79 → 3000 monthly credits), leftover mint idempotent, `credits_only_v3_charge` On. See `docs/changelog/2026-08-25-sandbox-billing-cutover-v3.md`.
 - Fix Free daily mint (`daily_grant` lot tag) and streaming likes wiring that caused music web `/me/credits`, `/web-music/quota`, and `/streaming/library/likes/ids` 500s. See `docs/changelog/2026-08-25-fix-v3-daily-grant-and-likes.md`.

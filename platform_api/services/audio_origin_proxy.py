@@ -20,7 +20,7 @@ _PROXY_HEADERS = {
     "Accept": "audio/mpeg,application/octet-stream,*/*;q=0.8",
 }
 _CAMXORA_AUDIO_PROXY_RE = re.compile(
-    r"^/api/v1/(?:"
+    r"^/api/v3/(?:"
     r"web-music/play/[A-Za-z0-9._-]+"
     r"|web-music/generations/[0-9a-fA-F-]+/stream(?:/(?:ok|alt))?(?:\?variant=(?:ok|alt))?"
     r"|web-music/licenses/segments/[A-Za-z0-9._-]+"

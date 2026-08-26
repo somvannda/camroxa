@@ -36,31 +36,32 @@ def test_clamp_stream_range_bounds_open_ended_requests() -> None:
 
 
 def test_is_camxora_audio_proxy_url() -> None:
-    assert is_camxora_audio_proxy_url("/api/v1/web-music/play/abc_DEF-123") is True
+    assert is_camxora_audio_proxy_url("/api/v3/web-music/play/abc_DEF-123") is True
+    assert is_camxora_audio_proxy_url("/api/v1/web-music/play/abc_DEF-123") is False
     assert (
         is_camxora_audio_proxy_url(
-            "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/ok"
+            "/api/v3/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/ok"
         )
         is True
     )
     assert (
         is_camxora_audio_proxy_url(
-            "/api/v1/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/alt"
+            "/api/v3/web-music/generations/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream/alt"
         )
         is True
     )
     assert (
         is_camxora_audio_proxy_url(
-            "https://music.sandbox.camxora.com/api/v1/public/streaming/tracks/"
+            "https://music.sandbox.camxora.com/api/v3/public/streaming/tracks/"
             "441cb4bf-f013-4c88-8ea1-9d17499b1762/stream"
         )
         is True
     )
-    assert is_camxora_audio_proxy_url("/api/v1/web-music/licenses/segments/abc_DEF-123") is True
-    assert is_camxora_audio_proxy_url("/api/v1/web-music/licenses/play/abc_DEF-123") is True
+    assert is_camxora_audio_proxy_url("/api/v3/web-music/licenses/segments/abc_DEF-123") is True
+    assert is_camxora_audio_proxy_url("/api/v3/web-music/licenses/play/abc_DEF-123") is True
     assert is_camxora_audio_proxy_url("https://cdn1.suno.ai/abc-123.mp3") is False
     assert is_camxora_audio_proxy_url("https://s3.us-west-004.backblazeb2.com/secret.mp3") is False
-    assert is_camxora_audio_proxy_url("/api/v1/web-music/generations/x/download") is False
+    assert is_camxora_audio_proxy_url("/api/v3/web-music/generations/x/download") is False
     assert is_camxora_audio_proxy_url("/static/track.mp3") is False
 
 

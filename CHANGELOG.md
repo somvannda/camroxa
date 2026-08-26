@@ -11,6 +11,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Sandbox desktop env now points at `/api/v3` (`camxora_python/.env.sandbox`). See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
 - All API calls now target `/api/v3` exclusively. Default base URL, env examples, sandbox/production shortcuts, WebSocket helper, health-URL extractor, and marketplace asset resolver all updated. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Desktop login shows a clear paid-plan message when a Free account tries to sign in (`X-Camxora-Client: desktop`). See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.
 - Desktop Generate chrome is credits-only (no Plan quota label). Website, user portal, and Web Music advertise Starter / Creator / Studio. Dual-channel is a bullet. Unpublished $5/$10 profile packs stay off public pricing.

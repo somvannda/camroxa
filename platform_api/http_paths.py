@@ -28,6 +28,11 @@ def rewrite_legacy_nested_v2_path(path: str) -> str:
     return path
 
 
+def canonical_api_path(resource: str) -> str:
+    """Public path on the canonical ``/api/v3`` prefix."""
+    return f"{API_V3_PREFIX}/{str(resource or '').lstrip('/')}"
+
+
 def strip_api_version_prefix(path: str) -> str:
     """Strip ``/api/v1``, ``/api/v2``, ``/api/v3``, and legacy nested prefix."""
     normalized = path.lower().strip("/")

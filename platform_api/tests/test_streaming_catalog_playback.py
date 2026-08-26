@@ -61,7 +61,7 @@ async def test_get_play_url_returns_proxy_path_not_origin() -> None:
         payload = await service.get_play_url(track_id)
 
     assert payload is not None
-    assert payload["url"] == f"/api/v1/public/streaming/tracks/{track_id}/stream"
+    assert payload["url"] == f"/api/v3/public/streaming/tracks/{track_id}/stream"
     assert payload["package_status"] == "none"
     assert "backblaze" not in payload["url"].lower()
     assert not payload["url"].startswith("http")
@@ -132,7 +132,7 @@ def mock_catalog_service() -> AsyncMock:
     service.get_play_url = AsyncMock(
         return_value={
             "track_id": str(uuid4()),
-            "url": "/api/v1/public/streaming/tracks/x/stream",
+            "url": "/api/v3/public/streaming/tracks/x/stream",
             "expires_at": "2026-08-17T00:00:00+00:00",
             "title": "Night Drive",
         }
@@ -171,10 +171,10 @@ async def client(app) -> AsyncClient:
 @pytest.mark.asyncio
 async def test_play_url_endpoint_does_not_expose_origin(client: AsyncClient) -> None:
     track_id = uuid4()
-    response = await client.get(f"/api/v1/public/streaming/tracks/{track_id}/play-url")
+    response = await client.get(f"/api/v3/public/streaming/tracks/{track_id}/play-url")
     assert response.status_code == 200
     data = response.json()
-    assert data["url"].startswith("/api/v1/public/streaming/tracks/")
+    assert data["url"].startswith("/api/v3/public/streaming/tracks/")
     assert data["url"].endswith("/stream")
     assert "http" not in data["url"]
 

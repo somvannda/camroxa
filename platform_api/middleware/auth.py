@@ -129,15 +129,15 @@ ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
 # Unconfirmed users may only read profile/routing status and refresh/logout.
 # Play and download require a confirmed email.
 _UNCONFIRMED_ALLOWED_PATHS = {
-    ("GET", "/api/v1/users/me"),
+    ("GET", "/api/v3/users/me"),
     ("GET", "/users/me"),
-    ("GET", "/api/v1/profiles"),
+    ("GET", "/api/v3/profiles"),
     ("GET", "/profiles"),
-    ("GET", "/api/v1/channel-setup/profiles-status"),
+    ("GET", "/api/v3/channel-setup/profiles-status"),
     ("GET", "/channel-setup/profiles-status"),
-    ("POST", "/api/v1/auth/logout"),
+    ("POST", "/api/v3/auth/logout"),
     ("POST", "/auth/logout"),
-    ("POST", "/api/v1/auth/refresh"),
+    ("POST", "/api/v3/auth/refresh"),
     ("POST", "/auth/refresh"),
 }
 
@@ -157,7 +157,8 @@ def _resolve_access_cookie_name(request: Request | None) -> str:
         return USER_ACCESS_TOKEN_COOKIE_NAME
 
     portal_context = request.headers.get("X-Portal-Context", "").strip().lower()
-    if portal_context == "admin" or "/api/v1/admin" in str(request.url.path):
+    request_path = str(request.url.path)
+    if portal_context == "admin" or "/api/v3/admin" in request_path:
         return ADMIN_ACCESS_TOKEN_COOKIE_NAME
     return USER_ACCESS_TOKEN_COOKIE_NAME
 

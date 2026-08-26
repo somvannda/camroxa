@@ -46,7 +46,7 @@ def test_store_installer_rejects_empty_file(tmp_path: Path) -> None:
 def test_store_installer_falls_back_to_api_download_url(tmp_path: Path) -> None:
     service = DesktopReleaseUploadService(
         storage_root=str(tmp_path),
-        api_download_base_url="https://api.example.com/api/v1/public/desktop-release/files",
+        api_download_base_url="https://api.example.com/api/v3/public/desktop-release/files",
     )
     result = service.store_installer(
         b"payload",
@@ -55,7 +55,7 @@ def test_store_installer_falls_back_to_api_download_url(tmp_path: Path) -> None:
     )
     assert (
         result.download_url
-        == "https://api.example.com/api/v1/public/desktop-release/files/Camxora-0.3.0.zip"
+        == "https://api.example.com/api/v3/public/desktop-release/files/Camxora-0.3.0.zip"
     )
 
 
@@ -74,7 +74,7 @@ def test_extract_version_from_installer_filename() -> None:
 def test_list_installers_returns_newest_first(tmp_path: Path) -> None:
     service = DesktopReleaseUploadService(
         storage_root=str(tmp_path),
-        api_download_base_url="https://api.example.com/api/v1/public/desktop-release/files",
+        api_download_base_url="https://api.example.com/api/v3/public/desktop-release/files",
     )
     service.store_installer(b"one", original_filename="Camxora.zip", version="1.0.0")
     service.store_installer(b"two", original_filename="Camxora.zip", version="2.0.0")
@@ -113,7 +113,7 @@ def test_public_download_route_serves_uploaded_file(
 
     app = create_app()
     client = TestClient(app)
-    response = client.get("/api/v1/public/desktop-release/files/Camxora-1.2.3.zip")
+    response = client.get("/api/v3/public/desktop-release/files/Camxora-1.2.3.zip")
     assert response.status_code == 200
     assert response.content == b"zip-content"
     assert response.headers["content-type"].startswith("application/zip")
@@ -180,7 +180,7 @@ def test_admin_upload_endpoint_returns_download_url(
     assert payload["filename"] == "Camxora-2.6.0.zip"
     assert (
         payload["download_url"]
-        == "https://api.example.com/api/v1/public/desktop-release/files/Camxora-2.6.0.zip"
+        == "https://api.example.com/api/v3/public/desktop-release/files/Camxora-2.6.0.zip"
     )
     assert payload["size_bytes"] > 0
     assert payload["draft_saved"] is True

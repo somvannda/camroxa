@@ -51,14 +51,14 @@ async def test_add_playlist_item_accepts_packaged_clip_without_origin_url() -> N
     pool.execute = AsyncMock(return_value="UPDATE 1")
     service = WebMusicService(pool=pool, generation_service=AsyncMock(), redis=None)
     service.get_playlist = AsyncMock(return_value={"id": str(playlist_id), "name": "EDM"})
-    service._mint_owner_play_url = AsyncMock(return_value="/api/v1/web-music/play/token")
+    service._mint_owner_play_url = AsyncMock(return_value="/api/v3/web-music/play/token")
 
     item = await service.add_playlist_item(user_id, playlist_id, task_id=task_id, variant="ok")
 
     assert item["task_id"] == str(task_id)
     assert item["ready"] is True
     assert item["package_status"] == "ready"
-    assert item["audio_url"].startswith("/api/v1/web-music/play/")
+    assert item["audio_url"].startswith("/api/v3/web-music/play/")
     suno_query = pool.fetchrow.await_args_list[0]
     assert SUNO_TASK_SOURCE_WEB_MUSIC in suno_query.args
 

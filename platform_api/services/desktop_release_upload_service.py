@@ -120,7 +120,7 @@ class DesktopReleaseUploadService:
             return f"{self._public_base_url}/{encoded}"
         if self._api_download_base_url:
             return f"{self._api_download_base_url}/{encoded}"
-        return f"/api/v1/public/desktop-release/files/{encoded}"
+        return f"/api/v3/public/desktop-release/files/{encoded}"
 
     def list_installers(self) -> list[DesktopInstallerFileRecord]:
         records: list[DesktopInstallerFileRecord] = []

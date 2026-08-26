@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Playback URLs returned by the API are `/api/v3` only (stream, HLS, play tokens). See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
 - All API calls target `/api/v3` only. `subscription-api.ts` constant renamed `API_V3`; v1 plan fallback removed. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Credits header / Create / profile show the v3 wallet number only. v2 balance is a hard fallback if `/api/v3/me/credits` fails. See `docs/changelog/2026-08-23-one-wallet-web-ledger.md`.
 - Create no longer treats Desktop Pro as unlimited credits. The upgrade gate follows remaining credits. See `docs/changelog/2026-08-23-web-create-v3-charge.md`.

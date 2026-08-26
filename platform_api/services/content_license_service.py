@@ -13,6 +13,7 @@ from uuid import UUID
 
 from platform_api.config import get_settings
 from platform_api.exceptions import ForbiddenError, NotFoundError, ValidationError
+from platform_api.http_paths import canonical_api_path
 from platform_api.services.audio_packager import derive_kek, unwrap_content_key
 
 logger = logging.getLogger(__name__)
@@ -420,10 +421,12 @@ class ContentLicenseService:
         )
         del user_agent
         ready = package_status == "ready" and bool(selected_package) and bool(content_key_b64)
-        segment_url = f"/api/v1/web-music/licenses/segments/{token}" if ready else ""
-        play_url = f"/api/v1/web-music/licenses/play/{token}" if ready else ""
+        segment_url = canonical_api_path(f"web-music/licenses/segments/{token}") if ready else ""
+        play_url = canonical_api_path(f"web-music/licenses/play/{token}") if ready else ""
         hls_ready = ready and hls_status == "ready" and bool(hls_storage_prefix)
-        hls_url = f"/api/v1/web-music/licenses/hls/{token}/index.m3u8" if hls_ready else ""
+        hls_url = (
+            canonical_api_path(f"web-music/licenses/hls/{token}/index.m3u8") if hls_ready else ""
+        )
         return {
             "token": token,
             "expires_at": expires_at.isoformat(),
@@ -606,8 +609,8 @@ class ContentLicenseService:
         if not blob:
             raise NotFoundError("HLS playlist is missing.")
         manifest = blob.decode("utf-8", errors="replace")
-        key_url = f"/api/v1/web-music/licenses/hls-key/{token}"
-        segment_prefix = f"/api/v1/web-music/licenses/hls/{token}"
+        key_url = canonical_api_path(f"web-music/licenses/hls-key/{token}")
+        segment_prefix = canonical_api_path(f"web-music/licenses/hls/{token}")
         return rewrite_hls_playlist(
             manifest,
             key_url=key_url,

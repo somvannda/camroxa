@@ -41,7 +41,9 @@ async def create_play_token(
 
 
 def play_url_for_token(token: str) -> str:
-    return f"/api/v1/web-music/play/{token}"
+    from platform_api.http_paths import canonical_api_path
+
+    return canonical_api_path(f"web-music/play/{token}")
 
 
 async def resolve_play_token(redis: Any, token: str) -> dict[str, Any] | None:

@@ -15,6 +15,8 @@ def health_url_for_api_base(api_base_url: str) -> str:
     parsed = urlparse(api_base_url.rstrip("/"))
     if parsed.path.endswith("/api/v3"):
         root = api_base_url[: -len("/api/v3")]
+    elif parsed.path.endswith("/api/v1"):
+        root = api_base_url[: -len("/api/v1")]
     else:
         root = f"{parsed.scheme}://{parsed.netloc}"
     return f"{root.rstrip('/')}/health"
