@@ -6,13 +6,17 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from shared.lib.desktop_entitlement import is_paid_catalog_plan_name
 from shared.models.auth import (
     CreateProfileRequest,
     LoginRequest,
     ProfileResponse,
+    PublicPlan,
+    PublicPlanTermDiscounts,
     TokenResponse,
     UpdateProfileRequest,
     UserMeResponse,
+    WebMusicSubscriptionPlan,
 )
 from shared.models.platform import (
     AlbumRewriteResponse,
@@ -120,6 +124,86 @@ class PlatformApi:
     def get_me(self) -> UserMeResponse:
         data = self._client.request("/users/me", auth=True)
         return UserMeResponse.model_validate(data)
+
+    def list_public_plans(self) -> list[PublicPlan]:
+        """Active public plans from GET /api/v3/plans/public — no auth required."""
+        data = self._client.request("/plans/public", auth=False, timeout=20.0)
+        if not isinstance(data, list):
+            return []
+        plans: list[PublicPlan] = []
+        for item in data:
+            try:
+                plans.append(PublicPlan.model_validate(item))
+            except ValidationError:
+                continue
+        return plans
+
+    def get_public_plan_term_discounts(self) -> PublicPlanTermDiscounts:
+        """Billing term discount percents — same as website pricing."""
+        try:
+            data = self._client.request(
+                "/plans/public/term-discounts",
+                auth=False,
+                timeout=15.0,
+            )
+            return PublicPlanTermDiscounts.model_validate(data or {})
+        except Exception:
+            return PublicPlanTermDiscounts()
+
+    def list_web_music_subscription_plans(self) -> list[WebMusicSubscriptionPlan]:
+        """Public Starter / Creator / Studio cards for the login upgrade dialog.
+
+        Tries ``GET /subscriptions/plans`` (v3 mount), then falls back to
+        ``GET /plans/public``.
+        """
+        raw_plans: list[Any] = []
+        try:
+            data = self._client.request("/subscriptions/plans", auth=False, timeout=20.0)
+            if isinstance(data, dict) and isinstance(data.get("plans"), list):
+                raw_plans = data["plans"]
+            elif isinstance(data, list):
+                raw_plans = data
+        except Exception:
+            raw_plans = []
+
+        plans: list[WebMusicSubscriptionPlan] = []
+        for item in raw_plans:
+            try:
+                plan = WebMusicSubscriptionPlan.model_validate(item)
+            except ValidationError:
+                continue
+            if plan.is_public is False:
+                continue
+            if plan.price_cents <= 0:
+                continue
+            if not is_paid_catalog_plan_name(plan.name):
+                continue
+            plans.append(plan)
+
+        if plans:
+            return plans
+
+        for item in self.list_public_plans():
+            name_l = (item.name or "").strip().lower()
+            if name_l == "free" or item.price_cents <= 0:
+                continue
+            if not is_paid_catalog_plan_name(item.name):
+                continue
+            days = int(item.billing_cycle_days or 30)
+            cycle = "yearly" if days >= 365 else "monthly"
+            plans.append(
+                WebMusicSubscriptionPlan(
+                    id=item.id,
+                    name=item.name,
+                    price_cents=int(item.effective_price_cents or item.price_cents),
+                    billing_cycle=cycle,
+                    monthly_credits=int(item.monthly_credits or 0),
+                    features=[],
+                    display_order=int(item.price_cents or 0),
+                    is_public=True,
+                )
+            )
+        return plans
 
     def list_profiles(self) -> list[ProfileResponse]:
         data = self._client.request("/profiles", auth=True, timeout=60.0)

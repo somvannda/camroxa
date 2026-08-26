@@ -1,26 +1,20 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
 import { LoaderCircle, MailCheck } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
-import { sendVerificationEmail, verifyEmailCode } from '@/lib/auth-api';
-
-function safeNextPath(raw: string | null): string {
-  if (!raw) return '/create';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/create';
-  return raw;
-}
+import { fetchMusicUser, sendVerificationEmail, verifyEmailCode } from '@/lib/auth-api';
+import { DEFAULT_POST_AUTH_PATH, safeNextPath } from '@/lib/auth-redirect';
 
 function VerifyEmailForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNextPath(params.get('next'));
   const initialEmail = params.get('email') ?? '';
-  const { refresh, user } = useAuth();
+  const { refresh, user, loading } = useAuth();
 
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState('');
@@ -28,6 +22,23 @@ function VerifyEmailForm() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    if (loading) return;
+    if (user?.email_confirmed) {
+      router.replace(next);
+    }
+  }, [loading, next, router, user?.email_confirmed]);
+
+  async function continueAfterVerify() {
+    await refresh();
+    const me = await fetchMusicUser();
+    if (me?.email_confirmed) {
+      router.replace(next);
+      return;
+    }
+    router.replace(`/login?next=${encodeURIComponent(next || DEFAULT_POST_AUTH_PATH)}`);
+  }
 
   async function onVerify(event: FormEvent) {
     event.preventDefault();
@@ -37,8 +48,7 @@ function VerifyEmailForm() {
     try {
       const result = await verifyEmailCode({ email: email.trim(), code: code.trim() });
       setMessage(result.message || 'Email verified successfully.');
-      await refresh();
-      router.replace(next);
+      await continueAfterVerify();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
     } finally {
@@ -53,6 +63,9 @@ function VerifyEmailForm() {
     try {
       const result = await sendVerificationEmail(email.trim());
       setMessage(result.message || 'Verification code sent.');
+      if (result.is_verified) {
+        await continueAfterVerify();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not resend code');
     } finally {
@@ -60,16 +73,11 @@ function VerifyEmailForm() {
     }
   }
 
-  if (user?.email_confirmed) {
+  if (loading || user?.email_confirmed) {
     return (
-      <AuthFormShell title="Email verified" subtitle="Your account is ready to use.">
-        <Link
-          href={next}
-          className="flex h-11 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-sm font-medium text-white"
-        >
-          Continue
-        </Link>
-      </AuthFormShell>
+      <div className="flex min-h-[40vh] items-center justify-center text-slate-400">
+        {user?.email_confirmed ? 'Opening Create…' : 'Loading…'}
+      </div>
     );
   }
 

@@ -7,13 +7,9 @@ import { Check, LoaderCircle } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
+import GuestOnly from '@/components/guest-only';
 import TurnstileWidget from '@/components/turnstile-widget';
-
-function safeNextPath(raw: string | null): string {
-  if (!raw) return '/create';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/create';
-  return raw;
-}
+import { safeNextPath } from '@/lib/auth-redirect';
 
 function RegisterForm() {
   const router = useRouter();
@@ -155,7 +151,9 @@ export default function RegisterPage() {
         <div className="flex min-h-[40vh] items-center justify-center text-slate-400">Loading…</div>
       }
     >
-      <RegisterForm />
+      <GuestOnly>
+        <RegisterForm />
+      </GuestOnly>
     </Suspense>
   );
 }

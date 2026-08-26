@@ -7,14 +7,10 @@ import { LoaderCircle, Shield } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
+import GuestOnly from '@/components/guest-only';
 import TurnstileWidget from '@/components/turnstile-widget';
 import { fetchMusicUser } from '@/lib/auth-api';
-
-function safeNextPath(raw: string | null): string {
-  if (!raw) return '/create';
-  if (!raw.startsWith('/') || raw.startsWith('//')) return '/';
-  return raw;
-}
+import { safeNextPath } from '@/lib/auth-redirect';
 
 function LoginForm() {
   const router = useRouter();
@@ -134,7 +130,9 @@ export default function LoginPage() {
         <div className="flex min-h-[40vh] items-center justify-center text-slate-400">Loading…</div>
       }
     >
-      <LoginForm />
+      <GuestOnly>
+        <LoginForm />
+      </GuestOnly>
     </Suspense>
   );
 }

@@ -507,3 +507,78 @@ class TestLogout:
         assert response.status_code == 200
         assert response.json()["message"] == "Successfully logged out."
         mock_auth_service.revoke_tokens.assert_awaited_once_with("user-123")
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/verify-email
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyEmail:
+    """Tests for POST /api/v1/auth/verify-email (same handler as /api/v3)."""
+
+    async def test_verify_email_issues_session_cookies(
+        self, client: AsyncClient, mock_auth_service: AsyncMock
+    ) -> None:
+        from unittest.mock import patch
+
+        user_id = uuid4()
+        code_id = uuid4()
+        mock_auth_service._user_repo.get_by_email = AsyncMock(
+            return_value=User(
+                id=user_id,
+                email="new@example.com",
+                display_name="New User",
+                email_confirmed=True,
+            )
+        )
+
+        class FakePool:
+            async def fetchrow(self, query: str, *args: object):
+                text = str(query)
+                if "FROM users" in text:
+                    return {"id": user_id, "email_confirmed": False}
+                if "FROM email_verifications" in text:
+                    return {"id": code_id}
+                return None
+
+            async def execute(self, *args: object, **kwargs: object):
+                return None
+
+        with patch("platform_api.dependencies.get_db_pool", return_value=FakePool()):
+            response = await client.post(
+                "/api/v1/auth/verify-email",
+                json={"email": "new@example.com", "code": "123456"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["is_verified"] is True
+        assert "camxora_access_token" in response.cookies
+        mock_auth_service.issue_token_pair_for_user.assert_awaited()
+
+    async def test_verify_email_already_confirmed_without_code(
+        self, client: AsyncClient, mock_auth_service: AsyncMock
+    ) -> None:
+        from unittest.mock import patch
+
+        user_id = uuid4()
+
+        class FakePool:
+            async def fetchrow(self, query: str, *args: object):
+                text = str(query)
+                if "FROM users" in text:
+                    return {"id": user_id, "email_confirmed": True}
+                return None
+
+            async def execute(self, *args: object, **kwargs: object):
+                return None
+
+        with patch("platform_api.dependencies.get_db_pool", return_value=FakePool()):
+            response = await client.post(
+                "/api/v1/auth/verify-email",
+                json={"email": "duke@test.com", "code": "000000"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["is_verified"] is True
+        mock_auth_service.issue_token_pair_for_user.assert_not_called()

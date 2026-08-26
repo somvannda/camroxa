@@ -15,6 +15,10 @@ from features.onboarding.views.onboarding_views import OnboardingWelcomeView, On
 from shared.constants.auth import REGISTRATION_ENABLED
 from shared.constants.app_version import get_app_version
 from shared.lib.app_icon import apply_app_window_icon
+from shared.lib.desktop_entitlement import (
+    DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
+    is_desktop_plan_required_message,
+)
 from shared.lib.opengl_startup import prime_opengl_on_window
 from shared.lib.version_compare import parse_version
 from shared.lib.window_chrome import (
@@ -339,9 +343,18 @@ class RootWindow(QMainWindow):
         self._stop_push_notifications()
         self._title_bar.set_setup_notifications_visible(False)
         self._auth.show_login_form()
-        if error.strip():
-            self._auth.set_error(error.strip())
+        text = error.strip()
+        if text:
+            self._auth.set_error(text)
         self._show_page(self._PAGE_AUTH)
+        if is_desktop_plan_required_message(text):
+            QTimer.singleShot(
+                0,
+                lambda: self._auth.show_upgrade_plans_dialog(
+                    DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
+                    api=self._session.api,
+                ),
+            )
 
     def _retry_bootstrap_after_onboarding(self) -> None:
         self._startup.reset_progress(40)
@@ -492,6 +505,9 @@ class RootWindow(QMainWindow):
         except Exception:
             pass
         self._auth.clear_loading_status()
+        if is_desktop_plan_required_message(message):
+            self._show_login(error=DESKTOP_REQUIRES_PAID_PLAN_MESSAGE)
+            return
         self._auth.set_error(message)
         self._show_page(self._PAGE_AUTH)
 

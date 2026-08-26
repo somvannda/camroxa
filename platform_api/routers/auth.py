@@ -872,26 +872,30 @@ async def send_verification(
 )
 async def verify_email(
     request: VerifyEmailRequest,
+    http_request: Request,
+    response: Response,
+    auth_service: AuthServiceDep,
 ) -> VerificationResponse:
     """Verify a 6-digit code sent to the user's email.
 
-    On success, marks the user's email as verified and returns tokens.
+    On success, marks the email verified and issues the same auth cookies as login
+    so the browser session is logged in. Already-verified emails return success
+    without consuming a new code (existing cookies still apply).
     """
     from platform_api.dependencies import get_db_pool
 
     pool = get_db_pool()
 
-    # Look up user
     user_row = await pool.fetchrow(
-        "SELECT id FROM users WHERE LOWER(email) = LOWER($1)",
+        "SELECT id, email_confirmed FROM users WHERE LOWER(email) = LOWER($1)",
         request.email,
     )
     if user_row is None:
         raise NotFoundError(message="User not found.")
 
     user_id = user_row["id"]
+    already_confirmed = bool(user_row["email_confirmed"])
 
-    # Find a valid, unused code
     code_row = await pool.fetchrow(
         """SELECT id FROM email_verifications
            WHERE user_id = $1 AND code = $2 AND purpose = 'register'
@@ -900,25 +904,32 @@ async def verify_email(
         user_id, request.code,
     )
     if code_row is None:
+        if already_confirmed:
+            return VerificationResponse(
+                message="Email already verified.",
+                email=request.email,
+                is_verified=True,
+            )
         raise ValidationError(
             message="Invalid or expired verification code.",
             details={"field": "code"},
         )
 
-    # Mark code as used
     await pool.execute(
         "UPDATE email_verifications SET used = true WHERE id = $1",
         code_row["id"],
     )
-
-    # Mark email as confirmed — payment is required before onboarding AI access.
     await pool.execute(
         "UPDATE users SET email_confirmed = true WHERE id = $1",
         user_id,
     )
 
+    user = await auth_service._user_repo.get_by_email(request.email)
+    if user is not None:
+        await _set_session_for_user(auth_service, user, response, http_request)
+
     return VerificationResponse(
-        message="Email verified successfully. Choose a plan and complete payment to continue.",
+        message="Email verified successfully.",
         email=request.email,
         is_verified=True,
     )

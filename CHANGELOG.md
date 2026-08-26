@@ -9,6 +9,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Desktop login again opens the native **Choose Your Plan** popup when the
+  account is not Starter, Creator, or Studio. Catalog loads from `/api/v3`.
+  See `docs/changelog/2026-08-25-desktop-restore-plans-popup.md`.
+
 ### Changed
 
 - Sandbox desktop env now points at `/api/v3` (`camxora_python/.env.sandbox`). See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
