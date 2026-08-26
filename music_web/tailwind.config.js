@@ -8,8 +8,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        display: ['Outfit', 'Inter', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'Siemreap', 'Khmer OS Siemreap', 'system-ui', 'sans-serif'],
+        display: ['Outfit', 'Inter', 'Siemreap', 'Khmer OS Siemreap', 'system-ui', 'sans-serif'],
+        khmer: ['Siemreap', 'Khmer OS Siemreap', 'Inter', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         xl: '7px',

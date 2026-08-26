@@ -5,6 +5,7 @@ import Link from 'next/link';
 import TrackRow from '@/components/track-row';
 import SyncedLyrics from '@/components/synced-lyrics';
 import { usePlayer } from '@/components/player-provider';
+import { khmerTextClass } from '@/lib/khmer-text';
 import {
   formatGenreLabels,
   formatPlayCount,
@@ -120,7 +121,9 @@ function NowPlayingPanel() {
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
             {playing ? 'Now playing' : 'Paused'}
           </p>
-          <p className="mt-1 font-semibold leading-snug text-white">{current.title}</p>
+          <p className={`mt-1 font-semibold leading-snug text-white ${khmerTextClass(current.title)}`}>
+            {current.title}
+          </p>
           {artistHref ? (
             <Link
               href={artistHref}
@@ -200,7 +203,9 @@ function NowPlayingPanel() {
                   <div className="h-10 w-10 rounded bg-white/[0.06]" />
                 )}
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-white">{track.title}</p>
+                  <p className={`truncate text-sm text-white ${khmerTextClass(track.title)}`}>
+                    {track.title}
+                  </p>
                   <p className="truncate text-xs text-slate-500">{track.artist_name}</p>
                 </div>
               </button>

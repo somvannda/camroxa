@@ -58,7 +58,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Inter', 'Siemreap', 'Khmer OS Siemreap', system-ui, sans-serif;
     letter-spacing: -0.01em;
     background-image:
       radial-gradient(circle at 12% 0%, rgba(168, 85, 247, 0.14), transparent 26%),
@@ -75,7 +75,7 @@
   h5,
   h6,
   .font-display {
-    font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+    font-family: 'Outfit', 'Inter', 'Siemreap', 'Khmer OS Siemreap', system-ui, sans-serif;
     letter-spacing: -0.04em;
   }
 
@@ -144,8 +144,17 @@
 }
 
 .lyrics-scroller {
+  letter-spacing: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(168, 85, 247, 0.35) transparent;
+}
+
+/* Unlayered so it wins over Tailwind tracking-* on Khmer titles and lyrics. */
+.font-khmer,
+.font-khmer *,
+:lang(km) {
+  font-family: 'Siemreap', 'Khmer OS Siemreap', 'Inter', system-ui, sans-serif;
+  letter-spacing: 0;
 }
 
 .music-scroll,

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import PlayingEqualizer from '@/components/playing-equalizer';
 import { LikeButton } from '@/components/likes-provider';
 import { usePlayer } from '@/components/player-provider';
+import { khmerTextClass } from '@/lib/khmer-text';
 import {
   formatDuration,
   formatGenreLabels,
@@ -91,7 +92,7 @@ export default function TrackRow({
         </span>
         <div className="pointer-events-none relative z-10 min-w-0">
           <p
-            className={`truncate font-medium ${
+            className={`truncate font-medium ${khmerTextClass(track.title)} ${
               isCurrent ? 'text-fuchsia-200' : 'text-white'
             }`}
           >
@@ -155,7 +156,7 @@ export default function TrackRow({
         onClick={onPlay}
         className="min-w-0 text-left transition hover:opacity-90"
       >
-        <p className={`truncate font-medium ${isCurrent ? 'text-fuchsia-200' : ''}`}>
+        <p className={`truncate font-medium ${khmerTextClass(track.title)} ${isCurrent ? 'text-fuchsia-200' : ''}`}>
           {track.title}
         </p>
         <p className="truncate text-sm text-[hsl(var(--muted-foreground))]">

@@ -8,6 +8,7 @@ import '@fontsource/inter/600.css';
 import '@fontsource/outfit/500.css';
 import '@fontsource/outfit/600.css';
 import '@fontsource/outfit/700.css';
+import '@fontsource/siemreap/400.css';
 
 import { PlayerProvider } from '@/components/player-provider';
 import { AuthProvider } from '@/components/auth-provider';
