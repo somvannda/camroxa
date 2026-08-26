@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 
 import { usePlayer } from '@/components/player-provider';
+import { containsKhmer } from '@/lib/khmer-text';
 import { activeLyricIndex, buildLyricTimeline } from '@/lib/lyrics';
 
 export default function SyncedLyrics({
@@ -18,6 +19,7 @@ export default function SyncedLyrics({
 
   const { lines, synced } = useMemo(() => buildLyricTimeline(lyrics), [lyrics]);
   const activeIndex = synced ? activeLyricIndex(lines, currentTime) : -1;
+  const khmerLyrics = containsKhmer(lyrics);
 
   useEffect(() => {
     if (!synced || activeIndex < 0) return;
@@ -48,7 +50,10 @@ export default function SyncedLyrics({
       </div>
       <div
         ref={scrollerRef}
-        className="lyrics-scroller relative max-h-[min(52vh,420px)] overflow-y-auto rounded-xl bg-gradient-to-b from-white/[0.05] to-white/[0.02] px-3 py-6"
+        lang={khmerLyrics ? 'km' : undefined}
+        className={`lyrics-scroller relative max-h-[min(52vh,420px)] overflow-y-auto rounded-xl bg-gradient-to-b from-white/[0.05] to-white/[0.02] px-3 py-6 ${
+          khmerLyrics ? 'font-khmer' : ''
+        }`}
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-gradient-to-b from-[rgba(8,10,20,0.95)] to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-10 bg-gradient-to-t from-[rgba(8,10,20,0.95)] to-transparent" />

@@ -22,6 +22,7 @@ import {
   WEB_MUSIC_LYRICS_MAX,
   WEB_MUSIC_STYLE_MAX,
 } from '@/components/music-form-ui';
+import { khmerTextClass } from '@/lib/khmer-text';
 
 function clampText(value: string, max: number): string {
   return value.length <= max ? value : value.slice(0, max);
@@ -388,7 +389,7 @@ function ClipTitleEditor({
             setEditing(false);
           }
         }}
-        className={`min-w-0 flex-1 rounded bg-white/10 px-1.5 py-0.5 outline-none ring-1 ring-violet-400/50 ${className}`}
+        className={`min-w-0 flex-1 rounded bg-white/10 px-1.5 py-0.5 outline-none ring-1 ring-violet-400/50 ${className} ${khmerTextClass(draft)}`}
       />
     );
   }
@@ -404,7 +405,7 @@ function ClipTitleEditor({
       }}
       className={`min-w-0 flex-1 text-left ${saving ? 'opacity-70' : ''}`}
     >
-      <span className={className}>
+      <span className={`${className} ${khmerTextClass(title)}`}>
         {title}
         <span className="font-normal text-slate-400"> · {versionLabel}</span>
       </span>
@@ -972,7 +973,7 @@ export default function CreatePageClient() {
                     maxLength={WEB_MUSIC_LYRICS_MAX}
                     rows={7}
                     placeholder="Write lyrics, or paste a verse..."
-                    className="min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
+                    className={`min-h-[168px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm ${khmerTextClass(lyrics)}`}
                   />
                   <MusicCharCount value={lyrics} max={WEB_MUSIC_LYRICS_MAX} />
                 </div>
@@ -1132,7 +1133,7 @@ export default function CreatePageClient() {
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Song Title (Optional)"
-                  className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+                  className={`w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500 ${khmerTextClass(title)}`}
                 />
               </label>
               <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-slate-300">
@@ -1304,7 +1305,9 @@ export default function CreatePageClient() {
                       className="rounded-xl border border-rose-400/20 bg-rose-500/5 p-3 min-w-0"
                     >
                       <div className="flex min-w-0 items-center gap-1.5">
-                        <p className="truncate font-medium text-white">{generation.title}</p>
+                        <p className={`truncate font-medium text-white ${khmerTextClass(generation.title)}`}>
+                          {generation.title}
+                        </p>
                         <ModelVersionTag model={generation.model} />
                       </div>
                       <p className="mt-1 text-sm text-rose-300">
@@ -1497,7 +1500,7 @@ export default function CreatePageClient() {
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Lyrics</p>
                 <div className="rounded-lg border border-white/8 bg-black/20 p-3 max-h-64 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-300 font-sans leading-relaxed">
+                  <pre className={`whitespace-pre-wrap text-sm text-slate-300 font-sans leading-relaxed ${khmerTextClass(selectedVersion.song.lyrics)}`}>
                     {selectedVersion.song.lyrics}
                   </pre>
                 </div>

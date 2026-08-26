@@ -4,6 +4,7 @@ import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-rea
 
 import { LikeButton } from '@/components/likes-provider';
 import { usePlayer } from '@/components/player-provider';
+import { khmerTextClass } from '@/lib/khmer-text';
 import { formatDuration, formatGenreLabels } from '@/lib/streaming-api';
 
 function formatClock(seconds: number): string {
@@ -49,7 +50,7 @@ export default function PlayerBar() {
             <div className="h-12 w-12 rounded-lg bg-white/[0.06] md:h-14 md:w-14" />
           )}
           <div className="min-w-0 max-w-[70%] text-center md:max-w-none md:text-left">
-            <p className="truncate font-medium text-white">
+            <p className={`truncate font-medium text-white ${khmerTextClass(current?.title)}`}>
               {current?.title ?? 'Select a track to play'}
             </p>
             <p className={`truncate text-sm ${playError ? 'text-rose-400' : 'text-slate-400'}`}>

@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/cn';
+import { khmerTextClass } from '@/lib/khmer-text';
 import { listWebMusicGenerations, type WebMusicGeneration } from '@/lib/web-music-api';
 import {
   addWebMusicPlaylistItem,
@@ -167,7 +168,7 @@ function PlaylistItemRow({
           ) : null}
         </span>
         <div className="min-w-0">
-          <p className={cn('truncate font-medium', isCurrent ? 'text-fuchsia-200' : 'text-white')}>
+          <p className={cn('truncate font-medium', khmerTextClass(item.title), isCurrent ? 'text-fuchsia-200' : 'text-white')}>
             {item.title}
           </p>
           <p className={cn('truncate text-sm', isCurrent ? 'text-fuchsia-100/70' : 'text-slate-400')}>
@@ -631,7 +632,9 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-white">{row.title}</p>
+                          <p className={cn('truncate text-sm font-medium text-white', khmerTextClass(row.title))}>
+                            {row.title}
+                          </p>
                           {row.style ? (
                             <p className="truncate text-xs text-slate-500">{row.style}</p>
                           ) : null}
