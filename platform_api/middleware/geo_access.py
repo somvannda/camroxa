@@ -7,7 +7,7 @@ DNS-only) is not geo-gated so local/sandbox traffic keeps working.
 
 Scope:
   - Host is music.camxora.com / music.sandbox.camxora.com, or
-  - Path is /api/v1/web-music/* (blocks bypass via api.camxora.com)
+  - Path is /api/v3/web-music/* (blocks bypass via api.camxora.com)
 
 Not applied to /health or /callbacks. Desktop /generation and admin stay open.
 """
@@ -46,7 +46,7 @@ def request_path(request: Request) -> str:
 
 def is_geo_exempt_path(path: str) -> bool:
     normalized = path.lower()
-    if normalized in {"/health", "/api/v1/health"} or normalized.startswith("/health"):
+    if normalized in {"/health", "/api/v3/health"} or normalized.startswith("/health"):
         return True
     if "/callbacks" in normalized:
         return True
@@ -60,9 +60,9 @@ def music_web_geo_in_scope(request: Request) -> bool:
         return False
     if request_host(request) in MUSIC_WEB_HOSTS:
         return True
-    if path.startswith("/api/v1/web-music") or path.startswith("/web-music"):
+    if path.startswith("/api/v3/web-music") or path.startswith("/web-music"):
         return True
-    if path.startswith("/api/v1/public/streaming"):
+    if path.startswith("/api/v3/public/streaming"):
         return True
     return False
 

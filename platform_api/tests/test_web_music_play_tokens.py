@@ -33,7 +33,7 @@ async def test_create_and_resolve_public_play_token() -> None:
     task_id = UUID("11111111-1111-1111-1111-111111111111")
     token = await create_play_token(redis, task_id=task_id, variant="ok", access="public")
     assert token
-    assert play_url_for_token(token).startswith("/api/v1/web-music/play/")
+    assert play_url_for_token(token).startswith("/api/v3/web-music/play/")
     resolved = await resolve_play_token(redis, token)
     assert resolved is not None
     assert resolved["task_id"] == str(task_id)

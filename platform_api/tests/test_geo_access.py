@@ -17,7 +17,7 @@ def _app() -> FastAPI:
     application = FastAPI()
     application.add_middleware(MusicWebGeoMiddleware)
 
-    @application.get("/api/v1/web-music/quota")
+    @application.get("/api/v3/web-music/quota")
     async def quota() -> dict[str, bool]:
         return {"ok": True}
 
@@ -29,7 +29,7 @@ def _app() -> FastAPI:
     async def health() -> dict[str, bool]:
         return {"ok": True}
 
-    @application.get("/api/v1/public/streaming/tracks/{track_id}/stream")
+    @application.get("/api/v3/public/streaming/tracks/{track_id}/stream")
     async def stream_track(track_id: str):
         async def chunks():
             yield b"ID3"
@@ -77,8 +77,8 @@ def test_web_music_path_in_scope_on_api_host() -> None:
         "http_version": "1.1",
         "method": "POST",
         "scheme": "https",
-        "path": "/api/v1/web-music/generate",
-        "raw_path": b"/api/v1/web-music/generate",
+        "path": "/api/v3/web-music/generate",
+        "raw_path": b"/api/v3/web-music/generate",
         "query_string": b"",
         "headers": [(b"host", b"api.camxora.com")],
         "client": ("1.2.3.4", 1234),
@@ -100,8 +100,8 @@ def test_public_streaming_path_in_geo_scope() -> None:
         "http_version": "1.1",
         "method": "GET",
         "scheme": "https",
-        "path": "/api/v1/public/streaming/home",
-        "raw_path": b"/api/v1/public/streaming/home",
+        "path": "/api/v3/public/streaming/home",
+        "raw_path": b"/api/v3/public/streaming/home",
         "query_string": b"",
         "headers": [(b"host", b"api.camxora.com")],
         "client": ("1.2.3.4", 1234),
@@ -114,7 +114,7 @@ def test_public_streaming_path_in_geo_scope() -> None:
 @pytest.mark.asyncio
 async def test_kh_header_allows_web_music(client: AsyncClient) -> None:
     resp = await client.get(
-        "/api/v1/web-music/quota",
+        "/api/v3/web-music/quota",
         headers={"Host": "music.camxora.com", "CF-IPCountry": "KH"},
     )
     assert resp.status_code == 200
@@ -123,7 +123,7 @@ async def test_kh_header_allows_web_music(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_us_header_blocks_web_music(client: AsyncClient) -> None:
     resp = await client.get(
-        "/api/v1/web-music/quota",
+        "/api/v3/web-music/quota",
         headers={"Host": "music.camxora.com", "CF-IPCountry": "US"},
     )
     assert resp.status_code == 403
@@ -134,12 +134,12 @@ async def test_us_header_blocks_web_music(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_tor_and_missing_country_blocked_behind_cloudflare(client: AsyncClient) -> None:
     missing = await client.get(
-        "/api/v1/web-music/quota",
+        "/api/v3/web-music/quota",
         headers={"Host": "music.sandbox.camxora.com", "CF-Connecting-IP": "1.2.3.4"},
     )
     assert missing.status_code == 403
     tor = await client.get(
-        "/api/v1/web-music/quota",
+        "/api/v3/web-music/quota",
         headers={"Host": "music.camxora.com", "CF-IPCountry": "T1"},
     )
     assert tor.status_code == 403
@@ -148,7 +148,7 @@ async def test_tor_and_missing_country_blocked_behind_cloudflare(client: AsyncCl
 @pytest.mark.asyncio
 async def test_no_cloudflare_headers_allowed_on_origin(client: AsyncClient) -> None:
     resp = await client.get(
-        "/api/v1/web-music/quota",
+        "/api/v3/web-music/quota",
         headers={"Host": "music.sandbox.camxora.com"},
     )
     assert resp.status_code == 200
@@ -157,7 +157,7 @@ async def test_no_cloudflare_headers_allowed_on_origin(client: AsyncClient) -> N
 @pytest.mark.asyncio
 async def test_api_host_web_music_still_geo_checked(client: AsyncClient) -> None:
     resp = await client.get(
-        "/api/v1/web-music/quota",
+        "/api/v3/web-music/quota",
         headers={"Host": "api.camxora.com", "CF-IPCountry": "US"},
     )
     assert resp.status_code == 403
@@ -187,7 +187,7 @@ async def test_geo_off_allows_foreign(monkeypatch: pytest.MonkeyPatch) -> None:
     transport = ASGITransport(app=_app())
     async with AsyncClient(transport=transport, base_url="http://test") as session:
         resp = await session.get(
-            "/api/v1/web-music/quota",
+            "/api/v3/web-music/quota",
             headers={"Host": "music.camxora.com", "CF-IPCountry": "US"},
         )
     assert resp.status_code == 200
@@ -196,7 +196,7 @@ async def test_geo_off_allows_foreign(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_geo_pass_through_does_not_buffer_audio(client: AsyncClient) -> None:
     resp = await client.get(
-        "/api/v1/public/streaming/tracks/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream",
+        "/api/v3/public/streaming/tracks/441cb4bf-f013-4c88-8ea1-9d17499b1762/stream",
         headers={"Host": "music.sandbox.camxora.com"},
     )
     assert resp.status_code == 200

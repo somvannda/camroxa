@@ -515,7 +515,7 @@ def get_desktop_release_upload_service(request: Any | None = None):
     api_download_base_url = ""
     if request is not None:
         api_download_base_url = (
-            f"{str(request.base_url).rstrip('/')}/api/v1/public/desktop-release/files"
+            f"{str(request.base_url).rstrip('/')}/api/v3/public/desktop-release/files"
         )
     return DesktopReleaseUploadService(
         storage_root=settings.desktop_release_storage_path,
@@ -539,7 +539,7 @@ async def get_desktop_release_upload_service_resolved(
         return service
 
     api_base = await resolve_public_api_base_url(pool, settings=settings)
-    files_base = f"{api_base.rstrip('/')}/api/v1/public/desktop-release/files"
+    files_base = f"{api_base.rstrip('/')}/api/v3/public/desktop-release/files"
     return service.with_download_bases(api_download_base_url=files_base)
 
 

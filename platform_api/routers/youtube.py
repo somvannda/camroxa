@@ -198,7 +198,9 @@ async def youtube_oauth_callback(
     state: str = Query(default=""),
     error: str | None = Query(default=None),
 ) -> HTMLResponse:
-    callback_url = await _resolve_youtube_callback_url(pool)
+    configured = await _resolve_youtube_callback_url(pool)
+    incoming = str(request.url.replace(query="", fragment=""))
+    callback_url = incoming if incoming.endswith("/youtube/oauth/callback") else configured
     result = await service.finalize_callback(
         callback_url=callback_url,
         callback_request_url=str(request.url),

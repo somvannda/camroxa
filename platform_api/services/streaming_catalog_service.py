@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from platform_api.exceptions import NotFoundError
+from platform_api.http_paths import canonical_api_path
 from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.audio_origin_proxy import is_initial_play_range, proxy_origin_audio
 from platform_api.services.storage_service import StorageService
@@ -143,7 +144,7 @@ class StreamingCatalogService:
 
     @staticmethod
     def _catalog_stream_url(track_id: UUID) -> str:
-        return f"/api/v1/public/streaming/tracks/{track_id}/stream"
+        return canonical_api_path(f"public/streaming/tracks/{track_id}/stream")
 
     async def get_home(self) -> dict[str, Any]:
         recent_tracks = await self._repo.list_recent_published_tracks(limit=12)
@@ -232,7 +233,7 @@ class StreamingCatalogService:
                     "artist_name": artist.get("artist_name"),
                     "album_count": int(artist.get("album_count") or 0),
                     "track_count": int(artist.get("track_count") or 0),
-                    "avatar_url": f"/api/v1/media/users/{user_id}/avatar" if avatar_raw else None,
+                    "avatar_url": canonical_api_path(f"media/users/{user_id}/avatar") if avatar_raw else None,
                 }
             )
         return {"items": items, "total": total, "limit": limit, "offset": offset}

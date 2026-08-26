@@ -71,9 +71,8 @@ async def download_desktop_release_file(filename: str) -> FileResponse:
     if path is None:
         raise HTTPException(status_code=404, detail="Installer file not found.")
 
-    pool = get_db_pool()
     try:
-        await increment_download_for_filename(pool, filename)
+        await increment_download_for_filename(get_db_pool(), filename)
     except Exception:
         # Never block the download if stats persistence fails.
         pass

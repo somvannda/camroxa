@@ -178,12 +178,12 @@ def test_theft_urls_are_not_trusted_play_sources(url: str) -> None:
 @pytest.mark.parametrize(
     "url",
     (
-        f"/api/v1/web-music/generations/{_TASK_ID}/stream/ok",
-        f"/api/v1/web-music/generations/{_TASK_ID}/stream/alt",
-        f"/api/v1/web-music/generations/{_TASK_ID}/stream?variant=ok",
-        f"/api/v1/public/streaming/tracks/{_TRACK_ID}/stream",
-        "/api/v1/web-music/licenses/segments/abc_DEF-123",
-        "/api/v1/web-music/play/abc_DEF-123",
+        f"/api/v3/web-music/generations/{_TASK_ID}/stream/ok",
+        f"/api/v3/web-music/generations/{_TASK_ID}/stream/alt",
+        f"/api/v3/web-music/generations/{_TASK_ID}/stream?variant=ok",
+        f"/api/v3/public/streaming/tracks/{_TRACK_ID}/stream",
+        "/api/v3/web-music/licenses/segments/abc_DEF-123",
+        "/api/v3/web-music/play/abc_DEF-123",
     ),
 )
 def test_player_may_only_point_at_camxora_play_paths(url: str) -> None:
@@ -319,7 +319,7 @@ async def test_task_json_strips_suno_and_storage_secrets() -> None:
     for snippet in _LEAK_SNIPPETS:
         assert snippet not in blob
     for clip in payload["clips"]:
-        assert clip["audio_url"].startswith("/api/v1/web-music/generations/")
+        assert clip["audio_url"].startswith("/api/v3/web-music/generations/")
         assert "download" not in clip["audio_url"]
         assert clip["package_status"] == "ready"
 

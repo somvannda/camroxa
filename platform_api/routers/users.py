@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
+from platform_api.http_paths import canonical_api_path
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.services.user_service import UserService
 from platform_api.services.credit_units import units_to_credits
@@ -280,7 +281,7 @@ async def _fetch_avatar_url(pool, user_id: UUID) -> str | None:
     raw = str(row.get("avatar_url") or "").strip()
     if not raw:
         return None
-    return f"/api/v1/media/users/{user_id}/avatar"
+    return canonical_api_path(f"media/users/{user_id}/avatar")
 
 
 def _save_user_avatar(*, user_id: UUID, data: bytes, content_type: str) -> str:

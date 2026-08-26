@@ -48,6 +48,7 @@ from platform_api.services.audio_origin_proxy import (
     proxy_origin_audio,
 )
 from platform_api.services.storage_service import StorageServiceError
+from platform_api.http_paths import canonical_api_path
 from platform_api.services.web_music_play_tokens import (
     create_play_token,
     play_url_for_token,
@@ -1624,14 +1625,14 @@ class WebMusicService:
         # Variant is in the path so the browser cannot reuse one media cache
         # entry across Version 1 / Version 2 (`?variant=` is not enough).
         return self._safe_client_play_url(
-            f"/api/v1/web-music/generations/{task_id}/stream/{variant_key}"
+            canonical_api_path(f"web-music/generations/{task_id}/stream/{variant_key}")
         )
 
     async def _mint_public_play_url(self, task_id: UUID, variant: str) -> str:
         variant_key = str(variant or "ok").strip().lower()
         if self._redis is None:
             return self._safe_client_play_url(
-                f"/api/v1/web-music/generations/{task_id}/stream/{variant_key}"
+                canonical_api_path(f"web-music/generations/{task_id}/stream/{variant_key}")
             )
         token = await create_play_token(
             self._redis,
@@ -2640,7 +2641,7 @@ class WebMusicService:
                     "title": title_ok,
                     "label": f"{title_ok} · Version 1",
                     "audio_url": await self._mint_owner_play_url(user_id, UUID(task_id), "ok") if ok_ready else "",
-                    "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=ok",
+                    "download_url": f"{canonical_api_path(f'web-music/generations/{task_id}/download')}?variant=ok",
                     "ready": ok_ready,
                     "package_status": str(_row_value(row, "package_status_ok") or "none"),
                     "image_url": image_ok,
@@ -2651,7 +2652,7 @@ class WebMusicService:
                     "title": title_alt,
                     "label": f"{title_alt} · Version 2",
                     "audio_url": await self._mint_owner_play_url(user_id, UUID(task_id), "alt") if alt_ready else "",
-                    "download_url": f"/api/v1/web-music/generations/{task_id}/download?variant=alt",
+                    "download_url": f"{canonical_api_path(f'web-music/generations/{task_id}/download')}?variant=alt",
                     "ready": alt_ready,
                     "package_status": str(_row_value(row, "package_status_alt") or "none"),
                     "image_url": image_alt,
@@ -3050,7 +3051,7 @@ class WebMusicService:
         return {
             "user_id": user_id,
             "artist_name": str(row.get("artist_name") or row.get("creator_name") or row.get("display_name") or "Camxora Creator"),
-            "avatar_url": f"/api/v1/media/users/{user_id}/avatar" if avatar_raw else None,
+            "avatar_url": canonical_api_path(f"media/users/{user_id}/avatar") if avatar_raw else None,
         }
 
     def _public_playlist_payload(self, row: Any) -> dict[str, Any]:

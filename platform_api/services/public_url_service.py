@@ -35,5 +35,5 @@ async def resolve_public_api_base_url(
 
 def build_youtube_oauth_callback_url(api_base_url: str, *, api_v1_prefix: str | None = None) -> str:
     """Build the Google OAuth redirect URI registered for YouTube connect."""
-    prefix = (api_v1_prefix or get_settings().api_v1_prefix).rstrip("/")
+    prefix = (api_v1_prefix or get_settings().api_v3_prefix).rstrip("/")
     return f"{api_base_url.rstrip('/')}{prefix}/youtube/oauth/callback"
