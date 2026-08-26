@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, X } from 'lucide-react';
+import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, X } from 'lucide-react';
 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
@@ -45,6 +45,7 @@ import {
   type WebMusicQuota,
   type WebMusicWorkspace,
 } from '@/lib/web-music-api';
+import { formatGeneratedTime, formatModelVersionTag } from '@/lib/clip-display';
 import { fetchCreditBalance, fetchSubscriptionPlans, type CreditBalance } from '@/lib/subscription-api';
 import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
 
@@ -157,11 +158,6 @@ function formatSliderSetting(value: number | null | undefined): string {
   return `${Math.round(Number(value) * 100)}%`;
 }
 
-function formatModelVersionTag(model: string | null | undefined): string {
-  const key = String(model || 'V5_5').trim().toUpperCase().replace('.', '_');
-  return key === 'V5_5' ? 'v5.5' : 'v5';
-}
-
 function ModelVersionTag({ model }: { model: string | null | undefined }) {
   return (
     <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-violet-300">
@@ -175,16 +171,19 @@ function ClipReadyLabel({
   generating,
   waitingLabel = 'Waiting',
   model,
+  createdAt,
   className = 'text-xs text-slate-500',
 }: {
   clip: WebMusicClip;
   generating?: boolean;
   waitingLabel?: string;
   model?: string | null;
+  createdAt?: string | null;
   className?: string;
 }) {
   const duration = formatDuration(clip.duration_seconds);
   const status = clip.ready ? 'Ready' : waitingLabel;
+  const generatedTime = formatGeneratedTime(createdAt);
 
   return (
     <p className={`flex min-w-0 flex-nowrap items-center gap-1.5 ${className}`}>
@@ -193,7 +192,50 @@ function ClipReadyLabel({
         {generating ? ' · Generating…' : ''}
       </span>
       <ModelVersionTag model={model} />
+      {generatedTime ? (
+        <span className="shrink-0 text-[11px] text-slate-500">· {generatedTime}</span>
+      ) : null}
     </p>
+  );
+}
+
+function CopyTextButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    const value = text.trim();
+    if (!value) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        throw new Error('clipboard unavailable');
+      }
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = value;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.left = '-9999px';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      document.body.removeChild(area);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-white/10 hover:text-white"
+      aria-label={copied ? 'Copied' : label}
+      title={copied ? 'Copied' : label}
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
   );
 }
 
@@ -1352,6 +1394,7 @@ export default function CreatePageClient() {
                           <ClipReadyLabel
                             clip={clip}
                             model={generation.model}
+                            createdAt={generation.created_at}
                             waitingLabel={clipWaitingLabel(generation)}
                             generating={isGeneratingStatus(generation)}
                           />
@@ -1400,6 +1443,7 @@ export default function CreatePageClient() {
                 <ClipReadyLabel
                   clip={selectedVersion.clip}
                   model={selectedVersion.song.model}
+                  createdAt={selectedVersion.song.created_at}
                   waitingLabel={clipWaitingLabel(selectedVersion.song)}
                   className="text-sm text-slate-400"
                 />
@@ -1485,7 +1529,10 @@ export default function CreatePageClient() {
             {/* Style/Prompt */}
             {selectedVersion.song.style && (
               <div className="space-y-2 min-w-0">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Style</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Style</p>
+                  <CopyTextButton text={selectedVersion.song.style} label="Copy style" />
+                </div>
                 <div className="rounded-lg border border-white/8 bg-black/20 p-3 min-w-0">
                   <p className="break-words text-sm text-slate-300 leading-relaxed">{selectedVersion.song.style}</p>
                 </div>
@@ -1495,7 +1542,10 @@ export default function CreatePageClient() {
             {/* Lyrics */}
             {selectedVersion.song.lyrics && (
               <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Lyrics</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Lyrics</p>
+                  <CopyTextButton text={selectedVersion.song.lyrics} label="Copy lyrics" />
+                </div>
                 <div className="rounded-lg border border-white/8 bg-black/20 p-3 max-h-64 overflow-y-auto">
                   <pre className="whitespace-pre-wrap text-sm text-slate-300 font-sans leading-relaxed">
                     {selectedVersion.song.lyrics}

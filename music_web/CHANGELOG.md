@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Create workspace list and the selected-track header show generated time after the model tag (for example `v5.5 10:30 AM`). Style and lyrics in the detail panel have a copy button. See `docs/changelog/2026-08-26-workspace-generated-time-and-copy.md`.
 - Create playlist control confirms with a tick animation, keeps the menu open for more playlists, and shows playlist name chips on the track. See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
 - Create / edit is one live preview: **cover**, photo, name, location, country, email, social links, bio, and typed genres (up to 10, no category dropdown). Drag photo and cover to crop. **Required:** name, location, country, genre. Photo, cover, email, bio, and links are optional. Public **More info** uses social icons aligned with email and location. Left sidebar **Artists** opens published pages. **Music on this page** sits under the preview on `/artist` so owners can attach tracks and playlists. See `docs/changelog/2026-08-20-artist-pages.md`, `docs/changelog/2026-08-20-artist-page-attach.md`, and `docs/changelog/2026-08-20-artist-page-attach-visible.md`.
 
