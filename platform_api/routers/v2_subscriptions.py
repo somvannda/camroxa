@@ -171,6 +171,7 @@ async def list_plans(
                     name=plan.name,
                     price_cents=plan.price_cents,
                     daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+                    monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
                 ),
                 pricing_credit_lines=resolve_pricing_credit_lines(
                     getattr(plan, "pricing_credit_lines", None),

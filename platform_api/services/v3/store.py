@@ -39,6 +39,7 @@ def row_to_plan_dict(
             name=str(name or ""),
             price_cents=price_cents,
             daily_credits=daily_credits,
+            monthly_credits=monthly_credits,
         )
         pricing_credit_lines = resolve_pricing_credit_lines(
             pricing_credit_lines,

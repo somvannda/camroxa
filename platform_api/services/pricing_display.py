@@ -19,6 +19,11 @@ DEFAULT_FREE_PRICING_FEATURES = (
     "Daily credit reset",
     "Top-up packs",
 )
+DEFAULT_FREE_MONTHLY_PRICING_FEATURES = (
+    "Web Create",
+    "Monthly credit reset",
+    "Top-up packs",
+)
 DEFAULT_PAID_PRICING_FEATURES = (
     "Web Create",
     "Desktop studio",
@@ -69,12 +74,28 @@ def normalize_pricing_features(value: Any) -> list[str]:
     return lines
 
 
-def default_pricing_features(*, is_free: bool, daily_credits: int = 0) -> list[str]:
+def default_pricing_features(
+    *,
+    is_free: bool,
+    daily_credits: int = 0,
+    monthly_credits: int = 0,
+) -> list[str]:
     if is_free:
         if int(daily_credits or 0) > 0:
             return list(DEFAULT_FREE_PRICING_FEATURES)
+        if int(monthly_credits or 0) > 0:
+            return list(DEFAULT_FREE_MONTHLY_PRICING_FEATURES)
         return ["Web Create", "Top-up packs"]
     return list(DEFAULT_PAID_PRICING_FEATURES)
+
+
+def credit_reset_label(*, daily_credits: int = 0, monthly_credits: int = 0) -> str | None:
+    """Account-card copy: daily grant wins; hide the line when neither grants."""
+    if int(daily_credits or 0) > 0:
+        return "Credit reset daily"
+    if int(monthly_credits or 0) > 0:
+        return "Credit reset monthly"
+    return None
 
 
 def default_pricing_credit_lines(
@@ -128,6 +149,7 @@ def resolve_pricing_features(
     name: str = "",
     price_cents: int = 0,
     daily_credits: int = 0,
+    monthly_credits: int = 0,
 ) -> list[str]:
     stored = normalize_pricing_features(value)
     if stored:
@@ -135,4 +157,5 @@ def resolve_pricing_features(
     return default_pricing_features(
         is_free=is_free_plan(name=name, price_cents=price_cents, daily_credits=daily_credits),
         daily_credits=daily_credits,
+        monthly_credits=monthly_credits,
     )

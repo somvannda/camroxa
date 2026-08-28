@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { LogOut, Plus, Sparkles } from 'lucide-react';
-import { fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
+import { creditResetLabel, fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
 import TopupModal from '@/components/topup-modal';
 import PricingModal from '@/components/pricing-modal';
 import { useAuth } from '@/components/auth-provider';
@@ -30,12 +30,18 @@ function computeCreditDisplay(balance: CreditBalance | null): CreditDisplay {
       limit: 50,
       remaining: 0,
       progressPct: 0,
-      resetLabel: 'Credit reset daily',
+      resetLabel: null,
       promoText: 'Get more credits with Pro.',
       isLow: true,
       hasSubscription: false,
     };
   }
+
+  const resetLabel = creditResetLabel({
+    daily_credits: balance.daily_free_limit,
+    monthly_credits: balance.monthly_credits,
+    reset_label: balance.reset_label,
+  });
 
   if (balance.has_subscription) {
     const remaining = Math.max(0, balance.total_credits);
@@ -49,7 +55,7 @@ function computeCreditDisplay(balance: CreditBalance | null): CreditDisplay {
       limit: capacity,
       remaining,
       progressPct: Math.min(100, Math.round((remaining / capacity) * 100)),
-      resetLabel: null,
+      resetLabel,
       promoText:
         balance.topup_credits > 0
           ? `Includes ${balance.topup_credits.toLocaleString('en-US')} top-up credits`
@@ -59,15 +65,20 @@ function computeCreditDisplay(balance: CreditBalance | null): CreditDisplay {
     };
   }
 
-  const limit = Math.max(balance.daily_free_limit, 1);
-  const remaining = Math.max(0, balance.daily_free_credits);
+  const dailyLimit = Math.max(0, balance.daily_free_limit);
+  const monthlyLimit = Math.max(0, balance.monthly_credits);
+  const remaining =
+    dailyLimit > 0
+      ? Math.max(0, balance.daily_free_credits)
+      : Math.max(0, balance.grant_remaining ?? balance.total_credits);
+  const limit = Math.max(dailyLimit > 0 ? dailyLimit : monthlyLimit, remaining, 1);
 
   return {
     used: remaining,
     limit,
     remaining,
     progressPct: Math.min(100, Math.round((remaining / limit) * 100)),
-    resetLabel: 'Credit reset daily',
+    resetLabel,
     promoText: 'Get more credits with Pro.',
     isLow: remaining > 0 && remaining < 30,
     hasSubscription: false,

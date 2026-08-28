@@ -1,4 +1,5 @@
 from platform_api.services.pricing_display import (
+    credit_reset_label,
     credits_to_songs,
     normalize_pricing_features,
     resolve_pricing_credit_lines,
@@ -43,6 +44,20 @@ def test_resolve_pricing_features_falls_back_by_plan_kind() -> None:
         "Web Create",
         "Top-up packs",
     ]
+    assert resolve_pricing_features(
+        [], name="Free", price_cents=0, daily_credits=0, monthly_credits=50
+    ) == [
+        "Web Create",
+        "Monthly credit reset",
+        "Top-up packs",
+    ]
+
+
+def test_credit_reset_label_follows_grant_period() -> None:
+    assert credit_reset_label(daily_credits=50, monthly_credits=0) == "Credit reset daily"
+    assert credit_reset_label(daily_credits=0, monthly_credits=50) == "Credit reset monthly"
+    assert credit_reset_label(daily_credits=50, monthly_credits=50) == "Credit reset daily"
+    assert credit_reset_label(daily_credits=0, monthly_credits=0) is None
 
 
 def test_resolve_pricing_credit_lines_follows_daily_then_monthly() -> None:
