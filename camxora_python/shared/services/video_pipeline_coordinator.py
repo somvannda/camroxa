@@ -103,6 +103,12 @@ class VideoPipelineCoordinator(QObject):
 
         if is_app_quitting():
             return
+        from shared.services.platform_client import api_has_access_token
+
+        if not api_has_access_token(self._api):
+            return
+        if self._last_poll_error_message == "auth":
+            self._last_poll_error_message = ""
         if self._automation.is_busy():
             return
         if self._worker is not None and self._worker.isRunning():
@@ -378,7 +384,15 @@ class VideoPipelineCoordinator(QObject):
         self._api_outage = True
         # Wedged busy flags during an outage prevent resume after recovery.
         self._automation.recover_stale_state()
+        from shared.services.platform_client import is_auth_failure_message
+
         text = str(message or "").strip() or "Auto-video paused: unable to load progress rows."
+        if is_auth_failure_message(text):
+            if self._last_poll_error_message == "auth":
+                return
+            self._last_poll_error_message = "auth"
+            emit_shell_status("Auto-video paused: sign in to continue.", tone="warning")
+            return
         now = time.time()
         if text == self._last_poll_error_message and (now - self._last_poll_error_at) < 60.0:
             return

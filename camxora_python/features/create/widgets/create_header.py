@@ -47,3 +47,8 @@ class CreateHeader(QFrame):
         self._meta.setObjectName("PlanMeta")
         self._meta.setVisible(bool(meta))
         root.addWidget(self._meta)
+
+    def set_meta(self, text: str) -> None:
+        label = str(text or "").strip()
+        self._meta.setText(label)
+        self._meta.setVisible(bool(label))

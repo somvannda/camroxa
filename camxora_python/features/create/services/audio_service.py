@@ -10,6 +10,7 @@ class AudioService(QObject):
     position_changed = Signal(int, int)
     playing_changed = Signal(bool)
     track_changed = Signal(str)
+    finished = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -21,6 +22,7 @@ class AudioService(QObject):
         self.player.playbackStateChanged.connect(
             lambda state: self.playing_changed.emit(state == QMediaPlayer.PlaybackState.PlayingState)
         )
+        self.player.mediaStatusChanged.connect(self._on_media_status)
 
     def set_track(self, title: str, path: str = "") -> None:
         self.track_changed.emit(title or "No track selected")
@@ -46,3 +48,7 @@ class AudioService(QObject):
 
     def _emit_position(self, *_args) -> None:
         self.position_changed.emit(int(self.player.position()), int(self.player.duration()))
+
+    def _on_media_status(self, status) -> None:
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.finished.emit()

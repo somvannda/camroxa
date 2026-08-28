@@ -35,3 +35,18 @@ def emit_shell_status(message: str, *, tone: str = "neutral") -> None:
 
 def restore_shell_status() -> None:
     ShellStatusBus.instance().restore_default.emit()
+
+
+def emit_footer_error(message: str) -> None:
+    """Footer status + existing floating flash badge (same as other actions)."""
+    from shared.services.action_feedback import notify_action
+
+    text = str(message or "").strip()
+    if not text:
+        clear_footer_error()
+        return
+    notify_action(text, tone="error", duration_ms=12_000)
+
+
+def clear_footer_error() -> None:
+    restore_shell_status()

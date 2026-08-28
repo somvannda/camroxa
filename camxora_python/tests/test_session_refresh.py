@@ -80,3 +80,23 @@ def test_ensure_fresh_session_skips_second_forced_refresh_after_renewal() -> Non
 
     assert session.ensure_fresh_session(force=True) is True
     assert session._api.refresh.call_count == 1
+
+
+def test_ensure_fresh_session_rotates_when_access_token_got_401() -> None:
+    session = SessionService()
+    _store_tokens(session, access="access-1", refresh="refresh-1", expires_in_s=3600)
+    session._api.refresh = MagicMock(  # type: ignore[method-assign]
+        return_value=TokenResponse(
+            access_token="access-2",
+            refresh_token="refresh-2",
+            token_type="bearer",
+            expires_in=3600,
+        )
+    )
+
+    assert session.ensure_fresh_session(force=True, failed_access_token="access-1") is True
+    assert session._api.refresh.call_count == 1
+    assert session.get_tokens().accessToken == "access-2"
+
+    assert session.ensure_fresh_session(force=True, failed_access_token="access-1") is True
+    assert session._api.refresh.call_count == 1
