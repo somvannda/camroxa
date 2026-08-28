@@ -73,15 +73,53 @@ QWidget#window_surface[roundedCorners="true"] {
     border-radius: 8px;
 }
 
+QWidget#shell_body {
+    background-color: #020817;
+}
+
 QFrame#shell_sidebar {
-    background-color: #050a1d;
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: #071426;
+    border: 1px solid #18304A;
+    border-radius: 6px;
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+}
+
+QFrame#shell_sidebar QPushButton,
+QFrame#shell_sidebar QLabel {
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 }
 
 QFrame#shell_sidebar QWidget#shell_nav_section,
 QFrame#shell_sidebar QLabel {
     background: transparent;
     border: none;
+}
+
+QFrame#shell_account_card {
+    background-color: #0D1B2E;
+    border: 1px solid #18304A;
+    border-radius: 6px;
+}
+
+QLabel#shell_account_name {
+    color: #E5EDF7;
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+}
+
+QLabel#shell_account_meta {
+    color: #8FA4BB;
+    font-size: 12px;
+    background: transparent;
+}
+
+QLabel#shell_group_label {
+    color: #60758C;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    background: transparent;
 }
 
 QFrame#setup_notification_dropdown {
@@ -314,9 +352,9 @@ QPushButton#software_update_primary:disabled {
 }
 
 QFrame#window_title_bar {
-    background-color: #060b20;
+    background-color: #061225;
     border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid #18304A;
 }
 
 QLabel#window_brand_logo {
@@ -327,13 +365,28 @@ QLabel#window_brand_logo {
 QLabel#window_brand_title {
     background: transparent;
     border: none;
-    color: #ffffff;
+    color: #E5EDF7;
+    font-size: 15px;
+    font-weight: 700;
 }
 
 QLabel#window_brand_subtitle {
     background: transparent;
     border: none;
-    color: #64748b;
+    color: #60758C;
+    font-size: 9px;
+    font-weight: 500;
+}
+
+QToolButton#window_help_button {
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    padding: 0;
+}
+
+QToolButton#window_help_button:hover {
+    background: rgba(255, 255, 255, 0.06);
 }
 
 /* Buttons - Compact */
@@ -442,31 +495,33 @@ QPushButton#stop_button:hover {
 
 QPushButton#nav_button {
     background-color: transparent;
-    color: #c0c0c0;
+    color: #8FA4BB;
     border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 10px 12px;
+    border-radius: 5px;
+    padding: 0 12px 0 10px;
     text-align: left;
-    min-height: 20px;
-    font-size: 9pt;
+    min-height: 34px;
+    max-height: 34px;
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    font-size: 12px;
     font-weight: 500;
 }
 
 QPushButton#nav_button:hover {
-    background-color: rgba(244, 63, 94, 0.1);
-    border-color: rgba(244, 63, 94, 0.1);
-    color: #fecdd3;
+    background-color: rgba(99, 53, 217, 0.12);
+    color: #E5EDF7;
 }
 
 QPushButton#nav_button:checked {
-    background-color: rgba(139, 92, 246, 0.15);
-    border-color: rgba(167, 139, 250, 0.3);
+    background-color: #6335D9;
+    border: 1px solid #7C3AED;
     color: #ffffff;
+    font-weight: 600;
 }
 
 QPushButton#nav_button:checked:hover {
-    background-color: rgba(139, 92, 246, 0.22);
-    border-color: rgba(167, 139, 250, 0.45);
+    background-color: #7C3AED;
+    border-color: #7C3AED;
     color: #ffffff;
 }
 
@@ -512,39 +567,46 @@ QFrame#history_batch_separator {
 
 QFrame#shell_logout_wrap {
     background: transparent;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border: none;
 }
 
 QPushButton#shell_logout_button {
     background-color: transparent;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    color: #fda4af;
-    padding: 10px 12px;
-    min-height: 20px;
+    border: 1px solid #6335D9;
+    border-radius: 5px;
+    color: #8FA4BB;
+    padding: 0 12px 0 10px;
+    min-height: 34px;
+    max-height: 34px;
     text-align: left;
-    font-size: 9pt;
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    font-size: 12px;
     font-weight: 500;
 }
 
 QPushButton#shell_logout_button:hover {
-    background-color: rgba(244, 63, 94, 0.1);
-    border-color: rgba(244, 63, 94, 0.1);
-    color: #fecdd3;
+    background-color: rgba(99, 53, 217, 0.16);
+    color: #E5EDF7;
 }
 
 QPushButton#shell_logout_button:pressed {
-    background-color: rgba(244, 63, 94, 0.14);
+    background-color: rgba(99, 53, 217, 0.22);
 }
 
 QFrame#shell_footer_bar {
-    background-color: #060b20;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: #061225;
+    border: none;
+    border-top: 1px solid #18304A;
+}
+
+QFrame#shell_footer_bar,
+QFrame#shell_footer_bar QLabel {
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 }
 
 QLabel#shell_footer_message {
-    color: #94a3b8;
-    font-size: 8pt;
+    color: #60758C;
+    font-size: 12px;
 }
 
 QLabel#shell_footer_message[tone="success"] {
@@ -556,16 +618,24 @@ QLabel#shell_footer_message[tone="error"] {
 }
 
 QLabel#shell_footer_metric {
-    color: #94a3b8;
-    font-size: 8pt;
+    color: #8FA4BB;
+    font-size: 12px;
+}
+
+QLabel#shell_footer_divider {
+    color: #23415E;
+    font-size: 12px;
+    background: transparent;
 }
 
 QLabel#shell_footer_env_badge,
 QLabel#shell_footer_version_badge {
-    color: #7dd3fc;
-    font-size: 8pt;
-    padding: 2px 8px;
+    color: #38BDF8;
+    font-size: 12px;
+    padding: 2px 10px;
     border-radius: 4px;
+    min-height: 22px;
+    max-height: 22px;
     background-color: rgba(56, 189, 248, 0.12);
 }
 
@@ -2046,5 +2116,8 @@ def apply_theme(app: QApplication | None = None) -> None:
         app = QApplication.instance()
     if app is None:
         return
+    from shared.lib.ui_font import ensure_inter_loaded
+
+    ensure_inter_loaded()
     app.setStyle("Fusion")
     app.setStyleSheet(MAIN_STYLESHEET)

@@ -10,7 +10,7 @@ from shared.constants.navigation import (
 
 
 def test_shell_route_count() -> None:
-    assert len(SHELL_ROUTES) == 11
+    assert len(SHELL_ROUTES) == 12
 
 
 def test_workspace_routes_exclude_system() -> None:
@@ -19,6 +19,7 @@ def test_workspace_routes_exclude_system() -> None:
     assert "log" not in keys
     assert "merger" not in keys
     assert "music" in keys
+    assert "create" in keys
     assert "video" in keys
 
 

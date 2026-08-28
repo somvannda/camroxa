@@ -1,16 +1,20 @@
-"""Profile page — mirrors ProfilePage.tsx."""
+"""Profile page — account, membership, channel profiles, usage, and activity."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
 
-from features.profile.widgets.profile_cards import (
-    AccountCard,
-    ActivityCard,
-    ChannelProfilesCard,
-    MembershipCard,
-)
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.studio_panel import fill_studio_canvas, paint_studio_card
+from features.profile.profile_constants import COLUMN_GAP, LEFT_STRETCH, RIGHT_STRETCH
+from features.profile.profile_styles import build_profile_page_qss
+from features.profile.widgets.account_card import AccountCard
+from features.profile.widgets.channel_profiles import ChannelProfilesCard
+from features.profile.widgets.membership_card import MembershipCard
+from features.profile.widgets.recent_activity import RecentActivityCard
+from features.profile.widgets.usage_overview import UsageOverview
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from shared.models.platform import DashboardOverview
 from shared.services.action_feedback import notify_action
 from shared.services.platform_api import PlatformApi
@@ -18,8 +22,15 @@ from shared.services.workspace_cache import WorkspaceCache
 from shared.workers.data_workers import DashboardOverviewWorker
 
 
+class _FramedHeader(CreateHeader):
+    """Create header with a painted card frame (QScrollArea QSS cannot reach it)."""
+
+    def paintEvent(self, event) -> None:
+        paint_studio_card(self)
+
+
 class ProfileView(QScrollArea):
-    """Account, membership, channel profiles, and activity summary."""
+    """Signed-in account, plan, credits, allowance, and channel profiles."""
 
     def __init__(
         self,
@@ -33,30 +44,68 @@ class ProfileView(QScrollArea):
         self._cache = cache
         self._worker: DashboardOverviewWorker | None = None
         self._last_overview: DashboardOverview | None = None
+        self.setObjectName("profile_workspace")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_profile_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self.viewport())
 
         container = QWidget()
+        container.setObjectName("profile_workspace")
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        fill_studio_canvas(container)
+        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root = QVBoxLayout(container)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(20)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(COLUMN_GAP)
 
-        top = QHBoxLayout()
-        top.setSpacing(20)
-        top.setAlignment(Qt.AlignmentFlag.AlignTop)
+        header = _FramedHeader(
+            title="Profile",
+            subtitle="Signed-in account, plan, credits, allowance, and created channel profiles.",
+            meta="",
+            eyebrow="WORKSPACE",
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
+
+        columns = QHBoxLayout()
+        columns.setContentsMargins(0, 0, 0, 0)
+        columns.setSpacing(COLUMN_GAP)
+        columns.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        left = QVBoxLayout()
+        left.setContentsMargins(0, 0, 0, 0)
+        left.setSpacing(COLUMN_GAP)
         self._account = AccountCard()
-        self._membership = MembershipCard()
-        top.addWidget(self._account, stretch=12, alignment=Qt.AlignmentFlag.AlignTop)
-        top.addWidget(self._membership, stretch=8, alignment=Qt.AlignmentFlag.AlignTop)
-        root.addLayout(top)
+        self._profiles = ChannelProfilesCard(api=api)
+        left.addWidget(self._account, 0)
+        left.addWidget(self._profiles, 1)
+        left_host = QWidget()
+        fill_studio_canvas(left_host)
+        left_host.setLayout(left)
+        left_host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        columns.addWidget(left_host, LEFT_STRETCH)
 
-        bottom = QHBoxLayout()
-        bottom.setSpacing(20)
-        self._profiles = ChannelProfilesCard()
-        self._activity = ActivityCard()
-        bottom.addWidget(self._profiles, stretch=155)
-        bottom.addWidget(self._activity, stretch=75)
-        root.addLayout(bottom)
+        right = QVBoxLayout()
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(COLUMN_GAP)
+        self._membership = MembershipCard()
+        self._usage = UsageOverview()
+        self._activity = RecentActivityCard()
+        right.addWidget(self._membership, 0)
+        right.addWidget(self._usage, 0)
+        right.addWidget(self._activity, 1)
+        right_host = QWidget()
+        fill_studio_canvas(right_host)
+        right_host.setLayout(right)
+        right_host.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        right_host.setMinimumWidth(260)
+        columns.addWidget(right_host, RIGHT_STRETCH)
+        root.addLayout(columns, 1)
 
         self.setWidget(container)
         self._enter_loading_state()
@@ -90,6 +139,7 @@ class ProfileView(QScrollArea):
         self._account.show_loading()
         self._membership.show_loading()
         self._profiles.show_loading()
+        self._usage.show_loading()
         self._activity.show_loading()
 
     def _on_failed(self, message: str) -> None:
@@ -100,6 +150,7 @@ class ProfileView(QScrollArea):
         self._account.show_error()
         self._membership.show_loading()
         self._profiles.show_empty()
+        self._usage.show_loading()
         self._activity.show_loading()
 
     def _on_loaded(self, payload: object) -> None:
@@ -115,4 +166,5 @@ class ProfileView(QScrollArea):
         self._account.apply(data)
         self._membership.apply(data)
         self._profiles.apply(data)
+        self._usage.apply(data)
         self._activity.apply(data)

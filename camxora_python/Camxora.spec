@@ -46,10 +46,15 @@ for chrome_name in (
     "window-minimize.svg",
     "window-maximize.svg",
     "log-out.svg",
+    "background_login.png",
 ):
     chrome_path = resources_dir / chrome_name
     if chrome_path.is_file():
         datas.append((str(chrome_path), "resources"))
+
+khmer_font = ROOT / "assets" / "fonts" / "KhmerOS" / "KhmerOSsiemreap.ttf"
+if khmer_font.is_file():
+    datas.append((str(khmer_font), "assets/fonts/KhmerOS"))
 
 factory_templates = REPO_ROOT / "python_app" / "video_templates_local.json"
 # Optional legacy sample catalog — not auto-loaded by the app; keep only if present.

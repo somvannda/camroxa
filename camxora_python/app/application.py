@@ -70,12 +70,18 @@ class AppShellWidget(QWidget):
         return None
 
     def _build_ui(self) -> None:
-        root = QHBoxLayout(self)
+        root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        body = QWidget()
+        body.setObjectName("shell_body")
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(10, 10, 10, 10)
+        body_layout.setSpacing(10)
+
         self._sidebar = SidebarNav()
-        root.addWidget(self._sidebar)
+        body_layout.addWidget(self._sidebar)
 
         content = QWidget()
         content.setObjectName("shell_content_host")
@@ -86,7 +92,7 @@ class AppShellWidget(QWidget):
         content_inner = QWidget()
         content_inner.setObjectName("shell_content_inner")
         content_inner_layout = QVBoxLayout(content_inner)
-        content_inner_layout.setContentsMargins(12, 12, 12, 12)
+        content_inner_layout.setContentsMargins(0, 0, 0, 0)
         content_inner_layout.setSpacing(8)
 
         self._page_header = PageHeader()
@@ -99,6 +105,8 @@ class AppShellWidget(QWidget):
         self._action_flash = FlashStatusFooter(content_inner)
 
         content_layout.addWidget(content_inner, stretch=1)
+        body_layout.addWidget(content, stretch=1)
+        root.addWidget(body, stretch=1)
 
         self._status_bar = ShellFooterBar()
         self._route_ready_message = "Ready"
@@ -107,9 +115,7 @@ class AppShellWidget(QWidget):
         self._status_bar.set_environment_badge(env_label, tooltip=env_tooltip)
         version_label, version_tooltip = footer_version_badge()
         self._status_bar.set_version_badge(version_label, tooltip=version_tooltip)
-        content_layout.addWidget(self._status_bar)
-
-        root.addWidget(content, stretch=1)
+        root.addWidget(self._status_bar)
         self._router = AppRouter(self._stack, self._api, cache=self._session.workspace_cache, session=self._session)
         from shared.services.workspace_prefs_push import bind_session
 
@@ -216,9 +222,9 @@ class AppShellWidget(QWidget):
         route = self._router.navigate(key)
         self._sidebar.select_route(key)
 
-        is_video = key == "video"
-        self._page_header.setVisible(not is_video)
-        if not is_video:
+        hide_header = key in {"video", "create", "profile"}
+        self._page_header.setVisible(not hide_header)
+        if not hide_header:
             self._page_header.set_route(route)
 
         self._route_ready_message = f"Ready: {route.label}"
