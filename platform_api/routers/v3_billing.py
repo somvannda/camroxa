@@ -141,6 +141,7 @@ async def me_credits(ctx: UserDep, billing: BillingDep, grants: GrantDep) -> dic
     user_id = UUID(ctx.user_id)
     await grants.expire_unused_grants(user_id)
     await grants.ensure_daily_grant(user_id)
+    await grants.ensure_period_grant(user_id)
     return await billing.wallet_view(user_id)
 
 

@@ -1,6 +1,16 @@
 /** Subscription and credit management API client (`/api/v3`) */
 
 import { musicAuthFetch } from '@/lib/auth-fetch';
+import { creditResetLabel, normalizeFeatureLines } from '@/lib/credit-display';
+
+export {
+  PUBLIC_CARD_BULLETS,
+  FREE_CARD_BULLETS,
+  FREE_MONTHLY_CARD_BULLETS,
+  normalizeFeatureLines,
+  cardBulletsForPlan,
+  creditResetLabel,
+} from '@/lib/credit-display';
 
 const API_V3 = '/api/v3';
 
@@ -55,6 +65,7 @@ export type CreditBalance = {
   current_period_end?: string | null;
   reset_at?: string | null;
   grant_remaining?: number;
+  reset_label?: string | null;
   breakdown: {
     monthly: number;
     topup: number;
@@ -65,8 +76,10 @@ export type CreditBalance = {
 export type V3WalletView = {
   balance_credits?: number;
   grant_remaining_credits?: number;
+  reset_label?: string | null;
   plan?: {
     name?: string;
+    price_cents?: number;
     monthly_credits?: number;
     daily_credits?: number;
   } | null;
@@ -96,7 +109,8 @@ export function mergeV3CreditBalance(
     .reduce((sum, lot) => sum + asCredits(lot.remaining_credits), 0);
 
   const hasPaidWeb = Boolean(v2?.has_subscription);
-  const hasPaidPlan = hasPaidWeb || planMonthly > 0 || grantRemaining > 0;
+  const planPrice = Number(v3?.plan?.price_cents ?? 0);
+  const hasPaidPlan = hasPaidWeb || planPrice > 0;
   const total = v3Balance;
   const dailyLimit = planDaily || asCredits(v2?.daily_free_limit);
   const dailyRemaining = dailyLot || (!hasPaidPlan ? v3Balance : 0);
@@ -112,6 +126,11 @@ export function mergeV3CreditBalance(
     daily_free_limit: dailyLimit,
     daily_free_used: Math.max(0, dailyLimit - dailyRemaining),
     has_subscription: hasPaidPlan,
+    reset_label: creditResetLabel({
+      daily_credits: planDaily,
+      monthly_credits: planMonthly,
+      reset_label: v3?.reset_label,
+    }),
     current_period_end: v2?.current_period_end ?? null,
     reset_at: v2?.reset_at ?? null,
     grant_remaining: grantRemaining,
@@ -487,38 +506,6 @@ export function matchCurrentPlan(
 /**
  * Format credits as songs equivalent (10 credits = 1 generate = 2 songs)
  */
-export const PUBLIC_CARD_BULLETS = [
-  'Web Create',
-  'Desktop studio',
-  'Dual channels',
-  'Top-up packs',
-] as const;
-
-export const FREE_CARD_BULLETS = [
-  'Web Create',
-  'Daily credit reset',
-  'Top-up packs',
-] as const;
-
-export function normalizeFeatureLines(value?: string[] | null): string[] {
-  return [...new Set((value ?? []).map((line) => String(line).trim()).filter(Boolean))];
-}
-
-export function cardBulletsForPlan(plan: {
-  name: string;
-  price_cents: number;
-  features?: string[];
-  pricing_features?: string[];
-}): readonly string[] {
-  const fromApi = normalizeFeatureLines(plan.pricing_features ?? plan.features);
-  if (fromApi.length) return fromApi;
-  const name = plan.name.replace(/[_-]/g, ' ').toLowerCase();
-  if (plan.price_cents <= 0 && name.includes('free')) {
-    return FREE_CARD_BULLETS;
-  }
-  return PUBLIC_CARD_BULLETS;
-}
-
 export function creditHeadlineNumber(plan: {
   monthly_credits?: number;
   daily_credits?: number;

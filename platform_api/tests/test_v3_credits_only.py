@@ -104,6 +104,24 @@ class FakeStore:
         plan_id = self.user_plan.get(str(user_id))
         return self.plans.get(plan_id) if plan_id else None
 
+    async def get_plan_for_web_subscription(self, user_id: UUID) -> dict | None:
+        return None
+
+    async def get_active_free_plan(self) -> dict | None:
+        for plan in self.plans.values():
+            if str(plan.get("name") or "").lower() == "free" and plan.get("is_active"):
+                return plan
+        return None
+
+    async def resolve_charge_plan(self, user_id: UUID) -> dict | None:
+        plan = await self.get_plan_for_user(user_id)
+        if plan is not None:
+            return plan
+        web_plan = await self.get_plan_for_web_subscription(user_id)
+        if web_plan is not None and int(web_plan.get("price_cents") or 0) > 0:
+            return web_plan
+        return await self.get_active_free_plan()
+
     async def patch_plan(self, plan_id: UUID, fields: dict) -> dict | None:
         plan = self.plans.get(str(plan_id))
         if plan is None:
@@ -358,6 +376,29 @@ async def test_admin_adjust_visible_on_v3_wallet(store: FakeStore, wallet: FakeW
     await wallet.add_credits(USER_ID, credits_to_units(10), reason="admin_adjust")
     view = await billing.wallet_view(USER_ID)
     assert view["balance_credits"] == units_to_credits(wallet.balance)
+    assert view["reset_label"] is None
+
+
+@pytest.mark.asyncio
+async def test_wallet_view_uses_free_plan_reset_label(store: FakeStore, wallet: FakeWallet) -> None:
+    store.user_plan.clear()
+    free = _v3_plan(
+        name="Free",
+        price_cents=0,
+        monthly_credits=50,
+        daily_credits=0,
+        is_public=True,
+        is_active=True,
+    )
+    store.plans[free["id"]] = free
+    billing = CreditsOnlyBillingService(
+        store=store, credit_repo=wallet, pricing_service=FakePricing()
+    )
+    view = await billing.wallet_view(USER_ID)
+    assert view["plan"]["name"] == "Free"
+    assert view["plan"]["monthly_credits"] == 50
+    assert view["plan"]["daily_credits"] == 0
+    assert view["reset_label"] == "Credit reset monthly"
 
 
 @pytest.mark.asyncio
@@ -453,7 +494,14 @@ async def test_v3_routes_and_v1_public_shape_unchanged() -> None:
     async def _daily(_user_id):
         return {"granted": False, "reason": "test_noop"}
 
-    grants = SimpleNamespace(expire_unused_grants=_expire, ensure_daily_grant=_daily)
+    async def _period(_user_id):
+        return {"granted": False, "reason": "test_noop"}
+
+    grants = SimpleNamespace(
+        expire_unused_grants=_expire,
+        ensure_daily_grant=_daily,
+        ensure_period_grant=_period,
+    )
 
     app = create_app()
     app.dependency_overrides[get_v3_store] = lambda: store

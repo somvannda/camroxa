@@ -8,6 +8,7 @@ from uuid import UUID
 
 from platform_api.exceptions import InsufficientCreditsError, NotFoundError, ValidationError
 from platform_api.services.credit_units import CREDIT_SCALE, credits_to_units, units_to_credits
+from platform_api.services.pricing_display import credit_reset_label
 from platform_api.services.v3.list_prices import (
     music_credits_per_generate,
     overlay_plan_list_prices,
@@ -61,7 +62,9 @@ class CreditsOnlyBillingService:
         balance_units = int(await self._credit_repo.get_balance(user_id))
         grant_units = await self._store.grant_remaining_units(user_id)
         lots = await self._store.list_lots(user_id)
-        plan = await self._store.get_plan_for_user(user_id)
+        plan = await self._store.resolve_charge_plan(user_id)
+        daily = int((plan or {}).get("daily_credits") or 0)
+        monthly = int((plan or {}).get("monthly_credits") or 0)
         return {
             "user_id": str(user_id),
             "balance_credits": units_to_credits(balance_units),
@@ -69,6 +72,7 @@ class CreditsOnlyBillingService:
             "grant_remaining_credits": units_to_credits(grant_units),
             "grant_remaining_units": grant_units,
             "plan": plan,
+            "reset_label": credit_reset_label(daily_credits=daily, monthly_credits=monthly),
             "lots": [
                 {
                     "id": str(lot["id"]),

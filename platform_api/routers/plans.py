@@ -1071,6 +1071,7 @@ def _public_plan_to_response(
             name=str(getattr(plan, "name", "") or ""),
             price_cents=int(getattr(plan, "price_cents", 0) or 0),
             daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+            monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
         ),
         pricing_credit_lines=resolve_pricing_credit_lines(
             getattr(plan, "pricing_credit_lines", None),

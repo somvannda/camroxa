@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `/me/credits` now returns the resolved Free/paid plan and `reset_label` (daily vs monthly). Monthly Free plans are granted on that poll. See `docs/changelog/2026-08-28-credit-reset-label-period.md`.
 - Free daily mint no longer stacks 50 credits on every `/me/credits` poll. Lot insert happens first; sandbox `duke@test.com` 4,150 was 83 stacked daily grants. Cutover now snapshots every wallet before/after leftover apply. See `docs/changelog/2026-08-25-daily-grant-idempotent-and-cutover-snapshot.md`.
 
 ### Changed
