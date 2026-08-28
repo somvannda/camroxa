@@ -15,6 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
+from platform_api.dependencies import get_v3_billing_service
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
 from platform_api.services.v2.payment_security import sanitize_music_web_return_url
@@ -79,6 +80,7 @@ class PlanResponse(BaseModel):
     daily_credits: int = 0
     features: list[str]
     pricing_credit_lines: list[str] = Field(default_factory=list)
+    credits_per_generate: float | None = None
     display_order: int
     is_public: bool
 
@@ -144,13 +146,17 @@ class CheckoutStatusResponse(BaseModel):
 
 
 @router.get("/plans", response_model=PlansListResponse)
-async def list_plans(service: SubscriptionServiceDep) -> PlansListResponse:
+async def list_plans(
+    service: SubscriptionServiceDep,
+    billing: Annotated[Any, Depends(get_v3_billing_service)],
+) -> PlansListResponse:
     """Get all available subscription plans for web music.
     
     Returns public plans sorted by display_order.
     """
     plans = await service.get_plans(is_public=True)
-    
+    rate = await billing.music_credits_per_generate()
+
     return PlansListResponse(
         plans=[
             PlanResponse(
@@ -170,7 +176,9 @@ async def list_plans(service: SubscriptionServiceDep) -> PlansListResponse:
                     getattr(plan, "pricing_credit_lines", None),
                     monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
                     daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+                    credits_per_generate=rate,
                 ),
+                credits_per_generate=rate,
                 display_order=plan.display_order,
                 is_public=plan.is_public
             )

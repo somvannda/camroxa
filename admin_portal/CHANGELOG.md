@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Plans editor grants only. Per-op charge fields removed; Generate costs live on Credits. ≈ Songs follows the Credits-page music list price. See `docs/changelog/2026-08-28-credit-pricing-single-source.md`.
 - ≈ Songs is floor(grant / 10) × 2. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 - All API calls target `/api/v3` only; all hooks, pages, and http-client updated. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - Usage operation labels include Web leftover / credit pack. See `docs/changelog/2026-08-23-wallet-api-audit-e2e.md`.
