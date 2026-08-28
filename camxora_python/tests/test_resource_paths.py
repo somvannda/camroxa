@@ -30,6 +30,11 @@ def test_window_chrome_svgs_present_for_packaging() -> None:
         assert name in CHROME_SVG_BY_NAME
 
 
+def test_login_background_present_for_packaging() -> None:
+    path = get_resource_path("background_login.png")
+    assert path.is_file(), "resources/background_login.png is required for the login backdrop"
+
+
 def test_factory_templates_resolve_from_repo() -> None:
     path = get_video_templates_path()
     assert path.name == "video_templates_local.json"

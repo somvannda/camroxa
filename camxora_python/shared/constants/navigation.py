@@ -12,6 +12,7 @@ ShellRouteKey = Literal[
     "workflow",
     "progress",
     "music",
+    "create",
     "image",
     "video",
     "marketplace",
@@ -84,6 +85,16 @@ SHELL_ROUTES: tuple[ShellRouteMeta, ...] = (
         description=(
             "Music workspace with batch composer, automation strip, song editor, "
             "and history table."
+        ),
+    ),
+    ShellRouteMeta(
+        key="create",
+        path="/app/create",
+        label="Create",
+        title="Create",
+        eyebrow="Workspace",
+        description=(
+            "Generate songs with the web Create form, then automate image and video locally."
         ),
     ),
     ShellRouteMeta(

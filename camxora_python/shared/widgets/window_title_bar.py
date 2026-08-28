@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QByteArray, QPoint, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QMouseEvent, QPainter, QPixmap
+from PySide6.QtCore import QByteArray, QPoint, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QIcon, QMouseEvent, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from shared.icons.chrome_assets import CHROME_SVG_BY_NAME
+from shared.icons.lucide_icons import lucide_pixmap
 from shared.lib.resource_paths import get_resource_path
+from shared.lib.ui_font import studio_font
+from shared.services.build_config import get_portal_base_url
 from shared.widgets.setup_notification import SetupNotificationButton
 from shared.widgets.software_update_header_button import SoftwareUpdateHeaderButton
 
@@ -127,17 +139,17 @@ class WindowTitleBar(QFrame):
         super().__init__(parent)
         self.setObjectName("window_title_bar")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setFixedHeight(56)
+        self.setFixedHeight(52)
         self._drag_offset: QPoint | None = None
 
         root = QHBoxLayout(self)
-        root.setContentsMargins(20, 12, 20, 12)
-        root.setSpacing(12)
+        root.setContentsMargins(16, 8, 10, 8)
+        root.setSpacing(10)
 
         logo = QLabel()
         logo.setObjectName("window_brand_logo")
-        logo.setPixmap(_load_logo_pixmap(32))
-        logo.setFixedSize(32, 32)
+        logo.setPixmap(_load_logo_pixmap(28))
+        logo.setFixedSize(28, 28)
         root.addWidget(logo, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         title_col = QVBoxLayout()
@@ -146,22 +158,12 @@ class WindowTitleBar(QFrame):
 
         title = QLabel("CAMXORA")
         title.setObjectName("window_brand_title")
-        title_font = QFont(title.font())
-        title_font.setFamilies(["Inter", "Segoe UI", "Arial"])
-        title_font.setWeight(QFont.Weight.DemiBold)
-        title_font.setPointSizeF(14)
-        title_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 118)
-        title.setFont(title_font)
+        title.setFont(studio_font(15, QFont.Weight.Bold, letter_spacing=118))
         title_col.addWidget(title)
 
         subtitle = QLabel("FACELESS DESKTOP STUDIO")
         subtitle.setObjectName("window_brand_subtitle")
-        subtitle_font = QFont(subtitle.font())
-        subtitle_font.setFamilies(["Inter", "Segoe UI", "Arial"])
-        subtitle_font.setCapitalization(QFont.Capitalization.AllUppercase)
-        subtitle_font.setPointSizeF(11)
-        subtitle_font.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 120)
-        subtitle.setFont(subtitle_font)
+        subtitle.setFont(studio_font(9, QFont.Weight.Medium, letter_spacing=120, uppercase=True))
         title_col.addWidget(subtitle)
 
         root.addLayout(title_col)
@@ -177,9 +179,20 @@ class WindowTitleBar(QFrame):
         self._setup_notifications = SetupNotificationButton(self)
         self._setup_notifications.hide()
 
-        self._minimize_button = _WindowControlButton("minimize", self)
-        self._maximize_button = _WindowControlButton("maximize", self)
-        self._close_button = _WindowControlButton("close", self)
+        self._help_button = QToolButton(self)
+        self._help_button.setObjectName("window_help_button")
+        self._help_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._help_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._help_button.setToolTip("Help")
+        help_icon = lucide_pixmap("circle-help", size=14, color="#8FA4BB")
+        self._help_button.setIcon(QIcon(help_icon))
+        self._help_button.setIconSize(help_icon.size())
+        self._help_button.setFixedSize(28, 26)
+        self._help_button.clicked.connect(self._open_help)
+
+        self._minimize_button = _WindowControlButton("minimize", self, width=28, height=26, icon_size=14)
+        self._maximize_button = _WindowControlButton("maximize", self, width=28, height=26, icon_size=14)
+        self._close_button = _WindowControlButton("close", self, width=28, height=26, icon_size=14)
 
         self._minimize_button.clicked.connect(self._minimize_window)
         self._maximize_button.clicked.connect(self._toggle_maximize)
@@ -188,6 +201,7 @@ class WindowTitleBar(QFrame):
         # Update icon sits immediately left of the notification bell.
         controls.addWidget(self._software_update)
         controls.addWidget(self._setup_notifications)
+        controls.addWidget(self._help_button)
         controls.addWidget(self._minimize_button)
         controls.addWidget(self._maximize_button)
         controls.addWidget(self._close_button)
@@ -201,11 +215,20 @@ class WindowTitleBar(QFrame):
         while widget is not None:
             if isinstance(
                 widget,
-                (_WindowControlButton, SetupNotificationButton, SoftwareUpdateHeaderButton),
+                (
+                    _WindowControlButton,
+                    SetupNotificationButton,
+                    SoftwareUpdateHeaderButton,
+                    QToolButton,
+                ),
             ):
                 return True
             widget = widget.parentWidget()
         return False
+
+    @staticmethod
+    def _open_help() -> None:
+        QDesktopServices.openUrl(QUrl(f"{get_portal_base_url().rstrip('/')}/dashboard/guides"))
 
     def sync_window_state(self) -> None:
         """Reserved for parity with RootWindow state syncing."""

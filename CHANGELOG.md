@@ -11,12 +11,19 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Native **Create** workspace in the desktop shell (sidebar item after Music).
+  Same form, Files table, and player as the studio Create page. See
+  `docs/changelog/2026-08-27-desktop-native-create-page.md`.
 - Desktop login again opens the native **Choose Your Plan** popup when the
   account is not Starter, Creator, or Studio. Catalog loads from `/api/v3`.
   See `docs/changelog/2026-08-25-desktop-restore-plans-popup.md`.
 
 ### Changed
 
+- Desktop Profile page now uses the Create-page studio design system (same panels, 28px controls, purple buttons, table chrome) for Profile content. Card sections sit on the darker `#071426` canvas so each frame is visible. See `docs/changelog/2026-08-28-desktop-profile-page-restyle.md`.
+- Native Create dropdowns, date fields, radios, checkboxes, and Simple/Advanced tabs now match the studio screenshot chrome. The form/Files split is 60/40 and fills the workspace without a leftover navy frame. See `docs/changelog/2026-08-27-desktop-create-controls-match.md`.
+- Desktop login screen now matches the studio card (waveform, icon fields, recent accounts). No social buttons. See `docs/changelog/2026-08-27-desktop-login-page-restyle.md`.
+- Desktop shell header, sidebar, and footer now match the Create screenshot chrome (navy, purple selected nav, initials avatar, compact footer). See `docs/changelog/2026-08-27-desktop-shell-chrome-restyle.md`.
 - Choose Your Plan song hints are ×2 (one generate = two songs) and use Admin feature lines when the catalog sends them. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 - Sandbox desktop env now points at `/api/v3` (`camxora_python/.env.sandbox`). See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
 - All API calls now target `/api/v3` exclusively. Default base URL, env examples, sandbox/production shortcuts, WebSocket helper, health-URL extractor, and marketplace asset resolver all updated. See `docs/changelog/2026-08-25-clients-api-v3-only.md`.

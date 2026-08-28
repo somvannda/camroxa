@@ -2,7 +2,7 @@
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QStackedWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QStackedWidget, QVBoxLayout, QWidget
 
 from app.application import AppShellWidget
 from app.root_window import RootWindow
@@ -54,6 +54,34 @@ def memory_session():
 def test_app_shell_creates(qapp: QApplication, memory_session) -> None:
     shell = AppShellWidget(session=memory_session)
     assert shell is not None
+
+
+def test_footer_spans_full_shell_width(qapp: QApplication, memory_session) -> None:
+    shell = AppShellWidget(session=memory_session)
+    root = shell.layout()
+    assert isinstance(root, QVBoxLayout)
+    assert root.itemAt(root.count() - 1).widget() is shell._status_bar
+    assert shell._status_bar.parentWidget() is shell
+
+    body = shell.findChild(QWidget, "shell_body")
+    assert body is not None
+    body_layout = body.layout()
+    assert isinstance(body_layout, QHBoxLayout)
+    assert body_layout.contentsMargins().left() == 10
+    assert body_layout.spacing() == 10
+    assert shell._sidebar.parentWidget() is body
+
+
+def test_profile_hides_generic_shell_page_header(qapp: QApplication, memory_session) -> None:
+    shell = AppShellWidget(session=memory_session)
+    shell._navigate("music")
+    assert not shell._page_header.isHidden()
+    shell._navigate("profile")
+    assert shell._page_header.isHidden()
+    shell._navigate("create")
+    assert shell._page_header.isHidden()
+    shell._navigate("settings")
+    assert not shell._page_header.isHidden()
 
 
 def test_router_navigates_all_routes(qapp: QApplication, memory_session) -> None:
