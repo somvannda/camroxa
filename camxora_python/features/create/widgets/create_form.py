@@ -169,7 +169,8 @@ class CreateForm(QFrame):
         tab_row.addWidget(tab_bar)
         tab_row.addStretch(1)
         self.model = StudioComboBox()
-        self.model.addItems(["V5.5", "V5", "V4.5"])
+        self.model.addItem("V5.5", "V5_5")
+        self.model.addItem("V5", "V5")
         self.model.setFixedWidth(92)
         tab_row.addWidget(self.model)
         root.addLayout(tab_row)
@@ -187,6 +188,7 @@ class CreateForm(QFrame):
             "Lyrics are drafted automatically for each song when you Generate",
             5000,
         )
+        self.lyrics.editor.setReadOnly(True)
         self.styles = _EditorBlock(
             "STYLES",
             "urbano, electric guitar, upbeat rock, 128 BPM, eurodance",
@@ -238,6 +240,10 @@ class CreateForm(QFrame):
         save_row.addWidget(self.save_path, 1)
         root.addLayout(save_row)
 
+        self.status = QLabel("")
+        self.status.setObjectName("FieldLabel")
+        root.addWidget(self.status)
+
         self.generate = GenerateButton()
         self.generate.clicked.connect(self.generate_requested.emit)
         root.addWidget(self.generate)
@@ -274,11 +280,11 @@ class CreateForm(QFrame):
         block.setLayout(self._stack(label, widget))
         return block
 
-    def _check(self, text: str) -> QHBoxLayout:
+    def _check(self, box: StudioCheckBox) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
-        row.addWidget(StudioCheckBox(text))
+        row.addWidget(box)
         row.addStretch(1)
         return row
 
@@ -293,17 +299,23 @@ class CreateForm(QFrame):
         self._negative_block = self._field_block("Negative tags (optional)", self.negative)
         col.addWidget(self._negative_block)
         self.versions = StudioComboBox()
-        self.versions.addItems(["Shuffle versions", "Keep versions", "Version 1 only"])
+        self.versions.addItems(["Keep versions", "Shuffle versions"])
         col.addLayout(self._stack("Versions", self.versions))
-        for label in (
-            "Download WAV",
-            "Download LRC",
-            "Download SRT",
-            "Auto image",
-            "Auto video",
-            "Merge all video",
+        self.download_wav = StudioCheckBox("Download WAV")
+        self.download_lrc = StudioCheckBox("Download LRC")
+        self.download_srt = StudioCheckBox("Download SRT")
+        self.auto_image = StudioCheckBox("Auto image")
+        self.auto_video = StudioCheckBox("Auto video")
+        self.auto_merge = StudioCheckBox("Merge all video")
+        for box in (
+            self.download_wav,
+            self.download_lrc,
+            self.download_srt,
+            self.auto_image,
+            self.auto_video,
+            self.auto_merge,
         ):
-            col.addLayout(self._check(label))
+            col.addLayout(self._check(box))
         return col
 
     def _right_options(self) -> QVBoxLayout:
@@ -323,10 +335,12 @@ class CreateForm(QFrame):
         gender = QHBoxLayout()
         gender.setSpacing(16)
         self.gender_group = QButtonGroup(self)
-        for index, name in enumerate(("Male", "Female", "Both")):
+        self.gender_group.setExclusive(False)
+        for name in ("Male", "Female", "Both"):
             radio = StudioRadioButton(name)
-            if index == 0:
-                radio.setChecked(True)
+            radio.setAutoExclusive(False)
+            radio.setChecked(False)
+            radio.clicked.connect(lambda checked, button=radio: self._toggle_gender(button, checked))
             self.gender_group.addButton(radio)
             gender.addWidget(radio)
         gender.addStretch(1)
@@ -349,3 +363,82 @@ class CreateForm(QFrame):
     def set_generating(self, busy: bool) -> None:
         self.generate.setEnabled(not busy)
         self.generate.setText("  Generating…" if busy else "  Generate Music")
+
+    def set_status(self, message: str) -> None:
+        self.status.setText(str(message or ""))
+
+    def _toggle_gender(self, button: StudioRadioButton, checked: bool) -> None:
+        if not checked:
+            return
+        for other in self.gender_group.buttons():
+            if other is not button:
+                other.setChecked(False)
+
+    def mode(self) -> str:
+        return "simple" if self.simple_tab.isChecked() else "advanced"
+
+    def model_code(self) -> str:
+        data = self.model.currentData()
+        if data:
+            return str(data)
+        return {"V5.5": "V5_5", "V5": "V5"}.get(self.model.currentText(), "V5_5")
+
+    def lyrics_text(self) -> str:
+        return self.lyrics.editor.toPlainText().strip()
+
+    def set_lyrics(self, text: str) -> None:
+        self.lyrics.editor.setPlainText(text or "")
+
+    def styles_text(self) -> str:
+        return self.styles.editor.toPlainText().strip()
+
+    def title_text(self) -> str:
+        return self.title.text().strip()
+
+    def set_title(self, text: str) -> None:
+        self.title.setText(text or "")
+
+    def negative_tags(self) -> str:
+        return self.negative.text().strip()
+
+    def save_folder(self) -> str:
+        return self.save_path.text().strip()
+
+    def version_mode(self) -> str:
+        text = self.versions.currentText().strip().lower()
+        if "shuffle" in text:
+            return "shuffle"
+        return "keep"
+
+    def vocal_gender(self) -> str | None:
+        mapping = {"Male": "m", "Female": "f", "Both": "both"}
+        for button in self.gender_group.buttons():
+            if button.isChecked():
+                return mapping.get(button.text())
+        return None
+
+    def style_weight(self) -> float:
+        return self.style_influence.slider.value() / 100.0
+
+    def weirdness_value(self) -> float:
+        return self.weirdness.slider.value() / 100.0
+
+    def audio_weight_value(self) -> float:
+        return self.audio_weight.slider.value() / 100.0
+
+    def template_v1_id(self) -> str:
+        return str(self.version1.currentData() or "")
+
+    def template_v2_id(self) -> str:
+        return str(self.version2.currentData() or "")
+
+    def set_video_templates(self, options: list[tuple[str, str]]) -> None:
+        selected_v1 = str(self.version1.currentData() or "")
+        selected_v2 = str(self.version2.currentData() or "")
+        for combo, selected in ((self.version1, selected_v1), (self.version2, selected_v2)):
+            combo.clear()
+            combo.addItem("None", "")
+            for template_id, name in options:
+                combo.addItem(name, template_id)
+            index = combo.findData(selected)
+            combo.setCurrentIndex(index if index >= 0 else 0)

@@ -37,6 +37,26 @@ class PlatformApiError(Exception):
         return None
 
 
+def api_has_access_token(api: Any) -> bool:
+    """False only when the HTTP client is wired and has no access token."""
+    client = getattr(api, "client", None)
+    provider = getattr(client, "_tokens_provider", None) if client is not None else None
+    if not callable(provider):
+        return True
+    try:
+        tokens = provider()
+    except Exception:
+        return True
+    if tokens is None:
+        return False
+    return bool(str(getattr(tokens, "accessToken", "") or "").strip())
+
+
+def is_auth_failure_message(message: str) -> bool:
+    text = str(message or "").strip().lower()
+    return text in {"unauthenticated", "session expired"} or "sign in" in text
+
+
 def _connect_error_message(api_base_url: str) -> str:
     """User-facing connect failure; keep uvicorn/port hints for local/dev only."""
     base = str(api_base_url or "").strip() or "the Camxora API"
@@ -70,6 +90,16 @@ class PlatformClient:
         self._tokens_provider = get_tokens
         self._refresh_callback = refresh_session
         self._logout_callback = clear_session
+
+    def mark_tokens_fresh(self) -> None:
+        """Clear the 401 marker after login or a successful refresh."""
+        self._invalidated_token = None
+
+    def has_access_token(self) -> bool:
+        if not callable(self._tokens_provider):
+            return False
+        tokens = self._tokens_provider()
+        return bool(tokens is not None and str(getattr(tokens, "accessToken", "") or "").strip())
 
     def base_url(self) -> str:
         return self._storage.get_api_base_url()
@@ -172,7 +202,6 @@ class PlatformClient:
         if auth:
             tokens = self._tokens_provider() if self._tokens_provider else None
             if tokens is None:
-                self._handle_unauthenticated()
                 raise PlatformApiError(401, "Unauthenticated")
             if self._invalidated_token and tokens.accessToken == self._invalidated_token:
                 self._handle_unauthenticated()
@@ -217,9 +246,20 @@ class PlatformClient:
         if response.status_code == 401 and auth:
             payload = _read_json(response)
             tokens = self._tokens_provider() if self._tokens_provider else None
-            if tokens is not None:
-                self._invalidated_token = tokens.accessToken
-            refreshed = self._refresh_callback(force=True) if self._refresh_callback else False
+            failed_access = tokens.accessToken if tokens is not None else ""
+            if failed_access:
+                self._invalidated_token = failed_access
+            refreshed = False
+            if self._refresh_callback:
+                try:
+                    refreshed = bool(
+                        self._refresh_callback(
+                            True,
+                            failed_access_token=failed_access,
+                        )
+                    )
+                except TypeError:
+                    refreshed = bool(self._refresh_callback(force=True))
             if refreshed and _retry:
                 self._invalidated_token = None
                 return self._send(

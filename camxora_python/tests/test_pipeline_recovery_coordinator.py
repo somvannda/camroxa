@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from features.music.lib.pipeline_recovery import RecoveryTarget
 from shared.services.pipeline_recovery_coordinator import PipelineRecoveryCoordinator
+from shared.services.platform_client import api_has_access_token, is_auth_failure_message
 
 
 def test_filter_targets_respects_cooldown_and_session_cap(qapp) -> None:
@@ -51,3 +54,33 @@ def test_filter_skips_busy_songs_and_escalates_same_hash_retry(qapp) -> None:
 
     coordinator.mark_song_busy("s2", seconds=300)
     assert coordinator._filter_targets([retry]) == []
+
+
+def test_api_has_access_token_is_false_without_tokens() -> None:
+    api = MagicMock()
+    api.client._tokens_provider = lambda: None
+    assert api_has_access_token(api) is False
+    assert is_auth_failure_message("Unauthenticated") is True
+    assert is_auth_failure_message("Session expired") is True
+    assert is_auth_failure_message("network down") is False
+
+
+def test_pipeline_helper_skips_poll_without_session(qapp) -> None:
+    api = MagicMock()
+    api.client._tokens_provider = lambda: None
+    coordinator = PipelineRecoveryCoordinator(api)
+    coordinator._active = True
+    coordinator._poll()
+    assert coordinator._worker is None
+
+
+def test_pipeline_helper_logs_auth_pause_once(qapp, monkeypatch) -> None:
+    messages: list[str] = []
+    monkeypatch.setattr(
+        "shared.services.pipeline_recovery_coordinator.emit_shell_status",
+        lambda message, tone="info": messages.append(message),
+    )
+    coordinator = PipelineRecoveryCoordinator(MagicMock())
+    coordinator._on_failed("Unauthenticated")
+    coordinator._on_failed("Unauthenticated")
+    assert messages == ["Pipeline helper paused: sign in to continue."]

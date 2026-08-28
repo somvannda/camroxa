@@ -11,6 +11,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Studio Create page now runs the real web-music generate / history / download
+  flow (DB history, Version 1/2 files table, right-click downloads). See
+  `docs/changelog/2026-08-28-desktop-create-logic-on-studio-ui.md`.
 - Native **Create** workspace in the desktop shell (sidebar item after Music).
   Same form, Files table, and player as the studio Create page. See
   `docs/changelog/2026-08-27-desktop-native-create-page.md`.
@@ -32,6 +35,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Desktop 401 on a still-valid access token now rotates refresh instead of
+  wiping the new login. Pipeline helper and auto-video skip polls when signed
+  out. See `docs/changelog/2026-08-28-desktop-create-logic-on-studio-ui.md`.
 - Continue Progress no longer retries image jobs that already succeeded, and
   will not start video export until a local background PNG is ready (`long_ready`).
 - Sandbox API payload audit: `/api/v3/subscriptions/plans` omitted real `daily_credits` (Free showed 0). See `docs/changelog/2026-08-25-fix-v3-daily-grant-and-likes.md`.

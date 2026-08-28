@@ -163,6 +163,9 @@ class SessionService:
     def set_tokens(self, tokens: AuthTokens) -> None:
         self._tokens = tokens
         self._storage.set(TOKENS_STORAGE_KEY, tokens.model_dump_json())
+        mark_fresh = getattr(self._api.client, "mark_tokens_fresh", None)
+        if callable(mark_fresh):
+            mark_fresh()
 
     def clear(self) -> None:
         self._storage.remove(TOKENS_STORAGE_KEY)
@@ -171,7 +174,7 @@ class SessionService:
         self.workspace_cache.clear()
         deactivate_local_user_scope()
 
-    def ensure_fresh_session(self, force: bool = False) -> bool:
+    def ensure_fresh_session(self, force: bool = False, *, failed_access_token: str = "") -> bool:
         with self._refresh_lock:
             if self._refresh_inflight is not None:
                 self._refresh_inflight.wait(timeout=30)
@@ -182,9 +185,13 @@ class SessionService:
 
             now_ms = int(time.time() * 1000)
             needs_refresh = now_ms > tokens.expiresAt - 120_000
-            if force:
-                # A 401 can arrive while another thread already renewed the access token.
-                # Only rotate the refresh token when the access token is actually stale.
+            failed = (failed_access_token or "").strip()
+            if force and failed:
+                # 401 on this exact access token: rotate even if expiresAt is still
+                # far away (token_version revoke). Skip only if another thread
+                # already issued a new access token.
+                needs_refresh = tokens.accessToken == failed
+            elif force:
                 needs_refresh = needs_refresh or now_ms > tokens.expiresAt - 5_000
             if not needs_refresh:
                 return True
@@ -203,13 +210,17 @@ class SessionService:
                 self.set_tokens(AuthTokens.from_token_response(refreshed))
                 return True
             except Exception as exc:
-                # Silent refresh failures here previously left no trace, showing
-                # up only as downstream "Unauthenticated" pauses in coordinators
-                # minutes later with no way to tell why the refresh itself failed
-                # (network, clock skew, revoked token, etc.).
-                from shared.services.app_logger import log_error
+                from shared.services.app_logger import log_error, log_warn
+                from shared.services.platform_client import PlatformApiError
 
-                log_error("Session token refresh failed", category="auth", exc=exc)
+                if isinstance(exc, PlatformApiError) and exc.status == 401:
+                    log_warn(
+                        f"Session refresh rejected: {exc}. Sign in again.",
+                        category="auth",
+                    )
+                    self.clear()
+                else:
+                    log_error("Session token refresh failed", category="auth", exc=exc)
                 return False
             finally:
                 event.set()

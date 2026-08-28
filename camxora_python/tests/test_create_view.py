@@ -35,7 +35,7 @@ def test_create_view_builds(qapp: QApplication) -> None:
     assert view.objectName() == "create_workspace"
     assert view.form.advanced_tab.isChecked()
     assert view.planning.count.value() == 4
-    assert view.files.table.rowCount() == 12
+    assert view.files.table.rowCount() == 0
     assert view.font().pixelSize() == 12
 
 
@@ -56,7 +56,7 @@ def test_create_controls_match_studio_chrome(qapp: QApplication) -> None:
     assert isinstance(view.form.versions, StudioComboBox)
     radios = view.form.findChildren(StudioRadioButton)
     assert [radio.text() for radio in radios] == ["Male", "Female", "Both"]
-    assert radios[0].isChecked()
+    assert not any(radio.isChecked() for radio in radios)
     checks = view.form.findChildren(StudioCheckBox)
     assert any(box.text() == "Download WAV" for box in checks)
     assert view.form.findChild(QToolButton) is None or all(

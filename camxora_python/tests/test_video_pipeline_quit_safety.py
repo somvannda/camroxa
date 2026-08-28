@@ -53,6 +53,16 @@ def test_payload_ready_ignored_while_app_quitting(qapp) -> None:
         activity.set_app_quitting(False)
 
 
+def test_video_pipeline_skips_poll_without_session(qapp) -> None:
+    activity.set_app_quitting(False)
+    api = MagicMock()
+    api.client._tokens_provider = lambda: None
+    coordinator = VideoPipelineCoordinator(api=api)
+    coordinator._active = True
+    coordinator._poll()
+    assert coordinator._worker is None
+
+
 def test_automation_start_refuses_when_quitting() -> None:
     from features.video.services.pipeline_automation_service import PipelineAutomationService
 

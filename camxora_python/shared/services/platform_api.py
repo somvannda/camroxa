@@ -7,6 +7,14 @@ from typing import Any
 from pydantic import ValidationError
 
 from shared.lib.desktop_entitlement import is_paid_catalog_plan_name
+from shared.models.web_music import (
+    WebMusicDraftRequest,
+    WebMusicDraftResponse,
+    WebMusicGenerateRequest,
+    WebMusicGenerateResponse,
+    WebMusicGenerationListResponse,
+    WebMusicGenerationResponse,
+)
 from shared.models.auth import (
     CreateProfileRequest,
     LoginRequest,
@@ -903,3 +911,68 @@ class PlatformApi:
             body=payload,
         )
         return data if isinstance(data, dict) else {}
+
+    def generate_web_music(self, payload: WebMusicGenerateRequest) -> WebMusicGenerateResponse:
+        data = self._client.request(
+            "/web-music/generate",
+            method="POST",
+            auth=True,
+            body=payload.model_dump(exclude_none=True),
+            timeout=300.0,
+        )
+        return WebMusicGenerateResponse.model_validate(data)
+
+    def list_web_music_generations(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> WebMusicGenerationListResponse:
+        data = self._client.request(
+            "/web-music/generations",
+            auth=True,
+            params={
+                "limit": max(1, min(100, int(limit))),
+                "offset": max(0, int(offset)),
+            },
+        )
+        return WebMusicGenerationListResponse.model_validate(data)
+
+    def get_web_music_generation(self, task_id: str) -> WebMusicGenerationResponse:
+        data = self._client.request(f"/web-music/generations/{task_id}", auth=True)
+        return WebMusicGenerationResponse.model_validate(data)
+
+    def download_web_music_clip(self, task_id: str, variant: str = "ok") -> bytes:
+        return self._client.request_bytes(
+            f"/web-music/generations/{task_id}/download?variant={variant}",
+            auth=True,
+            timeout=180.0,
+        )
+
+    def download_web_music_wav(self, task_id: str, variant: str = "ok") -> bytes:
+        return self._client.request_bytes(
+            f"/web-music/generations/{task_id}/download-wav?variant={variant}",
+            auth=True,
+            timeout=300.0,
+        )
+
+    def download_web_music_lyrics(
+        self, task_id: str, variant: str = "ok", *, fmt: str = "lrc"
+    ) -> bytes:
+        lyric_format = "srt" if str(fmt or "").strip().lower() == "srt" else "lrc"
+        return self._client.request_bytes(
+            f"/web-music/generations/{task_id}/timed-lyrics?variant={variant}&format={lyric_format}",
+            auth=True,
+            timeout=180.0,
+        )
+
+    def generate_web_music_draft(self, prompt: str) -> WebMusicDraftResponse:
+        payload = WebMusicDraftRequest(prompt=prompt)
+        data = self._client.request(
+            "/web-music/generate-draft",
+            method="POST",
+            auth=True,
+            body=payload.model_dump(),
+            timeout=300.0,
+        )
+        return WebMusicDraftResponse.model_validate(data)

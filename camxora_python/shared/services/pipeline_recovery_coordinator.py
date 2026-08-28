@@ -65,6 +65,7 @@ class PipelineRecoveryCoordinator(QObject):
         self._song_state: dict[str, _SongAttemptState] = {}
         self._busy_until: dict[str, float] = {}
         self._enabled = True
+        self._auth_notice_shown = False
 
     def start(self) -> None:
         self._active = True
@@ -217,6 +218,11 @@ class PipelineRecoveryCoordinator(QObject):
 
         if is_auto_pipeline_paused():
             return
+        from shared.services.platform_client import api_has_access_token
+
+        if not api_has_access_token(self._api):
+            return
+        self._auth_notice_shown = False
         if self._worker is not None and self._worker.isRunning():
             return
         worker = PipelineRecoveryScanWorker(
@@ -262,7 +268,15 @@ class PipelineRecoveryCoordinator(QObject):
         self._timer.setInterval(_IDLE_POLL_MS)
 
     def _on_failed(self, message: str) -> None:
+        from shared.services.platform_client import is_auth_failure_message
+
         text = str(message or "").strip()
+        if is_auth_failure_message(text):
+            if not self._auth_notice_shown:
+                self._auth_notice_shown = True
+                emit_shell_status("Pipeline helper paused: sign in to continue.", tone="warning")
+            self._timer.setInterval(_IDLE_POLL_MS)
+            return
         if text and "No failed songs" not in text:
             emit_shell_status(f"Pipeline helper paused: {text}", tone="warning")
         self._timer.setInterval(_IDLE_POLL_MS)
