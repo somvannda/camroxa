@@ -15,7 +15,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
-from platform_api.dependencies import get_ai_routing_service, get_credit_pricing_service, get_db_pool
+from platform_api.dependencies import (
+    get_ai_routing_service,
+    get_credit_pricing_service,
+    get_db_pool,
+    get_v3_billing_service,
+)
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.repositories.license_repo import PlanRepository
@@ -121,6 +126,7 @@ class PublicPlanResponse(BaseModel):
     daily_credits: int = 0
     pricing_features: list[str] = Field(default_factory=list)
     pricing_credit_lines: list[str] = Field(default_factory=list)
+    credits_per_generate: float | None = None
     offer: PublicPlanOfferResponse | None = None
 
 
@@ -422,6 +428,7 @@ def _plan_to_response(plan: Any, *, subscriber_count: int = 0) -> PlanResponse:
 )
 async def list_public_plans(
     plan_repo: PlanRepoDep,
+    billing: Annotated[Any, Depends(get_v3_billing_service)],
 ) -> list[PublicPlanResponse]:
     """Return active **and public** plans plus launch offers for website/user flows.
 
@@ -457,8 +464,13 @@ async def list_public_plans(
     )
     offer_map = {str(row["plan_id"]): row for row in offer_rows}
 
+    rate = await billing.music_credits_per_generate()
     return [
-        _public_plan_to_response(plan, offer_row=offer_map.get(str(plan.id)))
+        _public_plan_to_response(
+            plan,
+            offer_row=offer_map.get(str(plan.id)),
+            credits_per_generate=rate,
+        )
         for plan in public_plans
     ]
 
@@ -1012,6 +1024,7 @@ def _public_plan_to_response(
     plan: Any,
     *,
     offer_row: Any | None = None,
+    credits_per_generate: int | float | None = None,
 ) -> PublicPlanResponse:
     """Convert a domain plan plus its best active offer to a public response."""
     offer = None
@@ -1063,7 +1076,9 @@ def _public_plan_to_response(
             getattr(plan, "pricing_credit_lines", None),
             monthly_credits=int(getattr(plan, "monthly_credits", 0) or 0),
             daily_credits=int(getattr(plan, "daily_credits", 0) or 0),
+            credits_per_generate=credits_per_generate,
         ),
+        credits_per_generate=credits_per_generate,
         offer=offer,
     )
 

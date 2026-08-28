@@ -85,7 +85,7 @@ export default function PlansPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-100">Plans</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Credits-only catalog. Grants and per-op amounts here are what Generate charges.
+          Credits-only catalog. Plans grant credits. Generate charges the Credits page.
         </p>
       </div>
 

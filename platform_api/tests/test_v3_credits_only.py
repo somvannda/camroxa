@@ -14,7 +14,7 @@ from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.models.domain import Plan
 from platform_api.routers.plans import _get_plan_repo
-from platform_api.services.credit_units import CREDIT_SCALE, credits_to_units, units_to_credits
+from platform_api.services.credit_units import credits_to_units, units_to_credits
 from platform_api.services.v3.credits_only_billing_service import CreditsOnlyBillingService
 from platform_api.services.v3.quota_conversion_service import QuotaConversionService
 from platform_api.dependencies import (
@@ -91,8 +91,11 @@ class FakeStore:
     async def list_plans(self) -> list[dict]:
         return list(self.plans.values())
 
-    async def list_public_plans(self) -> list[dict]:
-        return [p for p in self.plans.values() if p.get("is_active") and p.get("is_public")]
+    async def list_public_plans(self, *, credits_per_generate: int | float | None = None) -> list[dict]:
+        rows = [p for p in self.plans.values() if p.get("is_active") and p.get("is_public")]
+        if credits_per_generate is None:
+            return rows
+        return [{**p, "credits_per_generate": credits_per_generate} for p in rows]
 
     async def get_plan(self, plan_id: UUID) -> dict | None:
         return self.plans.get(str(plan_id))
@@ -286,13 +289,52 @@ async def test_quote_falls_back_to_credit_pricing(billing: CreditsOnlyBillingSer
 
 
 @pytest.mark.asyncio
-async def test_plan_override_wins(billing: CreditsOnlyBillingService, store: FakeStore) -> None:
+async def test_plan_override_ignored(billing: CreditsOnlyBillingService, store: FakeStore) -> None:
     plan_id = store.user_plan[str(USER_ID)]
     store.plans[plan_id]["music_credits"] = 10
     quote = await billing.quote(op="music", user_id=USER_ID)
-    assert quote.source == "plan"
-    assert quote.amount_credits == 10
-    assert quote.amount_units == 10 * CREDIT_SCALE
+    assert quote.source == "credit_pricing"
+    assert quote.amount_credits == 7.5
+    assert quote.amount_units == credits_to_units(7.5)
+
+
+def test_overlay_plan_list_prices_writes_credits_page_ops() -> None:
+    from platform_api.services.v3.list_prices import overlay_plan_list_prices
+
+    plan = {"id": "p1", "name": "Starter", "music_credits": 10, "monthly_credits": 1000}
+    out = overlay_plan_list_prices(plan, {"music": 7.5, "lyric": 0.252}, overlay_ops=True)
+    assert out["credits_per_generate"] == 7.5
+    assert out["music_credits"] == 7.5
+    assert out["lyric_credits"] == 0.252
+
+
+@pytest.mark.asyncio
+async def test_quote_scans_credit_pricing_when_named_fallback_misses() -> None:
+    class ScanPricing:
+        async def get_price(self, ai_service: str, operation_type: str, sub_model: str | None = None) -> int:
+            raise RuntimeError(f"missing {ai_service}/{operation_type}")
+
+        async def get_all_pricing(self) -> list[dict]:
+            return [
+                {
+                    "ai_service": "slai",
+                    "operation_type": "lyric",
+                    "credits_per_operation": credits_to_units(0.252),
+                }
+            ]
+
+    store = FakeStore()
+    plan = _v3_plan()
+    store.plans[plan["id"]] = plan
+    store.user_plan[str(USER_ID)] = plan["id"]
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=FakeWallet(balance=credits_to_units(100)),
+        pricing_service=ScanPricing(),
+    )
+    quote = await billing.quote(op="lyric", user_id=USER_ID)
+    assert quote.source == "credit_pricing"
+    assert quote.amount_credits == 0.252
 
 
 @pytest.mark.asyncio
@@ -457,8 +499,11 @@ async def test_v3_routes_and_v1_public_shape_unchanged() -> None:
         assert patched.json()["pricing_credit_lines"] == ["credits per month", "Custom song hint"]
         quote = await client.post("/api/v3/billing/quote", json={"op": "music"})
         assert quote.status_code == 200
-        assert quote.json()["amount_credits"] == 10
-        assert quote.json()["source"] == "plan"
+        assert quote.json()["amount_credits"] == 7.5
+        assert quote.json()["source"] == "credit_pricing"
+
+        v3_item = v3_public.json()[0]
+        assert v3_item.get("credits_per_generate") == 7.5
 
         wallet.balance = credits_to_units(50)
         me = await client.get("/api/v3/me/credits")

@@ -8,7 +8,13 @@ from uuid import UUID
 
 from platform_api.exceptions import InsufficientCreditsError, NotFoundError, ValidationError
 from platform_api.services.credit_units import CREDIT_SCALE, credits_to_units, units_to_credits
-from platform_api.services.v3.ops import PLAN_OP_COLUMNS, PRICING_FALLBACKS, SUPPORTED_OPS
+from platform_api.services.v3.list_prices import (
+    music_credits_per_generate,
+    overlay_plan_list_prices,
+    resolve_all_op_list_credits,
+    resolve_op_list_units,
+)
+from platform_api.services.v3.ops import SUPPORTED_OPS
 from platform_api.services.v3.store import V3BillingStore
 
 
@@ -104,26 +110,7 @@ class CreditsOnlyBillingService:
         elif user_id is not None:
             plan = await self._store.get_plan_for_user(user_id)
 
-        if plan is not None:
-            column = PLAN_OP_COLUMNS[operation]
-            override = plan.get(column)
-            if override is not None:
-                credits = int(override)
-                if credits < 0:
-                    raise ValidationError(
-                        "Plan operation credits cannot be negative.",
-                        details={"op": operation, "value": credits},
-                    )
-                return QuoteResult(
-                    op=operation,
-                    amount_credits=float(credits),
-                    amount_units=credits_to_units(credits),
-                    source="plan",
-                    plan_id=plan["id"],
-                    included=credits == 0,
-                )
-
-        units = await self._pricing_fallback_units(operation)
+        units = await resolve_op_list_units(self._pricing, operation)
         return QuoteResult(
             op=operation,
             amount_credits=units_to_credits(units),
@@ -132,6 +119,21 @@ class CreditsOnlyBillingService:
             plan_id=plan["id"] if plan else None,
             included=units == 0,
         )
+
+    async def op_list_credits(self) -> dict[str, float]:
+        return await resolve_all_op_list_credits(self._pricing)
+
+    async def music_credits_per_generate(self) -> int | float:
+        return music_credits_per_generate(await self.op_list_credits())
+
+    def apply_list_prices(
+        self,
+        plan: dict[str, Any],
+        op_credits: dict[str, float],
+        *,
+        overlay_ops: bool = False,
+    ) -> dict[str, Any]:
+        return overlay_plan_list_prices(plan, op_credits, overlay_ops=overlay_ops)
 
     async def charge(
         self,
@@ -242,19 +244,6 @@ class CreditsOnlyBillingService:
             "balance_units": int(await self._credit_repo.get_balance(user_id)),
             "balance_credits": units_to_credits(int(await self._credit_repo.get_balance(user_id))),
         }
-
-    async def _pricing_fallback_units(self, op: str) -> int:
-        last_error: Exception | None = None
-        for ai_service, operation_type in PRICING_FALLBACKS[op]:
-            try:
-                units = await self._pricing.get_price(ai_service, operation_type)
-                return max(0, int(units))
-            except Exception as exc:
-                last_error = exc
-                continue
-        if last_error is not None:
-            raise last_error
-        return 0
 
     async def _existing_debit(self, user_id: UUID, reason: str, ref_id: str) -> bool:
         getter = getattr(self._credit_repo, "has_transaction", None)

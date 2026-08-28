@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { usePricing } from '@/hooks/use-credits';
 import { useCreatePlan } from '@/hooks/use-plans';
 import { usePatchV3Plan, useV3Plans } from '@/hooks/use-v3-plans';
 import { toast } from '@/hooks/use-toast';
@@ -32,11 +33,20 @@ import {
   CreditsOnlyPlanFields,
   emptyCreditsOnlyForm,
   formFromCredits,
-  parseOptionalCredits,
   pricingFeaturesFromText,
   type CreditsOnlyFormValues,
 } from '@/pages/plans/credits-only-plan-fields';
-import { V3_PLAN_OPS, type V3Plan, type V3PlanPatch } from '@/types/v3-billing';
+import type { V3Plan, V3PlanPatch } from '@/types/v3-billing';
+import type { CreditPricing } from '@/types/models';
+
+function musicListPrice(rows?: CreditPricing[]): number {
+  const match = (rows ?? []).find((row) => {
+    const op = String(row.operation_type || '').toLowerCase();
+    return op === 'music' || op === 'music_generation';
+  });
+  const value = Number(match?.credits_per_operation);
+  return Number.isFinite(value) && value > 0 ? value : 10;
+}
 
 function buildPatch(values: CreditsOnlyFormValues): V3PlanPatch | null {
   const monthly = Number.parseInt(values.monthly_credits, 10);
@@ -44,7 +54,7 @@ function buildPatch(values: CreditsOnlyFormValues): V3PlanPatch | null {
   if (!Number.isInteger(monthly) || monthly < 0 || !Number.isInteger(daily) || daily < 0) {
     return null;
   }
-  const patch: V3PlanPatch = {
+  return {
     monthly_credits: monthly,
     daily_credits: daily,
     is_public: values.is_public,
@@ -52,12 +62,6 @@ function buildPatch(values: CreditsOnlyFormValues): V3PlanPatch | null {
     pricing_features: pricingFeaturesFromText(values.pricing_features),
     pricing_credit_lines: pricingFeaturesFromText(values.pricing_credit_lines),
   };
-  for (const op of V3_PLAN_OPS) {
-    const parsed = parseOptionalCredits(values.ops[op]);
-    if (Number.isNaN(parsed)) return null;
-    patch[`${op}_credits`] = parsed;
-  }
-  return patch;
 }
 
 const LEGACY_CREATE_DEFAULTS = {
@@ -94,35 +98,20 @@ function formatGrant(plan: V3Plan): string {
   return `${monthly.toLocaleString()} / period`;
 }
 
-function formatApproxSongs(plan: V3Plan): string {
+function formatApproxSongs(plan: V3Plan, perGenerate: number): string {
   const monthly = Number(plan.monthly_credits ?? 0);
   const daily = Number(plan.daily_credits ?? 0);
+  const per = perGenerate > 0 ? perGenerate : 10;
   if (monthly > 0) {
-    return String(Math.floor(monthly / 10) * 2);
+    return String(Math.floor(monthly / per) * 2);
   }
   if (daily > 0) {
-    return `${Math.floor(daily / 10) * 2}/day`;
+    return `${Math.floor(daily / per) * 2}/day`;
   }
   return '—';
 }
 
-function formatOpAmount(value: number | null): string {
-  if (value == null) return '—';
-  return String(value);
-}
-
-const OP_COLUMNS: Array<{ id: keyof V3Plan; label: string }> = [
-  { id: 'lyric_credits', label: 'Lyric' },
-  { id: 'title_credits', label: 'Title' },
-  { id: 'album_credits', label: 'Album' },
-  { id: 'music_credits', label: 'Music' },
-  { id: 'style_credits', label: 'Style' },
-  { id: 'image_credits', label: 'Image' },
-  { id: 'video_credits', label: 'Video' },
-  { id: 'merge_credits', label: 'Merge' },
-];
-
-const TABLE_COL_COUNT = 7 + OP_COLUMNS.length;
+const TABLE_COL_COUNT = 7;
 
 function isProfileAddon(plan: V3Plan): boolean {
   return (plan.plan_kind ?? '').toLowerCase() === 'profile_addon' || /^add-on/i.test(plan.name);
@@ -155,10 +144,12 @@ function PlansTable({
   plans,
   onEdit,
   emptyMessage,
+  creditsPerGenerate,
 }: {
   plans: V3Plan[];
   onEdit: (plan: V3Plan) => void;
   emptyMessage: string;
+  creditsPerGenerate: number;
 }) {
   return (
     <Table>
@@ -168,14 +159,9 @@ function PlansTable({
           <TableHead>Price</TableHead>
           <TableHead>Billing</TableHead>
           <TableHead className="text-right">Grant</TableHead>
-          <TableHead className="text-right" title="Display only. floor(grant / 10) × 2 songs. Not a quota.">
+          <TableHead className="text-right" title="Display only. floor(grant / Credits music price) × 2 songs. Not a quota.">
             ≈ Songs
           </TableHead>
-          {OP_COLUMNS.map((column) => (
-            <TableHead key={column.id} className="text-right">
-              {column.label}
-            </TableHead>
-          ))}
           <TableHead>Visibility</TableHead>
           <TableHead className="text-right"> </TableHead>
         </TableRow>
@@ -206,16 +192,8 @@ function PlansTable({
                 {formatGrant(plan)}
               </TableCell>
               <TableCell className="text-right tabular-nums text-slate-500">
-                {formatApproxSongs(plan)}
+                {formatApproxSongs(plan, creditsPerGenerate)}
               </TableCell>
-              {OP_COLUMNS.map((column) => (
-                <TableCell
-                  key={column.id}
-                  className="text-right tabular-nums text-slate-300"
-                >
-                  {formatOpAmount(plan[column.id] as number | null)}
-                </TableCell>
-              ))}
               <TableCell>
                 <VisibilityBadge plan={plan} />
               </TableCell>
@@ -234,6 +212,8 @@ function PlansTable({
 
 export function CreditsOnlySection() {
   const { data: plans, isLoading, isError, error, refetch } = useV3Plans();
+  const { data: pricing } = usePricing();
+  const creditsPerGenerate = musicListPrice(pricing);
   const patchPlan = usePatchV3Plan();
   const createPlan = useCreatePlan();
   const [selected, setSelected] = useState<V3Plan | null>(null);
@@ -280,7 +260,7 @@ export function CreditsOnlySection() {
     if (updates == null) {
       toast({
         title: 'Invalid credits',
-        description: 'Grants and per-op amounts must be empty (fallback) or whole numbers >= 0.',
+        description: 'Monthly and daily credits must be whole numbers >= 0.',
         variant: 'destructive',
       });
       return;
@@ -334,7 +314,7 @@ export function CreditsOnlySection() {
     if (updates == null) {
       toast({
         title: 'Invalid credits',
-        description: 'Grants and per-op amounts must be empty (fallback) or whole numbers ≥ 0.',
+        description: 'Monthly and daily credits must be whole numbers ≥ 0.',
         variant: 'destructive',
       });
       return;
@@ -380,9 +360,9 @@ export function CreditsOnlySection() {
             <div>
               <CardTitle className="text-lg text-slate-100">Credits-only catalog</CardTitle>
               <CardDescription className="mt-1.5">
-                Live rows only. ≈ Songs is display-only: floor(grant / 10) × 2. It is not a quota.
-                Per-op 0 = included. Empty (—) falls back to the Credits page. Extra profiles do
-                not multiply credits.
+                Live rows only. Plans grant credits. Generate charges the Credits page. ≈ Songs is
+                display-only: floor(grant / music list price) × 2. Extra profiles do not multiply
+                credits.
               </CardDescription>
             </div>
             <Button size="sm" onClick={openCreate}>
@@ -409,6 +389,7 @@ export function CreditsOnlySection() {
                 plans={catalog.live}
                 onEdit={setSelected}
                 emptyMessage="No active credit plans."
+                creditsPerGenerate={creditsPerGenerate}
               />
               {catalog.addons.length > 0 ? (
                 <div className="space-y-2">
@@ -425,13 +406,13 @@ export function CreditsOnlySection() {
                     <div className="space-y-2">
                       <p className="text-xs text-slate-500">
                         Extra profile slots only. They do not grant credits. Generate still uses
-                        the user&apos;s credit plan (music = 10). These rows now store the same
-                        per-op amounts so they do not fall back to the Credits page.
+                        the user&apos;s credit wallet and the Credits page list price.
                       </p>
                       <PlansTable
                         plans={catalog.addons}
                         onEdit={setSelected}
                         emptyMessage="No profile add-ons."
+                        creditsPerGenerate={creditsPerGenerate}
                       />
                     </div>
                   ) : null}
@@ -458,6 +439,7 @@ export function CreditsOnlySection() {
                         plans={catalog.leftover}
                         onEdit={setSelected}
                         emptyMessage="No leftover SKUs."
+                        creditsPerGenerate={creditsPerGenerate}
                       />
                     </div>
                   ) : null}
@@ -476,7 +458,11 @@ export function CreditsOnlySection() {
                 not multiply credits.
               </DialogDescription>
             </DialogHeader>
-            <CreditsOnlyPlanFields values={form} onChange={setForm} />
+            <CreditsOnlyPlanFields
+              values={form}
+              onChange={setForm}
+              creditsPerGenerate={creditsPerGenerate}
+            />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setSelected(null)}>
                 Cancel
@@ -542,7 +528,11 @@ export function CreditsOnlySection() {
               </p>
             </div>
           </div>
-          <CreditsOnlyPlanFields values={form} onChange={setForm} />
+          <CreditsOnlyPlanFields
+            values={form}
+            onChange={setForm}
+            creditsPerGenerate={creditsPerGenerate}
+          />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
               Cancel

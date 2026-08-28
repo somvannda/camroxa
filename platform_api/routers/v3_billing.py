@@ -90,8 +90,11 @@ async def list_plans(ctx: AdminDep, store: StoreDep) -> list[dict[str, Any]]:
 
 
 @router.get("/plans/public", summary="Active and public plans only")
-async def list_public_plans(store: StoreDep) -> list[dict[str, Any]]:
-    return await store.list_public_plans()
+async def list_public_plans(store: StoreDep, billing: BillingDep) -> list[dict[str, Any]]:
+    op_credits = await billing.op_list_credits()
+    rate = await billing.music_credits_per_generate()
+    plans = await store.list_public_plans(credits_per_generate=rate)
+    return [billing.apply_list_prices(plan, op_credits, overlay_ops=True) for plan in plans]
 
 
 @router.get("/admin/plans", summary="List all plans including v3 grant / per-op fields")

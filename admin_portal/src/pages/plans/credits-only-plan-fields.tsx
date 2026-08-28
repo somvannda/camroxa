@@ -1,7 +1,6 @@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { V3_PLAN_OPS, type V3PlanOp } from '@/types/v3-billing';
 
 export type CreditsOnlyFormValues = {
   monthly_credits: string;
@@ -10,7 +9,6 @@ export type CreditsOnlyFormValues = {
   is_active: boolean;
   pricing_features: string;
   pricing_credit_lines: string;
-  ops: Record<V3PlanOp, string>;
 };
 
 export function pricingFeaturesToText(lines?: string[] | null): string {
@@ -24,17 +22,6 @@ export function pricingFeaturesFromText(value: string): string[] {
     .filter(Boolean);
 }
 
-const OP_LABELS: Record<V3PlanOp, string> = {
-  lyric: 'Lyric',
-  title: 'Title',
-  album: 'Album',
-  music: 'Music (1 generate = 2 versions)',
-  style: 'Style',
-  image: 'Image',
-  video: 'Video',
-  merge: 'Merge',
-};
-
 export function emptyCreditsOnlyForm(): CreditsOnlyFormValues {
   return {
     monthly_credits: '0',
@@ -43,16 +30,6 @@ export function emptyCreditsOnlyForm(): CreditsOnlyFormValues {
     is_active: true,
     pricing_features: '',
     pricing_credit_lines: '',
-    ops: {
-      lyric: '',
-      title: '',
-      album: '',
-      music: '',
-      style: '',
-      image: '',
-      video: '',
-      merge: '',
-    },
   };
 }
 
@@ -63,17 +40,7 @@ export function formFromCredits(plan: {
   is_active?: boolean;
   pricing_features?: string[] | null;
   pricing_credit_lines?: string[] | null;
-  lyric_credits?: number | null;
-  title_credits?: number | null;
-  album_credits?: number | null;
-  music_credits?: number | null;
-  style_credits?: number | null;
-  image_credits?: number | null;
-  video_credits?: number | null;
-  merge_credits?: number | null;
 }): CreditsOnlyFormValues {
-  const opValue = (value: number | null | undefined) =>
-    value == null ? '' : String(value);
   return {
     monthly_credits: String(plan.monthly_credits ?? 0),
     daily_credits: String(plan.daily_credits ?? 0),
@@ -81,52 +48,40 @@ export function formFromCredits(plan: {
     is_active: plan.is_active !== false,
     pricing_features: pricingFeaturesToText(plan.pricing_features),
     pricing_credit_lines: pricingFeaturesToText(plan.pricing_credit_lines),
-    ops: {
-      lyric: opValue(plan.lyric_credits),
-      title: opValue(plan.title_credits),
-      album: opValue(plan.album_credits),
-      music: opValue(plan.music_credits),
-      style: opValue(plan.style_credits),
-      image: opValue(plan.image_credits),
-      video: opValue(plan.video_credits),
-      merge: opValue(plan.merge_credits),
-    },
   };
 }
 
-export function parseOptionalCredits(value: string): number | null | typeof Number.NaN {
-  const text = value.trim();
-  if (text === '') return null;
-  const parsed = Number(text);
-  if (!Number.isInteger(parsed) || parsed < 0) return Number.NaN;
-  return parsed;
+function songHint(credits: number, perGenerate: number): number {
+  if (!Number.isFinite(credits) || credits < 0 || perGenerate <= 0) return 0;
+  return Math.floor(credits / perGenerate) * 2;
 }
 
 export function CreditsOnlyPlanFields({
   values,
   onChange,
+  creditsPerGenerate = 10,
 }: {
   values: CreditsOnlyFormValues;
   onChange: (next: CreditsOnlyFormValues) => void;
+  creditsPerGenerate?: number;
 }) {
   const monthly = Number.parseInt(values.monthly_credits, 10);
   const daily = Number.parseInt(values.daily_credits, 10);
+  const per = creditsPerGenerate > 0 ? creditsPerGenerate : 10;
   const songPreview =
     Number.isInteger(monthly) && monthly >= 0
-      ? `≈ ${Math.floor(monthly / 10) * 2} songs (10 credits = 1 generate = 2 songs)`
+      ? `≈ ${songHint(monthly, per)} songs (${per} credits = 1 generate = 2 songs)`
       : 'Enter a whole number of monthly credits.';
   const dailySongPreview =
-    Number.isInteger(daily) && daily > 0
-      ? `≈ ${Math.floor(daily / 10) * 2} songs/day`
-      : null;
+    Number.isInteger(daily) && daily > 0 ? `≈ ${songHint(daily, per)} songs/day` : null;
 
   return (
     <div className="space-y-4 rounded-lg border border-violet-500/20 bg-violet-500/5 p-4">
       <div>
         <h4 className="text-sm font-semibold text-slate-100">Credits-only (v3)</h4>
         <p className="mt-1 text-xs text-slate-500">
-          Grants and per-op amounts live on this plan row. Empty per-op fields fall back to the
-          Credits page. 0 means included. Add-on profile slots do not multiply these amounts.
+          This plan only grants monthly or daily credits. Generate charges the Credits page list
+          price. Add-on profile slots do not multiply these amounts.
         </p>
       </div>
 
@@ -179,9 +134,9 @@ export function CreditsOnlyPlanFields({
           onChange={(e) => onChange({ ...values, pricing_credit_lines: e.target.value })}
           placeholder={
             Number.isInteger(daily) && daily > 0
-              ? ['daily credits', `≈ ${Math.floor(daily / 10) * 2} songs/day`, 'Resets at midnight'].join('\n')
+              ? ['daily credits', `≈ ${songHint(daily, per)} songs/day`, 'Resets at midnight'].join('\n')
               : Number.isInteger(monthly) && monthly > 0
-                ? ['credits per month', `≈ ${Math.floor(monthly / 10) * 2} songs/mo`].join('\n')
+                ? ['credits per month', `≈ ${songHint(monthly, per)} songs/mo`].join('\n')
                 : 'credits'
           }
         />
@@ -213,29 +168,9 @@ export function CreditsOnlyPlanFields({
         </label>
       </div>
       <p className="text-xs text-slate-500">
-        Keep hidden legacy plans active but not public. Public = website / music-web cards.
+        Keep hidden legacy plans active but not public. Public = website / music-web cards. Change
+        music / lyric / style costs on Credits.
       </p>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        {V3_PLAN_OPS.map((op) => (
-          <div key={op} className="space-y-1.5">
-            <Label htmlFor={`v3-op-${op}`}>{OP_LABELS[op]}</Label>
-            <Input
-              id={`v3-op-${op}`}
-              type="number"
-              min={0}
-              placeholder="Credits page"
-              value={values.ops[op]}
-              onChange={(e) =>
-                onChange({
-                  ...values,
-                  ops: { ...values.ops, [op]: e.target.value },
-                })
-              }
-            />
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
