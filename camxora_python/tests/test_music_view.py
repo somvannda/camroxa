@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from features.create.widgets.create_header import CreateHeader
 from features.music.views.music_view import LOADING_MESSAGE, MusicView
+from features.music.widgets.channel_selection_card import (
+    CHANNEL_CHIP_HEIGHT,
+    CHANNEL_LIST_SPACING,
+    _display_channel_name,
+)
+from features.music.widgets.song_editor_card import SongEditorCard
 from shared.models.auth import ProfileResponse
 from shared.models.platform import MusicHistoryListResponse, OperationCostsResponse, PromptNameOption, UserSettingsResponse
 from shared.services.platform_api import PlatformApi
@@ -49,6 +56,29 @@ def test_loading_state(qapp: QApplication) -> None:
     view = MusicView(PlatformApi())
     view.show()
     assert not view._loading_card.isHidden()
+    assert view.objectName() == "music_workspace"
+    header = view.findChild(CreateHeader)
+    assert header is not None
+    assert header.objectName() == "CreateHeader"
+
+
+def test_empty_song_disables_copy_and_rewrite(qapp: QApplication) -> None:
+    card = SongEditorCard()
+    assert not card._copy_title_btn.isEnabled()
+    assert not card._copy_lyrics_btn.isEnabled()
+    assert not card._copy_both_btn.isEnabled()
+    card.set_polish_enabled(True)
+    assert not card._polish_btn.isEnabled()
+
+
+def test_channel_names_title_case_all_caps() -> None:
+    assert _display_channel_name("BASSNOVA") == "Bassnova"
+    assert _display_channel_name("Bass Drive") == "Bass Drive"
+
+
+def test_ten_channel_chips_fit_without_scroll() -> None:
+    occupied = 10 * CHANNEL_CHIP_HEIGHT + 9 * CHANNEL_LIST_SPACING
+    assert occupied <= 300
 
 
 def test_loaded_binds_content(qapp: QApplication) -> None:

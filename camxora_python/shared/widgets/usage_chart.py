@@ -11,6 +11,7 @@ from PySide6.QtCore import QPointF, Qt, QRectF
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
+from shared.lib.formatting import format_short_date
 from shared.models.platform import DailyUsage
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 
@@ -52,6 +53,13 @@ def build_soft_curve_path(points: list[tuple[float, float]]) -> QPainterPath:
     return path
 
 
+def _axis_date_label(value: str) -> str:
+    try:
+        return format_short_date(value)
+    except Exception:
+        return value[-5:] if len(value) >= 5 else value
+
+
 def _series_for_entry(entry: DailyUsage) -> tuple[int, int, int, int, int]:
     studio = entry.studio_exports if (entry.studio_exports or entry.manual_exports) else entry.videos
     return (
@@ -86,17 +94,17 @@ class UsageChartWidget(QFrame):
         ("Images", "#1ABCFE"),
         ("Studio exports", "#0ACF83"),
         ("Manual exports", "#F59E0B"),
-        ("YouTube uploads", "#EF4444"),
+        ("YouTube uploads", "#EC4899"),
     )
     _PAD_L = 36.0
     _PAD_R = 12.0
     _PAD_T = 16.0
-    _PAD_B = 12.0
+    _PAD_B = 22.0
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("dashboard_chart_canvas")
-        self.setMinimumHeight(280)
+        self.setMinimumHeight(200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         self._entries: list[DailyUsage] = []
@@ -152,17 +160,25 @@ class UsageChartWidget(QFrame):
         out.end()
 
     def _paint_chart(self, painter: QPainter, width: float, height: float) -> None:
-        if not self._entries:
-            painter.setPen(QPen(QColor("#8aa0b0")))
-            font = QFont("Open Sans")
-            font.setPixelSize(13)
+        if not self._entries or not any(self.active_series_mask()):
+            painter.fillRect(QRectF(0, 0, width, height), QColor("#071522"))
+            painter.setPen(QPen(QColor("#8FA4BB")))
+            font = QFont("Inter")
+            font.setPixelSize(12)
             painter.setFont(font)
+            message = (
+                "No usage in this date range."
+                if self._entries
+                else "No usage data available yet."
+            )
             painter.drawText(
                 QRectF(0, 0, width, height),
                 int(Qt.AlignmentFlag.AlignCenter),
-                "No usage data available yet.",
+                message,
             )
             return
+
+        painter.fillRect(QRectF(0, 0, width, height), QColor("#071522"))
 
         plot_w = max(width - self._PAD_L - self._PAD_R, 1.0)
         plot_h = max(height - self._PAD_T - self._PAD_B, 1.0)
@@ -183,7 +199,7 @@ class UsageChartWidget(QFrame):
 
         grid_pen = QPen(QColor(255, 255, 255, 22), 1.0)
         label_pen = QPen(QColor("#8aa0b0"))
-        label_font = QFont("Open Sans")
+        label_font = QFont("Inter")
         label_font.setPixelSize(11)
         painter.setFont(label_font)
 
@@ -224,6 +240,18 @@ class UsageChartWidget(QFrame):
             painter.setBrush(color)
             for x, y in points:
                 painter.drawEllipse(QPointF(x, y), 3.2, 3.2)
+
+        painter.setPen(label_pen)
+        label_font.setPixelSize(10)
+        painter.setFont(label_font)
+        for index, entry in enumerate(self._entries):
+            x = left + index * x_step
+            label = _axis_date_label(entry.date)
+            painter.drawText(
+                QRectF(x - 28, bottom + 2, 56, 16),
+                int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop),
+                label,
+            )
 
 
 class UsageLegend(QFrame):

@@ -23,6 +23,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Desktop Dashboard now uses the Create studio design system, with purple selected rows on Daily Channel Limits and Recent Activity. See `docs/changelog/2026-08-28-desktop-dashboard-studio-ui.md`.
+- Desktop Music keeps the same card layout and now uses Create studio chrome. Credit labels hide float noise. See `docs/changelog/2026-08-28-desktop-music-studio-ui.md`.
+- Desktop Workflow now uses Create studio chrome for run lanes and the stage board. See `docs/changelog/2026-08-28-desktop-workflow-studio-ui.md`.
 - Desktop Image queue uses Create studio chrome: status cards first, then Controls & Queue, then the table. Job and workspace errors go to the app footer. See `docs/changelog/2026-08-28-desktop-image-queue-summary-cards.md`.
 - Desktop Progress selected rows use brand purple, Stage is plain wider text, and Row Detail is a compact pipeline inspector. See `docs/changelog/2026-08-28-desktop-progress-row-detail-polish.md`.
 - Desktop Profile page now uses the Create-page studio design system (same panels, 28px controls, purple buttons, table chrome) for Profile content. Card sections sit on the darker `#071426` canvas so each frame is visible. See `docs/changelog/2026-08-28-desktop-profile-page-restyle.md`.

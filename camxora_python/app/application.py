@@ -222,7 +222,7 @@ class AppShellWidget(QWidget):
         route = self._router.navigate(key)
         self._sidebar.select_route(key)
 
-        hide_header = key in {"video", "create", "profile", "progress", "image"}
+        hide_header = key in {"home", "video", "create", "profile", "workflow", "progress", "music", "image"}
         self._page_header.setVisible(not hide_header)
         if not hide_header:
             self._page_header.set_route(route)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFrame
 
 from features.music.widgets.automation_card import (
     AI_STRUCTURE_SENTINEL,
@@ -34,10 +34,28 @@ def test_generate_disabled_while_generating(qapp: QApplication) -> None:
 
 def test_plan_summary_under_generate(qapp: QApplication) -> None:
     card = AutomationCard()
+    assert card.layout().indexOf(card._generate_btn) < card.layout().indexOf(card._costs_host)
     assert card.layout().indexOf(card._generate_btn) < card.layout().indexOf(card._plan_box)
-    card.set_plan_lines("4 batches · 40 songs\nTotal 323.2 credits")
+    card.set_plan_summary(
+        batches=1,
+        songs=9,
+        image_jobs=4,
+        draft_credits=5.4009,
+        suno_credits=90,
+        image_credits=4,
+        total_credits=99.40090000000001,
+        video_later=True,
+    )
     assert not card._plan_box.isHidden()
-    assert "40 songs" in card._plan.text()
+    assert card._batch_value.text() == "1 batch"
+    assert card._song_value.text() == "9 songs"
+    assert card._total_credits.text() == "99.4"
+    rules = [
+        frame
+        for frame in card._plan_metrics.findChildren(QFrame)
+        if frame.objectName() == "PlanColumnRule"
+    ]
+    assert len(rules) == 7
     card.set_plan_lines("")
     assert card._plan_box.isHidden()
 

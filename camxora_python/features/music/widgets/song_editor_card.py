@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -29,13 +28,15 @@ from shared.lib.suno_lyrics_sanitize import (
     format_suno_replacements,
     sanitize_text_for_suno_with_changes,
 )
-from shared.themes.deep_blue import SHELL_TEXT_EDIT_ID, SUBTITLE_LABEL_ID
+from features.create.widgets.icons import apply_button_icon, section_heading
+from features.create.widgets.studio_panel import StudioPanel
+from shared.themes.deep_blue import SHELL_TEXT_EDIT_ID
 
 _SUNO_SCAN_DEBOUNCE_MS = 400
 _SUNO_ONLINE_SCAN_DEBOUNCE_MS = 900
 
 
-class SongEditorCard(QFrame):
+class SongEditorCard(StudioPanel):
     draft_requested = Signal()
     polish_requested = Signal()
     copy_title_requested = Signal()
@@ -47,24 +48,24 @@ class SongEditorCard(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("account_card")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
         header = QHBoxLayout()
-        title = QLabel("SONG")
-        title.setObjectName(SUBTITLE_LABEL_ID)
-        header.addWidget(title)
-        header.addStretch()
+        header.addWidget(section_heading("SONG", "music-4"), stretch=1)
         self._draft_btn = QPushButton("Draft")
+        self._draft_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._draft_btn, "sparkles")
         self._draft_btn.clicked.connect(self.draft_requested.emit)
         self._draft_btn.hide()
         header.addWidget(self._draft_btn)
         root.addLayout(header)
 
         effects = QGridLayout()
+        effects.setHorizontalSpacing(12)
+        effects.setVerticalSpacing(6)
         self._valence = self._make_effect_slider()
         self._dance = self._make_effect_slider()
         self._instrumental = self._make_effect_slider()
@@ -78,8 +79,13 @@ class SongEditorCard(QFrame):
                 ("Instrumental", self._instrumental, self._instrumental_value),
             )
         ):
-            effects.addWidget(QLabel(label), 0, col)
+            field = QLabel(label)
+            field.setObjectName("FieldLabel")
+            effects.addWidget(field, 0, col)
+            value_label.setObjectName("FieldLabel")
             row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(8)
             row.addWidget(slider, stretch=1)
             row.addWidget(value_label)
             host = QWidget()
@@ -95,43 +101,61 @@ class SongEditorCard(QFrame):
         self._polish_value.hide()
         root.addLayout(effects)
 
-        fields = QHBoxLayout()
+        fields = QGridLayout()
+        fields.setHorizontalSpacing(10)
+        fields.setVerticalSpacing(4)
+        title_label = QLabel("Title")
+        title_label.setObjectName("FieldLabel")
+        album_label = QLabel("Album")
+        album_label.setObjectName("FieldLabel")
         self._title = QLineEdit()
         self._title.setPlaceholderText("Song title")
         self._album = QLineEdit()
-        self._album.setPlaceholderText("album 1")
-        fields.addWidget(self._title, stretch=3)
-        fields.addWidget(self._album, stretch=2)
+        self._album.setPlaceholderText("Album 1")
+        fields.addWidget(title_label, 0, 0)
+        fields.addWidget(album_label, 0, 1)
+        fields.addWidget(self._title, 1, 0)
+        fields.addWidget(self._album, 1, 1)
+        fields.setColumnStretch(0, 3)
+        fields.setColumnStretch(1, 2)
         root.addLayout(fields)
 
         self._seed_notice = QLabel("")
-        self._seed_notice.setObjectName(SUBTITLE_LABEL_ID)
+        self._seed_notice.setObjectName("PageSubtitle")
         self._seed_notice.setWordWrap(True)
         self._seed_notice.hide()
         root.addWidget(self._seed_notice)
 
         suno_banner_row = QHBoxLayout()
         self._suno_risk_banner = QLabel("")
-        self._suno_risk_banner.setObjectName(SUBTITLE_LABEL_ID)
+        self._suno_risk_banner.setObjectName("music_warning_text")
         self._suno_risk_banner.setWordWrap(True)
         self._suno_risk_banner.hide()
         suno_banner_row.addWidget(self._suno_risk_banner, stretch=1)
         self._suno_auto_fix_btn = QPushButton("Auto-fix")
+        self._suno_auto_fix_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._suno_auto_fix_btn, "sparkles")
         self._suno_auto_fix_btn.clicked.connect(self._apply_suno_auto_fix)
         self._suno_auto_fix_btn.hide()
         suno_banner_row.addWidget(self._suno_auto_fix_btn)
         root.addLayout(suno_banner_row)
 
         actions = QHBoxLayout()
-        for label, slot in (
-            ("Copy title", self.copy_title_requested),
-            ("Copy lyrics", self.copy_lyrics_requested),
-            ("Copy both", self.copy_both_requested),
+        self._copy_title_btn = QPushButton("Copy title")
+        self._copy_lyrics_btn = QPushButton("Copy lyrics")
+        self._copy_both_btn = QPushButton("Copy both")
+        for button, slot in (
+            (self._copy_title_btn, self.copy_title_requested),
+            (self._copy_lyrics_btn, self.copy_lyrics_requested),
+            (self._copy_both_btn, self.copy_both_requested),
         ):
-            button = QPushButton(label)
+            button.setObjectName("SecondaryButton")
+            apply_button_icon(button, "copy")
             button.clicked.connect(slot.emit)
             actions.addWidget(button)
         self._polish_btn = QPushButton("Rewrite lyrics")
+        self._polish_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._polish_btn, "sparkles")
         self._polish_btn.clicked.connect(self.polish_requested.emit)
         actions.addWidget(self._polish_btn)
         revisions = QPushButton("Revisions (0 Credits)")
@@ -142,7 +166,7 @@ class SongEditorCard(QFrame):
 
         self._lyrics = QTextEdit()
         self._lyrics.setObjectName(SHELL_TEXT_EDIT_ID)
-        self._lyrics.setPlaceholderText("Lyrics")
+        self._lyrics.setPlaceholderText("Write lyrics here")
         self._lyrics.setMinimumHeight(180)
         root.addWidget(self._lyrics, stretch=1)
 
@@ -162,6 +186,7 @@ class SongEditorCard(QFrame):
         self._album.textChanged.connect(lambda *_: self.field_changed.emit())
         self._lyrics.textChanged.connect(self._on_lyrics_changed)
         self._polish_slider.valueChanged.connect(self._on_polish_changed)
+        self._sync_action_enabled()
 
     @staticmethod
     def _make_effect_slider() -> QSlider:
@@ -176,13 +201,25 @@ class SongEditorCard(QFrame):
 
     def _on_title_changed(self) -> None:
         self.field_changed.emit()
+        self._sync_action_enabled()
         self._suno_scan_timer.start()
         self._online_scan_timer.start()
 
     def _on_lyrics_changed(self) -> None:
         self.field_changed.emit()
+        self._sync_action_enabled()
         self._suno_scan_timer.start()
         self._online_scan_timer.start()
+
+    def _sync_action_enabled(self) -> None:
+        has_title = bool(self._title.text().strip())
+        has_lyrics = bool(self._lyrics.toPlainText().strip())
+        self._copy_title_btn.setEnabled(has_title)
+        self._copy_lyrics_btn.setEnabled(has_lyrics)
+        self._copy_both_btn.setEnabled(has_title or has_lyrics)
+        if not has_lyrics and self._polish_btn.isEnabled():
+            self._polish_btn.setEnabled(False)
+            self._polish_btn.setToolTip("Add lyrics before rewriting.")
 
     def _request_online_suno_scan(self) -> None:
         title = self._title.text().strip()
@@ -325,8 +362,9 @@ class SongEditorCard(QFrame):
             self._seed_notice.hide()
 
     def set_pending(self, *, draft: bool, polish: bool) -> None:
-        self._draft_btn.setEnabled(not draft and bool(self._title.text() or True))
+        self._draft_btn.setEnabled(not draft and bool(self._title.text().strip()))
         self._polish_btn.setEnabled(not polish and bool(self._lyrics.toPlainText().strip()))
+        self._sync_action_enabled()
 
     def title(self) -> str:
         return self._title.text()
@@ -346,10 +384,15 @@ class SongEditorCard(QFrame):
         self._lyrics.setPlainText(lyrics)
         self._polish_slider.setValue(polish_strength)
         self._run_suno_scan()
+        self._sync_action_enabled()
 
     def set_draft_enabled(self, enabled: bool) -> None:
         self._draft_btn.setEnabled(enabled)
 
     def set_polish_enabled(self, enabled: bool, *, reason: str = "") -> None:
+        if enabled and not self._lyrics.toPlainText().strip():
+            self._polish_btn.setEnabled(False)
+            self._polish_btn.setToolTip("Add lyrics before rewriting.")
+            return
         self._polish_btn.setEnabled(enabled)
         self._polish_btn.setToolTip(reason if reason and not enabled else "")
