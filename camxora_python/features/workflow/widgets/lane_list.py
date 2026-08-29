@@ -1,55 +1,50 @@
-"""Run lane list — Profile-style QListWidget selection."""
+"""Run lane list — Create studio list chrome."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QFrame,
-    QLabel,
-    QListWidget,
-    QListWidgetItem,
-    QSizePolicy,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QSizePolicy, QVBoxLayout, QWidget
 
+from features.create.widgets.studio_panel import StudioPanel
 from features.workflow.lib.workflow_steps import (
     format_role_label,
     lane_needs_attention,
     resolve_run_status_label,
 )
+from shared.lib.ui_font import studio_font
 from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, progress_runtime_key
 from shared.models.platform import ProgressRow
 
 
-class LaneListCard(QFrame):
-    """Selectable run lanes, mirroring Settings → Profiles list chrome."""
+class LaneListCard(StudioPanel):
+    """Selectable run lanes with Create table/list selection."""
 
     lane_selected = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("account_card")
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self._selected_key = ""
         self._updating = False
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(8)
 
-        title = QLabel("Run Lanes")
-        title.setObjectName("workflow_lane_list_title")
+        title = QLabel("RUN LANES")
+        title.setObjectName("SectionLabel")
+        title.setFont(studio_font(12, uppercase=True, letter_spacing=110))
         layout.addWidget(title)
 
         self._subtitle = QLabel("0 lanes · select one for the stage board.")
-        self._subtitle.setObjectName("workflow_lane_list_subtitle")
+        self._subtitle.setObjectName("PageSubtitle")
         self._subtitle.setWordWrap(True)
         layout.addWidget(self._subtitle)
 
         self._list = QListWidget()
         self._list.setObjectName("workflow_lane_list")
         self._list.setMinimumHeight(120)
+        self._list.setAlternatingRowColors(True)
         self._list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._list.currentRowChanged.connect(self._on_current_row_changed)
         layout.addWidget(self._list, stretch=1)

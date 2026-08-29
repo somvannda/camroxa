@@ -8,9 +8,6 @@ from functools import partial
 from PySide6.QtCore import QDate, QItemSelectionModel, Qt, Signal, QTimer
 from PySide6.QtGui import QAction, QBrush, QColor
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -27,11 +24,12 @@ from shared.lib.music_composer import normalize_history_date_range
 from shared.lib.music_history_labels import is_song_title_generating
 from shared.lib.music_status import format_song_pipeline_status, song_pipeline_status_tooltip
 from shared.models.platform import MusicHistoryBatch, MusicHistorySong
-from shared.themes.deep_blue import SHELL_DATE_EDIT_ID, SUBTITLE_LABEL_ID
-from shared.widgets.shell_date_edit import make_shell_date_edit
+from features.create.widgets.icons import apply_button_icon, section_heading
+from features.create.widgets.studio_controls import StudioCheckBox, StudioComboBox, StudioDateEdit
+from features.create.widgets.studio_panel import StudioPanel
 from shared.widgets.data_table import create_data_table
 
-EMPTY_MESSAGE = "No history rows match the current filters."
+EMPTY_MESSAGE = "No history rows match the current filters. Try Show all or widen the history dates."
 
 _STATUS_FILTER_OPTIONS: tuple[tuple[str, str], ...] = (
     ("success", "Success"),
@@ -97,8 +95,8 @@ _HISTORY_COL_RUN_DATE = 10
 _HISTORY_COLUMN_COUNT = 11
 _HISTORY_SONG_ROW_HEIGHT = 36
 _HISTORY_BATCH_SEPARATOR_ROW_HEIGHT = 26
-_BATCH_SEPARATOR_BG = QColor(96, 165, 250, 36)
-_BATCH_SEPARATOR_FG = QColor("#93c5fd")
+_BATCH_SEPARATOR_BG = QColor(99, 53, 217, 36)
+_BATCH_SEPARATOR_FG = QColor("#C4B5FD")
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +118,7 @@ class GeneratingTitleCell(QWidget):
         layout.setSpacing(0)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._title = QLabel("Generating.")
-        self._title.setObjectName(SUBTITLE_LABEL_ID)
+        self._title.setObjectName("PageSubtitle")
         layout.addWidget(self._title, alignment=Qt.AlignmentFlag.AlignVCenter)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
@@ -131,7 +129,7 @@ class GeneratingTitleCell(QWidget):
         self._title.setText("Generating" + "." * (self._phase + 1))
 
 
-class HistoryCard(QFrame):
+class HistoryCard(StudioPanel):
     filters_changed = Signal()
     row_selected = Signal(object)
     open_folder_requested = Signal(str, str)
@@ -149,23 +147,27 @@ class HistoryCard(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("account_card")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
-        title = QLabel("HISTORY")
-        title.setObjectName(SUBTITLE_LABEL_ID)
-        root.addWidget(title)
+        root.addWidget(section_heading("HISTORY", "scroll-text"))
 
         filters = QHBoxLayout()
         today = QDate.fromString(today_ymd(), "yyyy-MM-dd")
         self._date_filter_active = True
-        self._from_date = make_shell_date_edit(object_name=SHELL_DATE_EDIT_ID, initial=today)
-        self._to_date = make_shell_date_edit(object_name=SHELL_DATE_EDIT_ID, initial=today)
-        self._last_batch = QCheckBox("Last batch")
+        self._from_date = StudioDateEdit()
+        self._from_date.setDate(today)
+        self._from_date.setFixedWidth(132)
+        self._from_date.setToolTip("Filters the History table by planned run date.")
+        self._to_date = StudioDateEdit()
+        self._to_date.setDate(today)
+        self._to_date.setFixedWidth(132)
+        self._to_date.setToolTip("Filters the History table by planned run date.")
+        self._last_batch = StudioCheckBox("Last batch")
         self._status_filter = QPushButton(_STATUS_FILTER_ALL_LABEL)
+        self._status_filter.setObjectName("SecondaryButton")
         self._status_filter.setMinimumWidth(140)
         status_menu = QMenu(self._status_filter)
         self._status_actions: dict[str, QAction] = {}
@@ -177,24 +179,36 @@ class HistoryCard(QFrame):
             status_menu.addAction(action)
             self._status_actions[value] = action
         self._status_filter.setMenu(status_menu)
-        self._batch_filter = QComboBox()
+        self._batch_filter = StudioComboBox()
         self._batch_filter.setMinimumWidth(220)
         self._batch_filter.addItem("All batches", "")
         self._show_all_btn = QPushButton("Show all")
+        self._show_all_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._show_all_btn, "list")
         self._show_all_btn.clicked.connect(self._clear_filters)
         self._recover_btn = QPushButton("Recover failed")
+        self._recover_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._recover_btn, "refresh-cw")
         self._recover_btn.setToolTip(
             "Scan loaded history and recover failures: retry drafts, "
             "rewrite+Suno on content-policy rejects, retry other Suno fails."
         )
         self._recover_btn.clicked.connect(self.recover_failed_requested.emit)
-        filters.addWidget(QLabel("From"))
+        from_label = QLabel("History from")
+        from_label.setObjectName("FieldLabel")
+        to_label = QLabel("History to")
+        to_label.setObjectName("FieldLabel")
+        status_label = QLabel("Status")
+        status_label.setObjectName("FieldLabel")
+        batch_label = QLabel("Batch")
+        batch_label.setObjectName("FieldLabel")
+        filters.addWidget(from_label)
         filters.addWidget(self._from_date)
-        filters.addWidget(QLabel("To"))
+        filters.addWidget(to_label)
         filters.addWidget(self._to_date)
-        filters.addWidget(QLabel("Status"))
+        filters.addWidget(status_label)
         filters.addWidget(self._status_filter)
-        filters.addWidget(QLabel("Batch"))
+        filters.addWidget(batch_label)
         filters.addWidget(self._batch_filter)
         filters.addWidget(self._last_batch)
         filters.addWidget(self._show_all_btn)
@@ -203,14 +217,14 @@ class HistoryCard(QFrame):
         root.addLayout(filters)
 
         self._filter_hint = QLabel("")
-        self._filter_hint.setObjectName(SUBTITLE_LABEL_ID)
+        self._filter_hint.setObjectName("PageSubtitle")
         self._filter_hint.setWordWrap(True)
         root.addWidget(self._filter_hint)
         meta = QHBoxLayout()
         self._summary = QLabel("No history yet.")
-        self._summary.setObjectName(SUBTITLE_LABEL_ID)
+        self._summary.setObjectName("PageSubtitle")
         self._updated = QLabel("Updated —")
-        self._updated.setObjectName(SUBTITLE_LABEL_ID)
+        self._updated.setObjectName("FieldLabel")
         meta.addWidget(self._summary, stretch=1)
         meta.addWidget(self._updated)
         root.addLayout(meta)
@@ -218,8 +232,8 @@ class HistoryCard(QFrame):
         self._table = create_data_table(
             [
                 "No",
-                "album 1",
-                "album 2",
+                "Album 1",
+                "Album 2",
                 "Title",
                 "Description",
                 "Structure",
@@ -231,7 +245,8 @@ class HistoryCard(QFrame):
             ]
         )
         self._table.setObjectName("history_data_table")
-        self._table.setAlternatingRowColors(False)
+        self._table.setAlternatingRowColors(True)
+        self._table.setShowGrid(False)
         self._table.setMinimumHeight(240)
         self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         vertical_header = self._table.verticalHeader()
@@ -328,11 +343,20 @@ class HistoryCard(QFrame):
         self._update_filter_hint()
         self.filters_changed.emit()
 
+    def _empty_table_message(self) -> str:
+        if not self._date_filter_active:
+            return EMPTY_MESSAGE
+        start = self._from_date.date().toString("MMM d")
+        end = self._to_date.date().toString("MMM d")
+        window = start if start == end else f"{start}–{end}"
+        return f"No rows for {window}. Try Show all or widen the history dates."
+
     def _update_filter_hint(self) -> None:
         if self._date_filter_active:
             self._filter_hint.setText(
-                "Shows batches whose planned run date falls in From–To "
-                "(or created that day). Last batch ignores the date range."
+                "History dates filter this table only. Shows batches whose "
+                "planned run date falls in History from–to (or created that day). "
+                "Last batch ignores the date range."
             )
         else:
             self._filter_hint.setText(
@@ -383,6 +407,7 @@ class HistoryCard(QFrame):
         index = self._batch_filter.findData(current)
         self._batch_filter.setCurrentIndex(index if index >= 0 else 0)
         self._batch_filter.blockSignals(False)
+        self._batch_filter.sync_item_tooltips()
 
     def set_summary(self, summary: str, updated_at: str | None) -> None:
         self._summary.setText(summary)
@@ -403,7 +428,7 @@ class HistoryCard(QFrame):
         if not rows:
             self._table.setRowCount(1)
             self._table.setSpan(0, 0, 1, _HISTORY_COLUMN_COUNT)
-            item = QTableWidgetItem(EMPTY_MESSAGE)
+            item = QTableWidgetItem(self._empty_table_message())
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self._table.setItem(0, 0, item)
             vbar.setValue(0)
@@ -581,11 +606,12 @@ class HistoryCard(QFrame):
         layout.setContentsMargins(4, 0, 4, 0)
         layout.setSpacing(6)
         name = QLabel(label)
-        name.setObjectName(SUBTITLE_LABEL_ID)
+        name.setObjectName("PageSubtitle")
         open_btn = QPushButton("Open")
-        open_btn.setObjectName("history_open_button")
-        open_btn.setFixedHeight(20)
-        open_btn.setMaximumWidth(52)
+        open_btn.setObjectName("SecondaryButton")
+        apply_button_icon(open_btn, "folder-open", size=12)
+        open_btn.setFixedHeight(22)
+        open_btn.setMaximumWidth(64)
         open_btn.setEnabled(bool(path))
         if path:
             open_btn.clicked.connect(

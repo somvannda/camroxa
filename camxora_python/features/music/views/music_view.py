@@ -6,7 +6,6 @@ from dataclasses import replace
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -14,6 +13,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.studio_panel import StudioPanel, fill_studio_canvas, paint_studio_card
+from features.music.music_styles import build_music_page_qss
 from features.music.services.music_local_store import MusicLocalStore, MusicWorkspacePrefs
 from features.music.widgets.automation_card import AutomationCard
 from features.music.widgets.channel_selection_card import ChannelSelectionCard
@@ -41,7 +43,6 @@ from shared.lib.music_costs import (
     format_button_credit_label,
     format_draft_slot_button_label,
     format_operation_cost_label,
-    format_plan_credits,
     get_batch_generate_total_cost,
     get_music_plan_cost_breakdown,
     map_operation_costs,
@@ -59,12 +60,12 @@ from shared.models.platform import BatchCreateRequest, MusicHistoryBatch, MusicH
 from shared.services.app_logger import log_error, log_info
 from shared.services.file_service import ensure_directory, open_path
 from shared.lib.page_account_scope import account_cache_mismatch, cached_user_id
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from shared.services.platform_api import PlatformApi
 from shared.services.workspace_cache import WorkspaceCache
 from shared.themes.deep_blue import (
     PANEL_SCROLL_CONTENT_ID,
     PANEL_SCROLL_RIGHT_GUTTER_PX,
-    SUBTITLE_LABEL_ID,
 )
 from shared.widgets.settings_ui import make_panel_scroll_area
 from shared.workers.data_workers import (
@@ -90,6 +91,11 @@ from shared.workers.data_workers import (
 LOADING_MESSAGE = "Loading music workspace..."
 
 
+class _FramedHeader(CreateHeader):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        paint_studio_card(self)
+
+
 class MusicView(QWidget):
     def __init__(
         self,
@@ -99,6 +105,12 @@ class MusicView(QWidget):
         cache: WorkspaceCache | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("music_workspace")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_music_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self)
         self._api = api
         self._cache = cache
         self._worker: MusicWorkspaceWorker | None = None
@@ -177,23 +189,34 @@ class MusicView(QWidget):
         page_layout.setSpacing(0)
 
         self._scroll = make_panel_scroll_area()
+        fill_studio_canvas(self._scroll.viewport())
 
         container = QWidget()
         container.setObjectName(PANEL_SCROLL_CONTENT_ID)
-        container.setAutoFillBackground(False)
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        fill_studio_canvas(container)
         root = QVBoxLayout(container)
         root.setContentsMargins(0, 0, PANEL_SCROLL_RIGHT_GUTTER_PX, 0)
         root.setSpacing(12)
+
+        header = _FramedHeader(
+            title="Music",
+            subtitle="Batch composer, song editor, channel pairs, and history.",
+            meta="",
+            eyebrow="WORKSPACE",
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
 
         self._error_banner = MusicErrorBanner()
         self._error_banner.hide()
         root.addWidget(self._error_banner)
 
-        self._loading_card = QFrame()
-        self._loading_card.setObjectName("account_card")
+        self._loading_card = StudioPanel()
         loading_layout = QVBoxLayout(self._loading_card)
+        loading_layout.setContentsMargins(12, 12, 12, 12)
         loading_label = QLabel(LOADING_MESSAGE)
-        loading_label.setObjectName(SUBTITLE_LABEL_ID)
+        loading_label.setObjectName("PageSubtitle")
         loading_layout.addWidget(loading_label)
         root.addWidget(self._loading_card)
 
@@ -229,13 +252,16 @@ class MusicView(QWidget):
         self._automation_card.mood_changed.connect(self._on_mood_changed)
         self._automation_card.shuffle_changed.connect(self._on_shuffle_changed)
         self._automation_card.mood_shuffle_changed.connect(self._on_mood_shuffle_changed)
+        self._song_card.setMinimumWidth(350)
+        self._primary_card.setFixedWidth(245)
+        self._secondary_card.setFixedWidth(245)
         main_row = QHBoxLayout()
         main_row.setSpacing(12)
-        main_row.addWidget(self._song_card, stretch=15)
-        main_row.addWidget(self._primary_card, stretch=8)
-        main_row.addWidget(self._secondary_card, stretch=8)
-        main_row.addWidget(self._automation_card, stretch=10)
-        content_layout.addLayout(main_row)
+        main_row.addWidget(self._song_card, stretch=14)
+        main_row.addWidget(self._primary_card)
+        main_row.addWidget(self._secondary_card)
+        main_row.addWidget(self._automation_card, stretch=14)
+        content_layout.addLayout(main_row, stretch=1)
 
         self._history_card = HistoryCard()
         self._history_card.filters_changed.connect(self._on_history_filters_changed)
@@ -1048,7 +1074,7 @@ class MusicView(QWidget):
             else:
                 generate_label = "Generate"
         elif total_cost is not None:
-            generate_label = f"Generate ({total_cost} Credits)"
+            generate_label = format_button_credit_label("Generate", total_cost)
         else:
             generate_label = "Generate"
         self._automation_card.set_generate_label(generate_label)
@@ -1092,21 +1118,24 @@ class MusicView(QWidget):
         )
         self._automation_card.set_cost_lines(costs)
         if breakdown is None:
-            plan = "Select dates and matching channel pairs to estimate this run."
-            helper = ""
-        else:
-            plan = (
-                f"{breakdown.planned_batch_count} batches · {breakdown.planned_song_count} songs\n"
-                f"Draft {format_plan_credits(breakdown.draft_total_cost)}"
-                f"  ·  Suno {format_plan_credits(breakdown.suno_total_cost)}"
-                f"  ·  Image {format_plan_credits(breakdown.image_total_cost)}"
-                f"{f' ({breakdown.image_total_jobs} jobs)' if breakdown.image_total_jobs else ''}\n"
-                f"Total {format_plan_credits(total_cost)} credits"
-                f"{'' if not (self._music_settings.auto_video_after_suno or self._music_settings.auto_merge_after_video) else '  ·  Video/Merge later'}"
+            self._automation_card.set_plan_lines(
+                "Select dates and matching channel pairs to estimate this run."
             )
-            helper = ""
-        self._automation_card.set_plan_lines(plan)
-        self._automation_card.set_helper_text(helper)
+        else:
+            self._automation_card.set_plan_summary(
+                batches=breakdown.planned_batch_count,
+                songs=breakdown.planned_song_count,
+                image_jobs=breakdown.image_total_jobs,
+                draft_credits=breakdown.draft_total_cost,
+                suno_credits=breakdown.suno_total_cost,
+                image_credits=breakdown.image_total_cost,
+                total_credits=total_cost,
+                video_later=bool(
+                    self._music_settings.auto_video_after_suno
+                    or self._music_settings.auto_merge_after_video
+                ),
+            )
+        self._automation_card.set_helper_text("")
         self._render_history()
 
     def _render_history(self) -> None:

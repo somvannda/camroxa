@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QSlider,
@@ -15,32 +13,60 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.studio_controls import StudioCheckBox, StudioComboBox, StudioDateEdit
+from features.create.widgets.studio_panel import StudioPanel
 from shared.lib.formatting import today_ymd
 from shared.lib.music_settings import DEFAULT_LANGUAGE_OPTIONS
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID
-from shared.widgets.shell_date_edit import make_shell_date_edit
 
 
-class MusicSettingsStrip(QFrame):
+def _field_label(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setObjectName("FieldLabel")
+    return label
+
+
+def _stacked_field(label: QLabel, widget: QWidget) -> QWidget:
+    host = QWidget()
+    host.setObjectName("TransparentBlock")
+    host.setAutoFillBackground(False)
+    box = QVBoxLayout(host)
+    box.setContentsMargins(0, 0, 0, 0)
+    box.setSpacing(2)
+    box.addWidget(label)
+    box.addWidget(widget)
+    return host
+
+
+class MusicSettingsStrip(StudioPanel):
     changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("account_card")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
         today = QDate.fromString(today_ymd(), "yyyy-MM-dd")
-        self._from_date = make_shell_date_edit(initial=today)
-        self._to_date = make_shell_date_edit(initial=today)
-        self._language = QComboBox()
+        self._from_date = StudioDateEdit()
+        self._from_date.setDate(today)
+        self._from_date.setFixedWidth(132)
+        self._from_date.setToolTip("Plan dates for the next generate run — not the History table.")
+        self._to_date = StudioDateEdit()
+        self._to_date.setDate(today)
+        self._to_date.setFixedWidth(132)
+        self._to_date.setToolTip("Plan dates for the next generate run — not the History table.")
+        self._language = StudioComboBox()
+        self._language.setMinimumWidth(110)
         self._language_options: list[tuple[str, str]] = list(DEFAULT_LANGUAGE_OPTIONS)
-        self._language_label = QLabel("Language")
-        self._secondary_language_label = QLabel("Secondary")
-        self._secondary_language = QComboBox()
-        self._secondary_language.hide()
-        self._secondary_language_label.hide()
+        self._language_label = _field_label("Language")
+        self._secondary_language_label = _field_label("Secondary")
+        self._secondary_language = StudioComboBox()
+        self._secondary_language.setMinimumWidth(110)
+        self._language_field = _stacked_field(self._language_label, self._language)
+        self._secondary_language_field = _stacked_field(
+            self._secondary_language_label, self._secondary_language
+        )
+        self._secondary_language_field.hide()
         self._apply_language_options(self._language_options)
         self._configure_language_dropdowns()
         self._creativity = QSlider()
@@ -48,50 +74,69 @@ class MusicSettingsStrip(QFrame):
         self._creativity.setRange(0, 100)
         self._creativity.setValue(55)
         self._creativity_label = QLabel("55")
-        self._unique_opening = QCheckBox("Unique opening")
-        self._use_content_pools = QCheckBox("Use content pools")
-        self._strict = QComboBox()
+        self._creativity_label.setObjectName("FieldLabel")
+        self._unique_opening = StudioCheckBox("Unique opening")
+        self._use_content_pools = StudioCheckBox("Use content pools")
+        self._strict = StudioComboBox()
         for value in range(1, 6):
             self._strict.addItem(str(value), value)
         self._strict.setCurrentIndex(2)
-        self._history = QComboBox()
+        self._history = StudioComboBox()
         for value in (50, 100, 200, 500, 1500):
             self._history.addItem(str(value), value)
         self._history.setCurrentIndex(1)
         self._count = QSpinBox()
         self._count.setRange(1, 50)
         self._count.setValue(4)
+        self._strict.sync_item_tooltips()
+        self._history.sync_item_tooltips()
+        self._strict.setToolTip("How tightly lyrics follow the description, structure, and mood.")
+        self._history.setToolTip("Recent titles to avoid repeating. This is not the History table.")
+        self._count.setToolTip("Songs generated per planned day.")
+        self._creativity.setToolTip("Higher writes more freely. Lower stays closer to the brief.")
         self._planned_days = QLabel("1 planned day")
-        self._planned_days.setObjectName(SUBTITLE_LABEL_ID)
+        self._planned_days.setObjectName("PageSubtitle")
 
+        bottom = Qt.AlignmentFlag.AlignBottom
         for label, widget in (
-            ("From", self._from_date),
-            ("To", self._to_date),
+            ("Plan from", self._from_date),
+            ("Plan to", self._to_date),
         ):
-            layout.addWidget(QLabel(label))
-            layout.addWidget(widget)
-        layout.addWidget(self._language_label)
-        layout.addWidget(self._language)
-        layout.addWidget(self._secondary_language_label)
-        layout.addWidget(self._secondary_language)
+            layout.addWidget(_stacked_field(_field_label(label), widget), alignment=bottom)
+        layout.addWidget(self._language_field, alignment=bottom)
+        layout.addWidget(self._secondary_language_field, alignment=bottom)
         for label, widget in (
             ("Strict", self._strict),
             ("History", self._history),
             ("Count", self._count),
         ):
-            layout.addWidget(QLabel(label))
-            layout.addWidget(widget)
-        layout.addWidget(QLabel("Creativity"))
-        creativity_box = QVBoxLayout()
-        creativity_row = QHBoxLayout()
-        creativity_row.addWidget(self._creativity, stretch=1)
-        creativity_row.addWidget(self._creativity_label)
-        creativity_box.addLayout(creativity_row)
-        layout.addLayout(creativity_box, stretch=1)
-        layout.addWidget(self._unique_opening)
-        layout.addWidget(self._use_content_pools)
-        layout.addWidget(self._planned_days)
-        layout.addStretch()
+            layout.addWidget(_stacked_field(_field_label(label), widget), alignment=bottom)
+
+        creativity_host = QWidget()
+        creativity_host.setObjectName("TransparentBlock")
+        creativity_host.setAutoFillBackground(False)
+        creativity_row = QHBoxLayout(creativity_host)
+        creativity_row.setContentsMargins(0, 0, 0, 0)
+        creativity_row.setSpacing(8)
+        creativity_caption = _field_label("Creativity")
+        creativity_caption.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        creativity_row.addWidget(creativity_caption, alignment=Qt.AlignmentFlag.AlignVCenter)
+        creativity_row.addWidget(self._creativity, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
+        creativity_row.addWidget(self._creativity_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(creativity_host, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        options_host = QWidget()
+        options_host.setObjectName("TransparentBlock")
+        options_host.setAutoFillBackground(False)
+        options = QHBoxLayout(options_host)
+        options.setContentsMargins(0, 0, 0, 0)
+        options.setSpacing(12)
+        options.addStretch(1)
+        options.addWidget(self._unique_opening)
+        options.addWidget(self._use_content_pools)
+        options.addWidget(self._planned_days)
+        options.addStretch(1)
+        layout.addWidget(options_host, stretch=1, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self._from_date.dateChanged.connect(lambda *_: self._emit_changed())
         self._to_date.dateChanged.connect(lambda *_: self._emit_changed())
@@ -135,6 +180,7 @@ class MusicSettingsStrip(QFrame):
         self._language_label.setText("Primary" if dual_mode else "Language")
         self._secondary_language_label.setVisible(dual_mode)
         self._secondary_language.setVisible(dual_mode)
+        self._secondary_language_field.setVisible(dual_mode)
         if not dual_mode:
             if self._language.count() > 0:
                 self._language.setCurrentIndex(0)
@@ -176,6 +222,8 @@ class MusicSettingsStrip(QFrame):
         if combo.count() > 0:
             combo.setCurrentIndex(index)
         combo.blockSignals(False)
+        if hasattr(combo, "sync_item_tooltips"):
+            combo.sync_item_tooltips()
 
     def _apply_language_options(self, options: list[tuple[str, str]]) -> None:
         current = str(self._language.currentData() or "")

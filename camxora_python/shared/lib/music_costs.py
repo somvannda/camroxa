@@ -44,10 +44,9 @@ def get_operation_unit_cost(item: OperationCostResponse | None) -> float | None:
 
 def _fmt_credits(value: float | int) -> str:
     number = float(value)
-    if number.is_integer():
-        return str(int(number))
-    text = f"{number:.4f}".rstrip("0").rstrip(".")
-    return text
+    if abs(number - round(number)) < 1e-9:
+        return str(int(round(number)))
+    return f"{number:.2f}".rstrip("0").rstrip(".")
 
 
 def format_plan_credits(value: float | int | None) -> str:
@@ -67,7 +66,7 @@ def format_button_credit_label(
 ) -> str:
     if credits is None:
         return f"{label} ({unavailable_label})"
-    return f"{label} ({_fmt_credits(credits)} Credits)"
+    return f"{label} ({_fmt_credits(credits)} credits)"
 
 
 def format_draft_slot_button_label(label: str, slots: int = 1) -> str:

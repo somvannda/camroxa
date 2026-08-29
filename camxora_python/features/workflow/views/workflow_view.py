@@ -1,10 +1,9 @@
-"""Workflow page — 100% parity with WorkflowPage.tsx."""
+"""Workflow page — Create studio chrome with workflow information architecture."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, QTimer
+from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtWidgets import (
-    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -15,6 +14,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.studio_controls import StudioCheckBox, StudioDateEdit
+from features.create.widgets.studio_panel import fill_studio_canvas, paint_studio_card
 from features.workflow.services.workflow_local_store import WorkflowLocalStore, WorkflowWorkspacePrefs
 from features.workflow.lib.workflow_steps import build_workflow_steps, lane_needs_attention
 from features.workflow.widgets.empty_state import WorkflowEmptyState
@@ -22,8 +24,10 @@ from features.workflow.widgets.error_banner import WorkflowErrorBanner
 from features.workflow.widgets.lane_list import LaneListCard
 from features.workflow.widgets.selected_run_panel import SelectedRunPanel
 from features.workflow.widgets.stats_row import WorkflowStatsRow
+from features.workflow.workflow_styles import build_workflow_page_qss
 from shared.lib.formatting import today_ymd
 from shared.lib.page_account_scope import account_cache_mismatch, cached_user_id
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from shared.lib.video_runtime_inspection import (
     ProgressRuntimePresentation,
     build_runtime_presentation_map,
@@ -34,8 +38,6 @@ from shared.services.action_feedback import notify_action
 from shared.services.platform_api import PlatformApi
 from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID
-from shared.widgets.shell_date_edit import make_shell_date_edit
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import WorkflowLoadResult, WorkflowLoadWorker, WorkflowRuntimeWorker
 
@@ -48,6 +50,12 @@ HELPER_TEXT = (
     "Visual timeline for one selected run. Use Progress for recovery actions "
     "and failed-row handling."
 )
+PAGE_GAP = 10
+
+
+class _FramedHeader(CreateHeader):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        paint_studio_card(self)
 
 
 class WorkflowView(PollablePageMixin, QScrollArea):
@@ -84,50 +92,65 @@ class WorkflowView(PollablePageMixin, QScrollArea):
         self._runtime_timer = QTimer(self)
         self._runtime_timer.setInterval(EXPORT_RUNTIME_POLL_MS)
         self._runtime_timer.timeout.connect(self._refresh_runtime_overlay)
+        self.setObjectName("workflow_workspace")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_workflow_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self.viewport())
 
         container = QWidget()
+        container.setObjectName("workflow_workspace")
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        fill_studio_canvas(container)
         root = QVBoxLayout(container)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(12)
+        root.setContentsMargins(PAGE_GAP, PAGE_GAP, PAGE_GAP, PAGE_GAP)
+        root.setSpacing(PAGE_GAP)
 
-        filter_card = QFrame()
-        filter_card.setObjectName("account_card")
-        filter_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        filter_layout = QVBoxLayout(filter_card)
-        filter_layout.setContentsMargins(16, 16, 16, 16)
-        filter_layout.setSpacing(8)
-
-        filter_title = QLabel("Filters")
-        filter_title.setObjectName(SUBTITLE_LABEL_ID)
-        filter_layout.addWidget(filter_title)
-
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(8)
-        self._from_date = make_shell_date_edit(
-            initial=QDate.fromString(today_ymd(), "yyyy-MM-dd")
-        )
-        self._to_date = make_shell_date_edit(
-            initial=QDate.fromString(today_ymd(), "yyyy-MM-dd")
-        )
-        self._active_only = QCheckBox("Active only")
+        trailing = QWidget()
+        trailing_row = QHBoxLayout(trailing)
+        trailing_row.setContentsMargins(0, 0, 0, 0)
+        trailing_row.setSpacing(8)
+        today = QDate.fromString(today_ymd(), "yyyy-MM-dd")
+        from_label = QLabel("From")
+        from_label.setObjectName("FieldLabel")
+        to_label = QLabel("To")
+        to_label.setObjectName("FieldLabel")
+        self._from_date = StudioDateEdit()
+        self._from_date.setDate(today)
+        self._from_date.setFixedWidth(132)
+        self._to_date = StudioDateEdit()
+        self._to_date.setDate(today)
+        self._to_date.setFixedWidth(132)
+        self._active_only = StudioCheckBox("Active only")
         self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.setObjectName("SecondaryButton")
+        self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._refresh_btn.setFixedHeight(28)
         self._refresh_btn.clicked.connect(lambda: self.refresh_data(manual=True))
-        toolbar.addWidget(QLabel("From"))
-        toolbar.addWidget(self._from_date)
-        toolbar.addWidget(QLabel("To"))
-        toolbar.addWidget(self._to_date)
-        toolbar.addWidget(self._active_only)
-        toolbar.addWidget(self._refresh_btn)
-        toolbar.addStretch()
-        filter_layout.addLayout(toolbar)
-        root.addWidget(filter_card, 0)
+        trailing_row.addWidget(from_label)
+        trailing_row.addWidget(self._from_date)
+        trailing_row.addWidget(to_label)
+        trailing_row.addWidget(self._to_date)
+        trailing_row.addWidget(self._active_only)
+        trailing_row.addWidget(self._refresh_btn)
+
+        header = _FramedHeader(
+            title="Workflow",
+            subtitle="Timeline view for the selected run and channel, driven by the shared progress aggregate feed.",
+            meta="",
+            eyebrow="WORKSPACE",
+            trailing=trailing,
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
 
         helper = QLabel(HELPER_TEXT)
-        helper.setObjectName(SUBTITLE_LABEL_ID)
+        helper.setObjectName("PageSubtitle")
         helper.setWordWrap(True)
-        helper.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         root.addWidget(helper, 0)
 
         self._stats_row = WorkflowStatsRow()
@@ -142,11 +165,12 @@ class WorkflowView(PollablePageMixin, QScrollArea):
         self._empty_state.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         root.addWidget(self._empty_state, 1)
 
-        self._content = QFrame()
+        self._content = QWidget()
+        fill_studio_canvas(self._content)
         self._content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         content_layout = QHBoxLayout(self._content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(16)
+        content_layout.setSpacing(PAGE_GAP)
         self._lane_list = LaneListCard()
         self._lane_list.setFixedWidth(LANE_COLUMN_WIDTH)
         self._lane_list.lane_selected.connect(self._select_lane)

@@ -1,11 +1,12 @@
-"""Workflow empty state — standard account_card, fills remaining height."""
+"""Workflow empty state — Create studio panel."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID, TITLE_LABEL_ID
+from features.create.widgets.studio_panel import StudioPanel
+from shared.lib.ui_font import studio_font
 
 LOADING_TITLE = "Loading workflow runs..."
 LOADING_SUBTITLE = "Refreshing the visual pipeline board."
@@ -15,24 +16,24 @@ EMPTY_SUBTITLE = (
 )
 
 
-class WorkflowEmptyState(QFrame):
+class WorkflowEmptyState(StudioPanel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("account_card")
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
         layout.addStretch(1)
 
         self._title = QLabel(LOADING_TITLE)
-        self._title.setObjectName(TITLE_LABEL_ID)
+        self._title.setObjectName("PageTitle")
+        self._title.setFont(studio_font(20))
         self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._title)
 
         self._subtitle = QLabel(LOADING_SUBTITLE)
-        self._subtitle.setObjectName(SUBTITLE_LABEL_ID)
+        self._subtitle.setObjectName("PageSubtitle")
         self._subtitle.setWordWrap(True)
         self._subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._subtitle)

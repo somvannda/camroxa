@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from features.create.widgets.create_header import CreateHeader
 from features.workflow.views.workflow_view import WorkflowView
 from features.workflow.widgets.error_banner import ERROR_MESSAGE
 from features.workflow.widgets.empty_state import EMPTY_TITLE, LOADING_TITLE
@@ -53,6 +54,9 @@ def test_loading_empty_state(qapp: QApplication) -> None:
     view = WorkflowView(PlatformApi())
     view.show()
     assert view._empty_state._title.text() == LOADING_TITLE
+    header = view.widget().findChild(CreateHeader)
+    assert header is not None
+    assert header.objectName() == "CreateHeader"
 
 
 def test_stale_data_on_error(qapp: QApplication) -> None:

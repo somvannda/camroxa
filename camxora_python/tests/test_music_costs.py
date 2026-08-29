@@ -1,6 +1,11 @@
 """Music cost calculation tests."""
 
-from shared.lib.music_costs import get_music_plan_cost_breakdown, map_operation_costs
+from shared.lib.music_costs import (
+    format_button_credit_label,
+    format_plan_credits,
+    get_music_plan_cost_breakdown,
+    map_operation_costs,
+)
 from shared.models.auth import ProfileResponse
 from shared.models.platform import OperationCostResponse
 
@@ -121,3 +126,9 @@ def test_three_day_auto_gsuno_total_120() -> None:
     )
     assert breakdown is not None
     assert breakdown.total_cost == 120
+
+
+def test_credit_labels_hide_float_noise() -> None:
+    assert format_plan_credits(99.40090000000001) == "99.4"
+    assert format_button_credit_label("Generate", 99.40090000000001) == "Generate (99.4 credits)"
+    assert format_plan_credits(10) == "10"

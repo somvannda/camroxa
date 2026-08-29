@@ -1,80 +1,71 @@
-"""Stage board step cards — matches WorkflowPage stage cards."""
+"""Stage board step cards — Create studio chrome."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
 
+from features.create.widgets.icons import create_icon
+from features.create.widgets.studio_panel import NestedPanel
 from features.workflow.lib.workflow_steps import (
     WorkflowStep,
     detail_looks_empty,
     state_label,
     step_empty_hint,
 )
-from shared.icons.material_symbols import KPI_ICONS, material_symbol_pixmap
-from shared.themes.badge_pills import STEP_STATE_BADGE_IDS, apply_badge_pill
+from shared.lib.ui_font import studio_font
 
 STEP_ICON_KEYS = {
-    "music": "music",
+    "music": "music-4",
     "image": "image",
     "converter": "video",
-    "merger": "merge",
+    "merger": "video",
     "youtube": "youtube",
 }
 
-STATE_OBJECT_NAMES = {
-    "done": "workflow_step_done",
-    "running": "workflow_step_running",
-    "partial": "workflow_step_partial",
-    "failed": "workflow_step_failed",
-    "inactive": "workflow_step_inactive",
-}
-
-# Readable accents on dark surfaces — done uses theme success green (#00a86b).
 STATE_ICON_COLORS = {
-    "done": "#00c88b",
-    "running": "#38bdf8",
-    "partial": "#fbbf24",
-    "failed": "#fb7185",
-    "inactive": "#94a3b8",
+    "done": "#00C878",
+    "running": "#7C3AED",
+    "partial": "#F59E0B",
+    "failed": "#F43F5E",
+    "inactive": "#8FA4BB",
 }
 
 STATE_BAR_COLORS = {
-    "done": "#00a86b",
-    "running": "#38bdf8",
-    "partial": "#fbbf24",
-    "failed": "#fb7185",
-    "inactive": "#64748b",
+    "done": "#00C878",
+    "running": "#7C3AED",
+    "partial": "#F59E0B",
+    "failed": "#F43F5E",
+    "inactive": "#23415E",
 }
 
-# Keep all five stage cards visually aligned in the board row.
+STATE_BADGE_COLORS = {
+    "done": "#00C878",
+    "running": "#6335D9",
+    "partial": "#F59E0B",
+    "failed": "#F43F5E",
+    "inactive": "#60758C",
+}
+
 STAGE_CARD_MIN_HEIGHT = 178
 
 
-class StageStepCard(QFrame):
+class StageStepCard(NestedPanel):
     def __init__(self, step: WorkflowStep, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName(STATE_OBJECT_NAMES.get(step.state, "workflow_step_inactive"))
         self.setMinimumHeight(STAGE_CARD_MIN_HEIGHT)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
         header = QHBoxLayout()
-        icon_key = STEP_ICON_KEYS.get(step.key, "video")
-        symbol, _default_accent = KPI_ICONS[icon_key]
+        icon_name = STEP_ICON_KEYS.get(step.key, "video")
         icon_color = STATE_ICON_COLORS.get(step.state, STATE_ICON_COLORS["inactive"])
-        icon_wrap = QFrame()
-        icon_wrap.setObjectName("workflow_step_icon_wrap")
-        icon_wrap.setFixedSize(36, 36)
-        icon_layout = QVBoxLayout(icon_wrap)
-        icon_layout.setContentsMargins(0, 0, 0, 0)
-        icon_label = QLabel()
-        icon_label.setPixmap(material_symbol_pixmap(symbol, color=icon_color, size=18))
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_layout.addWidget(icon_label)
+        icon = QLabel()
+        icon.setPixmap(create_icon(icon_name, size=16, color=icon_color).pixmap(16, 16))
+        icon.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         text = QVBoxLayout()
         text.setSpacing(2)
@@ -86,26 +77,36 @@ class StageStepCard(QFrame):
             "youtube": "YouTube",
         }.get(step.key, step.title)
         title = QLabel(short_title)
-        title.setObjectName("workflow_step_title")
+        title.setObjectName("PageSubtitle")
+        title.setFont(studio_font(12))
         subtitle = QLabel(step.title)
-        subtitle.setObjectName("workflow_step_duration")
+        subtitle.setObjectName("FieldLabel")
         text.addWidget(title)
         text.addWidget(subtitle)
 
-        badge = QLabel()
-        badge_id = STEP_STATE_BADGE_IDS.get(step.state, STEP_STATE_BADGE_IDS["inactive"])
-        apply_badge_pill(badge, badge_id, label=state_label(step.state))
+        badge = QLabel(state_label(step.state))
+        badge.setObjectName("StatusBadge")
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setFixedHeight(16)
+        badge_color = STATE_BADGE_COLORS.get(step.state, STATE_BADGE_COLORS["inactive"])
+        badge.setStyleSheet(
+            "QLabel#StatusBadge {"
+            f" background-color: {badge_color}; color: #ffffff; border: none;"
+            " border-radius: 3px; padding: 0 7px;"
+            " font-size: 10px; font-weight: 600;"
+            "}"
+        )
 
-        header.addWidget(icon_wrap)
+        header.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
         header.addLayout(text, stretch=1)
         header.addWidget(badge, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
         percent_row = QHBoxLayout()
         percent = QLabel(f"{step.percent}%")
-        percent.setObjectName("workflow_step_percent")
+        percent.setObjectName("PageSubtitle")
         duration = QLabel(step.duration)
-        duration.setObjectName("workflow_step_duration")
+        duration.setObjectName("FieldLabel")
         percent_row.addWidget(percent)
         percent_row.addStretch()
         percent_row.addWidget(duration)
@@ -116,20 +117,20 @@ class StageStepCard(QFrame):
         bar.setRange(0, 100)
         bar.setValue(step.percent)
         bar.setTextVisible(False)
-        bar.setFixedHeight(8)
+        bar.setFixedHeight(6)
         bar.setStyleSheet(
-            "QProgressBar { background-color: rgba(255,255,255,0.1); border: none; border-radius: 4px; }"
-            f"QProgressBar::chunk {{ background-color: {bar_color}; border-radius: 4px; }}"
+            "QProgressBar { background-color: #18304A; border: none; border-radius: 2px; }"
+            f"QProgressBar::chunk {{ background-color: {bar_color}; border-radius: 2px; }}"
         )
         layout.addWidget(bar)
 
         primary_text, secondary_text = _detail_lines(step)
         detail_label = QLabel(primary_text)
-        detail_label.setObjectName("workflow_step_detail")
+        detail_label.setObjectName("PageSubtitle")
         detail_label.setWordWrap(True)
         layout.addWidget(detail_label)
         secondary_label = QLabel(secondary_text)
-        secondary_label.setObjectName("workflow_step_detail")
+        secondary_label.setObjectName("FieldLabel")
         secondary_label.setWordWrap(True)
         layout.addWidget(secondary_label)
 

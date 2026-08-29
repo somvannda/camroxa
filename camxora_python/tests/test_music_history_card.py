@@ -175,8 +175,8 @@ def test_history_album_columns_use_album_1_album_2(qapp: QApplication) -> None:
         card._table.horizontalHeaderItem(index).text()
         for index in range(card._table.columnCount())
     ]
-    assert headers[1] == "album 1"
-    assert headers[2] == "album 2"
+    assert headers[1] == "Album 1"
+    assert headers[2] == "Album 2"
     assert card._table.item(1, 1).text() == "Midnight Drive"
     assert card._table.item(1, 2).text() == "Sunset Pulse"
     assert "album 1 Midnight Drive" in card._table.item(0, 0).text()
