@@ -19,8 +19,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.icons import apply_button_icon
+from features.create.widgets.studio_panel import NestedPanel, StudioPanel, fill_studio_canvas, paint_studio_card
 from features.marketplace.coordinator import CatalogItem
+from features.marketplace.marketplace_styles import build_marketplace_page_qss
 from features.marketplace.preview_loader import MarketplacePreviewLoader
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,33 +60,6 @@ def resolve_marketplace_asset_url(api_base_url: str, path_or_url: str) -> str:
     return urljoin(base, path.lstrip("/"))
 
 
-# ─── Template Card ────────────────────────────────────────────────────────────
-
-_CARD_STYLE = """
-QFrame#MarketplaceTemplateCard {
-    background-color: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 10px;
-}
-QFrame#MarketplaceTemplateCard:hover {
-    border-color: #4f8fff;
-}
-"""
-
-_INSTALL_BTN_STYLE = (
-    "QPushButton { background-color: #0ea5e9; color: white; border: none;"
-    " border-radius: 5px; padding: 2px 12px; font-size: 10px; font-weight: 700; }"
-    "QPushButton:hover { background-color: #0284c7; }"
-    "QPushButton:disabled { background-color: #475569; color: #94a3b8; }"
-)
-
-_INSTALLED_BTN_STYLE = (
-    "QPushButton { background-color: #334155; color: #cbd5e1; border: 1px solid #475569;"
-    " border-radius: 5px; padding: 2px 12px; font-size: 10px; font-weight: 700; }"
-    "QPushButton:hover { background-color: #475569; color: #e2e8f0; }"
-    "QPushButton:disabled { background-color: #1e293b; color: #64748b; border-color: #334155; }"
-)
-
 # Sized for a 4-up grid at typical marketplace content (~1000px+ view ≈ viewport
 # after shell chrome). Breakpoints use: n * min + (n-1) * gap (+ reserve).
 _CARD_MIN_WIDTH = 180
@@ -94,7 +72,12 @@ _CARD_NATURAL_HEIGHT = _PREVIEW_HEIGHT + _CARD_CHROME_HEIGHT
 _GRID_COLUMNS_DESKTOP = 4
 
 
-class _TemplateCard(QFrame):
+class _FramedHeader(CreateHeader):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        paint_studio_card(self)
+
+
+class _TemplateCard(NestedPanel):
     """Template card with fixed-height preview, metadata, kind badge, and install."""
 
     install_clicked = Signal(str)  # item_id
@@ -113,7 +96,6 @@ class _TemplateCard(QFrame):
         self._is_installed = bool(is_installed)
         self._installing = False
         self.setObjectName("MarketplaceTemplateCard")
-        self.setStyleSheet(_CARD_STYLE)
         self.setFixedHeight(_CARD_NATURAL_HEIGHT)
         self.setMinimumWidth(_CARD_MIN_WIDTH)
         # Expand horizontally to fill the column; never grow vertically.
@@ -124,12 +106,10 @@ class _TemplateCard(QFrame):
         layout.setSpacing(5)
 
         self._preview_label = QLabel()
+        self._preview_label.setObjectName("MarketplacePreview")
         self._preview_label.setFixedHeight(_PREVIEW_HEIGHT)
         self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._preview_label.setStyleSheet(
-            "background-color: #0f172a; border-radius: 6px; color: #64748b; font-size: 11px;"
-        )
         if self._preview_url:
             self._preview_label.setText("Loading…")
         else:
@@ -137,26 +117,27 @@ class _TemplateCard(QFrame):
         layout.addWidget(self._preview_label, stretch=0)
 
         self._name_label = QLabel(item.name)
-        self._name_label.setStyleSheet("font-weight: 700; font-size: 12px; color: #e2e8f0;")
+        self._name_label.setObjectName("MarketplaceCardTitle")
         self._name_label.setWordWrap(False)
         self._name_label.setFixedHeight(20)
         layout.addWidget(self._name_label)
 
         desc_text = truncate_description(item.description, 72)
         self._desc_label = QLabel(desc_text)
-        self._desc_label.setStyleSheet("font-size: 10px; color: #94a3b8;")
+        self._desc_label.setObjectName("PageSubtitle")
         self._desc_label.setWordWrap(True)
         self._desc_label.setFixedHeight(34)
         layout.addWidget(self._desc_label)
 
         if item.price == 0.0:
             price_text = "FREE"
-            price_style = "font-size: 11px; font-weight: 700; color: #4ade80;"
+            price_tone = "free"
         else:
             price_text = f"${item.price:.2f}"
-            price_style = "font-size: 11px; font-weight: 700; color: #fbbf24;"
+            price_tone = "paid"
         self._price_label = QLabel(price_text)
-        self._price_label.setStyleSheet(price_style)
+        self._price_label.setObjectName("MarketplacePrice")
+        self._price_label.setProperty("tone", price_tone)
         self._price_label.setFixedHeight(18)
         layout.addWidget(self._price_label)
 
@@ -164,25 +145,19 @@ class _TemplateCard(QFrame):
         bottom.setContentsMargins(0, 0, 0, 0)
         bottom.setSpacing(6)
 
-        kind_colors = {
-            "video": ("#1d4ed8", "#bfdbfe"),
-            "reel": ("#7c3aed", "#ddd6fe"),
-        }
         kind_key = (item.kind or "").strip().lower()
-        bg_color, text_color = kind_colors.get(kind_key, ("#334155", "#94a3b8"))
         badge_text = kind_key.upper() if kind_key else "TEMPLATE"
         self._kind_badge = QLabel(badge_text)
+        self._kind_badge.setObjectName("MarketplaceKindBadge")
+        self._kind_badge.setProperty("kind", kind_key or "template")
         self._kind_badge.setFixedHeight(26)
         self._kind_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._kind_badge.setStyleSheet(
-            f"background-color: {bg_color}; color: {text_color}; border-radius: 5px;"
-            f" padding: 2px 8px; font-size: 10px; font-weight: 700;"
-        )
         bottom.addWidget(self._kind_badge, stretch=0)
 
         bottom.addStretch(1)
 
         self._install_btn = QPushButton()
+        self._install_btn.setObjectName("SecondaryButton")
         self._install_btn.setFixedHeight(26)
         self._install_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._install_btn.setMinimumWidth(72)
@@ -258,12 +233,12 @@ class _TemplateCard(QFrame):
         if self._is_installed:
             self._install_btn.setText("Installed")
             self._install_btn.setEnabled(True)
-            self._install_btn.setStyleSheet(_INSTALLED_BTN_STYLE)
+            apply_button_icon(self._install_btn, "check", size=12)
             self._install_btn.setToolTip("Already installed — click to reinstall")
         else:
             self._install_btn.setText("Install")
             self._install_btn.setEnabled(True)
-            self._install_btn.setStyleSheet(_INSTALL_BTN_STYLE)
+            apply_button_icon(self._install_btn, "download", size=12)
             self._install_btn.setToolTip("")
 
     def _on_install_clicked(self) -> None:
@@ -304,6 +279,12 @@ class MarketplaceView(QWidget):
         preview_loader: MarketplacePreviewLoader | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("marketplace_workspace")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_marketplace_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self)
         self._api_base_url = api_base_url or "http://localhost:8000/api/v3"
         self._preview_loader = preview_loader or MarketplacePreviewLoader(parent=self)
         self._preview_generation = 0
@@ -377,8 +358,11 @@ class MarketplaceView(QWidget):
 
     def set_error(self, message: str) -> None:
         """Show error state with message and retry button."""
-        self._error_message_label.setText(message)
-        self._show_state("error")
+        try:
+            self._error_message_label.setText(message)
+            self._show_state("error")
+        except RuntimeError:
+            return
 
     def set_install_progress(self, item_id: str, in_progress: bool) -> None:
         """Toggle install button state for a specific card."""
@@ -399,44 +383,44 @@ class MarketplaceView(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 12, 16, 12)
+        root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(12)
+
+        header = _FramedHeader(
+            title="Marketplace",
+            subtitle="Browse video and reel templates, then install them into your local Video workspace.",
+            meta="",
+            eyebrow="WORKSPACE",
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
 
         root.addLayout(self._build_filter_bar())
 
-        self._main_card = QFrame()
-        self._main_card.setObjectName("MarketplaceMainCard")
-        self._main_card.setStyleSheet(
-            "QFrame#MarketplaceMainCard {"
-            " background-color: #0f172a;"
-            " border: 1px solid #1e293b;"
-            " border-radius: 8px;"
-            "}"
-        )
+        self._main_card = StudioPanel()
         card_layout = QVBoxLayout(self._main_card)
-        card_layout.setContentsMargins(16, 16, 16, 16)
+        card_layout.setContentsMargins(12, 12, 12, 12)
         card_layout.setSpacing(10)
 
         self._loading_label = QLabel("Loading marketplace...")
+        self._loading_label.setObjectName("PageSubtitle")
         self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._loading_label.setStyleSheet("color: #64748b; font-size: 13px; padding: 40px;")
         card_layout.addWidget(self._loading_label)
 
         self._error_widget = self._build_error_widget()
         card_layout.addWidget(self._error_widget)
 
         self._empty_label = QLabel("No templates found")
+        self._empty_label.setObjectName("PageSubtitle")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_label.setStyleSheet("color: #64748b; font-size: 13px; padding: 40px;")
         card_layout.addWidget(self._empty_label)
 
         self._scroll_area = QScrollArea()
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         self._grid_widget = QWidget()
-        self._grid_widget.setStyleSheet("background: transparent;")
+        self._grid_widget.setObjectName("TransparentBlock")
         self._grid_layout = QGridLayout(self._grid_widget)
         self._grid_layout.setSpacing(_GRID_GAP)
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
@@ -457,16 +441,11 @@ class MarketplaceView(QWidget):
         self._filter_buttons: dict[str | None, QPushButton] = {}
         for label, kind_value in [("All", None), ("Video", "video"), ("Reel", "reel")]:
             btn = QPushButton(label)
+            btn.setObjectName("FilterChip")
             btn.setCheckable(True)
             btn.setChecked(kind_value is None)
-            btn.setFixedHeight(30)
+            btn.setFixedHeight(28)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                "QPushButton { background-color: #1e293b; color: #94a3b8; border: 1px solid #334155;"
-                " border-radius: 6px; padding: 4px 14px; font-size: 11px; }"
-                "QPushButton:checked { background-color: #0ea5e9; color: white; border-color: #0ea5e9; }"
-                "QPushButton:hover { border-color: #4f8fff; }"
-            )
             btn.clicked.connect(lambda checked=False, k=kind_value: self._on_filter_clicked(k))
             self._filter_buttons[kind_value] = btn
             bar.addWidget(btn)
@@ -474,33 +453,33 @@ class MarketplaceView(QWidget):
         bar.addStretch()
 
         self._search_input = QLineEdit()
+        self._search_input.setObjectName("MarketplaceSearch")
         self._search_input.setPlaceholderText("Search templates...")
         self._search_input.setFixedWidth(240)
-        self._search_input.setFixedHeight(30)
-        self._search_input.setStyleSheet(
-            "QLineEdit { background-color: #1e293b; color: #e2e8f0; border: 1px solid #334155;"
-            " border-radius: 6px; padding: 4px 10px; font-size: 11px; }"
-            "QLineEdit:focus { border-color: #0ea5e9; }"
-        )
+        self._search_input.setFixedHeight(28)
         self._search_input.textChanged.connect(self._on_search_text_changed)
         bar.addWidget(self._search_input)
 
         return bar
 
     def _build_error_widget(self) -> QWidget:
-        widget = QWidget()
+        widget = QFrame()
+        widget.setObjectName("marketplace_error_banner")
         layout = QVBoxLayout(widget)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
 
         self._error_message_label = QLabel("An error occurred")
+        self._error_message_label.setObjectName("marketplace_error_text")
         self._error_message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._error_message_label.setStyleSheet("color: #f87171; font-size: 12px;")
         self._error_message_label.setWordWrap(True)
         layout.addWidget(self._error_message_label)
 
         retry_btn = QPushButton("Retry")
-        retry_btn.setFixedWidth(80)
+        retry_btn.setObjectName("SecondaryButton")
+        apply_button_icon(retry_btn, "refresh-cw", size=12)
+        retry_btn.setFixedWidth(96)
         retry_btn.clicked.connect(self.retry_requested.emit)
         layout.addWidget(retry_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -511,21 +490,25 @@ class MarketplaceView(QWidget):
         pagination.setSpacing(8)
 
         self._prev_btn = QPushButton("Previous")
-        self._prev_btn.setFixedHeight(30)
+        self._prev_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._prev_btn, "chevron-left", size=12)
+        self._prev_btn.setFixedHeight(28)
         self._prev_btn.clicked.connect(self._on_prev_page)
         pagination.addWidget(self._prev_btn)
 
         pagination.addStretch()
 
         self._page_label = QLabel("Page 1 of 1")
-        self._page_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        self._page_label.setObjectName("PageSubtitle")
         self._page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pagination.addWidget(self._page_label)
 
         pagination.addStretch()
 
         self._next_btn = QPushButton("Next")
-        self._next_btn.setFixedHeight(30)
+        self._next_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._next_btn, "chevron-right", size=12)
+        self._next_btn.setFixedHeight(28)
         self._next_btn.clicked.connect(self._on_next_page)
         pagination.addWidget(self._next_btn)
 

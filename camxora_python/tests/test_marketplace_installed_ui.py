@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtWidgets import QApplication, QPushButton
 
+from features.create.widgets.create_header import CreateHeader
 from features.marketplace.coordinator import CatalogItem, CatalogResponse, InstallResult
 from features.marketplace.views.marketplace_page_controller import MarketplacePageController
 from features.marketplace.views.marketplace_view import MarketplaceView
@@ -39,6 +40,15 @@ def _item(item_id: str = "item-1", name: str = "Thunder Bass") -> CatalogItem:
 def _install_button(view: MarketplaceView, item_id: str) -> QPushButton:
     card = view._cards[item_id]
     return card._install_btn
+
+
+def test_marketplace_uses_studio_chrome(qapp: QApplication) -> None:
+    view = MarketplaceView()
+    header = view.findChild(CreateHeader)
+    assert view.objectName() == "marketplace_workspace"
+    assert header is not None
+    assert {button.text() for button in view._filter_buttons.values()} == {"All", "Video", "Reel"}
+    assert view._search_input.objectName() == "MarketplaceSearch"
 
 
 def test_set_catalog_marks_installed_button(qapp: QApplication) -> None:
