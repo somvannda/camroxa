@@ -7,15 +7,24 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtWidgets import QApplication, QLabel
 
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.studio_controls import StudioCheckBox, StudioComboBox, StudioDateEdit
 from features.progress.views.progress_view import ProgressView, STAGE_OPTIONS
 from features.progress.widgets.error_banner import ERROR_MESSAGE
 from features.progress.widgets.operational_rows_card import (
     EMPTY_MESSAGE,
     LOADING_MESSAGE,
+    TABLE_HEADERS,
     EffectiveProgressRow,
     OperationalRowsCard,
     _COL_CHANNEL,
     _COL_EXPORT,
+    _COL_MERGE,
+    _COL_STAGE,
+    _EXPORT_COLUMN_WIDTH,
+    _MERGE_COLUMN_WIDTH,
+    _ROW_HEIGHT,
+    _STAGE_COLUMN_WIDTH,
 )
 from shared.models.platform import ProgressListResponse, ProgressRow, ProgressRowMeta, UserSettingsResponse
 from shared.services.platform_api import PlatformApi
@@ -65,13 +74,30 @@ def test_loading_state(qapp: QApplication) -> None:
     assert view._rows_card._table.item(0, 0).text() == LOADING_MESSAGE
 
 
+def test_progress_uses_studio_header_controls(qapp: QApplication) -> None:
+    view = ProgressView(PlatformApi())
+    view.show()
+    header = view.widget().findChild(CreateHeader)
+    assert header is not None
+    assert header.objectName() == "CreateHeader"
+    assert view.objectName() == "progress_workspace"
+    assert isinstance(view._from_date, StudioDateEdit)
+    assert isinstance(view._to_date, StudioDateEdit)
+    assert isinstance(view._active_only, StudioCheckBox)
+    assert isinstance(view._limit, StudioComboBox)
+    assert isinstance(view._stage_filter, StudioComboBox)
+    assert view._refresh_btn.objectName() == "SecondaryButton"
+    assert header.findChild(StudioDateEdit) is None
+    rows_index = view.widget().layout().indexOf(view._rows_splitter)
+    filter_index = view.widget().layout().indexOf(view._filter_strip)
+    assert 0 <= filter_index < rows_index
+
+
 def test_error_banner_without_rows(qapp: QApplication) -> None:
     view = ProgressView(PlatformApi())
     view._on_failed("network")
     assert not view._error_banner.isHidden()
-    label = view._error_banner.findChild(QLabel)
-    assert label is not None
-    assert label.text() == ERROR_MESSAGE
+    assert view._error_banner._label.text() == ERROR_MESSAGE
     assert view._rows_card._table.item(0, 0).text() == EMPTY_MESSAGE
 
 
@@ -411,3 +437,110 @@ def test_finished_rows_allow_explicit_rebuild_not_continue_export() -> None:
     assert OperationalRowsCard._can_show_start_export(entry) is False
     assert OperationalRowsCard._can_start_video_merge(entry) is False
     assert OperationalRowsCard._can_start_video_export(entry) is True
+
+
+def test_stage_column_uses_compact_badge_and_progress_bar(qapp: QApplication) -> None:
+    card = OperationalRowsCard()
+    card.set_rows([_effective_row(effective_stage="Completed")])
+    qapp.processEvents()
+    assert card._table.item(0, _COL_STAGE).text() == "Completed"
+    assert card._table.cellWidget(0, _COL_STAGE) is not None
+    assert card._table.columnWidth(_COL_STAGE) == _STAGE_COLUMN_WIDTH
+    assert card._table.columnWidth(_COL_EXPORT) == _EXPORT_COLUMN_WIDTH
+    assert card._table.columnWidth(_COL_MERGE) == _MERGE_COLUMN_WIDTH
+    assert "YouTube" not in TABLE_HEADERS
+    assert card._table.columnCount() == 10
+    assert card._table.rowHeight(0) == _ROW_HEIGHT
+    from PySide6.QtWidgets import QProgressBar
+
+    progress = card._table.cellWidget(0, 4)
+    assert progress is not None
+    assert progress.findChild(QProgressBar) is not None
+
+
+def test_detail_card_uses_compact_title_and_pipeline_rows(qapp: QApplication) -> None:
+    view = ProgressView(PlatformApi())
+    view.show()
+    row = _sample_row()
+    row.album = "Northbound Nerve Surge"
+    result = WorkflowLoadResult(
+        response=ProgressListResponse(rows=[row], summary="Ready"),
+        runtime_by_key={},
+    )
+    view._on_loaded(result)
+    view._rows_card._table.selectRow(0)
+    qapp.processEvents()
+    detail = view._detail_card
+    assert detail._header.objectName() == "ProgressDetailTitle"
+    assert detail._header.text() == "Northbound Nerve Surge"
+    assert "OK Channel" in detail._meta.text()
+    assert "batch-1" in detail._batch_id.text()
+    assert "Pending" in detail._converter_label.text()
+    assert detail._status_badge.text() == "Running"
+    assert "Music / Running" in detail._state.text()
+    assert detail._open_run_btn.text() == "Open Run Folder"
+    assert detail._status_badge.property("tone") == "active"
+    assert "PIPELINE STATUS" in " ".join(
+        child.text()
+        for child in detail._content.findChildren(QLabel)
+        if child.objectName() == "ProgressDetailSection"
+    )
+
+
+def test_detail_status_tones_pending_vs_downloading() -> None:
+    from features.progress.widgets.progress_detail_card import _status_tone
+
+    assert _status_tone("Pending · no exports yet") == "warning"
+    assert _status_tone("Downloading") == "active"
+    assert _status_tone("Completed") == "success"
+    assert _status_tone("—") == "muted"
+    assert _status_tone("Not started") == "muted"
+
+
+def test_export_not_ready_moves_to_detail_status(qapp: QApplication) -> None:
+    view = ProgressView(PlatformApi())
+    view.show()
+    row = _sample_row()
+    result = WorkflowLoadResult(
+        response=ProgressListResponse(rows=[row], summary="Ready"),
+        runtime_by_key={},
+    )
+    view._on_loaded(result)
+    view._rows_card._table.selectRow(0)
+    view._warning_banner.set_message("Export not ready:\n• leftover")
+    view._update_export_validation()
+    assert view._warning_banner.isHidden()
+    assert view._warning_banner._label.text() == ""
+    view._detail_card.set_export_issues(
+        [
+            r"Run folder does not exist: C:\Users\Kong Somvannda\AppData\Local\Camxora\Media\Suno\bass-ignition\2028-08-10_Desert-Signal-Reverie",
+            "Local long branch assets incomplete: background.",
+        ]
+    )
+    assert view._warning_banner.isHidden()
+    assert view._detail_card._notes.wordWrap() is True
+    assert view._detail_card._state.wordWrap() is True
+    assert "Export not ready" in view._detail_card._notes.text()
+    assert "Desert-Signal-Reverie" in view._detail_card._notes.text()
+    assert view._detail_card._context_title.text() == "STATUS"
+
+
+def test_detail_completed_hides_waiting_copy(qapp: QApplication) -> None:
+    from features.progress.widgets.progress_detail_card import ProgressDetailCard
+
+    card = ProgressDetailCard()
+    row = _sample_row()
+    row.notes = "Waiting for desktop MP3 downloads"
+    card.set_entry(
+        _effective_row(
+            row=row,
+            effective_stage="Completed",
+            effective_status="Completed",
+            effective_notes="Waiting for desktop MP3 downloads",
+            effective_converter="Completed",
+            effective_merge="Completed",
+        )
+    )
+    assert card._context_title.text() == "COMPLETED"
+    assert card._notes.isHidden()
+    assert "songs" in card._completed_summary.text()

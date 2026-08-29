@@ -6,7 +6,9 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPaintEvent, QPalette, QPen
 from PySide6.QtWidgets import QFrame, QWidget
 
-from features.create.create_styles import STUDIO_BG, STUDIO_BORDER_STRONG, STUDIO_PANEL
+from features.create.create_styles import STUDIO_BG, STUDIO_BORDER, STUDIO_BORDER_STRONG, STUDIO_PANEL
+
+NESTED_BG = "#0A1628"
 
 
 def paint_studio_card(widget: QWidget) -> None:
@@ -25,6 +27,53 @@ def fill_studio_canvas(widget: QWidget) -> None:
     palette = widget.palette()
     palette.setColor(QPalette.ColorRole.Window, QColor(STUDIO_BG))
     widget.setPalette(palette)
+
+
+def paint_nested_card(widget: QWidget) -> None:
+    painter = QPainter(widget)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    rect = QRectF(widget.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+    painter.setPen(QPen(QColor(STUDIO_BORDER), 1))
+    painter.setBrush(QColor(NESTED_BG))
+    painter.drawRoundedRect(rect, 6, 6)
+    painter.end()
+
+
+def paint_outline_card(widget: QWidget) -> None:
+    painter = QPainter(widget)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    rect = QRectF(widget.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+    painter.setPen(QPen(QColor(STUDIO_BORDER_STRONG), 1))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(rect, 6, 6)
+    painter.end()
+
+
+class NestedPanel(QFrame):
+    """Inset studio panel for compact groups inside a card."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("NestedPanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        paint_nested_card(self)
+
+
+class OutlinePanel(QFrame):
+    """Card frame with a studio border and no fill."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("OutlinePanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAutoFillBackground(False)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        paint_outline_card(self)
 
 
 class StudioPanel(QFrame):

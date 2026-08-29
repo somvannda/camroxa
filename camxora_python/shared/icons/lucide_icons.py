@@ -164,6 +164,38 @@ _LUCIDE_PATHS: dict[str, tuple[str, ...]] = {
     "check": (
         '<path d="M20 6 9 17l-5-5"/>',
     ),
+    "triangle-alert": (
+        '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>',
+        '<path d="M12 9v4"/>',
+        '<path d="M12 17h.01"/>',
+    ),
+    "filter": (
+        '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+    ),
+    "list": (
+        '<path d="M3 12h.01"/>',
+        '<path d="M3 18h.01"/>',
+        '<path d="M3 6h.01"/>',
+        '<path d="M8 12h13"/>',
+        '<path d="M8 18h13"/>',
+        '<path d="M8 6h13"/>',
+    ),
+    "play": (
+        '<polygon points="6 3 20 12 6 21 6 3"/>',
+    ),
+    "copy": (
+        '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>',
+        '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    ),
+    "layers": (
+        '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/>',
+        '<path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/>',
+        '<path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/>',
+    ),
+    "clock": (
+        '<circle cx="12" cy="12" r="10"/>',
+        '<polyline points="12 6 12 12 16 14"/>',
+    ),
 }
 
 SIDEBAR_ICON_BY_ROUTE: dict[ShellRouteKey, str] = {

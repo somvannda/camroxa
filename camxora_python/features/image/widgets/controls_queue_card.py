@@ -5,9 +5,8 @@ from __future__ import annotations
 from functools import partial
 
 from PySide6.QtCore import QDate, Qt, Signal
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -20,6 +19,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.icons import apply_button_icon, icon_label, section_heading
+from features.create.widgets.studio_controls import StudioDateEdit
+from features.create.widgets.studio_panel import NestedPanel, StudioPanel
 from shared.lib.formatting import today_ymd
 from shared.lib.formatting import format_channel_role_label
 from shared.lib.image_workspace import (
@@ -27,10 +29,11 @@ from shared.lib.image_workspace import (
     QueueRow,
     clamp_image_prompt,
     format_queue_role_status,
+    parse_queue_status_counts,
+    split_queue_footer_detail,
 )
-from shared.themes.deep_blue import SHELL_TEXT_EDIT_ID, SUBTITLE_LABEL_ID
+from shared.themes.deep_blue import SHELL_TEXT_EDIT_ID
 from shared.widgets.data_table import create_data_table
-from shared.widgets.shell_date_edit import make_shell_date_edit
 
 _COL_DATE = 0
 _COL_ALBUM = 1
@@ -41,9 +44,10 @@ _COL_TH = 5
 _COL_BG_FILE = 6
 _COL_TH_FILE = 7
 
+_QUEUE_ROW_HEIGHT = 32
 _QUEUE_FIXED_COLUMN_WIDTHS: dict[int, int] = {
     _COL_DATE: 108,
-    _COL_ROLE: 56,
+    _COL_ROLE: 96,
     _COL_BG: 82,
     _COL_TH: 82,
 }
@@ -56,18 +60,29 @@ _QUEUE_INTERACTIVE_COLUMN_WIDTHS: dict[int, int] = {
 _QUEUE_STRETCH_COLUMNS = (_COL_BG_FILE, _COL_TH_FILE)
 
 
-def _status_colors(status: str) -> tuple[QBrush, QBrush]:
+def _status_foreground(status: str) -> QColor:
     normalized = status.lower()
-    if "success" in normalized:
-        return QBrush(QColor(16, 64, 48)), QBrush(QColor(167, 243, 208))
-    if "running" in normalized:
-        return QBrush(QColor(96, 64, 16)), QBrush(QColor(253, 230, 138))
+    if "success" in normalized or normalized in {"✓", "ready"}:
+        return QColor("#22C55E")
+    if "run" in normalized:
+        return QColor("#38BDF8")
     if "fail" in normalized:
-        return QBrush(QColor(80, 24, 32)), QBrush(QColor(254, 205, 211))
-    return QBrush(QColor(30, 41, 59)), QBrush(QColor(203, 213, 225))
+        return QColor("#EF4444")
+    if "wait" in normalized or "pending" in normalized:
+        return QColor("#F59E0B")
+    return QColor("#8FA4BB")
 
 
-class ControlsQueueCard(QFrame):
+_QUEUE_STATUS_CAPTIONS = {
+    "rows": "Albums in view",
+    "pending": "Awaiting processing",
+    "running": "Currently generating",
+    "failed": "Need attention",
+    "ready": "Assets complete",
+}
+
+
+class ControlsQueueCard(StudioPanel):
     filters_changed = Signal()
     reload_requested = Signal()
     row_selected = Signal(str)
@@ -82,47 +97,71 @@ class ControlsQueueCard(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("account_card")
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
-        title = QLabel("Image Controls + Queue")
-        title.setObjectName(SUBTITLE_LABEL_ID)
-        root.addWidget(title)
+        self._queue_count = QLabel("0")
+        self._queue_count.setObjectName("ImageStatValue")
+        self._queue_count.hide()
+        self._summary_card, self._summary_counts, self._summary_message, self._summary_values = (
+            self._make_queue_summary_card()
+        )
+        root.addWidget(self._summary_card)
+
+        root.addWidget(section_heading("CONTROLS & QUEUE", "image"))
 
         helper = QLabel("Filter by date and use the queue to review background and thumbnail output together.")
-        helper.setObjectName(SUBTITLE_LABEL_ID)
+        helper.setObjectName("PageSubtitle")
         helper.setWordWrap(True)
         root.addWidget(helper)
 
         toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
         self._from_date = self._make_date_edit()
         self._to_date = self._make_date_edit()
-        reload = QPushButton("Reload")
-        reload.clicked.connect(self.reload_requested.emit)
+        from_label = QLabel("From")
+        from_label.setObjectName("FieldLabel")
+        to_label = QLabel("To")
+        to_label.setObjectName("FieldLabel")
+        self._reload_btn = QPushButton("Reload")
+        self._reload_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._reload_btn, "refresh-cw")
+        self._reload_btn.clicked.connect(self.reload_requested.emit)
+        self._clear_filters_btn = QPushButton("Clear Filters")
+        self._clear_filters_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._clear_filters_btn, "filter")
+        self._clear_filters_btn.setToolTip("Reset the date range to today.")
+        self._clear_filters_btn.clicked.connect(self.clear_filters)
         deselect = QPushButton("Deselect")
+        deselect.setObjectName("SecondaryButton")
+        apply_button_icon(deselect, "x")
         deselect.setToolTip(
             "Clear the selected queue row. Manual Generation then creates a Not available "
             "queue row for today."
         )
         deselect.clicked.connect(self.clear_selection)
-        toolbar.addWidget(QLabel("From"))
+        toolbar.addWidget(from_label)
         toolbar.addWidget(self._from_date)
-        toolbar.addWidget(QLabel("To"))
+        toolbar.addWidget(to_label)
         toolbar.addWidget(self._to_date)
-        toolbar.addWidget(reload)
+        toolbar.addWidget(self._reload_btn)
+        toolbar.addWidget(self._clear_filters_btn)
         toolbar.addWidget(deselect)
         toolbar.addStretch()
         root.addLayout(toolbar)
 
         self._filter_banner = QLabel("")
-        self._filter_banner.setObjectName(SUBTITLE_LABEL_ID)
+        self._filter_banner.setObjectName("image_warning_text")
         self._filter_banner.setWordWrap(True)
         self._filter_banner.hide()
         root.addWidget(self._filter_banner)
 
-        stats = QGridLayout()
+        self._overview_row = QWidget()
+        self._overview_row.setObjectName("TransparentBlock")
+        stats = QGridLayout(self._overview_row)
+        stats.setContentsMargins(0, 0, 0, 0)
+        stats.setHorizontalSpacing(8)
         self._date_range_value = QLabel("")
         self._matched_batches_value = QLabel("0")
         self._queue_status_value = QLabel("Ready")
@@ -134,37 +173,49 @@ class ControlsQueueCard(QFrame):
             )
         ):
             tile = QVBoxLayout()
-            heading = QLabel(label.upper())
-            heading.setObjectName(SUBTITLE_LABEL_ID)
+            tile.setContentsMargins(10, 8, 10, 8)
+            tile.setSpacing(2)
+            heading = QLabel(label)
+            heading.setObjectName("FieldLabel")
+            value.setObjectName("ImageStatValue")
             tile.addWidget(heading)
             tile.addWidget(value)
-            host = QFrame()
-            host.setObjectName("music_section")
+            host = NestedPanel()
             host.setLayout(tile)
             stats.addWidget(host, 0, col)
-        root.addLayout(stats)
+        self._overview_row.hide()
+        root.addWidget(self._overview_row)
 
-        queue_header = QHBoxLayout()
-        queue_title = QLabel("Job Queue")
-        queue_title.setObjectName(SUBTITLE_LABEL_ID)
-        self._queue_summary = QLabel("")
-        self._queue_summary.setObjectName(SUBTITLE_LABEL_ID)
-        queue_header.addWidget(queue_title)
-        queue_header.addStretch()
-        queue_header.addWidget(self._queue_summary)
-        root.addLayout(queue_header)
+        self._selected_panel = NestedPanel()
+        selected_layout = QVBoxLayout(self._selected_panel)
+        selected_layout.setContentsMargins(10, 8, 10, 8)
+        selected_layout.setSpacing(2)
+        selected_layout.addWidget(section_heading("SELECTED ALBUM", "search"))
+        self._selected_album = QLabel("No album selected")
+        self._selected_album.setObjectName("ImageSelectedTitle")
+        self._selected_album.setWordWrap(True)
+        self._selected_meta = QLabel("Select a queue row to inspect background and thumbnail.")
+        self._selected_meta.setObjectName("PageSubtitle")
+        self._selected_meta.setWordWrap(True)
+        selected_layout.addWidget(self._selected_album)
+        selected_layout.addWidget(self._selected_meta)
+        self._selected_panel.hide()
+        root.addWidget(self._selected_panel)
 
         queue_hint = QLabel(
-            "One row per album and channel. Each album gets one shared background and thumbnail "
-            "(not per song). Click a row to preview. Right-click to Retry failed jobs or Regenerate "
-            "(uses Preferences + prompts; charges credits/quota)."
+            "One row per album and channel. Each album gets one shared background and thumbnail. "
+            "Click a row to preview. Right-click to Retry or Regenerate."
         )
-        queue_hint.setObjectName(SUBTITLE_LABEL_ID)
+        queue_hint.setObjectName("PageSubtitle")
+        queue_hint.setWordWrap(True)
         root.addWidget(queue_hint)
 
         self._table = create_data_table(
             ["Date", "Album", "Channel", "Role", "BG", "TH", "BG File", "TH File"]
         )
+        self._table.setObjectName("image_queue_table")
+        self._table.setWordWrap(False)
+        self._table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self._configure_queue_table_columns()
         self._table.setMinimumHeight(320)
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -174,21 +225,24 @@ class ControlsQueueCard(QFrame):
         root.addWidget(self._table, stretch=1)
 
         self._footer_detail = QLabel("")
-        self._footer_detail.setObjectName(SUBTITLE_LABEL_ID)
+        self._footer_detail.setObjectName("PageSubtitle")
         self._footer_detail.setWordWrap(True)
         self._footer_detail.hide()
         root.addWidget(self._footer_detail)
 
         prompts = QGridLayout()
+        prompts.setHorizontalSpacing(10)
         self._background_prompt = self._make_prompt_edit(
             "Guide how the background should evolve from the chosen sample image."
         )
         self._thumbnail_prompt = self._make_prompt_edit(
             "Guide how the thumbnail should build on the generated background plus text style."
         )
-        bg_header, self._background_counter = self._make_prompt_header("Background Prompt")
-        th_header, self._thumbnail_counter = self._make_prompt_header("Thumbnail Prompt")
+        bg_header, self._background_counter = self._make_prompt_header("BACKGROUND PROMPT")
+        th_header, self._thumbnail_counter = self._make_prompt_header("THUMBNAIL PROMPT")
         self._bg_manual_btn = QPushButton("Manual Generation")
+        self._bg_manual_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._bg_manual_btn, "sparkles")
         self._bg_manual_btn.setToolTip(
             "With a row selected: regenerate that album background (credits/quota). "
             "With no row selected: create a Not available queue row for today and generate Background."
@@ -197,6 +251,8 @@ class ControlsQueueCard(QFrame):
             lambda: self.manual_generation_requested.emit("background")
         )
         self._th_manual_btn = QPushButton("Manual Generation")
+        self._th_manual_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._th_manual_btn, "sparkles")
         self._th_manual_btn.setToolTip(
             "With a row selected: regenerate that album thumbnail (credits/quota). "
             "With no row selected: create a Not available queue row for today and generate Thumbnail."
@@ -215,6 +271,8 @@ class ControlsQueueCard(QFrame):
         root.addLayout(prompts)
 
         self._clear_btn = QPushButton("Clear Queue")
+        self._clear_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._clear_btn, "x")
         self._clear_btn.clicked.connect(self.clear_queue_requested.emit)
         root.addWidget(self._clear_btn)
 
@@ -233,6 +291,10 @@ class ControlsQueueCard(QFrame):
         self._refresh_prompt_counter(self._thumbnail_prompt, self._thumbnail_counter)
 
     def _configure_queue_table_columns(self) -> None:
+        vertical = self._table.verticalHeader()
+        vertical.setDefaultSectionSize(_QUEUE_ROW_HEIGHT)
+        vertical.setMinimumSectionSize(_QUEUE_ROW_HEIGHT)
+        vertical.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         header = self._table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setMinimumSectionSize(56)
@@ -246,8 +308,64 @@ class ControlsQueueCard(QFrame):
             header.setSectionResizeMode(index, QHeaderView.ResizeMode.Stretch)
 
     @staticmethod
+    def _make_queue_summary_card() -> tuple[QWidget, QWidget, QLabel, dict[str, QLabel]]:
+        card = QWidget()
+        card.setObjectName("TransparentBlock")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        counts = QWidget()
+        counts.setObjectName("TransparentBlock")
+        row = QHBoxLayout(counts)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        values: dict[str, QLabel] = {}
+        icons = {
+            "rows": ("list", "#8FA4BB"),
+            "pending": ("clock", "#F59E0B"),
+            "running": ("refresh-cw", "#38BDF8"),
+            "failed": ("triangle-alert", "#EF4444"),
+            "ready": ("check", "#22C55E"),
+        }
+        for label in ("Rows", "Pending", "Running", "Failed", "Ready"):
+            key = label.lower()
+            host = NestedPanel()
+            tile = QHBoxLayout(host)
+            tile.setContentsMargins(10, 8, 10, 8)
+            tile.setSpacing(8)
+            icon_name, color = icons[key]
+            tile.addWidget(icon_label(icon_name, size=16, color=color), 0, Qt.AlignmentFlag.AlignTop)
+            copy = QVBoxLayout()
+            copy.setContentsMargins(0, 0, 0, 0)
+            copy.setSpacing(2)
+            heading = QLabel(label)
+            heading.setObjectName("FieldLabel")
+            value = QLabel("0")
+            value.setObjectName("ImageStatValue")
+            caption = QLabel(_QUEUE_STATUS_CAPTIONS[key])
+            caption.setObjectName("PageSubtitle")
+            copy.addWidget(heading)
+            copy.addWidget(value)
+            copy.addWidget(caption)
+            tile.addLayout(copy, 1)
+            row.addWidget(host, 1)
+            values[key] = value
+
+        message = QLabel("")
+        message.setObjectName("PageSubtitle")
+        message.setWordWrap(True)
+        message.hide()
+        layout.addWidget(counts)
+        layout.addWidget(message)
+        return card, counts, message, values
+
+    @staticmethod
     def _make_date_edit():
-        return make_shell_date_edit(initial=QDate.fromString(today_ymd(), "yyyy-MM-dd"))
+        edit = StudioDateEdit()
+        edit.setDate(QDate.fromString(today_ymd(), "yyyy-MM-dd"))
+        edit.setFixedWidth(132)
+        return edit
 
     @staticmethod
     def _make_prompt_edit(placeholder: str) -> QTextEdit:
@@ -260,19 +378,20 @@ class ControlsQueueCard(QFrame):
 
     @staticmethod
     def _prompt_label(text: str) -> QLabel:
-        label = QLabel(text.upper())
-        label.setObjectName(SUBTITLE_LABEL_ID)
+        label = QLabel(text)
+        label.setObjectName("FieldLabel")
         return label
 
     def _make_prompt_header(self, title: str) -> tuple[QWidget, QLabel]:
         host = QWidget()
+        host.setObjectName("TransparentBlock")
         row = QHBoxLayout(host)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
         row.addWidget(self._prompt_label(title))
         row.addStretch(1)
         counter = QLabel(f"0 / {IMAGE_PROMPT_MAX_CHARS}")
-        counter.setObjectName(SUBTITLE_LABEL_ID)
+        counter.setObjectName("PageSubtitle")
         counter.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(counter)
         return host, counter
@@ -340,15 +459,56 @@ class ControlsQueueCard(QFrame):
         self._date_range_value.setText(date_range)
         self._matched_batches_value.setText(str(matched_batches))
         self._queue_status_value.setText(queue_status)
+        self._queue_status_value.setProperty("tone", self._queue_status_tone(queue_status))
+        self._queue_status_value.style().unpolish(self._queue_status_value)
+        self._queue_status_value.style().polish(self._queue_status_value)
+
+    @staticmethod
+    def _queue_status_tone(status: str) -> str:
+        key = str(status or "").strip().lower()
+        if any(token in key for token in ("fail", "error", "unable")):
+            return "danger"
+        if any(token in key for token in ("pending", "wait")):
+            return "warning"
+        if any(token in key for token in ("run", "generat", "process", "refresh")):
+            return "active"
+        if any(token in key for token in ("ready", "complete", "success", "cleared")):
+            return "success"
+        return "muted"
+
+    def set_selected_album(self, row: QueueRow | None) -> None:
+        if row is None:
+            self._selected_album.setText("No album selected")
+            self._selected_meta.setText("Select a queue row to inspect background and thumbnail.")
+            return
+        self._selected_album.setText(row.album_label or "—")
+        role = format_channel_role_label(row.role)
+        self._selected_meta.setText(f"{row.date_label} · {row.profile_name} ({role})")
+
+    def clear_filters(self) -> None:
+        today = today_ymd()
+        self.set_date_range(today, today)
+        self.filters_changed.emit()
 
     def set_queue_summary(self, summary: str) -> None:
-        self._queue_summary.setText(summary)
+        counts = parse_queue_status_counts(summary)
+        if counts is None:
+            self._summary_counts.hide()
+            self._summary_message.setText(summary)
+            self._summary_message.setVisible(bool(str(summary or "").strip()))
+            return
+        for key, value in counts.items():
+            self._summary_values[key].setText(str(value))
+        self._summary_message.hide()
+        self._summary_counts.show()
 
     def set_footer_detail(self, detail: str) -> None:
-        if detail:
-            self._footer_detail.setText(detail)
+        info, _errors = split_queue_footer_detail(detail)
+        if info:
+            self._footer_detail.setText(info)
             self._footer_detail.show()
         else:
+            self._footer_detail.clear()
             self._footer_detail.hide()
 
     def set_filter_banner(self, message: str | None) -> None:
@@ -363,9 +523,7 @@ class ControlsQueueCard(QFrame):
         self._clear_btn.setEnabled(enabled)
 
     def set_reload_enabled(self, enabled: bool) -> None:
-        for child in self.findChildren(QPushButton):
-            if child.text() == "Reload":
-                child.setEnabled(enabled)
+        self._reload_btn.setEnabled(enabled)
 
     def set_rows(self, rows: list[QueueRow], selected_key: str | None) -> None:
         self._rows = rows
@@ -374,12 +532,19 @@ class ControlsQueueCard(QFrame):
             self._selected_key = rows[0].key if rows else ""
         else:
             self._selected_key = selected_key
+        self._queue_count.setText(str(len(rows)))
         if not rows:
             self._table.setRowCount(1)
             self._table.setSpan(0, 0, 1, 8)
-            item = QTableWidgetItem("No jobs yet for the selected date range.")
+            item = QTableWidgetItem(
+                "No image jobs found. Try changing the date range or clearing the filters."
+            )
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            item.setToolTip("No image jobs found. Try changing the date range or clearing the filters.")
             self._table.setItem(0, 0, item)
+            self._table.setRowHeight(0, _QUEUE_ROW_HEIGHT)
+            self.set_selected_album(None)
             return
 
         self._table.clearSpans()
@@ -401,16 +566,17 @@ class ControlsQueueCard(QFrame):
             for col_index, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
                 if col_index in (_COL_BG, _COL_TH):
-                    background, foreground = _status_colors(
+                    status = (
                         row.bg_job.status if row.bg_job and col_index == _COL_BG else (
                             row.th_job.status if row.th_job else value
                         )
                     )
-                    item.setBackground(background)
-                    item.setForeground(foreground)
+                    item.setForeground(_status_foreground(str(status or "")))
                 item.setToolTip(tooltips[col_index])
                 self._table.setItem(row_index, col_index, item)
+            self._table.setRowHeight(row_index, _QUEUE_ROW_HEIGHT)
 
         self._table.blockSignals(True)
         self._table.clearSelection()
@@ -420,10 +586,12 @@ class ControlsQueueCard(QFrame):
                     self._table.selectRow(row_index)
                     break
         self._table.blockSignals(False)
+        self.set_selected_album(self.selected_row())
 
     def clear_selection(self) -> None:
         self._selected_key = ""
         self._table.clearSelection()
+        self.set_selected_album(None)
         self.selection_cleared.emit()
 
     def selected_row(self) -> QueueRow | None:
@@ -444,6 +612,7 @@ class ControlsQueueCard(QFrame):
             key = self._rows[row_index].key
             if key != self._selected_key:
                 self._selected_key = key
+                self.set_selected_album(self._rows[row_index])
                 self.row_selected.emit(key)
 
     def _on_cell_double_clicked(self, row: int, column: int) -> None:

@@ -7,9 +7,11 @@ from shared.lib.image_workspace import (
     batch_date_label,
     batch_is_within_range,
     build_footer_detail,
+    split_queue_footer_detail,
     build_queue_rows,
     build_queue_status_summary,
     clamp_image_prompt,
+    parse_queue_status_counts,
     filter_batches_by_date,
     format_queue_role_status,
     normalize_image_prompt_settings,
@@ -223,6 +225,12 @@ def test_pick_preferred_image_job_prefers_success_over_failed() -> None:
 def test_build_queue_status_summary_empty_batches() -> None:
     summary = build_queue_status_summary(grouped_row_count=0, filtered_batch_count=0, rows=[])
     assert summary == "No batches found in the selected date range."
+    assert parse_queue_status_counts(summary) is None
+
+
+def test_parse_queue_status_counts() -> None:
+    counts = parse_queue_status_counts("Rows 8 · Pending 1 · Running 1 · Failed 0 · Ready 14")
+    assert counts == {"rows": 8, "pending": 1, "running": 1, "failed": 0, "ready": 14}
 
 
 def test_build_footer_detail_includes_errors() -> None:
@@ -247,6 +255,9 @@ def test_build_footer_detail_includes_errors() -> None:
     assert "BG error: Generation failed" in detail
     assert "BG sample: bg.png" in detail
     assert "2 tracks in batch" in detail
+    info, errors = split_queue_footer_detail(detail)
+    assert info == "BG sample: bg.png"
+    assert errors == "BG error: Generation failed"
 
 
 def test_batch_date_label_range() -> None:

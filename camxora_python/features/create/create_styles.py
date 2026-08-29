@@ -103,6 +103,7 @@ QWidget#create_workspace QLabel#SectionLabel {
     font-size: 12px;
     font-weight: 500;
     background: transparent;
+    border: none;
 }
 
 QWidget#create_workspace QLabel#SectionLabel {
@@ -210,7 +211,8 @@ QWidget#create_workspace QSpinBox::down-button {
 
 QWidget#create_workspace QWidget#EditorPair,
 QWidget#create_workspace QWidget#EditorBlock,
-QWidget#create_workspace QWidget#TransparentBlock {
+QWidget#create_workspace QWidget#TransparentBlock,
+QWidget#create_workspace QWidget#HeaderTrailing {
     background: transparent;
     border: none;
 }

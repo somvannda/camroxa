@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -264,6 +265,25 @@ def build_queue_status_summary(
     return f"Rows {grouped_row_count} · Pending {pending} · Running {running} · Failed {failed} · Ready {success}"
 
 
+_QUEUE_STATUS_SUMMARY_RE = re.compile(
+    r"^Rows (\d+) · Pending (\d+) · Running (\d+) · Failed (\d+) · Ready (\d+)$"
+)
+
+
+def parse_queue_status_counts(summary: str) -> dict[str, int] | None:
+    match = _QUEUE_STATUS_SUMMARY_RE.match(str(summary or "").strip())
+    if match is None:
+        return None
+    rows, pending, running, failed, ready = (int(part) for part in match.groups())
+    return {
+        "rows": rows,
+        "pending": pending,
+        "running": running,
+        "failed": failed,
+        "ready": ready,
+    }
+
+
 def build_footer_detail(row: QueueRow | None) -> str:
     if row is None:
         return ""
@@ -281,6 +301,22 @@ def build_footer_detail(row: QueueRow | None) -> str:
     if row.th_job and row.th_job.style_reference_path:
         parts.append(f"TH style: {basename_or_dash(row.th_job.style_reference_path)}")
     return " · ".join(parts)
+
+
+def split_queue_footer_detail(detail: str) -> tuple[str, str]:
+    """Split queue footer copy into non-error info and BG/TH error text."""
+    info: list[str] = []
+    errors: list[str] = []
+    for part in str(detail or "").split(" · "):
+        text = part.strip()
+        if not text or "tracks in batch" in text.lower():
+            continue
+        lowered = text.lower()
+        if lowered.startswith("bg error:") or lowered.startswith("th error:"):
+            errors.append(text)
+        else:
+            info.append(text)
+    return " · ".join(info), " · ".join(errors)
 
 
 def filter_batches_by_date(
