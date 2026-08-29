@@ -88,6 +88,8 @@ def test_profile_hides_generic_shell_page_header(qapp: QApplication, memory_sess
     assert shell._page_header.isHidden()
     shell._navigate("image")
     assert shell._page_header.isHidden()
+    shell._navigate("marketplace")
+    assert shell._page_header.isHidden()
     shell._navigate("settings")
     assert not shell._page_header.isHidden()
 

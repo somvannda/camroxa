@@ -23,6 +23,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Desktop Marketplace now uses Create studio chrome (header, navy cards, purple All/Video/Reel chips). Catalog, search, and install are unchanged. See `docs/changelog/2026-08-29-desktop-marketplace-studio-ui.md`.
 - Desktop Dashboard now uses the Create studio design system, with purple selected rows on Daily Channel Limits and Recent Activity. See `docs/changelog/2026-08-28-desktop-dashboard-studio-ui.md`.
 - Desktop Music keeps the same card layout and now uses Create studio chrome. Credit labels hide float noise. See `docs/changelog/2026-08-28-desktop-music-studio-ui.md`.
 - Desktop Workflow now uses Create studio chrome for run lanes and the stage board. See `docs/changelog/2026-08-28-desktop-workflow-studio-ui.md`.
