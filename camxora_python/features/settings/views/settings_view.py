@@ -34,7 +34,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.icons import apply_button_icon
+from features.create.widgets.studio_panel import StudioPanel, fill_studio_canvas, paint_studio_card
+from features.settings.settings_styles import build_settings_page_qss
 from features.settings.widgets.error_banner import LOAD_ERROR, SettingsErrorBanner
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from shared.lib.app_paths import get_profile_media_cache_dir
 from shared.lib.music_settings import build_music_prompt_defaults_patch, read_string_setting
 from shared.lib.settings_workspace import (
@@ -153,6 +158,11 @@ YOUTUBE_CHUNK_SIZES = ("128", "256", "512")
 CONTENT_POOL_PAGE_SIZE = 50
 
 
+class _FramedHeader(CreateHeader):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        paint_studio_card(self)
+
+
 class SettingsView(QWidget):
     def __init__(
         self,
@@ -163,6 +173,12 @@ class SettingsView(QWidget):
         session: SessionService | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("settings_workspace")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_settings_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self)
         self._api = api
         self._cache = cache
         self._session = session
@@ -237,23 +253,31 @@ class SettingsView(QWidget):
         self._active_tab_index = 0
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(12)
+
+        header = _FramedHeader(
+            title="Settings",
+            subtitle="Manage channel profiles, YouTube, publication, prompts, and local preferences.",
+            meta="",
+            eyebrow="WORKSPACE",
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
 
         self._error_banner = SettingsErrorBanner()
         self._error_banner.hide()
         root.addWidget(self._error_banner)
 
-        self._loading_card = QFrame()
-        self._loading_card.setObjectName("account_card")
+        self._loading_card = StudioPanel()
         loading_layout = QVBoxLayout(self._loading_card)
+        loading_layout.setContentsMargins(12, 12, 12, 12)
         loading_label = QLabel(LOADING_MESSAGE)
-        loading_label.setObjectName(SUBTITLE_LABEL_ID)
+        loading_label.setObjectName("PageSubtitle")
         loading_layout.addWidget(loading_label)
         root.addWidget(self._loading_card)
 
-        self._tab_bar_card = QFrame()
-        self._tab_bar_card.setObjectName("account_card")
+        self._tab_bar_card = StudioPanel()
         tab_bar_layout = QHBoxLayout(self._tab_bar_card)
         tab_bar_layout.setContentsMargins(8, 8, 8, 8)
         tab_bar_layout.setSpacing(6)
@@ -262,6 +286,7 @@ class SettingsView(QWidget):
         self._tab_buttons: list[QPushButton] = []
         for index, label in enumerate(TAB_LABELS):
             button = QPushButton(label)
+            button.setObjectName("FilterChip")
             button.setCheckable(True)
             button.clicked.connect(lambda checked, idx=index: self._set_active_tab(idx) if checked else None)
             self._tab_button_group.addButton(button, index)
@@ -302,6 +327,8 @@ class SettingsView(QWidget):
         self._footer_status.setObjectName(SETTINGS_FOOTER_STATUS_ID)
         self._footer_status.setWordWrap(True)
         self._save_all_btn = QPushButton("Save All Changes")
+        self._save_all_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._save_all_btn, "check")
         self._save_all_btn.clicked.connect(self._save_all)
         footer_layout.addWidget(self._footer_status, stretch=1)
         footer_layout.addWidget(self._save_all_btn)
