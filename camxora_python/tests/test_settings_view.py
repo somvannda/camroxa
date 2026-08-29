@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from features.create.widgets.create_header import CreateHeader
 from features.settings.views.settings_view import LOADING_MESSAGE, SettingsView, TAB_LABELS
 from shared.models.auth import ProfileResponse, UserMeResponse
 from shared.models.platform import PromptNameOption, UserSettingsResponse
@@ -51,6 +52,9 @@ def _payload() -> SettingsWorkspacePayload:
 def test_loading_state(qapp: QApplication) -> None:
     view = SettingsView(PlatformApi())
     view.show()
+    header = view.findChild(CreateHeader)
+    assert header is not None
+    assert header.objectName() == "CreateHeader"
     assert not view._loading_card.isHidden()
 
 

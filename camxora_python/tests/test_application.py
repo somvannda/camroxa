@@ -91,7 +91,7 @@ def test_profile_hides_generic_shell_page_header(qapp: QApplication, memory_sess
     shell._navigate("marketplace")
     assert shell._page_header.isHidden()
     shell._navigate("settings")
-    assert not shell._page_header.isHidden()
+    assert shell._page_header.isHidden()
 
 
 def test_router_navigates_all_routes(qapp: QApplication, memory_session) -> None:
