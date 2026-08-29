@@ -49,10 +49,29 @@ class StudioComboBox(QComboBox):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._explicit_tooltip = ""
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFont(studio_font(12))
         self.setMaxVisibleItems(8)
         self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.setMinimumContentsLength(6)
+        self.setMinimumWidth(0)
+        self.currentIndexChanged.connect(self._sync_current_tooltip)
+
+    def setToolTip(self, tip: str) -> None:  # noqa: N802
+        self._explicit_tooltip = str(tip or "")
+        super().setToolTip(self._explicit_tooltip)
+
+    def sync_item_tooltips(self) -> None:
+        for index in range(self.count()):
+            self.setItemData(index, self.itemText(index), Qt.ItemDataRole.ToolTipRole)
+        self._sync_current_tooltip()
+
+    def _sync_current_tooltip(self, *_args: object) -> None:
+        if self._explicit_tooltip:
+            return
+        super().setToolTip(self.currentText())
 
     def showPopup(self) -> None:  # noqa: N802
         super().showPopup()
@@ -60,8 +79,22 @@ class StudioComboBox(QComboBox):
         if view is None:
             return
         popup = view.window()
+        metrics = self.fontMetrics()
+        text_width = max(
+            (metrics.horizontalAdvance(self.itemText(index)) for index in range(self.count())),
+            default=0,
+        )
+        popup_width = max(self.width(), text_width + 36)
+        screen = self.screen()
+        available = screen.availableGeometry() if screen is not None else None
+        if available is not None:
+            popup_width = min(popup_width, max(self.width(), available.width() - 24))
+        popup.resize(popup_width, popup.height())
         origin = self.mapToGlobal(QPoint(0, self.height()))
-        popup.move(origin.x(), origin.y())
+        x = origin.x()
+        if available is not None and x + popup_width > available.right():
+            x = max(available.left(), available.right() - popup_width)
+        popup.move(x, origin.y())
 
     def paintEvent(self, event) -> None:  # noqa: N802
         super().paintEvent(event)

@@ -1,11 +1,9 @@
-"""Progress page — operational pipeline view with standard theme widgets."""
+"""Progress page — Create studio chrome with operational pipeline information architecture."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -18,12 +16,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from features.progress.widgets.error_banner import ProgressErrorBanner
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.icons import apply_button_icon, icon_label
+from features.create.widgets.studio_controls import StudioCheckBox, StudioComboBox, StudioDateEdit
+from features.create.widgets.studio_panel import NestedPanel, fill_studio_canvas, paint_studio_card
+from features.progress.progress_styles import build_progress_page_qss
+from features.progress.widgets.error_banner import ProgressErrorBanner, ProgressWarningBanner
 from features.progress.widgets.operational_rows_card import EffectiveProgressRow, OperationalRowsCard
 from features.progress.widgets.progress_detail_card import ProgressDetailCard
 from features.progress.widgets.stats_row import ProgressStatsRow
 from shared.lib.formatting import today_ymd
 from shared.lib.manual_asset_paths import ManualAssetInspection, manual_inspection_key, normalize_image_source_mode
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from shared.lib.video_runtime_inspection import (
     ProgressRuntimePresentation,
     progress_runtime_key,
@@ -40,9 +44,7 @@ from shared.services.platform_api import PlatformApi
 from shared.services.video_pipeline_coordinator import get_video_pipeline_coordinator
 from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 from shared.widgets.pollable_page import PollablePageMixin
-from shared.widgets.shell_date_edit import make_shell_date_edit
 from shared.workers.data_workers import (
     BatchRetryDraftsWorker,
     BatchRetrySunoWorker,
@@ -92,7 +94,13 @@ STAGE_OPTIONS = (
     ("Error", "error"),
 )
 
+PAGE_GAP = 10
 _TERMINAL_ACTIVE_HIDE = frozenset({"done", "completed"})
+
+
+class _FramedHeader(CreateHeader):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        paint_studio_card(self)
 
 
 def _hide_from_active_only(entry: EffectiveProgressRow) -> bool:
@@ -197,69 +205,65 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._progress_load_error = ""
         self._selected_entry: EffectiveProgressRow | None = None
         self._pending_continue: object | None = None
+        self.setObjectName("progress_workspace")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_progress_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self.viewport())
 
         container = QWidget()
+        container.setObjectName("progress_workspace")
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        fill_studio_canvas(container)
         root = QVBoxLayout(container)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(12)
+        root.setContentsMargins(PAGE_GAP, PAGE_GAP, 0, PAGE_GAP)
+        root.setSpacing(PAGE_GAP)
 
-        filter_card = QFrame()
-        filter_card.setObjectName("account_card")
-        filter_layout = QVBoxLayout(filter_card)
-        filter_layout.setContentsMargins(16, 16, 16, 16)
-        filter_layout.setSpacing(8)
-
-        filter_title = QLabel("Filters")
-        filter_title.setObjectName(SUBTITLE_LABEL_ID)
-        filter_layout.addWidget(filter_title)
-
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(8)
-        self._from_date = make_shell_date_edit(
-            initial=QDate.fromString(today_ymd(), "yyyy-MM-dd")
-        )
-        self._to_date = make_shell_date_edit(
-            initial=QDate.fromString(today_ymd(), "yyyy-MM-dd")
-        )
-        self._active_only = QCheckBox("Active only")
-        self._limit = QComboBox()
-        self._limit.addItems(["10", "25", "50", "100"])
-        self._limit.setCurrentText("10")
-        self._stage_filter = QComboBox()
-        for label, _value in STAGE_OPTIONS:
-            self._stage_filter.addItem(label)
         self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.setObjectName("SecondaryButton")
+        self._refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._refresh_btn.setFixedHeight(28)
+        apply_button_icon(self._refresh_btn, "refresh-cw")
         self._refresh_btn.clicked.connect(self.refresh_data)
-        toolbar.addWidget(QLabel("From"))
-        toolbar.addWidget(self._from_date)
-        toolbar.addWidget(QLabel("To"))
-        toolbar.addWidget(self._to_date)
-        toolbar.addWidget(self._active_only)
-        toolbar.addWidget(QLabel("Limit"))
-        toolbar.addWidget(self._limit)
-        toolbar.addWidget(QLabel("Stage"))
-        toolbar.addWidget(self._stage_filter)
-        toolbar.addWidget(self._refresh_btn)
-        toolbar.addStretch()
-        filter_layout.addLayout(toolbar)
-        root.addWidget(filter_card)
+        trailing = QWidget()
+        trailing_row = QHBoxLayout(trailing)
+        trailing_row.setContentsMargins(0, 0, 0, 0)
+        trailing_row.setSpacing(8)
+        trailing_row.addWidget(self._refresh_btn)
+        header = _FramedHeader(
+            title="Progress",
+            subtitle="Operational scan of active runs, failures, and recovery actions.",
+            meta="",
+            eyebrow="WORKSPACE",
+            trailing=trailing,
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
 
         helper = QLabel(HELPER_TEXT)
-        helper.setObjectName(SUBTITLE_LABEL_ID)
+        helper.setObjectName("PageSubtitle")
         helper.setWordWrap(True)
         helper.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         root.addWidget(helper)
 
         self._summary_label = QLabel("Loading progress rows...")
-        self._summary_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._summary_label.setObjectName("PageSubtitle")
         self._summary_label.setWordWrap(True)
         root.addWidget(self._summary_label)
 
-        self._manual_banner = QLabel(MANUAL_MODE_TEXT)
-        self._manual_banner.setObjectName(SUBTITLE_LABEL_ID)
-        self._manual_banner.setWordWrap(True)
+        self._manual_banner = NestedPanel()
+        manual_layout = QHBoxLayout(self._manual_banner)
+        manual_layout.setContentsMargins(12, 10, 12, 10)
+        manual_layout.setSpacing(8)
+        manual_layout.addWidget(icon_label("image", size=16), 0, Qt.AlignmentFlag.AlignTop)
+        manual_copy = QLabel(MANUAL_MODE_TEXT)
+        manual_copy.setObjectName("PageSubtitle")
+        manual_copy.setWordWrap(True)
+        manual_layout.addWidget(manual_copy, 1)
         self._manual_banner.hide()
         root.addWidget(self._manual_banner)
 
@@ -267,20 +271,23 @@ class ProgressView(PollablePageMixin, QScrollArea):
         root.addWidget(self._stats_row, 0)
 
         self._meta_label = QLabel("")
-        self._meta_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._meta_label.setObjectName("FieldLabel")
         self._meta_label.setWordWrap(True)
         root.addWidget(self._meta_label)
 
-        self._export_validation_label = QLabel("")
-        self._export_validation_label.setObjectName(SUBTITLE_LABEL_ID)
-        self._export_validation_label.setWordWrap(True)
-        self._export_validation_label.hide()
-        root.addWidget(self._export_validation_label)
+        self._warning_banner = ProgressWarningBanner()
+        self._export_validation_label = self._warning_banner._label
+        self._warning_banner.hide()
+        root.addWidget(self._warning_banner, 0)
 
         self._error_banner = ProgressErrorBanner()
         self._error_banner.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self._error_banner.retry_requested.connect(self.refresh_data)
         self._error_banner.hide()
         root.addWidget(self._error_banner, 0)
+
+        self._filter_strip = self._build_filter_strip()
+        root.addWidget(self._filter_strip, 0)
 
         self._rows_card = OperationalRowsCard()
         self._rows_card.open_folder_requested.connect(self._open_manual_folder)
@@ -321,16 +328,18 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._detail_card.open_folder_requested.connect(self._open_manual_folder)
         self._detail_card.open_run_folder_requested.connect(self._open_manual_folder)
         self._detail_card.sync_manual_requested.connect(self._sync_manual_assets)
+        self._detail_card.view_history_requested.connect(self._on_view_history_requested)
 
         self._rows_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._rows_splitter.setChildrenCollapsible(False)
-        self._rows_splitter.setStyleSheet(
-            "QSplitter::handle { background: transparent; }"
-        )
-        self._rows_splitter.addWidget(self._wrap_splitter_panel(self._rows_card, right=10))
-        self._rows_splitter.addWidget(self._wrap_splitter_panel(self._detail_card, left=10))
-        self._rows_splitter.setStretchFactor(0, 4)
-        self._rows_splitter.setStretchFactor(1, 1)
+        self._rows_splitter.setHandleWidth(6)
+        self._rows_splitter.addWidget(self._rows_card)
+        self._rows_splitter.addWidget(self._detail_card)
+        self._detail_card.setMinimumWidth(380)
+        self._detail_card.setMaximumWidth(500)
+        self._rows_splitter.setStretchFactor(0, 1)
+        self._rows_splitter.setStretchFactor(1, 0)
+        self._rows_splitter.setSizes([1000, 400])
         self._rows_splitter.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
@@ -347,14 +356,56 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._container = container
         self._enter_loading_state()
 
-    @staticmethod
-    def _wrap_splitter_panel(widget: QWidget, *, left: int = 0, right: int = 0) -> QWidget:
-        wrap = QWidget()
-        layout = QHBoxLayout(wrap)
-        layout.setContentsMargins(left, 0, right, 0)
-        layout.setSpacing(0)
-        layout.addWidget(widget)
-        return wrap
+    def _build_filter_strip(self) -> QWidget:
+        strip = NestedPanel()
+        strip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        row = QHBoxLayout(strip)
+        row.setContentsMargins(12, 8, 12, 8)
+        row.setSpacing(8)
+        today = QDate.fromString(today_ymd(), "yyyy-MM-dd")
+        from_label = QLabel("From")
+        from_label.setObjectName("FieldLabel")
+        to_label = QLabel("To")
+        to_label.setObjectName("FieldLabel")
+        filter_icon = icon_label("filter", size=14)
+        self._from_date = StudioDateEdit()
+        self._from_date.setDate(today)
+        self._from_date.setFixedWidth(132)
+        self._to_date = StudioDateEdit()
+        self._to_date.setDate(today)
+        self._to_date.setFixedWidth(132)
+        self._active_only = StudioCheckBox("Active only")
+        limit_label = QLabel("Limit")
+        limit_label.setObjectName("FieldLabel")
+        self._limit = StudioComboBox()
+        self._limit.addItems(["10", "25", "50", "100"])
+        self._limit.setCurrentText("10")
+        self._limit.setFixedWidth(72)
+        stage_label = QLabel("Stage")
+        stage_label.setObjectName("FieldLabel")
+        self._stage_filter = StudioComboBox()
+        for label, _value in STAGE_OPTIONS:
+            self._stage_filter.addItem(label)
+        self._stage_filter.setFixedWidth(120)
+        self._filter_refresh_btn = QPushButton("Refresh")
+        self._filter_refresh_btn.setObjectName("SecondaryButton")
+        self._filter_refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._filter_refresh_btn.setFixedHeight(28)
+        apply_button_icon(self._filter_refresh_btn, "refresh-cw")
+        self._filter_refresh_btn.clicked.connect(self.refresh_data)
+        row.addWidget(filter_icon)
+        row.addWidget(from_label)
+        row.addWidget(self._from_date)
+        row.addWidget(to_label)
+        row.addWidget(self._to_date)
+        row.addWidget(self._active_only)
+        row.addWidget(limit_label)
+        row.addWidget(self._limit)
+        row.addWidget(stage_label)
+        row.addWidget(self._stage_filter)
+        row.addWidget(self._filter_refresh_btn)
+        row.addStretch()
+        return strip
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -402,7 +453,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         if not self._ever_loaded:
             self._loading = True
             self._rows_card.show_loading()
-        self._refresh_btn.setEnabled(False)
+        self._set_refresh_busy(True)
         worker = WorkflowLoadWorker(self._api, self._current_filters(), self)
         worker.succeeded.connect(self._on_loaded)
         worker.failed.connect(self._on_failed)
@@ -412,7 +463,13 @@ class ProgressView(PollablePageMixin, QScrollArea):
 
     def _on_worker_finished(self) -> None:
         self._worker = None
-        self._refresh_btn.setEnabled(True)
+        self._set_refresh_busy(False)
+
+    def _set_refresh_busy(self, busy: bool) -> None:
+        label = "Refreshing…" if busy else "Refresh"
+        for button in (self._refresh_btn, self._filter_refresh_btn):
+            button.setEnabled(not busy)
+            button.setText(label)
 
     def _refresh_settings(self) -> None:
         if self._settings_worker is not None and self._settings_worker.isRunning():
@@ -594,9 +651,11 @@ class ProgressView(PollablePageMixin, QScrollArea):
     def _update_export_validation(self) -> None:
         from features.video.lib.export_readiness import evaluate_video_export_readiness
 
+        self._warning_banner.set_message("")
+        self._warning_banner.hide()
         entry = self._selected_entry
         if entry is None:
-            self._export_validation_label.hide()
+            self._detail_card.set_export_issues([])
             return
 
         coordinator = get_video_pipeline_coordinator()
@@ -609,12 +668,9 @@ class ProgressView(PollablePageMixin, QScrollArea):
             auth_blocked=auth_blocked,
         )
         if readiness.ready:
-            self._export_validation_label.hide()
+            self._detail_card.set_export_issues([])
             return
-
-        lines = "\n".join(f"• {issue}" for issue in readiness.issues)
-        self._export_validation_label.setText(f"Export not ready:\n{lines}")
-        self._export_validation_label.show()
+        self._detail_card.set_export_issues(list(readiness.issues))
 
     def _render_table(self) -> None:
         filtered = self._filtered_effective_rows()
@@ -995,6 +1051,19 @@ class ProgressView(PollablePageMixin, QScrollArea):
     def _on_image_retry_failed(self, message: str) -> None:
         detail = str(message or "").strip() or "Unable to retry image jobs."
         self._show_retry_notice(detail)
+
+    def _focus_selected_detail(self) -> None:
+        if self._selected_entry is not None:
+            self._detail_card.set_entry(self._selected_entry)
+
+    def _on_view_history_requested(self, batch_id: str) -> None:
+        text = str(batch_id or "").strip()
+        if not text:
+            return
+        self._show_retry_notice(
+            f"Copied batch {text}. Open Music History to find this run.",
+            tone="success",
+        )
 
     def _show_retry_notice(self, message: str, *, tone: str = "warning") -> None:
         from shared.services.action_feedback import notify_action

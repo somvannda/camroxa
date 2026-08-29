@@ -7,13 +7,13 @@ from datetime import datetime
 from functools import partial
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMenu,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QTableWidgetItem,
@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.icons import apply_button_icon, section_heading
+from features.create.widgets.studio_panel import StudioPanel
 from shared.lib.formatting import format_progress_updated_time
 from shared.lib.manual_asset_paths import ManualAssetInspection
 from shared.lib.progress_presentation import (
@@ -33,10 +35,8 @@ from shared.lib.progress_presentation import (
     format_music_compact,
     format_run_date_label,
     format_stage_label,
-    format_youtube_compact,
 )
 from shared.models.platform import ProgressRow, ProgressRowMeta
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 from shared.widgets.data_table import create_data_table
 
 TABLE_HEADERS = [
@@ -49,15 +49,16 @@ TABLE_HEADERS = [
     "Images",
     "Export",
     "Merge",
-    "YouTube",
     "Updated",
 ]
 
 LOADING_MESSAGE = "Loading progress rows..."
-EMPTY_MESSAGE = "No runs found for the selected operational filters."
+EMPTY_MESSAGE = (
+    "No operational rows found. Try changing the date range, stage filter, or Active only filter."
+)
 SUBTITLE = (
     "Scan view for active runs. Progress shows the current stage percent. "
-    "Select a row for full export, merge, error, and YouTube details on the right."
+    "Select a row for full export, merge, and error details on the right."
 )
 
 _COL_RUN = 0
@@ -69,8 +70,7 @@ _COL_MUSIC = 5
 _COL_IMAGES = 6
 _COL_EXPORT = 7
 _COL_MERGE = 8
-_COL_YOUTUBE = 9
-_COL_UPDATED = 10
+_COL_UPDATED = 9
 
 _CENTER_ALIGNED_COLUMNS = {
     _COL_STAGE,
@@ -79,9 +79,60 @@ _CENTER_ALIGNED_COLUMNS = {
     _COL_IMAGES,
     _COL_EXPORT,
     _COL_MERGE,
-    _COL_YOUTUBE,
     _COL_UPDATED,
 }
+
+_ROW_HEIGHT = 28
+_STAGE_COLUMN_WIDTH = 108
+_CHANNEL_COLUMN_WIDTH = 200
+_ALBUM_COLUMN_WIDTH = 200
+_EXPORT_COLUMN_WIDTH = 88
+_MERGE_COLUMN_WIDTH = 88
+_COMPACT_COLUMN_PAD = 10
+_STAGE_BADGE_COLORS = {
+    "completed": "#00C878",
+    "done": "#00C878",
+    "music": "#38BDF8",
+    "image": "#7C3AED",
+    "export": "#6335D9",
+    "converter": "#6335D9",
+    "merge": "#14B8A6",
+    "merger": "#14B8A6",
+    "youtube": "#EC4899",
+    "waiting": "#F59E0B",
+    "pending": "#F59E0B",
+    "failed": "#F43F5E",
+    "error": "#F43F5E",
+    "blocked": "#F43F5E",
+}
+_STATUS_COLORS = {
+    "completed": "#00C878",
+    "pending": "#F59E0B",
+    "not started": "#60758C",
+    "failed": "#F43F5E",
+    "—": "#60758C",
+}
+
+
+def _parse_percent(label: str) -> int | None:
+    text = str(label or "").strip().rstrip("%")
+    if not text or text in {"—", "-"}:
+        return None
+    try:
+        return max(0, min(100, int(text)))
+    except ValueError:
+        return None
+
+
+def _progress_tone(percent: int | None, stage: str) -> str:
+    key = str(stage or "").strip().lower()
+    if key in {"error", "failed", "blocked"} or percent is None:
+        return "danger" if key in {"error", "failed", "blocked"} else "muted"
+    if percent >= 100 or key in {"done", "completed"}:
+        return "success"
+    if key in {"waiting", "pending"}:
+        return "warning"
+    return "active"
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +147,7 @@ class EffectiveProgressRow:
     effective_merge_percent: int | None = None
 
 
-class OperationalRowsCard(QFrame):
+class OperationalRowsCard(StudioPanel):
     open_folder_requested = Signal(str)
     open_run_folder_requested = Signal(str)
     sync_manual_requested = Signal(str)
@@ -119,7 +170,6 @@ class OperationalRowsCard(QFrame):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("account_card")
         self._manual_mode = False
         self._inspections: dict[str, ManualAssetInspection] = {}
         self._video_inspections: dict = {}
@@ -128,19 +178,24 @@ class OperationalRowsCard(QFrame):
         self._rows: list[EffectiveProgressRow] = []
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(14, 12, 14, 12)
+        root.setSpacing(8)
 
-        title = QLabel("OPERATIONAL ROWS")
-        title.setObjectName(SUBTITLE_LABEL_ID)
-        root.addWidget(title)
+        root.addWidget(section_heading("OPERATIONAL ROWS", "list"))
 
         subtitle = QLabel(SUBTITLE)
-        subtitle.setObjectName(SUBTITLE_LABEL_ID)
+        subtitle.setObjectName("PageSubtitle")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle)
 
         self._table = create_data_table(TABLE_HEADERS)
+        self._table.setObjectName("ProgressTable")
+        self._table.setShowGrid(False)
+        self._table.setAlternatingRowColors(True)
+        vertical = self._table.verticalHeader()
+        vertical.setDefaultSectionSize(_ROW_HEIGHT)
+        vertical.setMinimumSectionSize(_ROW_HEIGHT)
+        vertical.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         self._configure_table_columns()
         self._table.setSelectionBehavior(self._table.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(self._table.SelectionMode.SingleSelection)
@@ -153,7 +208,7 @@ class OperationalRowsCard(QFrame):
         self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def _configure_table_columns(self) -> None:
-        self._table.setAlternatingRowColors(False)
+        self._table.setAlternatingRowColors(True)
         self._table.setWordWrap(False)
         self._table.setTextElideMode(Qt.TextElideMode.ElideRight)
         header = self._table.horizontalHeader()
@@ -164,26 +219,27 @@ class OperationalRowsCard(QFrame):
 
     def _apply_column_widths(self) -> None:
         header = self._table.horizontalHeader()
-        compact_columns = {
-            _COL_RUN,
-            _COL_STAGE,
-            _COL_PROGRESS,
-            _COL_MUSIC,
-            _COL_MERGE,
-            _COL_YOUTUBE,
-        }
-        stretch_columns = (_COL_CHANNEL, _COL_ALBUM, _COL_IMAGES, _COL_EXPORT)
-
-        for index in compact_columns:
+        for index in (_COL_RUN, _COL_PROGRESS, _COL_MUSIC, _COL_IMAGES):
             header.setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
             if self._table.rowCount() > 0:
                 self._table.resizeColumnToContents(index)
+            if index != _COL_RUN:
+                header.setSectionResizeMode(index, QHeaderView.ResizeMode.Fixed)
+                self._table.setColumnWidth(index, self._table.columnWidth(index) + _COMPACT_COLUMN_PAD)
 
+        header.setSectionResizeMode(_COL_STAGE, QHeaderView.ResizeMode.Fixed)
+        self._table.setColumnWidth(_COL_STAGE, _STAGE_COLUMN_WIDTH)
+        header.setSectionResizeMode(_COL_EXPORT, QHeaderView.ResizeMode.Fixed)
+        self._table.setColumnWidth(_COL_EXPORT, _EXPORT_COLUMN_WIDTH)
+        header.setSectionResizeMode(_COL_MERGE, QHeaderView.ResizeMode.Fixed)
+        self._table.setColumnWidth(_COL_MERGE, _MERGE_COLUMN_WIDTH)
         header.setSectionResizeMode(_COL_UPDATED, QHeaderView.ResizeMode.Fixed)
         self._table.setColumnWidth(_COL_UPDATED, 132)
 
-        for index in stretch_columns:
-            header.setSectionResizeMode(index, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(_COL_CHANNEL, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(_COL_CHANNEL, _CHANNEL_COLUMN_WIDTH)
+        header.setSectionResizeMode(_COL_ALBUM, QHeaderView.ResizeMode.Stretch)
+        self._table.setColumnWidth(_COL_ALBUM, _ALBUM_COLUMN_WIDTH)
 
     def set_manual_mode(self, enabled: bool) -> None:
         self._manual_mode = enabled
@@ -242,7 +298,6 @@ class OperationalRowsCard(QFrame):
                 format_images_compact(row.meta),
                 format_export_compact(export_full),
                 format_merge_compact(merge_full),
-                format_youtube_compact(row),
                 self._format_updated_cell(entry),
             ]
             tooltips = list(values)
@@ -254,15 +309,21 @@ class OperationalRowsCard(QFrame):
             for col_index, value in enumerate(values):
                 if col_index == _COL_EXPORT and show_start_export:
                     continue
-                if col_index == _COL_EXPORT:
-                    self._table.removeCellWidget(row_index, col_index)
+                self._table.removeCellWidget(row_index, col_index)
                 item = self._make_cell_item(value, center=col_index in _CENTER_ALIGNED_COLUMNS)
                 item.setToolTip(tooltips[col_index].replace("\n", " · "))
+                if col_index in (_COL_EXPORT, _COL_MERGE):
+                    color = _STATUS_COLORS.get(str(value).strip().lower(), "#E5EDF7")
+                    item.setForeground(QColor(color))
                 self._table.setItem(row_index, col_index, item)
+                if col_index == _COL_STAGE:
+                    self._set_stage_badge(row_index, str(value))
+                if col_index == _COL_PROGRESS:
+                    self._set_progress_cell(row_index, str(value), entry.effective_stage)
             if show_start_export:
                 self._set_start_export_button(row_index, entry.row)
+            self._table.setRowHeight(row_index, _ROW_HEIGHT)
 
-        self._table.resizeRowsToContents()
         self._apply_column_widths()
         self._table.blockSignals(False)
 
@@ -621,13 +682,58 @@ class OperationalRowsCard(QFrame):
             del stale_item
 
         button = QPushButton("Start Export")
-        button.setProperty("uiRole", "gradientPrimary")
+        button.setObjectName("SecondaryButton")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFixedHeight(22)
+        apply_button_icon(button, "play")
         button.clicked.connect(partial(self.start_export_requested.emit, row))
         wrap = QWidget()
         layout = QHBoxLayout(wrap)
-        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setContentsMargins(2, 0, 2, 0)
         layout.addWidget(button)
         self._table.setCellWidget(row_index, _COL_EXPORT, wrap)
+
+    def _set_stage_badge(self, row_index: int, label: str) -> None:
+        color = _STAGE_BADGE_COLORS.get(str(label or "").strip().lower(), "#60758C")
+        pill = QLabel(label)
+        pill.setObjectName("StatusBadge")
+        pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pill.setFixedHeight(16)
+        pill.setStyleSheet(
+            "QLabel#StatusBadge {"
+            f" background-color: {color}; color: #ffffff; border: none;"
+            " border-radius: 3px; padding: 0 7px;"
+            " font-size: 10px; font-weight: 600;"
+            "}"
+        )
+        wrap = QWidget()
+        wrap.setObjectName("TransparentBlock")
+        layout = QHBoxLayout(wrap)
+        layout.setContentsMargins(4, 6, 4, 6)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(pill)
+        self._table.setCellWidget(row_index, _COL_STAGE, wrap)
+
+    def _set_progress_cell(self, row_index: int, label: str, stage: str) -> None:
+        host = QWidget()
+        host.setObjectName("TransparentBlock")
+        column = QVBoxLayout(host)
+        column.setContentsMargins(4, 2, 4, 2)
+        column.setSpacing(1)
+        text = QLabel(label)
+        text.setObjectName("ProgressCellValue")
+        text.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        bar = QProgressBar()
+        bar.setObjectName("ProgressCellBar")
+        bar.setTextVisible(False)
+        bar.setRange(0, 100)
+        parsed = _parse_percent(label)
+        bar.setValue(0 if parsed is None else parsed)
+        tone = _progress_tone(parsed, stage)
+        bar.setProperty("tone", tone)
+        column.addWidget(text)
+        column.addWidget(bar)
+        self._table.setCellWidget(row_index, _COL_PROGRESS, host)
 
     def _set_message(self, message: str) -> None:
         self._rows = []

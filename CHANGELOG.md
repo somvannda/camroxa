@@ -23,6 +23,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Desktop Image queue uses Create studio chrome: status cards first, then Controls & Queue, then the table. Job and workspace errors go to the app footer. See `docs/changelog/2026-08-28-desktop-image-queue-summary-cards.md`.
+- Desktop Progress selected rows use brand purple, Stage is plain wider text, and Row Detail is a compact pipeline inspector. See `docs/changelog/2026-08-28-desktop-progress-row-detail-polish.md`.
 - Desktop Profile page now uses the Create-page studio design system (same panels, 28px controls, purple buttons, table chrome) for Profile content. Card sections sit on the darker `#071426` canvas so each frame is visible. See `docs/changelog/2026-08-28-desktop-profile-page-restyle.md`.
 - Native Create dropdowns, date fields, radios, checkboxes, and Simple/Advanced tabs now match the studio screenshot chrome. The form/Files split is 60/40 and fills the workspace without a leftover navy frame. See `docs/changelog/2026-08-27-desktop-create-controls-match.md`.
 - Desktop login screen now matches the studio card (waveform, icon fields, recent accounts). No social buttons. See `docs/changelog/2026-08-27-desktop-login-page-restyle.md`.

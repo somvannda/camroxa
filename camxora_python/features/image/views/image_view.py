@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QScrollArea,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.studio_panel import (
+    OutlinePanel,
+    StudioPanel,
+    fill_studio_canvas,
+    paint_studio_card,
+)
+from features.image.image_styles import build_image_page_qss
 from features.image.services.image_local_store import ImageLocalStore, ImageWorkspacePrefs
 from features.image.widgets.controls_queue_card import ControlsQueueCard
 from features.image.widgets.error_banner import LOAD_ERROR, ImageErrorBanner
@@ -20,11 +29,13 @@ from shared.lib.image_workspace import (
     IMAGE_PROMPT_MAX_CHARS,
     build_footer_detail,
     build_queue_rows,
+    split_queue_footer_detail,
     build_queue_status_summary,
     filter_batches_by_date,
     filter_jobs_by_batches,
     normalize_image_prompt_settings,
 )
+from shared.lib.formatting import format_channel_role_label
 from shared.lib.page_account_scope import account_cache_mismatch, cached_user_id
 from shared.lib.settings_workspace import resolve_kind_source_modes
 from shared.models.auth import ProfileResponse, UserMeResponse
@@ -32,9 +43,9 @@ from shared.models.platform import ImageJobListItem, MusicHistoryListResponse
 from shared.services.file_service import open_path
 from shared.services.platform_api import PlatformApi
 from shared.services.action_feedback import notify_action
-from shared.services.shell_status import emit_shell_status, restore_shell_status
+from shared.services.shell_status import emit_footer_error, emit_shell_status, restore_shell_status
 from shared.services.workspace_cache import WorkspaceCache
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import (
     ImageClearQueueWorker,
@@ -68,6 +79,11 @@ _CREDIT_QUOTA_HINTS = (
     "balance",
     "402",
 )
+
+
+class _FramedHeader(CreateHeader):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        paint_studio_card(self)
 
 
 class ImageView(PollablePageMixin, QScrollArea):
@@ -113,6 +129,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._preview_fingerprint = ""
         self._awaiting_regen_job_ids: set[str] = set()
         self._surfaced_job_errors: set[str] = set()
+        self._row_error_in_footer = ""
         self._local_save_timer = QTimer(self)
         self._local_save_timer.setSingleShot(True)
         self._local_save_timer.setInterval(400)
@@ -121,50 +138,99 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._prompt_save_timer.setSingleShot(True)
         self._prompt_save_timer.setInterval(350)
         self._prompt_save_timer.timeout.connect(self._persist_image_settings)
+        self.setObjectName("image_workspace")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_image_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self.viewport())
 
         container = QWidget()
+        container.setObjectName("image_workspace")
+        container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        fill_studio_canvas(container)
         root = QVBoxLayout(container)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(12)
+
+        header = _FramedHeader(
+            title="Image",
+            subtitle="Queue backgrounds and thumbnails, then preview the selected album.",
+            meta="",
+            eyebrow="WORKSPACE",
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
 
         self._error_banner = ImageErrorBanner()
         self._error_banner.hide()
         root.addWidget(self._error_banner)
 
-        self._loading_card = QFrame()
-        self._loading_card.setObjectName("account_card")
+        self._loading_card = StudioPanel()
         loading_layout = QVBoxLayout(self._loading_card)
+        loading_layout.setContentsMargins(12, 12, 12, 12)
         loading_label = QLabel(LOADING_MESSAGE)
-        loading_label.setObjectName(SUBTITLE_LABEL_ID)
+        loading_label.setObjectName("PageSubtitle")
         loading_layout.addWidget(loading_label)
         root.addWidget(self._loading_card)
 
         self._controls_card = ControlsQueueCard()
         self._background_preview = PreviewCard(
             "Background Preview",
-            "Select a queue row to preview the background output.",
+            "No background generated\nGenerate a background using the current prompt.",
             source_label="Background source",
+            kind="background",
         )
         self._thumbnail_preview = PreviewCard(
             "Thumbnail Preview",
-            "Select a queue row to preview the thumbnail output.",
+            "No thumbnail generated\nGenerate a thumbnail using the current prompt.",
             source_label="Thumbnail source",
+            kind="thumbnail",
         )
 
         preview_host = QWidget()
+        preview_host.setObjectName("TransparentBlock")
+        preview_host.setMinimumWidth(260)
+        preview_host.setMaximumWidth(420)
         previews = QVBoxLayout(preview_host)
-        previews.setSpacing(12)
-        previews.addWidget(self._background_preview)
-        previews.addWidget(self._thumbnail_preview)
+        previews.setContentsMargins(0, 0, 0, 0)
+        previews.setSpacing(8)
+        album_card = OutlinePanel()
+        album_card.setObjectName("ImageAlbumCard")
+        album_layout = QVBoxLayout(album_card)
+        album_layout.setContentsMargins(12, 10, 12, 10)
+        album_layout.setSpacing(2)
+        self._inspector_album = QLabel("No album selected")
+        self._inspector_album.setObjectName("ImageSelectedTitle")
+        self._inspector_album.setWordWrap(True)
+        self._inspector_album.setAutoFillBackground(False)
+        self._inspector_meta = QLabel("Select a queue row to preview background and thumbnail.")
+        self._inspector_meta.setObjectName("PageSubtitle")
+        self._inspector_meta.setWordWrap(True)
+        self._inspector_meta.setAutoFillBackground(False)
+        album_layout.addWidget(self._inspector_album)
+        album_layout.addWidget(self._inspector_meta)
+        previews.addWidget(album_card)
+        previews.addWidget(self._background_preview, stretch=1)
+        previews.addWidget(self._thumbnail_preview, stretch=1)
 
+        self._controls_card.setMinimumWidth(640)
         self._content = QWidget()
         content_layout = QHBoxLayout(self._content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(12)
-        content_layout.addWidget(self._controls_card, stretch=2)
-        content_layout.addWidget(preview_host, stretch=1)
+        content_layout.setSpacing(0)
+        self._content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._content_splitter.setChildrenCollapsible(False)
+        self._content_splitter.setHandleWidth(6)
+        self._content_splitter.addWidget(self._controls_card)
+        self._content_splitter.addWidget(preview_host)
+        self._content_splitter.setStretchFactor(0, 3)
+        self._content_splitter.setStretchFactor(1, 1)
+        self._content_splitter.setSizes([920, 320])
+        content_layout.addWidget(self._content_splitter)
 
         self._content.hide()
         root.addWidget(self._content)
@@ -182,6 +248,8 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._controls_card.job_open_requested.connect(self._on_job_open_requested)
         self._background_preview.source_mode_changed.connect(self._schedule_image_settings_save)
         self._thumbnail_preview.source_mode_changed.connect(self._schedule_image_settings_save)
+        self._background_preview.open_requested.connect(self._on_job_open_requested)
+        self._thumbnail_preview.open_requested.connect(self._on_job_open_requested)
 
         self.setWidget(container)
 
@@ -195,6 +263,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._preview_fingerprint = ""
         self._awaiting_regen_job_ids.clear()
         self._surfaced_job_errors.clear()
+        self._row_error_in_footer = ""
         self._loading = True
         self._is_error = False
         self._profiles = []
@@ -278,6 +347,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         if not self._refresh_quiet:
             restore_shell_status()
             self._controls_card.set_reload_enabled(True)
+            self._republish_row_footer_error()
 
     def _on_loaded(self, payload: object) -> None:
         if not isinstance(payload, ImageWorkspacePayload):
@@ -382,8 +452,7 @@ class ImageView(PollablePageMixin, QScrollArea):
             self._is_error = True
             self._loading_card.hide()
             self._content.hide()
-            self._error_banner.set_message(message or LOAD_ERROR)
-            self._error_banner.show()
+            self._show_workspace_error(message or LOAD_ERROR)
             return
         # Quiet poll failures stay in the status bar so we don't interrupt editing.
         if self._refresh_quiet:
@@ -438,6 +507,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         else:
             selected_for_table = self._selected_queue_key
         self._controls_card.set_rows(rows, selected_for_table)
+        self._bind_selected_album(self._controls_card.selected_row())
         if reload_previews:
             self._load_previews(self._controls_card.selected_row(), force=True)
         else:
@@ -467,19 +537,34 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._user_cleared_selection = False
         self._selected_queue_key = key
         self._schedule_local_workspace_save()
-        self._load_previews(self._controls_card.selected_row(), force=True)
+        row = self._controls_card.selected_row()
+        self._bind_selected_album(row)
+        self._load_previews(row, force=True)
 
     def _on_selection_cleared(self) -> None:
         self._user_cleared_selection = True
         self._selected_queue_key = ""
         self._preview_fingerprint = ""
         self._schedule_local_workspace_save()
+        self._bind_selected_album(None)
         self._background_preview.set_image_bytes(None)
+        self._background_preview.bind_job(None)
         self._thumbnail_preview.set_image_bytes(None)
-        self._controls_card.set_footer_detail(
+        self._thumbnail_preview.bind_job(None)
+        self._publish_footer_detail(
             "No row selected. Manual Generation creates a Not available queue row for today "
             "(credits/quota apply)."
         )
+
+    def _bind_selected_album(self, row) -> None:
+        self._controls_card.set_selected_album(row)
+        if row is None:
+            self._inspector_album.setText("No album selected")
+            self._inspector_meta.setText("Select a queue row to preview background and thumbnail.")
+            return
+        self._inspector_album.setText(row.album_label or "—")
+        role = format_channel_role_label(row.role)
+        self._inspector_meta.setText(f"{row.date_label} · {row.profile_name} ({role})")
 
     def _preview_row_fingerprint(self, row) -> str:
         if row is None:
@@ -502,18 +587,21 @@ class ImageView(PollablePageMixin, QScrollArea):
     def _load_previews(self, row, *, force: bool = True) -> None:
         fingerprint = self._preview_row_fingerprint(row)
         if not force and fingerprint == self._preview_fingerprint:
-            footer = build_footer_detail(row)
-            self._controls_card.set_footer_detail(footer)
+            self._publish_footer_detail(build_footer_detail(row))
             return
         self._preview_fingerprint = fingerprint
         if self._preview_worker is not None and self._preview_worker.isRunning():
             self._preview_worker.requestInterruption()
         footer = build_footer_detail(row)
-        self._controls_card.set_footer_detail(footer)
+        self._publish_footer_detail(footer)
         if row is None:
             self._background_preview.set_image_bytes(None)
+            self._background_preview.bind_job(None)
             self._thumbnail_preview.set_image_bytes(None)
+            self._thumbnail_preview.bind_job(None)
             return
+        self._background_preview.bind_job(row.bg_job)
+        self._thumbnail_preview.bind_job(row.th_job)
         worker = ImagePreviewLoadWorker(
             api=self._api,
             bg_path=row.bg_job.output_image_path if row.bg_job else None,
@@ -541,7 +629,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._thumbnail_preview.set_image_bytes(payload.get("th_bytes"))
         detail = payload.get("footer_detail")
         if isinstance(detail, str):
-            self._controls_card.set_footer_detail(detail)
+            self._publish_footer_detail(detail)
 
     def _schedule_image_settings_save(self, *_args: object) -> None:
         self._prompt_save_timer.start()
@@ -736,7 +824,7 @@ class ImageView(PollablePageMixin, QScrollArea):
             f"Creating Not available row for today · generating {kind_label}…",
             tone="neutral",
         )
-        self._controls_card.set_footer_detail(
+        self._publish_footer_detail(
             f"Created Not available row for today · generating {kind_label}…"
         )
         worker = ImageManualGenerateWorker(
@@ -785,7 +873,7 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._error_banner.hide()
         message = f"Created Not available row for today · generating {kind_label}…"
         self._status_label = message
-        self._controls_card.set_footer_detail(message)
+        self._publish_footer_detail(message)
         notify_action(message, tone="success")
         self._refresh_workspace(quiet=False)
 
@@ -936,11 +1024,26 @@ class ImageView(PollablePageMixin, QScrollArea):
         self._status_label = "Unable to clear queue."
         self._show_workspace_error(message or "Unable to clear image queue.")
 
+    def _publish_footer_detail(self, detail: str) -> None:
+        info, errors = split_queue_footer_detail(detail)
+        self._controls_card.set_footer_detail(info)
+        if errors:
+            self._row_error_in_footer = errors
+            emit_shell_status(errors, tone="error")
+            return
+        if self._row_error_in_footer:
+            self._row_error_in_footer = ""
+            restore_shell_status()
+
+    def _republish_row_footer_error(self) -> None:
+        if self._row_error_in_footer:
+            emit_shell_status(self._row_error_in_footer, tone="error")
+
     def _show_workspace_error(self, message: str) -> None:
         text = str(message or "").strip()
         if not text:
             return
         self._error_banner.set_message(text)
-        self._error_banner.show()
-        notify_action(text, tone="error")
+        self._error_banner.hide()
+        emit_footer_error(text)
         # Do not rebuild the whole queue here — that fights with editing source modes.
