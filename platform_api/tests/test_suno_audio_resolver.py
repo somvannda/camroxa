@@ -16,10 +16,79 @@ from platform_api.services.suno_audio_resolver import (
 )
 
 
-def test_extract_clip_download_url_prefers_source_audio_url() -> None:
+def test_extract_clip_download_url_prefers_callback_audio_url() -> None:
     clip = {
         "stream_audio_url": "https://cdn.example.com/stream.m3u8",
-        "audio_url": "https://cdn.example.com/audio.mp3",
+        "audio_url": "https://tempfile.aiquickdraw.com/audio.mp3",
+        "source_audio_url": "https://cdn1.suno.ai/clip-id.mp3",
+    }
+    assert _extract_clip_download_url(clip) == "https://tempfile.aiquickdraw.com/audio.mp3"
+
+
+def test_extract_clip_download_url_prefers_camelcase_audio_url() -> None:
+    clip = {
+        "audioUrl": "https://tempfile.aiquickdraw.com/ok.mp3",
+        "sourceAudioUrl": "https://cdn1.suno.ai/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.mp3",
+    }
+    assert _extract_clip_download_url(clip) == "https://tempfile.aiquickdraw.com/ok.mp3"
+
+
+def test_extract_callback_download_urls_prefers_camelcase_audio_url() -> None:
+    clip_id = "952982b2-f134-4ac6-a3d2-aa1404df1ee9"
+    parsed = extract_callback_download_urls(
+        {
+            "code": 200,
+            "msg": "All generated successfully.",
+            "data": {
+                "callbackType": "complete",
+                "task_id": "task-1",
+                "data": [
+                    {
+                        "id": clip_id,
+                        "audioUrl": f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3",
+                        "sourceAudioUrl": f"https://cdn1.suno.ai/{clip_id}.mp3",
+                        "streamAudioUrl": "https://musicfile.removeai.ai/stream-ok",
+                    },
+                    {
+                        "id": "clip-alt",
+                        "audioUrl": "https://tempfile.aiquickdraw.com/r/clip-alt.mp3",
+                        "sourceAudioUrl": "https://cdn1.suno.ai/clip-alt.mp3",
+                    },
+                ],
+            },
+        }
+    )
+    assert parsed.audio_url_ok == f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
+    assert parsed.audio_url_alt == "https://tempfile.aiquickdraw.com/r/clip-alt.mp3"
+    assert parsed.audio_id_ok == clip_id
+
+
+def test_parse_suno_generate_poll_prefers_callback_audio_url() -> None:
+    clip_id = "952982b2-f134-4ac6-a3d2-aa1404df1ee9"
+    parsed = parse_suno_generate_poll(
+        {
+            "code": 200,
+            "data": {
+                "status": "SUCCESS",
+                "response": {
+                    "data": [
+                        {
+                            "id": clip_id,
+                            "audioUrl": f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3",
+                            "sourceAudioUrl": f"https://cdn1.suno.ai/{clip_id}.mp3",
+                        }
+                    ]
+                },
+            },
+        }
+    )
+    assert parsed.state == "success"
+    assert parsed.audio_url_ok == f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
+
+
+def test_extract_clip_download_url_falls_back_to_source_audio_url() -> None:
+    clip = {
+        "stream_audio_url": "https://cdn.example.com/stream.m3u8",
         "source_audio_url": "https://cdn.example.com/source.mp3",
     }
     assert _extract_clip_download_url(clip) == "https://cdn.example.com/source.mp3"

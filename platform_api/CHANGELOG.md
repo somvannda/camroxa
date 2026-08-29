@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Suno downloads prefer callback/record-info `audio_url` (`audioUrl`) over unsigned `cdn1.suno.ai` `source_audio_url`. See `docs/changelog/2026-08-29-suno-prefer-callback-audio-url.md`.
 - Generate quote/charge always uses the Credits page list price. Plan per-op fields are ignored. Public catalogs send `credits_per_generate` from that music rate. See `docs/changelog/2026-08-28-credit-pricing-single-source.md`.
 - Song hints use 10 credits = 1 generate = 2 songs (Free 50 → 10 songs/day). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 
