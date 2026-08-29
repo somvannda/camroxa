@@ -184,15 +184,21 @@ def parse_suno_lyrics_poll(response: dict[str, Any]) -> SunoLyricsPollResult:
 
 
 def _extract_clip_download_url(clip: dict[str, Any]) -> str:
-    """Return the best URL for downloading a finished MP3 (not stream preview)."""
+    """Return the best URL for downloading a finished MP3 (not stream preview).
+
+    Prefer callback/record-info ``audio_url`` / ``audioUrl``. Suno now signs
+    those (often ``tempfile.aiquickdraw.com``). ``source_audio_url`` is the
+    unsigned ``cdn1.suno.ai/{id}.mp3`` link, which CloudFront rejects with
+    MissingKey unless a Key-Pair-Id is present.
+    """
     from platform_api.services.suno_audio_resolver import is_disallowed_suno_audio_url
 
     audio_id = _extract_clip_audio_id(clip)
     for key in (
-        "source_audio_url",
-        "sourceAudioUrl",
         "audio_url",
         "audioUrl",
+        "source_audio_url",
+        "sourceAudioUrl",
     ):
         url = str(clip.get(key, "")).strip()
         if url and not is_disallowed_suno_audio_url(url):
