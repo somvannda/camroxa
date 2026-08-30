@@ -76,8 +76,8 @@ class _TrackRemoveDelegate(QStyledItemDelegate):
         # Custom paint can fall back to the system highlight (often red on Windows).
         # Force Video-theme selection colors and drop the focus outline.
         opt.state &= ~QStyle.StateFlag.State_HasFocus
-        opt.palette.setColor(QPalette.ColorRole.Highlight, QColor("#1a3a5c"))
-        opt.palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#4ac0ff"))
+        opt.palette.setColor(QPalette.ColorRole.Highlight, QColor("#6335D9"))
+        opt.palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
         # Full-row selection/hover via theme; elide text so it doesn't run under ×.
         avail = max(0, opt.rect.width() - self._HIT - self._RIGHT_INSET - 12)
         opt.text = opt.fontMetrics.elidedText(str(opt.text or ""), Qt.TextElideMode.ElideRight, avail)

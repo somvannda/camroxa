@@ -161,8 +161,12 @@ from features.video.widgets.particles_inspector import ParticlesInspector
 from features.video.widgets.spectrum_inspector import SpectrumInspector
 from features.video.widgets.lightning_inspector import LightningInspector
 from features.video.widgets.right_rail import VideoRightRail
+from features.create.widgets.create_header import CreateHeader
+from features.create.widgets.studio_panel import StudioPanel, fill_studio_canvas, paint_studio_card
+from features.video.video_styles import build_video_page_qss
 from features.video.widgets.stage_panel import VideoStagePanel
 from features.video.widgets.text_domain_inspectors import AlbumInspector, TitleInspector
+from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from features.video.lib.text_domain_registry import (
     capture_text_domain_preset,
     draft_style_snapshot,
@@ -211,6 +215,11 @@ from features.video.workers.video_template_sync_worker import VideoTemplateSyncW
 
 LOADING_MESSAGE = "Loading video workspace..."
 
+
+class _FramedHeader(CreateHeader):
+    def paintEvent(self, event) -> None:  # noqa: N802
+        paint_studio_card(self)
+
 # Left rail needs room for domain tabs + dense inspectors; right rail needs
 # room for Album/Title style controls (fill mode, glow, gradients) without clipping.
 VIDEO_RAIL_WIDTH = 420
@@ -257,6 +266,11 @@ class VideoView(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName(VIDEO_WORKSPACE_ID)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        ensure_inter_loaded()
+        self.setStyleSheet(build_video_page_qss())
+        self.setFont(studio_font(12))
+        fill_studio_canvas(self)
         self._api = api
         self._cache = cache
         self._store = VideoLocalStore()
@@ -372,14 +386,23 @@ class VideoView(QWidget):
         self._hydrated_template_id = ""
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(8)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(12)
 
-        self._loading_card = QFrame()
-        self._loading_card.setObjectName("account_card")
+        header = _FramedHeader(
+            title="Video",
+            subtitle="Preview templates, inspect layers, and export tracks from the studio workspace.",
+            meta="",
+            eyebrow="WORKSPACE",
+        )
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        root.addWidget(header)
+
+        self._loading_card = StudioPanel()
         loading_layout = QVBoxLayout(self._loading_card)
+        loading_layout.setContentsMargins(12, 12, 12, 12)
         loading_label = QLabel(LOADING_MESSAGE)
-        loading_label.setObjectName(SUBTITLE_LABEL_ID)
+        loading_label.setObjectName("PageSubtitle")
         loading_layout.addWidget(loading_label)
         root.addWidget(self._loading_card)
         if self._cache_has_mountable_workspace():

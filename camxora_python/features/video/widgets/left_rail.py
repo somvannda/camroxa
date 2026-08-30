@@ -66,6 +66,7 @@ class VideoLeftRail(SettingsPanel):
         self._new_btn.setToolTip("Create a blank video template from scratch")
         self._new_btn.clicked.connect(self.new_requested.emit)
         self._save_btn = QPushButton("Save")
+        self._save_btn.setObjectName("TransportPrimary")
         self._save_btn.setToolTip("Save the current look into this video template.")
         self._save_btn.clicked.connect(self.save_requested.emit)
         self._restore_original_btn = QPushButton("Restore original")
