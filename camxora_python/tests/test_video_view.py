@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from features.create.widgets.create_header import CreateHeader
 from features.video.views.video_view import VideoView
 from shared.models.desktop import VideoWorkspaceState
 
@@ -24,6 +25,11 @@ def test_video_view_mounts(qapp: QApplication) -> None:
     view = VideoView(api)
     view.show()
     assert view.isVisible()
+    assert view.objectName() == "video_workspace"
+    header = view.findChild(CreateHeader)
+    assert header is not None
+    assert header.objectName() == "CreateHeader"
+    assert view._left_rail._save_btn.objectName() == "TransportPrimary"
     view.activate_page()
     view.deactivate_page()
 

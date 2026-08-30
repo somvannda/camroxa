@@ -23,6 +23,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Desktop Video now uses Create studio chrome (header, navy cards, purple tabs and primary actions). Preview, save, and export are unchanged. See `docs/changelog/2026-08-29-desktop-video-studio-ui.md`.
 - Desktop Settings now uses Create studio chrome (header, navy cards, purple tab chips). Save, profiles, YouTube, pools, and Suno are unchanged. See `docs/changelog/2026-08-29-desktop-settings-studio-ui.md`.
 - Desktop Marketplace now uses Create studio chrome (header, navy cards, purple All/Video/Reel chips). Catalog, search, and install are unchanged. See `docs/changelog/2026-08-29-desktop-marketplace-studio-ui.md`.
 - Desktop Dashboard now uses the Create studio design system, with purple selected rows on Daily Channel Limits and Recent Activity. See `docs/changelog/2026-08-28-desktop-dashboard-studio-ui.md`.
