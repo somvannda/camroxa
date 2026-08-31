@@ -108,6 +108,7 @@ class BillingPaymentResponse(BaseModel):
     redeem_code: str | None = None
     product_type: str = "plan"
     addon_channels: int | None = None
+    qr_string: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -335,6 +336,7 @@ def _payment_response_from_row(row: Any) -> BillingPaymentResponse:
         redeem_code=metadata.get("redeem_code"),
         product_type=str(metadata.get("product_type") or "plan"),
         addon_channels=int(metadata["addon_channels"]) if metadata.get("addon_channels") is not None else None,
+        qr_string=metadata.get("qr_string"),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -642,6 +644,75 @@ async def _fulfill_credit_pack_payment(
             return await _run(acquired)
 
 
+async def _fulfill_quota_renewal_payment(
+    pool: Any,
+    row: Any,
+    metadata: dict[str, Any],
+    *,
+    conn: Any | None = None,
+) -> Any:
+    """Extend a quota (desktop) license after a verified CutLuy renewal payment."""
+    license_id_raw = str(metadata.get("license_id") or "").strip()
+    if not license_id_raw:
+        raise ValidationError(
+            "Renewal payment is missing license metadata.",
+            details={"payment_id": str(row["id"])},
+        )
+    try:
+        renew_days = max(1, int(metadata.get("renew_days") or 30))
+    except (TypeError, ValueError):
+        renew_days = 30
+
+    async def _run(connection: Any) -> Any:
+        locked = await connection.fetchrow(
+            """
+            SELECT bp.*
+            FROM billing_payments bp
+            WHERE bp.id = $1
+              AND bp.user_id = $2
+            FOR UPDATE
+            """,
+            row["id"],
+            row["user_id"],
+        )
+        if locked is None:
+            raise NotFoundError("Payment record not found.")
+        if locked["fulfilled_at"] is not None or str(locked["status"]) != "paid":
+            return locked
+
+        license_repo = LicenseRepository(pool=connection)
+        license_obj = await license_repo.get_by_id(UUID(license_id_raw))
+        if license_obj is None or license_obj.user_id != UUID(str(locked["user_id"])):
+            raise ValidationError(
+                "Renewal license is not valid for this user.",
+                details={"license_id": license_id_raw},
+            )
+
+        await license_repo.extend_license(UUID(license_id_raw), renew_days)
+
+        fulfilled = await connection.fetchrow(
+            """
+            UPDATE billing_payments
+            SET fulfilled_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+              AND fulfilled_at IS NULL
+            RETURNING *
+            """,
+            locked["id"],
+        )
+        if fulfilled is None:
+            raise NotFoundError("Payment record not found.")
+        return fulfilled
+
+    if conn is not None:
+        return await _run(conn)
+
+    async with pool.acquire() as acquired:
+        async with acquired.transaction():
+            return await _run(acquired)
+
+
 async def _resolve_billing_anchor_plan_id(pool: Any, user_id: UUID) -> UUID:
     license_repo = LicenseRepository(pool=pool)
     plan_repo = PlanRepository(pool=pool)
@@ -724,6 +795,9 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
 
             if str(metadata.get("product_type") or "plan") == "credit_pack":
                 return await _fulfill_credit_pack_payment(pool, locked, metadata, conn=conn)
+
+            if str(metadata.get("product_type") or "plan") == "plan_renewal":
+                return await _fulfill_quota_renewal_payment(pool, locked, metadata, conn=conn)
 
             plan_repo = PlanRepository(pool=conn)
             license_repo = LicenseRepository(pool=conn)
@@ -951,6 +1025,10 @@ async def _create_cutluy_payment(
             is_retryable=True,
             details={"provider": "cutluy", "reason": type(exc).__name__},
         ) from exc
+
+    from platform_api.services.shared.cutluy_service import extract_cutluy_qr_string
+
+    metadata["qr_string"] = extract_cutluy_qr_string(payment) or ""
 
     created = await pool.fetchrow(
         """
@@ -1489,6 +1567,135 @@ async def create_credit_pack_payment(
     provider = await _get_active_provider(pool)
     return await _create_credit_pack_payment_response(
         request,
+        provider=provider or "",
+        ctx=ctx,
+        pool=pool,
+    )
+
+
+async def _create_quota_renewal_payment_response(
+    *,
+    provider: str,
+    ctx: AuthContext,
+    pool: Any,
+) -> BillingPaymentResponse:
+    """Create a CutLuy checkout that renews the user's quota (desktop) plan."""
+    user_id = UUID(ctx.user_id)
+    license_repo = LicenseRepository(pool=pool)
+    plan_repo = PlanRepository(pool=pool)
+
+    license_obj = await license_repo.get_active_for_user(user_id)
+    if license_obj is None:
+        license_obj = await license_repo.get_latest_license_for_user(user_id)
+    if license_obj is None:
+        raise NotFoundError(
+            "No quota subscription found to renew.",
+            details={"error_code": "NO_QUOTA_LICENSE"},
+        )
+
+    plan = await plan_repo.get_by_id(license_obj.plan_id)
+    if plan is None:
+        raise NotFoundError("Associated plan not found.")
+
+    price_cents = int(plan.price_cents or 0)
+    if price_cents <= 0:
+        raise ValidationError(
+            "Your plan does not require payment to renew.",
+            details={"error_code": "FREE_PLAN_RENEWAL"},
+        )
+    if plan.billing_cycle_days is None or int(plan.billing_cycle_days) <= 0:
+        raise ValidationError(
+            "Your plan has no renewal cycle.",
+            details={"error_code": "NO_RENEWAL_CYCLE"},
+        )
+
+    renew_days = int(plan.billing_cycle_days)
+    portal_base_url = await _get_portal_base_url(pool)
+    extra_metadata: dict[str, Any] = {
+        "product_type": "plan_renewal",
+        "license_id": str(license_obj.id),
+        "renew_days": renew_days,
+        "return_path": f"{portal_base_url}/profile?payment=success",
+    }
+
+    if provider == "mock":
+        _ensure_mock_checkout_allowed()
+        return await _create_mock_payment(
+            pool,
+            ctx=ctx,
+            plan_id=plan.id,
+            plan_name=plan.name,
+            amount_cents=price_cents,
+            offer_id=None,
+            extra_metadata=extra_metadata,
+        )
+
+    if provider != "cutluy":
+        raise ValidationError("No active billing provider is configured.")
+
+    return await _create_cutluy_payment(
+        pool,
+        ctx=ctx,
+        plan_id=plan.id,
+        plan_name=plan.name,
+        amount_cents=price_cents,
+        offer_id=None,
+        extra_metadata=extra_metadata,
+    )
+
+
+@router.get(
+    "/renewals/quota",
+    status_code=200,
+    summary="Get the current user's quota plan renewal details",
+)
+async def get_quota_renewal(
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> dict[str, Any]:
+    """Return the quota plan a signed-in user can renew for the next month."""
+    user_id = UUID(ctx.user_id)
+    license_repo = LicenseRepository(pool=pool)
+    plan_repo = PlanRepository(pool=pool)
+
+    license_obj = await license_repo.get_active_for_user(user_id)
+    if license_obj is None:
+        license_obj = await license_repo.get_latest_license_for_user(user_id)
+    if license_obj is None:
+        return {"eligible": False}
+
+    plan = await plan_repo.get_by_id(license_obj.plan_id)
+    if (
+        plan is None
+        or int(plan.price_cents or 0) <= 0
+        or plan.billing_cycle_days is None
+        or int(plan.billing_cycle_days) <= 0
+    ):
+        return {"eligible": False}
+
+    return {
+        "eligible": True,
+        "plan_id": str(license_obj.plan_id),
+        "plan_name": plan.name,
+        "price_cents": int(plan.price_cents),
+        "billing_cycle_days": int(plan.billing_cycle_days),
+        "expires_at": license_obj.expires_at.isoformat() if license_obj.expires_at else None,
+    }
+
+
+@router.post(
+    "/renewals/quota",
+    response_model=BillingPaymentResponse,
+    status_code=201,
+    summary="Create a KHQR checkout to renew the current user's quota plan",
+)
+async def create_quota_renewal(
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> BillingPaymentResponse:
+    """Start a one-month quota renewal checkout via the active billing provider."""
+    provider = await _get_active_provider(pool)
+    return await _create_quota_renewal_payment_response(
         provider=provider or "",
         ctx=ctx,
         pool=pool,
