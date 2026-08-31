@@ -25,7 +25,18 @@ logger = logging.getLogger(__name__)
 
 _MIN_MP3_BYTES = 4096
 _CHUNK_SIZE = 1024 * 1024
-_DISALLOWED_URL_MARKERS = (".m4a", ".aac", ".m3u8", "/m4a/", "audio/mp4", "video/mp4", "x-m4a")
+_DISALLOWED_URL_MARKERS = (
+    ".m4a",
+    ".aac",
+    ".m3u8",
+    "/m4a/",
+    "audio/mp4",
+    "video/mp4",
+    "x-m4a",
+    # musicfile.removeai.ai is the cover/stream host, not the finished MP3
+    # (GET returns 200 audio/mp3 with 0 bytes). Never store it as a download URL.
+    "musicfile.removeai.ai",
+)
 _DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
     "Accept": "audio/mpeg,application/octet-stream,*/*;q=0.8",

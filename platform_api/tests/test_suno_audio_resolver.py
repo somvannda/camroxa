@@ -158,7 +158,7 @@ def test_parse_suno_generate_poll_rewrites_suno_m4a_to_mp3() -> None:
         }
     )
     assert parsed.state == "success"
-    assert parsed.audio_url_ok == f"https://cdn1.suno.ai/{clip_id}.mp3"
+    assert parsed.audio_url_ok == f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
     assert parsed.audio_id_ok == clip_id
 
 
@@ -241,15 +241,17 @@ def test_extract_callback_synthesizes_cdn_url_when_clip_has_id_only() -> None:
     assert parsed.audio_id_alt == "25d27d13-10a9-4b73-9e2e-b344da4cf0c8"
     assert (
         parsed.audio_url_alt
-        == "https://cdn1.suno.ai/25d27d13-10a9-4b73-9e2e-b344da4cf0c8.mp3"
+        == "https://tempfile.aiquickdraw.com/r/25d27d13-10a9-4b73-9e2e-b344da4cf0c8.mp3"
     )
 
 
 def test_cdn_url_for_suno_audio_id() -> None:
     from platform_api.clients.suno_client import cdn_url_for_suno_audio_id, coerce_suno_download_url
 
-    assert cdn_url_for_suno_audio_id("abc-123") == "https://cdn1.suno.ai/abc-123.mp3"
-    assert coerce_suno_download_url(url="", audio_id="abc-123") == "https://cdn1.suno.ai/abc-123.mp3"
+    assert cdn_url_for_suno_audio_id("abc-123") == "https://tempfile.aiquickdraw.com/r/abc-123.mp3"
+    assert coerce_suno_download_url(url="", audio_id="abc-123") == (
+        "https://tempfile.aiquickdraw.com/r/abc-123.mp3"
+    )
     assert coerce_suno_download_url(url="https://cdn.example.com/x.mp3", audio_id="abc") == (
         "https://cdn.example.com/x.mp3"
     )
@@ -258,26 +260,49 @@ def test_cdn_url_for_suno_audio_id() -> None:
 def test_coerce_suno_download_url_rewrites_cdn_m4a_to_mp3() -> None:
     from platform_api.clients.suno_client import coerce_suno_download_url, prefer_suno_mpeg_cdn_url
 
-    m4a = "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.m4a"
-    mp3 = "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.mp3"
-    assert prefer_suno_mpeg_cdn_url(m4a) == mp3
-    assert coerce_suno_download_url(url=m4a) == mp3
-    assert coerce_suno_download_url(url=mp3) == mp3
+    clip_id = "441cb4bf-f013-4c88-8ea1-9d17499b1762"
+    m4a = f"https://cdn1.suno.ai/{clip_id}.m4a"
+    mp3 = f"https://cdn1.suno.ai/{clip_id}.mp3"
+    tempfile = f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
+    assert prefer_suno_mpeg_cdn_url(m4a) == tempfile
+    assert coerce_suno_download_url(url=m4a) == tempfile
+    assert coerce_suno_download_url(url=mp3) == tempfile
+    signed = f"https://cdn1.suno.ai/{clip_id}.mp3?Key-Pair-Id=K&Signature=s&Policy=p"
+    assert coerce_suno_download_url(url=signed) == signed
     assert coerce_suno_download_url(url="https://cdn.example.com/clip.m4a") == (
         "https://cdn.example.com/clip.m4a"
     )
 
 
 def test_extract_clip_download_url_rewrites_suno_m4a() -> None:
+    clip_id = "441cb4bf-f013-4c88-8ea1-9d17499b1762"
     clip = {
-        "id": "441cb4bf-f013-4c88-8ea1-9d17499b1762",
-        "source_audio_url": "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.m4a",
-        "audio_url": "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.mp3",
+        "id": clip_id,
+        "source_audio_url": f"https://cdn1.suno.ai/{clip_id}.m4a",
+        "audio_url": f"https://cdn1.suno.ai/{clip_id}.mp3",
     }
-    assert (
-        _extract_clip_download_url(clip)
-        == "https://cdn1.suno.ai/441cb4bf-f013-4c88-8ea1-9d17499b1762.mp3"
-    )
+    assert _extract_clip_download_url(clip) == f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
+
+
+def test_extract_clip_download_url_rejects_musicfile_and_stores_tempfile() -> None:
+    clip_id = "952982b2-f134-4ac6-a3d2-aa1404df1ee9"
+    clip = {
+        "id": clip_id,
+        # musicfile.removeai.ai is the cover host (0-byte/JPEG), not the MP3.
+        "audioUrl": "https://musicfile.removeai.ai/Y2Y0YWU2MmI",
+        "audio_url": f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3",
+    }
+    assert _extract_clip_download_url(clip) == f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
+
+
+def test_extract_clip_download_url_musicfile_only_synthesizes_tempfile() -> None:
+    clip_id = "952982b2-f134-4ac6-a3d2-aa1404df1ee9"
+    clip = {
+        "id": clip_id,
+        "audioUrl": "https://musicfile.removeai.ai/Y2Y0YWU2MmI",
+        "sourceAudioUrl": "https://cdn1.suno.ai/unsigned.mp3",
+    }
+    assert _extract_clip_download_url(clip) == f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
 
 
 def test_payload_is_mpeg_audio_rejects_iso_bmff() -> None:
@@ -297,6 +322,7 @@ def test_is_disallowed_suno_audio_url_rejects_m4a_and_hls() -> None:
 
     assert is_disallowed_suno_audio_url("https://cdn.example.com/track.m4a") is True
     assert is_disallowed_suno_audio_url("https://cdn.example.com/stream.m3u8") is True
+    assert is_disallowed_suno_audio_url("https://musicfile.removeai.ai/Y2Y0YWU2MmI.mp3") is True
     assert is_disallowed_suno_audio_url("https://cdn1.suno.ai/abc.mp3") is False
     assert build_download_url_candidates(
         "https://cdn.example.com/track.m4a",

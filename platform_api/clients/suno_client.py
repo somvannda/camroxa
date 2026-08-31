@@ -186,8 +186,9 @@ def parse_suno_lyrics_poll(response: dict[str, Any]) -> SunoLyricsPollResult:
 def _extract_clip_download_url(clip: dict[str, Any]) -> str:
     """Return the best URL for downloading a finished MP3 (not stream preview).
 
-    Prefer callback/record-info ``audio_url`` / ``audioUrl``. Suno now signs
-    those (often ``tempfile.aiquickdraw.com``). ``source_audio_url`` is the
+    Prefer callback/record-info download links. Suno documents both
+    ``audioUrl`` (camelCase, live callbacks) and ``audio_url`` (snake_case,
+    generate-complete docs). Either is accepted; ``source_audio_url`` is the
     unsigned ``cdn1.suno.ai/{id}.mp3`` link, which CloudFront rejects with
     MissingKey unless a Key-Pair-Id is present.
     """
@@ -195,14 +196,19 @@ def _extract_clip_download_url(clip: dict[str, Any]) -> str:
 
     audio_id = _extract_clip_audio_id(clip)
     for key in (
-        "audio_url",
         "audioUrl",
-        "source_audio_url",
+        "audio_url",
         "sourceAudioUrl",
+        "source_audio_url",
     ):
         url = str(clip.get(key, "")).strip()
         if url and not is_disallowed_suno_audio_url(url):
             return prefer_suno_mpeg_cdn_url(url, audio_id)
+    # Callback only carried rejected hosts (e.g. musicfile cover JPEG) or no
+    # usable URL. The finished MP3 lives on the tempfile host keyed by clip id.
+    # Same id => no new Suno generation/charge.
+    if audio_id:
+        return tempfile_url_for_suno_audio_id(audio_id)
     return ""
 
 
@@ -251,25 +257,59 @@ def _extract_clip_audio_id(clip: dict[str, Any]) -> str:
     return ""
 
 
-def cdn_url_for_suno_audio_id(audio_id: str | None) -> str:
-    """Stable Suno CDN MP3 URL from a clip/audio id (14-day retention).
+_SUNO_CDN_HOST_MARKERS = ("cdn1.suno.ai", "cdn2.suno.ai", "cdn.suno.ai")
+_SIGNED_CDN_QUERY_MARKERS = ("key-pair-id=", "signature=", "policy=")
+_TEMPFILE_AUDIO_PREFIX = "https://tempfile.aiquickdraw.com/r/"
+_NON_MPEG_CDN_SUFFIXES = (".m4a", ".mp4", ".webm", ".opus", ".aac")
 
-    Used when callbacks/polls store ``audio_id_*`` but omit ``audio_url_*``.
-    """
+
+def _suno_cdn_clip_id(url: str) -> str:
+    from urllib.parse import unquote, urlsplit
+
+    name = unquote(urlsplit(str(url or "")).path or "").rsplit("/", 1)[-1].strip()
+    if not name:
+        return ""
+    if "." in name:
+        name = name.rsplit(".", 1)[0]
+    return name.strip()
+
+
+def is_unsigned_suno_cdn_url(url: str | None) -> bool:
+    """True for CloudFront-blocked ``cdn*.suno.ai`` links (no signed query)."""
+    from urllib.parse import urlsplit
+
+    text = str(url or "").strip()
+    if not text.startswith(("http://", "https://")):
+        return False
+    parts = urlsplit(text)
+    host = (parts.netloc or "").lower()
+    if not any(marker in host for marker in _SUNO_CDN_HOST_MARKERS):
+        return False
+    query = (parts.query or "").lower()
+    return not any(marker in query for marker in _SIGNED_CDN_QUERY_MARKERS)
+
+
+def tempfile_url_for_suno_audio_id(audio_id: str | None) -> str:
+    """Working download host for a Suno clip id (unsigned CDN returns 403)."""
     value = str(audio_id or "").strip()
     if not value:
         return ""
     if value.startswith(("http://", "https://")):
         return prefer_suno_mpeg_cdn_url(value)
-    return f"https://cdn1.suno.ai/{value}.mp3"
+    return f"{_TEMPFILE_AUDIO_PREFIX}{value}.mp3"
 
 
-_SUNO_CDN_HOST_MARKERS = ("cdn1.suno.ai", "cdn2.suno.ai", "cdn.suno.ai")
-_NON_MPEG_CDN_SUFFIXES = (".m4a", ".mp4", ".webm", ".opus", ".aac")
+def cdn_url_for_suno_audio_id(audio_id: str | None) -> str:
+    """Download URL from a clip/audio id when callbacks omit ``audio_url_*``.
+
+    Unsigned ``cdn1.suno.ai/{id}.mp3`` is CloudFront MissingKey. The tempfile
+    path ``/r/{id}.mp3`` is the working sibling used in live callbacks.
+    """
+    return tempfile_url_for_suno_audio_id(audio_id)
 
 
 def prefer_suno_mpeg_cdn_url(url: str, audio_id: str | None = None) -> str:
-    """Suno now often returns ``{id}.m4a`` (Opus) while ``{id}.mp3`` is the MPEG file.
+    """Prefer a downloadable MPEG URL. Unsigned Suno CDN is rewritten to tempfile.
 
     Studio download always wants the MP3. Same clip id; no extra generate.
     """
@@ -277,7 +317,14 @@ def prefer_suno_mpeg_cdn_url(url: str, audio_id: str | None = None) -> str:
 
     text = str(url or "").strip()
     if not text.startswith(("http://", "https://")):
-        return cdn_url_for_suno_audio_id(audio_id) if audio_id else ""
+        return tempfile_url_for_suno_audio_id(audio_id)
+    if is_unsigned_suno_cdn_url(text):
+        clip = str(audio_id or "").strip()
+        if not clip or clip.startswith(("http://", "https://")):
+            clip = _suno_cdn_clip_id(text)
+        guessed = tempfile_url_for_suno_audio_id(clip)
+        if guessed:
+            return guessed
     lower = text.lower()
     if lower.endswith(".mp3") or ".mp3?" in lower:
         return text
@@ -293,7 +340,7 @@ def prefer_suno_mpeg_cdn_url(url: str, audio_id: str | None = None) -> str:
             return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
     clip_id = str(audio_id or "").strip()
     if clip_id and not clip_id.startswith(("http://", "https://")):
-        return cdn_url_for_suno_audio_id(clip_id)
+        return tempfile_url_for_suno_audio_id(clip_id)
     return text
 
 
@@ -314,15 +361,15 @@ def payload_is_mpeg_audio(content: bytes) -> bool:
 
 
 def coerce_suno_download_url(*, url: str | None = None, audio_id: str | None = None) -> str:
-    """Prefer an explicit http(s) URL; otherwise synthesize CDN from audio id.
+    """Prefer a downloadable http(s) URL; unsigned Suno CDN becomes tempfile.
 
-    Suno CDN ``.m4a`` links are rewritten to ``.mp3`` so the desktop never
+    Suno CDN ``.m4a`` links are rewritten to MPEG so the desktop never
     saves Opus-in-MP4 under an ``*_OK.mp3`` name.
     """
     text = str(url or "").strip()
     if text.startswith(("http://", "https://")):
         return prefer_suno_mpeg_cdn_url(text, audio_id)
-    return cdn_url_for_suno_audio_id(audio_id)
+    return tempfile_url_for_suno_audio_id(audio_id)
 
 
 def _clip_metadata(clip: dict[str, Any]) -> tuple[str, str, float | None, str, str]:
