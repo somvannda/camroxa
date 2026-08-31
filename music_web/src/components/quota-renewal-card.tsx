@@ -46,6 +46,32 @@ export default function QuotaRenewalCard() {
 
   const expiryLabel = formatExpiry(renewal.expires_at);
   const priceLabel = formatPrice(renewal.price_cents ?? 0);
+  const expiryDate = renewal.expires_at ? new Date(renewal.expires_at) : null;
+  const daysLeft =
+    expiryDate && Number.isFinite(expiryDate.getTime())
+      ? Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : null;
+  const isExpired = daysLeft != null && daysLeft <= 0;
+  const isSoon = daysLeft != null && daysLeft > 0 && daysLeft <= 7;
+  const statusBadge = isExpired
+    ? {
+        label: daysLeft === 0 ? 'Expires today' : `Expired ${Math.abs(daysLeft ?? 0)}d ago`,
+        cls: 'rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-medium text-red-300',
+      }
+    : isSoon
+      ? {
+          label: `Expires in ${daysLeft ?? 0}d`,
+          cls: 'rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-xs font-medium text-yellow-300',
+        }
+      : daysLeft != null
+        ? {
+            label: `${daysLeft}d left`,
+            cls: 'rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300',
+          }
+        : {
+            label: 'Active',
+            cls: 'rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300',
+          };
 
   async function onRenew() {
     setPurchasing(true);
@@ -73,18 +99,21 @@ export default function QuotaRenewalCard() {
   return (
     <>
       <div className="rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 via-[rgba(8,10,20,0.55)] to-transparent p-8">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="rounded-full bg-gradient-to-br from-purple-500 to-pink-500 p-2">
-            <RefreshCw className="h-5 w-5 text-white" />
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-full bg-gradient-to-br from-purple-500 to-pink-500 p-2">
+              <RefreshCw className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <h2 className="font-display text-xl font-semibold text-white">
+                {renewal.plan_name ?? 'Your plan'}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {expiryLabel ? `Renews ${expiryLabel}` : 'Desktop quota plan'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-display text-xl font-semibold text-white">
-              {renewal.plan_name ?? 'Your plan'}
-            </h2>
-            <p className="text-xs text-slate-400">
-              {expiryLabel ? `Renews ${expiryLabel}` : 'Desktop quota plan'}
-            </p>
-          </div>
+          <span className={statusBadge.cls}>{statusBadge.label}</span>
         </div>
 
         <p className="mb-5 text-sm text-slate-400">
