@@ -419,6 +419,51 @@ class LicenseRepository:
             return None
         return _row_to_license(row)
 
+    async def get_latest_license_for_user(self, user_id: UUID) -> License | None:
+        """Return the user's most recent non-revoked license (active or past-due).
+
+        Unlike ``get_active_for_user`` this also matches licenses whose
+        ``expires_at`` has already passed, so a lapsed quota plan can still be
+        renewed for the next period.
+        """
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT {_LICENSE_SELECT}
+            FROM licenses
+            WHERE user_id = $1
+              AND status IN ('active', 'expired')
+            ORDER BY activated_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
+    async def extend_license(self, license_id: UUID, days: int) -> License | None:
+        """Extend the license expiry by ``days`` from the later of now or current expiry.
+
+        Reactivates an expired/past-due license so a paid renewal restores access
+        without resetting any remaining time on a still-active license.
+        """
+        extension_days = max(1, int(days or 30))
+        row = await self._pool.fetchrow(
+            f"""
+            UPDATE licenses
+            SET expires_at = GREATEST(COALESCE(expires_at, NOW()), NOW())
+                              + ({extension_days} * INTERVAL '1 day'),
+                revoked_at = NULL,
+                status = 'active'
+            WHERE id = $1
+            RETURNING {_LICENSE_SELECT}
+            """,
+            license_id,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
     async def has_active_license(self, user_id: str) -> bool:
         """Check if a user has an active non-expired license.
 

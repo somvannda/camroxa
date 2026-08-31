@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Check, ExternalLink, Loader2, QrCode, X } from 'lucide-react';
 import {
+  fetchQuotaRenewalCheckoutStatus,
   fetchSubscriptionCheckoutStatus,
   fetchTopupCheckoutStatus,
   formatPlanDisplayName,
@@ -18,10 +19,11 @@ type CutluyCheckoutModalProps = {
   checkoutUrl: string | null;
   qrString?: string | null;
   paymentId?: string | null;
-  kind?: 'subscription' | 'topup';
+  kind?: 'subscription' | 'topup' | 'renewal';
   title?: string;
   planName?: string;
   planPrice?: string;
+  paidHref?: string;
   onClose: () => void;
 };
 
@@ -34,6 +36,7 @@ export default function CutluyCheckoutModal({
   title = 'Complete payment with KHQR',
   planName,
   planPrice,
+  paidHref = '/create',
   onClose,
 }: CutluyCheckoutModalProps) {
   const router = useRouter();
@@ -58,7 +61,9 @@ export default function CutluyCheckoutModal({
         const next =
           kind === 'topup'
             ? await fetchTopupCheckoutStatus(paymentId)
-            : await fetchSubscriptionCheckoutStatus(paymentId);
+            : kind === 'renewal'
+              ? await fetchQuotaRenewalCheckoutStatus(paymentId)
+              : await fetchSubscriptionCheckoutStatus(paymentId);
         if (cancelled) return;
         setStatus(next);
         setPollError(null);
@@ -96,9 +101,9 @@ export default function CutluyCheckoutModal({
       : formatPlanDisplayName(rawName);
   const credits = status?.credits ?? 0;
 
-  const goToCreate = () => {
+  const goAfterPaid = () => {
     onClose();
-    router.push('/create');
+    router.push(paidHref);
   };
 
   const heading = paid
@@ -114,7 +119,7 @@ export default function CutluyCheckoutModal({
   const modal = (
     <div
       className="fixed inset-0 z-[220] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-4"
-      onClick={paid ? goToCreate : onClose}
+      onClick={paid ? goAfterPaid : onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="cutluy-checkout-title"
@@ -136,7 +141,11 @@ export default function CutluyCheckoutModal({
               </h2>
             </div>
             {paid ? (
-              <p className="mt-1 pl-7 text-sm text-slate-400">Credits are now on your account.</p>
+              <p className="mt-1 pl-7 text-sm text-slate-400">
+                {kind === 'renewal'
+                  ? 'Your plan has been renewed for another period.'
+                  : 'Credits are now on your account.'}
+              </p>
             ) : failed ? (
               <p className="mt-1 pl-7 text-sm text-slate-400">No credits were added. You can try again from Create.</p>
             ) : planPrice ? (
@@ -149,7 +158,7 @@ export default function CutluyCheckoutModal({
           </div>
           <button
             type="button"
-            onClick={paid ? goToCreate : onClose}
+            onClick={paid ? goAfterPaid : onClose}
             className="shrink-0 rounded-full p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
             aria-label="Close"
           >
@@ -165,12 +174,16 @@ export default function CutluyCheckoutModal({
             <div>
               <p className="text-lg font-semibold text-white">{displayName}</p>
               <p className="mt-1 text-sm text-slate-400">
-                {credits > 0 ? `${credits.toLocaleString()} credits added` : 'Your purchase is active.'}
+                {credits > 0
+                  ? `${credits.toLocaleString()} credits added`
+                  : kind === 'renewal'
+                    ? 'Your plan renewal is active.'
+                    : 'Your purchase is active.'}
               </p>
             </div>
             <button
               type="button"
-              onClick={goToCreate}
+              onClick={goAfterPaid}
               className="flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-sm font-medium text-white"
             >
               Close

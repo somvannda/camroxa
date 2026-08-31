@@ -6,6 +6,7 @@ import { Camera, Download, ExternalLink, Library, Loader2, LogOut } from 'lucide
 
 import { useAuth } from '@/components/auth-provider';
 import CreditBalanceCard from '@/components/credit-balance-card';
+import QuotaRenewalCard from '@/components/quota-renewal-card';
 import SubscriptionSection from '@/components/subscription-section';
 import { getUserAvatarUrl, uploadMusicUserAvatar } from '@/lib/auth-api';
 import { fetchCreditBalance, fetchMySubscription } from '@/lib/subscription-api';
@@ -180,6 +181,7 @@ export default function ProfilePageClient() {
       </div>
 
       <CreditBalanceCard />
+      <QuotaRenewalCard />
       <SubscriptionSection />
     </div>
   );

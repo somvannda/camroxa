@@ -434,6 +434,60 @@ export async function fetchTopupCheckoutStatus(paymentId: string): Promise<Check
   return apiFetch(`${API_V3}/topups/payments/${encodeURIComponent(paymentId)}`);
 }
 
+// ============================================================================
+// Quota (desktop plan) renewal API
+// ============================================================================
+
+export type QuotaRenewal = {
+  eligible: boolean;
+  plan_id?: string;
+  plan_name?: string;
+  price_cents?: number;
+  billing_cycle_days?: number;
+  expires_at?: string | null;
+};
+
+export async function fetchQuotaRenewal(): Promise<QuotaRenewal> {
+  return apiFetch<QuotaRenewal>(`${API_V3}/billing/renewals/quota`);
+}
+
+export async function purchaseQuotaRenewal(): Promise<{
+  checkout_url: string;
+  payment_id: string;
+  qr_string?: string;
+}> {
+  const data = await apiFetch<{
+    checkout_url: string;
+    id: string;
+    qr_string?: string | null;
+  }>(`${API_V3}/billing/renewals/quota`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  return {
+    checkout_url: data.checkout_url,
+    payment_id: data.id,
+    qr_string: data.qr_string || undefined,
+  };
+}
+
+export async function fetchQuotaRenewalCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
+  const data = await apiFetch<{
+    status?: string;
+    fulfilled_at?: string | null;
+    plan_name?: string | null;
+  }>(`${API_V3}/billing/payments/${encodeURIComponent(paymentId)}`);
+  const status = data.status ?? 'pending';
+  const paid = status === 'paid' && data.fulfilled_at != null;
+  return {
+    status,
+    fulfilled: paid,
+    plan_name: data.plan_name ?? '',
+    credits: 0,
+  };
+}
+
 export async function fetchTopupHistory(
   limit = 50,
   offset = 0,
@@ -506,6 +560,7 @@ export function matchCurrentPlan(
 /**
  * Format credits as songs equivalent (10 credits = 1 generate = 2 songs)
  */
+
 export function creditHeadlineNumber(plan: {
   monthly_credits?: number;
   daily_credits?: number;
