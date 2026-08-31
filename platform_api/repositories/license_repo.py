@@ -442,10 +442,11 @@ class LicenseRepository:
         return _row_to_license(row)
 
     async def extend_license(self, license_id: UUID, days: int) -> License | None:
-        """Extend the license expiry by ``days`` from the later of now or current expiry.
+        """Extend the license expiry by ``days`` and reset the quota period.
 
-        Reactivates an expired/past-due license so a paid renewal restores access
-        without resetting any remaining time on a still-active license.
+        Reactivates an expired/past-due license and, by resetting ``activated_at``
+        to now, starts a fresh quota window so the monthly usage counter resets
+        immediately after a paid renewal.
         """
         extension_days = max(1, int(days or 30))
         row = await self._pool.fetchrow(
@@ -453,6 +454,7 @@ class LicenseRepository:
             UPDATE licenses
             SET expires_at = GREATEST(COALESCE(expires_at, NOW()), NOW())
                               + ({extension_days} * INTERVAL '1 day'),
+                activated_at = NOW(),
                 revoked_at = NULL,
                 status = 'active'
             WHERE id = $1
