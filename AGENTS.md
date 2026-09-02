@@ -6,6 +6,18 @@
 - Do not ship unrelated dirty work: path-scope commits and file-scoped production hotfixes when the tree is mixed.
 - Full rules: `.cursor/rules/branch-isolation-and-ship-gates.mdc` and `.cursor/rules/sandbox-first-deploy.mdc`.
 
+## Session & Git Workflow (mandatory)
+- One commit = one logical change. **Commit before switching tasks** — never leave work from two tasks in the same uncommitted state.
+- Start each session from a clean `main` on a fresh branch: `git checkout -b <task>/<short-name>`.
+- Commit early and often, even incomplete checkpoints (prefix rough ones `WIP:`) — never wait for a task to be "fully done" before the first commit.
+- When a related task/bug arrives mid-session, ask 3 questions and act:
+  - **Blocking** the current task → fix it first, in its own small commit.
+  - **Small + same code area** → fold in as a separate commit on the same branch (2 commits, not 1).
+  - **Big or unrelated** → park it: record as a TODO, finish the current task, commit + push, then start a new branch from `main`.
+- End of session: push the branch and **leave the worktree clean** (no uncommitted changes left behind).
+- Parallel work: one worktree per active task, **one agent per worktree**. Never run two agents in the same directory/worktree simultaneously.
+- Never accumulate uncommitted changes across many worktrees "for later".
+
 ## App Identity
 - App name: **CAMXORA** (never "AI", "NEXORA AI", or other names)
 - Desktop music/video studio app with PyQt6 native widget UI
