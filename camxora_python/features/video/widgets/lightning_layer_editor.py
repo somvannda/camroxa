@@ -7,7 +7,6 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDial,
     QHBoxLayout,
@@ -31,6 +30,7 @@ from features.video.lib.lightning_style_registry import (
     normalize_lightning_style,
     normalize_lightning_trigger,
 )
+from features.create.widgets.studio_controls import StudioCheckBox
 from features.video.widgets.inspector_fields import InspectorSection, build_color_field, build_float_slider
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import form_row, note_box
@@ -95,7 +95,7 @@ class LightningLayerEditor(InspectorSection):
         self._name_input.textChanged.connect(lambda text: self.layer_patch_requested.emit({"name": text}))
         self.add_widget(form_row("Name", self._name_input))
 
-        self._enabled = QCheckBox("Enabled")
+        self._enabled = StudioCheckBox("Enabled")
         self._enabled.toggled.connect(lambda checked: self.layer_patch_requested.emit({"enabled": checked}))
         self.add_widget(self._enabled)
 
@@ -105,7 +105,7 @@ class LightningLayerEditor(InspectorSection):
         self.add_widget(self._build_combo("blend", "Blend", LIGHTNING_BLEND_OPTIONS))
         self.add_widget(self._build_combo("trigger", "Trigger", LIGHTNING_TRIGGER_OPTIONS))
 
-        self._seed_lock = QCheckBox("Lock Seed (stable bolt shape)")
+        self._seed_lock = StudioCheckBox("Lock Seed (stable bolt shape)")
         self._seed_lock.toggled.connect(lambda checked: self.layer_patch_requested.emit({"seedLock": checked}))
         self.add_widget(self._seed_lock)
 

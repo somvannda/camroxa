@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+
+from features.create.widgets.studio_controls import StudioCheckBox
 
 from features.video.lib.lightning_style_registry import LIGHTNING_PRESET_OPTIONS
 from features.video.widgets.inspector_fields import InspectorSection
@@ -26,7 +28,7 @@ class LightningInspector(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._binding = False
-        self._enabled_toggle: QCheckBox | None = None
+        self._enabled_toggle: StudioCheckBox | None = None
         self._layer_editor = LightningLayerEditor(self)
 
         root = QVBoxLayout(self)
@@ -37,7 +39,7 @@ class LightningInspector(QWidget):
             "Lightning",
             subtitle="Background lightning bolts. Stack many layers; each has its own style and position.",
         )
-        self._enabled_toggle = QCheckBox("Enable Lightning")
+        self._enabled_toggle = StudioCheckBox("Enable Lightning")
         self._enabled_toggle.toggled.connect(
             lambda checked: self.draft_patch_requested.emit({"lightningEnabled": checked})
         )

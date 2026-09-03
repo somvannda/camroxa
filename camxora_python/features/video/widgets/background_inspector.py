@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.studio_controls import StudioCheckBox
+
 from features.video.lib.background_settings import BACKGROUND_FIT_OPTIONS, BACKGROUND_MOTION_OPTIONS
 from features.video.lib.background_style_registry import BACKGROUND_STYLE_PRESETS
 from features.video.widgets.inspector_fields import (
@@ -53,7 +55,7 @@ class BackgroundInspector(QWidget):
             "Background",
             subtitle="Reactive image treatment for the current background.",
         )
-        self._enabled_toggle = QCheckBox("Background Image")
+        self._enabled_toggle = StudioCheckBox("Background Image")
         self._enabled_toggle.toggled.connect(
             lambda checked: self._emit_patch({"backgroundEnabled": checked})
         )
@@ -259,7 +261,7 @@ class BackgroundInspector(QWidget):
         return widget
 
     def _add_toggle(self, field: str, label: str, patch_builder: Callable[[bool], dict]) -> QCheckBox:
-        checkbox = QCheckBox(label)
+        checkbox = StudioCheckBox(label)
         checkbox.toggled.connect(lambda checked: self._emit_patch(patch_builder(checked)))
         setattr(self, f"_{field}_toggle", checkbox)
         return checkbox

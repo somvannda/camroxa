@@ -9,7 +9,6 @@ from PySide6.QtCore import QEvent, QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -28,6 +27,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from features.create.widgets.studio_controls import StudioCheckBox
 
 from shared.models.desktop import VideoExportState, VideoWorkspaceState
 from shared.lib.export_bitrate import format_bitrate_mbps, recommended_export_bitrate_kbps
@@ -281,9 +282,9 @@ class ExportQueuePanel(QWidget):
         toggles_row = QHBoxLayout()
         toggles_row.setContentsMargins(0, 0, 0, 0)
         toggles_row.setSpacing(16)
-        self._auto_merge_toggle = QCheckBox("Auto merge MP4")
+        self._auto_merge_toggle = StudioCheckBox("Auto merge MP4")
         self._auto_merge_toggle.toggled.connect(self._on_auto_merge_toggled)
-        self._shuffle_merge_toggle = QCheckBox("Shuffle merge")
+        self._shuffle_merge_toggle = StudioCheckBox("Shuffle merge")
         self._shuffle_merge_toggle.setToolTip(
             "When checked, merged MP4 order is randomized (like python_app).\n"
             "When unchecked, merge follows the track list order."

@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.studio_controls import StudioCheckBox
+
 from features.video.lib.spectrum_style_registry import ANCHOR_OPTIONS
 from features.video.lib.text_editor import get_text_anchor_alignment
 from features.video.lib.text_settings import TEXT_ANIMATION_OPTIONS
@@ -297,7 +299,7 @@ class TextAnimationPanel(QWidget):
         layout.setSpacing(8)
 
         section = InspectorSection("Animation")
-        self._enabled_toggle = QCheckBox("Enable")
+        self._enabled_toggle = StudioCheckBox("Enable")
         self._enabled_toggle.toggled.connect(
             lambda checked: self.overlay_patch_requested.emit({"enabled": checked})
         )

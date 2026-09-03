@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+
+from features.create.widgets.studio_controls import StudioCheckBox
 
 from features.video.lib.particle_settings import (
     PARTICLE_MOTION_PRESETS,
@@ -71,7 +73,7 @@ class ParticlesInspector(QWidget):
             "Particles",
             subtitle="Control density, motion, and visual behavior for the particle system.",
         )
-        self._enabled_toggle = QCheckBox("Particles")
+        self._enabled_toggle = StudioCheckBox("Particles")
         self._enabled_toggle.toggled.connect(
             lambda checked: self._emit_patch({"particlesEnabled": checked})
         )
@@ -115,7 +117,7 @@ class ParticlesInspector(QWidget):
         section.add_widget(self._build_combo("particlesTravelMode", "Travel Mode", PARTICLE_TRAVEL_MODE_OPTIONS))
         section.add_widget(self._build_combo("particlesSpawnMode", "Spawn Mode", PARTICLE_SPAWN_MODE_OPTIONS))
 
-        self._trail_toggle = QCheckBox("Motion Trail")
+        self._trail_toggle = StudioCheckBox("Motion Trail")
         self._trail_toggle.setToolTip(
             "Draw fading position history behind each particle. Particles domain only."
         )

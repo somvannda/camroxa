@@ -7,7 +7,6 @@ from typing import Any
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QGridLayout,
     QHBoxLayout,
@@ -17,6 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from features.create.widgets.studio_controls import StudioCheckBox
 
 from features.video.lib.spectrum_color_engine import (
     MAX_GRADIENT_COLOR_STOPS,
@@ -195,7 +196,7 @@ class SpectrumLayerEditor(InspectorSection):
                 ("reflectionEnabled", "Floor Reflection"),
             )
         ):
-            checkbox = QCheckBox(label)
+            checkbox = StudioCheckBox(label)
             if field == "fillCircle":
                 checkbox.setToolTip(
                     "Fills the inside of a circular spectrum. Turns on Circle Form if needed."
@@ -308,7 +309,7 @@ class SpectrumLayerEditor(InspectorSection):
                 widget.setToolTip(tip)
             self.add_widget(widget)
 
-        self._peak_caps_enabled = QCheckBox("Peak Caps")
+        self._peak_caps_enabled = StudioCheckBox("Peak Caps")
         self._peak_caps_enabled.setToolTip(
             "Floating caps that hold peak bar heights. Arms Peak Hold Blend if it was zero."
         )

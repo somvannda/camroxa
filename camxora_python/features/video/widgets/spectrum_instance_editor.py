@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLineEdit,
     QPushButton,
     QWidget,
 )
+
+from features.create.widgets.studio_controls import StudioCheckBox
 
 from features.video.widgets.inspector_fields import InspectorSection
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID
@@ -68,7 +69,7 @@ class SpectrumInstanceEditor(InspectorSection):
         self._name_input.textChanged.connect(lambda text: self._emit_patch({"name": text}))
         self.add_widget(form_row("Name", self._name_input))
 
-        self._enabled = QCheckBox("Enabled")
+        self._enabled = StudioCheckBox("Enabled")
         self._enabled.toggled.connect(lambda checked: self._emit_patch({"enabled": checked}))
         self.add_widget(self._enabled)
 
