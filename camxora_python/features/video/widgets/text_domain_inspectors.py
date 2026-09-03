@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.studio_controls import StudioCheckBox
+
 from features.video.lib.text_color_engine import (
     TEXT_FILL_MODE_OPTIONS,
     TEXT_GLOW_MODE_OPTIONS,
@@ -112,7 +114,7 @@ class _TextDomainInspectorBase(QWidget):
         self._effect_pack_host.setContentsMargins(0, 0, 0, 0)
         section.add_layout(self._effect_pack_host)
 
-        self._enable = QCheckBox(self._ENABLE_LABEL)
+        self._enable = StudioCheckBox(self._ENABLE_LABEL)
         self._enable.toggled.connect(lambda checked: self._emit_patch({f"{self._PREFIX}Enabled": checked}))
         section.add_widget(self._enable)
 
@@ -156,9 +158,9 @@ class _TextDomainInspectorBase(QWidget):
         style.add_widget(_stacked_field("Font", self._font_combo))
 
         weight_row = QHBoxLayout()
-        self._bold = QCheckBox("Bold")
+        self._bold = StudioCheckBox("Bold")
         self._bold.toggled.connect(lambda checked: self._emit_patch({f"{self._PREFIX}Bold": checked}))
-        self._italic = QCheckBox("Italic")
+        self._italic = StudioCheckBox("Italic")
         self._italic.toggled.connect(lambda checked: self._emit_patch({f"{self._PREFIX}Italic": checked}))
         weight_row.addWidget(self._bold)
         weight_row.addWidget(self._italic)
@@ -604,7 +606,7 @@ class TitleInspector(_TextDomainInspectorBase):
             ("titleActiveRowPlate", "Active row neon plate"),
             ("titleTrackCountBadge", "Track count badge"),
         ):
-            box = QCheckBox(label)
+            box = StudioCheckBox(label)
             box.toggled.connect(
                 lambda checked, key=field: (
                     None if self._binding else self._emit_patch({key: bool(checked)})

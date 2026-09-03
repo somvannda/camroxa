@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -16,6 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from features.create.widgets.studio_controls import StudioCheckBox
 
 from features.video.lib.logo_settings import (
     LOGO_MOTION_OPTIONS,
@@ -66,9 +67,9 @@ class LogoInspector(QWidget):
         )
         toggles = QHBoxLayout()
         toggles.setContentsMargins(0, 0, 0, 0)
-        self._logo_enabled = QCheckBox("Logo")
+        self._logo_enabled = StudioCheckBox("Logo")
         self._logo_enabled.toggled.connect(lambda checked: self._emit_patch({"logoEnabled": checked}))
-        self._spin_enabled = QCheckBox("Spin")
+        self._spin_enabled = StudioCheckBox("Spin")
         self._spin_enabled.toggled.connect(lambda checked: self._emit_patch({"logoSpinEnabled": checked}))
         toggle_host = QWidget()
         toggle_host.setLayout(toggles)
@@ -141,7 +142,7 @@ class LogoInspector(QWidget):
         self._float_setters["logoSizeStep"] = size_setter
         section.add_widget(size_widget)
 
-        self._attach_toggle = QCheckBox("Attach Spectrum to Logo")
+        self._attach_toggle = StudioCheckBox("Attach Spectrum to Logo")
         self._attach_toggle.setToolTip(
             "When on: spectrum rings lock around the logo and both share position — drag the logo on the preview. "
             "When off: drag the logo freely; move the spectrum from the Spectrum tab."

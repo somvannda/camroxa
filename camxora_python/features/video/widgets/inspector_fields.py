@@ -7,7 +7,6 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QColorDialog,
     QLabel,
@@ -16,6 +15,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from features.create.widgets.studio_controls import StudioCheckBox
 
 from shared.themes.deep_blue import SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import SettingsPanel, form_row
@@ -58,7 +59,7 @@ def slider_row(
 
 
 def toggle_row(label: str, *, checked: bool, on_change: Callable[[bool], None]) -> QWidget:
-    checkbox = QCheckBox(label)
+    checkbox = StudioCheckBox(label)
     checkbox.setChecked(checked)
     checkbox.toggled.connect(on_change)
     return checkbox

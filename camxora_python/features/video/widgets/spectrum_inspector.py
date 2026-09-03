@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.create.widgets.studio_controls import StudioCheckBox
+
 from features.video.lib.spectrum_audio_dial import (
     SPECTRUM_AUDIO_DIAL_MAX,
     from_spectrum_audio_dial,
@@ -88,7 +90,7 @@ class SpectrumInspector(QWidget):
         root.addWidget(self._instance_editor)
 
         spectrum_section = InspectorSection("")
-        self._spectrum_toggle = QCheckBox("Enable Spectrum")
+        self._spectrum_toggle = StudioCheckBox("Enable Spectrum")
         self._spectrum_toggle.toggled.connect(
             lambda checked: self._emit_patch({"spectrumEnabled": checked})
         )
