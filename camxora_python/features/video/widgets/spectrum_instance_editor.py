@@ -7,14 +7,12 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLineEdit,
-    QPushButton,
     QWidget,
 )
 
 from features.create.widgets.studio_controls import StudioCheckBox
 
-from features.video.widgets.inspector_fields import InspectorSection
-from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID
+from features.video.widgets.inspector_fields import InspectorSection, action_icon_button
 from shared.widgets.settings_ui import form_row, note_box
 
 
@@ -44,22 +42,20 @@ class SpectrumInstanceEditor(InspectorSection):
         self._combo = QComboBox()
         self._combo.currentIndexChanged.connect(self._on_combo_changed)
         actions.addWidget(self._combo, stretch=1)
-        for label, slot in (
-            ("Add", self.instance_add_requested.emit),
-            ("Dup", self.instance_duplicate_requested.emit),
-            ("Del", self.instance_delete_requested.emit),
-            ("Up", self.instance_move_up_requested.emit),
-            ("Down", self.instance_move_down_requested.emit),
+        for icon, tip, slot in (
+            ("plus", "Add spectrum instance", self.instance_add_requested.emit),
+            ("copy", "Duplicate selected spectrum", self.instance_duplicate_requested.emit),
+            ("trash-2", "Delete selected spectrum", self.instance_delete_requested.emit),
+            ("chevron-up", "Move selected spectrum up", self.instance_move_up_requested.emit),
+            ("chevron-down", "Move selected spectrum down", self.instance_move_down_requested.emit),
         ):
-            btn = QPushButton(label)
-            btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-            btn.clicked.connect(slot)
+            btn = action_icon_button(icon, tooltip=tip, on_click=slot)
             actions.addWidget(btn)
-            if label == "Del":
+            if icon == "trash-2":
                 self._delete_btn = btn
-            elif label == "Up":
+            elif icon == "chevron-up":
                 self._up_btn = btn
-            elif label == "Down":
+            elif icon == "chevron-down":
                 self._down_btn = btn
         host = QWidget()
         host.setLayout(actions)
