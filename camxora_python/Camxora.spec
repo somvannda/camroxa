@@ -61,6 +61,12 @@ factory_templates = REPO_ROOT / "python_app" / "video_templates_local.json"
 if factory_templates.is_file():
     datas.append((str(factory_templates), "data"))
 
+# Studio editor bundled assets (playlist template backgrounds + thumbnails).
+# studio.core.playlist_assets resolves them via __file__ → studio/assets/…
+studio_assets = ROOT / "studio" / "assets"
+if studio_assets.is_dir():
+    datas.append((str(studio_assets), "studio/assets"))
+
 datas += collect_data_files("certifi")
 binaries += collect_dynamic_libs("glfw")
 
@@ -98,6 +104,19 @@ def _bundle_package_dir(package_name: str) -> None:
     if package_dir is None or not package_dir.is_dir() or package_dir.name != package_name:
         return
     datas.append((str(package_dir), package_name))
+
+
+# Studio editor: imageio-ffmpeg ships its own ffmpeg binary (studio export /
+# audio/video decode) and sounddevice drives live audio output. Copy the whole
+# package trees so the binaries survive freezing even without hooks-contrib.
+for package in ("imageio_ffmpeg", "sounddevice"):
+    try:
+        datas += collect_data_files(package)
+        binaries += collect_dynamic_libs(package)
+    except Exception:
+        pass
+    hiddenimports.append(package)
+    _bundle_package_dir(package)
 
 
 # Audio / analysis stack — bundle COMPLETE package trees (not PYZ-only).
@@ -239,6 +258,8 @@ hiddenimports += [
     "audioread",
     "threadpoolctl",
     "cv2",
+    "imageio_ffmpeg",
+    "sounddevice",
     "visualizer.preview_widget",
     "visualizer.gpu_render",
     "visualizer.audio",
