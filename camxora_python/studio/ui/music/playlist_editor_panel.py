@@ -83,7 +83,7 @@ class _ScrollPage(QWidget):
         self._inner.setMaximumWidth(INSPECTOR_CONTENT_MAX_WIDTH)
         self._layout = QVBoxLayout(self._inner)
         if settings_page:
-            from ui.inspector_layout import apply_playlist_settings_layout
+            from studio.ui.inspector_layout import apply_playlist_settings_layout
 
             apply_playlist_settings_layout(self._layout)
         else:

@@ -871,12 +871,12 @@ class ProjectState:
         return max_end
 
     def canvas_size(self) -> tuple[int, int]:
-        from core.preview_settings import canvas_size_for_project
+        from studio.core.preview_settings import canvas_size_for_project
 
         return canvas_size_for_project(self.project)
 
     def set_aspect_ratio(self, preset_id: str) -> tuple[int, int]:
-        from core.preview_settings import apply_aspect_ratio
+        from studio.core.preview_settings import apply_aspect_ratio
 
         return apply_aspect_ratio(self.project, preset_id)
 
@@ -953,7 +953,7 @@ class ProjectState:
         self.project.playlist.selected_component = component_id
 
     def _find_playlist_audio_track(self) -> Track | None:
-        from core.playlist_scene_sync import SCENE_AUDIO
+        from studio.core.playlist_scene_sync import SCENE_AUDIO
 
         for track in self.project.tracks:
             if track.scene_role == SCENE_AUDIO:
@@ -970,7 +970,7 @@ class ProjectState:
 
     def sync_playlist_to_timeline(self, *, record_undo: bool = True) -> None:
         """Place playlist songs sequentially on the dedicated Playlist audio track."""
-        from core.playlist_scene_sync import SCENE_AUDIO, sync_playlist_scene_to_timeline
+        from studio.core.playlist_scene_sync import SCENE_AUDIO, sync_playlist_scene_to_timeline
 
         song_ids = list(self.project.playlist.song_ids)
         if record_undo:

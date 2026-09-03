@@ -407,7 +407,7 @@ def _render_static_card_rgba(
     divider = colors.get("divider", "#e5e5ea")
     typo = settings.typography
     metrics = _layout_metrics(w, h, settings, typo)
-    from core.playlist_fonts import playlist_row_font_loaders
+    from studio.core.playlist_fonts import playlist_row_font_loaders
 
     header_fn, title_fn, meta_fn = playlist_row_font_loaders(typo)
 
@@ -625,7 +625,7 @@ def _draw_active_row_cv2(
     )
     _composite_rgba_patch(card, np.array(pill_layer), pill_y0, pill_x0)
 
-    from core.playlist_fonts import playlist_row_font_loaders
+    from studio.core.playlist_fonts import playlist_row_font_loaders
 
     _header_fn, title_fn, meta_fn = playlist_row_font_loaders(typo)
     title_font = _scaled_font(title_fn, _title_font_size(typo), w)

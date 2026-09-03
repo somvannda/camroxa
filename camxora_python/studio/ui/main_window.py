@@ -338,7 +338,7 @@ class MainWindow(QMainWindow):
         self.playback_controller.render_now(interactive=False)
 
     def _refresh_preview_transform_overlay(self) -> None:
-        from core.playlist_scene_sync import SCENE_GRAPHICS
+        from studio.core.playlist_scene_sync import SCENE_GRAPHICS
 
         clip_id = self.project_state.selected_clip_id
         if clip_id:
@@ -558,7 +558,7 @@ class MainWindow(QMainWindow):
     # ---------------- project save / load ----------------
 
     def _on_save_clicked(self) -> None:
-        from core.project_io import PROJECT_FILE_FILTER, save_project
+        from studio.core.project_io import PROJECT_FILE_FILTER, save_project
 
         default_name = f"{self.project_state.project.name or 'Untitled Project'}.camxora"
         default_path = self._current_project_path or os.path.join(os.path.expanduser("~"), default_name)
@@ -574,7 +574,7 @@ class MainWindow(QMainWindow):
         self.show_toast(f"Project saved: {path}")
 
     def _on_open_clicked(self) -> None:
-        from core.project_io import PROJECT_FILE_FILTER, ProjectLoadError, load_project
+        from studio.core.project_io import PROJECT_FILE_FILTER, ProjectLoadError, load_project
 
         path, _ = QFileDialog.getOpenFileName(
             self, "Open project", os.path.expanduser("~"), PROJECT_FILE_FILTER

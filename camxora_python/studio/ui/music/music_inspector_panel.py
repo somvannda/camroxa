@@ -533,7 +533,7 @@ class MusicInspectorPanel(QWidget):
 
         self._import_worker = None
 
-        from render.playlist_cache import invalidate_playlist_render_cache
+        from studio.render.playlist_cache import invalidate_playlist_render_cache
 
         added: list[MediaAsset] = []
 
@@ -689,7 +689,7 @@ class MusicInspectorPanel(QWidget):
 
     def _persist_playlist_settings(self) -> None:
 
-        from render.playlist_cache import invalidate_playlist_render_cache
+        from studio.render.playlist_cache import invalidate_playlist_render_cache
 
         self._playlist = self._playlist_editor.settings()
 
@@ -698,7 +698,7 @@ class MusicInspectorPanel(QWidget):
         self._music_background_picker.bind_settings(self._playlist)
         self._cc_lyric_panel.bind_settings(self._playlist)
         self._layout_panel.bind_settings(self._playlist)
-        from core.playlist_scene_sync import sync_playlist_scene_to_timeline
+        from studio.core.playlist_scene_sync import sync_playlist_scene_to_timeline
 
         sync_playlist_scene_to_timeline(self._project_state, record_undo=False)
         self.timeline_synced.emit()

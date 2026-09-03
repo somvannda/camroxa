@@ -305,7 +305,7 @@ class PreviewPlaylistOverlay(QWidget):
         self._shape_watch.reset(start, widget_rect)
         if not PreviewPlaylistOverlay._logged_drag_hint:
             PreviewPlaylistOverlay._logged_drag_hint = True
-            from app.logging_config import log_file_path
+            from studio.app.logging_config import log_file_path
 
             _drag_log.info(
                 "Playlist drag diagnostics ON — filter logs with 'camxora.preview.drag' "

@@ -261,7 +261,7 @@ def render_frame(
             opacity = clamp(ProjectState.compute_opacity(clip, time), 0.0, 1.0)
             draw_text_overlay(canvas, clip, opacity)
         elif clip.kind == "playlist":
-            from render.playlist_renderer import draw_playlist_foreground
+            from studio.render.playlist_renderer import draw_playlist_foreground
 
             draw_playlist_foreground(canvas, project_state, time, audio_cache=audio_cache)
 
@@ -285,8 +285,8 @@ def render_frame(
             draw_visualizer(canvas, clip.viz, band_values, wave_values, style_info.swatch_from, style_info.swatch_to, opacity)
 
     if getattr(project_state, "playlist_preview_active", False):
-        from core.playlist_scene_sync import SCENE_BACKGROUND, find_scene_track, has_playlist_scene
-        from render.playlist_renderer import draw_playlist, draw_playlist_background
+        from studio.core.playlist_scene_sync import SCENE_BACKGROUND, find_scene_track, has_playlist_scene
+        from studio.render.playlist_renderer import draw_playlist, draw_playlist_background
 
         if not has_playlist_scene(project_state.project):
             draw_playlist(canvas, project_state, time, audio_cache=audio_cache)

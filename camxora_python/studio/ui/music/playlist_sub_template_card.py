@@ -62,7 +62,7 @@ class PlaylistSubTemplateCard(QFrame):
             self.update()
 
     def _apply_frame_style(self) -> None:
-        from app.theme import PALETTE
+        from studio.app.theme import PALETTE
 
         p = PALETTE
         if self._selected:

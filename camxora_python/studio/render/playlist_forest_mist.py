@@ -55,13 +55,13 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, m
 
 
 def _split_title_artist(media) -> tuple[str, str | None]:
-    from render.playlist_minimal_white import _split_title_artist as _split
+    from studio.render.playlist_minimal_white import _split_title_artist as _split
 
     return _split(media)
 
 
 def _bar_heights(*, playback_time: float, band_values, count: int = 4) -> tuple[float, ...]:
-    from render.playlist_minimal_white import _bar_heights as _bars
+    from studio.render.playlist_minimal_white import _bar_heights as _bars
 
     return _bars(playback_time=playback_time, band_values=band_values, count=count)
 
@@ -211,13 +211,13 @@ def _draw_equalizer_bars(draw, x, y, *, color, heights, bar_w=2, gap=2, total_h=
 
 
 def _draw_play_circle(draw, cx, cy, r, bg, *, icon: str) -> None:
-    from render.playlist_minimal_white import _draw_play_circle as _circle
+    from studio.render.playlist_minimal_white import _draw_play_circle as _circle
 
     _circle(draw, cx, cy, r, bg, icon=icon)
 
 
 def _composite_rgba_patch(dst: np.ndarray, src: np.ndarray, y0: int, x0: int) -> None:
-    from render.playlist_minimal_white import _composite_rgba_patch as _patch
+    from studio.render.playlist_minimal_white import _composite_rgba_patch as _patch
 
     _patch(dst, src, y0, x0)
 
@@ -238,7 +238,7 @@ def _draw_card_drop_shadow(
     radius: int,
     shadow_hex: str,
 ) -> None:
-    from render.playlist_minimal_white import _draw_card_drop_shadow as _shadow
+    from studio.render.playlist_minimal_white import _draw_card_drop_shadow as _shadow
 
     _shadow(canvas, x, y, w, h, radius, shadow_hex)
 
@@ -263,7 +263,7 @@ def _wipe_row_band(
 
 
 def _blit_card_to_canvas(canvas: np.ndarray, x: int, y: int, rgba: np.ndarray) -> None:
-    from render.playlist_minimal_white import _blit_card_to_canvas as _blit
+    from studio.render.playlist_minimal_white import _blit_card_to_canvas as _blit
 
     _blit(canvas, x, y, rgba)
 
@@ -457,7 +457,7 @@ def _render_static_overlay_rgba(
     divider = colors.get("divider", "#ffffff22")
     typo = settings.typography
     metrics = _layout_metrics(w, h, settings, typo)
-    from core.playlist_fonts import playlist_row_font_loaders
+    from studio.core.playlist_fonts import playlist_row_font_loaders
 
     header_fn, title_fn, meta_fn = playlist_row_font_loaders(typo)
 
@@ -561,7 +561,7 @@ def _draw_active_row(
     total_dur = float(media.duration or 0)
     duration_label = fmt_time_ruler(total_dur) if total_dur > 0 else fmt_time_ruler(local_time)
 
-    from core.playlist_fonts import playlist_row_font_loaders
+    from studio.core.playlist_fonts import playlist_row_font_loaders
 
     _header_fn, title_fn, meta_fn = playlist_row_font_loaders(typo)
     card_img = Image.fromarray(card)

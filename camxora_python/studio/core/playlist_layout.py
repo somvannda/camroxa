@@ -46,11 +46,11 @@ def _minimal_white_card_size_norm(
 
     if settings is not None and is_standalone_track_list_layout(settings):
         if is_forest_mist_layout(settings):
-            from render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
+            from studio.render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
 
             ideal_px = forest_mist_card_height(settings, settings.typography, FOREST_MIST_REF_CARD_W)
         else:
-            from render.playlist_minimal_white import minimal_white_card_height
+            from studio.render.playlist_minimal_white import minimal_white_card_height
 
             ideal_px = minimal_white_card_height(settings, settings.typography, MINIMAL_WHITE_REF_CARD_W)
         norm_h = min(_MINIMAL_WHITE_CARD_H + 0.02, ideal_px / canvas_h)
@@ -140,18 +140,18 @@ def standalone_song_list_rect_norm(
     y: float | None = None,
 ) -> Rect:
     """Norm rect sized to the template's intrinsic card dimensions (stable aspect ratio)."""
-    from core.time_utils import clamp
+    from studio.core.time_utils import clamp
 
     if canvas_w <= 0 or canvas_h <= 0:
         return {"x": 0.06, "y": 0.05, "w": 0.44, "h": 0.90}
 
     if is_forest_mist_layout(settings):
-        from render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
+        from studio.render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
 
         ref_w = FOREST_MIST_REF_CARD_W
         ref_h = forest_mist_card_height(settings, settings.typography, ref_w)
     else:
-        from render.playlist_minimal_white import minimal_white_card_height
+        from studio.render.playlist_minimal_white import minimal_white_card_height
 
         ref_w = MINIMAL_WHITE_REF_CARD_W
         ref_h = minimal_white_card_height(settings, settings.typography, ref_w)
@@ -229,7 +229,7 @@ def _log_standalone_resolve(
     resolved: Rect,
     caller: str,
 ) -> None:
-    from core.preview_drag_log import log_layout_resolve
+    from studio.core.preview_drag_log import log_layout_resolve
 
     log_layout_resolve(
         sub_template=settings.sub_template_id or "",

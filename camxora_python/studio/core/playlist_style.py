@@ -71,7 +71,7 @@ def apply_style_to_settings(settings: PlaylistSettings) -> None:
             settings.typography.song_meta_size = 11
     if settings.color_filter_id == "custom":
         if sub is not None and sub.layout_style in ("minimal_white", "forest_mist"):
-            from core.playlist_palette import expand_forest_mist_palette, expand_palette, palette_from_colors
+            from studio.core.playlist_palette import expand_forest_mist_palette, expand_palette, palette_from_colors
 
             palette = palette_from_colors(settings.colors)
             if sub.layout_style == "forest_mist":

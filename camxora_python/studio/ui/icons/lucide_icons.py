@@ -461,7 +461,7 @@ def track_badge_pixmap(
     icon_px: int = 12,
     scene_role: str | None = None,
 ) -> QPixmap:
-    from ui.timeline.geometry import TRACK_ACCENT
+    from studio.ui.timeline.geometry import TRACK_ACCENT
 
     if scene_role and scene_role in SCENE_ROLE_ACCENT:
         bg = SCENE_ROLE_ACCENT[scene_role]

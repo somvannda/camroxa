@@ -89,7 +89,7 @@ class PlaylistSettings:
     styles_by_sub_template: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        from core.playlist_sub_template_styles import flush_active_style_to_store
+        from studio.core.playlist_sub_template_styles import flush_active_style_to_store
 
         return {
             "template_id": self.template_id,
@@ -116,7 +116,7 @@ class PlaylistSettings:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PlaylistSettings":
-        from core.playlist_sub_template_styles import apply_style_dict, migrate_legacy_flat_style
+        from studio.core.playlist_sub_template_styles import apply_style_dict, migrate_legacy_flat_style
 
         settings = cls(
             template_id=str(data.get("template_id", "glass-romance")),

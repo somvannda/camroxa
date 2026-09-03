@@ -231,18 +231,18 @@ def _log_song_list_render(
     norm: dict[str, float],
     px: tuple[int, int, int, int],
 ) -> None:
-    from core.playlist_layout import is_forest_mist_layout, is_minimal_white_layout
-    from core.preview_drag_log import log_render_rect
+    from studio.core.playlist_layout import is_forest_mist_layout, is_minimal_white_layout
+    from studio.core.preview_drag_log import log_render_rect
 
     ref_w: int | None = None
     ref_h: int | None = None
     if is_forest_mist_layout(settings):
-        from render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
+        from studio.render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
 
         ref_w = FOREST_MIST_REF_CARD_W
         ref_h = forest_mist_card_height(settings, settings.typography, ref_w)
     elif is_minimal_white_layout(settings):
-        from render.playlist_minimal_white import minimal_white_card_height
+        from studio.render.playlist_minimal_white import minimal_white_card_height
 
         ref_w = MINIMAL_WHITE_REF_CARD_W
         ref_h = minimal_white_card_height(settings, settings.typography, ref_w)
