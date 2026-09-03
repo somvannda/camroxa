@@ -1,43 +1,65 @@
-"""Bespoke dark theme matching the Camxora reference UI (index.html).
+"""Studio editor theme — rebased onto the camxora_python studio chrome tokens.
 
-This app is standalone and intentionally does not use camxora_python's design
-system (which targets a different product surface) — it replicates the exact
-look of the CapCut-style HTML reference the app is ported from.
+The ported standalone editor no longer ships its own independent look: it
+consumes the same STUDIO_* tokens that power the Create/Music/Image/Video
+studio-chrome pages, and uses the app's Inter font family.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from features.create.create_styles import (
+    STUDIO_BG,
+    STUDIO_BORDER,
+    STUDIO_BORDER_STRONG,
+    STUDIO_INPUT,
+    STUDIO_PANEL,
+    STUDIO_PURPLE,
+    STUDIO_PURPLE_BRIGHT,
+    STUDIO_TEXT,
+    STUDIO_TEXT_DIM,
+    STUDIO_TEXT_MUTED,
+    STUDIO_WARNING,
+)
+
 
 @dataclass(frozen=True)
 class Palette:
-    bg: str = "#0a0a0f"
-    panel: str = "#14141b"
-    panel2: str = "#1b1b25"
-    panel3: str = "#22222e"
-    border: str = "#2a2a38"
-    border_soft: str = "#20202b"
-    text: str = "#eceef5"
-    text_dim: str = "#8b8b9e"
-    text_dimmer: str = "#5c5c6e"
-    accent: str = "#7c5cff"
-    accent_soft: str = "#7c5cff33"
-    accent2: str = "#ff5470"
-    track_video: str = "#7c5cff"
-    track_audio: str = "#26d6a4"
-    track_overlay: str = "#ffb648"
-    danger: str = "#ff5470"
-    danger_soft: str = "#3a1a22"
+    bg: str = STUDIO_BG
+    panel: str = STUDIO_PANEL
+    panel2: str = STUDIO_INPUT
+    panel3: str = "#16263E"  # raised/hover surface between input and border
+    border: str = STUDIO_BORDER
+    border_strong: str = STUDIO_BORDER_STRONG
+    border_soft: str = "#0F1B2D"
+    text: str = STUDIO_TEXT
+    text_dim: str = STUDIO_TEXT_MUTED
+    text_dimmer: str = STUDIO_TEXT_DIM
+    accent: str = STUDIO_PURPLE_BRIGHT
+    accent_hi: str = "#8B5CF6"  # hover/checked lighter accent
+    # Brand CTA gradient — matches the camxora master theme primary buttons
+    # (#7466F1 -> #A259FF, hover #8577F5 -> #B06BFF).
+    accent_deep: str = "#7466F1"
+    accent_bright: str = "#A259FF"
+    accent_deep_hi: str = "#8577F5"
+    accent_bright_hi: str = "#B06BFF"
+    accent_soft: str = "rgba(99, 53, 217, 0.28)"
+    accent2: str = "#EC4899"
+    track_video: str = STUDIO_PURPLE_BRIGHT
+    track_audio: str = "#00C878"
+    track_overlay: str = STUDIO_WARNING
+    danger: str = "#FF5470"
+    danger_soft: str = "#3A1A22"
 
 
 PALETTE = Palette()
 
-FONT_DISPLAY = "Sora"
+FONT_DISPLAY = "Inter"
 FONT_BODY = "Inter"
-FONT_MONO = "JetBrains Mono"
+FONT_MONO = "Consolas"
 
-# Fallback chain used when the bundled OFL fonts aren't installed/loadable —
+# Fallback chain used when the bundled fonts aren't installed/loadable —
 # keeps the look close on any OS without requiring network access.
 FONT_DISPLAY_FALLBACK = f"{FONT_DISPLAY}, Segoe UI Semibold, Segoe UI, sans-serif"
 FONT_BODY_FALLBACK = f"{FONT_BODY}, Segoe UI, Arial, sans-serif"
@@ -108,7 +130,7 @@ def build_qss(p: Palette = PALETTE) -> str:
     }}
     QPushButton:hover {{
         background: {p.panel3};
-        border-color: #3a3a4a;
+        border-color: {p.border_strong};
     }}
     QPushButton:pressed {{
         background: {p.panel3};
@@ -118,13 +140,13 @@ def build_qss(p: Palette = PALETTE) -> str:
         border-color: {p.border_soft};
     }}
     QPushButton#PrimaryButton {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent}, stop:1 #5b3cff);
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent_deep}, stop:1 {p.accent_bright});
         border: none;
         color: white;
         font-weight: 600;
     }}
     QPushButton#PrimaryButton:hover {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8a70ff, stop:1 #6b4dff);
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent_deep_hi}, stop:1 {p.accent_bright_hi});
     }}
     QPushButton#IconButton {{
         padding: 0px;
@@ -251,7 +273,7 @@ def build_qss(p: Palette = PALETTE) -> str:
         border: none;
     }}
     QPushButton#InspectorTabButton:checked:hover {{
-        background-color: #8a70ff;
+        background-color: {p.accent_hi};
         color: #ffffff;
     }}
     QPushButton#InspectorPresetButton {{
@@ -277,8 +299,8 @@ def build_qss(p: Palette = PALETTE) -> str:
         background-color: {p.accent};
     }}
     QPushButton#InspectorFitButton:checked:hover {{
-        background-color: #8a70ff;
-        border-color: #8a70ff;
+        background-color: {p.accent_hi};
+        border-color: {p.accent_hi};
         color: #ffffff;
     }}
     QPushButton#InspectorFitButton:hover {{
@@ -322,8 +344,8 @@ def build_qss(p: Palette = PALETTE) -> str:
         background-color: {p.accent};
     }}
     QPushButton#InspectorMaskShapeButton:checked:hover {{
-        background-color: #8a70ff;
-        border-color: #8a70ff;
+        background-color: {p.accent_hi};
+        border-color: {p.accent_hi};
     }}
     QFrame#AnimationPresetCard {{
         background: {p.panel2};
@@ -376,7 +398,7 @@ def build_qss(p: Palette = PALETTE) -> str:
         background: rgba(116, 102, 241, 0.12);
     }}
     QPushButton#MusicIconButtonPrimary {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent}, stop:1 #A259FF);
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent_deep}, stop:1 {p.accent_bright});
         border: none;
         border-radius: 6px;
         padding: 0px;
@@ -386,7 +408,7 @@ def build_qss(p: Palette = PALETTE) -> str:
         max-height: 28px;
     }}
     QPushButton#MusicIconButtonPrimary:hover {{
-        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8a70ff, stop:1 #6b4dff);
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent_deep_hi}, stop:1 {p.accent_bright_hi});
     }}
     QFrame#LibraryIconRail {{
         background: {p.bg};
@@ -532,7 +554,7 @@ def build_qss(p: Palette = PALETTE) -> str:
         qproperty-iconSize: 14px 14px;
     }}
     QPushButton#PlayButton:hover {{
-        background: #8a70ff;
+        background: {p.accent_hi};
     }}
     QPushButton#PreviewControlButton {{
         padding: 0px;
@@ -729,7 +751,7 @@ def build_qss(p: Palette = PALETTE) -> str:
         border-radius: 12px;
     }}
     QPushButton#ColorSwatchButton {{
-        border: 1px solid #3a4466;
+        border: 1px solid {p.border_strong};
         border-radius: 6px;
         padding: 0;
         min-width: 40px;
@@ -776,7 +798,7 @@ def build_qss(p: Palette = PALETTE) -> str:
 
     /* ---------- Toast ---------- */
     QLabel#Toast {{
-        background: #1c1c26;
+        background: {p.panel2};
         border: 1px solid {p.border};
         color: {p.text};
         padding: 10px 16px;
@@ -789,21 +811,24 @@ def build_qss(p: Palette = PALETTE) -> str:
         width: 10px;
     }}
     QScrollBar::handle:vertical {{
-        background: #2c2c3a;
+        background: {p.panel3};
         border-radius: 5px;
         min-height: 24px;
     }}
     QScrollBar::handle:vertical:hover {{
-        background: #3a3a4a;
+        background: {p.border_strong};
     }}
     QScrollBar:horizontal {{
         background: transparent;
         height: 10px;
     }}
     QScrollBar::handle:horizontal {{
-        background: #2c2c3a;
+        background: {p.panel3};
         border-radius: 5px;
         min-width: 24px;
+    }}
+    QScrollBar::handle:horizontal:hover {{
+        background: {p.border_strong};
     }}
     QScrollBar::add-line, QScrollBar::sub-line {{
         width: 0px;
