@@ -216,6 +216,7 @@ SIDEBAR_ICON_BY_ROUTE: dict[ShellRouteKey, str] = {
     "progress": "activity",
     "music": "music-4",
     "create": "music-4",
+    "studio": "layers",
     "image": "image",
     "video": "video",
     "marketplace": "store",

@@ -13,6 +13,7 @@ ShellRouteKey = Literal[
     "progress",
     "music",
     "create",
+    "studio",
     "image",
     "video",
     "marketplace",
@@ -95,6 +96,17 @@ SHELL_ROUTES: tuple[ShellRouteMeta, ...] = (
         eyebrow="Workspace",
         description=(
             "Generate songs with the web Create form, then automate image and video locally."
+        ),
+    ),
+    ShellRouteMeta(
+        key="studio",
+        path="/app/studio",
+        label="Studio",
+        title="Studio",
+        eyebrow="Workspace",
+        description=(
+            "CapCut-style multi-track timeline editor: media, text, effects, visualizers, "
+            "music playlists, and ffmpeg export."
         ),
     ),
     ShellRouteMeta(
