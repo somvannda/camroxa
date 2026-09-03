@@ -228,6 +228,13 @@ hiddenimports.append("OpenGL")
 for package in ("app", "shared", "features", "visualizer", "database"):
     hiddenimports += collect_submodules(package)
 
+# Studio editor modules (skip its tests/ tree — never shipped).
+hiddenimports += [
+    name
+    for name in collect_submodules("studio")
+    if not name.startswith("studio.tests")
+]
+
 hiddenimports += [
     "PySide6.QtCore",
     "PySide6.QtGui",
