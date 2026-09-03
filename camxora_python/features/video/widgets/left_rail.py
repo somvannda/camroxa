@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from features.video.widgets.inspector_fields import cap_combo_min_widths
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import SettingsPanel, make_scrollable_tab_page
 
@@ -103,6 +104,7 @@ class VideoLeftRail(SettingsPanel):
         for key, label in self._DOMAIN_TABS:
             custom_page = domain_pages.get(key)
             if custom_page is not None:
+                cap_combo_min_widths(custom_page)
                 page = make_scrollable_tab_page(custom_page)
             else:
                 page = QWidget()

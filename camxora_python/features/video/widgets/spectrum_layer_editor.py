@@ -28,7 +28,12 @@ from features.video.lib.spectrum_color_engine import (
     get_spectrum_layer_color_fallback,
     normalize_spectrum_gradient_colors,
 )
-from features.video.widgets.inspector_fields import InspectorSection, build_color_field, build_float_slider
+from features.video.widgets.inspector_fields import (
+    InspectorSection,
+    action_icon_button,
+    build_color_field,
+    build_float_slider,
+)
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import form_row, note_box
 
@@ -109,22 +114,31 @@ class SpectrumLayerEditor(InspectorSection):
         actions = QHBoxLayout()
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(6)
-        add_btn = QPushButton("Add")
-        add_btn.clicked.connect(self.layer_add_requested.emit)
-        dup_btn = QPushButton("Duplicate")
-        dup_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        dup_btn.clicked.connect(self.layer_duplicate_requested.emit)
-        self._delete_btn = QPushButton("Delete")
-        self._delete_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        self._delete_btn.clicked.connect(self.layer_delete_requested.emit)
-        self._up_btn = QPushButton("Up")
-        self._up_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        self._up_btn.setToolTip("Move selected layer earlier (draws under)")
-        self._up_btn.clicked.connect(self.layer_move_up_requested.emit)
-        self._down_btn = QPushButton("Down")
-        self._down_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        self._down_btn.setToolTip("Move selected layer later (draws on top)")
-        self._down_btn.clicked.connect(self.layer_move_down_requested.emit)
+        add_btn = action_icon_button(
+            "plus",
+            tooltip="Add ring layer",
+            on_click=self.layer_add_requested.emit,
+        )
+        dup_btn = action_icon_button(
+            "copy",
+            tooltip="Duplicate selected layer",
+            on_click=self.layer_duplicate_requested.emit,
+        )
+        self._delete_btn = action_icon_button(
+            "trash-2",
+            tooltip="Delete selected layer",
+            on_click=self.layer_delete_requested.emit,
+        )
+        self._up_btn = action_icon_button(
+            "chevron-up",
+            tooltip="Move selected layer earlier (draws under)",
+            on_click=self.layer_move_up_requested.emit,
+        )
+        self._down_btn = action_icon_button(
+            "chevron-down",
+            tooltip="Move selected layer later (draws on top)",
+            on_click=self.layer_move_down_requested.emit,
+        )
         for button in (add_btn, dup_btn, self._delete_btn, self._up_btn, self._down_btn):
             actions.addWidget(button)
         action_host = QWidget()

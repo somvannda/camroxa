@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from features.create.widgets.studio_controls import StudioCheckBox
 
 from features.video.lib.lightning_style_registry import LIGHTNING_PRESET_OPTIONS
 from features.video.widgets.inspector_fields import InspectorSection
 from features.video.widgets.lightning_layer_editor import LightningLayerEditor
-from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID
-from shared.widgets.settings_ui import form_row, note_box
+from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
+from shared.widgets.settings_ui import note_box
 
 
 class LightningInspector(QWidget):
@@ -45,8 +45,12 @@ class LightningInspector(QWidget):
         )
         section.add_widget(self._enabled_toggle)
 
+        preset_label = QLabel("Bolt Preset")
+        preset_label.setObjectName(SUBTITLE_LABEL_ID)
         preset_row = QHBoxLayout()
         preset_row.setContentsMargins(0, 0, 0, 0)
+        preset_row.setSpacing(8)
+        preset_row.addWidget(preset_label)
         self._preset_combo = QComboBox()
         for value, label in LIGHTNING_PRESET_OPTIONS:
             self._preset_combo.addItem(label, value)
@@ -58,7 +62,7 @@ class LightningInspector(QWidget):
         preset_row.addWidget(apply_btn)
         preset_host = QWidget()
         preset_host.setLayout(preset_row)
-        section.add_widget(form_row("Bolt Preset", preset_host))
+        section.add_widget(preset_host)
         section.add_widget(
             note_box(
                 "Presets restyle the selected bolt (style, trigger, glow, color). "

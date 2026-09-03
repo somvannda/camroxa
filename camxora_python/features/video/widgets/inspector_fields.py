@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QColorDialog,
@@ -18,8 +18,37 @@ from PySide6.QtWidgets import (
 
 from features.create.widgets.studio_controls import StudioCheckBox
 
-from shared.themes.deep_blue import SUBTITLE_LABEL_ID
+from shared.icons.lucide_icons import lucide_pixmap
+from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import SettingsPanel, form_row
+
+_ACTION_ICON_COLOR = "#E5EDF7"
+
+
+def action_icon_button(icon: str, *, tooltip: str, on_click: Callable[[], None]) -> QPushButton:
+    """Compact icon-only action button (Add/Dup/Del/Up/Down rows in the editors)."""
+    button = QPushButton()
+    button.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+    button.setFixedSize(26, 24)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    button.setIcon(QIcon(lucide_pixmap(icon, size=14, color=_ACTION_ICON_COLOR)))
+    button.setIconSize(QSize(14, 14))
+    button.setToolTip(tooltip)
+    button.clicked.connect(on_click)
+    return button
+
+
+def cap_combo_min_widths(root: QWidget, *, chars: int = 8) -> None:
+    """Cap option-combo minimum widths so rows never force the fixed rail wider.
+
+    Without this, a combo's minimum is sized to its longest option label, which
+    pushes the whole inspector past the rail width on tabs with long preset
+    names (Spectrum/Lightning). The combo still stretches to fill its row when
+    space is available — only the forced minimum is relaxed.
+    """
+    for combo in root.findChildren(QComboBox):
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMinimumContentsLength(chars)
 
 
 class InspectorSection(SettingsPanel):

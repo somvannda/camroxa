@@ -196,6 +196,17 @@ _LUCIDE_PATHS: dict[str, tuple[str, ...]] = {
         '<circle cx="12" cy="12" r="10"/>',
         '<polyline points="12 6 12 12 16 14"/>',
     ),
+    "plus": (
+        '<path d="M5 12h14"/>',
+        '<path d="M12 5v14"/>',
+    ),
+    "trash-2": (
+        '<path d="M3 6h18"/>',
+        '<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>',
+        '<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+        '<path d="M10 11v6"/>',
+        '<path d="M14 11v6"/>',
+    ),
 }
 
 SIDEBAR_ICON_BY_ROUTE: dict[ShellRouteKey, str] = {

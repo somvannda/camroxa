@@ -31,7 +31,12 @@ from features.video.lib.lightning_style_registry import (
     normalize_lightning_trigger,
 )
 from features.create.widgets.studio_controls import StudioCheckBox
-from features.video.widgets.inspector_fields import InspectorSection, build_color_field, build_float_slider
+from features.video.widgets.inspector_fields import (
+    InspectorSection,
+    action_icon_button,
+    build_color_field,
+    build_float_slider,
+)
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
 from shared.widgets.settings_ui import form_row, note_box
 
@@ -66,26 +71,24 @@ class LightningLayerEditor(InspectorSection):
         self._layer_combo = QComboBox()
         self._layer_combo.currentIndexChanged.connect(self._on_layer_combo_changed)
         actions.addWidget(self._layer_combo, stretch=1)
-        for label, slot in (
-            ("Add", self.layer_add_requested.emit),
-            ("Dup", self.layer_duplicate_requested.emit),
-            ("Del", self.layer_delete_requested.emit),
-            ("Up", self.layer_move_up_requested.emit),
-            ("Down", self.layer_move_down_requested.emit),
+        for icon, tip, slot in (
+            ("plus", "Add lightning layer", self.layer_add_requested.emit),
+            ("copy", "Duplicate selected layer", self.layer_duplicate_requested.emit),
+            ("trash-2", "Delete selected layer", self.layer_delete_requested.emit),
+            ("chevron-up", "Move selected layer up", self.layer_move_up_requested.emit),
+            ("chevron-down", "Move selected layer down", self.layer_move_down_requested.emit),
         ):
-            btn = QPushButton(label)
-            btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-            btn.clicked.connect(slot)
+            btn = action_icon_button(icon, tooltip=tip, on_click=slot)
             actions.addWidget(btn)
-            if label == "Add":
+            if icon == "plus":
                 self._add_btn = btn
-            elif label == "Dup":
+            elif icon == "copy":
                 self._dup_btn = btn
-            elif label == "Del":
+            elif icon == "trash-2":
                 self._delete_btn = btn
-            elif label == "Up":
+            elif icon == "chevron-up":
                 self._up_btn = btn
-            elif label == "Down":
+            elif icon == "chevron-down":
                 self._down_btn = btn
         host = QWidget()
         host.setLayout(actions)
