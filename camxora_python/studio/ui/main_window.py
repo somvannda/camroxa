@@ -54,32 +54,15 @@ class Topbar(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("Topbar")
-        self.setFixedHeight(56)
+        self.setFixedHeight(64)
 
+        # The library section tabs (Import / Media / Music / …) are installed
+        # later via set_library_tabs() so they fill the header where the old
+        # branding + project-name row used to sit. This layout keeps them on
+        # the left and the window actions pinned to the right.
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 0, 16, 0)
-        layout.setSpacing(16)
-
-        logo_box = QVBoxLayout()
-        logo_box.setSpacing(0)
-        logo_row = QHBoxLayout()
-        logo_row.setSpacing(6)
-        logo_label = QLabel("Camxora")
-        logo_label.setObjectName("LogoLabel")
-        sub_label = QLabel("video studio")
-        sub_label.setObjectName("LogoSubLabel")
-        logo_row.addWidget(logo_label)
-        logo_row.addWidget(sub_label)
-        logo_row.addStretch(1)
-        logo_box.addLayout(logo_row)
-        layout.addLayout(logo_box)
-
-        self.project_name_edit = QLineEdit("Untitled Project")
-        self.project_name_edit.setObjectName("ProjectNameEdit")
-        self.project_name_edit.setFixedWidth(200)
-        layout.addWidget(self.project_name_edit)
-
-        layout.addStretch(1)
+        layout.setContentsMargins(12, 0, 16, 0)
+        layout.setSpacing(10)
 
         self.open_btn = QPushButton()
         self.open_btn.setObjectName("IconButton")
@@ -110,11 +93,19 @@ class Topbar(QFrame):
         self.export_btn.setIcon(lucide_icon("download", size=ICON_SZ_TOOLBAR, color=ICON_COLOR_ON_ACCENT))
         self.export_btn.setIconSize(QSize(ICON_SZ_TOOLBAR, ICON_SZ_TOOLBAR))
 
-        layout.addWidget(self.open_btn)
-        layout.addWidget(self.save_btn)
-        layout.addWidget(self.undo_btn)
-        layout.addWidget(self.redo_btn)
-        layout.addWidget(self.export_btn)
+        layout.addWidget(self.open_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.save_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.undo_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.redo_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.export_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def set_library_tabs(self, tabs: QWidget) -> None:
+        """Fill the header with the library section tab rail (full width).
+
+        The rail was previously stacked at the top of the left LibraryPanel;
+        it is reparented here so it spans the whole editor above all panes.
+        """
+        self.layout().insertWidget(0, tabs, 1)
 
 
 class InspectorPanelHost(RightPanelHost):
@@ -185,13 +176,14 @@ class MainWindow(QMainWindow):
         main_split.setHandleWidth(1)
         outer.addWidget(main_split, 1)
 
-        self.topbar.project_name_edit.setText(self.project_state.project.name)
-        self.topbar.project_name_edit.editingFinished.connect(self._on_project_name_edited)
-
         self.library_panel = LibraryPanel(self.project_state, main_split)
         self.library_panel.setMinimumWidth(340)
         self.library_panel.setMaximumWidth(460)
         main_split.addWidget(self.library_panel)
+
+        # Lift the section tab rail (Import / Media / Music / …) out of the
+        # library column into the app header — full width above every pane.
+        self.topbar.set_library_tabs(self.library_panel.top_menu)
 
         center = QWidget(main_split)
         center_layout = QVBoxLayout(center)
@@ -463,11 +455,6 @@ class MainWindow(QMainWindow):
         if self.toast_label.isVisible():
             self._position_toast()
 
-    def _on_project_name_edited(self) -> None:
-        self.project_state.project.name = self.topbar.project_name_edit.text().strip() or "Untitled Project"
-        self.preview_widget.set_player_title(f"Player — {self.project_state.project.name}")
-        self.inspector_host.refresh()
-
     def _on_export_clicked(self) -> None:
         if self._export_worker is not None and self._export_worker.isRunning():
             return
@@ -542,7 +529,6 @@ class MainWindow(QMainWindow):
         self.timeline_wrap.refresh_after_external_change()
         self.inspector_host.refresh()
         self.playback_controller.render_now()
-        self.topbar.project_name_edit.setText(self.project_state.project.name)
         self.preview_widget.set_player_title(f"Player — {self.project_state.project.name}")
         self.library_panel.audio_tab.refresh()
         self._refresh_undo_redo_buttons()

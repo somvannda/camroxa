@@ -851,7 +851,7 @@ class LibraryTopMenuBar(QFrame):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidgetResizable(False)
-        scroll.setFixedHeight(58)
+        scroll.setFixedHeight(62)
 
         strip = QWidget(scroll)
         strip.setObjectName("LibraryTopMenuStrip")

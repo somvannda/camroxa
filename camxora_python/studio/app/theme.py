@@ -88,34 +88,10 @@ def build_qss(p: Palette = PALETTE) -> str:
         border-radius: 6px;
     }}
 
-    /* ---------- Topbar ---------- */
+    /* ---------- Topbar (now hosts the library section tab rail) ---------- */
     QFrame#Topbar {{
         background: {p.panel};
         border-bottom: 1px solid {p.border};
-    }}
-    QLabel#LogoLabel {{
-        font-family: "{FONT_DISPLAY}";
-        font-weight: 800;
-        font-size: 16px;
-        color: {p.text};
-    }}
-    QLabel#LogoSubLabel {{
-        color: {p.text_dim};
-        font-family: "{FONT_MONO}";
-        font-size: 11px;
-    }}
-    QLineEdit#ProjectNameEdit {{
-        background: transparent;
-        border: 1px solid transparent;
-        color: {p.text_dim};
-        font-size: 13px;
-        padding: 6px 10px;
-        border-radius: 6px;
-    }}
-    QLineEdit#ProjectNameEdit:hover, QLineEdit#ProjectNameEdit:focus {{
-        border-color: {p.border};
-        color: {p.text};
-        background: {p.panel2};
     }}
 
     /* ---------- Buttons ---------- */
@@ -193,8 +169,10 @@ def build_qss(p: Palette = PALETTE) -> str:
         border-right: 1px solid {p.border};
     }}
     QFrame#LibraryTopMenu {{
-        background: {p.panel};
-        border-bottom: 1px solid {p.border_soft};
+        /* Hosted inside the Topbar header, which supplies the panel chrome —
+           keep the rail itself transparent so no double background/border. */
+        background: transparent;
+        border-bottom: none;
     }}
     QScrollArea#LibraryTopMenuScroll {{
         background: transparent;
