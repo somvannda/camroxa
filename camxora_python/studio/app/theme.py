@@ -751,10 +751,13 @@ def build_qss(p: Palette = PALETTE) -> str:
     }}
 
     /* ---------- Playlist settings sections ---------- */
+    /* Card style mirrors the neutral preset cards/toolbars used on the
+       image/video inspector (panel2 fill + subtle border); the accent
+       purple is reserved for selected/focused/hover states only. */
     QFrame#PlaylistSettingsSection {{
-        background: transparent;
-        border: 1px solid {p.accent};
-        border-radius: 12px;
+        background: {p.panel2};
+        border: 1px solid {p.border};
+        border-radius: 10px;
     }}
     QPushButton#ColorSwatchButton {{
         border: 1px solid {p.border_strong};
