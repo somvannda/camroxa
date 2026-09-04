@@ -231,6 +231,57 @@ def _blit_card_to_canvas(canvas: np.ndarray, x: int, y: int, rgba: np.ndarray) -
     _blit(canvas, x, y, rgba)
 
 
+_GLASS_FRAME_SIGMA = 14.0
+_FRAME_PAD = 24
+# Single-slot cache for the frosted frame layer. The Gaussian blur is by far the
+# most expensive per-frame op (tens of ms); in standalone scenes the pixels under
+# the box are static, so we rebuild only when the underlying canvas patch changes
+# (sampled fingerprint) or geometry/colors change.
+_frame_cache_key: tuple | None = None
+_frame_cache: np.ndarray | None = None
+
+
+def _patch_fingerprint(canvas: np.ndarray, x0: int, y0: int, x1: int, y1: int) -> tuple:
+    patch = canvas[y0:y1, x0:x1]
+    if patch.size == 0:
+        return (0,)
+    sample = patch[::4, ::4]
+    return (sample.shape[0], sample.shape[1], sample.tobytes())
+
+
+def _frosted_frame(
+    canvas: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    radius: int,
+    colors: dict[str, str],
+) -> np.ndarray:
+    global _frame_cache_key, _frame_cache
+    ch, cw = canvas.shape[:2]
+    x0 = max(0, x - _FRAME_PAD)
+    y0 = max(0, y - _FRAME_PAD)
+    x1 = min(cw, x + w + _FRAME_PAD)
+    y1 = min(ch, y + h + _FRAME_PAD)
+    key = (
+        _patch_fingerprint(canvas, x0, y0, x1, y1),
+        x,
+        y,
+        w,
+        h,
+        radius,
+        colors.get("surface", "#1c0b18aa"),
+        colors.get("frame_border", "#ffb3cc33"),
+    )
+    if _frame_cache_key == key and _frame_cache is not None:
+        return _frame_cache
+    frame = _build_frosted_frame_rgba(canvas, x, y, w, h, radius, colors)
+    _frame_cache_key = key
+    _frame_cache = frame
+    return frame
+
+
 def _build_frosted_frame_rgba(
     canvas: np.ndarray,
     x: int,
@@ -242,7 +293,7 @@ def _build_frosted_frame_rgba(
 ) -> np.ndarray:
     """Deep frosted glass: heavy Gaussian blur + dark mauve veil + hairline border."""
     ch, cw = canvas.shape[:2]
-    pad = 24
+    pad = _FRAME_PAD
     x0 = max(0, x - pad)
     y0 = max(0, y - pad)
     x1 = min(cw, x + w + pad)
@@ -253,7 +304,7 @@ def _build_frosted_frame_rgba(
     if patch.size == 0:
         return rgba
 
-    blurred = cv2.GaussianBlur(patch, (0, 0), 16)
+    blurred = cv2.GaussianBlur(patch, (0, 0), _GLASS_FRAME_SIGMA)
     off_x, off_y = x - x0, y - y0
     card_rgb = blurred[off_y : off_y + h, off_x : off_x + w].astype(np.float32)
 
@@ -606,7 +657,7 @@ def draw_emotional_music_track_list(
     else:
         content = static_overlay
 
-    frame = _build_frosted_frame_rgba(canvas, x, y, w, h, radius, colors)
+    frame = _frosted_frame(canvas, x, y, w, h, radius, colors)
     card = np.ascontiguousarray(
         np.array(Image.alpha_composite(Image.fromarray(frame), Image.fromarray(content.copy())))
     )
