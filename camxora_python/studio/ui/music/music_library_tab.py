@@ -44,20 +44,20 @@ class MusicLibraryTab(QWidget):
         self._cards: dict[str, PlaylistSubTemplateCard] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(4, 6, 4, 6)
+        root.setContentsMargins(12, 10, 12, 10)
         root.setSpacing(8)
 
-        # One compact row: Minimal White | Forest Mist.
+        # One row: Minimal White | Forest Mist, stretched to fill the width.
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-        row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        row.setSpacing(16)
+        row.setAlignment(Qt.AlignmentFlag.AlignTop)
         for sub_id in PICKER_TEMPLATE_IDS:
             sub = SUB_TEMPLATES_BY_ID[sub_id]
-            card = PlaylistSubTemplateCard(sub, selected=sub_id == self._selected_id)
+            card = PlaylistSubTemplateCard(sub, selected=sub_id == self._selected_id, fill_width=True)
             card.clicked.connect(self._on_card_clicked)
             self._cards[sub_id] = card
-            row.addWidget(card)
+            row.addWidget(card, 1)
         root.addLayout(row)
         root.addStretch(1)
 

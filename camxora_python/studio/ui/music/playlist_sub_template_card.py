@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout
+from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout
 
 from studio.core.playlist_assets import bundled_thumbnail_path
 from studio.core.playlist_sub_templates import PlaylistSubTemplate
@@ -25,13 +25,31 @@ class PlaylistSubTemplateCard(QFrame):
     _H = 112
     _PREVIEW_H = 78
 
-    def __init__(self, sub: PlaylistSubTemplate, *, selected: bool = False, parent=None) -> None:
+    def __init__(
+        self,
+        sub: PlaylistSubTemplate,
+        *,
+        selected: bool = False,
+        parent=None,
+        fill_width: bool = False,
+    ) -> None:
+        """``fill_width=True`` stretches the card to share the row width
+        (used by the Playlist picker); default keeps the fixed thumbnail size
+        used by the right-panel style grid."""
         super().__init__(parent)
         self.sub = sub
         self._selected = selected
         self.setObjectName("PlaylistSubTemplateCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(self._W, self._H)
+        if fill_width:
+            self.setFixedHeight(self._H)
+            self.setMinimumWidth(110)
+            self.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+        else:
+            self.setFixedSize(self._W, self._H)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 4)
@@ -178,7 +196,6 @@ def _paint_minimal_white_preview(painter: QPainter, rect, sub: PlaylistSubTempla
     painter.drawRoundedRect(card, 8, 8)
 
     text = _qc(c.get("text", "#000000"))
-    muted = _qc(c.get("muted", "#8e8e93"))
     selected = _qc(c.get("selected_row", "#f2f2f7"))
     play_icon = _qc(c.get("play_icon", text))
 
