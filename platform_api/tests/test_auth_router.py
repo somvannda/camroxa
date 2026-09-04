@@ -449,6 +449,40 @@ class TestRegister:
         )
         assert response.status_code == 422
 
+    async def test_register_rejects_special_char_email(self, client: AsyncClient) -> None:
+        """Email whose local part uses characters no provider accepts (e.g. '*') is rejected.
+
+        EmailStr accepts '******hheng@gmail.com' because '*' is legal RFC 5322
+        atext — the pragmatic whitelist must catch it.
+        """
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "******hheng@gmail.com",
+                "password": "ValidPass1",
+                "display_name": "Borey",
+            },
+        )
+        assert response.status_code == 422
+        data = response.json()
+        details = data["error"]["details"]
+        fields_with_errors = [e["field"] for e in details["fields"]]
+        assert "email" in fields_with_errors
+
+    async def test_register_accepts_plus_alias_and_dots(self, client: AsyncClient) -> None:
+        """Common provider-style emails (plus alias, dotted, hyphen domain) still pass."""
+        response = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "borey.hheng+studio@gmail.com",
+                "password": "ValidPass1",
+                "display_name": "Borey",
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["email"] == "borey.hheng+studio@gmail.com"
+
 
 # ---------------------------------------------------------------------------
 # POST /auth/refresh

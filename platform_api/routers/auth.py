@@ -307,6 +307,16 @@ _PASSWORD_UPPER_RE = re.compile(r"[A-Z]")
 _PASSWORD_LOWER_RE = re.compile(r"[a-z]")
 _PASSWORD_DIGIT_RE = re.compile(r"\d")
 
+# Pydantic's EmailStr only checks RFC 5322 syntax, which permits characters
+# no real mail provider accepts (e.g. "*" is a legal "atext" char, so an
+# address like "******hheng@gmail.com" passes). Apply a pragmatic whitelist
+# matching what Gmail/Outlook-style providers actually allow:
+#   local  : starts alnum, then only A-Za-z0-9 . _ % + -
+#   domain : dot-separated alnum/hyphen labels ending in a 2+ letter TLD.
+_EMAIL_ALLOWED_RE = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9._%+\-]{0,63})?@(?:[A-Za-z0-9\-]+\.)+[A-Za-z]{2,}"
+)
+
 
 def _validate_registration(request: RegisterRequest) -> list[dict[str, str]]:
     """Validate all registration fields and return ALL errors at once.
@@ -316,6 +326,14 @@ def _validate_registration(request: RegisterRequest) -> list[dict[str, str]]:
     must be reported in a single response.
     """
     errors: list[dict[str, str]] = []
+
+    # Email format — EmailStr is syntax-only, so reject addresses whose local
+    # part contains characters no real provider accepts (e.g. "*", spaces).
+    if not _EMAIL_ALLOWED_RE.fullmatch(request.email):
+        errors.append({
+            "field": "email",
+            "message": "Please enter a valid email address.",
+        })
 
     # Password length (Pydantic handles min/max but we double-check for clarity)
     password = request.password
