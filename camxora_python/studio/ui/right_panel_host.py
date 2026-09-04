@@ -160,7 +160,10 @@ class RightPanelHost(QFrame):
 
     def set_music_playlist(self, preset_id: str) -> None:
         self._active_section = "music"
-        self.music_panel.set_selected_playlist(preset_id, switch_tab=True)
+        # Apply the whole-look template but keep the right panel on the Music
+        # tab so users can add tracks right away.
+        self.music_panel.set_selected_playlist(preset_id, switch_tab=False)
+        self.music_panel.show_music_tab()
         self.refresh()
 
     def refresh(self) -> None:

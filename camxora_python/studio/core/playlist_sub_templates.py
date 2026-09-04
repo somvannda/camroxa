@@ -142,6 +142,7 @@ PLAYLIST_SUB_TEMPLATES: tuple[PlaylistSubTemplate, ...] = (
 SUB_TEMPLATES_BY_ID: dict[str, PlaylistSubTemplate] = {t.id: t for t in PLAYLIST_SUB_TEMPLATES}
 
 DEFAULT_SUB_FOR_TEMPLATE: dict[str, str] = {
+    "minimal-white": "minimal-white",
     "glass-romance": "glass-blur",
     "neon-cyber": "cyberpunk",
     "long-play-green": "forest-mist",

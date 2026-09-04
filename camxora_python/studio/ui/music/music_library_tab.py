@@ -17,7 +17,17 @@ from PySide6.QtWidgets import (
 
 from studio.ui.inspector_layout import FIELD_GAP, PAGE_TOP, SECTION_GAP
 from studio.ui.music.playlist_card import PlaylistTemplateCard
-from studio.ui.music.playlist_presets import PLAYLIST_PRESETS, PRESETS_BY_ID, presets_for_category
+from studio.ui.music.playlist_presets import PLAYLIST_PRESETS, PRESETS_BY_ID
+
+
+# Whole-look templates shown in the Playlist picker. Each id is a full main
+# template (scene + colors + default track-list style), so clicking one card
+# applies the complete look at once. Everything else is hidden for now.
+PICKER_TEMPLATE_IDS = ("minimal-white", "forest-mist")
+
+
+def _picker_presets() -> tuple:
+    return tuple(PRESETS_BY_ID[i] for i in PICKER_TEMPLATE_IDS if i in PRESETS_BY_ID)
 
 
 class _ComingSoonPage(QWidget):
@@ -38,7 +48,9 @@ class MusicLibraryTab(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._selected_id: str | None = PLAYLIST_PRESETS[0].id if PLAYLIST_PRESETS else None
+        self._selected_id: str | None = (
+            PICKER_TEMPLATE_IDS[0] if PICKER_TEMPLATE_IDS[0] in PRESETS_BY_ID else (PLAYLIST_PRESETS[0].id if PLAYLIST_PRESETS else None)
+        )
         self._cards: dict[str, PlaylistTemplateCard] = {}
 
         root = QVBoxLayout(self)
@@ -79,7 +91,7 @@ class MusicLibraryTab(QWidget):
         self._grid.setHorizontalSpacing(10)
         self._grid.setVerticalSpacing(12)
         scroll.setWidget(inner)
-        self._populate_grid(presets_for_category("playlist"))
+        self._populate_grid(_picker_presets())
         return scroll
 
     def _populate_grid(self, presets: tuple) -> None:
@@ -105,19 +117,30 @@ class MusicLibraryTab(QWidget):
     def set_category(self, category: str) -> None:
         if category in ("all", "playlist"):
             self._stack.setCurrentWidget(self._playlist_page)
-            self._populate_grid(presets_for_category(category))
+            self._populate_grid(_picker_presets())
             self._apply_filter()
         elif category in self._coming_soon_keys:
             idx = 1 + self._coming_soon_keys.index(category)
             self._stack.setCurrentIndex(idx)
+
+    def sync_selection(self, template_id: str | None) -> None:
+        """Highlight the picker card matching the active playlist template.
+
+        Called when the Playlist section opens so a template applied from the
+        right panel (or loaded project) is shown as selected.
+        """
+        if template_id and template_id in self._cards and template_id in PICKER_TEMPLATE_IDS:
+            self._selected_id = template_id
+            for pid, card in self._cards.items():
+                card.set_selected(pid == template_id)
 
     def _apply_filter(self) -> None:
         if self._stack.currentWidget() is not self._playlist_page:
             return
         query = self._search.text().strip().lower()
         visible = 0
-        cols = 2
-        for preset in presets_for_category("playlist"):
+        cols = 1 if len(self._cards) <= 2 else 2
+        for preset in _picker_presets():
             card = self._cards.get(preset.id)
             if card is None:
                 continue

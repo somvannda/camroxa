@@ -19,10 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QStackedWidget,
-    QTabBar,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -36,7 +33,6 @@ from studio.media.media_loader import default_cache_dir, import_files
 from studio.ui.music.music_category_rail import MusicCategoryRail
 from studio.ui.music.music_library_tab import MusicLibraryTab
 from studio.ui.icons.lucide_icons import (
-    ICON_COLOR,
     ICON_COLOR_DIM,
     ICON_SZ_LIBRARY,
     MEDIA_TYPE_ICON,
@@ -1026,10 +1022,11 @@ class LibraryPanel(QFrame):
         index = next(i for i, (k, _l, _i) in enumerate(LIBRARY_TOP_MENU) if k == section_key)
         self.stack.setCurrentIndex(index)
         if section_key == "music":
+            # Playlist picker: template cards only — no left menu/rail.
             self.side_rail.hide()
-            self.music_side_rail.show()
-            self.music_side_rail.set_active("all")
+            self.music_side_rail.hide()
             self.music_tab.set_category("all")
+            self.music_tab.sync_selection(self.project_state.project.playlist.template_id)
         else:
             self.music_side_rail.hide()
             if section_key in ("import", "media"):
