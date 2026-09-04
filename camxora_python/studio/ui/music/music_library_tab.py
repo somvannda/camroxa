@@ -1,46 +1,38 @@
-"""Music library tab — search + playlist template grid."""
+"""Music library tab — Playlist whole-look template chooser.
+
+When the user opens the Playlist section they pick between the two
+implemented whole-look templates (Minimal White, Forest Mist). Cards reuse
+the original track-list sub-template art (bundled thumbnail when present)
+and are laid out side by side in one compact row — no category rail, no
+search, no extra padding.
+"""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (
-    QFrame,
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QScrollArea,
-    QStackedWidget,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
-from studio.ui.inspector_layout import FIELD_GAP, PAGE_TOP, SECTION_GAP
-from studio.ui.music.playlist_card import PlaylistTemplateCard
-from studio.ui.music.playlist_presets import PLAYLIST_PRESETS, PRESETS_BY_ID
+from studio.core.playlist_sub_templates import DEFAULT_SUB_FOR_TEMPLATE, SUB_TEMPLATES_BY_ID
+from studio.ui.music.playlist_presets import PRESETS_BY_ID
+from studio.ui.music.playlist_sub_template_card import PlaylistSubTemplateCard
 
 
-# Whole-look templates shown in the Playlist picker. Each id is a full main
-# template (scene + colors + default track-list style), so clicking one card
-# applies the complete look at once. Everything else is hidden for now.
+# The two whole-look templates offered in the picker. Each is both a main
+# template id and its matching track-list sub-template id, so a single card
+# click applies the complete look (scene + colors + list style) at once.
 PICKER_TEMPLATE_IDS = ("minimal-white", "forest-mist")
 
 
-def _picker_presets() -> tuple:
-    return tuple(PRESETS_BY_ID[i] for i in PICKER_TEMPLATE_IDS if i in PRESETS_BY_ID)
-
-
-class _ComingSoonPage(QWidget):
-    def __init__(self, title: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, PAGE_TOP + 8, 16, 16)
-        label = QLabel(f"{title} templates are coming soon.")
-        label.setObjectName("EmptyHint")
-        label.setWordWrap(True)
-        label.setAlignment(Qt.AlignmentFlag.AlignTop)
-        layout.addWidget(label)
-        layout.addStretch(1)
+def _sub_ids_from_template(template_id: str | None) -> str | None:
+    """Map an active template id to the picker sub-template it should light up."""
+    if not template_id:
+        return None
+    if template_id in PICKER_TEMPLATE_IDS:
+        return template_id
+    default_sub = DEFAULT_SUB_FOR_TEMPLATE.get(template_id)
+    if default_sub in PICKER_TEMPLATE_IDS:
+        return default_sub
+    return None
 
 
 class MusicLibraryTab(QWidget):
@@ -48,107 +40,62 @@ class MusicLibraryTab(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._selected_id: str | None = (
-            PICKER_TEMPLATE_IDS[0] if PICKER_TEMPLATE_IDS[0] in PRESETS_BY_ID else (PLAYLIST_PRESETS[0].id if PLAYLIST_PRESETS else None)
-        )
-        self._cards: dict[str, PlaylistTemplateCard] = {}
+        self._selected_id: str | None = PICKER_TEMPLATE_IDS[0]
+        self._cards: dict[str, PlaylistSubTemplateCard] = {}
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, PAGE_TOP, 12, 12)
-        root.setSpacing(SECTION_GAP)
+        root.setContentsMargins(4, 6, 4, 6)
+        root.setSpacing(8)
 
-        search_row = QHBoxLayout()
-        search_row.setSpacing(FIELD_GAP)
-        self._search = QLineEdit()
-        self._search.setObjectName("MusicSearchField")
-        self._search.setPlaceholderText("Search templates…")
-        self._search.textChanged.connect(self._apply_filter)
-        search_row.addWidget(self._search, 1)
-        root.addLayout(search_row)
-
-        self._stack = QStackedWidget(self)
-        self._playlist_page = self._build_playlist_page()
-        self._stack.addWidget(self._playlist_page)
-        for key, label in (
-            ("ring", "Ring"),
-            ("bars", "Bars"),
-            ("wave", "Wave"),
-            ("vinyl", "Vinyl"),
-            ("lyric", "Lyric"),
-        ):
-            self._stack.addWidget(_ComingSoonPage(label))
-        self._coming_soon_keys = ("ring", "bars", "wave", "vinyl", "lyric")
-        root.addWidget(self._stack, 1)
-
-    def _build_playlist_page(self) -> QWidget:
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        inner = QWidget()
-        self._grid = QGridLayout(inner)
-        self._grid.setContentsMargins(0, 0, 4, 0)
-        self._grid.setHorizontalSpacing(10)
-        self._grid.setVerticalSpacing(12)
-        scroll.setWidget(inner)
-        self._populate_grid(_picker_presets())
-        return scroll
-
-    def _populate_grid(self, presets: tuple) -> None:
-        while self._grid.count():
-            item = self._grid.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
-        self._cards.clear()
-        cols = 2
-        for index, preset in enumerate(presets):
-            card = PlaylistTemplateCard(preset, selected=preset.id == self._selected_id)
+        # One compact row: Minimal White | Forest Mist.
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        row.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        for sub_id in PICKER_TEMPLATE_IDS:
+            sub = SUB_TEMPLATES_BY_ID[sub_id]
+            card = PlaylistSubTemplateCard(sub, selected=sub_id == self._selected_id)
             card.clicked.connect(self._on_card_clicked)
-            self._cards[preset.id] = card
-            self._grid.addWidget(card, index // cols, index % cols)
+            self._cards[sub_id] = card
+            row.addWidget(card)
+        root.addLayout(row)
+        root.addStretch(1)
 
-    def _on_card_clicked(self, preset_id: str) -> None:
-        self._selected_id = preset_id
+    def _on_card_clicked(self, sub_id: str) -> None:
+        # sub id == whole-look main template id for both picker entries.
+        if sub_id not in PRESETS_BY_ID or sub_id not in self._cards:
+            return
+        self._selected_id = sub_id
         for pid, card in self._cards.items():
-            card.set_selected(pid == preset_id)
-        self.playlist_selected.emit(preset_id)
+            card.set_selected(pid == sub_id)
+        self.playlist_selected.emit(sub_id)
 
     def set_category(self, category: str) -> None:
-        if category in ("all", "playlist"):
-            self._stack.setCurrentWidget(self._playlist_page)
-            self._populate_grid(_picker_presets())
-            self._apply_filter()
-        elif category in self._coming_soon_keys:
-            idx = 1 + self._coming_soon_keys.index(category)
-            self._stack.setCurrentIndex(idx)
+        # Category rail removed — picker always shows the two templates.
+        return None
 
     def sync_selection(self, template_id: str | None) -> None:
-        """Highlight the picker card matching the active playlist template.
+        """Highlight the card matching the active playlist template.
 
         Called when the Playlist section opens so a template applied from the
         right panel (or loaded project) is shown as selected.
         """
-        if template_id and template_id in self._cards and template_id in PICKER_TEMPLATE_IDS:
-            self._selected_id = template_id
-            for pid, card in self._cards.items():
-                card.set_selected(pid == template_id)
-
-    def _apply_filter(self) -> None:
-        if self._stack.currentWidget() is not self._playlist_page:
+        sub_id = _sub_ids_from_template(template_id)
+        if sub_id is None:
             return
-        query = self._search.text().strip().lower()
-        visible = 0
-        cols = 1 if len(self._cards) <= 2 else 2
-        for preset in _picker_presets():
-            card = self._cards.get(preset.id)
-            if card is None:
-                continue
-            show = not query or query in preset.name.lower() or query in preset.id
-            card.setVisible(show)
-            if show:
-                self._grid.addWidget(card, visible // cols, visible % cols)
-                visible += 1
+        self._selected_id = sub_id
+        for pid, card in self._cards.items():
+            card.set_selected(pid == sub_id)
+
+    def select_playlist(self, preset_id: str) -> None:
+        """Programmatic selection (from the right-panel playlist picker)."""
+        if preset_id not in PRESETS_BY_ID:
+            return
+        self._selected_id = preset_id
+        sub_id = _sub_ids_from_template(preset_id) or preset_id
+        for pid, card in self._cards.items():
+            card.set_selected(pid == sub_id)
+        self.playlist_selected.emit(preset_id)
 
     def selected_preset_id(self) -> str | None:
         return self._selected_id
@@ -157,7 +104,3 @@ class MusicLibraryTab(QWidget):
         if self._selected_id is None:
             return None
         return PRESETS_BY_ID.get(self._selected_id)
-
-    def select_playlist(self, preset_id: str) -> None:
-        if preset_id in self._cards:
-            self._on_card_clicked(preset_id)
