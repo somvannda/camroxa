@@ -36,7 +36,7 @@ from studio.core.project_state import ProjectState
 from studio.core.time_utils import fmt_time_hms
 from studio.media.audio_source import AudioSourceCache
 from studio.media.video_source import VideoSourceCache
-from studio.render.compositor import DEFAULT_HEIGHT, DEFAULT_WIDTH, frame_to_qimage, render_frame
+from studio.render.compositor import frame_to_qimage, render_frame
 from studio.ui.capcut_dropdown import CapCutDropdown
 from studio.ui.preview_render_worker import PreviewRenderWorker
 from studio.ui.preview_transform_overlay import PreviewTransformOverlay
@@ -686,15 +686,25 @@ class PlaybackController(QObject):
             self._last_frame_was_blank = True
         elif force_visual or needs_visual or playlist_active or not self._last_frame_was_blank:
             now_ms = self._elapsed.elapsed()
-            if (
+            playlist_playing = (
                 playlist_active
                 and not needs_visual
                 and not has_any_clips
                 and self.project_state.is_playing
                 and not force_visual
+            )
+            if (
+                playlist_playing
                 and now_ms - self._last_playlist_render_ms < self.PLAYLIST_RENDER_INTERVAL_MS
             ):
                 pass  # skip heavy playlist re-render this tick
+            elif playlist_playing:
+                # Render playlist frames off the UI thread while playing so the
+                # rest of the app never blocks on the compositor (~50-110ms/frame).
+                busy = self._active_worker is not None and self._active_worker.isRunning()
+                if not busy:
+                    self._last_playlist_render_ms = now_ms
+                    self._start_async_render(interactive=False)
             else:
                 if playlist_active:
                     self._last_playlist_render_ms = now_ms

@@ -2,10 +2,14 @@
 
 The scene background is the bundled emotional-music background image. A single
 frosted-glass playlist box sits on the right: a strong Gaussian blur of the
-underlying canvas, a dark mauve veil, a faint warm border, an elegant header
-(playlist title + "N tracks • M min" meta with a ••• menu), and quiet track
-rows. The active row gets a pink/mauve pill + play icon; other rows keep a
-subtle equalizer glyph and a ••• affordance on the trailing edge.
+underlying canvas, a dark mauve veil, a faint warm hairline border, an elegant
+header (playlist title + "N tracks • M min" meta), and quiet track rows. This
+is a read-only scene view — no menu/… affordances are drawn. Icon placement
+(number, play, equalizer, duration) is driven entirely by the shared row
+chrome so it honors the Playlist → Settings toggles; the active row gets the
+pink/mauve pill with a leading play icon and a trailing animated equalizer.
+The expensive glass blur and the resting frame+content composite are cached
+and only rebuilt when the scene behind the box changes.
 """
 
 from __future__ import annotations
@@ -33,9 +37,6 @@ _EMOTION_TIER_PRESETS: dict[int, tuple[int, int]] = {
     6: (58, 32),
     10: (48, 30),
 }
-# Right-edge room reserved for our own glyphs (equalizer + •••), which sit
-# outside the shared row chrome so they never fight the duration label.
-_ROW_TAIL = 50
 _PILL_OUTSET_X = 14
 _ROW_INSET_X = 8
 
@@ -163,31 +164,6 @@ def emotional_music_card_height(settings: PlaylistSettings, typo, card_w: int = 
     return max(320, plan["card_h"])
 
 
-def _draw_rounded_rect(draw, box, fill, radius) -> None:
-    draw.rounded_rectangle(box, radius=max(0, radius), fill=fill)
-
-
-def _draw_three_dots(draw: ImageDraw.ImageDraw, x: int, y: int, *, color: str, dot_r: int = 2) -> None:
-    fill = _parse_hex(color)
-    gap = dot_r * 2 + 5
-    cy = y + dot_r
-    for i in range(3):
-        cx = x + i * gap + dot_r
-        draw.ellipse((cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r), fill=fill)
-
-
-def _draw_mini_equalizer(draw: ImageDraw.ImageDraw, x: int, y: int, *, color: str, total_h: int = 13) -> None:
-    """Four quiet bars — the 'not playing' audio glyph used on inactive rows."""
-    fill = _parse_hex(color)
-    heights = (0.5, 0.85, 0.62, 0.9)
-    bar_w, gap, cx = 2, 2, x
-    for ratio in heights:
-        bh = max(3, int(total_h * ratio))
-        top = y + (total_h - bh) // 2
-        draw.rounded_rectangle((cx, top, cx + bar_w, top + bh), radius=1, fill=fill)
-        cx += bar_w + gap
-
-
 def _composite_rgba_patch(dst: np.ndarray, src: np.ndarray, y0: int, x0: int) -> None:
     from studio.render.playlist_minimal_white import _composite_rgba_patch as _patch
 
@@ -231,14 +207,15 @@ def _blit_card_to_canvas(canvas: np.ndarray, x: int, y: int, rgba: np.ndarray) -
     _blit(canvas, x, y, rgba)
 
 
-_GLASS_FRAME_SIGMA = 14.0
+_GLASS_FRAME_SIGMA = 12.0
 _FRAME_PAD = 24
-# Single-slot cache for the frosted frame layer. The Gaussian blur is by far the
-# most expensive per-frame op (tens of ms); in standalone scenes the pixels under
-# the box are static, so we rebuild only when the underlying canvas patch changes
-# (sampled fingerprint) or geometry/colors change.
+# Single-slot caches. The Gaussian blur and the frame+content composite are the
+# most expensive layer ops; in standalone scenes both layers are static while a
+# track plays, so we cache them and only re-compose the small active-row band.
 _frame_cache_key: tuple | None = None
 _frame_cache: np.ndarray | None = None
+_resting_key: tuple | None = None
+_resting_cache: np.ndarray | None = None
 
 
 def _patch_fingerprint(canvas: np.ndarray, x0: int, y0: int, x1: int, y1: int) -> tuple:
@@ -280,6 +257,18 @@ def _frosted_frame(
     _frame_cache_key = key
     _frame_cache = frame
     return frame
+
+
+def _resting_card(static_key: tuple, frame: np.ndarray, content: np.ndarray) -> np.ndarray:
+    """Composite of the frosted frame + static overlay (no active row)."""
+    global _resting_key, _resting_cache
+    key = (static_key, id(frame), id(content))
+    if _resting_key == key and _resting_cache is not None:
+        return _resting_cache
+    composite = Image.alpha_composite(Image.fromarray(frame), Image.fromarray(content))
+    _resting_cache = np.ascontiguousarray(np.array(composite))
+    _resting_key = key
+    return _resting_cache
 
 
 def _build_frosted_frame_rgba(
@@ -425,7 +414,7 @@ def _draw_inactive_row(
     plan_and_draw_row(
         draw,
         row_x0=row_x0,
-        row_x1=row_x1 - _ROW_TAIL,
+        row_x1=row_x1,
         row_y=row_y,
         row_h=row_h,
         row_index=row_index,
@@ -444,12 +433,6 @@ def _draw_inactive_row(
         text_gap=6,
         trailing_gap=10,
     )
-    # Our own trailing cluster: quiet equalizer + ••• (kept subtle).
-    muted = colors.get("muted", "#cfb6c6")
-    cy = row_y + row_h // 2
-    eq_x = row_x1 - _ROW_TAIL + 2
-    _draw_mini_equalizer(draw, eq_x, cy - 6, color=muted)
-    _draw_three_dots(draw, row_x1 - 16, cy - 2, color=muted, dot_r=2)
 
 
 def _draw_active_row(
@@ -515,7 +498,7 @@ def _draw_active_row(
     plan_and_draw_row(
         draw,
         row_x0=row_x0,
-        row_x1=row_x1 - _ROW_TAIL,
+        row_x1=row_x1,
         row_y=row_y,
         row_h=row_h,
         row_index=row_index,
@@ -535,8 +518,6 @@ def _draw_active_row(
         text_gap=6,
         trailing_gap=10,
     )
-    # Trailing ••• on the active row (play icon already replaced the number).
-    _draw_three_dots(draw, row_x1 - 16, row_y + row_h // 2 - 2, color=colors.get("muted", "#cfb6c6"), dot_r=2)
     card[:] = np.array(card_img)
 
 
@@ -553,7 +534,6 @@ def _render_static_overlay_rgba(
 
     text_color = colors.get("text", "#fbf4f7")
     muted = colors.get("muted", "#cfb6c6")
-    accent = colors.get("accent", "#ff7aa2")
     typo = settings.typography
     metrics = _layout_metrics(w, h, settings, typo)
 
@@ -570,9 +550,8 @@ def _render_static_overlay_rgba(
     title_font = header["title_font"]
     meta_font = header["meta_font"]
 
-    title_max_w = max(80, w - pad_x * 2 - 34)
+    title_max_w = max(80, w - pad_x * 2)
     draw.text((pad_x, header["title_y"]), _fit_text(draw, title_text, title_font, title_max_w), font=title_font, fill=_parse_hex(text_color))
-    _draw_three_dots(draw, w - pad_x - 18, header["title_y"] + 3, color=accent, dot_r=2)
 
     meta = _playlist_meta(settings, project_state)
     if meta:
@@ -675,9 +654,9 @@ def draw_emotional_music_track_list(
         content = static_overlay
 
     frame = _frosted_frame(canvas, x, y, w, h, radius, colors)
-    card = np.ascontiguousarray(
-        np.array(Image.alpha_composite(Image.fromarray(frame), Image.fromarray(content.copy())))
-    )
+    resting = _resting_card(static_key, frame, content)
+    # Working copy each frame — the active row is the only thing that changes.
+    card = np.array(resting)
 
     if active_idx >= 0:
         media = project_state.get_media(songs[active_idx])
