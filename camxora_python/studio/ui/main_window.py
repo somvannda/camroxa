@@ -463,29 +463,55 @@ class MainWindow(QMainWindow):
 
     # ---------------- panel width policy ----------------
 
-    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+    def _install_panel_policy(self) -> None:
+        """Watch the top-level window once for maximize/restore changes.
+
+        Installed lazily/idempotently on first show: registering the same
+        filter again on every showEvent (pages hide/show during navigation)
+        would stack duplicate calls and multiply layout work on each resize.
+        """
+        if getattr(self, "_panel_policy_installed", False):
+            return
+        self._panel_policy_installed = True
+        self._policy_maximized: bool | None = None
         top = self.window()
-        if obj is top and event.type() in (
-            QEvent.Type.Resize,
-            QEvent.Type.WindowStateChange,
+        if top is not None:
+            top.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if (
+            obj is self.window()
+            and getattr(self, "_panel_policy_installed", False)
+            and event.type() == QEvent.Type.WindowStateChange
         ):
+            # Deferred so it never runs in the middle of a page-switch/layout pass.
             QTimer.singleShot(0, self._apply_panel_width_policy)
         return super().eventFilter(obj, event)
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
-        self.window().installEventFilter(self)
+        self._install_panel_policy()
         QTimer.singleShot(0, self._apply_panel_width_policy)
 
     def _apply_panel_width_policy(self) -> None:
         """Fixed side-panel widths at normal window size; resizable when the
-        top-level window is maximized/fullscreen."""
+        top-level window is maximized/fullscreen.
+
+        No-ops while the editor is hidden (e.g. mid page-navigation) and when
+        the maximized state has not actually changed, so it never re-pins the
+        splitter during unrelated resize churn.
+        """
+        if not self.isVisible():
+            return
         lp = getattr(self, "library_panel", None)
         rh = getattr(self, "inspector_host", None)
         if lp is None or rh is None:
             return
         top = self.window()
         maximized = bool(top and (top.isMaximized() or top.isFullScreen()))
+        if getattr(self, "_policy_maximized", None) == maximized:
+            return
+        self._policy_maximized = maximized
         if maximized:
             lp.setMinimumWidth(320)
             lp.setMaximumWidth(560)
