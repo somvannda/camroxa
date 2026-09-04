@@ -64,7 +64,8 @@ class PreviewCanvas(QLabel):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(320, 180)
         self.setStyleSheet("background: #000000;")
-        self._placeholder_text = "Add clips to the timeline to see your preview"
+        # Blank black canvas on first open — no placeholder copy.
+        self._placeholder_text = ""
         self.setText(self._placeholder_text)
         self.setWordWrap(True)
         self._source_pixmap: QPixmap | None = None

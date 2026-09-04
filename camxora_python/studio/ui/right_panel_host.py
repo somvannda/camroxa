@@ -154,6 +154,8 @@ class RightPanelHost(QFrame):
 
     def set_library_section(self, section_key: str) -> None:
         self._active_section = section_key
+        if section_key == "music":
+            self.music_panel.show_music_tab()
         self.refresh()
 
     def set_music_playlist(self, preset_id: str) -> None:

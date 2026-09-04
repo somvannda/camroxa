@@ -1029,8 +1029,8 @@ class LibraryPanel(QFrame):
         if section_key == "music":
             self.side_rail.hide()
             self.music_side_rail.show()
-            self.music_side_rail.set_active("playlist")
-            self.music_tab.set_category("playlist")
+            self.music_side_rail.set_active("all")
+            self.music_tab.set_category("all")
         else:
             self.music_side_rail.hide()
             if section_key in ("import", "media"):

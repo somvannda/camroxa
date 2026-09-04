@@ -431,6 +431,14 @@ class MusicInspectorPanel(QWidget):
         self._playlist_tier2.setVisible(True)
 
 
+    def show_music_tab(self) -> None:
+        """Default the Music panel to the Music tab (Album/Songs content)."""
+        self._tier1.set_active_index(self._IDX_MUSIC)
+        self._stack.setCurrentIndex(self._IDX_MUSIC)
+        self._tier2.setVisible(True)
+        self._playlist_tier2.setVisible(False)
+
+
 
     def focus_playlist_settings(self) -> None:
 

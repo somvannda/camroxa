@@ -40,7 +40,7 @@ class MusicCategoryRail(QFrame):
             self._buttons.append(btn)
             self._keys.append(key)
         layout.addStretch(1)
-        self._select("playlist")
+        self._select("all")
 
     def _style_btn(self, btn: QPushButton, active: bool) -> None:
         if active:
