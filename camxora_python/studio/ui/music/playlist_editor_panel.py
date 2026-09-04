@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -73,9 +73,21 @@ def _form_label(text: str) -> QLabel:
 
 
 class _ScrollPage(QWidget):
+    """Scroll page whose content width is pinned to the viewport width.
+
+    The inner content width is set explicitly instead of letting
+    QScrollArea/widgetResizable auto-negotiate it: with a tall form inside a
+    scroll area, width auto-negotiation can recurse through
+    QBoxLayout::heightForWidth (native stack overflow — seen in crash dumps
+    after removing this pin). Width is re-synced on show and whenever the
+    viewport resizes (e.g. the vertical scrollbar appears), so it never goes
+    stale for hidden-then-shown stacked pages.
+    """
+
     def __init__(self, parent: QWidget | None = None, *, settings_page: bool = False) -> None:
         super().__init__(parent)
         self._settings_page = settings_page
+        self._sync_pending = False
         self._scroll = QScrollArea(self)
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -83,9 +95,6 @@ class _ScrollPage(QWidget):
         self._inner = QWidget()
         if not settings_page:
             # Only cap non-settings pages; Playlist Settings fills the panel.
-            # widgetResizable keeps the inner widget sized to the viewport, so
-            # a manually pinned width is not needed (and would go stale when a
-            # hidden stacked page is first shown without a resize event).
             self._inner.setMaximumWidth(INSPECTOR_CONTENT_MAX_WIDTH)
         self._layout = QVBoxLayout(self._inner)
         if settings_page:
@@ -95,9 +104,44 @@ class _ScrollPage(QWidget):
         else:
             apply_scroll_page_layout(self._layout)
         self._scroll.setWidget(self._inner)
+        self._scroll.viewport().installEventFilter(self)
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._scroll)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if obj is self._scroll.viewport() and event.type() == QEvent.Type.Resize:
+            self._schedule_sync()
+        return super().eventFilter(obj, event)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._schedule_sync()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._schedule_sync()
+
+    def _schedule_sync(self) -> None:
+        if self._sync_pending:
+            return
+        self._sync_pending = True
+        # Deferred so we never set geometry inside the very resize/layout pass
+        # that just ran (a synchronous setFixedWidth here can re-trigger layout).
+        QTimer.singleShot(0, self._sync_inner_width)
+
+    def _sync_inner_width(self) -> None:
+        self._sync_pending = False
+        viewport_w = self._scroll.viewport().width()
+        if viewport_w <= 0:
+            return
+        if self._settings_page:
+            width = viewport_w
+        else:
+            width = min(viewport_w, INSPECTOR_CONTENT_MAX_WIDTH)
+        if self._inner.minimumWidth() == width and self._inner.maximumWidth() == width:
+            return
+        self._inner.setFixedWidth(width)
 
 
 class PlaylistEditorPanel(QWidget):
