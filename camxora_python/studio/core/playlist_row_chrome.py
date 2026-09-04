@@ -241,9 +241,9 @@ def default_row_chrome_for_layout(layout_style: str) -> PlaylistRowChrome:
             ),
         )
     if layout_style == "emotional_music":
-        # Quiet rows: number + title/artist + duration. Play icon (leading,
-        # replacing the number) only on the active row; equalizer glyphs are
-        # painted by the emotional renderer, not the chrome layer.
+        # Active row: leading play icon (replaces the number) + trailing
+        # animated equalizer bars; quiet rows keep number/title/duration with
+        # a static equalizer glyph painted by the emotional renderer.
         return PlaylistRowChrome(
             numbers=RowNumberStyle(enabled=True),
             play=RowPlayStyle(
@@ -253,7 +253,14 @@ def default_row_chrome_for_layout(layout_style: str) -> PlaylistRowChrome:
                 placement="leading",
             ),
             duration=RowDurationStyle(enabled=True, placement="trailing"),
-            animation=RowAnimationStyle(enabled=False, placement="trailing"),
+            animation=RowAnimationStyle(
+                enabled=True,
+                placement="trailing",
+                bar_count=4,
+                bar_width_px=2,
+                bar_gap_px=2,
+                height_px=13,
+            ),
         )
     return PlaylistRowChrome()
 

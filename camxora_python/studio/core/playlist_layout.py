@@ -173,8 +173,16 @@ def standalone_song_list_rect_norm(
     norm_w = min(ref_w / canvas_w, 0.95)
     norm_h = min(ref_h / canvas_h, 0.95)
     base = _minimal_white_layout(settings, canvas_w=canvas_w, canvas_h=canvas_h)["song_list"]
-    out_x = base["x"] if x is None else x
-    out_y = base["y"] if y is None else y
+    if x is not None:
+        out_x = float(x)
+    elif settings.list_side == "left":
+        out_x = _MINIMAL_WHITE_MARGIN_X
+    else:
+        # Keep a fixed proportional gap from the edge, measured from the actual
+        # card width used — so wider cards (Emotional Music) don't slide flush
+        # against the right edge like the old aspect-derived base did.
+        out_x = round(1.0 - _MINIMAL_WHITE_MARGIN_X - norm_w, 4)
+    out_y = base["y"] if y is None else float(y)
     out_x = clamp(out_x, 0.0, 1.0 - norm_w)
     out_y = clamp(out_y, 0.0, 1.0 - norm_h)
     return {

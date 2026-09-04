@@ -306,19 +306,24 @@ def _build_frosted_frame_rgba(
 
     blurred = cv2.GaussianBlur(patch, (0, 0), _GLASS_FRAME_SIGMA)
     off_x, off_y = x - x0, y - y0
-    card_rgb = blurred[off_y : off_y + h, off_x : off_x + w].astype(np.float32)
+    # The card can sit flush against (or past) the canvas edge; only sample the
+    # blurred region that actually exists inside the canvas.
+    bh, bw = blurred.shape[:2]
+    hh = max(0, min(h, bh - off_y))
+    ww = max(0, min(w, bw - off_x))
 
     veil = _parse_hex(colors.get("surface", "#1c0b18aa"))
     va = veil[3] / 255.0
     veil_rgb = np.array(veil[:3], dtype=np.float32)
-    card_rgb = card_rgb * (1.0 - va) + veil_rgb * va
+    if hh > 0 and ww > 0:
+        card_rgb = blurred[off_y : off_y + hh, off_x : off_x + ww].astype(np.float32)
+        card_rgb = card_rgb * (1.0 - va) + veil_rgb * va
+        rgba[:hh, :ww, :3] = np.clip(card_rgb, 0, 255).astype(np.uint8)
 
     corner_r = max(4, min(int(radius), w // 2, h // 2))
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=corner_r, fill=255)
     mask_arr = np.array(mask, dtype=np.float32) / 255.0
-
-    rgba[..., :3] = np.clip(card_rgb, 0, 255).astype(np.uint8)
     rgba[..., 3] = np.clip(mask_arr * 255, 0, 255).astype(np.uint8)
 
     border = _parse_hex(colors.get("frame_border", "#ffb3cc33"))
@@ -456,6 +461,8 @@ def _draw_active_row(
     row_index: int,
     media,
     local_time: float,
+    playback_time: float,
+    band_values,
     colors: dict[str, str],
     radius: int,
     typo,
@@ -498,6 +505,13 @@ def _draw_active_row(
 
     chrome = settings.row_chrome
     play_r = play_circle_radius_for_row(row_h) * chrome.play.size_scale_pct / 100.0
+    from studio.render.playlist_minimal_white import _bar_heights
+
+    bar_heights = _bar_heights(
+        playback_time=playback_time,
+        band_values=band_values,
+        count=max(1, chrome.animation.bar_count),
+    )
     plan_and_draw_row(
         draw,
         row_x0=row_x0,
@@ -516,6 +530,7 @@ def _draw_active_row(
         play_r=play_r,
         playing=True,
         active=True,
+        bar_heights=bar_heights,
         inset_x=_ROW_INSET_X,
         text_gap=6,
         trailing_gap=10,
@@ -638,6 +653,8 @@ def draw_emotional_music_track_list(
         *playlist_static_card_key(
             settings, ref_w, ref_h, (0, 0, ref_w, ref_h), colors, media_fp,
         ),
+        # The header draws the album title — cache must rebuild when it changes.
+        settings.album_title or "",
         active_idx,
     )
     static_overlay = cache.get_static_card(
@@ -674,6 +691,8 @@ def draw_emotional_music_track_list(
                 row_index=active_idx,
                 media=media,
                 local_time=local_time,
+                playback_time=playback_time,
+                band_values=band_values,
                 colors=colors,
                 radius=radius,
                 typo=typo,
