@@ -22,7 +22,8 @@ from studio.core.project_state import ProjectState
 from studio.core.time_utils import fmt_time
 from studio.media.audio_source import AudioSourceCache
 from studio.render.compositor import _blit_rgb, _load_image_rgb
-from studio.render.playlist_forest_mist import draw_forest_mist_track_list
+from studio.render.playlist_emotional_music import EMOTIONAL_REF_CARD_W, draw_emotional_music_track_list
+from studio.render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, draw_forest_mist_track_list
 from studio.render.playlist_minimal_white import MINIMAL_WHITE_REF_CARD_W, draw_minimal_white_track_list
 from studio.render.visualizer import _draw_bars, _draw_wave, _hex_to_rgb
 
@@ -231,16 +232,21 @@ def _log_song_list_render(
     norm: dict[str, float],
     px: tuple[int, int, int, int],
 ) -> None:
-    from studio.core.playlist_layout import is_forest_mist_layout, is_minimal_white_layout
+    from studio.core.playlist_layout import is_emotional_music_layout, is_forest_mist_layout, is_minimal_white_layout
     from studio.core.preview_drag_log import log_render_rect
 
     ref_w: int | None = None
     ref_h: int | None = None
     if is_forest_mist_layout(settings):
-        from studio.render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
+        from studio.render.playlist_forest_mist import forest_mist_card_height
 
         ref_w = FOREST_MIST_REF_CARD_W
         ref_h = forest_mist_card_height(settings, settings.typography, ref_w)
+    elif is_emotional_music_layout(settings):
+        from studio.render.playlist_emotional_music import emotional_music_card_height
+
+        ref_w = EMOTIONAL_REF_CARD_W
+        ref_h = emotional_music_card_height(settings, settings.typography, ref_w)
     elif is_minimal_white_layout(settings):
         from studio.render.playlist_minimal_white import minimal_white_card_height
 
@@ -300,6 +306,25 @@ def _draw_song_list_card(
     if sub is not None and sub.layout_style == "forest_mist":
         ch, cw = canvas.shape[:2]
         draw_forest_mist_track_list(
+            canvas,
+            rect,
+            settings=settings,
+            project_state=project_state,
+            current_index=current_index,
+            local_time=local_time,
+            playback_time=playback_time,
+            band_values=band_values,
+            colors=colors,
+            radius=radius,
+            font_fn=playlist_font_fn(typo.font_family),
+            canvas_w=cw,
+            canvas_h=ch,
+        )
+        return
+
+    if sub is not None and sub.layout_style == "emotional_music":
+        ch, cw = canvas.shape[:2]
+        draw_emotional_music_track_list(
             canvas,
             rect,
             settings=settings,

@@ -45,6 +45,18 @@ PLAYLIST_PRESETS: tuple[PlaylistPreset, ...] = (
         "#6b7280",
     ),
     PlaylistPreset(
+        "emotional-music",
+        "Emotional Music",
+        "emotional_glass",
+        ("playlist",),
+        "#2b1026",
+        "#0d0512",
+        "#ff7aa2",
+        "#c084fc",
+        "#1c0b18",
+        "#bfa8bc",
+    ),
+    PlaylistPreset(
         "glass-romance",
         "Glass Romance",
         "glass_dual",

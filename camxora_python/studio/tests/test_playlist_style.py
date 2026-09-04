@@ -149,13 +149,18 @@ def test_draw_forest_mist_track_list():
     assert canvas.mean() > 15
 
 
-def test_ten_sub_templates():
-    assert len(PLAYLIST_SUB_TEMPLATES) == 10
+def test_sub_template_catalog():
+    assert len(PLAYLIST_SUB_TEMPLATES) == 11
     assert "forest-mist" in SUB_TEMPLATES_BY_ID
+    assert "emotional-music" in SUB_TEMPLATES_BY_ID
     assert "soft-pastel" not in SUB_TEMPLATES_BY_ID
     forest = SUB_TEMPLATES_BY_ID["forest-mist"]
     assert forest.name == "Forest Mist"
     assert forest.layout_style == "forest_mist"
+    emotional = SUB_TEMPLATES_BY_ID["emotional-music"]
+    assert emotional.name == "Emotional Music"
+    assert emotional.layout_style == "emotional_music"
+    assert emotional.glass
 
 
 def test_forest_mist_uses_standalone_track_list_layout():

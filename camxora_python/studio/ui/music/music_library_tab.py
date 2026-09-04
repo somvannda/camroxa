@@ -1,10 +1,10 @@
 """Music library tab — Playlist whole-look template chooser.
 
-When the user opens the Playlist section they pick between the two
-implemented whole-look templates (Minimal White, Forest Mist). Cards reuse
-the original track-list sub-template art (bundled thumbnail when present)
-and are laid out side by side in one compact row — no category rail, no
-search, no extra padding.
+When the user opens the Playlist section they pick between the implemented
+whole-look templates (Minimal White, Forest Mist, Emotional Music). Cards
+reuse the original track-list sub-template art (bundled thumbnail when
+present) and are laid out side by side in one compact row — no category rail,
+no search, no extra padding.
 """
 
 from __future__ import annotations
@@ -17,10 +17,10 @@ from studio.ui.music.playlist_presets import PRESETS_BY_ID
 from studio.ui.music.playlist_sub_template_card import PlaylistSubTemplateCard
 
 
-# The two whole-look templates offered in the picker. Each is both a main
+# The whole-look templates offered in the picker. Each is both a main
 # template id and its matching track-list sub-template id, so a single card
 # click applies the complete look (scene + colors + list style) at once.
-PICKER_TEMPLATE_IDS = ("minimal-white", "forest-mist")
+PICKER_TEMPLATE_IDS = ("minimal-white", "forest-mist", "emotional-music")
 
 
 def _sub_ids_from_template(template_id: str | None) -> str | None:
@@ -47,7 +47,7 @@ class MusicLibraryTab(QWidget):
         root.setContentsMargins(12, 10, 12, 10)
         root.setSpacing(8)
 
-        # One row: Minimal White | Forest Mist, stretched to fill the width.
+        # One row: the whole-look template cards, stretched to fill the width.
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(16)

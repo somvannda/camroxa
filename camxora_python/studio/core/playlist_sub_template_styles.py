@@ -78,7 +78,7 @@ def default_style_dict(sub_template_id: str) -> dict[str, Any]:
         list_row_gap=DEFAULT_LIST_ROW_GAP,
     )
     apply_style_to_settings(seed)
-    if sub.layout_style in ("minimal_white", "forest_mist"):
+    if sub.layout_style in ("minimal_white", "forest_mist", "emotional_music"):
         seed.typography.song_title_size = 13
         seed.typography.song_meta_size = 11
         seed.row_chrome = default_row_chrome_for_layout(sub.layout_style)

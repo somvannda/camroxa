@@ -49,6 +49,10 @@ def _minimal_white_card_size_norm(
             from studio.render.playlist_forest_mist import FOREST_MIST_REF_CARD_W, forest_mist_card_height
 
             ideal_px = forest_mist_card_height(settings, settings.typography, FOREST_MIST_REF_CARD_W)
+        elif is_emotional_music_layout(settings):
+            from studio.render.playlist_emotional_music import EMOTIONAL_REF_CARD_W, emotional_music_card_height
+
+            ideal_px = emotional_music_card_height(settings, settings.typography, EMOTIONAL_REF_CARD_W)
         else:
             from studio.render.playlist_minimal_white import minimal_white_card_height
 
@@ -85,9 +89,14 @@ def is_forest_mist_layout(settings: PlaylistSettings) -> bool:
     return sub is not None and sub.layout_style == "forest_mist"
 
 
+def is_emotional_music_layout(settings: PlaylistSettings) -> bool:
+    sub = SUB_TEMPLATES_BY_ID.get(settings.sub_template_id or "")
+    return sub is not None and sub.layout_style == "emotional_music"
+
+
 def is_standalone_track_list_layout(settings: PlaylistSettings) -> bool:
     sub = SUB_TEMPLATES_BY_ID.get(settings.sub_template_id or "")
-    return sub is not None and sub.layout_style in ("minimal_white", "forest_mist")
+    return sub is not None and sub.layout_style in ("minimal_white", "forest_mist", "emotional_music")
 
 
 _RIGHT_LAYOUT: dict[str, Rect] = {
@@ -150,6 +159,11 @@ def standalone_song_list_rect_norm(
 
         ref_w = FOREST_MIST_REF_CARD_W
         ref_h = forest_mist_card_height(settings, settings.typography, ref_w)
+    elif is_emotional_music_layout(settings):
+        from studio.render.playlist_emotional_music import EMOTIONAL_REF_CARD_W, emotional_music_card_height
+
+        ref_w = EMOTIONAL_REF_CARD_W
+        ref_h = emotional_music_card_height(settings, settings.typography, ref_w)
     else:
         from studio.render.playlist_minimal_white import minimal_white_card_height
 

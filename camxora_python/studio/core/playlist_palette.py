@@ -185,6 +185,8 @@ def apply_palette_slot_for_layout(
     palette[PALETTE_SLOT_KEYS.index(slot_key)] = hex_color
     if layout_style == "forest_mist":
         return expand_forest_mist_palette(*palette)
+    if layout_style == "emotional_music":
+        return expand_emotional_music_palette(*palette)
     return expand_palette(*palette)
 
 
@@ -238,6 +240,40 @@ def expand_forest_mist_palette(background: str, surface: str, text: str, muted: 
         "card_shadow": "#00000045",
         "active_row_border": border,
         "active_glow": f"{accent}30" if len(accent) == 7 else accent,
+    }
+
+
+def expand_emotional_music_palette(background: str, surface: str, text: str, muted: str, selected: str) -> dict[str, str]:
+    """Expand 5 palette slots into Emotional Music translucent-glass colors."""
+    surface_hex = surface[:7] if len(surface) >= 7 else surface
+    frame_veil = surface_hex + "99" if len(surface_hex) == 7 else surface
+    accent = _blend(selected, "#ff7aa2", 0.5)
+    raw_sel = selected.lstrip("#")
+    if len(raw_sel) == 8:
+        pill_fill = f"#{raw_sel.lower()}"
+    elif len(raw_sel) == 6:
+        pill_fill = _blend(background, "#ff7aa2", 0.3) + "33"
+    else:
+        pill_fill = "#ff7aa230"
+    return {
+        "bg_from": background,
+        "bg_to": _blend(background, "#000000", 0.3),
+        "surface": frame_veil,
+        "frame_border": (_blend(muted, text, 0.4) + "40") if len(_blend(muted, text, 0.4)) == 7 else _blend(muted, text, 0.4),
+        "text": text,
+        "muted": muted,
+        "active_text": _lighten(accent, 0.28),
+        "selected_row": pill_fill,
+        "accent": accent,
+        "accent2": _lighten(accent, 0.16),
+        "play_icon": accent,
+        "button_inactive": _blend(background, "#ffffff", 0.1),
+        "button_active": surface_hex,
+        "divider": "#ffffff16",
+        "card_shadow": "#00000070",
+        "active_row_border": accent + "4d" if len(accent) == 7 else accent,
+        "active_glow": f"{accent}30" if len(accent) == 7 else accent,
+        "icon": muted,
     }
 
 
