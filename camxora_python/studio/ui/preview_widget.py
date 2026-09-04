@@ -588,6 +588,16 @@ class PlaybackController(QObject):
             return
         self._start_async_render(interactive=True)
 
+    def render_async_full(self) -> None:
+        """Render one high-quality frame off the UI thread (settings edits).
+
+        Debounced callers (slider drags in the inspector/settings) must not
+        block the UI with a 50-110ms synchronous composite per value change.
+        """
+        if self._active_worker is not None and self._active_worker.isRunning():
+            return
+        self._start_async_render(interactive=False)
+
     def render_drag_preview(self) -> None:
         """Low-latency synchronous preview refresh while dragging on-canvas handles."""
         if self.project_state.is_playing:
@@ -701,10 +711,13 @@ class PlaybackController(QObject):
             elif playlist_playing:
                 # Render playlist frames off the UI thread while playing so the
                 # rest of the app never blocks on the compositor (~50-110ms/frame).
+                # Use the viewport-sized preview path: the full 1920x1080 canvas is
+                # downscaled for display anyway, so rendering it for animation is
+                # wasted work and makes the equalizer crawl.
                 busy = self._active_worker is not None and self._active_worker.isRunning()
                 if not busy:
                     self._last_playlist_render_ms = now_ms
-                    self._start_async_render(interactive=False)
+                    self._start_async_render(interactive=True)
             else:
                 if playlist_active:
                     self._last_playlist_render_ms = now_ms

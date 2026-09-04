@@ -279,7 +279,9 @@ class MainWindow(QMainWindow):
         self._current_project_path: str | None = None
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
-        self._preview_render_timer.setInterval(16)
+        # Sliders/font controls emit change events continuously while dragging;
+        # only re-render once the value settles (a full composite is expensive).
+        self._preview_render_timer.setInterval(120)
         self._preview_render_timer.timeout.connect(self._on_debounced_preview_render)
         self._full_quality_timer = QTimer(self)
         self._full_quality_timer.setSingleShot(True)
@@ -298,7 +300,10 @@ class MainWindow(QMainWindow):
     def _on_debounced_preview_render(self) -> None:
         if self.project_state.playlist_preview_active:
             self._full_quality_timer.stop()
-            self.playback_controller.render_now(interactive=False)
+            # Off the UI thread: editing settings triggers many change events,
+            # and a synchronous 50-110ms composite per change would freeze the
+            # controls (song-meta sliders etc.) across every template.
+            self.playback_controller.render_async_full()
             return
         self.playback_controller.render_now(interactive=True)
         self._full_quality_timer.start()
