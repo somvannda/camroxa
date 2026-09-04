@@ -83,6 +83,9 @@ class _ScrollPage(QWidget):
         self._inner = QWidget()
         if not settings_page:
             # Only cap non-settings pages; Playlist Settings fills the panel.
+            # widgetResizable keeps the inner widget sized to the viewport, so
+            # a manually pinned width is not needed (and would go stale when a
+            # hidden stacked page is first shown without a resize event).
             self._inner.setMaximumWidth(INSPECTOR_CONTENT_MAX_WIDTH)
         self._layout = QVBoxLayout(self._inner)
         if settings_page:
@@ -95,15 +98,6 @@ class _ScrollPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._scroll)
-
-    def resizeEvent(self, event) -> None:  # noqa: N802
-        super().resizeEvent(event)
-        viewport_w = self._scroll.viewport().width()
-        if viewport_w > 0:
-            if self._settings_page:
-                self._inner.setFixedWidth(viewport_w)
-            else:
-                self._inner.setFixedWidth(min(viewport_w, INSPECTOR_CONTENT_MAX_WIDTH))
 
 
 class PlaylistEditorPanel(QWidget):
