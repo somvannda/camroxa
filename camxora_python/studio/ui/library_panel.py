@@ -46,24 +46,22 @@ from studio.ui.icons.lucide_icons import (
 
 LIBRARY_TOP_MENU: tuple[tuple[str, str, str], ...] = (
     ("import", "Import", "upload"),
-    ("media", "Media", "video"),
-    ("music", "Music", "music-2"),
-    ("audio", "Audio", "music-2"),
-    ("text", "Text", "type"),
+    ("visualizer", "Visualizer", "volume-2"),
+    ("music", "Playlist", "music-2"),
     ("sticker", "Sticker", "sparkles"),
     ("effects", "Effects", "sparkles"),
     ("transition", "Transition", "arrow-left-right"),
-    ("caption", "Caption", "type"),
     ("filter", "Filter", "image"),
-    ("visualizer", "Visualizer", "volume-2"),
 )
 
-# Sidebar filters for Import (user files) and Media (stock samples).
+# Sidebar filters shown in the Import library panel. "Libraries" shows every
+# imported asset (video/photo/audio/text) grouped by type.
 MEDIA_SIDE_RAIL: tuple[tuple[str, str, str], ...] = (
-    ("all", "All", "layers"),
+    ("all", "Libraries", "layers"),
     ("video", "Video", "video"),
     ("photo", "Photo", "image"),
     ("audio", "Audio", "music-2"),
+    ("text", "Text", "type"),
 )
 
 MEDIA_MIME_TYPE = "application/x-camxora-media"
@@ -73,7 +71,8 @@ TEXT_PRESET_MIME_TYPE = "application/x-camxora-text-preset"
 FILE_DIALOG_FILTER = (
     "Media files (*.mp4 *.mov *.mkv *.avi *.webm *.m4v "
     "*.mp3 *.wav *.m4a *.flac *.ogg *.aac "
-    "*.png *.jpg *.jpeg *.gif *.bmp *.webp)"
+    "*.png *.jpg *.jpeg *.gif *.bmp *.webp "
+    "*.txt *.srt *.lrc *.vtt *.ass *.ssa *.sub)"
 )
 
 

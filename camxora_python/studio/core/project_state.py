@@ -308,7 +308,7 @@ class ProjectState:
 
     @staticmethod
     def _required_track_type_for_media(media_type: str) -> str:
-        return {"video": "video", "audio": "audio", "image": "overlay"}[media_type]
+        return {"video": "video", "audio": "audio", "image": "overlay", "text": "overlay"}[media_type]
 
     def _insert_clip_from_media(self, media: MediaAsset, track: Track, drop_time: float) -> Clip:
         if not track.clips:

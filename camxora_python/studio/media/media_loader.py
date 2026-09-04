@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".aac"}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+TEXT_EXTS = {".txt", ".srt", ".lrc", ".vtt", ".ass", ".ssa", ".sub"}
 
 DEFAULT_IMAGE_DURATION = 5.0
 THUMB_SIZE = (160, 90)
@@ -46,6 +47,8 @@ def guess_media_type(path: Path) -> str | None:
         return "audio"
     if ext in IMAGE_EXTS:
         return "image"
+    if ext in TEXT_EXTS:
+        return "text"
     return None
 
 
@@ -167,10 +170,11 @@ def probe_and_import(path: str | Path, cache_dir: Path | None = None) -> MediaAs
         thumb_path = _make_video_thumbnail(path, cache_dir, duration)
     elif media_type == "audio":
         duration, sample_rate = _probe_audio(path)
-    else:  # image
+    elif media_type == "image":
         duration = DEFAULT_IMAGE_DURATION
         width, height = _probe_image(path)
         thumb_path = _make_image_thumbnail(path, cache_dir)
+    # text files (srt/lrc/vtt/...) carry no duration/dimensions/thumbnail
 
     return MediaAsset(
         id=new_id("med"),

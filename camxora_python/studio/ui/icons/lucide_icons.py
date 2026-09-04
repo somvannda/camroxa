@@ -356,7 +356,7 @@ _LUCIDE_PATHS: dict[str, tuple[str, ...]] = {
 }
 
 TRACK_TYPE_ICON = {"video": "video", "audio": "music-2", "overlay": "layers"}
-MEDIA_TYPE_ICON = {"video": "video", "audio": "music-2", "image": "image"}
+MEDIA_TYPE_ICON = {"video": "video", "audio": "music-2", "image": "image", "text": "type"}
 CLIP_KIND_ICON = {"video": "video", "audio": "music-2", "image": "image", "text": "type", "playlist": "layout-grid"}
 SCENE_ROLE_ICON = {
     "playlist_background": "image",

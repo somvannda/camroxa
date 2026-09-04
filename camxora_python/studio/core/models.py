@@ -15,7 +15,7 @@ from studio.core.snap_models import SnapSettings, TimelineMarker
 from studio.core.playlist_settings import PlaylistSettings
 from studio.core.registries import FILTERS as _FILTER_REGISTRY
 
-MediaType = Literal["video", "audio", "image"]
+MediaType = Literal["video", "audio", "image", "text"]
 TrackType = Literal["video", "audio", "overlay"]
 ClipKind = Literal["video", "audio", "image", "text", "playlist"]
 SceneRole = Literal["playlist_background", "playlist_graphics", "playlist_audio"]
