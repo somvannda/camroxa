@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
 from studio.core.playlist_layout import (
     _MINIMAL_WHITE_CARD_Y,
@@ -12,7 +12,9 @@ from studio.core.playlist_layout import (
 )
 from studio.core.playlist_settings import PlaylistSettings
 from studio.render.compositor import DEFAULT_HEIGHT, DEFAULT_WIDTH
-from studio.ui.icons.lucide_icons import ICON_COLOR, ICON_SZ_INSPECTOR_ALIGN, set_button_lucide_icon
+from studio.ui.icons.lucide_icons import ICON_COLOR, set_button_lucide_icon
+
+_ALIGN_ICON_PX = 18
 
 
 class _AlignButton(QPushButton):
@@ -20,8 +22,10 @@ class _AlignButton(QPushButton):
         super().__init__(parent)
         self.setObjectName("InspectorAlignButton")
         self.setToolTip(tooltip)
-        self.setFixedSize(28, 24)
-        set_button_lucide_icon(self, icon_name, size=ICON_SZ_INSPECTOR_ALIGN, color=ICON_COLOR)
+        self.setFixedHeight(32)
+        self.setMinimumWidth(24)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        set_button_lucide_icon(self, icon_name, size=_ALIGN_ICON_PX, color=ICON_COLOR)
 
 
 class PlaylistCardPositionBar(QWidget):
@@ -35,7 +39,7 @@ class PlaylistCardPositionBar(QWidget):
 
         align_row = QHBoxLayout()
         align_row.setContentsMargins(0, 0, 0, 0)
-        align_row.setSpacing(2)
+        align_row.setSpacing(4)
 
         specs = (
             ("align-left", "left", "Align left"),
@@ -48,14 +52,13 @@ class PlaylistCardPositionBar(QWidget):
         for icon_name, key, tip in specs:
             btn = _AlignButton(icon_name, tip, self)
             btn.clicked.connect(lambda _=False, mode=key: self._align(mode))
-            align_row.addWidget(btn)
-        align_row.addStretch(1)
+            align_row.addWidget(btn, 1)
         root.addLayout(align_row)
 
         reset_row = QHBoxLayout()
         reset_row.setContentsMargins(0, 0, 0, 0)
         reset = QPushButton("Reset position")
-        reset.setObjectName("GhostButton")
+        reset.setObjectName("BgResetButton")
         reset.clicked.connect(self._reset)
         reset_row.addWidget(reset)
         reset_row.addStretch(1)

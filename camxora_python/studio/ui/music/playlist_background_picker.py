@@ -29,15 +29,15 @@ class PlaylistBackgroundPicker(QWidget):
         layout.setSpacing(FIELD_GAP)
 
         hint = QLabel(
-            "Full-canvas backdrop behind the playlist card. "
-            "Choose a custom image or reset to the template default."
+            "Backdrop behind the playlist card — choose a custom image "
+            "or keep the template default."
         )
         hint.setWordWrap(True)
         hint.setObjectName("InspectorHint")
         layout.addWidget(hint)
 
         self._thumb = QLabel()
-        self._thumb.setFixedHeight(96)
+        self._thumb.setMinimumHeight(96)
         self._thumb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumb.setStyleSheet(
             "QLabel { background: #0c1230; border: 1px solid #2a2a3a; border-radius: 8px; color: #5c5c6e; }"
@@ -45,14 +45,15 @@ class PlaylistBackgroundPicker(QWidget):
         layout.addWidget(self._thumb)
 
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(6)
         self._choose_btn = QPushButton("Choose image…")
-        self._choose_btn.setObjectName("SecondaryButton")
+        self._choose_btn.setObjectName("BgChooseButton")
         self._choose_btn.clicked.connect(self._choose_image)
         btn_row.addWidget(self._choose_btn)
 
         self._reset_btn = QPushButton("Reset to default")
-        self._reset_btn.setObjectName("GhostButton")
+        self._reset_btn.setObjectName("BgResetButton")
         self._reset_btn.clicked.connect(self._reset_to_default)
         btn_row.addWidget(self._reset_btn)
         btn_row.addStretch(1)
@@ -72,19 +73,25 @@ class PlaylistBackgroundPicker(QWidget):
         if resolved is not None and resolved.is_file():
             pix = QPixmap(str(resolved))
             if not pix.isNull():
+                # Fit the whole image (contain) at the picker's width so the
+                # full backdrop is visible; grow the preview to match.
+                label_w = self._thumb.width() or 280
                 scaled = pix.scaled(
-                    self._thumb.width() or 280,
-                    self._thumb.height(),
-                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    label_w,
+                    1000,
+                    Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
                 self._thumb.setPixmap(scaled)
+                self._thumb.setFixedHeight(max(96, min(scaled.height(), 320)))
                 self._thumb.setText("")
             else:
                 self._thumb.setPixmap(QPixmap())
+                self._thumb.setFixedHeight(96)
                 self._thumb.setText("Preview unavailable")
         else:
             self._thumb.setPixmap(QPixmap())
+            self._thumb.setFixedHeight(96)
             self._thumb.setText("No background image")
 
         if custom:

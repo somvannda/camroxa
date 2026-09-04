@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import threading
 
-from PySide6.QtCore import Qt, QThread, QTimer, Signal, QSize
+from PySide6.QtCore import QEvent, Qt, QThread, QTimer, Signal, QSize
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -172,20 +172,20 @@ class MainWindow(QMainWindow):
         self.topbar = Topbar(root)
         outer.addWidget(self.topbar)
 
-        main_split = QSplitter(Qt.Orientation.Horizontal, root)
-        main_split.setHandleWidth(1)
-        outer.addWidget(main_split, 1)
+        self.main_split = QSplitter(Qt.Orientation.Horizontal, root)
+        self.main_split.setHandleWidth(1)
+        outer.addWidget(self.main_split, 1)
 
-        self.library_panel = LibraryPanel(self.project_state, main_split)
+        self.library_panel = LibraryPanel(self.project_state, self.main_split)
         self.library_panel.setMinimumWidth(340)
         self.library_panel.setMaximumWidth(460)
-        main_split.addWidget(self.library_panel)
+        self.main_split.addWidget(self.library_panel)
 
         # Lift the section tab rail (Import / Media / Music / …) out of the
         # library column into the app header — full width above every pane.
         self.topbar.set_library_tabs(self.library_panel.top_menu)
 
-        center = QWidget(main_split)
+        center = QWidget(self.main_split)
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(0)
@@ -201,17 +201,23 @@ class MainWindow(QMainWindow):
         center_split.addWidget(self.timeline_wrap)
         center_split.setSizes([560, 280])
 
-        main_split.addWidget(center)
+        self.main_split.addWidget(center)
 
-        self.inspector_host = InspectorPanelHost(self.project_state, main_split)
-        main_split.addWidget(self.inspector_host)
+        self.inspector_host = InspectorPanelHost(self.project_state, self.main_split)
+        self.main_split.addWidget(self.inspector_host)
 
-        main_split.setCollapsible(0, False)
-        main_split.setCollapsible(2, False)
-        main_split.setSizes([380, 720, INSPECTOR_PANEL_DEFAULT_WIDTH])
-        main_split.setStretchFactor(0, 0)
-        main_split.setStretchFactor(1, 1)
-        main_split.setStretchFactor(2, 0)
+        self.main_split.setCollapsible(0, False)
+        self.main_split.setCollapsible(2, False)
+        self.main_split.setSizes([380, 720, INSPECTOR_PANEL_DEFAULT_WIDTH])
+        self.main_split.setStretchFactor(0, 0)
+        self.main_split.setStretchFactor(1, 1)
+        self.main_split.setStretchFactor(2, 0)
+
+        # Panels keep fixed default widths at a normal window size; when the
+        # top-level window is maximized/fullscreen they become user-resizable.
+        self._LIB_PANEL_WIDTH = 380
+        self._INSP_PANEL_WIDTH = INSPECTOR_PANEL_DEFAULT_WIDTH
+        QTimer.singleShot(0, self._apply_panel_width_policy)
 
         self.toast_label = QLabel("", root)
         self.toast_label.setObjectName("Toast")
@@ -454,6 +460,51 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if self.toast_label.isVisible():
             self._position_toast()
+
+    # ---------------- panel width policy ----------------
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        top = self.window()
+        if obj is top and event.type() in (
+            QEvent.Type.Resize,
+            QEvent.Type.WindowStateChange,
+        ):
+            QTimer.singleShot(0, self._apply_panel_width_policy)
+        return super().eventFilter(obj, event)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self.window().installEventFilter(self)
+        QTimer.singleShot(0, self._apply_panel_width_policy)
+
+    def _apply_panel_width_policy(self) -> None:
+        """Fixed side-panel widths at normal window size; resizable when the
+        top-level window is maximized/fullscreen."""
+        lp = getattr(self, "library_panel", None)
+        rh = getattr(self, "inspector_host", None)
+        if lp is None or rh is None:
+            return
+        top = self.window()
+        maximized = bool(top and (top.isMaximized() or top.isFullScreen()))
+        if maximized:
+            lp.setMinimumWidth(320)
+            lp.setMaximumWidth(560)
+            rh.setMinimumWidth(320)
+            rh.setMaximumWidth(760)
+            lib_w = max(320, lp.width())
+            insp_w = max(320, rh.width())
+        else:
+            lp.setMinimumWidth(self._LIB_PANEL_WIDTH)
+            lp.setMaximumWidth(self._LIB_PANEL_WIDTH)
+            rh.setMinimumWidth(self._INSP_PANEL_WIDTH)
+            rh.setMaximumWidth(self._INSP_PANEL_WIDTH)
+            lib_w = self._LIB_PANEL_WIDTH
+            insp_w = self._INSP_PANEL_WIDTH
+
+        avail = self.main_split.width() or (top.width() if top is not None else self.width())
+        if avail > 0:
+            center_w = max(0, avail - lib_w - insp_w)
+            self.main_split.setSizes([lib_w, center_w, insp_w])
 
     def _on_export_clicked(self) -> None:
         if self._export_worker is not None and self._export_worker.isRunning():

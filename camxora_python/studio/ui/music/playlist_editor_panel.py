@@ -75,12 +75,15 @@ def _form_label(text: str) -> QLabel:
 class _ScrollPage(QWidget):
     def __init__(self, parent: QWidget | None = None, *, settings_page: bool = False) -> None:
         super().__init__(parent)
+        self._settings_page = settings_page
         self._scroll = QScrollArea(self)
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._inner = QWidget()
-        self._inner.setMaximumWidth(INSPECTOR_CONTENT_MAX_WIDTH)
+        if not settings_page:
+            # Only cap non-settings pages; Playlist Settings fills the panel.
+            self._inner.setMaximumWidth(INSPECTOR_CONTENT_MAX_WIDTH)
         self._layout = QVBoxLayout(self._inner)
         if settings_page:
             from studio.ui.inspector_layout import apply_playlist_settings_layout
@@ -97,7 +100,10 @@ class _ScrollPage(QWidget):
         super().resizeEvent(event)
         viewport_w = self._scroll.viewport().width()
         if viewport_w > 0:
-            self._inner.setFixedWidth(min(viewport_w, INSPECTOR_CONTENT_MAX_WIDTH))
+            if self._settings_page:
+                self._inner.setFixedWidth(viewport_w)
+            else:
+                self._inner.setFixedWidth(min(viewport_w, INSPECTOR_CONTENT_MAX_WIDTH))
 
 
 class PlaylistEditorPanel(QWidget):

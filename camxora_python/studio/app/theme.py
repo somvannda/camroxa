@@ -15,7 +15,6 @@ from features.create.create_styles import (
     STUDIO_BORDER_STRONG,
     STUDIO_INPUT,
     STUDIO_PANEL,
-    STUDIO_PURPLE,
     STUDIO_PURPLE_BRIGHT,
     STUDIO_TEXT,
     STUDIO_TEXT_DIM,
@@ -161,6 +160,35 @@ def build_qss(p: Palette = PALETTE) -> str:
         background: {p.danger_soft};
         border-color: #5c2431;
         color: #ff8a9a;
+    }}
+    /* Compact actions for the Playlist Settings scene-background picker */
+    QPushButton#BgChooseButton {{
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent_deep}, stop:1 {p.accent_bright});
+        border: none;
+        color: white;
+        border-radius: 6px;
+        padding: 0 12px;
+        min-height: 26px;
+        max-height: 26px;
+        font-size: 11px;
+        font-weight: 600;
+    }}
+    QPushButton#BgChooseButton:hover {{
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {p.accent_deep_hi}, stop:1 {p.accent_bright_hi});
+    }}
+    QPushButton#BgResetButton {{
+        background: transparent;
+        border: 1px solid {p.border};
+        color: {p.text_dim};
+        border-radius: 6px;
+        padding: 0 10px;
+        min-height: 24px;
+        max-height: 24px;
+        font-size: 11px;
+    }}
+    QPushButton#BgResetButton:hover {{
+        border-color: {p.accent};
+        color: {p.text};
     }}
 
     /* ---------- Library panel — CapCut icon rail ---------- */

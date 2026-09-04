@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 
 from PySide6.QtWidgets import (
 
     QFileDialog,
-
-    QFrame,
 
     QHBoxLayout,
 
@@ -19,8 +16,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
 
     QPushButton,
-
-    QScrollArea,
 
     QStackedWidget,
 
@@ -63,7 +58,6 @@ from studio.ui.library_panel import MediaImportWorker
 
 from studio.core.playlist_style import apply_style_to_settings, default_sub_template_for
 
-from studio.ui.music.playlist_background_picker import PlaylistBackgroundPicker
 from studio.ui.music.playlist_editor_panel import PlaylistEditorPanel
 from studio.ui.music.playlist_scene_panels import PlaylistSceneComponentsPanel
 
@@ -195,13 +189,13 @@ class MusicInspectorPanel(QWidget):
 
 
 
-        tier2 = InspectorTabRow(("Content", "Background", "Animation"), self)
+        tier2 = InspectorTabRow(("Content",), self)
 
         tier2.setObjectName("InspectorTier2TabRow")
 
         self._tier2 = tier2
 
-        playlist_tier2 = InspectorTabRow(("Templates", "Settings"), self)
+        playlist_tier2 = InspectorTabRow(("Settings",), self)
 
         playlist_tier2.setObjectName("InspectorTier2TabRow")
 
@@ -298,7 +292,9 @@ class MusicInspectorPanel(QWidget):
 
     def _on_playlist_tier2(self, index: int) -> None:
 
-        self._playlist_editor.set_tab_index(index)
+        # Playlist page keeps a single Settings tab — the templates picker
+        # now lives in the left Playlist library, so always show Settings.
+        self._playlist_editor.set_tab_index(1)
 
 
 
@@ -312,21 +308,11 @@ class MusicInspectorPanel(QWidget):
 
 
 
+        # Music page = Content only (Album/Songs). Background/Animation tabs
+        # were removed — the scene background lives in Playlist > Settings.
         self._content_stack = QStackedWidget(page)
 
         self._content_stack.addWidget(self._build_content_page())
-
-        bg_page = QWidget()
-        bg_layout = QVBoxLayout(bg_page)
-        apply_page_layout(bg_layout)
-        self._music_background_picker = PlaylistBackgroundPicker()
-        self._music_background_picker.background_changed.connect(self._on_scene_background_changed)
-        self._music_background_picker.bind_settings(self._playlist)
-        bg_layout.addWidget(self._music_background_picker)
-        bg_layout.addStretch(1)
-        self._content_stack.addWidget(bg_page)
-
-        self._content_stack.addWidget(_ComingSoonPane("Animation presets are coming soon."))
 
         layout.addWidget(self._content_stack, 1)
 
@@ -418,6 +404,10 @@ class MusicInspectorPanel(QWidget):
 
         self._playlist_tier2.setVisible(index == self._IDX_PLAYLIST)
 
+        if index == self._IDX_PLAYLIST:
+
+            self._playlist_editor.set_tab_index(1)
+
 
 
     def show_playlist_tab(self) -> None:
@@ -429,6 +419,8 @@ class MusicInspectorPanel(QWidget):
         self._tier2.setVisible(False)
 
         self._playlist_tier2.setVisible(True)
+
+        self._playlist_editor.set_tab_index(1)
 
 
     def show_music_tab(self) -> None:
@@ -458,8 +450,6 @@ class MusicInspectorPanel(QWidget):
 
         self._selected_id = preset_id
 
-        preset = PRESETS_BY_ID[preset_id]
-
         self._playlist.template_id = preset_id
         self._playlist.sub_template_id = default_sub_template_for(preset_id)
         self._playlist.color_filter_id = "original"
@@ -472,12 +462,6 @@ class MusicInspectorPanel(QWidget):
             self.show_playlist_tab()
 
         self.preview_changed.emit()
-        self._sync_playlist_timeline()
-
-
-
-    def _on_scene_background_changed(self) -> None:
-        self._persist_playlist_settings()
         self._sync_playlist_timeline()
 
 
@@ -703,7 +687,6 @@ class MusicInspectorPanel(QWidget):
 
         self._project_state.project.playlist = self._playlist
         invalidate_playlist_render_cache()
-        self._music_background_picker.bind_settings(self._playlist)
         self._cc_lyric_panel.bind_settings(self._playlist)
         self._layout_panel.bind_settings(self._playlist)
         from studio.core.playlist_scene_sync import sync_playlist_scene_to_timeline

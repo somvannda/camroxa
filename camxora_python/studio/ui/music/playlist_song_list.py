@@ -227,6 +227,13 @@ class PlaylistSongList(QWidget):
         self._media_by_id: dict[str, MediaAsset] = {}
         self._table = _ReorderableSongTable(0, 2, self)
         self._table.setObjectName("PlaylistSongList")
+        # Widget-level item styles so the selected row always uses the brand
+        # purple regardless of any app/theme default selection color.
+        self._table.setStyleSheet(
+            "QTableWidget::item { border: none; padding: 6px 10px; }"
+            "QTableWidget::item:hover { background: rgba(116, 102, 241, 0.18); }"
+            "QTableWidget::item:selected { background: #7466F1; color: #ffffff; }"
+        )
         self._table.setShowGrid(False)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
