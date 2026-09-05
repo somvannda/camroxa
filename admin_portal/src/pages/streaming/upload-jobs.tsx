@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { Pagination } from '@/components/data-table/pagination';
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -168,15 +169,35 @@ function JobCard({
   );
 }
 
+const PAGE_SIZES = [25, 50, 100];
+
 export default function StreamingUploadJobsPage() {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'pending' | 'running' | 'success' | 'failed'
   >('all');
   const [kindFilter, setKindFilter] = useState<'all' | 'mp3_ok' | 'mp3_alt' | 'cover'>('all');
   const [q, setQ] = useState('');
-  const { data, isLoading, isError, refetch } = useStreamingUploadJobs(
-    statusFilter === 'all' ? undefined : statusFilter,
-  );
+  const [debouncedQ, setDebouncedQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedQ(q.trim()), 300);
+    return () => window.clearTimeout(handle);
+  }, [q]);
+
+  // Filters/search/page-size change -> back to page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ, statusFilter, kindFilter, pageSize]);
+
+  const { data, isLoading, isError, refetch } = useStreamingUploadJobs({
+    page,
+    pageSize,
+    status: statusFilter,
+    kind: kindFilter,
+    q: debouncedQ || undefined,
+  });
   const retry = useRetryUploadJob();
   const startSweep = useStartRetryAllUploads();
   const sweep = useRetryAllUploadSweepStatus();
@@ -190,31 +211,14 @@ export default function StreamingUploadJobsPage() {
     if (was === true && !sweepRunning) refetch();
   }, [sweepRunning, refetch]);
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return (data ?? []).filter((job) => {
-      if (kindFilter !== 'all' && job.kind !== kindFilter) return false;
-      if (!needle) return true;
-      const hay = [
-        job.id,
-        job.kind,
-        job.status,
-        job.user_email,
-        job.user_display_name,
-        job.song_title,
-        job.song_album,
-        job.stream_album_name,
-        job.batch_id,
-        job.song_id,
-        job.storage_key,
-        job.error,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return hay.includes(needle);
-    });
-  }, [data, kindFilter, q]);
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  // Stay on the last valid page if the sweep/filters shrink the result set.
+  useEffect(() => {
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    if (page > pages) setPage(pages);
+  }, [total, pageSize, page]);
 
   return (
     <div className="space-y-6 p-6">
@@ -256,6 +260,21 @@ export default function StreamingUploadJobsPage() {
                 <SelectItem value="running">Running</SelectItem>
                 <SelectItem value="success">Success</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) => setPageSize(Number(value))}
+            >
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Per page" />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZES.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size} / page
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Button
@@ -321,12 +340,8 @@ export default function StreamingUploadJobsPage() {
         </Card>
       ) : null}
 
-      <div className="text-xs text-slate-500">
-        Showing {filtered.length} of {(data ?? []).length} loaded jobs
-      </div>
-
       <div className="space-y-3">
-        {filtered.map((job) => (
+        {items.map((job) => (
           <JobCard
             key={job.id}
             job={job}
@@ -348,12 +363,19 @@ export default function StreamingUploadJobsPage() {
             }
           />
         ))}
-        {!isLoading && !isError && filtered.length === 0 ? (
+        {!isLoading && !isError && items.length === 0 ? (
           <Card className="border-slate-800 bg-slate-900/50">
             <CardContent className="p-6 text-sm text-slate-400">No upload jobs found.</CardContent>
           </Card>
         ) : null}
       </div>
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={total}
+        onPageChange={(nextPage) => setPage(nextPage)}
+      />
     </div>
   );
 }

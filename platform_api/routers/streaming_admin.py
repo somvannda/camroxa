@@ -139,6 +139,9 @@ class UploadJobResponse(BaseModel):
 
 class UploadJobListResponse(BaseModel):
     items: list[UploadJobResponse]
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
 
 
 class UpdateTrackGenreRequest(BaseModel):
@@ -390,15 +393,25 @@ async def list_streaming_albums(
 async def list_streaming_upload_jobs(
     ctx: AdminDep,
     status: str | None = None,
-    limit: int = 50,
+    kind: str | None = None,
+    q: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> UploadJobListResponse:
     del ctx
     from platform_api.dependencies import get_db_pool
 
-    rows = await StreamingRepository(get_db_pool()).list_upload_jobs(
-        limit=max(1, min(limit, 200)),
+    repo = StreamingRepository(get_db_pool())
+    normalized_q = (q or "").strip()[:120] or None
+    rows = await repo.list_upload_jobs(
+        limit=limit,
+        offset=offset,
         status=status,
+        kind=kind,
+        q=normalized_q,
     )
+    total = await repo.count_upload_jobs(status=status, kind=kind, q=normalized_q)
+
     def _id(value: Any) -> str | None:
         return str(value) if value is not None else None
 
@@ -435,7 +448,7 @@ async def list_streaming_upload_jobs(
         )
         for row in rows
     ]
-    return UploadJobListResponse(items=items)
+    return UploadJobListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post("/tracks/{track_id}/unpublish")

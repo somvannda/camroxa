@@ -110,15 +110,60 @@ class StreamingRepository:
         row = await self._pool.fetchrow("SELECT * FROM stream_upload_jobs WHERE id = $1", job_id)
         return dict(row) if row else None
 
-    async def list_upload_jobs(self, *, limit: int = 50, status: str | None = None) -> list[dict[str, Any]]:
-        """List upload jobs with user / song / album / track context for admin UI."""
-        where = ""
+    def _upload_jobs_filter(
+        self, *, status: str | None, kind: str | None, q: str | None
+    ) -> tuple[str, list[Any]]:
+        """Shared WHERE clause + params for upload-job list/count queries."""
+        clauses: list[str] = []
         params: list[Any] = []
         if status:
             params.append(status)
-            where = f"WHERE j.status = ${len(params)}"
+            clauses.append(f"j.status = ${len(params)}")
+        if kind:
+            params.append(kind)
+            clauses.append(f"j.kind = ${len(params)}")
+        if q:
+            params.append(f"%{q}%")
+            idx = len(params)
+            clauses.append(
+                "(j.id::text ILIKE $" + str(idx)
+                + " OR j.kind ILIKE $" + str(idx)
+                + " OR j.status ILIKE $" + str(idx)
+                + " OR COALESCE(u.email, '') ILIKE $" + str(idx)
+                + " OR COALESCE(u.display_name, '') ILIKE $" + str(idx)
+                + " OR COALESCE(s.title, '') ILIKE $" + str(idx)
+                + " OR COALESCE(s.album, '') ILIKE $" + str(idx)
+                + " OR COALESCE(sa_direct.album_name, sa_cover.album_name, sa_track.album_name, '') ILIKE $"
+                + str(idx)
+                + " OR COALESCE(j.batch_id::text, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.song_id::text, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.storage_key, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.source_url, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.error, '') ILIKE $" + str(idx)
+                + ")"
+            )
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, params
+
+    async def list_upload_jobs(
+        self,
+        *,
+        limit: int = 50,
+        status: str | None = None,
+        kind: str | None = None,
+        q: str | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """List upload jobs with user / song / album / track context for admin UI.
+
+        Server-side pagination: newest first; filters can be status, kind and a
+        free-text q (email/user/song/album/batch/song id/storage/source/error).
+        """
+        where, params = self._upload_jobs_filter(status=status, kind=kind, q=q)
         params.append(limit)
         limit_placeholder = f"${len(params)}"
+        params.append(offset)
+        offset_placeholder = f"${len(params)}"
 
         rows = await self._pool.fetch(
             f"""
@@ -172,10 +217,48 @@ class StreamingRepository:
             {where}
             ORDER BY j.created_at DESC
             LIMIT {limit_placeholder}
+            OFFSET {offset_placeholder}
             """,
             *params,
         )
         return [dict(row) for row in rows]
+
+    async def count_upload_jobs(
+        self,
+        *,
+        status: str | None = None,
+        kind: str | None = None,
+        q: str | None = None,
+    ) -> int:
+        """Total upload jobs matching the given filters (for pagination)."""
+        where, params = self._upload_jobs_filter(status=status, kind=kind, q=q)
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT count(DISTINCT j.id) AS total
+            FROM stream_upload_jobs j
+            LEFT JOIN users u ON u.id = j.user_id
+            LEFT JOIN songs s ON s.id = j.song_id
+            LEFT JOIN stream_albums sa_direct ON sa_direct.id = j.album_id
+            LEFT JOIN stream_albums sa_cover
+                ON j.album_id IS NULL
+               AND j.kind = 'cover'
+               AND sa_cover.user_id = j.user_id
+               AND sa_cover.batch_id = j.batch_id
+               AND sa_cover.cover_storage_key IS NOT DISTINCT FROM j.storage_key
+            LEFT JOIN stream_tracks st
+                ON j.song_id IS NOT NULL
+               AND st.song_id = j.song_id
+               AND (
+                    (j.kind = 'mp3_ok' AND lower(st.variant) = 'ok')
+                 OR (j.kind = 'mp3_alt' AND lower(st.variant) = 'alt')
+               )
+            LEFT JOIN stream_albums sa_track ON sa_track.id = st.album_id
+            {where}
+            """,
+            *params,
+        )
+        return int(row["total"] or 0) if row else 0
+
 
     async def list_failed_mp3_job_ids(self) -> list[UUID]:
         """Every failed mp3_ok/mp3_alt upload job id, newest first (no cap).

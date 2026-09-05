@@ -172,15 +172,48 @@ export function useStreamingAlbums(params: StreamingCatalogListParams) {
   });
 }
 
-export function useStreamingUploadJobs(status?: string) {
+export type UploadJobsListParams = {
+  page: number;
+  pageSize?: number;
+  status?: string;
+  kind?: string;
+  q?: string;
+};
+
+export type UploadJobsPage = {
+  items: StreamingUploadJob[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export function useStreamingUploadJobs(params: UploadJobsListParams) {
+  const pageSize = params.pageSize ?? 50;
+  const offset = Math.max(0, (params.page - 1) * pageSize);
+  const status = params.status && params.status !== 'all' ? params.status : undefined;
+  const kind = params.kind && params.kind !== 'all' ? params.kind : undefined;
+  const q = params.q?.trim() || undefined;
   return useQuery({
-    queryKey: ['streaming-upload-jobs', status ?? 'all'],
+    queryKey: [
+      'streaming-upload-jobs',
+      pageSize,
+      offset,
+      status ?? 'all',
+      kind ?? 'all',
+      q ?? '',
+    ],
     queryFn: async () => {
-      const data = await httpClient.get<{ items: StreamingUploadJob[] }>(
+      const data = await httpClient.get<UploadJobsPage>(
         '/api/v3/admin/streaming/upload-jobs',
-        { limit: 200, ...(status ? { status } : {}) },
+        {
+          limit: pageSize,
+          offset,
+          ...(status ? { status } : {}),
+          ...(kind ? { kind } : {}),
+          ...(q ? { q } : {}),
+        },
       );
-      return data.items ?? [];
+      return data;
     },
   });
 }
