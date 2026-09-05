@@ -1379,7 +1379,7 @@ class StreamingUploadService:
 
     async def failed_mp3_retry_sweep_status(self) -> dict[str, Any]:
         """Live progress of the background failed-mp3 retry sweep."""
-        return await _retry_sweep.status()
+        return await _retry_sweep.status(self._pool)
 
     async def run_auto_retry_pass(self) -> int:
         """One auto-capture pass: retry eligible failed mp3 uploads.
