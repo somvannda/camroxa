@@ -259,6 +259,35 @@ class StreamingRepository:
         )
         return int(row["total"] or 0) if row else 0
 
+    async def count_failed_mp3_jobs(self) -> int:
+        """Failed mp3_ok/mp3_alt upload jobs right now (live count)."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT count(*) AS n
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+            """
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def count_retried_success_jobs(self) -> int:
+        """Successes that required at least one retry (attempt_count > 1).
+
+        Tracks how many uploads were recovered via the admin retry path
+        (single retry button or the retry-all sweep).
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT count(*) AS n
+            FROM stream_upload_jobs
+            WHERE status = 'success'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+              AND attempt_count > 1
+            """
+        )
+        return int(row["n"] or 0) if row else 0
+
 
     async def list_failed_mp3_job_ids(self) -> list[UUID]:
         """Every failed mp3_ok/mp3_alt upload job id, newest first (no cap).

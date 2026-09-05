@@ -92,6 +92,15 @@ class _FailedMp3RetrySweep:
 
     async def status(self, pool: Any) -> dict[str, Any]:
         repo = StreamingRepository(pool)
+        # Live DB counters so the admin page can always answer "how many failed
+        # are left" and "how many were recovered by retries" (any worker).
+        try:
+            failed_mp3_now = await repo.count_failed_mp3_jobs()
+            retried_success_total = await repo.count_retried_success_jobs()
+        except Exception:
+            logger.exception("Upload-job live counters failed (non-fatal)")
+            failed_mp3_now = 0
+            retried_success_total = 0
         state = await repo.get_retry_sweep_state()
         if not state:
             return {
@@ -103,6 +112,8 @@ class _FailedMp3RetrySweep:
                 "succeeded": 0,
                 "still_failed": 0,
                 "remaining": 0,
+                "failed_mp3_now": failed_mp3_now,
+                "retried_success_total": retried_success_total,
                 "last_errors": [],
             }
         stale = _state_is_stale(state)
@@ -119,6 +130,8 @@ class _FailedMp3RetrySweep:
             "succeeded": int(state.get("succeeded") or 0),
             "still_failed": int(state.get("still_failed") or 0),
             "remaining": max(0, total - scanned),
+            "failed_mp3_now": failed_mp3_now,
+            "retried_success_total": retried_success_total,
             "last_errors": state.get("last_errors") or [],
         }
 

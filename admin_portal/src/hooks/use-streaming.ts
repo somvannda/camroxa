@@ -297,6 +297,10 @@ export type RetryAllSweepStatus = {
   succeeded: number;
   still_failed: number;
   remaining: number;
+  /** Live count of failed mp3_ok/mp3_alt upload jobs in the DB right now. */
+  failed_mp3_now?: number;
+  /** All-time successes that required at least one retry (attempt_count > 1). */
+  retried_success_total?: number;
   last_errors?: Array<{ job_id: string; error: string }>;
 };
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Pagination } from '@/components/data-table/pagination';
 import { PageHeader } from '@/components/shared/page-header';
@@ -201,14 +202,22 @@ export default function StreamingUploadJobsPage() {
   const retry = useRetryUploadJob();
   const startSweep = useStartRetryAllUploads();
   const sweep = useRetryAllUploadSweepStatus();
+  const queryClient = useQueryClient();
   const sweepRunning = sweep.data?.running ?? false;
   const prevSweepRunning = useRef<boolean | undefined>(undefined);
+
+  const refreshCounts = () => {
+    void queryClient.invalidateQueries({ queryKey: ['streaming-upload-sweep-status'] });
+  };
 
   // Auto-refresh the job list once a background sweep finishes.
   useEffect(() => {
     const was = prevSweepRunning.current;
     prevSweepRunning.current = sweepRunning;
-    if (was === true && !sweepRunning) refetch();
+    if (was === true && !sweepRunning) {
+      refetch();
+      refreshCounts();
+    }
   }, [sweepRunning, refetch]);
 
   const items = data?.items ?? [];
@@ -304,28 +313,87 @@ export default function StreamingUploadJobsPage() {
             >
               {sweepRunning || startSweep.isPending ? 'Sweeping…' : 'Retry all failed'}
             </Button>
-            <Button variant="outline" onClick={() => refetch()}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                refetch();
+                refreshCounts();
+              }}
+            >
               Refresh
             </Button>
           </div>
         }
       />
 
-      {sweep.data && (sweepRunning || (sweep.data.total ?? 0) > 0) ? (
-        <div className="text-xs">
-          {sweepRunning ? (
-            <span className="text-violet-300">
-              Retry sweep running… {sweep.data.succeeded} succeeded / {sweep.data.scanned} of{' '}
-              {sweep.data.total} scanned ({sweep.data.still_failed} failed so far). Refresh the
-              list to watch jobs flip to success.
-            </span>
-          ) : (
-            <span className="text-slate-400">
-              Last retry sweep: {sweep.data.succeeded} succeeded, {sweep.data.still_failed} still
-              failed of {sweep.data.total} total (finished {formatWhen(sweep.data.finished_at)}).
-            </span>
-          )}
-        </div>
+      {sweep.data ? (
+        <Card className="border-slate-800 bg-slate-900/50">
+          <CardContent className="flex flex-wrap items-center gap-x-10 gap-y-4 p-4">
+            <div className="min-w-28 space-y-0.5">
+              <p className="text-xs text-slate-500">Failed MP3 now</p>
+              <p className="text-2xl font-semibold text-red-300">
+                {(sweep.data.failed_mp3_now ?? 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="min-w-28 space-y-0.5">
+              <p className="text-xs text-slate-500">Recovered by retry (all time)</p>
+              <p className="text-2xl font-semibold text-emerald-300">
+                {(sweep.data.retried_success_total ?? 0).toLocaleString()}
+              </p>
+            </div>
+            <div className="min-w-28 space-y-0.5">
+              <p className="text-xs text-slate-500">Recovered this sweep</p>
+              <p className="text-2xl font-semibold text-slate-100">
+                {sweep.data.succeeded.toLocaleString()}
+              </p>
+            </div>
+            <div className="ml-auto min-w-56 space-y-1 text-right">
+              <Badge
+                variant={sweepRunning ? 'default' : sweep.data.total > 0 ? 'secondary' : 'outline'}
+              >
+                {sweepRunning
+                  ? 'Retry sweep in progress'
+                  : sweep.data.total > 0
+                    ? 'Last sweep finished'
+                    : 'No sweep run yet'}
+              </Badge>
+              <p className="text-xs text-slate-400">
+                {sweepRunning ? (
+                  <>
+                    {sweep.data.scanned.toLocaleString()} of{' '}
+                    {sweep.data.total.toLocaleString()} scanned ·{' '}
+                    {sweep.data.succeeded.toLocaleString()} ok ·{' '}
+                    {sweep.data.still_failed.toLocaleString()} failed
+                  </>
+                ) : sweep.data.finished_at ? (
+                  <>
+                    {sweep.data.succeeded.toLocaleString()} ok ·{' '}
+                    {sweep.data.still_failed.toLocaleString()} failed of{' '}
+                    {sweep.data.total.toLocaleString()} · finished{' '}
+                    {formatWhen(sweep.data.finished_at)}
+                  </>
+                ) : sweep.data.total > 0 ? (
+                  <>started {formatWhen(sweep.data.started_at)}</>
+                ) : (
+                  'Click “Retry all failed” to sweep the backlog.'
+                )}
+              </p>
+            </div>
+          </CardContent>
+          {sweepRunning && sweep.data.total > 0 ? (
+            <div className="h-1 w-full bg-slate-800">
+              <div
+                className="h-full bg-violet-500 transition-all duration-500"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.round((sweep.data.scanned / sweep.data.total) * 100),
+                  )}%`,
+                }}
+              />
+            </div>
+          ) : null}
+        </Card>
       ) : null}
 
       {isLoading ? <Skeleton className="h-40 w-full" /> : null}
