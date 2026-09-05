@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { PageHeader } from '@/components/shared/page-header';
@@ -14,7 +14,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRetryUploadJob, useStreamingUploadJobs } from '@/hooks/use-streaming';
+import {
+  useRetryAllUploadSweepStatus,
+  useRetryUploadJob,
+  useStartRetryAllUploads,
+  useStreamingUploadJobs,
+} from '@/hooks/use-streaming';
 import type { StreamingUploadJob } from '@/hooks/use-streaming';
 import { toast } from '@/hooks/use-toast';
 
@@ -25,6 +30,11 @@ function formatWhen(value?: string | null): string {
   } catch {
     return value;
   }
+}
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const axiosError = err as { response?: { data?: { error?: { message?: string } } } };
+  return axiosError.response?.data?.error?.message ?? fallback;
 }
 
 function kindTone(kind: string): string {
@@ -168,6 +178,17 @@ export default function StreamingUploadJobsPage() {
     statusFilter === 'all' ? undefined : statusFilter,
   );
   const retry = useRetryUploadJob();
+  const startSweep = useStartRetryAllUploads();
+  const sweep = useRetryAllUploadSweepStatus();
+  const sweepRunning = sweep.data?.running ?? false;
+  const prevSweepRunning = useRef<boolean | undefined>(undefined);
+
+  // Auto-refresh the job list once a background sweep finishes.
+  useEffect(() => {
+    const was = prevSweepRunning.current;
+    prevSweepRunning.current = sweepRunning;
+    if (was === true && !sweepRunning) refetch();
+  }, [sweepRunning, refetch]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -237,12 +258,56 @@ export default function StreamingUploadJobsPage() {
                 <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              disabled={sweepRunning || startSweep.isPending}
+              onClick={() =>
+                startSweep.mutate(undefined, {
+                  onSuccess: (res) => {
+                    if (res.started) {
+                      toast({
+                        title: 'Retry sweep started',
+                        description: `${res.total} failed MP3 upload(s) queued — running in the background.`,
+                      });
+                    } else if (res.running) {
+                      toast({ title: 'A retry sweep is already running.' });
+                    } else {
+                      toast({ title: 'No failed MP3 uploads to retry.' });
+                    }
+                  },
+                  onError: (err: unknown) =>
+                    toast({
+                      title: apiErrorMessage(err, 'Failed to start retry sweep'),
+                      variant: 'destructive',
+                    }),
+                })
+              }
+            >
+              {sweepRunning || startSweep.isPending ? 'Sweeping…' : 'Retry all failed'}
+            </Button>
             <Button variant="outline" onClick={() => refetch()}>
               Refresh
             </Button>
           </div>
         }
       />
+
+      {sweep.data && (sweepRunning || (sweep.data.total ?? 0) > 0) ? (
+        <div className="text-xs">
+          {sweepRunning ? (
+            <span className="text-violet-300">
+              Retry sweep running… {sweep.data.succeeded} succeeded / {sweep.data.scanned} of{' '}
+              {sweep.data.total} scanned ({sweep.data.still_failed} failed so far). Refresh the
+              list to watch jobs flip to success.
+            </span>
+          ) : (
+            <span className="text-slate-400">
+              Last retry sweep: {sweep.data.succeeded} succeeded, {sweep.data.still_failed} still
+              failed of {sweep.data.total} total (finished {formatWhen(sweep.data.finished_at)}).
+            </span>
+          )}
+        </div>
+      ) : null}
 
       {isLoading ? <Skeleton className="h-40 w-full" /> : null}
       {isError ? (

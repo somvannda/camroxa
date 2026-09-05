@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -43,6 +44,199 @@ _IMAGE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
     "Accept": "image/*,*/*;q=0.8",
 }
+
+_SWEEP_CONCURRENCY = 3
+_RETRY_SWEEP_ERRORS_KEPT = 10
+_RETRY_SWEEP_HEARTBEAT_S = 20.0
+_RETRY_SWEEP_STALE_S = 120.0
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class _FailedMp3RetrySweep:
+    """DB-backed "retry all failed mp3" sweep shared across uvicorn workers.
+
+    Prod runs camxora-api with --workers 4, so sweep state cannot live in one
+    process. Ownership is claimed atomically in `system_settings` guarded by a
+    Postgres advisory xact lock; progress + heartbeat are written there so any
+    worker answers /status consistently. If the owning worker dies, the
+    heartbeat goes stale and a later click reclaims and resumes.
+    """
+
+    def __init__(self) -> None:
+        self._task: asyncio.Task[Any] | None = None
+        self._heartbeat_task: asyncio.Task[Any] | None = None
+        self._pool: Any = None
+        self._cancel = False
+        self.total = 0
+        self.scanned = 0
+        self.succeeded = 0
+        self.still_failed = 0
+        self.last_errors: list[dict[str, str]] = []
+        self.started_at: str | None = None
+
+    def _snapshot(self, running: bool, *, finished: bool = False) -> dict[str, Any]:
+        return {
+            "running": running,
+            "started_at": self.started_at,
+            "finished_at": _now_iso() if finished else None,
+            "total": self.total,
+            "scanned": self.scanned,
+            "succeeded": self.succeeded,
+            "still_failed": self.still_failed,
+            "heartbeat_at": _now_iso(),
+            "last_errors": list(self.last_errors),
+        }
+
+    async def status(self, pool: Any) -> dict[str, Any]:
+        repo = StreamingRepository(pool)
+        state = await repo.get_retry_sweep_state()
+        if not state:
+            return {
+                "running": False,
+                "started_at": None,
+                "finished_at": None,
+                "total": 0,
+                "scanned": 0,
+                "succeeded": 0,
+                "still_failed": 0,
+                "remaining": 0,
+                "last_errors": [],
+            }
+        stale = _state_is_stale(state)
+        running = bool(state.get("running")) and not stale
+        total = int(state.get("total") or 0)
+        scanned = int(state.get("scanned") or 0)
+        return {
+            "running": running,
+            "stale": stale,
+            "started_at": state.get("started_at"),
+            "finished_at": state.get("finished_at"),
+            "total": total,
+            "scanned": scanned,
+            "succeeded": int(state.get("succeeded") or 0),
+            "still_failed": int(state.get("still_failed") or 0),
+            "remaining": max(0, total - scanned),
+            "last_errors": state.get("last_errors") or [],
+        }
+
+    async def start(self, pool: Any) -> dict[str, Any]:
+        repo = StreamingRepository(pool)
+        if self._task and not self._task.done():
+            return {"started": False, "running": True, "total": self.total}
+        claimed = await repo.claim_retry_sweep(
+            self._snapshot(running=True), stale_after_s=_RETRY_SWEEP_STALE_S
+        )
+        if not claimed:
+            state = await repo.get_retry_sweep_state() or {}
+            return {
+                "started": False,
+                "running": True,
+                "total": int(state.get("total") or 0),
+            }
+        job_ids = await repo.list_failed_mp3_job_ids()
+        if not job_ids:
+            self.started_at = None
+            await repo.upsert_retry_sweep_state(self._snapshot(running=False, finished=True))
+            return {"started": False, "running": False, "total": 0}
+        self._pool = pool
+        self.total = len(job_ids)
+        self.scanned = 0
+        self.succeeded = 0
+        self.still_failed = 0
+        self.last_errors = []
+        self.started_at = _now_iso()
+        self._cancel = False
+        await repo.upsert_retry_sweep_state(self._snapshot(running=True))
+        self._task = asyncio.create_task(self._run(pool, list(job_ids)))
+        return {"started": True, "running": True, "total": self.total}
+
+    async def _heartbeat_loop(self) -> None:
+        try:
+            while not self._cancel:
+                await asyncio.sleep(_RETRY_SWEEP_HEARTBEAT_S)
+                if self._cancel:
+                    break
+                await StreamingRepository(self._pool).upsert_retry_sweep_state(
+                    self._snapshot(running=True)
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Retry sweep heartbeat failed (non-fatal)")
+
+    async def _run(self, pool: Any, job_ids: list[UUID]) -> None:
+        service = StreamingUploadService(pool)
+        semaphore = asyncio.Semaphore(_SWEEP_CONCURRENCY)
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+        async def retry_one(job_id: UUID) -> None:
+            async with semaphore:
+                ok = False
+                error = ""
+                try:
+                    await service.retry_failed_job(job_id)
+                    ok = True
+                except Exception as exc:  # retry_failed_job re-raises after marking job failed
+                    error = str(exc) or exc.__class__.__name__
+                self.scanned += 1
+                if ok:
+                    self.succeeded += 1
+                else:
+                    self.still_failed += 1
+                    if len(self.last_errors) >= _RETRY_SWEEP_ERRORS_KEPT:
+                        self.last_errors.pop(0)
+                    self.last_errors.append({"job_id": str(job_id), "error": error[:300]})
+                if self.scanned % 50 == 0:
+                    logger.info(
+                        "Failed-mp3 retry sweep progress %s/%s (ok=%s failed=%s)",
+                        self.scanned,
+                        self.total,
+                        self.succeeded,
+                        self.still_failed,
+                    )
+
+        try:
+            await asyncio.gather(*(retry_one(job_id) for job_id in job_ids))
+        finally:
+            if self._heartbeat_task:
+                self._cancel = True
+                self._heartbeat_task.cancel()
+                try:
+                    await self._heartbeat_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                self._heartbeat_task = None
+            try:
+                await StreamingRepository(pool).upsert_retry_sweep_state(
+                    self._snapshot(running=False, finished=True)
+                )
+            except Exception:
+                logger.exception("Failed to persist retry sweep final state")
+            logger.info(
+                "Failed-mp3 retry sweep finished: scanned=%s ok=%s failed=%s",
+                self.scanned,
+                self.succeeded,
+                self.still_failed,
+            )
+
+
+def _state_is_stale(state: dict[str, Any]) -> bool:
+    if not state.get("running"):
+        return False
+    raw = state.get("heartbeat_at")
+    if not raw:
+        return True
+    try:
+        heartbeat = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return True
+    return (datetime.now(timezone.utc) - heartbeat).total_seconds() > _RETRY_SWEEP_STALE_S
+
+
+_retry_sweep = _FailedMp3RetrySweep()
 
 
 class StreamingUploadService:
@@ -1146,4 +1340,17 @@ class StreamingUploadService:
         except Exception as exc:
             await self._repo.mark_upload_job(job_id, status="failed", error=str(exc)[:500])
             raise
+
+    async def start_failed_mp3_retry_sweep(self) -> dict[str, Any]:
+        """Start a background sweep that retries every failed mp3_ok/mp3_alt job.
+
+        Runs server-side (bounded concurrency) so the request returns instantly
+        even for thousands of jobs. See _retry_sweep.
+        """
+        return await _retry_sweep.start(self._pool)
+
+    async def failed_mp3_retry_sweep_status(self) -> dict[str, Any]:
+        """Live progress of the background failed-mp3 retry sweep."""
+        return await _retry_sweep.status()
+
 

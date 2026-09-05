@@ -255,6 +255,43 @@ export function useRetryUploadJob() {
   });
 }
 
+export type RetryAllSweepStatus = {
+  running: boolean;
+  started_at?: string | null;
+  finished_at?: string | null;
+  total: number;
+  scanned: number;
+  succeeded: number;
+  still_failed: number;
+  remaining: number;
+  last_errors?: Array<{ job_id: string; error: string }>;
+};
+
+export function useStartRetryAllUploads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      httpClient.post<{ started: boolean; running: boolean; total: number }>(
+        '/api/v3/admin/streaming/upload-jobs/retry-all',
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['streaming-upload-sweep-status'] });
+    },
+  });
+}
+
+export function useRetryAllUploadSweepStatus() {
+  return useQuery({
+    queryKey: ['streaming-upload-sweep-status'],
+    queryFn: () =>
+      httpClient.get<RetryAllSweepStatus>(
+        '/api/v3/admin/streaming/upload-jobs/retry-all/status',
+      ),
+    refetchInterval: (query) => (query.state.data?.running === true ? 3000 : false),
+    refetchOnWindowFocus: false,
+  });
+}
+
 function formatDuration(seconds?: number | null): string {
   if (!seconds || seconds <= 0) return '—';
   const total = Math.round(seconds);

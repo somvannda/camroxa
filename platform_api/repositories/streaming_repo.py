@@ -8,6 +8,12 @@ from uuid import UUID, uuid4
 
 import json
 
+# Admin "retry all failed mp3" sweep progress row (system_settings is a generic
+# KV store: key text PK, value_type text, value text/json, updated_at).
+RETRY_SWEEP_SETTING_KEY = "streaming_upload_retry_sweep_v1"
+# Postgres advisory xact-lock id serializing sweep claims across uvicorn workers.
+RETRY_SWEEP_ADVISORY_LOCK_ID = 730000001
+
 
 class StreamingRepository:
     def __init__(self, pool: Any) -> None:
@@ -170,6 +176,94 @@ class StreamingRepository:
             *params,
         )
         return [dict(row) for row in rows]
+
+    async def list_failed_mp3_job_ids(self) -> list[UUID]:
+        """Every failed mp3_ok/mp3_alt upload job id, newest first (no cap).
+
+        Admin "retry all" sweep target — the UI list only shows the newest 200
+        jobs, so most failures are unreachable from the page. Newest first so
+        recent (recoverable) failures are retried before older ones whose Suno
+        records may already be purged.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+            ORDER BY created_at DESC
+            """
+        )
+        return [UUID(str(row["id"])) for row in rows]
+
+    async def get_retry_sweep_state(self) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow(
+            "SELECT value FROM system_settings WHERE key = $1", RETRY_SWEEP_SETTING_KEY
+        )
+        if not row:
+            return None
+        try:
+            parsed = json.loads(row["value"])
+        except (TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    async def upsert_retry_sweep_state(self, state: dict[str, Any]) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO system_settings (key, value_type, value, updated_at)
+            VALUES ($1, 'json', $2, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+            """,
+            RETRY_SWEEP_SETTING_KEY,
+            json.dumps(state),
+        )
+
+    async def claim_retry_sweep(self, state: dict[str, Any], *, stale_after_s: float) -> bool:
+        """Atomically claim sweep ownership (one worker across the fleet).
+
+        Returns False if another worker holds a fresh sweep. A running sweep
+        whose heartbeat is older than stale_after_s is treated as dead and can
+        be reclaimed.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                acquired = await conn.fetchval(
+                    "SELECT pg_try_advisory_xact_lock($1)", RETRY_SWEEP_ADVISORY_LOCK_ID
+                )
+                if not acquired:
+                    return False
+                row = await conn.fetchrow(
+                    "SELECT value FROM system_settings WHERE key = $1", RETRY_SWEEP_SETTING_KEY
+                )
+                existing: Any = None
+                if row:
+                    try:
+                        existing = json.loads(row["value"])
+                    except (TypeError, ValueError):
+                        existing = None
+                if isinstance(existing, dict) and existing.get("running"):
+                    heartbeat = existing.get("heartbeat_at")
+                    if heartbeat:
+                        try:
+                            hb = datetime.fromisoformat(str(heartbeat))
+                        except ValueError:
+                            hb = None
+                        if hb is not None:
+                            age_s = (datetime.now(timezone.utc) - hb).total_seconds()
+                            if age_s <= stale_after_s:
+                                return False
+                    # running but no/fresh heartbeat is unreadable -> allow reclaim
+                await conn.execute(
+                    """
+                    INSERT INTO system_settings (key, value_type, value, updated_at)
+                    VALUES ($1, 'json', $2, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+                    """,
+                    RETRY_SWEEP_SETTING_KEY,
+                    json.dumps(state),
+                )
+                return True
 
     async def get_or_create_album(
         self,

@@ -500,6 +500,27 @@ async def retry_streaming_upload_job(job_id: UUID, ctx: AdminDep) -> dict:
         raise ValidationError(message) from exc
 
 
+@router.post("/upload-jobs/retry-all")
+async def retry_all_streaming_upload_jobs(ctx: AdminDep) -> dict:
+    """Start a background sweep that retries every failed mp3 upload job (no cap).
+
+    Returns immediately; poll GET /upload-jobs/retry-all/status for progress.
+    """
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).start_failed_mp3_retry_sweep()
+
+
+@router.get("/upload-jobs/retry-all/status")
+async def retry_all_streaming_upload_jobs_status(ctx: AdminDep) -> dict:
+    """Live progress of the failed-mp3 retry sweep started via retry-all."""
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).failed_mp3_retry_sweep_status()
+
+
 @router.post("/tracks/{track_id}/sync-metadata", response_model=MetadataSyncResponse)
 async def sync_stream_track_metadata(track_id: UUID, ctx: AdminDep) -> MetadataSyncResponse:
     del ctx
