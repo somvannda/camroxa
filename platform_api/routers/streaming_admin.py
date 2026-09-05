@@ -534,6 +534,27 @@ async def retry_all_streaming_upload_jobs_status(ctx: AdminDep) -> dict:
     return await StreamingUploadService(get_db_pool()).failed_mp3_retry_sweep_status()
 
 
+@router.post("/web-music-assets/recover")
+async def recover_web_music_assets(ctx: AdminDep) -> dict:
+    """Start one web-music companion-asset recovery pass (wav/lrc/srt/package).
+
+    Returns immediately; poll GET /web-music-assets/recover/status for progress.
+    """
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).start_web_music_asset_recovery()
+
+
+@router.get("/web-music-assets/recover/status")
+async def web_music_assets_recovery_status(ctx: AdminDep) -> dict:
+    """Live progress of the web-music companion-asset recovery pass."""
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).web_music_asset_recovery_status()
+
+
 @router.post("/tracks/{track_id}/sync-metadata", response_model=MetadataSyncResponse)
 async def sync_stream_track_metadata(track_id: UUID, ctx: AdminDep) -> MetadataSyncResponse:
     del ctx

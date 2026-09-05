@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -65,9 +66,73 @@ _AUTO_RETRY_CONCURRENCY = int(os.getenv("STREAMING_AUTO_RETRY_CONCURRENCY", "3")
 # Session advisory lock making each pass single-winner across uvicorn workers.
 _AUTO_RETRY_ADVISORY_LOCK = 730000002
 
+# Web-music companion-asset recovery (wav/lrc/srt/encrypted package). WAV needs a
+# Suno conversion per variant (~30-60s), so it is capped hard per cycle.
+_ASSET_RECOVERY_ENABLED = os.getenv("WEB_MUSIC_ASSET_RECOVERY_ENABLED", "1") != "0"
+_ASSET_PASS_TASK_LIMIT = int(os.getenv("WEB_MUSIC_ASSET_PASS_TASK_LIMIT", "8"))
+_ASSET_WAV_MAX_PER_PASS = int(os.getenv("WEB_MUSIC_ASSET_WAV_MAX_PER_PASS", "2"))
+_ASSET_LRC_MAX_PER_PASS = int(os.getenv("WEB_MUSIC_ASSET_LRC_MAX_PER_PASS", "6"))
+_ASSET_SRT_ENABLED = os.getenv("WEB_MUSIC_ASSET_SRT_ENABLED", "1") != "0"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _iso_created_at(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
+    text = str(value).strip()
+    return text or None
+
+
+_LRC_TIMESTAMP_RE = re.compile(
+    r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]\s*(.*)"
+)
+
+
+def _lrc_text_to_srt(lrc: str) -> str:
+    """Convert LRC subtitles to SRT text (mirrors admin download conversion)."""
+    entries: list[tuple[float, str]] = []
+    for raw in str(lrc or "").splitlines():
+        match = _LRC_TIMESTAMP_RE.match(raw.strip())
+        if not match:
+            continue
+        minutes, seconds, millis, text = match.groups()
+        cleaned = str(text or "").strip()
+        if not cleaned:
+            continue
+        total = int(minutes) * 60 + int(seconds)
+        if millis:
+            if len(millis) == 1:
+                total += int(millis) / 10.0
+            elif len(millis) == 2:
+                total += int(millis) / 100.0
+            else:
+                total += int(millis[:3]) / 1000.0
+        entries.append((max(0.0, float(total)), cleaned))
+    if not entries:
+        return ""
+    chunks: list[str] = []
+
+    def _clock(total_ms: int) -> str:
+        hours, rem = divmod(total_ms, 3_600_000)
+        minutes, rem = divmod(rem, 60_000)
+        secs, millis = divmod(rem, 1000)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+    for index, (start, text) in enumerate(entries):
+        end = entries[index + 1][0] if index + 1 < len(entries) else start + 3.0
+        if end <= start:
+            end = start + 1.5
+        start_ms = max(0, int(round(start * 1000)))
+        end_ms = max(start_ms + 200, int(round(end * 1000)))
+        chunks.append(f"{index + 1}\n{_clock(start_ms)} --> {_clock(end_ms)}\n{text}\n")
+    return "\n".join(chunks)
 
 
 class _FailedMp3RetrySweep:
@@ -1433,10 +1498,244 @@ class StreamingUploadService:
                 except Exception:
                     pass
 
+    async def start_web_music_asset_recovery(self) -> dict[str, Any]:
+        """Claim + start one web-music companion-asset recovery pass (async)."""
+        repo = StreamingRepository(self._pool)
+        if not _ASSET_RECOVERY_ENABLED:
+            return {"started": False, "running": False, "reason": "disabled"}
+        now = _now_iso()
+        state = {
+            "running": True,
+            "started_at": now,
+            "finished_at": None,
+            "heartbeat_at": now,
+            "counters": {
+                "tasks_scanned": 0,
+                "wav_recovered": 0,
+                "wav_failed": 0,
+                "lrc_recovered": 0,
+                "lrc_noop": 0,
+                "srt_created": 0,
+                "pkg_recovered": 0,
+                "pkg_failed": 0,
+                "errors": 0,
+            },
+            "last_errors": [],
+        }
+        claimed = await repo.claim_asset_recovery_owner(
+            state, stale_after_s=_RETRY_SWEEP_STALE_S
+        )
+        if not claimed:
+            return {"started": False, "running": True}
+        asyncio.create_task(self._asset_recovery_worker(state))
+        return {"started": True, "running": True}
+
+    async def web_music_asset_recovery_status(self) -> dict[str, Any]:
+        repo = StreamingRepository(self._pool)
+        state = await repo.get_asset_recovery_state()
+        if not state:
+            return {
+                "running": False,
+                "started_at": None,
+                "finished_at": None,
+                "counters": {},
+                "last_errors": [],
+            }
+        running = bool(state.get("running")) and not _state_is_stale(state)
+        return {
+            "running": running,
+            "started_at": state.get("started_at"),
+            "finished_at": state.get("finished_at"),
+            "counters": state.get("counters") or {},
+            "last_errors": state.get("last_errors") or [],
+        }
+
+    async def _asset_recovery_worker(self, state: dict[str, Any]) -> None:
+        repo = StreamingRepository(self._pool)
+        counters: dict[str, int] = state.get("counters") or {}
+        last_errors: list[dict[str, str]] = state.get("last_errors") or []
+
+        def bump(key: str, amount: int = 1) -> None:
+            counters[key] = int(counters.get(key, 0)) + amount
+
+        def record_error(what: str, task_id: UUID, exc: Exception) -> None:
+            bump("errors")
+            last_errors.append(
+                {"what": what, "task_id": str(task_id), "error": str(exc)[:220]}
+            )
+            if len(last_errors) > 8:
+                last_errors.pop(0)
+
+        # Moving watermark: each pass advances past the oldest scanned task so
+        # permanently-gapped tasks cannot clog the newest window and starve the
+        # historical backlog. Wrap around (None) once a pass hits the tail.
+        cursor_state: dict[str, Any] = {"value": state.get("cursor") or None}
+
+        async def persist(running: bool = True, finished: bool = False) -> None:
+            await repo.upsert_asset_recovery_state(
+                {
+                    "running": running,
+                    "started_at": state.get("started_at"),
+                    "finished_at": _now_iso() if finished else None,
+                    "heartbeat_at": _now_iso(),
+                    "counters": counters,
+                    "last_errors": last_errors,
+                    "cursor": cursor_state["value"],
+                }
+            )
+
+        try:
+            storage: Any | None = None
+            config = await resolve_streaming_storage_config(self._pool)
+            if config.configured:
+                storage = StorageService.from_config(config)
+
+            async def fetch_col(col: str, task_id: UUID) -> str:
+                value = await self._pool.fetchval(
+                    f"SELECT {col} FROM suno_tasks WHERE id = $1", task_id
+                )
+                return str(value or "").strip()
+
+            rows = await repo.list_web_music_asset_tasks(
+                limit=_ASSET_PASS_TASK_LIMIT,
+                before=cursor_state["value"],
+            )
+            wav_budget = _ASSET_WAV_MAX_PER_PASS
+            lrc_budget = _ASSET_LRC_MAX_PER_PASS
+
+            for row in rows:
+                if not row.get("id"):
+                    continue
+                bump("tasks_scanned")
+                task_id = UUID(str(row["id"]))
+                user_id = UUID(str(row["user_id"])) if row.get("user_id") else None
+                if not user_id:
+                    continue
+                cursor_state["value"] = _iso_created_at(row.get("created_at"))
+                context = await repo.get_suno_stream_context(task_id) or {}
+                title = str(
+                    context.get("song_title") or row.get("song_title") or "Untitled"
+                ).strip() or "Untitled"
+                song_slug = slugify(title, fallback="track")
+
+                for variant in ("ok", "alt"):
+                    b2_col = f"b2_storage_key_{variant}"
+                    mp3_key = str(row.get(b2_col) or "").strip()
+                    if not mp3_key:
+                        continue
+                    # --- encrypted package ---
+                    pkg_status = str(row.get(f"package_status_{variant}") or "none")
+                    if pkg_status != "ready":
+                        try:
+                            await self._package_existing_web_music_mp3(
+                                suno_task_id=task_id,
+                                variant=variant,
+                                storage_key=mp3_key,
+                            )
+                            after = await fetch_col(
+                                f"package_status_{variant}", task_id
+                            )
+                            if after == "ready":
+                                bump("pkg_recovered")
+                            else:
+                                bump("pkg_failed")
+                        except Exception as exc:
+                            bump("pkg_failed")
+                            record_error("package", task_id, exc)
+                    # --- WAV (capped; requires Suno conversion when no url yet) ---
+                    wav_key = str(row.get(f"b2_wav_storage_key_{variant}") or "").strip()
+                    wav_task = str(row.get(f"wav_task_id_{variant}") or "").strip()
+                    wav_status = str(row.get(f"wav_status_{variant}") or "").strip()
+                    wav_eligible = not wav_key and (not wav_task or wav_status == "success")
+                    if wav_eligible and wav_budget > 0 and storage is not None:
+                        wav_budget -= 1
+                        try:
+                            await self._upload_web_music_wav(
+                                context=context,
+                                variant=variant,
+                                suno_task_id=task_id,
+                                song_slug=song_slug,
+                                user_id=user_id,
+                                storage=storage,
+                            )
+                            after = await fetch_col(
+                                f"b2_wav_storage_key_{variant}", task_id
+                            )
+                            if after:
+                                bump("wav_recovered")
+                            else:
+                                bump("wav_failed")
+                        except Exception as exc:
+                            bump("wav_failed")
+                            record_error("wav", task_id, exc)
+                        await persist()
+                    # --- LRC (capped) ---
+                    instrumental = bool(row.get("instrumental"))
+                    lrc_key = str(
+                        row.get(f"b2_lrc_storage_key_{variant}") or ""
+                    ).strip()
+                    if not instrumental and not lrc_key and lrc_budget > 0:
+                        lrc_budget -= 1
+                        try:
+                            await self._run_web_music_lrc_upload(task_id, variant)
+                            after = await fetch_col(
+                                f"b2_lrc_storage_key_{variant}", task_id
+                            )
+                            if after:
+                                lrc_key = after
+                                bump("lrc_recovered")
+                            else:
+                                bump("lrc_noop")  # timestamped LRC genuinely absent
+                        except Exception as exc:
+                            record_error("lrc", task_id, exc)
+                        await persist()
+                    # --- SRT derived from an existing stored LRC ---
+                    if _ASSET_SRT_ENABLED and storage is not None and not instrumental:
+                        lrc_now = lrc_key or str(
+                            row.get(f"b2_lrc_storage_key_{variant}") or ""
+                        ).strip()
+                        if lrc_now:
+                            try:
+                                srt_key = web_music_object_key(
+                                    user_id, task_id, variant, "srt"
+                                )
+                                try:
+                                    await storage.download_bytes(key=srt_key)
+                                except Exception:
+                                    lrc_bytes = await storage.download_bytes(key=lrc_now)
+                                    srt_text = _lrc_text_to_srt(
+                                        lrc_bytes.decode("utf-8", "replace")
+                                    )
+                                    if srt_text:
+                                        await storage.upload_bytes(
+                                            key=srt_key,
+                                            data=srt_text.encode("utf-8"),
+                                            content_type="text/plain; charset=utf-8",
+                                        )
+                                        bump("srt_created")
+                            except Exception as exc:
+                                record_error("srt", task_id, exc)
+                await persist()
+            # Tail reached (fewer rows than the pass cap): wrap the watermark so
+            # the next pass starts from the newest tasks again.
+            if len(rows) < _ASSET_PASS_TASK_LIMIT:
+                cursor_state["value"] = None
+            await persist(running=False, finished=True)
+            logger.info(
+                "Web-music asset recovery pass done: %s", counters
+            )
+        except Exception as exc:
+            logger.exception("Web-music asset recovery pass failed")
+            record_error("pass", UUID(int=0), exc)
+            try:
+                await persist(running=False, finished=True)
+            except Exception:
+                pass
+
 
 async def run_streaming_auto_retry_loop(pool: Any) -> None:
     """Background loop (started by main startup) that auto-retries failed mp3
-    uploads so every generated song eventually lands on B2."""
+    uploads and keeps web-music companion assets (wav/lrc/srt/package) on B2."""
     service = StreamingUploadService(pool)
     while True:
         try:
@@ -1445,6 +1744,12 @@ async def run_streaming_auto_retry_loop(pool: Any) -> None:
                 logger.info("Streaming auto-retry pass recovered %s upload job(s)", recovered)
         except Exception:
             logger.exception("Streaming auto-retry pass failed (non-fatal)")
+        try:
+            started = await service.start_web_music_asset_recovery()
+            if started.get("started"):
+                logger.info("Web-music asset recovery pass started by auto loop.")
+        except Exception:
+            logger.exception("Web-music asset recovery start failed (non-fatal)")
         await asyncio.sleep(_AUTO_RETRY_INTERVAL_S)
 
 

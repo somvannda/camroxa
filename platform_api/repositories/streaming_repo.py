@@ -13,6 +13,9 @@ import json
 RETRY_SWEEP_SETTING_KEY = "streaming_upload_retry_sweep_v1"
 # Postgres advisory xact-lock id serializing sweep claims across uvicorn workers.
 RETRY_SWEEP_ADVISORY_LOCK_ID = 730000001
+# Web-music asset recovery (wav/lrc/srt/package completeness) progress row + lock.
+ASSET_RECOVERY_SETTING_KEY = "web_music_asset_recovery_v1"
+ASSET_RECOVERY_ADVISORY_LOCK_ID = 730000003
 
 
 class StreamingRepository:
@@ -317,6 +320,64 @@ class StreamingRepository:
         )
         return int(row["n"] or 0) if row else 0
 
+    async def list_web_music_asset_tasks(
+        self, *, limit: int, before: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Web-music suno_tasks that captured an MP3 but are missing companion
+        B2 assets (wav / lrc / encrypted package), newest first, capped.
+
+        ``before`` is a moving watermark (created_at ISO of the oldest task from
+        the previous pass): the next pass keeps scanning strictly older tasks so
+        tasks with permanently-absent assets (e.g. no timestamped LRC) cannot
+        clog the newest window and starve the historical backlog. Pass None to
+        start from the newest again (wrap-around).
+
+        WAV eligibility excludes variants whose conversion was attempted but did
+        not succeed (no repeated Suno conversion resubmits by automation).
+        """
+        params: list[Any] = [limit]
+        before_dt: Any = None
+        if before:
+            try:
+                before_dt = datetime.fromisoformat(str(before).replace("Z", "+00:00"))
+            except ValueError:
+                before_dt = None  # corrupt cursor -> ignore, rescan from newest
+        watermark = "AND created_at < $2::timestamptz" if before_dt is not None else ""
+        if before_dt is not None:
+            params.append(before_dt)
+        rows = await self._pool.fetch(
+            f"""
+            SELECT
+                id, user_id, created_at,
+                COALESCE(instrumental, false) AS instrumental,
+                b2_storage_key_ok, b2_storage_key_alt,
+                b2_wav_storage_key_ok, b2_wav_storage_key_alt,
+                wav_task_id_ok, wav_task_id_alt,
+                wav_status_ok, wav_status_alt,
+                b2_lrc_storage_key_ok, b2_lrc_storage_key_alt,
+                package_status_ok, package_status_alt
+            FROM suno_tasks
+            WHERE (COALESCE(b2_storage_key_ok, '') <> '' OR COALESCE(b2_storage_key_alt, '') <> '')
+              {watermark}
+              AND (
+                    (COALESCE(b2_wav_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
+                     AND (COALESCE(wav_task_id_ok::text, '') = '' OR wav_status_ok = 'success'))
+                 OR (COALESCE(b2_wav_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
+                     AND (COALESCE(wav_task_id_alt::text, '') = '' OR wav_status_alt = 'success'))
+                 OR (COALESCE(package_status_ok, 'none') <> 'ready' AND COALESCE(b2_storage_key_ok, '') <> '')
+                 OR (COALESCE(package_status_alt, 'none') <> 'ready' AND COALESCE(b2_storage_key_alt, '') <> '')
+                 OR (COALESCE(b2_lrc_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
+                     AND NOT COALESCE(instrumental, false))
+                 OR (COALESCE(b2_lrc_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
+                     AND NOT COALESCE(instrumental, false))
+              )
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            *params,
+        )
+        return [dict(row) for row in rows]
+
 
     async def list_failed_mp3_job_ids(self) -> list[UUID]:
         """Every failed mp3_ok/mp3_alt upload job id, newest first (no cap).
@@ -337,9 +398,9 @@ class StreamingRepository:
         )
         return [UUID(str(row["id"])) for row in rows]
 
-    async def get_retry_sweep_state(self) -> dict[str, Any] | None:
+    async def _get_json_setting(self, key: str) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
-            "SELECT value FROM system_settings WHERE key = $1", RETRY_SWEEP_SETTING_KEY
+            "SELECT value FROM system_settings WHERE key = $1", key
         )
         if not row:
             return None
@@ -349,33 +410,39 @@ class StreamingRepository:
             return None
         return parsed if isinstance(parsed, dict) else None
 
-    async def upsert_retry_sweep_state(self, state: dict[str, Any]) -> None:
+    async def _upsert_json_setting(self, key: str, state: dict[str, Any]) -> None:
         await self._pool.execute(
             """
             INSERT INTO system_settings (key, value_type, value, updated_at)
             VALUES ($1, 'json', $2, NOW())
             ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
             """,
-            RETRY_SWEEP_SETTING_KEY,
+            key,
             json.dumps(state),
         )
 
-    async def claim_retry_sweep(self, state: dict[str, Any], *, stale_after_s: float) -> bool:
-        """Atomically claim sweep ownership (one worker across the fleet).
-
-        Returns False if another worker holds a fresh sweep. A running sweep
-        whose heartbeat is older than stale_after_s is treated as dead and can
-        be reclaimed.
+    async def _claim_json_owner(
+        self,
+        key: str,
+        advisory_id: int,
+        state: dict[str, Any],
+        *,
+        stale_after_s: float,
+    ) -> bool:
+        """Atomically claim a background-task owner row (one worker across the
+        fleet). Returns False if another worker holds a fresh run. A running row
+        whose heartbeat is older than stale_after_s is treated as dead and can be
+        reclaimed.
         """
         async with self._pool.acquire() as conn:
             async with conn.transaction():
                 acquired = await conn.fetchval(
-                    "SELECT pg_try_advisory_xact_lock($1)", RETRY_SWEEP_ADVISORY_LOCK_ID
+                    "SELECT pg_try_advisory_xact_lock($1)", advisory_id
                 )
                 if not acquired:
                     return False
                 row = await conn.fetchrow(
-                    "SELECT value FROM system_settings WHERE key = $1", RETRY_SWEEP_SETTING_KEY
+                    "SELECT value FROM system_settings WHERE key = $1", key
                 )
                 existing: Any = None
                 if row:
@@ -394,17 +461,47 @@ class StreamingRepository:
                             age_s = (datetime.now(timezone.utc) - hb).total_seconds()
                             if age_s <= stale_after_s:
                                 return False
-                    # running but no/fresh heartbeat is unreadable -> allow reclaim
+                    # running but heartbeat unreadable -> allow reclaim
                 await conn.execute(
                     """
                     INSERT INTO system_settings (key, value_type, value, updated_at)
                     VALUES ($1, 'json', $2, NOW())
                     ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
                     """,
-                    RETRY_SWEEP_SETTING_KEY,
+                    key,
                     json.dumps(state),
                 )
                 return True
+
+    async def get_retry_sweep_state(self) -> dict[str, Any] | None:
+        return await self._get_json_setting(RETRY_SWEEP_SETTING_KEY)
+
+    async def upsert_retry_sweep_state(self, state: dict[str, Any]) -> None:
+        await self._upsert_json_setting(RETRY_SWEEP_SETTING_KEY, state)
+
+    async def claim_retry_sweep(self, state: dict[str, Any], *, stale_after_s: float) -> bool:
+        return await self._claim_json_owner(
+            RETRY_SWEEP_SETTING_KEY,
+            RETRY_SWEEP_ADVISORY_LOCK_ID,
+            state,
+            stale_after_s=stale_after_s,
+        )
+
+    async def get_asset_recovery_state(self) -> dict[str, Any] | None:
+        return await self._get_json_setting(ASSET_RECOVERY_SETTING_KEY)
+
+    async def upsert_asset_recovery_state(self, state: dict[str, Any]) -> None:
+        await self._upsert_json_setting(ASSET_RECOVERY_SETTING_KEY, state)
+
+    async def claim_asset_recovery_owner(
+        self, state: dict[str, Any], *, stale_after_s: float
+    ) -> bool:
+        return await self._claim_json_owner(
+            ASSET_RECOVERY_SETTING_KEY,
+            ASSET_RECOVERY_ADVISORY_LOCK_ID,
+            state,
+            stale_after_s=stale_after_s,
+        )
 
     async def get_or_create_album(
         self,
