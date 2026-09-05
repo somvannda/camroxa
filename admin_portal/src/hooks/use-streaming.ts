@@ -329,6 +329,53 @@ export function useRetryAllUploadSweepStatus() {
   });
 }
 
+export type WebMusicAssetRecoveryCounters = {
+  tasks_scanned: number;
+  wav_recovered: number;
+  wav_failed: number;
+  lrc_recovered: number;
+  lrc_noop: number;
+  srt_created: number;
+  pkg_recovered: number;
+  pkg_failed: number;
+  errors: number;
+};
+
+export type WebMusicAssetRecoveryStatus = {
+  running: boolean;
+  started_at?: string | null;
+  finished_at?: string | null;
+  counters: Partial<WebMusicAssetRecoveryCounters>;
+  last_errors?: Array<{ what: string; task_id: string; error: string }>;
+};
+
+export function useStartWebMusicAssetRecovery() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      httpClient.post<{ started: boolean; running: boolean; reason?: string }>(
+        '/api/v3/admin/streaming/web-music-assets/recover',
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['streaming-web-music-asset-recovery'],
+      });
+    },
+  });
+}
+
+export function useWebMusicAssetRecoveryStatus() {
+  return useQuery({
+    queryKey: ['streaming-web-music-asset-recovery'],
+    queryFn: () =>
+      httpClient.get<WebMusicAssetRecoveryStatus>(
+        '/api/v3/admin/streaming/web-music-assets/recover/status',
+      ),
+    refetchInterval: (query) => (query.state.data?.running === true ? 3000 : false),
+    refetchOnWindowFocus: false,
+  });
+}
+
 function formatDuration(seconds?: number | null): string {
   if (!seconds || seconds <= 0) return '—';
   const total = Math.round(seconds);

@@ -20,7 +20,9 @@ import {
   useRetryAllUploadSweepStatus,
   useRetryUploadJob,
   useStartRetryAllUploads,
+  useStartWebMusicAssetRecovery,
   useStreamingUploadJobs,
+  useWebMusicAssetRecoveryStatus,
 } from '@/hooks/use-streaming';
 import type { StreamingUploadJob } from '@/hooks/use-streaming';
 import { toast } from '@/hooks/use-toast';
@@ -172,6 +174,25 @@ function JobCard({
 
 const PAGE_SIZES = [25, 50, 100];
 
+function MiniStat({
+  label,
+  value,
+  className = 'text-slate-100',
+}: {
+  label: string;
+  value: number | null | undefined;
+  className?: string;
+}) {
+  return (
+    <div className="min-w-20 space-y-0.5">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className={`text-xl font-semibold ${className}`}>
+        {value == null ? '—' : value.toLocaleString()}
+      </p>
+    </div>
+  );
+}
+
 export default function StreamingUploadJobsPage() {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'pending' | 'running' | 'success' | 'failed'
@@ -202,6 +223,8 @@ export default function StreamingUploadJobsPage() {
   const retry = useRetryUploadJob();
   const startSweep = useStartRetryAllUploads();
   const sweep = useRetryAllUploadSweepStatus();
+  const startRecover = useStartWebMusicAssetRecovery();
+  const asset = useWebMusicAssetRecoveryStatus();
   const queryClient = useQueryClient();
   const sweepRunning = sweep.data?.running ?? false;
   const prevSweepRunning = useRef<boolean | undefined>(undefined);
@@ -419,6 +442,126 @@ export default function StreamingUploadJobsPage() {
           ) : null}
         </Card>
       )}
+
+      {(() => {
+        const c = asset.data?.counters ?? {};
+        const assetRunning = asset.data?.running ?? false;
+        const lastErrors = asset.data?.last_errors ?? [];
+        const hasRun = Boolean(asset.data?.started_at);
+        return (
+          <Card className="border-slate-800 bg-slate-900/50">
+            <CardContent className="space-y-3 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-medium text-slate-200">
+                  Companion asset recovery
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    WAV · LRC · SRT · encrypted package
+                  </span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={
+                      asset.isError
+                        ? 'outline'
+                        : assetRunning
+                          ? 'default'
+                          : hasRun
+                            ? 'secondary'
+                            : 'outline'
+                    }
+                  >
+                    {asset.isError
+                      ? 'Status unavailable'
+                      : assetRunning
+                        ? 'Recovery in progress'
+                        : hasRun
+                          ? 'Last pass finished'
+                          : 'No pass yet'}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={assetRunning || startRecover.isPending}
+                    onClick={() =>
+                      startRecover.mutate(undefined, {
+                        onSuccess: (res) => {
+                          if (res.started) {
+                            toast({ title: 'Asset recovery started' });
+                          } else if (res.running) {
+                            toast({ title: 'A recovery pass is already running.' });
+                          } else {
+                            toast({
+                              title: 'Recovery disabled',
+                              variant: 'destructive',
+                            });
+                          }
+                        },
+                        onError: (err: unknown) =>
+                          toast({
+                            title: apiErrorMessage(err, 'Failed to start asset recovery'),
+                            variant: 'destructive',
+                          }),
+                      })
+                    }
+                  >
+                    {assetRunning || startRecover.isPending
+                      ? 'Recovering…'
+                      : 'Run recovery'}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-8 gap-y-3">
+                <MiniStat label="Tasks scanned" value={c.tasks_scanned} />
+                <MiniStat
+                  label="WAV recovered"
+                  value={c.wav_recovered}
+                  className="text-emerald-300"
+                />
+                <MiniStat label="WAV failed" value={c.wav_failed} className="text-red-300" />
+                <MiniStat
+                  label="LRC recovered"
+                  value={c.lrc_recovered}
+                  className="text-emerald-300"
+                />
+                <MiniStat
+                  label="SRT created"
+                  value={c.srt_created}
+                  className="text-emerald-300"
+                />
+                <MiniStat
+                  label="Packages recovered"
+                  value={c.pkg_recovered}
+                  className="text-emerald-300"
+                />
+                <MiniStat
+                  label="Packages failed"
+                  value={c.pkg_failed}
+                  className="text-red-300"
+                />
+                <MiniStat label="Errors" value={c.errors} className="text-red-300" />
+              </div>
+              {asset.data?.finished_at ? (
+                <p className="text-xs text-slate-400">
+                  Last pass finished {formatWhen(asset.data.finished_at)}
+                  {Number(c.lrc_noop) > 0
+                    ? ` · ${Number(c.lrc_noop).toLocaleString()} LRC absent (no timestamped lyrics)`
+                    : ''}
+                </p>
+              ) : null}
+              {lastErrors.length > 0 ? (
+                <p
+                  className="truncate text-[11px] text-red-400/80"
+                  title={lastErrors
+                    .map((e) => `${e.what} ${String(e.task_id).slice(0, 8)}: ${e.error}`)
+                    .join('\n')}
+                >
+                  {lastErrors.length} error(s)
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {isLoading ? <Skeleton className="h-40 w-full" /> : null}
       {isError ? (
