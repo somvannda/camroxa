@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,6 +50,20 @@ _SWEEP_CONCURRENCY = 3
 _RETRY_SWEEP_ERRORS_KEPT = 10
 _RETRY_SWEEP_HEARTBEAT_S = 20.0
 _RETRY_SWEEP_STALE_S = 120.0
+
+# Background auto-capture retrier (env-tunable, prod defaults sane). It re-runs
+# failed mp3 uploads until Suno/B2 capture succeeds, without touching the manual
+# admin sweep (which is skipped while one is running).
+_AUTO_RETRY_ENABLED = os.getenv("STREAMING_AUTO_RETRY_ENABLED", "1") != "0"
+_AUTO_RETRY_INTERVAL_S = float(os.getenv("STREAMING_AUTO_RETRY_INTERVAL_S", "300"))
+_AUTO_RETRY_MAX_AGE_HOURS = int(os.getenv("STREAMING_AUTO_RETRY_MAX_AGE_HOURS", "48"))
+# attempt_count grows by 2 per failed retry (pending mark + failed mark), so a
+# cap of 7 ≈ up to 3 auto re-attempts per job.
+_AUTO_RETRY_MAX_ATTEMPT_COUNT = int(os.getenv("STREAMING_AUTO_RETRY_MAX_ATTEMPT_COUNT", "7"))
+_AUTO_RETRY_PASS_LIMIT = int(os.getenv("STREAMING_AUTO_RETRY_PASS_LIMIT", "20"))
+_AUTO_RETRY_CONCURRENCY = int(os.getenv("STREAMING_AUTO_RETRY_CONCURRENCY", "3"))
+# Session advisory lock making each pass single-winner across uvicorn workers.
+_AUTO_RETRY_ADVISORY_LOCK = 730000002
 
 
 def _now_iso() -> str:
@@ -1365,5 +1380,71 @@ class StreamingUploadService:
     async def failed_mp3_retry_sweep_status(self) -> dict[str, Any]:
         """Live progress of the background failed-mp3 retry sweep."""
         return await _retry_sweep.status()
+
+    async def run_auto_retry_pass(self) -> int:
+        """One auto-capture pass: retry eligible failed mp3 uploads.
+
+        Single-winner across workers (session advisory lock), bounded budget
+        (attempt cap + 48h window) and concurrency. Skips while the manual
+        admin retry sweep owns the backlog. Returns how many jobs recovered.
+        """
+        if not _AUTO_RETRY_ENABLED:
+            return 0
+        repo = StreamingRepository(self._pool)
+        sweep_state = await repo.get_retry_sweep_state() or {}
+        if sweep_state.get("running") and not _state_is_stale(sweep_state):
+            return 0
+        async with self._pool.acquire() as conn:
+            locked = await conn.fetchval(
+                "SELECT pg_try_advisory_lock($1)", _AUTO_RETRY_ADVISORY_LOCK
+            )
+            if not locked:
+                return 0
+            try:
+                job_ids = await repo.list_failed_mp3_jobs_for_auto_retry(
+                    max_attempt_count=_AUTO_RETRY_MAX_ATTEMPT_COUNT,
+                    max_age_hours=_AUTO_RETRY_MAX_AGE_HOURS,
+                    limit=_AUTO_RETRY_PASS_LIMIT,
+                )
+                if not job_ids:
+                    return 0
+                semaphore = asyncio.Semaphore(_AUTO_RETRY_CONCURRENCY)
+
+                async def retry_one(job_id: UUID) -> int:
+                    async with semaphore:
+                        try:
+                            await self.retry_failed_job(job_id)
+                            return 1
+                        except Exception as exc:
+                            logger.info(
+                                "Auto-retry could not recover job=%s: %s",
+                                job_id,
+                                str(exc)[:200],
+                            )
+                            return 0
+
+                results = await asyncio.gather(*(retry_one(jid) for jid in job_ids))
+                return int(sum(results))
+            finally:
+                try:
+                    await conn.fetchval(
+                        "SELECT pg_advisory_unlock($1)", _AUTO_RETRY_ADVISORY_LOCK
+                    )
+                except Exception:
+                    pass
+
+
+async def run_streaming_auto_retry_loop(pool: Any) -> None:
+    """Background loop (started by main startup) that auto-retries failed mp3
+    uploads so every generated song eventually lands on B2."""
+    service = StreamingUploadService(pool)
+    while True:
+        try:
+            recovered = await service.run_auto_retry_pass()
+            if recovered:
+                logger.info("Streaming auto-retry pass recovered %s upload job(s)", recovered)
+        except Exception:
+            logger.exception("Streaming auto-retry pass failed (non-fatal)")
+        await asyncio.sleep(_AUTO_RETRY_INTERVAL_S)
 
 

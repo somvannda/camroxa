@@ -259,6 +259,35 @@ class StreamingRepository:
         )
         return int(row["total"] or 0) if row else 0
 
+    async def list_failed_mp3_jobs_for_auto_retry(
+        self,
+        *,
+        max_attempt_count: int,
+        max_age_hours: int,
+        limit: int,
+    ) -> list[UUID]:
+        """Failed mp3 jobs eligible for the background auto-retry pass.
+
+        Only jobs that still have auto-retry budget (attempt_count below cap)
+        and were created inside the retry window, oldest first, capped per pass.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+              AND attempt_count < $1
+              AND created_at >= NOW() - make_interval(hours => $2)
+            ORDER BY created_at ASC
+            LIMIT $3
+            """,
+            max_attempt_count,
+            max_age_hours,
+            limit,
+        )
+        return [UUID(str(row["id"])) for row in rows]
+
     async def count_failed_mp3_jobs(self) -> int:
         """Failed mp3_ok/mp3_alt upload jobs right now (live count)."""
         row = await self._pool.fetchrow(

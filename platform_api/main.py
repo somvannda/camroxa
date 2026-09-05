@@ -341,6 +341,21 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Web music subscription maintenance not configured (non-fatal): %s", exc)
 
+        # --- Streaming upload auto-retry (B2 capture assurance) ---
+        try:
+            from platform_api.services import streaming_upload_service as _streaming_svc
+
+            if not getattr(_streaming_svc, "_AUTO_RETRY_ENABLED", True):
+                logger.info("Streaming upload auto-retry is disabled by env.")
+            else:
+                auto_retry_task = asyncio.create_task(
+                    _streaming_svc.run_streaming_auto_retry_loop(db_pool),
+                    name="streaming-auto-retry",
+                )
+                logger.info("Streaming upload auto-retry loop started.")
+        except Exception as exc:
+            logger.warning("Streaming upload auto-retry loop not started (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",
