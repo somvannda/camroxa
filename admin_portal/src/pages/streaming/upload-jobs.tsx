@@ -222,6 +222,8 @@ export default function StreamingUploadJobsPage() {
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
+  const fmt = (value: number | null | undefined) =>
+    value == null ? '—' : value.toLocaleString();
 
   // Stay on the last valid page if the sweep/filters shrink the result set.
   useEffect(() => {
@@ -326,75 +328,97 @@ export default function StreamingUploadJobsPage() {
         }
       />
 
-      {sweep.data ? (
+      {sweep.isLoading ? (
+        <Card className="border-slate-800 bg-slate-900/50">
+          <CardContent className="p-4 text-xs text-slate-400">
+            Loading retry status…
+          </CardContent>
+        </Card>
+      ) : (
         <Card className="border-slate-800 bg-slate-900/50">
           <CardContent className="flex flex-wrap items-center gap-x-10 gap-y-4 p-4">
             <div className="min-w-28 space-y-0.5">
               <p className="text-xs text-slate-500">Failed MP3 now</p>
               <p className="text-2xl font-semibold text-red-300">
-                {(sweep.data.failed_mp3_now ?? 0).toLocaleString()}
+                {fmt(sweep.data?.failed_mp3_now)}
               </p>
             </div>
             <div className="min-w-28 space-y-0.5">
               <p className="text-xs text-slate-500">Recovered by retry (all time)</p>
               <p className="text-2xl font-semibold text-emerald-300">
-                {(sweep.data.retried_success_total ?? 0).toLocaleString()}
+                {fmt(sweep.data?.retried_success_total)}
               </p>
             </div>
             <div className="min-w-28 space-y-0.5">
               <p className="text-xs text-slate-500">Recovered this sweep</p>
               <p className="text-2xl font-semibold text-slate-100">
-                {sweep.data.succeeded.toLocaleString()}
+                {fmt(sweep.data?.succeeded)}
               </p>
             </div>
             <div className="ml-auto min-w-56 space-y-1 text-right">
               <Badge
-                variant={sweepRunning ? 'default' : sweep.data.total > 0 ? 'secondary' : 'outline'}
+                variant={
+                  sweep.isError
+                    ? 'outline'
+                    : sweepRunning
+                      ? 'default'
+                      : (sweep.data?.total ?? 0) > 0
+                        ? 'secondary'
+                        : 'outline'
+                }
               >
-                {sweepRunning
-                  ? 'Retry sweep in progress'
-                  : sweep.data.total > 0
-                    ? 'Last sweep finished'
-                    : 'No sweep run yet'}
+                {sweep.isError
+                  ? 'Status unavailable'
+                  : sweepRunning
+                    ? 'Retry sweep in progress'
+                    : (sweep.data?.total ?? 0) > 0
+                      ? 'Last sweep finished'
+                      : 'No sweep run yet'}
               </Badge>
-              <p className="text-xs text-slate-400">
-                {sweepRunning ? (
-                  <>
-                    {sweep.data.scanned.toLocaleString()} of{' '}
-                    {sweep.data.total.toLocaleString()} scanned ·{' '}
-                    {sweep.data.succeeded.toLocaleString()} ok ·{' '}
-                    {sweep.data.still_failed.toLocaleString()} failed
-                  </>
-                ) : sweep.data.finished_at ? (
-                  <>
-                    {sweep.data.succeeded.toLocaleString()} ok ·{' '}
-                    {sweep.data.still_failed.toLocaleString()} failed of{' '}
-                    {sweep.data.total.toLocaleString()} · finished{' '}
-                    {formatWhen(sweep.data.finished_at)}
-                  </>
-                ) : sweep.data.total > 0 ? (
-                  <>started {formatWhen(sweep.data.started_at)}</>
-                ) : (
-                  'Click “Retry all failed” to sweep the backlog.'
-                )}
-              </p>
+              {sweep.isError ? (
+                <p className="text-xs text-red-300">
+                  {apiErrorMessage(sweep.error, 'Could not load retry status.')}
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  {sweepRunning ? (
+                    <>
+                      {(sweep.data?.scanned ?? 0).toLocaleString()} of{' '}
+                      {(sweep.data?.total ?? 0).toLocaleString()} scanned ·{' '}
+                      {(sweep.data?.succeeded ?? 0).toLocaleString()} ok ·{' '}
+                      {(sweep.data?.still_failed ?? 0).toLocaleString()} failed
+                    </>
+                  ) : sweep.data?.finished_at ? (
+                    <>
+                      {(sweep.data?.succeeded ?? 0).toLocaleString()} ok ·{' '}
+                      {(sweep.data?.still_failed ?? 0).toLocaleString()} failed of{' '}
+                      {(sweep.data?.total ?? 0).toLocaleString()} · finished{' '}
+                      {formatWhen(sweep.data.finished_at)}
+                    </>
+                  ) : (sweep.data?.total ?? 0) > 0 ? (
+                    <>started {formatWhen(sweep.data?.started_at)}</>
+                  ) : (
+                    'Click “Retry all failed” to sweep the backlog.'
+                  )}
+                </p>
+              )}
             </div>
           </CardContent>
-          {sweepRunning && sweep.data.total > 0 ? (
+          {sweepRunning && (sweep.data?.total ?? 0) > 0 ? (
             <div className="h-1 w-full bg-slate-800">
               <div
                 className="h-full bg-violet-500 transition-all duration-500"
                 style={{
                   width: `${Math.min(
                     100,
-                    Math.round((sweep.data.scanned / sweep.data.total) * 100),
+                    Math.round(((sweep.data?.scanned ?? 0) / (sweep.data?.total ?? 1)) * 100),
                   )}%`,
                 }}
               />
             </div>
           ) : null}
         </Card>
-      ) : null}
+      )}
 
       {isLoading ? <Skeleton className="h-40 w-full" /> : null}
       {isError ? (
