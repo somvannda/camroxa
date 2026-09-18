@@ -2021,6 +2021,14 @@ class BatchService:
         """Ensure a song may submit or resubmit Suno."""
         if song.status in {SONG_STATUS_SUNO_FAILED, SONG_STATUS_DRAFT_READY}:
             return
+        # A song whose finished audio is permanently gone (Suno temp link
+        # expired with no durable copy) may be regenerated.
+        latest_for_lost = await self._batch_repo.get_latest_suno_task_for_song(song.id)
+        if latest_for_lost is not None and (
+            bool(getattr(latest_for_lost, "download_unavailable_ok", False))
+            or bool(getattr(latest_for_lost, "download_unavailable_alt", False))
+        ):
+            return
         if song.status == SONG_STATUS_SUNO_PENDING:
             latest = await self._batch_repo.get_latest_suno_task_for_song(song.id)
             if latest is not None and is_suno_failure_status(latest.status):

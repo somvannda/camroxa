@@ -1447,6 +1447,7 @@ class BatchRepository:
                    title, lyrics, style, instrumental, external_task_id,
                    status, audio_url_ok, audio_url_alt, output_dir_ok,
                    output_dir_alt, downloaded_ok, downloaded_alt,
+                   download_unavailable_ok, download_unavailable_alt,
                    error_message,
                    created_at, updated_at
             FROM suno_tasks
@@ -2362,6 +2363,16 @@ class BatchRepository:
             output_dir_alt=row["output_dir_alt"],
             downloaded_ok=row["downloaded_ok"],
             downloaded_alt=row["downloaded_alt"],
+            download_unavailable_ok=(
+                bool(row["download_unavailable_ok"])
+                if "download_unavailable_ok" in row
+                else False
+            ),
+            download_unavailable_alt=(
+                bool(row["download_unavailable_alt"])
+                if "download_unavailable_alt" in row
+                else False
+            ),
             error_message=row["error_message"] if "error_message" in row else None,
             source=str(row["source"] or "studio") if "source" in row else "studio",
             created_at=row["created_at"],

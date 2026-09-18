@@ -298,6 +298,8 @@ class SunoTask:
     output_dir_alt: str | None = None
     downloaded_ok: bool = False
     downloaded_alt: bool = False
+    download_unavailable_ok: bool = False
+    download_unavailable_alt: bool = False
     error_message: str | None = None
     source: str = "studio"
     created_at: datetime = field(default_factory=datetime.utcnow)
