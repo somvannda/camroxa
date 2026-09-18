@@ -279,6 +279,39 @@ class StreamingRepository:
         )
         return [dict(row) for row in rows]
 
+    async def list_web_music_tasks_missing_wav(
+        self,
+        *,
+        window_hours: int = 336,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Web-music success tasks within the window whose WAV is not in B2."""
+        rows = await self._pool.fetch(
+            """
+            SELECT st.id,
+                   (COALESCE(st.b2_wav_storage_key_ok, '') = ''
+                    AND COALESCE(st.audio_id_ok, '') <> '') AS missing_wav_ok,
+                   (COALESCE(st.b2_wav_storage_key_alt, '') = ''
+                    AND COALESCE(st.audio_id_alt, '') <> '') AS missing_wav_alt
+            FROM suno_tasks st
+            WHERE st.status = 'success'
+              AND st.source = 'web_music'
+              AND st.created_at > now() - make_interval(hours => $1)
+              AND (
+                (COALESCE(st.b2_wav_storage_key_ok, '') = ''
+                 AND COALESCE(st.audio_id_ok, '') <> '')
+                OR
+                (COALESCE(st.b2_wav_storage_key_alt, '') = ''
+                 AND COALESCE(st.audio_id_alt, '') <> '')
+              )
+            ORDER BY st.created_at DESC
+            LIMIT $2
+            """,
+            max(1, min(int(window_hours or 336), 24 * 90)),
+            max(1, min(int(limit or 20), 200)),
+        )
+        return [dict(row) for row in rows]
+
     async def get_or_create_album(
         self,
         *,

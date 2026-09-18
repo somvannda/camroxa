@@ -602,6 +602,30 @@ class StreamingUploadService:
         except Exception as exc:
             logger.warning("Web music B2 upload failed task=%s variant=%s: %s", suno_task_id, variant, exc)
 
+    async def _backfill_web_music_wav(self, *, suno_task_id: UUID, variant: str) -> bool:
+        """Resume/complete a web-music WAV -> B2 backup. True if B2 now has it."""
+        context = await self._repo.get_suno_stream_context(suno_task_id)
+        if not context or str(context.get("source") or "").strip().lower() != "web_music":
+            return False
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            return False
+        storage = StorageService.from_config(config)
+        await self._upload_web_music_wav(
+            context=context,
+            variant=variant,
+            suno_task_id=suno_task_id,
+            song_slug="",
+            user_id=UUID(str(context["user_id"])),
+            storage=storage,
+        )
+        column = "b2_wav_storage_key_ok" if variant == "ok" else "b2_wav_storage_key_alt"
+        row = await self._pool.fetchrow(
+            f"SELECT {column} AS key FROM suno_tasks WHERE id = $1",
+            suno_task_id,
+        )
+        return bool(row and str(row["key"] or "").strip())
+
     async def _upload_web_music_wav(
         self,
         *,
@@ -1257,6 +1281,8 @@ class StreamingUploadService:
             "permanent": 0,
             "backfilled": 0,
             "backfill_failed": 0,
+            "wav_backfilled": 0,
+            "wav_failed": 0,
         }
         jobs = await self._repo.list_retryable_upload_jobs(
             window_hours=window_hours,
@@ -1309,7 +1335,28 @@ class StreamingUploadService:
                 except Exception:
                     stats["backfill_failed"] += 1
 
-        if alert and (stats["jobs_failed"] or stats["backfill_failed"]):
+        wav_missing = await self._repo.list_web_music_tasks_missing_wav(
+            window_hours=min(window_hours, 48),
+            limit=min(limit, 20),
+        )
+        for row in wav_missing:
+            for variant, flag in (("ok", "missing_wav_ok"), ("alt", "missing_wav_alt")):
+                if not row.get(flag):
+                    continue
+                try:
+                    if await self._backfill_web_music_wav(
+                        suno_task_id=UUID(str(row["id"])),
+                        variant=variant,
+                    ):
+                        stats["wav_backfilled"] += 1
+                    else:
+                        stats["wav_failed"] += 1
+                except Exception:
+                    stats["wav_failed"] += 1
+
+        if alert and (
+            stats["jobs_failed"] or stats["backfill_failed"] or stats["wav_failed"]
+        ):
             try:
                 from platform_api.services.telegram_ops_alert_service import schedule_ops_message
 
@@ -1317,7 +1364,8 @@ class StreamingUploadService:
                     "<b>B2 backfill sweep</b>\n"
                     f"jobs retried={stats['jobs_retried']} ok={stats['jobs_succeeded']} "
                     f"failed={stats['jobs_failed']} permanent={stats['permanent']}\n"
-                    f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']}"
+                    f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']} "
+                    f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}"
                 )
             except Exception:
                 logger.warning("Could not send B2 backfill sweep alert", exc_info=True)
