@@ -74,6 +74,14 @@ _ASSET_WAV_MAX_PER_PASS = int(os.getenv("WEB_MUSIC_ASSET_WAV_MAX_PER_PASS", "2")
 _ASSET_LRC_MAX_PER_PASS = int(os.getenv("WEB_MUSIC_ASSET_LRC_MAX_PER_PASS", "6"))
 _ASSET_SRT_ENABLED = os.getenv("WEB_MUSIC_ASSET_SRT_ENABLED", "1") != "0"
 
+# Web-music MP3 capture. Web-music uploads do not create stream_upload_jobs rows,
+# so the desktop auto-retry cannot see them. This pass re-runs the web-music B2
+# backfill for tasks that still have a Suno audio URL but no B2 MP3.
+_WEB_MUSIC_MP3_RECOVERY_ENABLED = os.getenv("WEB_MUSIC_MP3_RECOVERY_ENABLED", "1") != "0"
+_WEB_MUSIC_MP3_PASS_LIMIT = int(os.getenv("WEB_MUSIC_MP3_PASS_LIMIT", "10"))
+_WEB_MUSIC_MP3_MAX_AGE_HOURS = int(os.getenv("WEB_MUSIC_MP3_MAX_AGE_HOURS", "168"))
+_WEB_MUSIC_MP3_CONCURRENCY = int(os.getenv("WEB_MUSIC_MP3_CONCURRENCY", "3"))
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -1498,6 +1506,54 @@ class StreamingUploadService:
                 except Exception:
                     pass
 
+    async def run_web_music_mp3_recovery_pass(self, *, limit: int | None = None) -> int:
+        """Re-capture web-music MP3s that never reached B2.
+
+        Web-music uploads are not recorded in ``stream_upload_jobs``, so the
+        desktop auto-retry is blind to them. This pass finds web-music tasks that
+        still expose a Suno audio URL but have no B2 MP3 and re-runs the backfill.
+        Returns how many tasks captured at least one missing variant.
+        """
+        if not _WEB_MUSIC_MP3_RECOVERY_ENABLED:
+            return 0
+        tasks = await self._repo.list_web_music_missing_mp3_tasks(
+            limit=limit or _WEB_MUSIC_MP3_PASS_LIMIT,
+            max_age_hours=_WEB_MUSIC_MP3_MAX_AGE_HOURS,
+        )
+        if not tasks:
+            return 0
+        semaphore = asyncio.Semaphore(_WEB_MUSIC_MP3_CONCURRENCY)
+
+        async def recover_one(row: dict[str, Any]) -> int:
+            async with semaphore:
+                task_id = UUID(str(row["id"]))
+                try:
+                    await self._run_web_music_b2_backfill(task_id, None)
+                except Exception as exc:
+                    logger.info(
+                        "Web-music MP3 recovery could not capture task=%s: %s",
+                        task_id,
+                        str(exc)[:200],
+                    )
+                    return 0
+                keys = await self._pool.fetchrow(
+                    """
+                    SELECT b2_storage_key_ok, b2_storage_key_alt
+                    FROM suno_tasks WHERE id = $1
+                    """,
+                    task_id,
+                )
+                if keys is None:
+                    return 0
+                if row.get("missing_ok") and str(keys.get("b2_storage_key_ok") or "").strip():
+                    return 1
+                if row.get("missing_alt") and str(keys.get("b2_storage_key_alt") or "").strip():
+                    return 1
+                return 0
+
+        results = await asyncio.gather(*(recover_one(row) for row in tasks))
+        return int(sum(results))
+
     async def start_web_music_asset_recovery(self) -> dict[str, Any]:
         """Claim + start one web-music companion-asset recovery pass (async)."""
         repo = StreamingRepository(self._pool)
@@ -1744,6 +1800,14 @@ async def run_streaming_auto_retry_loop(pool: Any) -> None:
                 logger.info("Streaming auto-retry pass recovered %s upload job(s)", recovered)
         except Exception:
             logger.exception("Streaming auto-retry pass failed (non-fatal)")
+        try:
+            web_recovered = await service.run_web_music_mp3_recovery_pass()
+            if web_recovered:
+                logger.info(
+                    "Web-music MP3 recovery captured %s task(s)", web_recovered
+                )
+        except Exception:
+            logger.exception("Web-music MP3 recovery pass failed (non-fatal)")
         try:
             started = await service.start_web_music_asset_recovery()
             if started.get("started"):

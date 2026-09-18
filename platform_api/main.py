@@ -356,6 +356,24 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Streaming upload auto-retry loop not started (non-fatal): %s", exc)
 
+        # --- Streaming capture health report (Telegram, hourly) ---
+        try:
+            from platform_api.services import streaming_health_report as _stream_health
+
+            if not getattr(_stream_health, "_HEALTH_REPORT_ENABLED", True):
+                logger.info("Streaming capture health report is disabled by env.")
+            else:
+                asyncio.create_task(
+                    _stream_health.run_streaming_health_report_loop(db_pool),
+                    name="streaming-health-report",
+                )
+                logger.info("Streaming capture health report loop started.")
+        except Exception as exc:
+            logger.warning(
+                "Streaming capture health report loop not started (non-fatal): %s",
+                exc,
+            )
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",

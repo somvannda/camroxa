@@ -16,6 +16,38 @@ RETRY_SWEEP_ADVISORY_LOCK_ID = 730000001
 # Web-music asset recovery (wav/lrc/srt/package completeness) progress row + lock.
 ASSET_RECOVERY_SETTING_KEY = "web_music_asset_recovery_v1"
 ASSET_RECOVERY_ADVISORY_LOCK_ID = 730000003
+# Periodic streaming-capture health report (Telegram) last-sent row + lock.
+STREAMING_HEALTH_REPORT_SETTING_KEY = "streaming_health_report_v1"
+STREAMING_HEALTH_REPORT_ADVISORY_LOCK_ID = 730000004
+
+# A web-music task is "missing the durable MP3" for a variant when Suno produced
+# an audio URL for it but no B2 copy exists and it is not marked permanently
+# unavailable. Tasks that only ever had one variant are not flagged for the other.
+_WEB_MUSIC_MISSING_MP3_OK = (
+    "(COALESCE(b2_storage_key_ok, '') = '' "
+    "AND COALESCE(audio_url_ok, '') <> '' "
+    "AND NOT COALESCE(download_unavailable_ok, false))"
+)
+_WEB_MUSIC_MISSING_MP3_ALT = (
+    "(COALESCE(b2_storage_key_alt, '') = '' "
+    "AND COALESCE(audio_url_alt, '') <> '' "
+    "AND NOT COALESCE(download_unavailable_alt, false))"
+)
+# Companion B2 assets (wav/lrc/srt/package) still absent for an already-captured MP3.
+_WEB_MUSIC_MISSING_ASSETS_PREDICATE = """
+(
+      (COALESCE(b2_wav_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
+       AND (COALESCE(wav_task_id_ok::text, '') = '' OR wav_status_ok = 'success'))
+   OR (COALESCE(b2_wav_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
+       AND (COALESCE(wav_task_id_alt::text, '') = '' OR wav_status_alt = 'success'))
+   OR (COALESCE(package_status_ok, 'none') <> 'ready' AND COALESCE(b2_storage_key_ok, '') <> '')
+   OR (COALESCE(package_status_alt, 'none') <> 'ready' AND COALESCE(b2_storage_key_alt, '') <> '')
+   OR (COALESCE(b2_lrc_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
+       AND NOT COALESCE(instrumental, false))
+   OR (COALESCE(b2_lrc_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
+       AND NOT COALESCE(instrumental, false))
+)
+"""
 
 
 class StreamingRepository:
@@ -320,6 +352,138 @@ class StreamingRepository:
         )
         return int(row["n"] or 0) if row else 0
 
+    async def count_failed_mp3_jobs_since(self, *, hours: int) -> int:
+        """Failed mp3_ok/mp3_alt upload jobs created within the last N hours."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT count(*) AS n
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+              AND created_at >= NOW() - make_interval(hours => $1)
+            """,
+            hours,
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def list_recent_failed_mp3_errors(self, *, limit: int) -> list[dict[str, Any]]:
+        """Newest failed mp3 upload jobs (id + truncated error) for the report."""
+        rows = await self._pool.fetch(
+            """
+            SELECT id, kind, LEFT(COALESCE(error, ''), 180) AS error, created_at
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+        return [dict(row) for row in rows]
+
+    async def list_web_music_missing_mp3_tasks(
+        self, *, limit: int, max_age_hours: int
+    ) -> list[dict[str, Any]]:
+        """Web-music tasks whose Suno audio exists but the B2 MP3 was never captured.
+
+        Returns each task with per-variant ``missing_ok`` / ``missing_alt`` flags so
+        the recovery pass can verify exactly what it recovered.
+        """
+        rows = await self._pool.fetch(
+            f"""
+            SELECT id, user_id, created_at,
+                   {_WEB_MUSIC_MISSING_MP3_OK} AS missing_ok,
+                   {_WEB_MUSIC_MISSING_MP3_ALT} AS missing_alt
+            FROM suno_tasks
+            WHERE LOWER(status) = 'success'
+              AND source = 'web_music'
+              AND created_at >= NOW() - make_interval(hours => $2)
+              AND ({_WEB_MUSIC_MISSING_MP3_OK} OR {_WEB_MUSIC_MISSING_MP3_ALT})
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            limit,
+            max_age_hours,
+        )
+        return [dict(row) for row in rows]
+
+    async def count_web_music_missing_mp3(self, *, max_age_hours: int) -> int:
+        """Web-music tasks missing at least one B2 MP3 within the window."""
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT count(*) AS n
+            FROM suno_tasks
+            WHERE LOWER(status) = 'success'
+              AND source = 'web_music'
+              AND created_at >= NOW() - make_interval(hours => $1)
+              AND ({_WEB_MUSIC_MISSING_MP3_OK} OR {_WEB_MUSIC_MISSING_MP3_ALT})
+            """,
+            max_age_hours,
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def count_web_music_missing_assets(self, *, max_age_hours: int) -> int:
+        """Web-music tasks with a captured MP3 but a missing companion asset."""
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT count(*) AS n
+            FROM suno_tasks
+            WHERE source = 'web_music'
+              AND (COALESCE(b2_storage_key_ok, '') <> '' OR COALESCE(b2_storage_key_alt, '') <> '')
+              AND created_at >= NOW() - make_interval(hours => $1)
+              AND {_WEB_MUSIC_MISSING_ASSETS_PREDICATE}
+            """,
+            max_age_hours,
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def claim_periodic_report(
+        self, *, key: str, lock_id: int, interval_s: float
+    ) -> bool:
+        """Single-winner claim for a periodic report across uvicorn workers.
+
+        Uses a Postgres advisory lock to serialize and a ``system_settings`` row
+        storing ``last_sent_at`` so a second worker cannot fire within the
+        interval even after the lock is released.
+        """
+        now_dt = datetime.now(timezone.utc)
+        async with self._pool.acquire() as conn:
+            acquired = await conn.fetchval("SELECT pg_try_advisory_lock($1)", lock_id)
+            if not acquired:
+                return False
+            try:
+                row = await conn.fetchrow(
+                    "SELECT value FROM system_settings WHERE key = $1", key
+                )
+                last: datetime | None = None
+                if row:
+                    try:
+                        last = datetime.fromisoformat(
+                            str(json.loads(row["value"]).get("last_sent_at"))
+                        )
+                    except (TypeError, ValueError):
+                        last = None
+                if last is not None:
+                    if last.tzinfo is None:
+                        last = last.replace(tzinfo=timezone.utc)
+                    if (now_dt - last).total_seconds() < interval_s * 0.9:
+                        return False
+                await conn.execute(
+                    """
+                    INSERT INTO system_settings (key, value_type, value, updated_at)
+                    VALUES ($1, 'json', $2, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+                    """,
+                    key,
+                    json.dumps({"last_sent_at": now_dt.isoformat()}),
+                )
+                return True
+            finally:
+                try:
+                    await conn.fetchval("SELECT pg_advisory_unlock($1)", lock_id)
+                except Exception:
+                    pass
+
     async def list_web_music_asset_tasks(
         self, *, limit: int, before: str | None = None
     ) -> list[dict[str, Any]]:
@@ -359,18 +523,7 @@ class StreamingRepository:
             FROM suno_tasks
             WHERE (COALESCE(b2_storage_key_ok, '') <> '' OR COALESCE(b2_storage_key_alt, '') <> '')
               {watermark}
-              AND (
-                    (COALESCE(b2_wav_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
-                     AND (COALESCE(wav_task_id_ok::text, '') = '' OR wav_status_ok = 'success'))
-                 OR (COALESCE(b2_wav_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
-                     AND (COALESCE(wav_task_id_alt::text, '') = '' OR wav_status_alt = 'success'))
-                 OR (COALESCE(package_status_ok, 'none') <> 'ready' AND COALESCE(b2_storage_key_ok, '') <> '')
-                 OR (COALESCE(package_status_alt, 'none') <> 'ready' AND COALESCE(b2_storage_key_alt, '') <> '')
-                 OR (COALESCE(b2_lrc_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
-                     AND NOT COALESCE(instrumental, false))
-                 OR (COALESCE(b2_lrc_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
-                     AND NOT COALESCE(instrumental, false))
-              )
+              AND {_WEB_MUSIC_MISSING_ASSETS_PREDICATE}
             ORDER BY created_at DESC
             LIMIT $1
             """,
