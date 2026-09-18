@@ -155,7 +155,6 @@ class ProgressRowMeta(BaseModel):
     updated_at: datetime | None = None
     draft_failed_song_ids: list[str] = Field(default_factory=list)
     suno_failed_song_ids: list[str] = Field(default_factory=list)
-    lost_song_ids: list[str] = Field(default_factory=list)
 
 
 class ProgressRow(BaseModel):
