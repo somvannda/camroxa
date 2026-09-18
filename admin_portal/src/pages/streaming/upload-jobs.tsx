@@ -18,6 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   useRetryAllUploadSweepStatus,
+  useRetryFailedUploadJobs,
   useRetryUploadJob,
   useStartRetryAllUploads,
   useStartWebMusicAssetRecovery,
@@ -89,6 +90,9 @@ function JobCard({
                 ×{job.attempt_count}
               </Badge>
             ) : null}
+            {job.permanent_failed ? (
+              <Badge variant="destructive">permanent</Badge>
+            ) : null}
           </div>
 
           <div className="grid gap-1 text-xs text-slate-400 sm:grid-cols-2">
@@ -157,7 +161,7 @@ function JobCard({
           <p className="font-mono text-[10px] text-slate-600">{job.id}</p>
         </div>
 
-        {job.status === 'failed' && String(job.kind).startsWith('mp3_') ? (
+        {job.status === 'failed' && !job.permanent_failed && String(job.kind).startsWith('mp3_') ? (
           <Button
             size="sm"
             variant="outline"
@@ -202,6 +206,7 @@ export default function StreamingUploadJobsPage() {
   const [debouncedQ, setDebouncedQ] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const retryFailed = useRetryFailedUploadJobs();
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedQ(q.trim()), 300);
@@ -346,6 +351,25 @@ export default function StreamingUploadJobsPage() {
               }}
             >
               Refresh
+            </Button>
+            <Button
+              variant="outline"
+              disabled={retryFailed.isPending}
+              onClick={() =>
+                retryFailed.mutate(
+                  { limit: 50, maxAgeHours: 72 },
+                  {
+                    onSuccess: (res) =>
+                      toast({
+                        title: `Retried ${res.retried} job(s): ${res.succeeded} ok, ${res.failed} failed`,
+                      }),
+                    onError: () =>
+                      toast({ title: 'Bulk retry failed', variant: 'destructive' }),
+                  },
+                )
+              }
+            >
+              {retryFailed.isPending ? 'Retrying…' : 'Retry failed (72h)'}
             </Button>
           </div>
         }

@@ -606,6 +606,41 @@ class StreamingUploadService:
             refreshed.audio_id_alt,
         )
 
+    async def _download_mp3_with_recovery(
+        self,
+        *,
+        external_task_id: str,
+        audio_id: str,
+        primary_url: str,
+        fallback_urls: list[str],
+    ) -> bytes:
+        """Download the MP3, falling back to the provider's Recovery Audio endpoint.
+
+        The provider's temp hosts expire within hours; recovery re-mints a fresh
+        playable link (scoped to the key that generated the task), so a late B2
+        backup can still succeed.
+        """
+        try:
+            return await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+        except Exception as exc:
+            task_id = str(external_task_id or "").strip()
+            clip_id = str(audio_id or "").strip()
+            if not task_id or not clip_id:
+                raise
+            from platform_api.services.suno_audio_resolver import recover_suno_task_download_urls
+
+            try:
+                mapping = await recover_suno_task_download_urls(self._pool, task_id)
+            except Exception:
+                raise exc
+            recovered = str(mapping.get(clip_id) or "").strip()
+            if not recovered:
+                raise
+            logger.info(
+                "Recovered expired MP3 via provider recovery task=%s clip=%s", task_id, clip_id
+            )
+            return await download_suno_mp3_bytes(recovered)
+
     async def _upload_mp3_variant(
         self,
         *,
@@ -660,7 +695,19 @@ class StreamingUploadService:
                 raise StorageServiceError(
                     "No valid Suno download URL available. Re-poll record-info or retry after Suno callback."
                 )
-            data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            _audio_id = ""
+            if refreshed is not None:
+                _audio_id = refreshed.audio_id_alt if variant == "alt" else refreshed.audio_id_ok
+            if not _audio_id:
+                _audio_id = str(
+                    context.get("audio_id_alt" if variant == "alt" else "audio_id_ok") or ""
+                ).strip()
+            data = await self._download_mp3_with_recovery(
+                external_task_id=str(context.get("external_task_id") or ""),
+                audio_id=_audio_id,
+                primary_url=primary_url,
+                fallback_urls=fallback_urls,
+            )
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 
@@ -849,6 +896,30 @@ class StreamingUploadService:
             ))
         except Exception as exc:
             logger.warning("Web music B2 upload failed task=%s variant=%s: %s", suno_task_id, variant, exc)
+
+    async def _backfill_web_music_wav(self, *, suno_task_id: UUID, variant: str) -> bool:
+        """Resume/complete a web-music WAV -> B2 backup. True if B2 now has it."""
+        context = await self._repo.get_suno_stream_context(suno_task_id)
+        if not context or str(context.get("source") or "").strip().lower() != "web_music":
+            return False
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            return False
+        storage = StorageService.from_config(config)
+        await self._upload_web_music_wav(
+            context=context,
+            variant=variant,
+            suno_task_id=suno_task_id,
+            song_slug="",
+            user_id=UUID(str(context["user_id"])),
+            storage=storage,
+        )
+        column = "b2_wav_storage_key_ok" if variant == "ok" else "b2_wav_storage_key_alt"
+        row = await self._pool.fetchrow(
+            f"SELECT {column} AS key FROM suno_tasks WHERE id = $1",
+            suno_task_id,
+        )
+        return bool(row and str(row["key"] or "").strip())
 
     async def _upload_web_music_wav(
         self,
@@ -1323,8 +1394,10 @@ class StreamingUploadService:
         job = await self._repo.get_upload_job(job_id)
         if not job:
             raise ValueError("Upload job not found.")
-        if str(job.get("status") or "") != "failed":
-            raise ValueError("Only failed upload jobs can be retried.")
+        if job.get("permanent_failed"):
+            raise ValueError("Upload job is permanently failed.")
+        if str(job.get("status") or "") not in {"failed", "pending"}:
+            raise ValueError("Only pending or failed upload jobs can be retried.")
 
         kind = str(job.get("kind") or "")
         if not kind.startswith("mp3_"):
@@ -1411,7 +1484,12 @@ class StreamingUploadService:
                 raise ValueError(
                     "No valid Suno download URL available for retry. Check Suno task record-info."
                 )
-            data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            data = await self._download_mp3_with_recovery(
+                external_task_id=external_task_id,
+                audio_id=suno_audio_id,
+                primary_url=primary_url,
+                fallback_urls=fallback_urls,
+            )
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 
@@ -1788,6 +1866,152 @@ class StreamingUploadService:
             except Exception:
                 pass
 
+    async def retry_failed_jobs(
+        self,
+        *,
+        limit: int = 50,
+        max_age_hours: int = 72,
+    ) -> dict[str, Any]:
+        """Retry recent failed MP3 upload jobs (Recovery-Audio backed).
+
+        Only jobs younger than ``max_age_hours`` are eligible — older ones are
+        usually past the provider's recovery window.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id FROM stream_upload_jobs
+            WHERE status = 'failed' AND kind IN ('mp3_ok', 'mp3_alt')
+              AND created_at > now() - make_interval(hours => $1)
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            max(1, min(int(max_age_hours or 72), 24 * 90)),
+            max(1, min(int(limit or 50), 1000)),
+        )
+        retried = succeeded = failed = 0
+        for row in rows:
+            retried += 1
+            try:
+                await self.retry_failed_job(row["id"])
+                succeeded += 1
+            except Exception:
+                failed += 1
+        return {"retried": retried, "succeeded": succeeded, "failed": failed}
+
+    async def run_backfill_sweep(
+        self,
+        *,
+        window_hours: int = 336,
+        limit: int = 200,
+        max_attempts: int = 6,
+        alert: bool = True,
+    ) -> dict[str, Any]:
+        """Ensure every recent track has a durable B2 copy.
+
+        - Reprocesses stuck ``pending`` / retryable ``failed`` MP3 jobs (with the
+          provider Recovery-Audio fallback).
+        - Backfills studio MP3s missing from the catalog (B2).
+        - Marks jobs permanently failed after ``max_attempts`` so they stop
+          retrying forever.
+        - Alerts the ops channel when a sweep still leaves failures behind.
+        """
+        stats: dict[str, Any] = {
+            "jobs_retried": 0,
+            "jobs_succeeded": 0,
+            "jobs_failed": 0,
+            "permanent": 0,
+            "backfilled": 0,
+            "backfill_failed": 0,
+            "wav_backfilled": 0,
+            "wav_failed": 0,
+        }
+        jobs = await self._repo.list_retryable_upload_jobs(
+            window_hours=window_hours,
+            max_attempts=max_attempts,
+            limit=limit,
+        )
+        for job in jobs:
+            job_id = job["id"]
+            stats["jobs_retried"] += 1
+            try:
+                await self.retry_failed_job(job_id)
+                stats["jobs_succeeded"] += 1
+            except Exception:
+                stats["jobs_failed"] += 1
+                fresh = await self._repo.get_upload_job(job_id)
+                attempts = int((fresh or {}).get("attempt_count") or 0)
+                if attempts >= max_attempts:
+                    await self._repo.mark_upload_job_permanent_failed(
+                        job_id,
+                        error=f"Exceeded {max_attempts} upload attempts.",
+                    )
+                    stats["permanent"] += 1
+
+        missing = await self._repo.list_studio_tasks_missing_b2(
+            window_hours=window_hours,
+            limit=limit,
+        )
+        for row in missing:
+            context = await self._repo.get_suno_stream_context(UUID(str(row["id"])))
+            if not context:
+                continue
+            try:
+                refreshed = await self._refresh_task_download_urls(context)
+            except Exception:
+                refreshed = None
+            for variant, flag in (("ok", "missing_ok"), ("alt", "missing_alt")):
+                if not row.get(flag):
+                    continue
+                try:
+                    source_url = normalize_http_download_url(
+                        context.get("audio_url_ok" if variant == "ok" else "audio_url_alt")
+                    )
+                    await self._upload_mp3_variant(
+                        context=context,
+                        variant=variant,
+                        source_url=source_url or "",
+                        refreshed=refreshed,
+                    )
+                    stats["backfilled"] += 1
+                except Exception:
+                    stats["backfill_failed"] += 1
+
+        wav_missing = await self._repo.list_web_music_tasks_missing_wav(
+            window_hours=min(window_hours, 48),
+            limit=min(limit, 20),
+        )
+        for row in wav_missing:
+            for variant, flag in (("ok", "missing_wav_ok"), ("alt", "missing_wav_alt")):
+                if not row.get(flag):
+                    continue
+                try:
+                    if await self._backfill_web_music_wav(
+                        suno_task_id=UUID(str(row["id"])),
+                        variant=variant,
+                    ):
+                        stats["wav_backfilled"] += 1
+                    else:
+                        stats["wav_failed"] += 1
+                except Exception:
+                    stats["wav_failed"] += 1
+
+        if alert and (
+            stats["jobs_failed"] or stats["backfill_failed"] or stats["wav_failed"]
+        ):
+            try:
+                from platform_api.services.telegram_ops_alert_service import schedule_ops_message
+
+                schedule_ops_message(
+                    "<b>B2 backfill sweep</b>\n"
+                    f"jobs retried={stats['jobs_retried']} ok={stats['jobs_succeeded']} "
+                    f"failed={stats['jobs_failed']} permanent={stats['permanent']}\n"
+                    f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']} "
+                    f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}"
+                )
+            except Exception:
+                logger.warning("Could not send B2 backfill sweep alert", exc_info=True)
+        return stats
+
 
 async def run_streaming_auto_retry_loop(pool: Any) -> None:
     """Background loop (started by main startup) that auto-retries failed mp3
@@ -1815,5 +2039,4 @@ async def run_streaming_auto_retry_loop(pool: Any) -> None:
         except Exception:
             logger.exception("Web-music asset recovery start failed (non-fatal)")
         await asyncio.sleep(_AUTO_RETRY_INTERVAL_S)
-
 

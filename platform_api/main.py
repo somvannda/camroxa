@@ -118,6 +118,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     redis_conn = None
     pipeline_stuck_task: asyncio.Task | None = None
     subscription_maintenance_task: asyncio.Task | None = None
+    b2_backfill_task: asyncio.Task | None = None
 
     configure_api_logging()
     logger.info("API logging ready — batch/music, image, and credit progress appear in this terminal.")
@@ -341,6 +342,44 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Web music subscription maintenance not configured (non-fatal): %s", exc)
 
+        # --- Durable B2 backfill sweep ---
+        # Every 15 minutes: reprocess stuck/failed upload jobs (with provider
+        # Recovery Audio), backfill studio MP3s missing from B2, and mark jobs
+        # permanently failed after repeated attempts. Alerts ops on failures.
+        try:
+            from platform_api.services.streaming_upload_service import StreamingUploadService
+
+            b2_backfill_interval = int(
+                getattr(settings, "b2_backfill_scan_interval_seconds", 900) or 900
+            )
+
+            async def _b2_backfill_loop() -> None:
+                while True:
+                    await asyncio.sleep(max(60, b2_backfill_interval))
+                    try:
+                        stats = await StreamingUploadService(db_pool).run_backfill_sweep()
+                        if any(
+                            stats.get(key)
+                            for key in (
+                                "jobs_failed",
+                                "backfill_failed",
+                                "permanent",
+                                "backfilled",
+                            )
+                        ):
+                            logger.info("B2 backfill sweep: %s", stats)
+                    except Exception as exc:
+                        logger.warning("B2 backfill sweep iteration failed: %s", exc)
+
+            b2_backfill_task = asyncio.create_task(
+                _b2_backfill_loop(), name="b2-backfill-sweep"
+            )
+            logger.info(
+                "B2 backfill sweep loop started (every %ss).", b2_backfill_interval
+            )
+        except Exception as exc:
+            logger.warning("B2 backfill sweep not configured (non-fatal): %s", exc)
+
         # --- Streaming upload auto-retry (B2 capture assurance) ---
         try:
             from platform_api.services import streaming_upload_service as _streaming_svc
@@ -431,6 +470,15 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             pass
         except Exception as exc:
             logger.warning("Error stopping subscription maintenance task: %s", exc)
+
+    if b2_backfill_task is not None:
+        b2_backfill_task.cancel()
+        try:
+            await b2_backfill_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning("Error stopping B2 backfill task: %s", exc)
 
     if redis_conn is not None:
         try:

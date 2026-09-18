@@ -131,6 +131,7 @@ class StreamingRepository:
                 storage_key = COALESCE($4, storage_key),
                 album_id = COALESCE($5, album_id),
                 attempt_count = attempt_count + 1,
+                last_attempt_at = NOW(),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -210,6 +211,7 @@ class StreamingRepository:
                 j.storage_key,
                 j.error,
                 j.attempt_count,
+                j.permanent_failed,
                 j.user_id,
                 j.song_id,
                 j.batch_id,
@@ -655,6 +657,145 @@ class StreamingRepository:
             state,
             stale_after_s=stale_after_s,
         )
+
+    async def list_retryable_upload_jobs(
+        self,
+        *,
+        window_hours: int = 336,
+        max_attempts: int = 6,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """MP3 jobs the backfill sweep may (re)process.
+
+        Includes stuck ``pending`` jobs (older than 2 minutes — e.g. after an
+        API restart) and ``failed`` jobs that are not permanently failed.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id, kind, status, attempt_count
+            FROM stream_upload_jobs
+            WHERE kind IN ('mp3_ok', 'mp3_alt')
+              AND COALESCE(permanent_failed, false) = false
+              AND attempt_count < $1
+              AND created_at > now() - make_interval(hours => $2)
+              AND (
+                status = 'failed'
+                OR (status = 'pending' AND updated_at < now() - interval '2 minutes')
+              )
+            ORDER BY created_at DESC
+            LIMIT $3
+            """,
+            max(1, min(int(max_attempts or 6), 50)),
+            max(1, min(int(window_hours or 336), 24 * 90)),
+            max(1, min(int(limit or 200), 1000)),
+        )
+        return [dict(row) for row in rows]
+
+    async def mark_upload_job_permanent_failed(
+        self,
+        job_id: UUID,
+        *,
+        error: str | None = None,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE stream_upload_jobs
+            SET permanent_failed = true,
+                status = 'failed',
+                error = COALESCE($2, error),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            job_id,
+            error,
+        )
+
+    async def list_studio_tasks_missing_b2(
+        self,
+        *,
+        window_hours: int = 336,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Studio success tasks within the window whose B2 MP3 copy is missing."""
+        rows = await self._pool.fetch(
+            """
+            SELECT st.id,
+                   st.audio_url_ok,
+                   st.audio_url_alt,
+                   (st.audio_url_ok IS NOT NULL AND NOT EXISTS (
+                      SELECT 1 FROM stream_tracks t
+                      WHERE t.suno_task_id = st.id AND t.variant = 'ok'
+                        AND COALESCE(t.storage_key, '') <> ''
+                   )) AS missing_ok,
+                   (st.audio_url_alt IS NOT NULL AND NOT EXISTS (
+                      SELECT 1 FROM stream_tracks t
+                      WHERE t.suno_task_id = st.id AND t.variant = 'alt'
+                        AND COALESCE(t.storage_key, '') <> ''
+                   )) AS missing_alt
+            FROM suno_tasks st
+            WHERE st.status = 'success'
+              AND COALESCE(st.source, '') <> 'web_music'
+              AND st.created_at > now() - make_interval(hours => $1)
+              AND (
+                (st.audio_url_ok IS NOT NULL AND NOT EXISTS (
+                  SELECT 1 FROM stream_tracks t
+                  WHERE t.suno_task_id = st.id AND t.variant = 'ok'
+                    AND COALESCE(t.storage_key, '') <> ''
+                ))
+                OR
+                (st.audio_url_alt IS NOT NULL AND NOT EXISTS (
+                  SELECT 1 FROM stream_tracks t
+                  WHERE t.suno_task_id = st.id AND t.variant = 'alt'
+                    AND COALESCE(t.storage_key, '') <> ''
+                ))
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM stream_upload_jobs j
+                WHERE j.suno_task_id = st.id
+                  AND j.kind IN ('mp3_ok', 'mp3_alt')
+                  AND COALESCE(j.permanent_failed, false) = false
+                  AND j.status IN ('pending', 'failed')
+              )
+            ORDER BY st.created_at DESC
+            LIMIT $2
+            """,
+            max(1, min(int(window_hours or 336), 24 * 90)),
+            max(1, min(int(limit or 200), 1000)),
+        )
+        return [dict(row) for row in rows]
+
+    async def list_web_music_tasks_missing_wav(
+        self,
+        *,
+        window_hours: int = 336,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Web-music success tasks within the window whose WAV is not in B2."""
+        rows = await self._pool.fetch(
+            """
+            SELECT st.id,
+                   (COALESCE(st.b2_wav_storage_key_ok, '') = ''
+                    AND COALESCE(st.audio_id_ok, '') <> '') AS missing_wav_ok,
+                   (COALESCE(st.b2_wav_storage_key_alt, '') = ''
+                    AND COALESCE(st.audio_id_alt, '') <> '') AS missing_wav_alt
+            FROM suno_tasks st
+            WHERE st.status = 'success'
+              AND st.source = 'web_music'
+              AND st.created_at > now() - make_interval(hours => $1)
+              AND (
+                (COALESCE(st.b2_wav_storage_key_ok, '') = ''
+                 AND COALESCE(st.audio_id_ok, '') <> '')
+                OR
+                (COALESCE(st.b2_wav_storage_key_alt, '') = ''
+                 AND COALESCE(st.audio_id_alt, '') <> '')
+              )
+            ORDER BY st.created_at DESC
+            LIMIT $2
+            """,
+            max(1, min(int(window_hours or 336), 24 * 90)),
+            max(1, min(int(limit or 20), 200)),
+        )
+        return [dict(row) for row in rows]
 
     async def get_or_create_album(
         self,

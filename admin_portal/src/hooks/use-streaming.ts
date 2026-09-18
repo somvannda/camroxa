@@ -56,6 +56,7 @@ export type StreamingUploadJob = {
   storage_key?: string | null;
   error?: string | null;
   attempt_count?: number;
+  permanent_failed?: boolean;
   user_id?: string | null;
   user_email?: string | null;
   user_display_name?: string | null;
@@ -313,6 +314,22 @@ export function useStartRetryAllUploads() {
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['streaming-upload-sweep-status'] });
+    },
+  });
+}
+
+export function useRetryFailedUploadJobs() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params?: { limit?: number; maxAgeHours?: number }) =>
+      httpClient.post<{ retried: number; succeeded: number; failed: number }>(
+        `/api/v3/admin/streaming/upload-jobs/retry-failed?limit=${
+          params?.limit ?? 50
+        }&max_age_hours=${params?.maxAgeHours ?? 72}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['streaming-upload-jobs'] });
+      invalidateCatalog(queryClient);
     },
   });
 }
