@@ -1072,6 +1072,7 @@ class BatchRepository:
                AND bca_alt.role = 'ALT'
             WHERE st.user_id = $1
               AND st.status = $2
+              AND COALESCE(st.source, '') <> 'web_music'
               AND (
                 (
                   (
@@ -1079,6 +1080,7 @@ class BatchRepository:
                     OR COALESCE(NULLIF(BTRIM(st.audio_id_ok), ''), NULL) IS NOT NULL
                   )
                   AND COALESCE(st.downloaded_ok, false) = false
+                  AND COALESCE(st.download_unavailable_ok, false) = false
                   AND COALESCE(bca_ok.pipeline_complete, false) = false
                 )
                 OR
@@ -1088,6 +1090,7 @@ class BatchRepository:
                     OR COALESCE(NULLIF(BTRIM(st.audio_id_alt), ''), NULL) IS NOT NULL
                   )
                   AND COALESCE(st.downloaded_alt, false) = false
+                  AND COALESCE(st.download_unavailable_alt, false) = false
                   AND COALESCE(bca_alt.pipeline_complete, false) = false
                 )
               )
@@ -1104,6 +1107,104 @@ class BatchRepository:
             max(1, min(int(max_age_days or 30), 365)),
         )
         return [dict(row) for row in rows]
+
+    async def list_suno_download_health_candidates(
+        self,
+        *,
+        user_id: UUID,
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Success tasks with an undownloaded, not-yet-terminal channel URL.
+
+        Used by the background health probe to detect permanently-dead Suno
+        temp URLs and stop the desktop from retrying them forever.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT st.id,
+                   st.external_task_id,
+                   st.audio_url_ok,
+                   st.audio_url_alt,
+                   st.audio_id_ok,
+                   st.audio_id_alt,
+                   st.downloaded_ok,
+                   st.downloaded_alt,
+                   st.download_unavailable_ok,
+                   st.download_unavailable_alt
+            FROM suno_tasks st
+            WHERE st.user_id = $1
+              AND st.status = $2
+              AND COALESCE(st.source, '') <> 'web_music'
+              AND (
+                (
+                  COALESCE(st.downloaded_ok, false) = false
+                  AND COALESCE(st.download_unavailable_ok, false) = false
+                  AND (
+                    st.audio_url_ok IS NOT NULL
+                    OR COALESCE(NULLIF(BTRIM(st.audio_id_ok), ''), NULL) IS NOT NULL
+                  )
+                )
+                OR
+                (
+                  COALESCE(st.downloaded_alt, false) = false
+                  AND COALESCE(st.download_unavailable_alt, false) = false
+                  AND (
+                    st.audio_url_alt IS NOT NULL
+                    OR COALESCE(NULLIF(BTRIM(st.audio_id_alt), ''), NULL) IS NOT NULL
+                  )
+                )
+              )
+            ORDER BY st.updated_at DESC, st.created_at DESC
+            LIMIT $3
+            """,
+            user_id,
+            TaskStatus.SUCCESS.value,
+            max(1, min(int(limit or 12), 50)),
+        )
+        return [dict(row) for row in rows]
+
+    async def mark_suno_download_unavailable(
+        self,
+        *,
+        task_id: UUID,
+        variant: str,
+        unavailable: bool = True,
+    ) -> None:
+        """Set/clear the terminal 'source URL is gone' flag for one channel."""
+        column = "alt" if str(variant).lower() in {"alt", "secondary"} else "ok"
+        await self._pool.execute(
+            f"""
+            UPDATE suno_tasks
+            SET download_unavailable_{column} = $2,
+                download_unavailable_at_{column} = CASE WHEN $2 THEN NOW() ELSE NULL END,
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            task_id,
+            bool(unavailable),
+        )
+
+    async def set_suno_audio_url(
+        self,
+        *,
+        task_id: UUID,
+        variant: str,
+        url: str,
+    ) -> None:
+        """Point a channel at a working URL and clear its terminal flag."""
+        column = "alt" if str(variant).lower() in {"alt", "secondary"} else "ok"
+        await self._pool.execute(
+            f"""
+            UPDATE suno_tasks
+            SET audio_url_{column} = $2,
+                download_unavailable_{column} = false,
+                download_unavailable_at_{column} = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            task_id,
+            str(url),
+        )
 
     async def list_stuck_batches(
         self,
@@ -1224,6 +1325,8 @@ class BatchRepository:
                 st.audio_url_alt,
                 st.audio_id_ok,
                 st.audio_id_alt,
+                st.download_unavailable_ok,
+                st.download_unavailable_alt,
                 s.batch_index
             FROM suno_tasks st
             LEFT JOIN songs s ON s.id = st.song_id

@@ -311,6 +311,41 @@ class StreamingUploadService:
             refreshed.audio_id_alt,
         )
 
+    async def _download_mp3_with_recovery(
+        self,
+        *,
+        external_task_id: str,
+        audio_id: str,
+        primary_url: str,
+        fallback_urls: list[str],
+    ) -> bytes:
+        """Download the MP3, falling back to the provider's Recovery Audio endpoint.
+
+        The provider's temp hosts expire within hours; recovery re-mints a fresh
+        playable link (scoped to the key that generated the task), so a late B2
+        backup can still succeed.
+        """
+        try:
+            return await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+        except Exception as exc:
+            task_id = str(external_task_id or "").strip()
+            clip_id = str(audio_id or "").strip()
+            if not task_id or not clip_id:
+                raise
+            from platform_api.services.suno_audio_resolver import recover_suno_task_download_urls
+
+            try:
+                mapping = await recover_suno_task_download_urls(self._pool, task_id)
+            except Exception:
+                raise exc
+            recovered = str(mapping.get(clip_id) or "").strip()
+            if not recovered:
+                raise
+            logger.info(
+                "Recovered expired MP3 via provider recovery task=%s clip=%s", task_id, clip_id
+            )
+            return await download_suno_mp3_bytes(recovered)
+
     async def _upload_mp3_variant(
         self,
         *,
@@ -365,7 +400,19 @@ class StreamingUploadService:
                 raise StorageServiceError(
                     "No valid Suno download URL available. Re-poll record-info or retry after Suno callback."
                 )
-            data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            _audio_id = ""
+            if refreshed is not None:
+                _audio_id = refreshed.audio_id_alt if variant == "alt" else refreshed.audio_id_ok
+            if not _audio_id:
+                _audio_id = str(
+                    context.get("audio_id_alt" if variant == "alt" else "audio_id_ok") or ""
+                ).strip()
+            data = await self._download_mp3_with_recovery(
+                external_task_id=str(context.get("external_task_id") or ""),
+                audio_id=_audio_id,
+                primary_url=primary_url,
+                fallback_urls=fallback_urls,
+            )
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 
@@ -1116,7 +1163,12 @@ class StreamingUploadService:
                 raise ValueError(
                     "No valid Suno download URL available for retry. Check Suno task record-info."
                 )
-            data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            data = await self._download_mp3_with_recovery(
+                external_task_id=external_task_id,
+                audio_id=suno_audio_id,
+                primary_url=primary_url,
+                fallback_urls=fallback_urls,
+            )
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 
@@ -1146,4 +1198,36 @@ class StreamingUploadService:
         except Exception as exc:
             await self._repo.mark_upload_job(job_id, status="failed", error=str(exc)[:500])
             raise
+
+    async def retry_failed_jobs(
+        self,
+        *,
+        limit: int = 50,
+        max_age_hours: int = 72,
+    ) -> dict[str, Any]:
+        """Retry recent failed MP3 upload jobs (Recovery-Audio backed).
+
+        Only jobs younger than ``max_age_hours`` are eligible — older ones are
+        usually past the provider's recovery window.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id FROM stream_upload_jobs
+            WHERE status = 'failed' AND kind IN ('mp3_ok', 'mp3_alt')
+              AND created_at > now() - make_interval(hours => $1)
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            max(1, min(int(max_age_hours or 72), 24 * 90)),
+            max(1, min(int(limit or 50), 1000)),
+        )
+        retried = succeeded = failed = 0
+        for row in rows:
+            retried += 1
+            try:
+                await self.retry_failed_job(row["id"])
+                succeeded += 1
+            except Exception:
+                failed += 1
+        return {"retried": retried, "succeeded": succeeded, "failed": failed}
 

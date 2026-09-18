@@ -300,6 +300,9 @@ class BatchService:
         self._enforcement_service = enforcement_service
         self._image_job_service = image_job_service
         self._image_sample_rotation = image_sample_rotation
+        # Background Suno-download health probe (per-user debounce/inflight).
+        self._dead_download_probe_last: dict[str, float] = {}
+        self._dead_download_probe_inflight: set[str] = set()
 
     # ------------------------------------------------------------------
     # Create Batch (Requirements 13.1, 13.6)
@@ -2935,6 +2938,9 @@ class BatchService:
         limit: int = 20,
     ) -> list[dict[str, Any]]:
         await self.reconcile_pending_suno_tasks(user_id=user_id, limit=max(limit, 10))
+        # Fire-and-forget: detect Suno temp URLs that are permanently dead so the
+        # next poll stops returning them (and back up any that are still alive).
+        self._schedule_dead_download_probe(user_id=user_id)
         rows = await self._batch_repo.list_pending_suno_downloads(
             user_id=UUID(user_id),
             limit=limit,
@@ -2956,6 +2962,10 @@ class BatchService:
         items: list[dict[str, Any]] = []
         from platform_api.clients.suno_client import coerce_suno_download_url
 
+        # Prefer the durable Backblaze/CDN copy when archived: Suno temp URLs
+        # expire, and older desktop builds have no B2 fallback of their own.
+        b2_urls = await self._resolve_pending_b2_urls(rows)
+
         for row in rows:
             track_no_raw = row.get("batch_index")
             track_no = int(track_no_raw) + 1 if isinstance(track_no_raw, int) else None
@@ -2970,11 +2980,12 @@ class BatchService:
             ok_output_dir = str(row.get("ok_run_dir") or row.get("output_dir_ok") or "").strip() or None
             alt_output_dir = str(alt_output_dir or "").strip() or None
             title = str(row.get("title") or "").strip()
-            ok_url = coerce_suno_download_url(
+            task_key = str(row["id"])
+            ok_url = b2_urls.get((task_key, "ok")) or coerce_suno_download_url(
                 url=str(row.get("audio_url_ok") or "").strip() or None,
                 audio_id=str(row.get("audio_id_ok") or "").strip() or None,
             ) or None
-            alt_url = coerce_suno_download_url(
+            alt_url = b2_urls.get((task_key, "alt")) or coerce_suno_download_url(
                 url=str(row.get("audio_url_alt") or "").strip() or None,
                 audio_id=str(row.get("audio_id_alt") or "").strip() or None,
             ) or None
@@ -3020,6 +3031,307 @@ class BatchService:
             if str(target.get("download_url") or "").strip() and str(target.get("target_path") or "").strip():
                 return True
         return False
+
+    async def _resolve_pending_b2_urls(
+        self, rows: list[dict[str, Any]]
+    ) -> dict[tuple[str, str], str]:
+        """Durable Backblaze/CDN URL per (task_id, 'ok'|'alt') for pending downloads.
+
+        Suno temp URLs expire; when the archived MP3 already exists, hand the
+        desktop a stable URL so any client build — including older ones with no
+        B2 fallback — can finish the download. Best-effort: never raises.
+        """
+        task_ids = [UUID(str(row["id"])) for row in rows if row.get("id")]
+        if not task_ids:
+            return {}
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.repositories.streaming_repo import StreamingRepository
+            from platform_api.services.storage_service import StorageService
+            from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+            pool = get_db_pool()
+            config = await resolve_streaming_storage_config(pool)
+            if not config.configured:
+                return {}
+            storage_keys = await StreamingRepository(pool).get_track_storage_keys_for_suno_tasks(task_ids)
+            if not storage_keys:
+                return {}
+            packaged = await self._load_packaged_variants(pool, task_ids)
+            storage = StorageService.from_config(config)
+            resolved: dict[tuple[str, str], str] = {}
+            for (task_id, variant), storage_key in storage_keys.items():
+                key = str(storage_key or "")
+                if not key or key.endswith((".cxa", ".cxo")):
+                    continue
+                if (str(task_id), str(variant)) in packaged:
+                    continue
+                try:
+                    resolved[(str(task_id), str(variant))] = await storage.get_signed_get_url(key)
+                except Exception:
+                    continue
+            return resolved
+        except Exception:
+            logger.warning("Could not resolve pending B2 download URLs", exc_info=True)
+            return {}
+
+    @staticmethod
+    async def _load_packaged_variants(pool: Any, task_ids: list[UUID]) -> set[tuple[str, str]]:
+        """(task_id, variant) pairs whose source is encrypted/packaged — not plain MP3."""
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT suno_task_id, variant
+                FROM stream_tracks
+                WHERE suno_task_id = ANY($1::uuid[])
+                  AND package_status = 'ready'
+                """,
+                task_ids,
+            )
+            return {
+                (str(row["suno_task_id"]), str(row["variant"] or "ok"))
+                for row in rows
+            }
+        except Exception:
+            return set()
+
+    # ------------------------------------------------------------------
+    # Suno MP3 download health (terminal dead-URL marking)
+    # ------------------------------------------------------------------
+
+    _DEAD_DOWNLOAD_PROBE_COOLDOWN_S = 45.0
+    _DEAD_DOWNLOAD_PROBE_LIMIT = 12
+    _DEAD_DOWNLOAD_PROBE_TIMEOUT_S = 8.0
+    _DEAD_DOWNLOAD_PROBE_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",
+        "Accept": "audio/mpeg,application/octet-stream,*/*;q=0.8",
+    }
+
+    def _schedule_dead_download_probe(self, *, user_id: str) -> None:
+        """Debounced background probe; safe to call on every pending poll."""
+        import asyncio
+        import time
+
+        key = str(user_id or "").strip()
+        if not key or key in self._dead_download_probe_inflight:
+            return
+        now = time.monotonic()
+        last = self._dead_download_probe_last.get(key, 0.0)
+        if last and (now - last) < self._DEAD_DOWNLOAD_PROBE_COOLDOWN_S:
+            return
+        self._dead_download_probe_last[key] = now
+        self._dead_download_probe_inflight.add(key)
+
+        async def _run() -> None:
+            try:
+                await self.probe_dead_suno_downloads(user_id=key)
+            except Exception:
+                logger.exception("Suno download health probe failed for user %s", key)
+            finally:
+                self._dead_download_probe_inflight.discard(key)
+
+        try:
+            asyncio.create_task(_run())
+        except RuntimeError:
+            self._dead_download_probe_inflight.discard(key)
+
+    async def probe_dead_suno_downloads(
+        self,
+        *,
+        user_id: str,
+        limit: int | None = None,
+    ) -> int:
+        """Mark channels whose Suno URL is gone (and has no B2 copy) terminal.
+
+        Returns the number of channels marked unavailable. Best-effort: network
+        errors are inconclusive and never mark a channel.
+        """
+        import httpx
+
+        try:
+            user_uuid = UUID(str(user_id))
+        except (TypeError, ValueError):
+            return 0
+        rows = await self._batch_repo.list_suno_download_health_candidates(
+            user_id=user_uuid,
+            limit=limit or self._DEAD_DOWNLOAD_PROBE_LIMIT,
+        )
+        if not rows:
+            return 0
+
+        b2_coverage = await self._load_b2_download_coverage(
+            [UUID(str(row["id"])) for row in rows]
+        )
+        marked = 0
+        async with httpx.AsyncClient(
+            timeout=self._DEAD_DOWNLOAD_PROBE_TIMEOUT_S,
+            follow_redirects=True,
+            headers=self._DEAD_DOWNLOAD_PROBE_HEADERS,
+        ) as client:
+            for row in rows:
+                task_id = UUID(str(row["id"]))
+                channels = (
+                    ("primary", row.get("audio_url_ok"), row.get("audio_id_ok"), row.get("downloaded_ok"), row.get("download_unavailable_ok")),
+                    ("secondary", row.get("audio_url_alt"), row.get("audio_id_alt"), row.get("downloaded_alt"), row.get("download_unavailable_alt")),
+                )
+                for variant, url, audio_id, downloaded, unavailable in channels:
+                    if downloaded or unavailable:
+                        continue
+                    candidate = str(url or "").strip()
+                    if not candidate:
+                        continue
+                    state = await self._probe_download_url(client, candidate)
+                    if state is None:
+                        continue
+                    if state:
+                        self._schedule_download_backup(task_id)
+                        continue
+                    # Stored URL is dead. Ask the provider to re-mint a fresh link
+                    # (scoped to the key that generated the task) before giving up.
+                    recovered_url = await self._recover_download_url(
+                        row.get("external_task_id"), audio_id
+                    )
+                    if recovered_url:
+                        await self._batch_repo.set_suno_audio_url(
+                            task_id=task_id, variant=variant, url=recovered_url
+                        )
+                        self._schedule_download_backup(task_id)
+                        logger.info(
+                            "Recovered Suno download via provider task=%s variant=%s",
+                            task_id,
+                            variant,
+                        )
+                        continue
+                    # Fallback: the reseller's durable stream host is keyed by clip id.
+                    stream_url = self._stream_url_for_audio_id(audio_id)
+                    if stream_url:
+                        stream_state = await self._probe_download_url(client, stream_url)
+                        if stream_state:
+                            await self._batch_repo.set_suno_audio_url(
+                                task_id=task_id, variant=variant, url=stream_url
+                            )
+                            self._schedule_download_backup(task_id)
+                            logger.info(
+                                "Recovered Suno download from stream host task=%s variant=%s",
+                                task_id,
+                                variant,
+                            )
+                            continue
+                        if stream_state is None:
+                            # Inconclusive (host throttled/empty): leave the channel
+                            # for the client to try rather than hiding it.
+                            continue
+                    if (str(task_id), variant) in b2_coverage:
+                        # Durable copy exists; a later client build downloads it.
+                        continue
+                    await self._batch_repo.mark_suno_download_unavailable(
+                        task_id=task_id, variant=variant, unavailable=True
+                    )
+                    marked += 1
+                    logger.info(
+                        "Marked Suno download unavailable task=%s variant=%s url=%s",
+                        task_id,
+                        variant,
+                        candidate[:96],
+                    )
+        return marked
+
+    @staticmethod
+    async def _probe_download_url(client: Any, url: str) -> bool | None:
+        """True=alive MP3, False=dead, None=inconclusive (never hide)."""
+        try:
+            async with client.stream("GET", url) as response:
+                status = int(response.status_code)
+                if status in {403, 404, 410}:
+                    return False
+                if not (200 <= status < 400):
+                    return None
+                prefix = b""
+                async for chunk in response.aiter_bytes():
+                    prefix += chunk
+                    if len(prefix) >= 16:
+                        break
+        except Exception:
+            return None
+        if len(prefix) < 12:
+            # Empty/partial 200 (e.g. a throttled host) is inconclusive - never
+            # hide a channel the client might still be able to fetch.
+            return None
+        if prefix[:3] == b"ID3" or (prefix[0] == 0xFF and (prefix[1] & 0xE0) == 0xE0):
+            return True
+        return False
+
+    @staticmethod
+    def _stream_url_for_audio_id(audio_id: Any) -> str:
+        """Durable reseller stream URL for a Suno clip id (outlives the tempfile host)."""
+        value = str(audio_id or "").strip()
+        if not value or value.startswith(("http://", "https://")):
+            return ""
+        return f"https://audiostream.api.box/stream/{value}.mp3"
+
+    async def _recover_download_url(self, external_task_id: Any, audio_id: Any) -> str:
+        """Provider Recovery Audio: fresh playable URL for an expired clip, or ""."""
+        task_id = str(external_task_id or "").strip()
+        clip_id = str(audio_id or "").strip()
+        if not task_id or not clip_id:
+            return ""
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.services.suno_audio_resolver import recover_suno_task_download_urls
+
+            mapping = await recover_suno_task_download_urls(get_db_pool(), task_id)
+            return str(mapping.get(clip_id) or "")
+        except Exception:
+            logger.warning("Suno audio recovery failed for task %s", task_id, exc_info=True)
+            return ""
+
+    async def _load_b2_download_coverage(self, task_ids: list[UUID]) -> set[tuple[str, str]]:
+        """(task_id, 'primary'|'secondary') pairs that already have a durable copy."""
+        coverage: set[tuple[str, str]] = set()
+        if not task_ids:
+            return coverage
+        try:
+            from platform_api.dependencies import get_db_pool
+
+            pool = get_db_pool()
+            rows = await pool.fetch(
+                """
+                SELECT suno_task_id, variant
+                FROM stream_tracks
+                WHERE suno_task_id = ANY($1)
+                  AND COALESCE(storage_key, '') <> ''
+                """,
+                task_ids,
+            )
+            for row in rows:
+                variant = "secondary" if str(row["variant"]).lower() == "alt" else "primary"
+                coverage.add((str(row["suno_task_id"]), variant))
+            cols = await pool.fetch(
+                """
+                SELECT id, b2_storage_key_ok, b2_storage_key_alt
+                FROM suno_tasks
+                WHERE id = ANY($1)
+                """,
+                task_ids,
+            )
+            for row in cols:
+                if str(row["b2_storage_key_ok"] or "").strip():
+                    coverage.add((str(row["id"]), "primary"))
+                if str(row["b2_storage_key_alt"] or "").strip():
+                    coverage.add((str(row["id"]), "secondary"))
+        except Exception:
+            logger.warning("Could not resolve B2 download coverage", exc_info=True)
+        return coverage
+
+    @staticmethod
+    def _schedule_download_backup(task_id: UUID) -> None:
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.services.streaming_upload_service import StreamingUploadService
+
+            StreamingUploadService(get_db_pool()).schedule_suno_streaming_upload(suno_task_id=task_id)
+        except Exception:
+            logger.warning("Could not schedule Suno backup for task %s", task_id, exc_info=True)
 
     async def reconcile_pending_suno_tasks(
         self,
@@ -3438,6 +3750,10 @@ class BatchService:
         stream_variant = "ok" if variant == "primary" else "alt"
 
         rows = await self._batch_repo.list_suno_audio_for_batch(batch_id=batch_id, user_id=UUID(user_id))
+        # Channels whose Suno URL is permanently gone (and had no durable copy) are
+        # terminal - never offer a download that is guaranteed to fail.
+        unavail_field = "download_unavailable_ok" if variant == "primary" else "download_unavailable_alt"
+        rows = [row for row in rows if not row.get(unavail_field)]
         storage_keys = await self._resolve_redownload_storage_keys(rows, variant=stream_variant)
 
         items: list[dict[str, Any]] = []

@@ -255,6 +255,22 @@ export function useRetryUploadJob() {
   });
 }
 
+export function useRetryFailedUploadJobs() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params?: { limit?: number; maxAgeHours?: number }) =>
+      httpClient.post<{ retried: number; succeeded: number; failed: number }>(
+        `/api/v3/admin/streaming/upload-jobs/retry-failed?limit=${
+          params?.limit ?? 50
+        }&max_age_hours=${params?.maxAgeHours ?? 72}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['streaming-upload-jobs'] });
+      invalidateCatalog(queryClient);
+    },
+  });
+}
+
 function formatDuration(seconds?: number | null): string {
   if (!seconds || seconds <= 0) return '—';
   const total = Math.round(seconds);

@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRetryUploadJob, useStreamingUploadJobs } from '@/hooks/use-streaming';
+import { useRetryFailedUploadJobs, useRetryUploadJob, useStreamingUploadJobs } from '@/hooks/use-streaming';
 import type { StreamingUploadJob } from '@/hooks/use-streaming';
 import { toast } from '@/hooks/use-toast';
 
@@ -168,6 +168,7 @@ export default function StreamingUploadJobsPage() {
     statusFilter === 'all' ? undefined : statusFilter,
   );
   const retry = useRetryUploadJob();
+  const retryFailed = useRetryFailedUploadJobs();
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -239,6 +240,25 @@ export default function StreamingUploadJobsPage() {
             </Select>
             <Button variant="outline" onClick={() => refetch()}>
               Refresh
+            </Button>
+            <Button
+              variant="outline"
+              disabled={retryFailed.isPending}
+              onClick={() =>
+                retryFailed.mutate(
+                  { limit: 50, maxAgeHours: 72 },
+                  {
+                    onSuccess: (res) =>
+                      toast({
+                        title: `Retried ${res.retried} job(s): ${res.succeeded} ok, ${res.failed} failed`,
+                      }),
+                    onError: () =>
+                      toast({ title: 'Bulk retry failed', variant: 'destructive' }),
+                  },
+                )
+              }
+            >
+              {retryFailed.isPending ? 'Retrying…' : 'Retry failed (72h)'}
             </Button>
           </div>
         }

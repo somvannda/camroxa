@@ -486,6 +486,22 @@ async def delete_stream_album(album_id: UUID, ctx: AdminDep, service: CatalogSer
     return {"ok": True}
 
 
+@router.post("/upload-jobs/retry-failed")
+async def retry_failed_streaming_upload_jobs(
+    ctx: AdminDep,
+    limit: int = 50,
+    max_age_hours: int = 72,
+) -> dict:
+    """Bulk-retry recent failed MP3 upload jobs (Recovery-Audio backed)."""
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).retry_failed_jobs(
+        limit=limit,
+        max_age_hours=max_age_hours,
+    )
+
+
 @router.post("/upload-jobs/{job_id}/retry")
 async def retry_streaming_upload_job(job_id: UUID, ctx: AdminDep) -> dict:
     del ctx

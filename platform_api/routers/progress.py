@@ -220,6 +220,10 @@ def _build_row(
     row_run_dir = persisted_run_dir or resolved_run_dir
 
     expected = int(batch.get("song_count", 0) or 0)
+    unavailable = int(suno_stats.get("unavailable_ok" if role == "OK" else "unavailable_alt", 0) or 0)
+    # A terminal channel must NOT make the album look complete: keep `expected`
+    # at the full song count so the video pipeline waits for a real resolution
+    # (recovery or regeneration) instead of exporting at 14/15.
     saved = int(suno_stats.get("downloaded_ok" if role == "OK" else "downloaded_alt", 0) or 0)
     download_ready = int(suno_stats.get("ready_ok" if role == "OK" else "ready_alt", 0) or 0)
     download_pending = max(0, download_ready - saved)
@@ -396,6 +400,12 @@ def _build_row(
             [value for value in [*activity_candidates, batch.get("updated_at")] if value is not None],
             default=batch.get("updated_at") or _utc_now(),
         )
+
+    if unavailable > 0:
+        notes = (
+            f"{notes} {unavailable} track(s) unavailable "
+            "(Suno audio expired with no backup)."
+        ).strip()
 
     return ProgressRow(
         batch=batch_id[-24:] if len(batch_id) > 24 else batch_id,
@@ -623,8 +633,10 @@ async def list_progress_rows(
             COUNT(*)::int AS total,
             SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::int AS success,
             SUM(CASE WHEN status IN ('pending', 'running', 'processing') THEN 1 ELSE 0 END)::int AS pending,
-            SUM(CASE WHEN audio_url_ok IS NOT NULL THEN 1 ELSE 0 END)::int AS ready_ok,
-            SUM(CASE WHEN audio_url_alt IS NOT NULL THEN 1 ELSE 0 END)::int AS ready_alt,
+            SUM(CASE WHEN audio_url_ok IS NOT NULL AND NOT COALESCE(download_unavailable_ok, false) THEN 1 ELSE 0 END)::int AS ready_ok,
+            SUM(CASE WHEN audio_url_alt IS NOT NULL AND NOT COALESCE(download_unavailable_alt, false) THEN 1 ELSE 0 END)::int AS ready_alt,
+            SUM(CASE WHEN COALESCE(download_unavailable_ok, false) THEN 1 ELSE 0 END)::int AS unavailable_ok,
+            SUM(CASE WHEN COALESCE(download_unavailable_alt, false) THEN 1 ELSE 0 END)::int AS unavailable_alt,
             SUM(CASE WHEN downloaded_ok THEN 1 ELSE 0 END)::int AS downloaded_ok,
             SUM(CASE WHEN downloaded_alt THEN 1 ELSE 0 END)::int AS downloaded_alt,
             MAX(updated_at) AS music_updated_at
@@ -642,6 +654,8 @@ async def list_progress_rows(
             "pending": int(row["pending"] or 0),
             "ready_ok": int(row["ready_ok"] or 0),
             "ready_alt": int(row["ready_alt"] or 0),
+            "unavailable_ok": int(row["unavailable_ok"] or 0),
+            "unavailable_alt": int(row["unavailable_alt"] or 0),
             "downloaded_ok": int(row["downloaded_ok"] or 0),
             "downloaded_alt": int(row["downloaded_alt"] or 0),
             "music_updated_at": row["music_updated_at"],
