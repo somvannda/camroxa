@@ -83,14 +83,7 @@ class MusicDownloadCoordinator(QObject):
             disconnect_quietly(worker.failed, self._on_sync_failed)
             disconnect_quietly(worker.finished, self._on_worker_finished)
             if worker.isRunning():
-                # Ask it to stop after the current file, then short join only;
-                # RootWindow.closeEvent uses app_thread_registry for the rest.
-                request_stop = getattr(worker, "request_stop", None)
-                if callable(request_stop):
-                    try:
-                        request_stop()
-                    except Exception:
-                        pass
+                # Short join only; RootWindow.closeEvent uses app_thread_registry for the rest.
                 worker.wait(1_500)
             self._worker = None
 
