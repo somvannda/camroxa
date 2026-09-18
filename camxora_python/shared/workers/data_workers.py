@@ -198,6 +198,11 @@ class MusicDownloadSyncWorker(QThread):
         self.setObjectName("MusicDownloadSyncWorker")
         self._api = api
         self._limit = limit
+        self._stop = False
+
+    def request_stop(self) -> None:
+        """Ask the worker to stop after the current file (quit/close safety)."""
+        self._stop = True
 
     def run(self) -> None:
         try:
@@ -220,7 +225,11 @@ class MusicDownloadSyncWorker(QThread):
             # stop planning under a stale cloud path until the next restart.
             local_suno_base = hydrate_local_suno_output_dir(api=self._api, persist_cloud=True)
             for item in items:
+                if self._stop:
+                    break
                 for channel, target in (("primary", item.primary), ("secondary", item.secondary)):
+                    if self._stop:
+                        break
                     if (
                         not target.download_url
                         or not target.output_dir
