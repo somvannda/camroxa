@@ -56,6 +56,7 @@ export type StreamingUploadJob = {
   storage_key?: string | null;
   error?: string | null;
   attempt_count?: number;
+  permanent_failed?: boolean;
   user_id?: string | null;
   user_email?: string | null;
   user_display_name?: string | null;

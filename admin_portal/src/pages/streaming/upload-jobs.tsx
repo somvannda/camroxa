@@ -75,6 +75,9 @@ function JobCard({
                 ×{job.attempt_count}
               </Badge>
             ) : null}
+            {job.permanent_failed ? (
+              <Badge variant="destructive">permanent</Badge>
+            ) : null}
           </div>
 
           <div className="grid gap-1 text-xs text-slate-400 sm:grid-cols-2">
@@ -143,7 +146,7 @@ function JobCard({
           <p className="font-mono text-[10px] text-slate-600">{job.id}</p>
         </div>
 
-        {job.status === 'failed' && String(job.kind).startsWith('mp3_') ? (
+        {job.status === 'failed' && !job.permanent_failed && String(job.kind).startsWith('mp3_') ? (
           <Button
             size="sm"
             variant="outline"

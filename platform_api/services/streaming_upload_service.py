@@ -1075,8 +1075,10 @@ class StreamingUploadService:
         job = await self._repo.get_upload_job(job_id)
         if not job:
             raise ValueError("Upload job not found.")
-        if str(job.get("status") or "") != "failed":
-            raise ValueError("Only failed upload jobs can be retried.")
+        if job.get("permanent_failed"):
+            raise ValueError("Upload job is permanently failed.")
+        if str(job.get("status") or "") not in {"failed", "pending"}:
+            raise ValueError("Only pending or failed upload jobs can be retried.")
 
         kind = str(job.get("kind") or "")
         if not kind.startswith("mp3_"):
@@ -1230,4 +1232,94 @@ class StreamingUploadService:
             except Exception:
                 failed += 1
         return {"retried": retried, "succeeded": succeeded, "failed": failed}
+
+    async def run_backfill_sweep(
+        self,
+        *,
+        window_hours: int = 336,
+        limit: int = 200,
+        max_attempts: int = 6,
+        alert: bool = True,
+    ) -> dict[str, Any]:
+        """Ensure every recent track has a durable B2 copy.
+
+        - Reprocesses stuck ``pending`` / retryable ``failed`` MP3 jobs (with the
+          provider Recovery-Audio fallback).
+        - Backfills studio MP3s missing from the catalog (B2).
+        - Marks jobs permanently failed after ``max_attempts`` so they stop
+          retrying forever.
+        - Alerts the ops channel when a sweep still leaves failures behind.
+        """
+        stats: dict[str, Any] = {
+            "jobs_retried": 0,
+            "jobs_succeeded": 0,
+            "jobs_failed": 0,
+            "permanent": 0,
+            "backfilled": 0,
+            "backfill_failed": 0,
+        }
+        jobs = await self._repo.list_retryable_upload_jobs(
+            window_hours=window_hours,
+            max_attempts=max_attempts,
+            limit=limit,
+        )
+        for job in jobs:
+            job_id = job["id"]
+            stats["jobs_retried"] += 1
+            try:
+                await self.retry_failed_job(job_id)
+                stats["jobs_succeeded"] += 1
+            except Exception:
+                stats["jobs_failed"] += 1
+                fresh = await self._repo.get_upload_job(job_id)
+                attempts = int((fresh or {}).get("attempt_count") or 0)
+                if attempts >= max_attempts:
+                    await self._repo.mark_upload_job_permanent_failed(
+                        job_id,
+                        error=f"Exceeded {max_attempts} upload attempts.",
+                    )
+                    stats["permanent"] += 1
+
+        missing = await self._repo.list_studio_tasks_missing_b2(
+            window_hours=window_hours,
+            limit=limit,
+        )
+        for row in missing:
+            context = await self._repo.get_suno_stream_context(UUID(str(row["id"])))
+            if not context:
+                continue
+            try:
+                refreshed = await self._refresh_task_download_urls(context)
+            except Exception:
+                refreshed = None
+            for variant, flag in (("ok", "missing_ok"), ("alt", "missing_alt")):
+                if not row.get(flag):
+                    continue
+                try:
+                    source_url = normalize_http_download_url(
+                        context.get("audio_url_ok" if variant == "ok" else "audio_url_alt")
+                    )
+                    await self._upload_mp3_variant(
+                        context=context,
+                        variant=variant,
+                        source_url=source_url or "",
+                        refreshed=refreshed,
+                    )
+                    stats["backfilled"] += 1
+                except Exception:
+                    stats["backfill_failed"] += 1
+
+        if alert and (stats["jobs_failed"] or stats["backfill_failed"]):
+            try:
+                from platform_api.services.telegram_ops_alert_service import schedule_ops_message
+
+                schedule_ops_message(
+                    "<b>B2 backfill sweep</b>\n"
+                    f"jobs retried={stats['jobs_retried']} ok={stats['jobs_succeeded']} "
+                    f"failed={stats['jobs_failed']} permanent={stats['permanent']}\n"
+                    f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']}"
+                )
+            except Exception:
+                logger.warning("Could not send B2 backfill sweep alert", exc_info=True)
+        return stats
 

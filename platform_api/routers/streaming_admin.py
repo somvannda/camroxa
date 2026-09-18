@@ -119,6 +119,7 @@ class UploadJobResponse(BaseModel):
     storage_key: str | None = None
     error: str | None = None
     attempt_count: int | None = None
+    permanent_failed: bool = False
     user_id: str | None = None
     user_email: str | None = None
     user_display_name: str | None = None
@@ -414,6 +415,7 @@ async def list_streaming_upload_jobs(
             storage_key=row.get("storage_key"),
             error=row.get("error"),
             attempt_count=int(row["attempt_count"]) if row.get("attempt_count") is not None else None,
+            permanent_failed=bool(row.get("permanent_failed")),
             user_id=_id(row.get("user_id")),
             user_email=row.get("user_email"),
             user_display_name=row.get("user_display_name"),
