@@ -458,6 +458,7 @@ def _build_row(
             updated_at=updated_at,
             draft_failed_song_ids=_coerce_uuid_list(song_stats.get("draft_failed_song_ids")),
             suno_failed_song_ids=_coerce_uuid_list(song_stats.get("suno_failed_song_ids")),
+            lost_song_ids=_coerce_uuid_list(song_stats.get("lost_song_ids")),
         ),
     )
 
@@ -609,6 +610,30 @@ async def list_progress_rows(
         }
         for row in song_stats_rows
     }
+
+    lost_rows = await pool.fetch(
+        """
+        SELECT batch_id, COALESCE(ARRAY_AGG(song_id), ARRAY[]::uuid[]) AS lost_song_ids
+        FROM (
+            SELECT s.batch_id, s.id AS song_id,
+                   ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY st.created_at DESC) AS rn,
+                   (COALESCE(st.download_unavailable_ok, false)
+                    OR COALESCE(st.download_unavailable_alt, false)) AS lost
+            FROM songs s
+            JOIN suno_tasks st ON st.song_id = s.id
+            WHERE s.user_id = $1 AND s.batch_id = ANY($2::uuid[])
+              AND st.status = 'success'
+        ) t
+        WHERE rn = 1 AND lost
+        GROUP BY batch_id
+        """,
+        user_id,
+        batch_ids,
+    )
+    for row in lost_rows:
+        song_stats_map.setdefault(str(row["batch_id"]), {})["lost_song_ids"] = row[
+            "lost_song_ids"
+        ]
 
     album_rows = await pool.fetch(
         """

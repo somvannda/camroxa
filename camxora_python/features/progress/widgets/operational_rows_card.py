@@ -562,6 +562,17 @@ class OperationalRowsCard(StudioPanel):
             self._add_regenerate_one_track_menu(menu, entry)
             menu.addSeparator()
 
+        lost_ids = list(getattr(meta, "lost_song_ids", None) or [])
+        if lost_ids:
+            count = len(lost_ids)
+            suffix = "s" if count != 1 else ""
+            action = menu.addAction(f"Regenerate Lost Audio ({count} song{suffix})")
+            action.setToolTip(
+                "Suno's temp link expired with no durable copy. Submits a new generation."
+            )
+            action.triggered.connect(partial(self._emit_retry_suno, meta.batch_id, lost_ids))
+            recovery_added = True
+
         copy_action = menu.addAction("Copy Batch ID")
         copy_action.setEnabled(bool(str(meta.batch_id or "").strip()))
         copy_action.triggered.connect(partial(self._copy_batch_id, meta.batch_id))
