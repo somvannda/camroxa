@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const backendUrl = process.env.BACKEND_URL ?? "http://localhost:4003";
+
 const nextConfig: NextConfig = {
   experimental: {
     proxyTimeout: 600_000,
@@ -8,7 +10,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/backend/:path*",
-        destination: "http://localhost:4003/:path*",
+        destination: `${backendUrl}/:path*`,
       },
     ];
   },

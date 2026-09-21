@@ -2,7 +2,7 @@ import "dotenv/config";
 import { AccountPool } from "./pool.js";
 import { buildServer } from "./server.js";
 
-const port = Number(process.env.PORT ?? 3003);
+const port = Number(process.env.PORT ?? 4003);
 
 let pool = await AccountPool.fromDb();
 if (pool.size === 0) {
