@@ -19,7 +19,7 @@ _SECTION_ONLY_RE = re.compile(
     r"break|drop|refrain|solo|interlude)(\s*\d+)?$",
     re.IGNORECASE,
 )
-_WEB_MUSIC_TITLE_MAX = 120
+_WEB_MUSIC_TITLE_MAX = 80
 
 
 def prepare_web_music_title(*, title: str, lyrics: str = "") -> str:

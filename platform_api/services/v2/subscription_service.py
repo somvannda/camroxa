@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
 import asyncpg
@@ -807,7 +807,7 @@ class SubscriptionService:
         if subscription.status != "active":
             return False
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         last_reset = subscription.last_credit_reset or subscription.current_period_start
 
         if subscription.current_period_end <= now:
