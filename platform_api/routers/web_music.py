@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -18,6 +19,8 @@ from platform_api.services.generation_freeze import (
 from platform_api.services.web_music_service import WebMusicService, content_disposition
 from platform_api.services.audio_origin_proxy import is_missing_range
 from platform_api.exceptions import NotFoundError, QuotaExceededError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web-music", tags=["web-music"])
 
@@ -41,7 +44,7 @@ class WebMusicGenerateRequest(BaseModel):
     instrumental: bool = False
     model: str = Field(default="V5_5", pattern=r"^(V5|V5_5)$")
     negative_tags: str | None = Field(default=None, max_length=500)
-    vocal_gender: Literal["m", "f", ""] | None = None
+    vocal_gender: Literal["m", "f", "both", ""] | None = None
     style_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     weirdness_constraint: float | None = Field(default=None, ge=0.0, le=1.0)
     audio_weight: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -362,10 +365,23 @@ async def generate_draft(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> WebMusicDraftResponse:
+    logger.info(
+        "web-music /generate-draft called user=%s prompt_len=%s",
+        ctx.user_id,
+        len(body.prompt or ""),
+    )
     await enforce_generation_freeze(http_request, ctx.user_id)
     await reject_probe_payload(http_request, ctx.user_id, body.prompt)
     await enforce_rate_limit(http_request, ctx.user_id)
-    lyrics, title = await service.generate_draft(UUID(ctx.user_id), body.prompt)
+    try:
+        lyrics, title = await service.generate_draft(UUID(ctx.user_id), body.prompt)
+    except Exception:
+        logger.exception(
+            "web-music /generate-draft failed user=%s prompt_len=%s",
+            ctx.user_id,
+            len(body.prompt or ""),
+        )
+        raise
     return WebMusicDraftResponse(lyrics=lyrics, title=title)
 
 
@@ -376,6 +392,15 @@ async def generate_styles(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> WebMusicStyleResponse:
+    logger.info(
+        "web-music /generate-styles called user=%s style_len=%s lyrics_len=%s title_len=%s desc_len=%s prompt_len=%s",
+        ctx.user_id,
+        len(body.style or ""),
+        len(body.lyrics or ""),
+        len(body.title or ""),
+        len(body.description or ""),
+        len(body.prompt or ""),
+    )
     await enforce_generation_freeze(http_request, ctx.user_id)
     await reject_probe_payload(
         http_request,
@@ -387,14 +412,24 @@ async def generate_styles(
         body.prompt,
     )
     await enforce_rate_limit(http_request, ctx.user_id)
-    style = await service.generate_styles(
-        UUID(ctx.user_id),
-        style=body.style,
-        lyrics=body.lyrics,
-        title=body.title,
-        description=body.description,
-        prompt=body.prompt,
-    )
+    try:
+        style = await service.generate_styles(
+            UUID(ctx.user_id),
+            style=body.style,
+            lyrics=body.lyrics,
+            title=body.title,
+            description=body.description,
+            prompt=body.prompt,
+        )
+    except Exception:
+        logger.exception(
+            "web-music /generate-styles failed user=%s style_len=%s lyrics_len=%s title_len=%s",
+            ctx.user_id,
+            len(body.style or ""),
+            len(body.lyrics or ""),
+            len(body.title or ""),
+        )
+        raise
     return WebMusicStyleResponse(style=style)
 
 

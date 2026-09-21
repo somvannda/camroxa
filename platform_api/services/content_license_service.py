@@ -18,6 +18,23 @@ from platform_api.services.audio_packager import derive_kek, unwrap_content_key
 
 logger = logging.getLogger(__name__)
 
+
+def select_play_lane(
+    *,
+    user_id: UUID,
+    packaged_key_b: str | None,
+    active_key_count: int,
+) -> str:
+    """Odd user ids play the B watermark lane when packaging used one key.
+
+    Concurrent packaging can write `.cxa` and `.b.cxa` under different keys.
+    Decrypting B with the A/DB key throws OperationError (“Tap play again”).
+    """
+    if packaged_key_b and (user_id.int & 1) and int(active_key_count or 0) <= 1:
+        return "b"
+    return "a"
+
+
 DEVICE_CAP = 5
 SESSION_TTL_SECONDS = 120
 REDIS_PREFIX = "web_music:content_session:"
@@ -333,7 +350,25 @@ class ContentLicenseService:
         hls_status, hls_storage_prefix = await self._resolve_hls_lane(
             subject_type, subject_id, variant_key
         )
-        lane = "b" if (user_id.int & 1) and packaged_key_b else "a"
+        active_key_count = 0
+        if key_row is not None:
+            active_key_count = int(
+                await self._pool.fetchval(
+                    """
+                    SELECT count(*) FROM content_keys
+                    WHERE subject_type = $1 AND subject_id = $2 AND variant = $3 AND status = 'active'
+                    """,
+                    subject_type,
+                    subject_id,
+                    variant_key,
+                )
+                or 0
+            )
+        lane = select_play_lane(
+            user_id=user_id,
+            packaged_key_b=packaged_key_b,
+            active_key_count=active_key_count,
+        )
         selected_package = packaged_key_b if lane == "b" and packaged_key_b else packaged_key
 
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)

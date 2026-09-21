@@ -159,14 +159,21 @@ _AI_ASSIST_UNAVAILABLE = "AI assist is temporarily unavailable. Please try again
 
 
 def reraise_text_assist_failure(exc: BaseException) -> None:
-    """Map LLM/provider failures to a user-facing 502 after credits are refunded."""
+    """Map LLM/provider failures to a user-facing 502 after credits are refunded.
+
+    Preserves the original provider message so the frontend can surface it
+    (instead of always hiding behind the generic fallback).
+    """
     if isinstance(exc, (ValidationError, QuotaExceededError)):
         raise exc
+    logger.exception("text-assist LLM failed: %s", type(exc).__name__)
     details = getattr(exc, "details", None)
+    raw_message = str(exc).strip()
+    user_message = raw_message if raw_message and len(raw_message) <= 500 else _AI_ASSIST_UNAVAILABLE
     raise ExternalServiceError(
-        _AI_ASSIST_UNAVAILABLE,
+        user_message,
         is_retryable=True,
-        details=details if isinstance(details, dict) else None,
+        details=details if isinstance(details, dict) else ({"provider_error": raw_message} if raw_message else None),
     ) from exc
 
 
@@ -238,7 +245,8 @@ class WebMusicService:
         songs_remaining = balance.total_available // WEB_MUSIC_CREDITS_PER_SONG
         requires_upgrade = balance.total_available < WEB_MUSIC_CREDITS_PER_SONG
         is_pro = balance.has_subscription or await self._has_pro(user_id)
-        can_download = is_pro
+        # Free users may download their own generated tracks (MP3/WAV/LRC/SRT).
+        can_download = True
 
         return await self._with_queue_fields(
             user_id,
@@ -429,7 +437,7 @@ class WebMusicService:
             "credits_remaining": int(credits_remaining),
             "credits_per_song": per_song,
             "has_subscription": has_subscription,
-            "can_download": is_pro or has_subscription,
+            "can_download": True,
             "daily_free_remaining": daily_free_remaining,
             "daily_free_limit": daily_free_limit,
         }
@@ -466,11 +474,11 @@ class WebMusicService:
         return await self._has_web_subscription(user_id)
 
     async def _require_download_access(self, user_id: UUID) -> None:
-        if not await self._can_download(user_id):
-            raise ForbiddenError(
-                "Downloads require a paid subscription. Upgrade to download MP3, WAV, LRC, and SRT files.",
-                details={"code": "download_requires_subscription"},
-            )
+        # Free users are allowed to download the tracks they generated.
+        # Ownership is enforced per-row inside every download path
+        # (WHERE user_id = ...), so no subscription/pro gate applies here.
+        del user_id
+        return
 
     def _quota_payload(
         self,
@@ -837,6 +845,10 @@ class WebMusicService:
         audio_weight: float | None = None,
         workspace_id: UUID | None = None,
     ) -> dict[str, Any]:
+        logger.info(
+            "service.generate enter user=%s mode=%r instr=%s model=%r title_len=%s lyrics_len=%s style_len=%s prompt_len=%s workspace=%s",
+            user_id, mode, instrumental, model, len(title or ""), len(lyrics or ""), len(style or ""), len(prompt or ""), workspace_id,
+        )
         normalized_model = str(model or "V5").strip().upper()
         if normalized_model not in _VALID_MODELS:
             raise ValidationError(
@@ -874,14 +886,17 @@ class WebMusicService:
             raise_if_suno_blocklisted,
         )
 
+        logger.info("service.generate step blocklist_load user=%s", user_id)
         runtime_config = await get_suno_blocklist_service().get_runtime_config()
         safe_title = prepare_web_music_title(title=raw_title, lyrics=safe_lyrics)
+        logger.info("service.generate step title_ready user=%s safe_title=%r", user_id, safe_title[:120])
         if mode_key != "simple":
             if not is_valid_web_music_title(safe_title):
                 raise ValidationError(
                     "Enter a song title (at least 2 letters, no URLs or empty brackets).",
                     details={"field": "title", "title": raw_title[:160]},
                 )
+            logger.info("service.generate step blocklist_check user=%s", user_id)
             raise_if_suno_blocklisted(
                 runtime_config,
                 title=safe_title,
@@ -900,11 +915,14 @@ class WebMusicService:
             )
 
         reservation_id = str(uuid4())
+        logger.info("service.generate step reserve user=%s reservation=%s", user_id, reservation_id)
         # Charge only after title/blocklist checks so 422s do not burn daily credits.
         quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
+        logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
 
         if mode_key == "simple":
             try:
+                logger.info("service.generate step simple_lyrics_llm user=%s", user_id)
                 generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
                     safe_prompt
                 )
@@ -942,6 +960,7 @@ class WebMusicService:
             else None
         )
         try:
+            logger.info("service.generate step submit_suno user=%s reservation=%s", user_id, reservation_id)
             task_id = await self._enqueue_web_generate(
                 user_id,
                 reservation_id=reservation_id,
@@ -957,6 +976,7 @@ class WebMusicService:
                 audio_weight=stored_audio_weight,
                 workspace_id=workspace_id,
             )
+            logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
         except Exception:
             await self._release_daily_slot(user_id, reference_id=reservation_id)
             raise
