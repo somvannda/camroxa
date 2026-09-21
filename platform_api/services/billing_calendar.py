@@ -33,3 +33,25 @@ def billing_usage_date(dt: datetime | date | None = None) -> date:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(BILLING_TIMEZONE).date()
+
+
+def billing_month_start(d: date | None = None) -> date:
+    """First day of the current billing month (Asia/Phnom_Penh)."""
+    return (d or billing_today()).replace(day=1)
+
+
+def next_billing_month_start(*, from_date: date | None = None) -> datetime:
+    """Return the first instant of next billing month as UTC-aware datetime.
+
+    Free monthly allowances roll over at this boundary (calendar month end).
+    """
+    base = from_date or billing_today()
+    year = base.year + (1 if base.month == 12 else 0)
+    month = 1 if base.month == 12 else base.month + 1
+    local_midnight = datetime(
+        year,
+        month,
+        1,
+        tzinfo=BILLING_TIMEZONE,
+    )
+    return local_midnight.astimezone(timezone.utc)
