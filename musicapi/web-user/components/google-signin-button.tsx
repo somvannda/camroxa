@@ -91,7 +91,10 @@ export async function completeGoogleCallback(code: string): Promise<{
     (typeof window !== "undefined" &&
       localStorage.getItem("google_auth_redirect_uri")) ||
     undefined;
-  const res = await apiFetch("/auth/google/callback", {
+  const res = await apiFetch<{
+    token: string;
+    user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
+  }>("/auth/google/callback", {
     method: "POST",
     body: JSON.stringify({ code, redirect_uri: redirectUri }),
   });
