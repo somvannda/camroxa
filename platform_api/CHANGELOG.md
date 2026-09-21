@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Reconciled production-only hotfixes into `main` for the v3 cutover (streaming/B2 capture + WAV upload, Suno 409/recovery, batch preflight, monthly free reset, tz-aware quota reset, Suno title cap 80, play-lane select, free downloads, Telegram download alerts). Dropped prod-only features never merged or intentionally reverted (quota renewal, DistroKid, signup domain guard, streaming progress/publish gate, waive billing, public subscription terms, genre catalog). Adds Alembic `120`/`121`. See `docs/changelog/2026-09-18-api-v3-hotfix-reconciliation.md`.
 - Suno downloads prefer callback/record-info `audio_url` (`audioUrl`) over unsigned `cdn1.suno.ai` `source_audio_url`. See `docs/changelog/2026-08-29-suno-prefer-callback-audio-url.md`.
 - Generate quote/charge always uses the Credits page list price. Plan per-op fields are ignored. Public catalogs send `credits_per_generate` from that music rate. See `docs/changelog/2026-08-28-credit-pricing-single-source.md`.
 - Song hints use 10 credits = 1 generate = 2 songs (Free 50 → 10 songs/day). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
