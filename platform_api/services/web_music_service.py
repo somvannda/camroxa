@@ -159,21 +159,15 @@ _AI_ASSIST_UNAVAILABLE = "AI assist is temporarily unavailable. Please try again
 
 
 def reraise_text_assist_failure(exc: BaseException) -> None:
-    """Map LLM/provider failures to a user-facing 502 after credits are refunded.
-
-    Preserves the original provider message so the frontend can surface it
-    (instead of always hiding behind the generic fallback).
-    """
+    """Map LLM/provider failures to a user-facing 502 after credits are refunded."""
     if isinstance(exc, (ValidationError, QuotaExceededError)):
         raise exc
     logger.exception("text-assist LLM failed: %s", type(exc).__name__)
     details = getattr(exc, "details", None)
-    raw_message = str(exc).strip()
-    user_message = raw_message if raw_message and len(raw_message) <= 500 else _AI_ASSIST_UNAVAILABLE
     raise ExternalServiceError(
-        user_message,
+        _AI_ASSIST_UNAVAILABLE,
         is_retryable=True,
-        details=details if isinstance(details, dict) else ({"provider_error": raw_message} if raw_message else None),
+        details=details if isinstance(details, dict) else None,
     ) from exc
 
 

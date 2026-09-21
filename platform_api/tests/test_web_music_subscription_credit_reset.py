@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -40,7 +40,8 @@ async def test_reset_quota_if_needed_refreshes_yearly_mid_cycle() -> None:
     service = SubscriptionService.__new__(SubscriptionService)
     service._db = AsyncMock()
     service._log_monthly_credit_reset = AsyncMock()
-    now = datetime.utcnow()
+    service._sync_v3_period_grant = AsyncMock()
+    now = datetime.now(timezone.utc)
     subscription = Subscription(
         id="sub-1",
         user_id="user-1",
@@ -72,7 +73,7 @@ async def test_reset_quota_if_needed_refreshes_yearly_mid_cycle() -> None:
 async def test_reset_quota_if_needed_skips_yearly_before_monthly_due() -> None:
     service = SubscriptionService.__new__(SubscriptionService)
     service._db = AsyncMock()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     subscription = Subscription(
         id="sub-1",
         user_id="user-1",
@@ -98,7 +99,7 @@ async def test_reset_quota_if_needed_skips_yearly_before_monthly_due() -> None:
 @pytest.mark.asyncio
 async def test_get_user_subscription_survives_missing_plan_row() -> None:
     service = SubscriptionService.__new__(SubscriptionService)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     row = {
         "id": "sub-1",
         "user_id": "user-1",
