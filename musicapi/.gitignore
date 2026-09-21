@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+accounts.json
+api-keys.json
+
+# Local probe / E2E media artifacts (large, not source)
+*.mp3
+*.wav

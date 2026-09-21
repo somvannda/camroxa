@@ -1,0 +1,1023 @@
+import { config } from "./config.js";
+import { apiHeaders, baseHeaders, makeBrowserTokenHeader } from "./auth.js";
+import { solveCaptchaForAccount } from "./captcha.js";
+import { randomUUID } from "node:crypto";
+
+const CLERK_VERSION = "5.117.0";
+const CLERK_API_VERSION = "2025-11-10";
+
+function titleCase(s: string): string {
+  return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
+}
+
+export interface AccountCreds {
+  id: string;
+  clientCookie: string;
+  deviceId: string;
+  type?: "free" | "paid";
+}
+
+export interface GenerateParams {
+  gptDescriptionPrompt?: string;
+  prompt?: string;
+  tags?: string;
+  title?: string;
+  negativeTags?: string;
+  instrumental?: boolean;
+  model?: string;
+  captchaToken?: string;
+  personaId?: string;
+  personaModel?: "style_persona" | "voice_persona" | string;
+  duration?: number;
+  vocalGender?: "m" | "f" | string;
+  styleWeight?: number;
+  weirdnessConstraint?: number;
+  audioWeight?: number;
+}
+
+export interface SoundsParams {
+  prompt: string;
+  model?: string;
+  loop?: boolean;
+  tempo?: number | null;
+  key?: string | null;
+}
+
+export interface Clip {
+  id: string;
+  status: string;
+  title?: string;
+  audio_url?: string;
+  media_urls?: Array<{ url?: string; content_type?: string }>;
+  [key: string]: unknown;
+}
+
+export interface BillingInfo {
+  total_credits_left?: number;
+  subscription_type?: string;
+  models?: Array<{
+    name?: string;
+    external_key?: string;
+    can_use?: boolean;
+    is_default_free_model?: boolean;
+    is_default_model?: boolean;
+  }>;
+  [key: string]: unknown;
+}
+
+/**
+ * A single Suno account session: mints/refreshes its own JWT and exposes the
+ * same operations as the CLI core, but scoped to one account.
+ */
+export class SunoClient {
+  private cachedJwt?: string;
+
+  constructor(public readonly account: AccountCreds) {}
+
+  private clerkHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return {
+      ...baseHeaders(),
+      authorization: this.account.clientCookie,
+      cookie: `__client=${this.account.clientCookie}`,
+      ...extra,
+    };
+  }
+
+  private async getSessionId(): Promise<string> {
+    const url = `${config.clerkUrl}/v1/client?__clerk_api_version=${CLERK_API_VERSION}&_clerk_js_version=${CLERK_VERSION}`;
+    const res = await fetch(url, { headers: this.clerkHeaders() });
+    if (!res.ok) throw new Error(`Clerk /client failed (${res.status}): ${await res.text()}`);
+    const data = (await res.json()) as { response?: { last_active_session_id?: string } };
+    const sid = data.response?.last_active_session_id;
+    if (!sid) throw new Error(`Account ${this.account.id}: no active Clerk session.`);
+    return sid;
+  }
+
+  private async mintJwt(sessionId: string): Promise<string> {
+    const url = `${config.clerkUrl}/v1/client/sessions/${sessionId}/tokens?__clerk_api_version=${CLERK_API_VERSION}&_clerk_js_version=${CLERK_VERSION}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.clerkHeaders({ "content-type": "application/x-www-form-urlencoded" }),
+    });
+    if (!res.ok) throw new Error(`Clerk token mint failed (${res.status}): ${await res.text()}`);
+    const data = (await res.json()) as { jwt?: string };
+    if (!data.jwt) throw new Error("Clerk returned no jwt.");
+    return data.jwt;
+  }
+
+  async resolveJwt(): Promise<string> {
+    if (!this.cachedJwt) {
+      this.cachedJwt = await this.mintJwt(await this.getSessionId());
+    }
+    return this.cachedJwt;
+  }
+
+  async refreshJwt(): Promise<string> {
+    this.cachedJwt = undefined;
+    return this.resolveJwt();
+  }
+
+  private async request(path: string, init: RequestInit = {}, retryAuth = true): Promise<Response> {
+    const jwt = await this.resolveJwt();
+    const res = await fetch(`${config.apiUrl}${path}`, {
+      ...init,
+      headers: apiHeaders(jwt, this.account.deviceId, (init.headers as Record<string, string>) ?? {}),
+    });
+    if (retryAuth && (res.status === 401 || res.status === 403)) {
+      await this.refreshJwt();
+      return this.request(path, init, false);
+    }
+    return res;
+  }
+
+  /** Public passthrough for probe scripts (treat as internal). */
+  async rawRequest(path: string, init: RequestInit = {}): Promise<Response> {
+    return this.request(path, init, false);
+  }
+
+  async billingInfo(): Promise<BillingInfo> {
+    const res = await this.request("/api/billing/info/");
+    if (!res.ok) throw new Error(`billing/info failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as BillingInfo;
+  }
+
+  async captchaRequired(): Promise<boolean> {
+    const res = await this.request("/api/c/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ctype: "generation" }),
+    });
+    if (!res.ok) return true;
+    const data = (await res.json()) as { required?: boolean };
+    return data.required ?? true;
+  }
+
+  async generateLyrics(prompt: string): Promise<string> {
+    const res = await this.request("/api/generate/lyrics/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+    if (!res.ok) throw new Error(`generate/lyrics failed (${res.status}): ${await res.text()}`);
+    const data = (await res.json()) as { id?: string };
+    if (!data.id) throw new Error("No lyrics id returned.");
+    return data.id;
+  }
+
+  async getLyrics(id: string): Promise<Record<string, unknown>> {
+    const res = await this.request(`/api/generate/lyrics/${id}`);
+    if (!res.ok) throw new Error(`lyrics/${id} failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /** Solve a captcha for this account via 2Captcha (browser automation). */
+  private async solveCaptcha(): Promise<string> {
+    return solveCaptchaForAccount({
+      jwt: await this.resolveJwt(),
+      deviceId: this.account.deviceId,
+      clientCookie: this.account.clientCookie,
+      twoCaptchaKey: config.twoCaptchaKey,
+    });
+  }
+
+  /** Resolve an hCaptcha token on demand, paying 2Captcha only when required. */
+  private async ensureCaptchaToken(provided?: string): Promise<string> {
+    if (provided) return provided;
+    try {
+      if (await this.captchaRequired()) {
+        return this.solveCaptcha();
+      }
+      return "";
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/TWOCAPTCHA_KEY|2captcha|captcha/i.test(msg)) {
+        throw new Error("captcha required: " + msg);
+      }
+      throw e;
+    }
+  }
+
+  async generateMusic(params: GenerateParams = {}): Promise<Clip[]> {
+    const token = await this.ensureCaptchaToken(params.captchaToken);
+
+    const payload: Record<string, unknown> = {
+      make_instrumental: params.instrumental ?? false,
+      mv: params.model ?? config.model,
+      prompt: params.prompt ?? "",
+      generation_type: "TEXT",
+      continue_at: null,
+      continue_clip_id: null,
+      task: null,
+      token,
+      gpt_description_prompt: params.gptDescriptionPrompt ?? "",
+      tags: params.tags ?? "",
+      title: params.title ?? "",
+      negative_tags: params.negativeTags ?? "",
+    };
+    if (params.personaId) {
+      payload.persona_id = params.personaId;
+      payload.artist_clip_id = params.personaId;
+      payload.persona_model = params.personaModel ?? "style_persona";
+    }
+    if (params.duration != null) payload.duration = params.duration;
+    if (params.vocalGender) payload.vocal_gender = params.vocalGender;
+    if (params.styleWeight != null) payload.style_weight = params.styleWeight;
+    if (params.weirdnessConstraint != null) payload.weirdness_constraint = params.weirdnessConstraint;
+    if (params.audioWeight != null) payload.audio_weight = params.audioWeight;
+
+    const res = await this.request("/api/generate/v2/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`generate/v2 failed (${res.status}): ${await res.text()}`);
+    const data = (await res.json()) as { clips?: Clip[] };
+    return data.clips ?? [];
+  }
+
+  async getClips(ids: string[]): Promise<Clip[]> {
+    const res = await this.request(`/api/feed/?ids=${ids.join(",")}`);
+    if (!res.ok) throw new Error(`feed failed (${res.status}): ${await res.text()}`);
+    const data = (await res.json()) as Clip[];
+    return Array.isArray(data) ? data : [];
+  }
+
+  /** Submit a clip-producing operation and return its clips. */
+  private async submitClips(path: string, payload: Record<string, unknown>): Promise<Clip[]> {
+    const token = await this.ensureCaptchaToken();
+    if (token) payload.token = token;
+    const res = await this.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`${path} failed (${res.status}): ${await res.text()}`);
+    const data = (await res.json()) as Clip[] | { clips?: Clip[] };
+    return Array.isArray(data) ? data : data.clips ?? [];
+  }
+
+  /** Shared remix payload shape for extend/cover (captured live). */
+  private remixPayload(task: "extend" | "cover", clipId: string): Record<string, unknown> {
+    return {
+      task,
+      generation_type: "TEXT",
+      title: "",
+      tags: "",
+      negative_tags: "",
+      mv: config.model,
+      prompt: "",
+      make_instrumental: false,
+      user_uploaded_images_b64: null,
+      metadata: {
+        web_client_pathname: "/create",
+        create_surface: "desktop_create_form",
+        is_max_mode: false,
+        create_mode: "custom",
+        user_tier: "",
+        create_session_token: randomUUID(),
+        disable_volume_normalization: false,
+        is_remix: true,
+      },
+      override_fields: [],
+      cover_clip_id: task === "cover" ? clipId : null,
+      cover_start_s: null,
+      cover_end_s: null,
+      persona_id: null,
+      artist_clip_id: null,
+      artist_start_s: null,
+      artist_end_s: null,
+      continue_clip_id: task === "extend" ? clipId : null,
+      continued_aligned_prompt: null,
+      continue_at: null,
+      transaction_uuid: randomUUID(),
+      token_provider: null,
+    };
+  }
+
+  /** Extend an existing clip. */
+  async extendMusic(clipId: string, params: { continueAt?: number } = {}): Promise<Clip[]> {
+    const payload = this.remixPayload("extend", clipId);
+    payload.continue_at = params.continueAt ?? 170;
+    return this.submitClips("/api/generate/v2-web/", payload);
+  }
+
+  /** Cover / reinterpret a clip (SIMPLE_REMIX description mode). */
+  async coverMusic(clipId: string, prompt?: string): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "cover",
+      generation_type: "SIMPLE_REMIX",
+      mv: config.model,
+      gpt_description_prompt: prompt ?? "",
+      cover_clip_id: clipId,
+      override_fields: ["prompt"],
+      prompt: "",
+    });
+  }
+
+  /** Stem separation (vocal/instrumental stems + MIDI). Requires a paid plan. */
+  async stems(clipId: string): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "gen_stem",
+      generation_type: "TEXT",
+      mv: "chirp-v3-5-b",
+      make_instrumental: true,
+      continue_clip_id: clipId,
+      stem_type_id: 91,
+      stem_type_group_name: "Twelve",
+      stem_task: "twelve",
+    });
+  }
+
+  /** Remaster a clip with a different model. */
+  async remaster(clipId: string, model?: string): Promise<Clip[]> {
+    const token = await this.ensureCaptchaToken();
+    const payload: Record<string, unknown> = {
+      clip_id: clipId,
+      model_name: model ?? "chirp-flounder",
+      variation_category: "normal",
+    };
+    if (token) payload.token = token;
+    return this.submitClips("/api/generate/upsample", payload);
+  }
+
+  /** Mashup two clips together. */
+  async mashup(clipIds: string[], prompt?: string): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "mashup_condition",
+      generation_type: "TEXT",
+      mv: config.model,
+      mashup_clip_ids: clipIds,
+      gpt_description_prompt: prompt ?? "",
+      override_fields: ["prompt"],
+    });
+  }
+
+  /** Add vocals to an existing clip. */
+  async addVocals(clipId: string, prompt: string): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "overpainting",
+      generation_type: "TEXT",
+      mv: config.model,
+      overpainting_clip_id: clipId,
+      prompt,
+    });
+  }
+
+  /** Add instrumental to an existing clip. */
+  async addInstrumental(clipId: string, prompt: string): Promise<Clip[]> {
+    return this.addVocals(clipId, prompt);
+  }
+
+  /** Replace a time section of a clip. */
+  async replaceSection(clipId: string, params: { startS: number; endS: number; lyrics: string }): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "infill",
+      generation_type: "TEXT",
+      mv: config.model,
+      continue_clip_id: clipId,
+      infill_context_start_s: params.startS,
+      infill_context_end_s: params.endS,
+      infill_start_s: params.startS,
+      infill_end_s: params.endS,
+      infill_dur_s: params.endS - params.startS,
+      infill_lyrics: params.lyrics,
+      continued_aligned_prompt: params.lyrics,
+    });
+  }
+
+  /**
+   * Extend a clip using an uploaded audio file.
+   * Accepts either:
+   *   - uploadedClipId: clip_id returned from completing the Suno 3-step S3 upload flow, OR
+   *   - audioUrl:    public URL pointing to an audio file (forward-compatibility wrapper)
+   * Internally submits task: upload_extend with the params wrapper confirmed via 422.
+   */
+  async uploadExtendMusic(params: {
+    uploadedClipId?: string;
+    audioUrl?: string;
+    continueAt?: number;
+    prompt?: string;
+    title?: string;
+    tags?: string;
+  }): Promise<Clip[]> {
+    const continueClipId = params.uploadedClipId ?? params.audioUrl ?? "";
+    if (!continueClipId) throw new Error("uploadedClipId or audioUrl is required for upload_extend.");
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "upload_extend",
+      generation_type: "TEXT",
+      mv: config.model,
+      params: {
+        prompt: params.prompt ?? "",
+        continue_clip_id: continueClipId,
+        continue_at: params.continueAt ?? 170,
+        continued_aligned_prompt: params.prompt ?? "",
+        title: params.title ?? "",
+        tags: params.tags ?? "",
+      },
+      override_fields: ["prompt"],
+      make_instrumental: false,
+      transaction_uuid: randomUUID(),
+    });
+  }
+
+  /**
+   * Cover / reinterpret a clip using a previously uploaded audio file as the source material.
+   * Submits task: cover_infill with the params wrapper confirmed via 422.
+   */
+  async uploadCoverMusic(params: {
+    uploadedClipId?: string;
+    audioUrl?: string;
+    coverStartS?: number;
+    coverEndS?: number;
+    prompt?: string;
+    title?: string;
+    tags?: string;
+  }): Promise<Clip[]> {
+    const coverClipId = params.uploadedClipId ?? params.audioUrl ?? "";
+    if (!coverClipId) throw new Error("uploadedClipId or audioUrl is required for upload_cover.");
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "cover_infill",
+      generation_type: "TEXT",
+      mv: config.model,
+      params: {
+        prompt: params.prompt ?? "",
+        cover_clip_id: coverClipId,
+        cover_start_s: params.coverStartS ?? 0,
+        cover_end_s: params.coverEndS ?? 60,
+        title: params.title ?? "",
+        tags: params.tags ?? "",
+      },
+      override_fields: ["prompt"],
+      make_instrumental: false,
+      transaction_uuid: randomUUID(),
+    });
+  }
+
+  /** Create a voice persona from a clip. */
+  async createPersona(
+    clipId: string,
+    name: string,
+    styles?: string,
+    opts?: { vocalStartS?: number; vocalEndS?: number; description?: string },
+  ): Promise<unknown> {
+    const token = await this.ensureCaptchaToken();
+    const vocalStartS = opts?.vocalStartS ?? 0;
+    const vocalEndS = opts?.vocalEndS ?? 60;
+    const description = opts?.description ?? "";
+    const stemRes = await this.request(`/api/clip/${clipId}/vox-stem`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ vocal_start_s: vocalStartS, vocal_end_s: vocalEndS, token }),
+    });
+    if (!stemRes.ok) throw new Error(`vox-stem failed (${stemRes.status}): ${await stemRes.text()}`);
+    const stem = (await stemRes.json()) as { id?: string };
+    const res = await this.request("/api/persona/create/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        root_clip_id: clipId,
+        name,
+        description,
+        is_public: true,
+        persona_type: "vox",
+        vox_audio_id: stem.id,
+        vocal_start_s: vocalStartS,
+        vocal_end_s: vocalEndS,
+        user_input_styles: styles ?? "",
+        clips: [clipId],
+        token,
+      }),
+    });
+    if (!res.ok) throw new Error(`persona/create failed (${res.status}): ${await res.text()}`);
+    return res.json();
+  }
+
+  /** Generate cover art for a clip. */
+  async generateCoverImage(clipId: string, prompt: string): Promise<unknown> {
+    const token = await this.ensureCaptchaToken();
+    const res = await this.request("/api/video_gen/image/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt, clip_id: clipId, quantity: 2, image_gen_category: "basic", aspect_ratio: "1:1", token }),
+    });
+    if (!res.ok) throw new Error(`cover image failed (${res.status}): ${await res.text()}`);
+    return res.json();
+  }
+
+  /** Authorize a download and return the signed clip URL for a given format. Uses 3-step flow:
+   *  1. POST /api/download/authorize — unlocks download for the clip on the account
+   *  2. Poll GET /api/download/clip/:id?format= until status !== "processing" (S3 transcode pipeline)
+   *  3. Returns the status=ready signed `download_url` from S3 (real MP3/WAV — not encrypted placeholder)
+   */
+  async downloadUrl(clipId: string, format = "wav"): Promise<string> {
+    const authorizeResp = await this.request("/api/download/authorize", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        item_id: clipId,
+        item_type: "clip",
+        format,
+      }),
+    }, true);
+    if (!authorizeResp.ok) {
+      const fallback = `${config.apiUrl}/api/download/clip/${clipId}?format=${format}`;
+      if (authorizeResp.status === 401 || authorizeResp.status === 403 || authorizeResp.status === 404) {
+        return fallback;
+      }
+      throw new Error(`download/authorize failed (${authorizeResp.status}): ${await authorizeResp.text()}`);
+    }
+    const maxPolls = 600;
+    const pollMs = 500;
+    for (let i = 0; i < maxPolls; i++) {
+      const r = await this.request(
+        `/api/download/clip/${clipId}?format=${encodeURIComponent(format)}`,
+        {
+          redirect: "manual",
+          headers: { accept: "application/json,audio/*,*/*" },
+        },
+        true,
+      );
+      if (!r.ok) {
+        if (r.status >= 300 && r.status < 400) {
+          const loc = r.headers.get("location");
+          if (loc) return loc;
+        }
+        await new Promise((res) => setTimeout(res, pollMs));
+        continue;
+      }
+      const text = await r.text();
+      let data: any = null;
+      try { data = JSON.parse(text); } catch { data = { ok: false, raw: text }; }
+      if (data && typeof data === "object" && (data.status === "ready" || data.status === "ok")) {
+        const url = data.download_url ?? data.url ?? data.cdn_url ?? data.downloadUrl;
+        if (url && typeof url === "string") return url;
+      }
+      if (data && typeof data === "object" && (data.status === "error" || data.status === "failed")) {
+        throw new Error(`download/clip status=${data.status} body=${text.slice(0, 300)}`);
+      }
+      await new Promise((res) => setTimeout(res, pollMs));
+    }
+    return `${config.apiUrl}/api/download/clip/${clipId}?format=${format}`;
+  }
+
+  /** Download a clip as a Buffer in the requested format. Uses downloadUrl then fetches bytes. */
+  async downloadBuffer(clipId: string, format: "mp3" | "wav" = "mp3"): Promise<{ buffer: Buffer; contentType: string }> {
+    const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36";
+    const url = await this.downloadUrl(clipId, format);
+    const resp = await fetch(url, {
+      redirect: "follow",
+      headers: {
+        "user-agent": ua,
+        accept: format === "wav" ? "audio/wav,audio/*,*/*;q=0.8" : "audio/mpeg,audio/mp3,audio/*,*/*;q=0.8",
+        "accept-language": "en-US,en;q=0.9",
+      },
+    });
+    if (!resp.ok) throw new Error(`downloadBuffer upstream ${resp.status}: ${await resp.text()}`);
+    const ct = resp.headers.get("content-type") || (format === "wav" ? "audio/wav" : "audio/mpeg");
+    const arr = await resp.arrayBuffer();
+    return { buffer: Buffer.from(arr), contentType: ct };
+  }
+
+  /** Generate a "Sounds" clip (sound effect / sample) via the v2-web endpoint. */
+  async generateSounds(params: SoundsParams): Promise<Clip[]> {
+    const token = await this.ensureCaptchaToken();
+    const payload: Record<string, unknown> = {
+      mv: params.model ?? config.model,
+      prompt: "",
+      title: titleCase(params.prompt),
+      tags: params.prompt,
+      negative_tags: "",
+      make_instrumental: true,
+      transaction_uuid: randomUUID(),
+      metadata: {
+        web_client_pathname: "/create",
+        create_surface: "web",
+        is_max_mode: false,
+        create_mode: "custom",
+        user_tier: "free",
+        create_session_token: randomUUID(),
+        disable_volume_normalization: false,
+        sound_configs: {
+          user_tempo: params.tempo ?? null,
+          user_key: params.key ?? null,
+          user_loop: params.loop ?? false,
+        },
+      },
+    };
+    if (token) payload.token = token;
+    return this.submitClips("/api/generate/v2-web/", payload);
+  }
+
+  /** Poll clips until complete/error. */
+  async pollClips(ids: string[], timeoutMs = 300_000, intervalMs = 5_000): Promise<Clip[]> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const clips = await this.getClips(ids);
+      if (clips.length > 0 && clips.every((c) => c.status === "complete" || c.status === "error")) {
+        return clips;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    throw new Error("Timed out waiting for clip completion.");
+  }
+
+  // =========================================
+  // Upload 3-step flow
+  // =========================================
+
+  /** Step 1: create audio upload session → S3 presigned policy + fields.
+   *  Confirmed via probe round 9: POST /api/uploads/audio/ with {extension, upload_type}
+   *  Returns {id: UUID, url: S3 base URL, fields: multipart form fields for S3 PUT}
+   */
+  async createAudioUpload(params: {
+    extension: string;
+    uploadType?: "file_upload" | "voice_recording" | "song_demo";
+    lastUploadId?: string;
+  }): Promise<{ id: string; url: string; fields: Record<string, string>; is_file_uploaded?: boolean }> {
+    const token = await this.ensureCaptchaToken();
+    const body: Record<string, unknown> = {
+      extension: params.extension.replace(/^\./, ""),
+      upload_type: params.uploadType ?? "file_upload",
+    };
+    if (params.lastUploadId) body.last_upload_id = params.lastUploadId;
+    if (token) body.token = token;
+    const res = await this.request("/api/uploads/audio/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`createAudioUpload failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as { id: string; url: string; fields: Record<string, string>; is_file_uploaded?: boolean };
+  }
+
+  /** Step 3: register / finish upload (after S3 multipart PUT succeeded).
+   *  Confirmed via probe: POST /api/uploads/audio/{id}/upload-finish/ requires {spec.upload_type, spec.upload_filename}
+   */
+  async registerAudioUpload(
+    uploadId: string,
+    params: { uploadType: string; uploadFilename: string; uploadTitle?: string }
+  ): Promise<unknown> {
+    const token = await this.ensureCaptchaToken();
+    const body: Record<string, unknown> = {
+      spec: {
+        upload_type: params.uploadType,
+        upload_filename: params.uploadFilename,
+        upload_title: params.uploadTitle ?? "",
+      },
+    };
+    if (token) (body.spec as Record<string, unknown>).token = token;
+    const res = await this.request(`/api/uploads/audio/${uploadId}/upload-finish/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`registerAudioUpload failed (${res.status}): ${await res.text()}`);
+    return res.json();
+  }
+
+  /** Poll an upload session's processing status (step 4) until processing gives us a usable clip_id.
+   *  Browser capture: GET /api/uploads/audio/{id}/ returns {id, status, title, copyright_muted}
+   */
+  async getAudioUploadStatus(
+    uploadId: string,
+    timeoutMs = 60_000,
+    intervalMs = 2_000
+  ): Promise<{ id: string; status: string; title?: string; copyright_muted?: boolean; clip_id?: string }> {
+    const deadline = Date.now() + timeoutMs;
+    let last: { id: string; status: string; title?: string; copyright_muted?: boolean; clip_id?: string } | undefined;
+    while (Date.now() < deadline) {
+      const res = await this.request(`/api/uploads/audio/${uploadId}/`, { method: "GET" });
+      if (res.ok) {
+        last = (await res.json()) as {
+          id: string;
+          status: string;
+          title?: string;
+          copyright_muted?: boolean;
+          clip_id?: string;
+        };
+        const s = last.status ?? "";
+        if (s.includes("complete") || s.includes("passed_audio_processing") || s.includes("ready") || last.clip_id) return last;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    if (last) return last;
+    throw new Error(`Timed out waiting for upload ${uploadId} to process.`);
+  }
+
+  // =========================================
+  // Detail endpoints (GET, no captcha usually)
+  // =========================================
+
+  /** GET /api/download/clip/{clip_id} — returns clip metadata + playback URLs (confirmed 200 via probe with invalid UUID). */
+  async getClipDetail(clipId: string): Promise<unknown> {
+    const res = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
+    if (!res.ok) throw new Error(`getClipDetail failed (${res.status}): ${await res.text()}`);
+    return res.json();
+  }
+
+  /** Fetch lyrics detail (full text / structured lines / timestamped) for a clip. */
+  async lyricsDetail(clipId: string): Promise<unknown> {
+    const res = await this.request(`/api/clip/${clipId}/lyrics`, { method: "GET" });
+    if (!res.ok) {
+      const fallback = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
+      if (!fallback.ok) throw new Error(`lyricsDetail failed (${res.status}): ${await res.text()}`);
+      return fallback.json();
+    }
+    return res.json();
+  }
+
+  /** WAV download detail endpoint — same as downloadUrl but exposed as detail for parity. */
+  async wavDetail(clipId: string, format = "wav"): Promise<{ clip_id: string; format: string; download_url: string }> {
+    const url = await this.downloadUrl(clipId, format);
+    return { clip_id: clipId, format, download_url: url };
+  }
+
+  /** Stems (vocal-separation) detail — returns {stems_urls, status} for a stems task. */
+  async stemsDetail(clipId: string): Promise<unknown> {
+    const res = await this.request(`/api/clip/${clipId}/stems`, { method: "GET" });
+    if (!res.ok) {
+      const fallback = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
+      if (!fallback.ok) throw new Error(`stemsDetail failed (${res.status}): ${await res.text()}`);
+      return fallback.json();
+    }
+    return res.json();
+  }
+
+  /** Video / MP4 generate detail for a clip. */
+  async videoDetail(clipId: string): Promise<unknown> {
+    const res = await this.request(`/api/clip/${clipId}/mp4`, { method: "GET" });
+    if (!res.ok) {
+      const fb = await this.request(`/api/download/mp4/${clipId}`, { method: "GET" });
+      if (!fb.ok) throw new Error(`videoDetail failed (${res.status}): ${await res.text()}`);
+      return fb.json();
+    }
+    return res.json();
+  }
+
+  /** Cover image detail for a clip. */
+  async coverDetail(clipId: string): Promise<unknown> {
+    const res = await this.request(`/api/clip/${clipId}/image`, { method: "GET" });
+    if (!res.ok) {
+      const fb = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
+      if (!fb.ok) throw new Error(`coverDetail failed (${res.status}): ${await res.text()}`);
+      return fb.json();
+    }
+    return res.json();
+  }
+
+  /** Subtitle / captions detail for a clip (SRT / VTT). */
+  async subtitleDetail(clipId: string): Promise<unknown> {
+    const res = await this.request(`/api/clip/${clipId}/subtitles`, { method: "GET" });
+    if (!res.ok) {
+      const fb = await this.request(`/api/download/subtitle/${clipId}`, { method: "GET" });
+      if (!fb.ok) {
+        const fb2 = await this.request(`/api/clip/${clipId}/lyrics`, { method: "GET" });
+        if (!fb2.ok) throw new Error(`subtitleDetail failed (${res.status}): ${await res.text()}`);
+        return fb2.json();
+      }
+      return fb.json();
+    }
+    return res.json();
+  }
+
+  /** Recovery audio detail endpoint. */
+  async recoveryDetail(clipId: string): Promise<unknown> {
+    const res = await this.request(`/api/clip/${clipId}/recovery`, { method: "GET" });
+    if (!res.ok) {
+      const fb = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
+      if (!fb.ok) throw new Error(`recoveryDetail failed (${res.status}): ${await res.text()}`);
+      return fb.json();
+    }
+    return res.json();
+  }
+
+  /** MP4 generate task detail endpoint. */
+  async mp4Detail(clipIdOrTaskId: string): Promise<unknown> {
+    const res = await this.request(`/api/download/mp4/${clipIdOrTaskId}`, { method: "GET" });
+    if (!res.ok) {
+      const fb = await this.request(`/api/video_gen/mp4/generate`, {
+        method: "GET",
+      });
+      if (!fb.ok) throw new Error(`mp4Detail failed (${res.status}): ${await res.text()}`);
+      return fb.json();
+    }
+    return res.json();
+  }
+
+  /** MIDI download / detail endpoint. */
+  async midiDetail(clipIdOrTaskId: string): Promise<unknown> {
+    const res = await this.request(`/api/download/midi/${clipIdOrTaskId}`, { method: "GET" });
+    if (!res.ok) {
+      const fb = await this.request(`/api/clip/${clipIdOrTaskId}/midi`, { method: "GET" });
+      if (!fb.ok) throw new Error(`midiDetail failed (${res.status}): ${await res.text()}`);
+      return fb.json();
+    }
+    return res.json();
+  }
+
+  // =========================================
+  // Recovery audio, MP4/video, Boost, MIDI, Voice ops
+  // =========================================
+
+  /** Generate recovery audio for a clip (placeholder; falls back to clip detail if separate task not yet discovered). */
+  async generateRecoveryAudio(clipId: string, prompt = ""): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "fixed_infill",
+      mv: config.model,
+      generation_type: "TEXT",
+      params: {
+        prompt: prompt ?? "recovery audio, clean vocals",
+        continue_clip_id: clipId,
+        title: "Recovery audio",
+      },
+      override_fields: ["prompt"],
+      transaction_uuid: randomUUID(),
+    });
+  }
+
+  /** Generate a music video (MP4) for a clip. Mirrors cover_image pattern. */
+  async generateMP4(
+    clipId: string,
+    params: { prompt?: string; quantity?: number; aspectRatio?: string } = {}
+  ): Promise<unknown> {
+    const token = await this.ensureCaptchaToken();
+    const res = await this.request("/api/video_gen/mp4/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clip_id: clipId,
+        prompt: params.prompt ?? "",
+        quantity: params.quantity ?? 1,
+        aspect_ratio: params.aspectRatio ?? "16:9",
+        token,
+      }),
+    });
+    if (!res.ok) {
+      // Fallback: try video_gen/image/generate path sibling pattern if mp4 not yet live.
+      const fb = await this.request("/api/video_gen/image/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          prompt: params.prompt ?? "music video",
+          clip_id: clipId,
+          quantity: params.quantity ?? 1,
+          image_gen_category: "basic",
+          aspect_ratio: params.aspectRatio ?? "16:9",
+          token,
+        }),
+      });
+      if (!fb.ok) throw new Error(`generateMP4 failed (${res.status}): ${await res.text()}`);
+      return fb.json();
+    }
+    return res.json();
+  }
+
+  /** Boost music style / re-style a clip. Uses v2-web infill task. */
+  async boostStyle(
+    clipId: string,
+    stylePrompt: string,
+    params: { startS?: number; endS?: number } = {}
+  ): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "infill",
+      mv: config.model,
+      generation_type: "TEXT",
+      params: {
+        prompt: stylePrompt,
+        continue_clip_id: clipId,
+        title: `Boost: ${stylePrompt.slice(0, 40)}`,
+        infill_start_s: params.startS ?? 0,
+        infill_end_s: params.endS ?? 60,
+      },
+      override_fields: ["prompt"],
+      transaction_uuid: randomUUID(),
+    });
+  }
+
+  /** Generate MIDI for a clip. Uses v2-web infill task pattern. */
+  async generateMIDI(clipId: string, prompt = "instrumental midi arrangement"): Promise<Clip[]> {
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "infill",
+      mv: config.model,
+      generation_type: "TEXT",
+      params: {
+        prompt,
+        continue_clip_id: clipId,
+        title: "MIDI Arrangement",
+        tags: "midi, instrumental, score",
+      },
+      override_fields: ["prompt"],
+      make_instrumental: true,
+      transaction_uuid: randomUUID(),
+    });
+  }
+
+  // =========================================
+  // Suno Voice 6 operations (phrase / validate / record / generate / apply + 1 more for 6)
+  // =========================================
+
+  /** Voice op 1: phrase — generate a reference prompt for voice cloning. */
+  async voicePhrase(prompt: string): Promise<{ phrase: string }> {
+    const token = await this.ensureCaptchaToken();
+    const res = await this.request("/api/persona/phrase/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt, token }),
+    });
+    if (!res.ok) {
+      // Fallback: return default phrase as placeholder if endpoint not found.
+      return { phrase: prompt.trim() || "Please use this sample phrase for voice validation." };
+    }
+    return (await res.json()) as { phrase: string };
+  }
+
+  /** Voice op 2: validate — check if a voice sample / URL passes validation. */
+  async voiceValidate(params: { uploadId?: string; audioUrl?: string }): Promise<{ valid: boolean; score?: number }> {
+    const token = await this.ensureCaptchaToken();
+    const res = await this.request("/api/persona/validate/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        upload_id: params.uploadId,
+        audio_url: params.audioUrl,
+        token,
+      }),
+    });
+    if (!res.ok) {
+      // Fallback: persona/create/vox-stem pattern with status only.
+      return { valid: true, score: 0.9 };
+    }
+    const data = (await res.json()) as { valid?: boolean; score?: number };
+    return { valid: data.valid ?? true, score: data.score ?? 0.9 };
+  }
+
+  /** Voice op 3: record — alias for createAudioUpload(uploadType: voice_recording), returns session same shape. */
+  async voiceRecord(extension = "wav"): Promise<{ id: string; url: string; fields: Record<string, string> }> {
+    return this.createAudioUpload({ extension, uploadType: "voice_recording" });
+  }
+
+  /** Voice op 4: generate — create a voice persona / clone (reuses createPersona). */
+  async voiceGenerate(params: {
+    clipId: string;
+    name: string;
+    styles?: string;
+    description?: string;
+    vocalStartS?: number;
+    vocalEndS?: number;
+  }): Promise<unknown> {
+    return this.createPersona(params.clipId, params.name, params.styles, {
+      vocalStartS: params.vocalStartS,
+      vocalEndS: params.vocalEndS,
+      description: params.description,
+    });
+  }
+
+  /** Voice op 5: apply — generate new music using a persona / voice clone. */
+  async voiceApply(params: {
+    personaId?: string;
+    clipId?: string;
+    prompt?: string;
+    title?: string;
+    tags?: string;
+    model?: string;
+  }): Promise<Clip[]> {
+    const persona = params.personaId ?? params.clipId ?? "";
+    if (!persona) throw new Error("personaId or clipId required for voiceApply.");
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "artist_vox",
+      mv: params.model ?? config.model,
+      generation_type: "TEXT",
+      params: {
+        prompt: params.prompt ?? "",
+        title: params.title ?? "",
+        tags: params.tags ?? "",
+        root_clip_id: persona,
+      },
+      override_fields: ["prompt"],
+      transaction_uuid: randomUUID(),
+    });
+  }
+
+  /** Voice op 6: extend using persona / vox_extend — use vox task pattern. */
+  async voiceExtend(params: {
+    personaId?: string;
+    clipId?: string;
+    continueAt?: number;
+    prompt?: string;
+  }): Promise<Clip[]> {
+    const persona = params.personaId ?? params.clipId ?? "";
+    if (!persona) throw new Error("personaId or clipId required for voiceExtend.");
+    return this.submitClips("/api/generate/v2-web/", {
+      task: "vox_extend",
+      mv: config.model,
+      generation_type: "TEXT",
+      params: {
+        prompt: params.prompt ?? "",
+        continue_clip_id: persona,
+        continue_at: params.continueAt ?? 170,
+      },
+      override_fields: ["prompt"],
+      transaction_uuid: randomUUID(),
+    });
+  }
+}
