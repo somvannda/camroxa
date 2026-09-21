@@ -1,6 +1,24 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 
+/**
+ * Resolve the JWT signing secret, refusing to start with a missing or weak
+ * value. A hardcoded fallback would let anyone forge admin tokens in any
+ * environment where JWT_SECRET was not set.
+ */
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET ?? "";
+  const isPlaceholder = secret === "dev-secret-change-me";
+  if (!secret || isPlaceholder || secret.length < 32) {
+    throw new Error(
+      "JWT_SECRET must be set to a strong value (>= 32 characters) and must not be " +
+        "the default placeholder. Generate one with: " +
+        "node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"",
+    );
+  }
+  return secret;
+}
+
 export const config = {
   /** Full cookie header (optional, sent as `Cookie` on Clerk requests). */
   cookie: process.env.SUNO_COOKIE ?? "",
@@ -17,7 +35,7 @@ export const config = {
   deviceId: process.env.SUNO_DEVICE_ID ?? randomUUID(),
   databaseUrl:
     process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/sunoapi",
-  jwtSecret: process.env.JWT_SECRET ?? "dev-secret-change-me",
+  jwtSecret: resolveJwtSecret(),
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",
     accountId: process.env.BAKONG_ACCOUNT_ID ?? "",
