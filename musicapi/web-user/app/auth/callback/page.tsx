@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { completeGoogleCallback } from "@/components/google-signin-button";
 
-// Suspense boundary wraps this page at the layout level — Next 15 requires it
-// for useSearchParams in a non-async client component.
-
-export default function GoogleCallbackPage() {
+// useSearchParams() requires a Suspense boundary during prerender; the default
+// export below provides it (see GoogleCallbackInner).
+function GoogleCallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
   const code = params.get("code") ?? "";
@@ -77,5 +76,23 @@ export default function GoogleCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GoogleCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center p-6">
+          <div className="glass w-full max-w-md rounded-2xl p-8 text-center space-y-4">
+            <div className="grad-bg mx-auto h-12 w-12 rounded-xl" />
+            <h1 className="text-xl font-bold">Signing you in…</h1>
+            <p className="text-sm text-[var(--muted)]">Preparing…</p>
+          </div>
+        </div>
+      }
+    >
+      <GoogleCallbackInner />
+    </Suspense>
   );
 }
