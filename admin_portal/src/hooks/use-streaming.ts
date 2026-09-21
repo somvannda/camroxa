@@ -56,6 +56,7 @@ export type StreamingUploadJob = {
   storage_key?: string | null;
   error?: string | null;
   attempt_count?: number;
+  permanent_failed?: boolean;
   user_id?: string | null;
   user_email?: string | null;
   user_display_name?: string | null;
@@ -172,15 +173,48 @@ export function useStreamingAlbums(params: StreamingCatalogListParams) {
   });
 }
 
-export function useStreamingUploadJobs(status?: string) {
+export type UploadJobsListParams = {
+  page: number;
+  pageSize?: number;
+  status?: string;
+  kind?: string;
+  q?: string;
+};
+
+export type UploadJobsPage = {
+  items: StreamingUploadJob[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export function useStreamingUploadJobs(params: UploadJobsListParams) {
+  const pageSize = params.pageSize ?? 50;
+  const offset = Math.max(0, (params.page - 1) * pageSize);
+  const status = params.status && params.status !== 'all' ? params.status : undefined;
+  const kind = params.kind && params.kind !== 'all' ? params.kind : undefined;
+  const q = params.q?.trim() || undefined;
   return useQuery({
-    queryKey: ['streaming-upload-jobs', status ?? 'all'],
+    queryKey: [
+      'streaming-upload-jobs',
+      pageSize,
+      offset,
+      status ?? 'all',
+      kind ?? 'all',
+      q ?? '',
+    ],
     queryFn: async () => {
-      const data = await httpClient.get<{ items: StreamingUploadJob[] }>(
+      const data = await httpClient.get<UploadJobsPage>(
         '/api/v3/admin/streaming/upload-jobs',
-        { limit: 200, ...(status ? { status } : {}) },
+        {
+          limit: pageSize,
+          offset,
+          ...(status ? { status } : {}),
+          ...(kind ? { kind } : {}),
+          ...(q ? { q } : {}),
+        },
       );
-      return data.items ?? [];
+      return data;
     },
   });
 }
@@ -252,6 +286,110 @@ export function useRetryUploadJob() {
       queryClient.invalidateQueries({ queryKey: ['streaming-upload-jobs'] });
       invalidateCatalog(queryClient);
     },
+  });
+}
+
+export type RetryAllSweepStatus = {
+  running: boolean;
+  started_at?: string | null;
+  finished_at?: string | null;
+  total: number;
+  scanned: number;
+  succeeded: number;
+  still_failed: number;
+  remaining: number;
+  /** Live count of failed mp3_ok/mp3_alt upload jobs in the DB right now. */
+  failed_mp3_now?: number;
+  /** All-time successes that required at least one retry (attempt_count > 1). */
+  retried_success_total?: number;
+  last_errors?: Array<{ job_id: string; error: string }>;
+};
+
+export function useStartRetryAllUploads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      httpClient.post<{ started: boolean; running: boolean; total: number }>(
+        '/api/v3/admin/streaming/upload-jobs/retry-all',
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['streaming-upload-sweep-status'] });
+    },
+  });
+}
+
+export function useRetryFailedUploadJobs() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params?: { limit?: number; maxAgeHours?: number }) =>
+      httpClient.post<{ retried: number; succeeded: number; failed: number }>(
+        `/api/v3/admin/streaming/upload-jobs/retry-failed?limit=${
+          params?.limit ?? 50
+        }&max_age_hours=${params?.maxAgeHours ?? 72}`,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['streaming-upload-jobs'] });
+      invalidateCatalog(queryClient);
+    },
+  });
+}
+
+export function useRetryAllUploadSweepStatus() {
+  return useQuery({
+    queryKey: ['streaming-upload-sweep-status'],
+    queryFn: () =>
+      httpClient.get<RetryAllSweepStatus>(
+        '/api/v3/admin/streaming/upload-jobs/retry-all/status',
+      ),
+    refetchInterval: (query) => (query.state.data?.running === true ? 3000 : false),
+    refetchOnWindowFocus: false,
+  });
+}
+
+export type WebMusicAssetRecoveryCounters = {
+  tasks_scanned: number;
+  wav_recovered: number;
+  wav_failed: number;
+  lrc_recovered: number;
+  lrc_noop: number;
+  srt_created: number;
+  pkg_recovered: number;
+  pkg_failed: number;
+  errors: number;
+};
+
+export type WebMusicAssetRecoveryStatus = {
+  running: boolean;
+  started_at?: string | null;
+  finished_at?: string | null;
+  counters: Partial<WebMusicAssetRecoveryCounters>;
+  last_errors?: Array<{ what: string; task_id: string; error: string }>;
+};
+
+export function useStartWebMusicAssetRecovery() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      httpClient.post<{ started: boolean; running: boolean; reason?: string }>(
+        '/api/v3/admin/streaming/web-music-assets/recover',
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['streaming-web-music-asset-recovery'],
+      });
+    },
+  });
+}
+
+export function useWebMusicAssetRecoveryStatus() {
+  return useQuery({
+    queryKey: ['streaming-web-music-asset-recovery'],
+    queryFn: () =>
+      httpClient.get<WebMusicAssetRecoveryStatus>(
+        '/api/v3/admin/streaming/web-music-assets/recover/status',
+      ),
+    refetchInterval: (query) => (query.state.data?.running === true ? 3000 : false),
+    refetchOnWindowFocus: false,
   });
 }
 

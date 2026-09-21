@@ -195,6 +195,7 @@ def _extract_clip_download_url(clip: dict[str, Any]) -> str:
     from platform_api.services.suno_audio_resolver import is_disallowed_suno_audio_url
 
     audio_id = _extract_clip_audio_id(clip)
+    primary = ""
     for key in (
         "audioUrl",
         "audio_url",
@@ -203,7 +204,24 @@ def _extract_clip_download_url(clip: dict[str, Any]) -> str:
     ):
         url = str(clip.get(key, "")).strip()
         if url and not is_disallowed_suno_audio_url(url):
-            return prefer_suno_mpeg_cdn_url(url, audio_id)
+            primary = prefer_suno_mpeg_cdn_url(url, audio_id)
+            break
+    # Reseller hosts (sunoapi.org / apibox) return the short-lived
+    # ``tempfile.aiquickdraw.com`` link as ``audio_url`` and the durable
+    # ``audiostream.api.box`` link as ``stream_audio_url``. The temp link is
+    # purged within hours, so prefer the stream host when we see it.
+    if "tempfile.aiquickdraw.com" in primary:
+        for key in (
+            "source_stream_audio_url",
+            "sourceStreamAudioUrl",
+            "stream_audio_url",
+            "streamAudioUrl",
+        ):
+            url = str(clip.get(key, "")).strip()
+            if url and not is_disallowed_suno_audio_url(url):
+                return url
+    if primary:
+        return primary
     # Callback only carried rejected hosts (e.g. musicfile cover JPEG) or no
     # usable URL. The finished MP3 lives on the tempfile host keyed by clip id.
     # Same id => no new Suno generation/charge.

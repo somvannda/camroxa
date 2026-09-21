@@ -119,6 +119,7 @@ class UploadJobResponse(BaseModel):
     storage_key: str | None = None
     error: str | None = None
     attempt_count: int | None = None
+    permanent_failed: bool = False
     user_id: str | None = None
     user_email: str | None = None
     user_display_name: str | None = None
@@ -139,6 +140,9 @@ class UploadJobResponse(BaseModel):
 
 class UploadJobListResponse(BaseModel):
     items: list[UploadJobResponse]
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
 
 
 class UpdateTrackGenreRequest(BaseModel):
@@ -390,15 +394,25 @@ async def list_streaming_albums(
 async def list_streaming_upload_jobs(
     ctx: AdminDep,
     status: str | None = None,
-    limit: int = 50,
+    kind: str | None = None,
+    q: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> UploadJobListResponse:
     del ctx
     from platform_api.dependencies import get_db_pool
 
-    rows = await StreamingRepository(get_db_pool()).list_upload_jobs(
-        limit=max(1, min(limit, 200)),
+    repo = StreamingRepository(get_db_pool())
+    normalized_q = (q or "").strip()[:120] or None
+    rows = await repo.list_upload_jobs(
+        limit=limit,
+        offset=offset,
         status=status,
+        kind=kind,
+        q=normalized_q,
     )
+    total = await repo.count_upload_jobs(status=status, kind=kind, q=normalized_q)
+
     def _id(value: Any) -> str | None:
         return str(value) if value is not None else None
 
@@ -414,6 +428,7 @@ async def list_streaming_upload_jobs(
             storage_key=row.get("storage_key"),
             error=row.get("error"),
             attempt_count=int(row["attempt_count"]) if row.get("attempt_count") is not None else None,
+            permanent_failed=bool(row.get("permanent_failed")),
             user_id=_id(row.get("user_id")),
             user_email=row.get("user_email"),
             user_display_name=row.get("user_display_name"),
@@ -435,7 +450,7 @@ async def list_streaming_upload_jobs(
         )
         for row in rows
     ]
-    return UploadJobListResponse(items=items)
+    return UploadJobListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post("/tracks/{track_id}/unpublish")
@@ -486,6 +501,22 @@ async def delete_stream_album(album_id: UUID, ctx: AdminDep, service: CatalogSer
     return {"ok": True}
 
 
+@router.post("/upload-jobs/retry-failed")
+async def retry_failed_streaming_upload_jobs(
+    ctx: AdminDep,
+    limit: int = 50,
+    max_age_hours: int = 72,
+) -> dict:
+    """Bulk-retry recent failed MP3 upload jobs (Recovery-Audio backed)."""
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).retry_failed_jobs(
+        limit=limit,
+        max_age_hours=max_age_hours,
+    )
+
+
 @router.post("/upload-jobs/{job_id}/retry")
 async def retry_streaming_upload_job(job_id: UUID, ctx: AdminDep) -> dict:
     del ctx
@@ -498,6 +529,48 @@ async def retry_streaming_upload_job(job_id: UUID, ctx: AdminDep) -> dict:
         if "not found" in message.lower():
             raise NotFoundError(message) from exc
         raise ValidationError(message) from exc
+
+
+@router.post("/upload-jobs/retry-all")
+async def retry_all_streaming_upload_jobs(ctx: AdminDep) -> dict:
+    """Start a background sweep that retries every failed mp3 upload job (no cap).
+
+    Returns immediately; poll GET /upload-jobs/retry-all/status for progress.
+    """
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).start_failed_mp3_retry_sweep()
+
+
+@router.get("/upload-jobs/retry-all/status")
+async def retry_all_streaming_upload_jobs_status(ctx: AdminDep) -> dict:
+    """Live progress of the failed-mp3 retry sweep started via retry-all."""
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).failed_mp3_retry_sweep_status()
+
+
+@router.post("/web-music-assets/recover")
+async def recover_web_music_assets(ctx: AdminDep) -> dict:
+    """Start one web-music companion-asset recovery pass (wav/lrc/srt/package).
+
+    Returns immediately; poll GET /web-music-assets/recover/status for progress.
+    """
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).start_web_music_asset_recovery()
+
+
+@router.get("/web-music-assets/recover/status")
+async def web_music_assets_recovery_status(ctx: AdminDep) -> dict:
+    """Live progress of the web-music companion-asset recovery pass."""
+    del ctx
+    from platform_api.dependencies import get_db_pool
+
+    return await StreamingUploadService(get_db_pool()).web_music_asset_recovery_status()
 
 
 @router.post("/tracks/{track_id}/sync-metadata", response_model=MetadataSyncResponse)
