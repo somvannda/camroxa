@@ -1363,15 +1363,21 @@ class BatchRepository:
                   AND (
                     (
                       COALESCE(NULLIF(BTRIM(audio_url_ok), ''), NULL) IS NULL
-                      AND COALESCE(NULLIF(BTRIM(audio_url_alt), ''), NULL) IS NULL
-                    )
-                    OR (
-                      COALESCE(NULLIF(BTRIM(audio_url_ok), ''), NULL) IS NULL
-                      AND COALESCE(NULLIF(BTRIM(audio_id_ok), ''), NULL) IS NOT NULL
+                      AND NOT EXISTS (
+                        SELECT 1 FROM stream_tracks t
+                        WHERE t.suno_task_id = suno_tasks.id
+                          AND t.variant = 'ok'
+                          AND COALESCE(t.storage_key, '') <> ''
+                      )
                     )
                     OR (
                       COALESCE(NULLIF(BTRIM(audio_url_alt), ''), NULL) IS NULL
-                      AND COALESCE(NULLIF(BTRIM(audio_id_alt), ''), NULL) IS NOT NULL
+                      AND NOT EXISTS (
+                        SELECT 1 FROM stream_tracks t
+                        WHERE t.suno_task_id = suno_tasks.id
+                          AND t.variant = 'alt'
+                          AND COALESCE(t.storage_key, '') <> ''
+                      )
                     )
                   )
                 )

@@ -102,6 +102,8 @@ def format_ops_message(
         title = f"♻️ <b>REFUND</b> · {_esc(env_label)}"
     elif kind_key == "plan_quota":
         title = f"📦 <b>PLAN QUOTA</b> · {_esc(env_label)}"
+    elif kind_key == "download":
+        title = f"⬇️ <b>DOWNLOAD</b> · {_esc(env_label)}"
     else:
         badge = f" · <b>{_esc(status)}</b>" if status else ""
         title = f"🔥 <b>SPEND</b>{badge} · {_esc(env_label)}"
@@ -162,7 +164,7 @@ class TelegramOpsAlertService:
             await self._http_client.aclose()
             self._http_client = None
 
-    async def send_html(self, text: str) -> bool:
+    async def send_html(self, text: str, *, reply_markup: dict[str, Any] | None = None) -> bool:
         if not self.configured:
             return False
         if not await _runtime_enabled():
@@ -174,15 +176,15 @@ class TelegramOpsAlertService:
             body = body[:3990] + "…"
         client = await self._client()
         url = _TELEGRAM_SEND_URL.format(token=self._bot_token)
-        response = await client.post(
-            url,
-            json={
-                "chat_id": self._chat_id,
-                "text": body,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            },
-        )
+        payload: dict[str, Any] = {
+            "chat_id": self._chat_id,
+            "text": body,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+        response = await client.post(url, json=payload)
         if response.status_code >= 400:
             logger.warning(
                 "Telegram ops post failed status=%s body=%s",
@@ -327,7 +329,13 @@ def schedule_ops_message(text: str) -> None:
     loop.create_task(_run(), name="telegram-ops-alert")
 
 
-def _schedule_enriched(kind: str, *, user_id: Any, **fields: Any) -> None:
+def _schedule_enriched(
+    kind: str,
+    *,
+    user_id: Any,
+    reply_markup: dict[str, Any] | None = None,
+    **fields: Any,
+) -> None:
     if get_telegram_ops_service() is None:
         return
     try:
@@ -351,7 +359,7 @@ def _schedule_enriched(kind: str, *, user_id: Any, **fields: Any) -> None:
         if service is None:
             return
         try:
-            await service.send_html(text)
+            await service.send_html(text, reply_markup=reply_markup)
         except Exception as exc:
             logger.warning("Telegram ops post failed: %s", str(exc)[:200])
         finally:
@@ -515,6 +523,72 @@ def notify_web_music_refund(
     )
 
 
+def notify_web_music_download(
+    *,
+    user_id: Any,
+    format: str | None = None,
+    variant: str = "ok",
+    filename: str | None = None,
+    reference_id: Any | None = None,
+) -> None:
+    fmt = str(format or "file").strip().lower()
+    extra: list[str] = []
+    if filename:
+        extra.append(f"file: {_esc(filename)}")
+    if reference_id is not None:
+        extra.append(f"task: {_esc(str(reference_id))[:12]}")
+    _schedule_enriched(
+        "download",
+        user_id=user_id,
+        activity=classify_activity(fmt),
+        pool="web music",
+        reason=f"{fmt} download (variant {variant})",
+        extra_lines=extra or None,
+    )
+
+
+def _patch_web_music_downloads() -> None:
+    try:
+        from platform_api.services.web_music_service import WebMusicService
+    except Exception:
+        return
+
+    def _make_wrap(format_name: str):
+        def _wrap(original):  # type: ignore[no-untyped-def]
+            async def download(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+                result = await original(self, *args, **kwargs)
+                try:
+                    user_id = kwargs.get("user_id", args[0] if args else None)
+                    task_id = kwargs.get("task_id", args[1] if len(args) > 1 else None)
+                    variant = str(kwargs.get("variant") or "ok")
+                    fmt = format_name
+                    if format_name == "lyrics":
+                        fmt = str(kwargs.get("lyric_format") or "lrc")
+                    filename = None
+                    if isinstance(result, tuple) and len(result) > 1:
+                        filename = str(result[1])
+                    if user_id is not None:
+                        notify_web_music_download(
+                            user_id=user_id,
+                            format=fmt,
+                            variant=variant,
+                            filename=filename,
+                            reference_id=task_id,
+                        )
+                except Exception:
+                    pass
+                return result
+
+            return download
+
+        return _wrap
+
+    _patch_method(WebMusicService, "download_mp3", _make_wrap("mp3"))
+    _patch_method(WebMusicService, "download_wav", _make_wrap("wav"))
+    _patch_method(WebMusicService, "download_timed_lyrics", _make_wrap("lyrics"))
+    logger.info("Telegram ops hooks installed on web music downloads.")
+
+
 def notify_billing_row(row: Any) -> None:
     """Notify from a billing_payments asyncpg record after a new fulfill."""
     if row is None:
@@ -564,6 +638,7 @@ def install_telegram_ops_hooks() -> None:
     _patch_plan_quota_log()
     _patch_v2_credit_service()
     _patch_v2_subscription_service()
+    _patch_web_music_downloads()
     try:
         from platform_api.services.telegram_ops_commands import (
             start_telegram_ops_command_poller,

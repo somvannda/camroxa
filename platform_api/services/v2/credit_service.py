@@ -5,14 +5,21 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from platform_api.models.products import (
+    MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT,
+    MUSIC_WEB_FREE_RESET_PERIOD_KEY,
     WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT,
     WEB_MUSIC_FREE_DAILY_CREDITS_KEY,
 )
-from platform_api.services.billing_calendar import billing_today, next_billing_midnight
+from platform_api.services.billing_calendar import (
+    billing_month_start,
+    billing_today,
+    next_billing_midnight,
+    next_billing_month_start,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +45,7 @@ class DetailedBalance:
     total_available: int
     reset_at: datetime | None
     current_period_end: datetime | None = None
+    free_reset_period: str = "daily"
 
 
 @dataclass
@@ -101,8 +109,29 @@ class CreditService:
             limit = WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT
         return max(0, limit)
 
+    async def free_reset_period(self) -> str:
+        """Free music-web allowance refill cadence: 'daily' or 'monthly'.
+
+        Reads system_settings ``music_web_free_reset_period`` (default 'daily').
+        When 'monthly', the free pool refills once per billing month instead of
+        every billing day, and unused credits expire at the month boundary.
+        """
+        row = await self._db.fetch_one(
+            "SELECT value FROM system_settings WHERE key = $1",
+            MUSIC_WEB_FREE_RESET_PERIOD_KEY,
+        )
+        raw = str(_row_value(row, "value") or "").strip().lower()
+        return "monthly" if raw == "monthly" else MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT
+
+    async def _period_anchor_date(self) -> date:
+        """Usage bucket key: billing day, or month start when cadence is monthly."""
+        anchor = billing_today()
+        if await self.free_reset_period() == "monthly":
+            anchor = billing_month_start(anchor)
+        return anchor
+
     async def _daily_credits_used(self, user_id: str) -> int:
-        day = billing_today()
+        period = await self._period_anchor_date()
         used = await self._db.fetch_val(
             """
             SELECT COALESCE(credits_used, 0)::int
@@ -110,7 +139,7 @@ class CreditService:
             WHERE user_id = $1 AND usage_date = $2
             """,
             user_id,
-            day,
+            period,
         )
         return int(used or 0)
 
@@ -202,6 +231,7 @@ class CreditService:
     async def get_detailed_balance(self, user_id: str) -> DetailedBalance:
         """Return unified balance (subscription pools or daily free credits)."""
         await self._refresh_subscription_state(user_id)
+        period = await self.free_reset_period()
         subscription = await self._db.fetch_one(
             f"""
             SELECT
@@ -251,6 +281,7 @@ class CreditService:
                     last_credit_reset=last_reset,
                 ),
                 current_period_end=subscription["current_period_end"],
+                free_reset_period=period,
             )
 
         return DetailedBalance(
@@ -263,8 +294,11 @@ class CreditService:
             daily_free_used=daily_used,
             daily_free_remaining=daily_remaining,
             total_available=daily_remaining,
-            reset_at=next_billing_midnight(),
+            reset_at=(
+                next_billing_month_start() if period == "monthly" else next_billing_midnight()
+            ),
             current_period_end=None,
+            free_reset_period=period,
         )
 
     async def get_total_balance(self, user_id: str) -> int:
@@ -391,7 +425,8 @@ class CreditService:
         source: str,
         reference_id: Optional[str],
     ) -> bool:
-        day = billing_today()
+        period = await self._period_anchor_date()
+        monthly = await self.free_reset_period() == "monthly"
         daily_limit = await self.daily_free_limit()
         if daily_limit <= 0:
             raise InsufficientCreditsError("Subscribe to create songs.")
@@ -412,13 +447,19 @@ class CreditService:
             RETURNING credits_used
             """,
             user_id,
-            day,
+            period,
             amount,
             daily_limit,
         )
         if row is None:
             used = await self._daily_credits_used(user_id)
             remaining = max(0, daily_limit - used)
+            if monthly:
+                raise InsufficientCreditsError(
+                    f"Insufficient credits. You need {amount} credits per song. "
+                    f"You have {remaining} free credits left this month ({remaining // 10} songs). "
+                    f"Free credits reset at the end of the month."
+                )
             raise InsufficientCreditsError(
                 f"Insufficient credits. You need {amount} credits per song. "
                 f"You have {remaining} free credits left today ({remaining // 10} songs). "
@@ -427,11 +468,12 @@ class CreditService:
 
         await self._log_debit(user_id, amount, source, reference_id)
         logger.info(
-            "Consumed %s daily free credits from user %s (%s/%s used today)",
+            "Consumed %s free credits from user %s (%s/%s used %s)",
             amount,
             user_id,
             row["credits_used"],
             daily_limit,
+            "this month" if monthly else "today",
         )
         return True
 
@@ -479,7 +521,7 @@ class CreditService:
             if await self._refund_already_applied(user_id, reason, reference_id):
                 return True
 
-            day = billing_today()
+            day = await self._period_anchor_date()
             await self._db.execute(
                 """
                 UPDATE web_music_daily_usage
@@ -492,7 +534,7 @@ class CreditService:
                 amount,
             )
             await self._log_credit(user_id, amount, reason, reference_id)
-            logger.info("Refunded %s daily free credits to user %s", amount, user_id)
+            logger.info("Refunded %s free credits to user %s", amount, user_id)
             return True
 
     async def _refund_subscription_credits(

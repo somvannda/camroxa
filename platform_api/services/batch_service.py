@@ -2079,6 +2079,25 @@ class BatchService:
                 details={"song_id": str(song_id)},
             )
 
+        # Fail fast when the account cannot pay for a Suno generation, instead of
+        # enqueueing a job guaranteed to fail on insufficient credits (desktops were
+        # retrying failed songs on 0-credit accounts in a loop).
+        if self._enforcement_service is not None:
+            routing_music = await self._ai_routing_service.resolve("music")
+            music_provider = str(getattr(routing_music, "provider", "") or "").strip()
+            suno_model = await self._resolve_suno_model(batch.user_id)
+            suno_price = await self._pricing_service.get_price(
+                music_provider,
+                "music",
+                self._normalize_suno_pricing_model(suno_model),
+            )
+            await self._enforcement_service.preflight_quotas_and_balance(
+                UUID(user_id),
+                batch.ok_profile_id,
+                "music",
+                min_credits=int(suno_price),
+            )
+
     async def latest_suno_failure_hint(self, song_id: UUID) -> str | None:
         """Return the latest Suno rejection message for rewrite context."""
         from platform_api.services.suno_status_messages import is_suno_failure_status

@@ -667,6 +667,21 @@ class StreamingUploadService:
         song_slug = slugify(title, fallback="track")
         storage_key = f"{user_id}/{album_slug}/{song_slug}-{variant}.mp3"
 
+        # Idempotency: skip if this task+variant is already archived to B2.
+        # Repeated callbacks/reconciles were re-creating jobs for the same track.
+        _already_archived = await self._pool.fetchval(
+            """
+            SELECT 1 FROM stream_tracks
+            WHERE suno_task_id = $1 AND variant = $2
+              AND COALESCE(storage_key, '') <> ''
+            LIMIT 1
+            """,
+            suno_task_id,
+            variant,
+        )
+        if _already_archived:
+            return
+
         job_id = await self._repo.create_upload_job(
             user_id=user_id,
             kind=f"mp3_{variant}",
@@ -802,6 +817,45 @@ class StreamingUploadService:
             await self._repo.mark_upload_job(job_id, status="failed", error=str(exc)[:500])
             logger.warning("MP3 streaming upload failed job=%s: %s", job_id, exc)
 
+    def schedule_web_music_wav_upload(self, *, suno_task_id: UUID, variant: str | None = None) -> None:
+        """Kick WAV conversion + B2 upload now for a completed web-music task."""
+        asyncio.create_task(self._run_web_music_wav_upload(suno_task_id, variant))
+
+    async def _run_web_music_wav_upload(self, suno_task_id: UUID, variant: str | None) -> None:
+        try:
+            context = await self._repo.get_suno_stream_context(suno_task_id)
+            if not context or str(context.get("source") or "").strip().lower() != "web_music":
+                return
+            config = await resolve_streaming_storage_config(self._pool)
+            if not config.configured:
+                return
+            storage = StorageService.from_config(config)
+            variants = [variant] if variant in {"ok", "alt"} else ["ok", "alt"]
+            for v in variants:
+                b2_col = f"b2_wav_storage_key_{v}"
+                wav_task_col = f"wav_task_id_{v}"
+                wav_status_col = f"wav_status_{v}"
+                row = await self._pool.fetchrow(
+                    f"SELECT {b2_col} AS k, {wav_task_col} AS t, {wav_status_col} AS s FROM suno_tasks WHERE id = $1",
+                    suno_task_id,
+                )
+                wav_key = str(row.get("k") or "").strip() if row else ""
+                wav_task = str(row.get("t") or "").strip() if row else ""
+                wav_status = str(row.get("s") or "").strip() if row else ""
+                if wav_key or (wav_task and wav_status != "success"):
+                    continue
+                title = str(context.get("song_title") or "Untitled").strip() or "Untitled"
+                await self._upload_web_music_wav(
+                    context=context,
+                    variant=v,
+                    suno_task_id=suno_task_id,
+                    song_slug=slugify(title, fallback="track"),
+                    user_id=UUID(str(context["user_id"])),
+                    storage=storage,
+                )
+        except Exception as exc:
+            logger.warning("Web music WAV upload scheduling failed task=%s: %s", suno_task_id, exc)
+
     async def _upload_web_music_variant(
         self,
         *,
@@ -933,7 +987,11 @@ class StreamingUploadService:
     ) -> None:
         """Upload web music WAV to Backblaze after MP3 upload completes."""
         try:
-            from platform_api.clients.suno_client import SunoClient
+            from platform_api.clients.suno_client import (
+                extract_suno_wav_task_id,
+                parse_suno_wav_poll,
+            )
+            from platform_api.services.suno_audio_resolver import _suno_client_with_pool_key
             
             wav_task_id_col = "wav_task_id_ok" if variant == "ok" else "wav_task_id_alt"
             wav_url_col = "wav_url_ok" if variant == "ok" else "wav_url_alt"
@@ -956,16 +1014,17 @@ class StreamingUploadService:
             
             wav_task_id = row.get("wav_task_id") if row else None
             wav_url = row.get("wav_url") if row else None
+            suno, _wav_api_key = await _suno_client_with_pool_key(self._pool)
             
             # Submit WAV conversion if not started
             if not wav_task_id:
-                suno = SunoClient()
                 try:
                     result = await suno.submit_wav_task(
                         task_id=external_task_id,
                         audio_id=audio_id,
+                        api_key=_wav_api_key,
                     )
-                    wav_task_id = suno.extract_suno_wav_task_id(result)
+                    wav_task_id = extract_suno_wav_task_id(result)
                     
                     # Update database with WAV task ID
                     if variant == "ok":
@@ -982,16 +1041,20 @@ class StreamingUploadService:
                         )
                 except Exception as exc:
                     logger.warning("Failed to submit WAV conversion for task=%s variant=%s: %s", suno_task_id, variant, exc)
+                    if variant in {"ok", "alt"} and getattr(exc, "is_retryable", None) is False:
+                        await self._pool.execute(
+                            f"UPDATE suno_tasks SET wav_status_{variant} = 'failed', updated_at = NOW() WHERE id = $1",
+                            suno_task_id,
+                        )
                     return
 
             # Poll for WAV URL
             if not wav_url and wav_task_id:
-                suno = SunoClient()
-                max_retries = 30
+                max_retries = 90
                 for attempt in range(max_retries):
                     try:
-                        result = await suno.poll_wav_status(wav_task_id=wav_task_id)
-                        status, url, error = suno.parse_suno_wav_poll(result)
+                        result = await suno.poll_wav_status(wav_task_id=wav_task_id, api_key=_wav_api_key)
+                        status, url, error = parse_suno_wav_poll(result)
                         
                         if status == "success" and url:
                             wav_url = url
@@ -1013,6 +1076,16 @@ class StreamingUploadService:
                             break
                         elif status == "failed":
                             logger.warning("WAV conversion failed for task=%s variant=%s: %s", suno_task_id, variant, error)
+                            if variant == "ok":
+                                await self._pool.execute(
+                                    "UPDATE suno_tasks SET wav_status_ok = 'failed', updated_at = NOW() WHERE id = $1",
+                                    suno_task_id,
+                                )
+                            else:
+                                await self._pool.execute(
+                                    "UPDATE suno_tasks SET wav_status_alt = 'failed', updated_at = NOW() WHERE id = $1",
+                                    suno_task_id,
+                                )
                             return
                         
                         await asyncio.sleep(2)
@@ -1780,7 +1853,7 @@ class StreamingUploadService:
                     wav_key = str(row.get(f"b2_wav_storage_key_{variant}") or "").strip()
                     wav_task = str(row.get(f"wav_task_id_{variant}") or "").strip()
                     wav_status = str(row.get(f"wav_status_{variant}") or "").strip()
-                    wav_eligible = not wav_key and (not wav_task or wav_status == "success")
+                    wav_eligible = not wav_key and wav_status != "failed"
                     if wav_eligible and wav_budget > 0 and storage is not None:
                         wav_budget -= 1
                         try:

@@ -534,6 +534,19 @@ def extract_suno_wav_task_id(response: dict[str, Any]) -> str:
             details={"provider": "suno", "reason": "invalid_wav_submit"},
         )
     code = _suno_api_code(response)
+    if code == 409:
+        # A WAV record already exists for this (taskId, audioId): reuse the
+        # existing WAV task id so we can poll/upload it instead of failing.
+        data = response.get("data")
+        if isinstance(data, dict):
+            task_id = _task_id_from_mapping(data)
+            if task_id:
+                return task_id
+        raise ExternalServiceError(
+            "Suno WAV record already exists but no existing taskId returned.",
+            is_retryable=False,
+            details={"provider": "suno", "reason": "wav_already_exists"},
+        )
     if code != 200:
         raise ExternalServiceError(
             suno_submit_error_message(code=code, msg=response.get("msg", ""), context="wav_generate"),
