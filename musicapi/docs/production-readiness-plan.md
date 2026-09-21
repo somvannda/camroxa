@@ -11,13 +11,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 | # | Task | Branch | Done when | Status |
 |---|---|---|---|---|
-| 0.1 | Commit `musicapi` tree (was 100% untracked) | `feat/musicapi-baseline` | `git status` clean; reproducible | `[ ]` |
-| 0.2 | Fix core tsc error (`redirectUri` private) | `fix/musicapi-tsc-core` | `tsc --noEmit` exit 0 | `[ ]` |
-| 0.3 | Fix web-user tsc errors (`apiFetch` generic) | `fix/musicapi-tsc-webuser` | `tsc --noEmit` exit 0 | `[ ]` |
-| 0.4 | Add `build`/`start`/`typecheck` scripts; verify `next build` | `chore/musicapi-build-scripts` | build succeeds for core + both apps | `[ ]` |
-| 0.5 | Env-driven ports/host (`PORT`, `BACKEND_URL`); kill 3003/4003 drift | `chore/musicapi-port-config` | no hardcoded `localhost:4003` | `[ ]` |
+| 0.1 | Commit `musicapi` tree (was 100% untracked) | `feat/musicapi-baseline` | `git status` clean; reproducible | `[x]` |
+| 0.2 | Fix core tsc error (`redirectUri` private) | `feat/musicapi-baseline` | `tsc --noEmit` exit 0 | `[x]` |
+| 0.3 | Fix web-user tsc errors (`apiFetch` generic) | `feat/musicapi-baseline` | `tsc --noEmit` exit 0 | `[x]` |
+| 0.4 | Add `build`/`start`/`typecheck` scripts; verify `next build` | `feat/musicapi-baseline` | build succeeds for core + both apps | `[x]` |
+| 0.5 | Env-driven ports/host (`PORT`, `BACKEND_URL`); kill 3003/4003 drift | `feat/musicapi-baseline` | no hardcoded `localhost:4003` | `[x]` |
 
-**Gate:** everything builds and typechecks; work committed.
+**Gate:** ✅ everything builds and typechecks; work committed.
+> Note: Phase 0 tasks 0.1–0.5 were delivered as separate commits on `feat/musicapi-baseline` (one branch, since the baseline import is the parent of all of them). Later phases use one branch per task.
 
 ---
 
