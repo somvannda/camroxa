@@ -128,10 +128,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     process.env.GOOGLE_REDIRECT_URI_USER ?? "http://localhost:4001/auth/callback",
     process.env.GOOGLE_REDIRECT_URI_ADMIN ?? "http://localhost:4002/auth/callback",
   ];
-  const googleClientBase =
-    GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
-      ? new OAuth2Client({ clientId: GOOGLE_CLIENT_ID, clientSecret: GOOGLE_CLIENT_SECRET })
-      : null;
+  const googleConfigured = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
   function resolveGoogleClient(redirectUri: string | undefined): {
     client: OAuth2Client | null;
@@ -144,9 +141,16 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       redirectUri && GOOGLE_REDIRECT_ALLOWLIST.includes(redirectUri)
         ? redirectUri
         : defaultUri;
-    if (!googleClientBase) return { client: null, redirectUri: chosen };
-    googleClientBase.redirectUri = chosen;
-    return { client: googleClientBase, redirectUri: chosen };
+    if (!googleConfigured) return { client: null, redirectUri: chosen };
+    // Build a fresh client per request: `redirectUri` is not settable on a
+    // shared client, and a per-request instance avoids concurrent Google
+    // flows cross-wiring each other's redirect URI.
+    const client = new OAuth2Client({
+      clientId: GOOGLE_CLIENT_ID,
+      clientSecret: GOOGLE_CLIENT_SECRET,
+      redirectUri: chosen,
+    });
+    return { client, redirectUri: chosen };
   }
 
   // --- auth helpers --------------------------------------------------------
