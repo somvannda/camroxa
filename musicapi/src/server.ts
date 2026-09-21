@@ -3848,31 +3848,33 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     };
   });
 
-  // POST /payments/khqr/confirm-mock/:id — force-complete a mock/dev payment
+  // POST /payments/khqr/confirm-mock/:id — DEV-ONLY: force-complete a pending
+  // payment. Disabled outside NODE_ENV=development so it can never mint free
+  // credits in production (previously it activated whenever Bakong was unset).
   app.post("/payments/khqr/confirm-mock/:id", async (req, reply) => {
+    if (process.env.NODE_ENV !== "development") {
+      return reply.code(404).send({ error: "Not found." });
+    }
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
 
     const tx = await queryOne<{
-      id: string; status: string; md5_hash: string | null; credit_amount: number; api_key_target_id: string | null;
+      id: string; status: string; credit_amount: number; api_key_target_id: string | null;
     }>(
-      `SELECT id, status, md5_hash, credit_amount, api_key_target_id FROM payment_transactions WHERE id = $1 AND user_id = $2`,
+      `SELECT id, status, credit_amount, api_key_target_id FROM payment_transactions WHERE id = $1 AND user_id = $2`,
       [id, u.id],
     );
     if (!tx) return reply.code(404).send({ error: "Transaction not found." });
     if (tx.status !== "pending") return reply.code(409).send({ error: `Transaction already ${tx.status}.` });
-    if (!config.bakong.apiToken || !tx.md5_hash || tx.md5_hash.startsWith("dev")) {
-      try {
-        await creditUser(u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
-        await query("UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1", [tx.id]);
-        return { ok: true, status: "paid" };
-      } catch (e) {
-        return reply.code(500).send({ error: e instanceof Error ? e.message : String(e) });
-      }
+    try {
+      await creditUser(u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
+      await query("UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1", [tx.id]);
+      return { ok: true, status: "paid" };
+    } catch (e) {
+      return reply.code(500).send({ error: e instanceof Error ? e.message : String(e) });
     }
-    return reply.code(403).send({ error: "Confirm-mock only available in dev mode." });
   });
 
   return app;
