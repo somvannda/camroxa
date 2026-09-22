@@ -22,6 +22,7 @@ _LAZY_ROUTE_KEYS: frozenset[ShellRouteKey] = frozenset(
         "progress",
         "music",
         "create",
+        "studio",
         "image",
         "video",
         "marketplace",
@@ -117,6 +118,10 @@ class AppRouter:
             from features.create.views.create_view import CreateView
 
             return self._mark_shell_page(CreateView(self._api, cache=self._cache))
+        if route.key == "studio":
+            from features.studio.views.studio_view import StudioView
+
+            return self._mark_shell_page(StudioView())
         if route.key == "image":
             from features.image.views.image_view import ImageView
 

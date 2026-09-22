@@ -1,0 +1,41 @@
+"""Lucide stroke icons rendered as Qt pixmaps."""
+
+from studio.ui.icons.lucide_icons import (
+    CLIP_KIND_ICON,
+    ICON_COLOR,
+    ICON_COLOR_ACTIVE,
+    ICON_COLOR_DIM,
+    ICON_COLOR_ON_ACCENT,
+    ICON_SZ_CLIP_STRIP,
+    ICON_SZ_HEADER,
+    ICON_SZ_LIBRARY,
+    ICON_SZ_PLAY,
+    ICON_SZ_TOOLBAR,
+    ICON_SZ_TRANSPORT,
+    MEDIA_TYPE_ICON,
+    TRACK_TYPE_ICON,
+    lucide_icon,
+    lucide_pixmap,
+    set_button_lucide_icon,
+    track_badge_pixmap,
+)
+
+__all__ = [
+    "CLIP_KIND_ICON",
+    "ICON_COLOR",
+    "ICON_COLOR_ACTIVE",
+    "ICON_COLOR_DIM",
+    "ICON_COLOR_ON_ACCENT",
+    "ICON_SZ_CLIP_STRIP",
+    "ICON_SZ_HEADER",
+    "ICON_SZ_LIBRARY",
+    "ICON_SZ_PLAY",
+    "ICON_SZ_TOOLBAR",
+    "ICON_SZ_TRANSPORT",
+    "MEDIA_TYPE_ICON",
+    "TRACK_TYPE_ICON",
+    "lucide_icon",
+    "lucide_pixmap",
+    "set_button_lucide_icon",
+    "track_badge_pixmap",
+]
