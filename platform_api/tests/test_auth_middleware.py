@@ -242,7 +242,7 @@ class TestGetCurrentUser:
             cookies={},
             headers={},
             method="GET",
-            url=SimpleNamespace(path="/api/v1/users/me"),
+            url=SimpleNamespace(path="/api/v3/users/me"),
         )
         ctx = await get_current_user("Bearer valid-token", request=request)
         assert ctx.email == "test@example.com"
