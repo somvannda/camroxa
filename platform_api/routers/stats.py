@@ -113,15 +113,30 @@ async def get_dashboard_stats(ctx: AuthContext = Depends(get_current_user)) -> D
     )
     credits_remaining_units = int(wallet_row["balance"]) if wallet_row else 0
 
-    spent_row = await get_db_pool().fetchval(
-        """SELECT COALESCE(SUM(ABS(amount)), 0)
-           FROM credit_transactions
-           WHERE user_id = $1 AND direction = 'debit'""",
+    # Net wallet spend: debits minus refunds. Gross debits overstate what the
+    # user actually consumed because failed/deferred operations are refunded
+    # (direction='refund'; legacy web-music refunds land as direction='credit'
+    # with reason 'refunded_%'). Keeping this gross made "Credits spent" and the
+    # derived "Credits total" (spent + remaining) overstate both figures.
+    spent_row = await get_db_pool().fetchrow(
+        """
+        SELECT GREATEST(
+            0,
+            COALESCE(SUM(amount) FILTER (WHERE direction = 'debit'), 0)
+            - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund'), 0)
+            - COALESCE(SUM(amount) FILTER (
+                  WHERE direction = 'credit' AND reason LIKE 'refunded_%'
+              ), 0)
+        ) AS net_spent_units
+        FROM credit_transactions
+        WHERE user_id = $1
+        """,
         user_id,
     )
-    credits_spent_units = int(spent_row) if spent_row else 0
+    credits_spent_units = int(spent_row["net_spent_units"] or 0) if spent_row else 0
     credits_remaining = units_to_credits(credits_remaining_units)
     credits_spent = units_to_credits(credits_spent_units)
+    # remaining + net spend = credits granted to the wallet (refunds excluded).
     credits_total = credits_spent + credits_remaining
 
     # --- Songs ---
