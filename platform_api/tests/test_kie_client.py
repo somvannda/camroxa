@@ -8,7 +8,6 @@ import pytest
 from platform_api.clients.kie_client import (
     KieClient,
     _aspect_ratio,
-    _synthetic_status_error,
 )
 from platform_api.config import Settings
 from platform_api.exceptions import ExternalServiceError
@@ -102,22 +101,30 @@ def test_normalize_success_without_urls_raises() -> None:
         )
 
 
-def test_raise_for_body_code_exhausted_maps_to_http_error() -> None:
+def test_raise_for_body_code_billing_is_not_retryable() -> None:
+    """402/403 must surface as a non-retryable ExternalServiceError.
+
+    It must NOT be an httpx.HTTPStatusError, otherwise the key pool would
+    mark the key exhausted (matching the Suno/SLAI behavior).
+    """
     for code in (402, 403):
-        with pytest.raises(httpx.HTTPStatusError) as exc:
+        with pytest.raises(ExternalServiceError) as exc:
             KieClient._raise_for_body_code(
                 {"code": code, "msg": "no credits"}, url="https://kie.example.com"
             )
-        assert exc.value.response.status_code == code
+        assert exc.value.is_retryable is False
+        assert not isinstance(exc.value, httpx.HTTPStatusError)
+        assert exc.value.details.get("status_code") == code
 
 
-def test_raise_for_body_code_rate_limit_maps_to_429() -> None:
+def test_raise_for_body_code_rate_limit_is_retryable() -> None:
     for code in (429, 433):
-        with pytest.raises(httpx.HTTPStatusError) as exc:
+        with pytest.raises(ExternalServiceError) as exc:
             KieClient._raise_for_body_code(
                 {"code": code, "msg": "slow down"}, url="https://kie.example.com"
             )
-        assert exc.value.response.status_code == 429
+        assert exc.value.is_retryable is True
+        assert not isinstance(exc.value, httpx.HTTPStatusError)
 
 
 def test_raise_for_body_code_server_error_is_retryable() -> None:
@@ -130,11 +137,6 @@ def test_raise_for_body_code_server_error_is_retryable() -> None:
 
 def test_raise_for_body_code_success_is_noop() -> None:
     KieClient._raise_for_body_code({"code": 200, "msg": "success"}, url="https://x")
-
-
-def test_synthetic_status_error_carries_status() -> None:
-    err = _synthetic_status_error(402, "nope", url="https://x")
-    assert err.response.status_code == 402
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +206,8 @@ async def test_generate_image_requires_api_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_image_propagates_http_402(monkeypatch) -> None:
+async def test_generate_image_http_402_is_external_and_not_retryable(monkeypatch) -> None:
+    """HTTP-level 402 must not escape as httpx.HTTPStatusError (no key exhaustion)."""
     import platform_api.clients.kie_client as mod
 
     post_resp = _Resp({"code": 402, "msg": "no credits"}, status_code=402)
@@ -215,6 +218,8 @@ async def test_generate_image_propagates_http_402(monkeypatch) -> None:
     )
 
     client = KieClient(_settings())
-    with pytest.raises(httpx.HTTPStatusError) as exc:
+    with pytest.raises(ExternalServiceError) as exc:
         await client.generate_image(prompt="x", api_key="k")
-    assert exc.value.response.status_code == 402
+    assert not isinstance(exc.value, httpx.HTTPStatusError)
+    assert exc.value.is_retryable is False
+    assert exc.value.details.get("status_code") == 402
