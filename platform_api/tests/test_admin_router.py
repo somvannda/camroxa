@@ -583,8 +583,8 @@ class TestYouTubeOAuthApps:
         assert data["apps"][0]["name"] == "Studio Google App"
         assert data["apps"][0]["client_id"] == "client-123"
         assert data["apps"][0]["has_client_secret"] is True
-        assert data["apps"][0]["created_at"] == NOW.isoformat()
-        assert data["apps"][0]["updated_at"] == NOW.isoformat()
+        assert data["apps"][0]["created_at"] == "2024-06-15T10:30:00Z"
+        assert data["apps"][0]["updated_at"] == "2024-06-15T10:30:00Z"
 
     async def test_creates_app(
         self, client: AsyncClient, mock_youtube_oauth_repo: AsyncMock

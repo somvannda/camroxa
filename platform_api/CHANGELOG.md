@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Reconciled production-only hotfixes into `main` for the v3 cutover (streaming/B2 capture + WAV upload, Suno 409/recovery, batch preflight, monthly free reset, tz-aware quota reset, Suno title cap 80, play-lane select, free downloads, Telegram download alerts). Dropped prod-only features never merged or intentionally reverted (quota renewal, DistroKid, signup domain guard, streaming progress/publish gate, waive billing, public subscription terms, genre catalog). Adds Alembic `120`/`121`. See `docs/changelog/2026-09-18-api-v3-hotfix-reconciliation.md`.
 - Suno downloads prefer callback/record-info `audio_url` (`audioUrl`) over unsigned `cdn1.suno.ai` `source_audio_url`. See `docs/changelog/2026-08-29-suno-prefer-callback-audio-url.md`.
 - Generate quote/charge always uses the Credits page list price. Plan per-op fields are ignored. Public catalogs send `credits_per_generate` from that music rate. See `docs/changelog/2026-08-28-credit-pricing-single-source.md`.
 - Song hints use 10 credits = 1 generate = 2 songs (Free 50 → 10 songs/day). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
@@ -32,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `/me/credits` now returns the resolved Free/paid plan and `reset_label` (daily vs monthly). Monthly Free plans are granted on that poll. See `docs/changelog/2026-08-28-credit-reset-label-period.md`.
 - Free daily mint no longer stacks 50 credits on every `/me/credits` poll. Lot insert happens first; sandbox `duke@test.com` 4,150 was 83 stacked daily grants. Cutover now snapshots every wallet before/after leftover apply. See `docs/changelog/2026-08-25-daily-grant-idempotent-and-cutover-snapshot.md`.
+- `POST /generation/draft` no longer 500s: the router-local `DraftGenerationRequest` was missing `mood_id`/`structure_mode`. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
+- `services/stream_playback_guard.py` imported a non-existent `PLAY_CHUNK_BYTES` (actual `_PLAY_CHUNK_BYTES`), so the module could not be imported at all. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
+- `platform_api` test suite reconciled to current v3 behavior: 2946 passed, 0 failed, 0 collection errors (was 78 failed + 3 broken collectors). See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
 
 ### Changed
 

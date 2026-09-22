@@ -89,10 +89,10 @@ def test_bank_units_for_consumption_math() -> None:
 
 @pytest.mark.asyncio
 async def test_accrue_unused_daily_allowance(monkeypatch: pytest.MonkeyPatch) -> None:
-    from platform_api.services import billing_calendar
+    from platform_api.services import daily_quota_bank_service
 
     today = date(2026, 7, 17)
-    monkeypatch.setattr(billing_calendar, "billing_today", lambda: today)
+    monkeypatch.setattr(daily_quota_bank_service, "billing_today", lambda: today)
 
     user_id = uuid4()
     channel_id = uuid4()

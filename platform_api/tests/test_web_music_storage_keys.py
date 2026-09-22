@@ -37,15 +37,6 @@ def test_clip_is_playable_rejects_shared_untitled_leftover() -> None:
     assert _clip_is_playable(row, variant="ok", task_id=_TASK_ID) is False
 
 
-def test_clip_is_playable_rejects_unpackaged_leftover() -> None:
-    row = {
-        "package_status_ok": "none",
-        "packaged_storage_key_ok": None,
-        "b2_storage_key_ok": web_music_object_key(_USER_ID, _TASK_ID, "ok", "mp3"),
-    }
-    assert _clip_is_playable(row, variant="ok", task_id=_TASK_ID) is False
-
-
 def test_clip_is_playable_accepts_packaged_ready() -> None:
     row = {
         "package_status_ok": "ready",

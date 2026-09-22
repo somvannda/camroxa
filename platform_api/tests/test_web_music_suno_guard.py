@@ -110,13 +110,19 @@ async def test_generate_accepts_khmer_title_and_charges() -> None:
         return_value={"limit": 50, "used": 10, "remaining": 4, "is_pro": False}
     )
     service._resolve_workspace_id = AsyncMock(return_value=_USER)
+    service._active_generate_queue_count = AsyncMock(return_value=0)
     blocklist = AsyncMock()
     blocklist.get_runtime_config = AsyncMock(
         return_value=SunoRuntimeBlocklist(block_terms=frozenset())
     )
+    job_queue = AsyncMock()
+    job_queue.enqueue = AsyncMock(return_value=None)
     with patch(
         "platform_api.dependencies.get_suno_blocklist_service",
         return_value=blocklist,
+    ), patch(
+        "platform_api.dependencies.get_job_queue_repo",
+        return_value=job_queue,
     ):
         payload = await service.generate(
             _USER,
@@ -129,8 +135,6 @@ async def test_generate_accepts_khmer_title_and_charges() -> None:
             prompt="",
         )
     service._reserve_via_credits.assert_awaited()
-    generation.submit_suno.assert_awaited()
+    job_queue.enqueue.assert_awaited()
     assert payload["title"] == "ភ្លេងស្រណោះ"
-    kwargs = generation.submit_suno.await_args.kwargs
-    assert kwargs["source"] == "web_music"
-    assert kwargs["skip_pricing"] is True
+    assert payload["status"] == "QUEUED"

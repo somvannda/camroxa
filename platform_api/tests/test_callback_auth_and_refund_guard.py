@@ -303,7 +303,7 @@ async def test_handle_suno_task_update_skips_duplicate_failed_refund() -> None:
     )
     batch_repo.get_batch_by_id = AsyncMock(
         return_value=SimpleNamespace(
-            user_id=user_id, ok_profile_id=None, auto_gsuno=True, auto_gen_image=False
+            user_id=user_id, ok_profile_id=None, alt_profile_id=None, auto_gsuno=True, auto_gen_image=False
         )
     )
     batch_repo.get_batch_status_counters = AsyncMock(
@@ -360,7 +360,7 @@ async def test_handle_suno_task_update_refunds_pending_failure() -> None:
     )
     batch_repo.get_batch_by_id = AsyncMock(
         return_value=SimpleNamespace(
-            user_id=user_id, ok_profile_id=None, auto_gsuno=True, auto_gen_image=False
+            user_id=user_id, ok_profile_id=None, alt_profile_id=None, auto_gsuno=True, auto_gen_image=False
         )
     )
     batch_repo.get_batch_status_counters = AsyncMock(

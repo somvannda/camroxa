@@ -187,6 +187,98 @@ async def refresh_suno_task_download_urls(
     return urls_from_generate_poll(poll_result)
 
 
+async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> dict[str, str]:
+    """Fresh playable URLs for an expired task, keyed by clip id.
+
+    Uses the provider's Recovery Audio endpoint. It is scoped to the API
+    key/account that generated the task, so every active Suno key is tried
+    until one recovers the task. Returns ``{clip_id: audio_url}`` (may be .m4a).
+    """
+    import asyncio
+    import os
+
+    import httpx
+
+    from platform_api.services.key_encryption import KeyEncryption
+
+    task_id = str(external_task_id or "").strip()
+    if not task_id:
+        return {}
+    rows = await pool.fetch(
+        """
+        SELECT encrypted_key_value
+        FROM api_key_entries
+        WHERE provider = 'suno' AND status = 'active'
+        ORDER BY priority DESC, created_at ASC
+        """
+    )
+    if not rows:
+        return {}
+    master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
+    if not master_key:
+        return {}
+    encryption = KeyEncryption(master_key=master_key)
+    base = os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://apibox.erweima.ai").strip().rstrip("/")
+    callback = os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip().rstrip("/")
+    callback_url = (
+        f"{callback}/api/v3/callbacks/suno" if callback else "https://api.camxora.com/health"
+    )
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for row in rows:
+            try:
+                api_key = encryption.decrypt(bytes(row["encrypted_key_value"]))
+            except Exception:
+                continue
+            try:
+                response = await client.post(
+                    f"{base}/api/v1/suno/recovery",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"sunoTaskId": task_id, "callBackUrl": callback_url},
+                )
+                body = response.json()
+            except Exception as exc:
+                logger.warning("Recovery request failed for task %s: %s", task_id, str(exc)[:160])
+                continue
+            if int(body.get("code", 0) or 0) != 200:
+                continue
+            data = body.get("data")
+            tracks = data if isinstance(data, list) else []
+            recovery_task_id = str(body.get("task_id") or "").strip()
+            if not tracks and recovery_task_id:
+                # Async recovery: poll record-info until it finishes.
+                for _ in range(20):
+                    await asyncio.sleep(2.0)
+                    try:
+                        poll = await client.get(
+                            f"{base}/api/v1/suno/recovery/record-info",
+                            headers={"Authorization": f"Bearer {api_key}"},
+                            params={"task_id": recovery_task_id},
+                        )
+                        poll_body = poll.json()
+                    except Exception:
+                        continue
+                    poll_code = int(poll_body.get("code", 0) or 0)
+                    if poll_code == 200:
+                        poll_data = poll_body.get("data")
+                        tracks = poll_data if isinstance(poll_data, list) else []
+                        break
+                    if poll_code == 500:
+                        break
+            mapping: dict[str, str] = {}
+            for item in tracks:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("status") or "").lower() != "success":
+                    continue
+                clip_id = str(item.get("id") or "").strip()
+                url = normalize_http_download_url(item.get("audio_url"))
+                if clip_id and url:
+                    mapping[clip_id] = url
+            if mapping:
+                return mapping
+    return {}
+
+
 async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
     """Poll Suno record-info using the DB pool (works outside FastAPI lifespan)."""
     import os

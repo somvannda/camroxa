@@ -1265,6 +1265,12 @@ async def test_create_image_jobs_for_song_applies_dual_prompts_and_reference_pat
         settings_service,
     )
 
+    class _FakeRotation:
+        async def pick_sample_path(self, *, settings, kind, exclude=None):
+            return str(bg_sample) if kind == ImageKind.BACKGROUND else str(th_sample)
+
+    service._image_sample_rotation = _FakeRotation()
+
     song = Song(
         id=uuid4(),
         batch_id=uuid4(),
@@ -2203,7 +2209,7 @@ async def test_build_batch_redownload_plan_ignores_downloaded_flag(
 
 
 @pytest.mark.asyncio
-async def test_build_batch_redownload_plan_synthesizes_cdn_from_audio_id(
+async def test_build_batch_redownload_plan_synthesizes_tempfile_url_from_audio_id(
     batch_repo: AsyncMock,
     credit_service: AsyncMock,
     pricing_service: AsyncMock,
@@ -2251,7 +2257,7 @@ async def test_build_batch_redownload_plan_synthesizes_cdn_from_audio_id(
     assert len(items) == 1
     assert (
         items[0]["download_url"]
-        == "https://cdn1.suno.ai/25d27d13-10a9-4b73-9e2e-b344da4cf0c8.mp3"
+        == "https://tempfile.aiquickdraw.com/r/25d27d13-10a9-4b73-9e2e-b344da4cf0c8.mp3"
     )
     batch_repo.update_status.assert_awaited()
 

@@ -76,7 +76,7 @@ class TestPricingResolution:
 
         assert result == "result"
         assert credits == 5
-        mock_pricing_service.get_price.assert_called_once_with("deepseek", "channel_setup")
+        mock_pricing_service.get_price.assert_called_once_with("deepseek", "channel_setup", None)
         mock_credit_repo.atomic_deduct.assert_called_once_with(
             user_id=user_id, amount=5, reason="text_generation via deepseek"
         )
@@ -87,7 +87,7 @@ class TestPricingResolution:
     ):
         """If channel_setup pricing raises, fall back to standard operation type."""
 
-        async def mock_get_price(ai_service, op_type):
+        async def mock_get_price(ai_service, op_type, sub_model=None):
             if op_type == "channel_setup":
                 raise ExternalServiceError("No pricing configured")
             return 10
@@ -334,4 +334,4 @@ class TestRefundOnFailure:
         )
 
         assert credits == 7
-        mock_pricing_service.get_price.assert_called_once_with("deepseek", "text_generation")
+        mock_pricing_service.get_price.assert_called_once_with("deepseek", "text_generation", None)

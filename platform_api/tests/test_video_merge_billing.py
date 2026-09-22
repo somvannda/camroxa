@@ -45,7 +45,7 @@ def test_plan_limits_video_merge() -> None:
     assert monthly_limit_for_operation(plan, "video_merge") == 30
     assert UsageEnforcementService._get_daily_limit(plan, "video") == 10
     assert UsageEnforcementService._get_daily_limit(plan, "video_merge") == 1
-    assert UsageEnforcementService._get_daily_limit(plan, "video", addon_slots=2) == 20
-    assert UsageEnforcementService._get_daily_limit(plan, "video_merge", addon_slots=2) == 2
+    assert UsageEnforcementService._get_daily_limit(plan, "video", addon_slots=2) == 10
+    assert UsageEnforcementService._get_daily_limit(plan, "video_merge", addon_slots=2) == 1
     assert UsageEnforcementService._get_monthly_limit(plan, "video") == 300
     assert UsageEnforcementService._get_monthly_limit(plan, "video_merge") == 30

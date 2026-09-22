@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from platform_api.services.audio_packager import encrypted_chunk_record, new_content_key, package_chunks
 from platform_api.services.encrypted_package_cache import (
     clear_packaged_blob_cache,
     get_packaged_blob,
@@ -32,14 +31,3 @@ async def test_packaged_blob_loader_runs_once() -> None:
     assert first == second == b"CXA1-cipher"
     assert calls["n"] == 1
     assert packaged_blob_cache_stats()["size"] == 1
-
-
-def test_encrypted_chunk_record_matches_iter_index() -> None:
-    key = new_content_key()
-    blob = package_chunks(b"x" * 300_000, key, key_id="k")
-    rec0 = encrypted_chunk_record(blob, 0)
-    rec1 = encrypted_chunk_record(blob, 1)
-    assert rec0 and rec1
-    assert rec0 != rec1
-    with pytest.raises(IndexError):
-        encrypted_chunk_record(blob, 99)

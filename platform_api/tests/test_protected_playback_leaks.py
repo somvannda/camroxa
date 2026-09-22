@@ -86,6 +86,6 @@ async def test_task_payload_play_urls_are_camxora_paths() -> None:
     }
     payload = await service._task_payload(row, user_id)
     _assert_no_origin_leak(payload["clips"])
-    assert payload["clips"][0]["audio_url"].startswith("/api/v1/web-music/generations/")
+    assert payload["clips"][0]["audio_url"].startswith("/api/v3/web-music/generations/")
     assert "stream" in payload["clips"][0]["audio_url"]
     assert payload["clips"][0]["package_status"] == "ready"

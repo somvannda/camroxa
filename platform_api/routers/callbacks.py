@@ -47,6 +47,9 @@ def _schedule_audio_ingest_after_success(
     service = StreamingUploadService(get_db_pool())
     if str(source or "").strip().lower() == "web_music":
         service.schedule_web_music_b2_backfill(suno_task_id=task_id)
+        service.schedule_web_music_wav_upload(suno_task_id=task_id)
+        service.schedule_web_music_lrc_upload(suno_task_id=task_id, variant="ok")
+        service.schedule_web_music_lrc_upload(suno_task_id=task_id, variant="alt")
         return
     if has_song:
         service.schedule_suno_streaming_upload(suno_task_id=task_id)

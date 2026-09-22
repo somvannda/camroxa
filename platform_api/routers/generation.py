@@ -55,6 +55,8 @@ class DraftGenerationRequest(BaseModel):
     structure: str | None = Field(default=None, max_length=5000)
     description_id: UUID | None = None
     structure_id: UUID | None = None
+    mood_id: UUID | None = None
+    structure_mode: str = Field(default="template", pattern=r"^(template|ai_free|suno)$")
     avoid_titles: list[str] = Field(default_factory=list, max_length=200)
     avoid_albums: list[str] = Field(default_factory=list, max_length=200)
     avoid_openings: list[str] = Field(default_factory=list, max_length=200)

@@ -18,6 +18,12 @@ def test_web_music_callback_success_schedules_b2_backfill(monkeypatch: pytest.Mo
         def schedule_web_music_b2_backfill(self, *, suno_task_id):
             scheduled.append(("web", suno_task_id))
 
+        def schedule_web_music_wav_upload(self, *, suno_task_id, variant=None):
+            pass
+
+        def schedule_web_music_lrc_upload(self, *, suno_task_id, variant="ok"):
+            pass
+
         def schedule_suno_streaming_upload(self, *, suno_task_id):
             scheduled.append(("catalog", suno_task_id))
 

@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from platform_api.exceptions import ForbiddenError, RateLimitedError
 from platform_api.middleware.geo_access import MUSIC_WEB_HOSTS
-from platform_api.services.audio_origin_proxy import PLAY_CHUNK_BYTES, parse_clamped_range
+from platform_api.services.audio_origin_proxy import _PLAY_CHUNK_BYTES, parse_clamped_range
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ def is_browser_audio_request(headers: Mapping[str, str] | None) -> bool:
 
 def window_id_for_range(range_header: str | None) -> int:
     start, _end = parse_clamped_range(range_header)
-    return max(0, start) // PLAY_CHUNK_BYTES
+    return max(0, start) // _PLAY_CHUNK_BYTES
 
 
 def evaluate_unique_window_pace(

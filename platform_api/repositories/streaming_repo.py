@@ -8,6 +8,47 @@ from uuid import UUID, uuid4
 
 import json
 
+# Admin "retry all failed mp3" sweep progress row (system_settings is a generic
+# KV store: key text PK, value_type text, value text/json, updated_at).
+RETRY_SWEEP_SETTING_KEY = "streaming_upload_retry_sweep_v1"
+# Postgres advisory xact-lock id serializing sweep claims across uvicorn workers.
+RETRY_SWEEP_ADVISORY_LOCK_ID = 730000001
+# Web-music asset recovery (wav/lrc/srt/package completeness) progress row + lock.
+ASSET_RECOVERY_SETTING_KEY = "web_music_asset_recovery_v1"
+ASSET_RECOVERY_ADVISORY_LOCK_ID = 730000003
+# Periodic streaming-capture health report (Telegram) last-sent row + lock.
+STREAMING_HEALTH_REPORT_SETTING_KEY = "streaming_health_report_v1"
+STREAMING_HEALTH_REPORT_ADVISORY_LOCK_ID = 730000004
+
+# A web-music task is "missing the durable MP3" for a variant when Suno produced
+# an audio URL for it but no B2 copy exists and it is not marked permanently
+# unavailable. Tasks that only ever had one variant are not flagged for the other.
+_WEB_MUSIC_MISSING_MP3_OK = (
+    "(COALESCE(b2_storage_key_ok, '') = '' "
+    "AND COALESCE(audio_url_ok, '') <> '' "
+    "AND NOT COALESCE(download_unavailable_ok, false))"
+)
+_WEB_MUSIC_MISSING_MP3_ALT = (
+    "(COALESCE(b2_storage_key_alt, '') = '' "
+    "AND COALESCE(audio_url_alt, '') <> '' "
+    "AND NOT COALESCE(download_unavailable_alt, false))"
+)
+# Companion B2 assets (wav/lrc/srt/package) still absent for an already-captured MP3.
+_WEB_MUSIC_MISSING_ASSETS_PREDICATE = """
+(
+      (COALESCE(b2_wav_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
+       AND (COALESCE(wav_task_id_ok::text, '') = '' OR wav_status_ok = 'success'))
+   OR (COALESCE(b2_wav_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
+       AND (COALESCE(wav_task_id_alt::text, '') = '' OR wav_status_alt = 'success'))
+   OR (COALESCE(package_status_ok, 'none') <> 'ready' AND COALESCE(b2_storage_key_ok, '') <> '')
+   OR (COALESCE(package_status_alt, 'none') <> 'ready' AND COALESCE(b2_storage_key_alt, '') <> '')
+   OR (COALESCE(b2_lrc_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
+       AND NOT COALESCE(instrumental, false))
+   OR (COALESCE(b2_lrc_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
+       AND NOT COALESCE(instrumental, false))
+)
+"""
+
 
 class StreamingRepository:
     def __init__(self, pool: Any) -> None:
@@ -90,6 +131,7 @@ class StreamingRepository:
                 storage_key = COALESCE($4, storage_key),
                 album_id = COALESCE($5, album_id),
                 attempt_count = attempt_count + 1,
+                last_attempt_at = NOW(),
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -104,15 +146,60 @@ class StreamingRepository:
         row = await self._pool.fetchrow("SELECT * FROM stream_upload_jobs WHERE id = $1", job_id)
         return dict(row) if row else None
 
-    async def list_upload_jobs(self, *, limit: int = 50, status: str | None = None) -> list[dict[str, Any]]:
-        """List upload jobs with user / song / album / track context for admin UI."""
-        where = ""
+    def _upload_jobs_filter(
+        self, *, status: str | None, kind: str | None, q: str | None
+    ) -> tuple[str, list[Any]]:
+        """Shared WHERE clause + params for upload-job list/count queries."""
+        clauses: list[str] = []
         params: list[Any] = []
         if status:
             params.append(status)
-            where = f"WHERE j.status = ${len(params)}"
+            clauses.append(f"j.status = ${len(params)}")
+        if kind:
+            params.append(kind)
+            clauses.append(f"j.kind = ${len(params)}")
+        if q:
+            params.append(f"%{q}%")
+            idx = len(params)
+            clauses.append(
+                "(j.id::text ILIKE $" + str(idx)
+                + " OR j.kind ILIKE $" + str(idx)
+                + " OR j.status ILIKE $" + str(idx)
+                + " OR COALESCE(u.email, '') ILIKE $" + str(idx)
+                + " OR COALESCE(u.display_name, '') ILIKE $" + str(idx)
+                + " OR COALESCE(s.title, '') ILIKE $" + str(idx)
+                + " OR COALESCE(s.album, '') ILIKE $" + str(idx)
+                + " OR COALESCE(sa_direct.album_name, sa_cover.album_name, sa_track.album_name, '') ILIKE $"
+                + str(idx)
+                + " OR COALESCE(j.batch_id::text, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.song_id::text, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.storage_key, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.source_url, '') ILIKE $" + str(idx)
+                + " OR COALESCE(j.error, '') ILIKE $" + str(idx)
+                + ")"
+            )
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        return where, params
+
+    async def list_upload_jobs(
+        self,
+        *,
+        limit: int = 50,
+        status: str | None = None,
+        kind: str | None = None,
+        q: str | None = None,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """List upload jobs with user / song / album / track context for admin UI.
+
+        Server-side pagination: newest first; filters can be status, kind and a
+        free-text q (email/user/song/album/batch/song id/storage/source/error).
+        """
+        where, params = self._upload_jobs_filter(status=status, kind=kind, q=q)
         params.append(limit)
         limit_placeholder = f"${len(params)}"
+        params.append(offset)
+        offset_placeholder = f"${len(params)}"
 
         rows = await self._pool.fetch(
             f"""
@@ -124,6 +211,7 @@ class StreamingRepository:
                 j.storage_key,
                 j.error,
                 j.attempt_count,
+                j.permanent_failed,
                 j.user_id,
                 j.song_id,
                 j.batch_id,
@@ -166,8 +254,546 @@ class StreamingRepository:
             {where}
             ORDER BY j.created_at DESC
             LIMIT {limit_placeholder}
+            OFFSET {offset_placeholder}
             """,
             *params,
+        )
+        return [dict(row) for row in rows]
+
+    async def count_upload_jobs(
+        self,
+        *,
+        status: str | None = None,
+        kind: str | None = None,
+        q: str | None = None,
+    ) -> int:
+        """Total upload jobs matching the given filters (for pagination)."""
+        where, params = self._upload_jobs_filter(status=status, kind=kind, q=q)
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT count(DISTINCT j.id) AS total
+            FROM stream_upload_jobs j
+            LEFT JOIN users u ON u.id = j.user_id
+            LEFT JOIN songs s ON s.id = j.song_id
+            LEFT JOIN stream_albums sa_direct ON sa_direct.id = j.album_id
+            LEFT JOIN stream_albums sa_cover
+                ON j.album_id IS NULL
+               AND j.kind = 'cover'
+               AND sa_cover.user_id = j.user_id
+               AND sa_cover.batch_id = j.batch_id
+               AND sa_cover.cover_storage_key IS NOT DISTINCT FROM j.storage_key
+            LEFT JOIN stream_tracks st
+                ON j.song_id IS NOT NULL
+               AND st.song_id = j.song_id
+               AND (
+                    (j.kind = 'mp3_ok' AND lower(st.variant) = 'ok')
+                 OR (j.kind = 'mp3_alt' AND lower(st.variant) = 'alt')
+               )
+            LEFT JOIN stream_albums sa_track ON sa_track.id = st.album_id
+            {where}
+            """,
+            *params,
+        )
+        return int(row["total"] or 0) if row else 0
+
+    async def list_failed_mp3_jobs_for_auto_retry(
+        self,
+        *,
+        max_attempt_count: int,
+        max_age_hours: int,
+        limit: int,
+    ) -> list[UUID]:
+        """Failed mp3 jobs eligible for the background auto-retry pass.
+
+        Only jobs that still have auto-retry budget (attempt_count below cap)
+        and were created inside the retry window, oldest first, capped per pass.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+              AND attempt_count < $1
+              AND created_at >= NOW() - make_interval(hours => $2)
+            ORDER BY created_at ASC
+            LIMIT $3
+            """,
+            max_attempt_count,
+            max_age_hours,
+            limit,
+        )
+        return [UUID(str(row["id"])) for row in rows]
+
+    async def count_failed_mp3_jobs(self) -> int:
+        """Failed mp3_ok/mp3_alt upload jobs right now (live count)."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT count(*) AS n
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+            """
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def count_retried_success_jobs(self) -> int:
+        """Successes that required at least one retry (attempt_count > 1).
+
+        Tracks how many uploads were recovered via the admin retry path
+        (single retry button or the retry-all sweep).
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT count(*) AS n
+            FROM stream_upload_jobs
+            WHERE status = 'success'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+              AND attempt_count > 1
+            """
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def count_failed_mp3_jobs_since(self, *, hours: int) -> int:
+        """Failed mp3_ok/mp3_alt upload jobs created within the last N hours."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT count(*) AS n
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+              AND created_at >= NOW() - make_interval(hours => $1)
+            """,
+            hours,
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def list_recent_failed_mp3_errors(self, *, limit: int) -> list[dict[str, Any]]:
+        """Newest failed mp3 upload jobs (id + truncated error) for the report."""
+        rows = await self._pool.fetch(
+            """
+            SELECT id, kind, LEFT(COALESCE(error, ''), 180) AS error, created_at
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+        return [dict(row) for row in rows]
+
+    async def list_web_music_missing_mp3_tasks(
+        self, *, limit: int, max_age_hours: int
+    ) -> list[dict[str, Any]]:
+        """Web-music tasks whose Suno audio exists but the B2 MP3 was never captured.
+
+        Returns each task with per-variant ``missing_ok`` / ``missing_alt`` flags so
+        the recovery pass can verify exactly what it recovered.
+        """
+        rows = await self._pool.fetch(
+            f"""
+            SELECT id, user_id, created_at,
+                   {_WEB_MUSIC_MISSING_MP3_OK} AS missing_ok,
+                   {_WEB_MUSIC_MISSING_MP3_ALT} AS missing_alt
+            FROM suno_tasks
+            WHERE LOWER(status) = 'success'
+              AND source = 'web_music'
+              AND created_at >= NOW() - make_interval(hours => $2)
+              AND ({_WEB_MUSIC_MISSING_MP3_OK} OR {_WEB_MUSIC_MISSING_MP3_ALT})
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            limit,
+            max_age_hours,
+        )
+        return [dict(row) for row in rows]
+
+    async def count_web_music_missing_mp3(self, *, max_age_hours: int) -> int:
+        """Web-music tasks missing at least one B2 MP3 within the window."""
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT count(*) AS n
+            FROM suno_tasks
+            WHERE LOWER(status) = 'success'
+              AND source = 'web_music'
+              AND created_at >= NOW() - make_interval(hours => $1)
+              AND ({_WEB_MUSIC_MISSING_MP3_OK} OR {_WEB_MUSIC_MISSING_MP3_ALT})
+            """,
+            max_age_hours,
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def count_web_music_missing_assets(self, *, max_age_hours: int) -> int:
+        """Web-music tasks with a captured MP3 but a missing companion asset."""
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT count(*) AS n
+            FROM suno_tasks
+            WHERE source = 'web_music'
+              AND (COALESCE(b2_storage_key_ok, '') <> '' OR COALESCE(b2_storage_key_alt, '') <> '')
+              AND created_at >= NOW() - make_interval(hours => $1)
+              AND {_WEB_MUSIC_MISSING_ASSETS_PREDICATE}
+            """,
+            max_age_hours,
+        )
+        return int(row["n"] or 0) if row else 0
+
+    async def claim_periodic_report(
+        self, *, key: str, lock_id: int, interval_s: float
+    ) -> bool:
+        """Single-winner claim for a periodic report across uvicorn workers.
+
+        Uses a Postgres advisory lock to serialize and a ``system_settings`` row
+        storing ``last_sent_at`` so a second worker cannot fire within the
+        interval even after the lock is released.
+        """
+        now_dt = datetime.now(timezone.utc)
+        async with self._pool.acquire() as conn:
+            acquired = await conn.fetchval("SELECT pg_try_advisory_lock($1)", lock_id)
+            if not acquired:
+                return False
+            try:
+                row = await conn.fetchrow(
+                    "SELECT value FROM system_settings WHERE key = $1", key
+                )
+                last: datetime | None = None
+                if row:
+                    try:
+                        last = datetime.fromisoformat(
+                            str(json.loads(row["value"]).get("last_sent_at"))
+                        )
+                    except (TypeError, ValueError):
+                        last = None
+                if last is not None:
+                    if last.tzinfo is None:
+                        last = last.replace(tzinfo=timezone.utc)
+                    if (now_dt - last).total_seconds() < interval_s * 0.9:
+                        return False
+                await conn.execute(
+                    """
+                    INSERT INTO system_settings (key, value_type, value, updated_at)
+                    VALUES ($1, 'json', $2, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+                    """,
+                    key,
+                    json.dumps({"last_sent_at": now_dt.isoformat()}),
+                )
+                return True
+            finally:
+                try:
+                    await conn.fetchval("SELECT pg_advisory_unlock($1)", lock_id)
+                except Exception:
+                    pass
+
+    async def list_web_music_asset_tasks(
+        self, *, limit: int, before: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Web-music suno_tasks that captured an MP3 but are missing companion
+        B2 assets (wav / lrc / encrypted package), newest first, capped.
+
+        ``before`` is a moving watermark (created_at ISO of the oldest task from
+        the previous pass): the next pass keeps scanning strictly older tasks so
+        tasks with permanently-absent assets (e.g. no timestamped LRC) cannot
+        clog the newest window and starve the historical backlog. Pass None to
+        start from the newest again (wrap-around).
+
+        WAV eligibility excludes variants whose conversion was attempted but did
+        not succeed (no repeated Suno conversion resubmits by automation).
+        """
+        params: list[Any] = [limit]
+        before_dt: Any = None
+        if before:
+            try:
+                before_dt = datetime.fromisoformat(str(before).replace("Z", "+00:00"))
+            except ValueError:
+                before_dt = None  # corrupt cursor -> ignore, rescan from newest
+        watermark = "AND created_at < $2::timestamptz" if before_dt is not None else ""
+        if before_dt is not None:
+            params.append(before_dt)
+        rows = await self._pool.fetch(
+            f"""
+            SELECT
+                id, user_id, created_at,
+                COALESCE(instrumental, false) AS instrumental,
+                b2_storage_key_ok, b2_storage_key_alt,
+                b2_wav_storage_key_ok, b2_wav_storage_key_alt,
+                wav_task_id_ok, wav_task_id_alt,
+                wav_status_ok, wav_status_alt,
+                b2_lrc_storage_key_ok, b2_lrc_storage_key_alt,
+                package_status_ok, package_status_alt
+            FROM suno_tasks
+            WHERE (COALESCE(b2_storage_key_ok, '') <> '' OR COALESCE(b2_storage_key_alt, '') <> '')
+              {watermark}
+              AND {_WEB_MUSIC_MISSING_ASSETS_PREDICATE}
+            ORDER BY created_at DESC
+            LIMIT $1
+            """,
+            *params,
+        )
+        return [dict(row) for row in rows]
+
+
+    async def list_failed_mp3_job_ids(self) -> list[UUID]:
+        """Every failed mp3_ok/mp3_alt upload job id, newest first (no cap).
+
+        Admin "retry all" sweep target — the UI list only shows the newest 200
+        jobs, so most failures are unreachable from the page. Newest first so
+        recent (recoverable) failures are retried before older ones whose Suno
+        records may already be purged.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id
+            FROM stream_upload_jobs
+            WHERE status = 'failed'
+              AND kind IN ('mp3_ok', 'mp3_alt')
+            ORDER BY created_at DESC
+            """
+        )
+        return [UUID(str(row["id"])) for row in rows]
+
+    async def _get_json_setting(self, key: str) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow(
+            "SELECT value FROM system_settings WHERE key = $1", key
+        )
+        if not row:
+            return None
+        try:
+            parsed = json.loads(row["value"])
+        except (TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    async def _upsert_json_setting(self, key: str, state: dict[str, Any]) -> None:
+        await self._pool.execute(
+            """
+            INSERT INTO system_settings (key, value_type, value, updated_at)
+            VALUES ($1, 'json', $2, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+            """,
+            key,
+            json.dumps(state),
+        )
+
+    async def _claim_json_owner(
+        self,
+        key: str,
+        advisory_id: int,
+        state: dict[str, Any],
+        *,
+        stale_after_s: float,
+    ) -> bool:
+        """Atomically claim a background-task owner row (one worker across the
+        fleet). Returns False if another worker holds a fresh run. A running row
+        whose heartbeat is older than stale_after_s is treated as dead and can be
+        reclaimed.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                acquired = await conn.fetchval(
+                    "SELECT pg_try_advisory_xact_lock($1)", advisory_id
+                )
+                if not acquired:
+                    return False
+                row = await conn.fetchrow(
+                    "SELECT value FROM system_settings WHERE key = $1", key
+                )
+                existing: Any = None
+                if row:
+                    try:
+                        existing = json.loads(row["value"])
+                    except (TypeError, ValueError):
+                        existing = None
+                if isinstance(existing, dict) and existing.get("running"):
+                    heartbeat = existing.get("heartbeat_at")
+                    if heartbeat:
+                        try:
+                            hb = datetime.fromisoformat(str(heartbeat))
+                        except ValueError:
+                            hb = None
+                        if hb is not None:
+                            age_s = (datetime.now(timezone.utc) - hb).total_seconds()
+                            if age_s <= stale_after_s:
+                                return False
+                    # running but heartbeat unreadable -> allow reclaim
+                await conn.execute(
+                    """
+                    INSERT INTO system_settings (key, value_type, value, updated_at)
+                    VALUES ($1, 'json', $2, NOW())
+                    ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+                    """,
+                    key,
+                    json.dumps(state),
+                )
+                return True
+
+    async def get_retry_sweep_state(self) -> dict[str, Any] | None:
+        return await self._get_json_setting(RETRY_SWEEP_SETTING_KEY)
+
+    async def upsert_retry_sweep_state(self, state: dict[str, Any]) -> None:
+        await self._upsert_json_setting(RETRY_SWEEP_SETTING_KEY, state)
+
+    async def claim_retry_sweep(self, state: dict[str, Any], *, stale_after_s: float) -> bool:
+        return await self._claim_json_owner(
+            RETRY_SWEEP_SETTING_KEY,
+            RETRY_SWEEP_ADVISORY_LOCK_ID,
+            state,
+            stale_after_s=stale_after_s,
+        )
+
+    async def get_asset_recovery_state(self) -> dict[str, Any] | None:
+        return await self._get_json_setting(ASSET_RECOVERY_SETTING_KEY)
+
+    async def upsert_asset_recovery_state(self, state: dict[str, Any]) -> None:
+        await self._upsert_json_setting(ASSET_RECOVERY_SETTING_KEY, state)
+
+    async def claim_asset_recovery_owner(
+        self, state: dict[str, Any], *, stale_after_s: float
+    ) -> bool:
+        return await self._claim_json_owner(
+            ASSET_RECOVERY_SETTING_KEY,
+            ASSET_RECOVERY_ADVISORY_LOCK_ID,
+            state,
+            stale_after_s=stale_after_s,
+        )
+
+    async def list_retryable_upload_jobs(
+        self,
+        *,
+        window_hours: int = 336,
+        max_attempts: int = 6,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """MP3 jobs the backfill sweep may (re)process.
+
+        Includes stuck ``pending`` jobs (older than 2 minutes — e.g. after an
+        API restart) and ``failed`` jobs that are not permanently failed.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id, kind, status, attempt_count
+            FROM stream_upload_jobs
+            WHERE kind IN ('mp3_ok', 'mp3_alt')
+              AND COALESCE(permanent_failed, false) = false
+              AND attempt_count < $1
+              AND created_at > now() - make_interval(hours => $2)
+              AND (
+                status = 'failed'
+                OR (status = 'pending' AND updated_at < now() - interval '2 minutes')
+              )
+            ORDER BY created_at DESC
+            LIMIT $3
+            """,
+            max(1, min(int(max_attempts or 6), 50)),
+            max(1, min(int(window_hours or 336), 24 * 90)),
+            max(1, min(int(limit or 200), 1000)),
+        )
+        return [dict(row) for row in rows]
+
+    async def mark_upload_job_permanent_failed(
+        self,
+        job_id: UUID,
+        *,
+        error: str | None = None,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE stream_upload_jobs
+            SET permanent_failed = true,
+                status = 'failed',
+                error = COALESCE($2, error),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            job_id,
+            error,
+        )
+
+    async def list_studio_tasks_missing_b2(
+        self,
+        *,
+        window_hours: int = 336,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Studio success tasks within the window whose B2 MP3 copy is missing."""
+        rows = await self._pool.fetch(
+            """
+            SELECT st.id,
+                   st.audio_url_ok,
+                   st.audio_url_alt,
+                   (st.audio_url_ok IS NOT NULL AND NOT EXISTS (
+                      SELECT 1 FROM stream_tracks t
+                      WHERE t.suno_task_id = st.id AND t.variant = 'ok'
+                        AND COALESCE(t.storage_key, '') <> ''
+                   )) AS missing_ok,
+                   (st.audio_url_alt IS NOT NULL AND NOT EXISTS (
+                      SELECT 1 FROM stream_tracks t
+                      WHERE t.suno_task_id = st.id AND t.variant = 'alt'
+                        AND COALESCE(t.storage_key, '') <> ''
+                   )) AS missing_alt
+            FROM suno_tasks st
+            WHERE st.status = 'success'
+              AND COALESCE(st.source, '') <> 'web_music'
+              AND st.created_at > now() - make_interval(hours => $1)
+              AND (
+                (st.audio_url_ok IS NOT NULL AND NOT EXISTS (
+                  SELECT 1 FROM stream_tracks t
+                  WHERE t.suno_task_id = st.id AND t.variant = 'ok'
+                    AND COALESCE(t.storage_key, '') <> ''
+                ))
+                OR
+                (st.audio_url_alt IS NOT NULL AND NOT EXISTS (
+                  SELECT 1 FROM stream_tracks t
+                  WHERE t.suno_task_id = st.id AND t.variant = 'alt'
+                    AND COALESCE(t.storage_key, '') <> ''
+                ))
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM stream_upload_jobs j
+                WHERE j.suno_task_id = st.id
+                  AND j.kind IN ('mp3_ok', 'mp3_alt')
+                  AND COALESCE(j.permanent_failed, false) = false
+                  AND j.status IN ('pending', 'failed')
+              )
+            ORDER BY st.created_at DESC
+            LIMIT $2
+            """,
+            max(1, min(int(window_hours or 336), 24 * 90)),
+            max(1, min(int(limit or 200), 1000)),
+        )
+        return [dict(row) for row in rows]
+
+    async def list_web_music_tasks_missing_wav(
+        self,
+        *,
+        window_hours: int = 336,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Web-music success tasks within the window whose WAV is not in B2."""
+        rows = await self._pool.fetch(
+            """
+            SELECT st.id,
+                   (COALESCE(st.b2_wav_storage_key_ok, '') = ''
+                    AND COALESCE(st.audio_id_ok, '') <> '') AS missing_wav_ok,
+                   (COALESCE(st.b2_wav_storage_key_alt, '') = ''
+                    AND COALESCE(st.audio_id_alt, '') <> '') AS missing_wav_alt
+            FROM suno_tasks st
+            WHERE st.status = 'success'
+              AND st.source = 'web_music'
+              AND st.created_at > now() - make_interval(hours => $1)
+              AND (
+                (COALESCE(st.b2_wav_storage_key_ok, '') = ''
+                 AND COALESCE(st.audio_id_ok, '') <> '')
+                OR
+                (COALESCE(st.b2_wav_storage_key_alt, '') = ''
+                 AND COALESCE(st.audio_id_alt, '') <> '')
+              )
+            ORDER BY st.created_at DESC
+            LIMIT $2
+            """,
+            max(1, min(int(window_hours or 336), 24 * 90)),
+            max(1, min(int(limit or 20), 200)),
         )
         return [dict(row) for row in rows]
 

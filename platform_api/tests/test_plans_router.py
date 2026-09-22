@@ -143,6 +143,7 @@ class TestPublicProfileAddonQuote:
     ) -> None:
         base = _make_plan("Monthly · 2-channel")
         addon = _make_plan("Add-on · +2 channels", plan_kind="profile_addon", profile_allowance=2, price_cents=7900)
+        addon.is_public = True
         fake_plan_repo.plans[base.id] = base
         fake_plan_repo.plans[addon.id] = addon
 

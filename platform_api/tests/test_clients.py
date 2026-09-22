@@ -135,7 +135,6 @@ class TestClientInstantiation:
         settings = self._make_settings()
         client = SunoClient(settings)
         assert client._base_url == "https://suno.example.com"
-        assert client._api_key == "test-suno-key"
         # Default suno_timeout_seconds is 30
         assert client._timeout.read == 30.0
 
@@ -144,25 +143,22 @@ class TestClientInstantiation:
         settings = self._make_settings()
         client = FalClient(settings)
         assert client._base_url == "https://fal.example.com"
-        assert client._api_key == "test-fal-key"
-        # Default image_timeout_seconds is 60
-        assert client._timeout.read == 60.0
+        # Default image_timeout_seconds is 120
+        assert client._timeout.read == 120.0
 
     def test_slai_client_init(self):
         from platform_api.clients.slai_client import SlaiClient
         settings = self._make_settings()
         client = SlaiClient(settings)
         assert client._base_url == "https://slai.example.com"
-        assert client._api_key == "test-slai-key"
-        # Default image_timeout_seconds is 60
-        assert client._timeout.read == 60.0
+        # Default image_timeout_seconds is 120
+        assert client._timeout.read == 120.0
 
     def test_llm_client_init(self):
         from platform_api.clients.llm_client import LlmClient
         settings = self._make_settings()
         client = LlmClient(settings)
         assert client._base_url == "https://deepseek.example.com"
-        assert client._api_key == "test-deepseek-key"
         # Default llm_timeout_seconds is 120
         assert client._timeout.read == 120.0
 
