@@ -53,6 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `POST /generation/draft` no longer 500s: the router-local `DraftGenerationRequest` was missing `mood_id`/`structure_mode`. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
 - `services/stream_playback_guard.py` imported a non-existent `PLAY_CHUNK_BYTES` (actual `_PLAY_CHUNK_BYTES`), so the module could not be imported at all. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
 - `platform_api` test suite reconciled to current v3 behavior: 2946 passed, 0 failed, 0 collection errors (was 78 failed + 3 broken collectors). See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
+- `POST /batches/preflight` and `GET /credits/quota-status` no longer return 500 for accounts whose display credit balance is fractional (e.g. `1970.4442`). `MusicPlanPreflightResponse` and `QuotaStatusResponse` declared `wallet_balance: int`, but `units_to_credits()` returns a float, so Pydantic v2 rejected the value. Both are now `float`, matching `/licenses` and admin user responses.
 
 ### Changed
 

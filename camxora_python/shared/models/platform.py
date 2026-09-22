@@ -492,7 +492,7 @@ class MusicPlanPreflightResponse(BaseModel):
     batch_count: int = 0
     total_songs: int = 0
     total_wallet_cost: int = 0
-    wallet_balance: int = 0
+    wallet_balance: float = 0
     covered_by_subscription: bool = False
     songs_remaining: int | None = None
     images_remaining: int | None = None

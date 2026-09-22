@@ -49,6 +49,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 - Continue Progress no longer retries image jobs that already succeeded, and
   will not start video export until a local background PNG is ready (`long_ready`).
 - Sandbox API payload audit: `/api/v3/subscriptions/plans` omitted real `daily_credits` (Free showed 0). See `docs/changelog/2026-08-25-fix-v3-daily-grant-and-likes.md`.
+- **Music Automation showed "An unexpected error occurred." and disabled Generate** for accounts whose credit balance is fractional. The API's `/batches/preflight` and `/credits/quota-status` returned 500 (Pydantic rejected a fractional `wallet_balance` typed as `int`). The desktop `MusicPlanPreflightResponse.wallet_balance` is now `float` to match the corrected API schema. Requires the server fix plus this build.
 
 ## [1.4.2] - 2026-09-23
 

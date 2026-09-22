@@ -182,7 +182,7 @@ class MusicPlanPreflightResponse(BaseModel):
     batch_count: int = 0
     total_songs: int = 0
     total_wallet_cost: int = 0
-    wallet_balance: int = 0
+    wallet_balance: float = 0
     covered_by_subscription: bool = False
     songs_remaining: int | None = None
     images_remaining: int | None = None
@@ -223,7 +223,7 @@ class QuotaStatusResponse(BaseModel):
     daily_videos_limit: int | None = None
     daily_merges_remaining: int | None = None
     daily_merges_limit: int | None = None
-    wallet_balance: int = 0
+    wallet_balance: float = 0
     renewal_alert: str = "none"
     channels: list[ChannelDailyQuotaResponse] = Field(default_factory=list)
 
