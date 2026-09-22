@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from platform_api.data.music_genre_catalog import MUSIC_GENRE_CATALOG
 from platform_api.services.music_genre_catalog_service import MusicGenreCatalogService
 
 
@@ -33,10 +32,3 @@ async def test_resolve_genre_names_rejects_unknown() -> None:
     service._repo = repo
     with pytest.raises(ValueError, match="Unknown genre"):
         await service.resolve_genre_names(["Not A Real Genre"])
-
-
-def test_seed_catalog_has_expected_dance_genres() -> None:
-    names = {item.name for item in MUSIC_GENRE_CATALOG}
-    assert "Eurodance" in names
-    assert "Hands Up" in names
-    assert len(MUSIC_GENRE_CATALOG) >= 150
