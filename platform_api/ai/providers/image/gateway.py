@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
+import httpx
+
 from platform_api.ai.providers.image.openai import request_openai_image
 from platform_api.ai.registry import resolve_fal_api_model_id, resolve_image_model_id
 from platform_api.exceptions import ExternalServiceError, NoAvailableKeysError
@@ -58,6 +60,20 @@ class CalaImageClient(Protocol):
         ...
 
 
+class KieImageClient(Protocol):
+    async def generate_image(
+        self,
+        *,
+        prompt: str,
+        model_id: str | None = None,
+        width: int,
+        height: int,
+        api_key: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        ...
+
+
 class PoolWrapper(Protocol):
     async def execute(self, fn: Any) -> Any:
         ...
@@ -81,6 +97,8 @@ class ImageProviderGateway:
         openai_pool: PoolWrapper | None = None,
         key_pool_service: KeyPoolService | None = None,
         cala_client: CalaImageClient | None = None,
+        kie_client: KieImageClient | None = None,
+        kie_pool: PoolWrapper | None = None,
     ) -> None:
         self._fal_client = fal_client
         self._slai_client = slai_client
@@ -89,6 +107,8 @@ class ImageProviderGateway:
         self._openai_pool = openai_pool
         self._key_pool_service = key_pool_service
         self._cala_client = cala_client
+        self._kie_client = kie_client
+        self._kie_pool = kie_pool
 
     async def generate_fal(
         self,
@@ -194,6 +214,43 @@ class ImageProviderGateway:
             api_key=api_key,
         )
 
+    async def generate_kie(
+        self,
+        *,
+        prompt: str,
+        model_id: str | None,
+        width: int,
+        height: int,
+    ) -> dict[str, Any]:
+        if self._kie_client is None:
+            raise ExternalServiceError(
+                "kie.ai client not available for image generation.",
+                details={"provider": "kie"},
+            )
+        wrapper = self._require_pool(self._kie_pool, "kie")
+        canonical = resolve_image_model_id("kie", model_id) if model_id else None
+        try:
+            return await wrapper.execute(
+                lambda api_key: self._kie_client.generate_image(
+                    prompt=prompt,
+                    model_id=canonical,
+                    width=width,
+                    height=height,
+                    api_key=api_key,
+                )
+            )
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            raise ExternalServiceError(
+                f"kie.ai image generation error {status}",
+                is_retryable=status == 429 or status >= 500,
+                details={
+                    "provider": "kie",
+                    "status_code": status,
+                    "reason": exc.response.text[:500] if exc.response.text else "",
+                },
+            ) from exc
+
     async def dispatch_routing(
         self,
         *,
@@ -238,6 +295,13 @@ class ImageProviderGateway:
                 width=width,
                 height=height,
                 reference_image_base64=reference_image_base64,
+            )
+        if provider == "kie":
+            return await self.generate_kie(
+                prompt=prompt,
+                model_id=sub_model,
+                width=width,
+                height=height,
             )
         raise ExternalServiceError(
             f"Unsupported image provider: '{provider}'",

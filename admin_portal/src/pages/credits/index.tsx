@@ -132,6 +132,9 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
   ],
   local: [],
   cala: [],
+  kie: [
+    { value: 'grok-imagine-image-2-0/text-to-image', label: 'grok-imagine-image-2-0/text-to-image (kie.ai images)' },
+  ],
   suno: [
     { value: 'V5', label: 'V5' },
     { value: 'V5_5', label: 'V5.5' },

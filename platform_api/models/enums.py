@@ -92,6 +92,7 @@ class AIService(StrEnum):
     DEEPSEEK = "deepseek"
     SLAI = "slai"
     CALA = "cala"
+    KIE = "kie"
 
 
 class OperationType(StrEnum):
