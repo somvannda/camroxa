@@ -216,8 +216,9 @@ def _make_plan(
     price_cents: int = 7900,
     billing_cycle_days: int | None = 30,
     profile_allowance: int = 2,
-    monthly_song_quota: int | None = 420,
+    monthly_song_limit: int | None = 420,
     daily_song_limit_per_channel: int = 7,
+    included_wallet_credits: int = 0,
     is_active: bool = True,
 ) -> Plan:
     return Plan(
@@ -226,8 +227,9 @@ def _make_plan(
         price_cents=price_cents,
         billing_cycle_days=billing_cycle_days,
         profile_allowance=profile_allowance,
-        monthly_song_quota=monthly_song_quota,
+        monthly_song_limit=monthly_song_limit,
         daily_song_limit_per_channel=daily_song_limit_per_channel,
+        included_wallet_credits=included_wallet_credits,
         is_active=is_active,
         effective_from=datetime.now(timezone.utc),
         created_at=datetime.now(timezone.utc),
@@ -380,17 +382,23 @@ class TestAssignLicense:
         plan_repo: FakePlanRepository,
         credit_repo: FakeCreditRepository,
     ) -> None:
-        plan = _make_plan(name="lifetime", billing_cycle_days=None)
+        plan = _make_plan(
+            name="lifetime",
+            billing_cycle_days=None,
+            included_wallet_credits=100,
+        )
         plan_repo._plans[plan.id] = plan
         license = await license_repo.create(plan.id)
         user_id = uuid4()
 
         await service.assign_license(license.id, user_id)
 
+        from platform_api.services.credit_units import credits_to_units
+
         assert len(credit_repo.credits_added) == 1
         _, amount, reason, ref_id = credit_repo.credits_added[0]
-        assert amount == 1000
-        assert reason == "lifetime_bonus"
+        assert amount == credits_to_units(100)
+        assert reason == "plan_purchase"
 
     async def test_raises_not_found_for_nonexistent_license(
         self, service: LicenseService
@@ -495,7 +503,7 @@ class TestValidateLicense:
         plan = _make_plan(
             name="monthly",
             profile_allowance=2,
-            monthly_song_quota=420,
+            monthly_song_limit=420,
             daily_song_limit_per_channel=7,
         )
         plan_repo._plans[plan.id] = plan
@@ -519,7 +527,7 @@ class TestValidateLicense:
         license_repo: FakeLicenseRepository,
         plan_repo: FakePlanRepository,
     ) -> None:
-        plan = _make_plan(monthly_song_quota=420)
+        plan = _make_plan(monthly_song_limit=420)
         plan_repo._plans[plan.id] = plan
         license = await license_repo.create(plan.id)
         user_id = uuid4()
@@ -541,7 +549,7 @@ class TestValidateLicense:
         plan = _make_plan(
             name="lifetime",
             billing_cycle_days=None,
-            monthly_song_quota=None,
+            monthly_song_limit=None,
         )
         plan_repo._plans[plan.id] = plan
         license = await license_repo.create(plan.id)
@@ -650,7 +658,7 @@ class TestCheckMonthlyQuota:
         license_repo: FakeLicenseRepository,
         plan_repo: FakePlanRepository,
     ) -> None:
-        plan = _make_plan(monthly_song_quota=420)
+        plan = _make_plan(monthly_song_limit=420)
         plan_repo._plans[plan.id] = plan
         license = await license_repo.create(plan.id)
         user_id = uuid4()
@@ -667,7 +675,7 @@ class TestCheckMonthlyQuota:
         license_repo: FakeLicenseRepository,
         plan_repo: FakePlanRepository,
     ) -> None:
-        plan = _make_plan(monthly_song_quota=420)
+        plan = _make_plan(monthly_song_limit=420)
         plan_repo._plans[plan.id] = plan
         license = await license_repo.create(plan.id)
         user_id = uuid4()
@@ -691,7 +699,7 @@ class TestCheckMonthlyQuota:
         plan = _make_plan(
             name="lifetime",
             billing_cycle_days=None,
-            monthly_song_quota=None,
+            monthly_song_limit=None,
         )
         plan_repo._plans[plan.id] = plan
         license = await license_repo.create(plan.id)
