@@ -68,10 +68,10 @@ async def test_wallet_daily_bypass_when_bank_exhausted(
     bypass_service: UsageEnforcementService,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from platform_api.services import billing_calendar
+    from platform_api.services import usage_enforcement_service
 
     today = date(2026, 7, 17)
-    monkeypatch.setattr(billing_calendar, "billing_today", lambda: today)
+    monkeypatch.setattr(usage_enforcement_service, "billing_today", lambda: today)
 
     user_id = uuid4()
     channel_id = uuid4()
@@ -98,10 +98,10 @@ async def test_daily_exceeded_without_wallet_raises(
     bypass_service: UsageEnforcementService,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from platform_api.services import billing_calendar
+    from platform_api.services import usage_enforcement_service
 
     today = date(2026, 7, 17)
-    monkeypatch.setattr(billing_calendar, "billing_today", lambda: today)
+    monkeypatch.setattr(usage_enforcement_service, "billing_today", lambda: today)
 
     user_id = uuid4()
     channel_id = uuid4()

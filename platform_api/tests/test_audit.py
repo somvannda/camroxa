@@ -11,7 +11,7 @@ Requirements: 20.1, 20.2, 20.3, 20.4
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -419,7 +419,7 @@ class TestAuditService:
     @pytest.mark.asyncio
     async def test_log_event_with_timestamp_datetime(self, service: AuditService, mock_repo: AsyncMock) -> None:
         """log_event accepts datetime object as timestamp."""
-        ts = datetime(2024, 1, 15, 8, 0, 0)
+        ts = datetime(2024, 1, 15, 8, 0, 0, tzinfo=timezone.utc)
         result = await service.log_event(
             action_type="test.action",
             timestamp=ts,
@@ -430,9 +430,9 @@ class TestAuditService:
     @pytest.mark.asyncio
     async def test_log_event_defaults_timestamp_to_utcnow(self, service: AuditService) -> None:
         """log_event uses current UTC time when no timestamp provided."""
-        before = datetime.utcnow()
+        before = datetime.now(timezone.utc)
         result = await service.log_event(action_type="test.action")
-        after = datetime.utcnow()
+        after = datetime.now(timezone.utc)
 
         assert before <= result.created_at <= after
 

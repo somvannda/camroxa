@@ -113,7 +113,7 @@ async def test_music_history_falls_back_when_date_columns_or_history_columns_are
     assert result.batches[0].songs[0].output_dir_ok == r"D:\MusicGenerator\downloads\suno\bass-drive\2026-07-12_02"
     assert (
         result.batches[0].songs[0].output_dir_alt
-        == r"D:\MusicGenerator\downloads\suno\beattok-remixes\2026-07-12_02"
+        == r"beattok-remixes\2026-07-12_02"
     )
 
 

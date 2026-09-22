@@ -83,10 +83,10 @@ async def test_create_pack_sets_legacy_request_count() -> None:
     created = await service.create_pack(
         name="Starter",
         price_cents=1000,
-        song_credits=3000,
+        song_credits=30000,
     )
-    assert created["song_credits"] == 3000
-    assert created["request_count"] == 3000
+    assert created["song_credits"] == 30000
+    assert created["request_count"] == 30000
     assert created["is_active"] is True
 
 
@@ -98,7 +98,7 @@ async def test_update_pack_requires_existing_row() -> None:
             str(uuid4()),
             name="Missing",
             price_cents=1000,
-            song_credits=100,
+            song_credits=10000,
             is_active=True,
         )
 
