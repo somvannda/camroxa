@@ -12,6 +12,9 @@ class FakeStatsPool:
     async def fetchrow(self, query: str, *args):
         if "FROM credit_wallets" in query:
             return {"balance": 10_000}
+        if "FROM credit_transactions" in query:
+            # 8_000 debits minus 3_000 refunds = 5_000 net spent units.
+            return {"net_spent_units": 5_000}
         if "FROM licenses l" in query:
             return {
                 "id": "license-1",
@@ -22,8 +25,6 @@ class FakeStatsPool:
         return None
 
     async def fetchval(self, query: str, *args):
-        if "FROM credit_transactions" in query:
-            return 5_000
         if "COUNT(*) FROM songs" in query:
             return 8
         if "COUNT(*) FROM image_jobs" in query:
@@ -81,6 +82,7 @@ async def test_dashboard_stats_uses_monthly_song_limit_alias(monkeypatch: pytest
 
     assert result.credits_remaining == 1.0
     assert result.credits_spent == 0.5
+    assert result.credits_total == 1.5
     assert result.songs_generated == 8
     assert result.images_generated == 3
     assert result.studio_exports == 5

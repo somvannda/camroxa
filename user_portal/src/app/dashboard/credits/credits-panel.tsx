@@ -294,7 +294,7 @@ export function CreditsPanel({
           <CardHeader>
             <CardTitle className="font-display text-2xl text-white">Credit overview</CardTitle>
             <CardDescription className="text-slate-300/72">
-              Wallet balance only. Song / draft / image meters are hidden.
+              Shared credits wallet. Refunds are netted out of spend; song / draft / image meters are hidden.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm text-slate-300/72">
