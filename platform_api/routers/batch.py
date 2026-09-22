@@ -99,6 +99,11 @@ async def preflight_music_plan(
         auto_gen_image=request.auto_gen_image,
         auto_gsuno=request.auto_gsuno,
     )
+    # Desktop clients <= 1.3.2 typed wallet_balance as int and reject a
+    # fractional display-credit value (Pydantic int_from_float). The field is
+    # informational and not used by the UI, so emit whole credits for backward
+    # compatibility; the float schema still accepts the rounded value.
+    result["wallet_balance"] = int(round(float(result.get("wallet_balance") or 0)))
     return MusicPlanPreflightResponse(**result)
 
 

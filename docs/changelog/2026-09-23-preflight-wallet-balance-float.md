@@ -32,3 +32,4 @@ Pydantic v2 rejects a fractional float for an `int` field, so any account whose 
 
 - Server fix is required; whole-number-balance accounts keep working either way.
 - Fractional-balance accounts also need the desktop model change shipped (next desktop build); the current 1.3.2 client still types the field as `int`.
+- Backward compatibility: `/batches/preflight` now emits a whole-number `wallet_balance` (e.g. `1970.0`), which both the old `int` and new `float` client models accept. The field is informational and not used by the desktop UI, so rounding does not affect behavior.
