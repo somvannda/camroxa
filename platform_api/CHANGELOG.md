@@ -33,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `/me/credits` now returns the resolved Free/paid plan and `reset_label` (daily vs monthly). Monthly Free plans are granted on that poll. See `docs/changelog/2026-08-28-credit-reset-label-period.md`.
 - Free daily mint no longer stacks 50 credits on every `/me/credits` poll. Lot insert happens first; sandbox `duke@test.com` 4,150 was 83 stacked daily grants. Cutover now snapshots every wallet before/after leftover apply. See `docs/changelog/2026-08-25-daily-grant-idempotent-and-cutover-snapshot.md`.
+- `POST /generation/draft` no longer 500s: the router-local `DraftGenerationRequest` was missing `mood_id`/`structure_mode`. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
+- `services/stream_playback_guard.py` imported a non-existent `PLAY_CHUNK_BYTES` (actual `_PLAY_CHUNK_BYTES`), so the module could not be imported at all. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
+- `platform_api` test suite reconciled to current v3 behavior: 2946 passed, 0 failed, 0 collection errors (was 78 failed + 3 broken collectors). See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
 
 ### Changed
 
