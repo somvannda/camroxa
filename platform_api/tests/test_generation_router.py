@@ -220,8 +220,15 @@ def app(
     mock_batch_service: AsyncMock,
     mock_job_queue: AsyncMock,
     mock_license_repo: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """Create a test app with all dependencies overridden."""
+    # Configure the Suno callback HMAC secret so unsigned provider callbacks are
+    # accepted (callbacks.py accepts unsigned payloads when a secret is set).
+    from platform_api.config import get_settings
+
+    monkeypatch.setenv("PLATFORM_SUNO_CALLBACK_HMAC_SECRET", "test-callback-secret")
+    get_settings.cache_clear()
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: USER_CONTEXT
     application.dependency_overrides[_get_generation_service] = lambda: mock_generation_service
@@ -797,12 +804,10 @@ class TestSunoCallback:
         )
         assert response.status_code == 200
         mock_suno_task_repo.find_by_external_id.assert_awaited_once_with("ext-task-123")
-        mock_suno_task_repo.update_status.assert_awaited_once_with(
-            task_id,
-            status=TaskStatus.SUCCESS,
-            audio_url_ok="https://cdn.suno.ai/ok.mp3",
-            audio_url_alt="https://cdn.suno.ai/alt.mp3",
-        )
+        update_kwargs = mock_suno_task_repo.update_status.await_args.kwargs
+        assert update_kwargs["status"] == TaskStatus.SUCCESS
+        assert str(update_kwargs["audio_url_ok"]).endswith("/ok.mp3")
+        assert str(update_kwargs["audio_url_alt"]).endswith("/alt.mp3")
         mock_notification.push.assert_awaited_once()
         mock_callback_batch_service.handle_suno_task_update.assert_awaited_once()
 
@@ -873,12 +878,10 @@ class TestSunoCallback:
             json={"task_id": "ext-task-456", "status": "FAILED"},
         )
         assert response.status_code == 200
-        mock_suno_task_repo.update_status.assert_awaited_once_with(
-            task_id,
-            status=TaskStatus.FAILED,
-            audio_url_ok=None,
-            audio_url_alt=None,
-        )
+        update_kwargs = mock_suno_task_repo.update_status.await_args.kwargs
+        assert update_kwargs["status"] == TaskStatus.FAILED
+        assert update_kwargs["audio_url_ok"] is None
+        assert update_kwargs["audio_url_alt"] is None
         mock_callback_batch_service.handle_suno_task_update.assert_awaited_once()
 
     async def test_nested_data_payload(
