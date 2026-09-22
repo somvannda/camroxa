@@ -197,6 +197,13 @@ def get_cala_client():
     return CalaClient(settings=get_settings())
 
 
+def get_kie_client():
+    """Dependency that returns the KieClient instance (kie.ai Market API)."""
+    from platform_api.clients.kie_client import KieClient
+
+    return KieClient(settings=get_settings())
+
+
 def get_llm_client():
     """Dependency that returns the LlmClient instance."""
     from platform_api.clients.llm_client import LlmClient
@@ -402,6 +409,7 @@ def get_generation_service():
         suno_client=get_suno_client(),
         fal_client=get_fal_client(),
         slai_client=get_slai_client(),
+        kie_client=get_kie_client(),
         key_pool_service=get_key_pool_service(),
         ai_routing_service=get_ai_routing_service(),
     )

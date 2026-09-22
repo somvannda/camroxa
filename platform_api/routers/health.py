@@ -136,6 +136,7 @@ async def health_check(
         deepseek_pool,
         openai_pool,
         cala_pool,
+        kie_pool,
     ) = await asyncio.gather(
         _check_database(db_pool),
         _check_suno(),
@@ -147,6 +148,7 @@ async def health_check(
         _check_provider_pool("deepseek"),
         _check_provider_pool("openai"),
         _check_provider_pool("cala"),
+        _check_provider_pool("kie"),
     )
 
     # Determine overall status.
@@ -171,6 +173,7 @@ async def health_check(
             "deepseek": bool(deepseek_pool.get("available", False)),
             "openai": bool(openai_pool.get("available", False)),
             "cala": bool(cala_pool.get("available", False)),
+            "kie": bool(kie_pool.get("available", False)),
         },
         "service_pools": {
             "suno": suno_pool,
@@ -179,6 +182,7 @@ async def health_check(
             "deepseek": deepseek_pool,
             "openai": openai_pool,
             "cala": cala_pool,
+            "kie": kie_pool,
         },
         "uptime_seconds": uptime_seconds,
         "timestamp": datetime.now(timezone.utc).isoformat(),

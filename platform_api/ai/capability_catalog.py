@@ -84,7 +84,7 @@ def build_capability_catalog() -> dict[str, Any]:
                 "text_models": text_models,
                 "image_models": image_models,
                 "music_models": music_models,
-                "scale_via_key_pool": provider in {"suno", "deepseek", "openai", "slai", "fal"},
+                "scale_via_key_pool": provider in {"suno", "deepseek", "openai", "slai", "fal", "kie"},
                 "routing_note": (
                     "Music uses Suno; users pick v5 / v5.5 in app settings. "
                     "Lyrics-only API (~2 Suno credits/job) uses model 'lyrics' on the lyric slot. "

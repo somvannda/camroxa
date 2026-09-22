@@ -1775,6 +1775,7 @@ class GenerationService:
         suno_client: SunoClientProtocol,
         fal_client: FalClientProtocol,
         slai_client: SlaiClientProtocol,
+        kie_client: Any | None = None,
         key_pool_service: KeyPoolServicePort | None = None,
         ai_routing_service: Any | None = None,
     ) -> None:
@@ -1785,6 +1786,7 @@ class GenerationService:
         self._suno_client = suno_client
         self._fal_client = fal_client
         self._slai_client = slai_client
+        self._kie_client = kie_client
         self._key_pool_service = key_pool_service
         self._ai_routing_service = ai_routing_service
 
@@ -1795,12 +1797,14 @@ class GenerationService:
             self._suno_pool_wrapper = KeyPoolClientWrapper(key_pool_service, provider="suno")
             self._fal_pool_wrapper = KeyPoolClientWrapper(key_pool_service, provider="fal")
             self._slai_pool_wrapper = KeyPoolClientWrapper(key_pool_service, provider="slai")
+            self._kie_pool_wrapper = KeyPoolClientWrapper(key_pool_service, provider="kie")
             self._llm_pool_wrapper = KeyPoolClientWrapper(key_pool_service, provider="openai")
             self._deepseek_pool_wrapper = KeyPoolClientWrapper(key_pool_service, provider="deepseek")
         else:
             self._suno_pool_wrapper = None
             self._fal_pool_wrapper = None
             self._slai_pool_wrapper = None
+            self._kie_pool_wrapper = None
             self._llm_pool_wrapper = None
             self._deepseek_pool_wrapper = None
 
@@ -1820,6 +1824,8 @@ class GenerationService:
                 openai_pool=self._llm_pool_wrapper,
                 key_pool_service=self._key_pool_service,
                 cala_client=get_cala_client(),
+                kie_client=self._kie_client,
+                kie_pool=self._kie_pool_wrapper,
             )
         return self._image_gateway
 
@@ -3020,6 +3026,8 @@ class GenerationService:
                 image_bytes = await self._generate_openai_image(request, width, height)
             elif request.provider == "cala":
                 image_bytes = await self._generate_cala_image(request, width, height)
+            elif request.provider == "kie":
+                image_bytes = await self._generate_kie_image(request, width, height)
             else:
                 if not skip_pricing and price > 0:
                     await self._credit_service.refund(
@@ -3248,6 +3256,8 @@ class GenerationService:
             return await self._generate_openai_image(request, width, height)
         if request.provider == "cala":
             return await self._generate_cala_image(request, width, height)
+        if request.provider == "kie":
+            return await self._generate_kie_image(request, width, height)
         raise ValidationError(
             f"Unsupported image provider: '{request.provider}'.",
             details={"provider": request.provider},
@@ -3463,6 +3473,18 @@ class GenerationService:
             reference_image_base64=reference_b64,
         )
         return await self.extract_image_bytes_async(response, provider="cala")
+
+    async def _generate_kie_image(
+        self, request: ImageRequest, width: int, height: int
+    ) -> bytes:
+        """Generate an image via kie.ai and return PNG bytes."""
+        response = await self._get_image_gateway().generate_kie(
+            prompt=request.prompt,
+            model_id=request.model_id,
+            width=width,
+            height=height,
+        )
+        return await self.extract_image_bytes_async(response, provider="kie")
 
     # ------------------------------------------------------------------
     # Private Helpers — Key Pool Routing (Requirements 8.1, 8.2, 8.3)
