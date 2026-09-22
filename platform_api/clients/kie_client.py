@@ -30,9 +30,10 @@ _DEFAULT_MODEL = "grok-imagine-image-2-0/text-to-image"
 _SUCCESS_STATES = frozenset({"success"})
 _FAILURE_STATES = frozenset({"fail"})
 # kie.ai may return errors as HTTP 200 with a non-200 ``code`` in the body.
-# These codes are key/billing related and must trigger key-pool failover, so
-# they are re-raised as ``httpx.HTTPStatusError`` (what execute_with_failover
-# inspects).
+# Like the Suno/SLAI/FAL clients, these are surfaced as ``ExternalServiceError``
+# rather than ``httpx.HTTPStatusError`` so the key pool never marks the key as
+# exhausted or rate-limited. Billing errors (402/403) are permanent; rate
+# limits (429/433) are retryable.
 _EXHAUSTED_CODES = frozenset({402, 403})
 _RATE_LIMITED_CODES = frozenset({429, 433})
 _RETRYABLE_BODY_CODES = frozenset({408, 455, 500, 501})
@@ -51,11 +52,37 @@ def _aspect_ratio(width: int, height: int) -> str:
     return "9:16" if ratio <= 0.6 else "2:3"
 
 
-def _synthetic_status_error(code: int, message: str, *, url: str) -> httpx.HTTPStatusError:
-    """Build an HTTPStatusError for a body-level kie.ai error code."""
-    request = httpx.Request("POST", url)
-    response = httpx.Response(status_code=code, request=request, text=message)
-    return httpx.HTTPStatusError(message, request=request, response=response)
+def _classify_error(exc: Exception, *, context: str) -> ExternalServiceError:
+    """Convert an httpx exception into an ``ExternalServiceError``.
+
+    Mirrors the Suno/SLAI/FAL clients: HTTP errors are never surfaced as
+    ``httpx.HTTPStatusError``, so the key pool does not mark the key as
+    exhausted or rate-limited. 429 and 5xx are retryable; other 4xx are
+    permanent.
+    """
+    if isinstance(exc, httpx.TimeoutException):
+        return ExternalServiceError(
+            f"kie.ai timeout: {context}",
+            is_retryable=True,
+            details={"provider": "kie", "reason": "timeout"},
+        )
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        is_retryable = status == 429 or status >= 500
+        return ExternalServiceError(
+            f"kie.ai error {status}: {context}",
+            is_retryable=is_retryable,
+            details={
+                "provider": "kie",
+                "status_code": status,
+                "reason": exc.response.text[:500] if exc.response.text else "",
+            },
+        )
+    return ExternalServiceError(
+        f"kie.ai connection error: {context} - {exc}",
+        is_retryable=True,
+        details={"provider": "kie", "reason": "connection_error"},
+    )
 
 
 class KieClient:
@@ -115,20 +142,11 @@ class KieClient:
                 response.raise_for_status()
                 data = response.json()
         except httpx.TimeoutException as exc:
-            raise ExternalServiceError(
-                "kie.ai createTask timeout",
-                is_retryable=True,
-                details={"provider": "kie", "reason": "timeout"},
-            ) from exc
-        except httpx.HTTPStatusError:
-            # Surface HTTP 402/403/429 to the key-pool failover loop.
-            raise
+            raise _classify_error(exc, context="createTask") from exc
+        except httpx.HTTPStatusError as exc:
+            raise _classify_error(exc, context="createTask") from exc
         except httpx.RequestError as exc:
-            raise ExternalServiceError(
-                f"kie.ai connection error: {exc}",
-                is_retryable=True,
-                details={"provider": "kie", "reason": "connection_error"},
-            ) from exc
+            raise _classify_error(exc, context="createTask") from exc
 
         self._raise_for_body_code(data, url=create_url)
         task_id = self._extract_task_id(data)
@@ -165,8 +183,8 @@ class KieClient:
                     resp = await client.get(poll_url, params={"taskId": task_id})
                     resp.raise_for_status()
                     data = resp.json()
-            except httpx.HTTPStatusError:
-                raise
+            except httpx.HTTPStatusError as exc:
+                raise _classify_error(exc, context="recordInfo") from exc
             except (httpx.TimeoutException, httpx.RequestError) as exc:
                 logger.debug("kie.ai poll attempt failed (taskId=%s): %s", task_id, exc)
                 continue
@@ -235,7 +253,11 @@ class KieClient:
 
     @staticmethod
     def _raise_for_body_code(data: Any, *, url: str) -> None:
-        """Raise on kie.ai body-level error codes (which may arrive as HTTP 200)."""
+        """Raise on kie.ai body-level error codes (which may arrive as HTTP 200).
+
+        Always raises ``ExternalServiceError`` (never ``httpx.HTTPStatusError``)
+        so the key pool does not mark the key as exhausted or rate-limited.
+        """
         if not isinstance(data, dict):
             raise ExternalServiceError(
                 "kie.ai returned a non-JSON response.",
@@ -254,10 +276,19 @@ class KieClient:
 
         message = str(data.get("msg") or f"kie.ai error code={code_int}")
         if code_int in _EXHAUSTED_CODES:
-            raise _synthetic_status_error(code_int, message, url=url)
+            # Billing errors (402/403) are permanent, not retryable.
+            raise ExternalServiceError(
+                f"kie.ai error {code_int}: {message}",
+                is_retryable=False,
+                details={"provider": "kie", "status_code": code_int},
+            )
         if code_int in _RATE_LIMITED_CODES:
-            # 433 (subkey limit) is treated as a rate limit so the key rotates.
-            raise _synthetic_status_error(429, message, url=url)
+            # 433 (subkey limit) is treated as a rate limit so the caller retries.
+            raise ExternalServiceError(
+                f"kie.ai rate limited ({code_int}): {message}",
+                is_retryable=True,
+                details={"provider": "kie", "status_code": code_int},
+            )
         raise ExternalServiceError(
             f"kie.ai error {code_int}: {message}",
             is_retryable=code_int in _RETRYABLE_BODY_CODES,
