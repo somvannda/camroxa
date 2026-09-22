@@ -158,7 +158,12 @@ async def test_extras_for_period_sums_current_period() -> None:
 
 
 @pytest.mark.asyncio
-async def test_grant_adds_extra_for_current_period_only() -> None:
+async def test_grant_adds_extra_for_current_period_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import quota_topup_service
+
+    monkeypatch.setattr(quota_topup_service, "billing_today", lambda: date(2026, 8, 4))
     user_id = uuid4()
     admin_id = uuid4()
     plan = _plan()
@@ -249,6 +254,8 @@ async def test_grant_rejects_no_plan_and_unlimited() -> None:
 
 @pytest.mark.asyncio
 async def test_display_remaining_includes_topup() -> None:
+    from platform_api.services.quota_display_service import period_start_for_context
+
     user_id = uuid4()
     plan = _plan(song_limit=100)
     ctx = ActiveSubscriptionContext(
@@ -264,7 +271,7 @@ async def test_display_remaining_includes_topup() -> None:
         plan_repo=plan_repo,
         usage_repo=usage_repo,
     )
-    period_start, _ = service.period_bounds(ctx, reference_date=date(2026, 8, 4))
+    period_start = period_start_for_context(ctx)
     await topup_repo.add_topup(
         user_id=user_id,
         license_id=ctx.license_id,

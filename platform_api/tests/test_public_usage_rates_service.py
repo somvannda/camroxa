@@ -49,6 +49,8 @@ async def test_public_ops_exclude_polish_and_include_draft_image_music() -> None
         "music",
         "background_image",
         "thumbnail_image",
+        "video",
+        "video_merge",
     )
 
 
@@ -62,6 +64,8 @@ async def test_estimated_full_song_is_lyric_title_album_plus_one_music() -> None
         "music": int(7.5 * CREDIT_SCALE),
         "background_image": 5 * CREDIT_SCALE,
         "thumbnail_image": 5 * CREDIT_SCALE,
+        "video": 3 * CREDIT_SCALE,
+        "video_merge": 10 * CREDIT_SCALE,
     }
     payload = await build_public_usage_rates(
         routing_service=_FakeRoutingService(),
