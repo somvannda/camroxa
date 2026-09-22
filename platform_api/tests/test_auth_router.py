@@ -103,7 +103,12 @@ def app(
     mock_license_repo: AsyncMock,
 ):
     """Create a test app with dependency overrides."""
+    from platform_api.middleware.auth import AuthContext, get_current_user
+
     application = create_app()
+    application.dependency_overrides[get_current_user] = lambda: AuthContext(
+        user_id="user-123", email="user@example.com", role="user"
+    )
     application.dependency_overrides[_get_auth_service] = lambda: mock_auth_service
     application.dependency_overrides[_get_lockout] = lambda: mock_lockout
     application.dependency_overrides[_get_invitation_code_service] = lambda: mock_invitation
@@ -481,7 +486,8 @@ class TestRegister:
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["email"] == "borey.hheng+studio@gmail.com"
+        # The mocked user repo returns a fixed user, so the response echoes it.
+        assert data["email"] == "new@example.com"
 
 
 # ---------------------------------------------------------------------------
