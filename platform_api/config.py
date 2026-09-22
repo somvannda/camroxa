@@ -95,6 +95,9 @@ class Settings(BaseSettings):
 
     cala_api_base_url: str = "http://localhost:3000"
 
+    # kie.ai unified Market API (Grok Imagine, etc.)
+    kie_api_base_url: str = "https://api.kie.ai"
+
     deepseek_api_base_url: str = "https://api.deepseek.com"
 
     # --- Rate Limiting ---

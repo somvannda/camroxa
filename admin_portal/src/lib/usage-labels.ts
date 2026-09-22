@@ -55,6 +55,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   deepseek: 'DeepSeek',
   suno: 'Suno',
   cala: 'Cala',
+  kie: 'kie.ai',
   local: 'Local',
 };
 

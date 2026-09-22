@@ -9,10 +9,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
-const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'youtube', 'facebook'] as const;
+const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie', 'youtube', 'facebook'] as const;
 
 /** Core generation providers shown on the dashboard key-pool row. */
-const DASHBOARD_ROW_PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala'] as const;
+const DASHBOARD_ROW_PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie'] as const;
 
 const PROVIDER_LABELS: Record<string, string> = {
   suno: 'Suno',
@@ -21,6 +21,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   deepseek: 'DeepSeek',
   slai: 'Slai',
   cala: 'CALA',
+  kie: 'kie.ai',
   youtube: 'YouTube',
   facebook: 'Facebook',
 };

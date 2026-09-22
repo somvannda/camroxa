@@ -38,6 +38,7 @@ async def dispatch_image_generation(
     fal_client: Any | None = None,
     slai_client: Any | None = None,
     cala_client: Any | None = None,
+    kie_client: Any | None = None,
 ) -> dict[str, Any]:
     """Dispatch image generation to the provider specified by routing."""
     gateway = ImageProviderGateway(
@@ -48,6 +49,8 @@ async def dispatch_image_generation(
         openai_pool=_KeyPoolWrapper(key_pool_service, "openai"),
         key_pool_service=key_pool_service,
         cala_client=cala_client,
+        kie_client=kie_client,
+        kie_pool=_KeyPoolWrapper(key_pool_service, "kie") if kie_client else None,
     )
     return await gateway.dispatch_routing(
         provider=routing.provider,

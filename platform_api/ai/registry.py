@@ -130,6 +130,17 @@ SLAI_IMAGE_MODELS: dict[str, ModelSpec] = {
     "slai/gpt-image-2": ModelSpec(api_id="slai/gpt-image-2", cost_tier="~$0.0067/img"),
 }
 
+KIE_IMAGE_MODELS: dict[str, ModelSpec] = {
+    # kie.ai unified Market API: POST /api/v1/jobs/createTask, then poll
+    # GET /api/v1/jobs/recordInfo?taskId=. Text-to-image only (no reference image).
+    # Cost tier is a placeholder estimate — review the seeded draft pricing row
+    # on the admin Credits page before approving.
+    "grok-imagine-image-2-0/text-to-image": ModelSpec(
+        api_id="grok-imagine-image-2-0/text-to-image",
+        cost_tier="~$0.02/img",
+    ),
+}
+
 TEXT_MODEL_REGISTRY: MappingProxyType[str, MappingProxyType[str, ModelSpec]] = MappingProxyType(
     {
         "openai": MappingProxyType(OPENAI_TEXT_MODELS),
@@ -144,6 +155,7 @@ IMAGE_MODEL_REGISTRY: MappingProxyType[str, MappingProxyType[str, ModelSpec]] = 
         "openai": MappingProxyType(OPENAI_IMAGE_MODELS),
         "fal": MappingProxyType(FAL_IMAGE_MODELS),
         "slai": MappingProxyType(SLAI_IMAGE_MODELS),
+        "kie": MappingProxyType(KIE_IMAGE_MODELS),
     }
 )
 
@@ -171,6 +183,11 @@ PROVIDER_SUB_MODELS: MappingProxyType[str, MappingProxyType[ServiceType, tuple[s
                 {
                     ServiceType.TEXT_GENERATION: tuple(SLAI_TEXT_MODELS.keys()),
                     ServiceType.IMAGE_GENERATION: tuple(SLAI_IMAGE_MODELS.keys()),
+                }
+            ),
+            "kie": MappingProxyType(
+                {
+                    ServiceType.IMAGE_GENERATION: tuple(KIE_IMAGE_MODELS.keys()),
                 }
             ),
             "cala": MappingProxyType({}),

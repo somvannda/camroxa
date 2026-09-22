@@ -17,7 +17,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-BALANCE_PROVIDERS = ("suno", "slai", "fal", "openai", "deepseek")
+BALANCE_PROVIDERS = ("suno", "slai", "fal", "openai", "deepseek", "kie")
 _CACHE_PREFIX = "provider_key_balance:"
 _DAY_PREFIX = "provider_key_balance_day:"
 _DEFAULT_TTL = 45
@@ -141,6 +141,19 @@ def _normalize_slai(raw: dict[str, Any]) -> tuple[float | None, str | None, str]
     if units is None:
         return None, None, "credits"
     return units / _SLAI_UNITS_PER_CREDIT, None, "credits"
+
+
+def _normalize_kie(raw: dict[str, Any]) -> tuple[float | None, str | None, str]:
+    """kie.ai ``GET /api/v1/chat/credit`` → ``{"code":200,"data":100}``."""
+    data = raw.get("data")
+    if isinstance(data, (int, float, str)) and not isinstance(data, bool):
+        amount = _as_float(data)
+        if amount is not None:
+            return amount, None, "credits"
+    payload = data if isinstance(data, dict) else raw
+    credits = payload.get("credits") or payload.get("balance") or raw.get("credits")
+    amount = _as_float(credits)
+    return amount, None, "credits"
 
 
 class ProviderKeyBalanceService:
@@ -309,6 +322,8 @@ class ProviderKeyBalanceService:
             return await self._fetch_fal(api_key)
         if provider == "slai":
             return await self._fetch_slai(api_key)
+        if provider == "kie":
+            return await self._fetch_kie(api_key)
         if provider == "openai":
             return await self._fetch_openai(api_key)
         return None, None, "credits", None, "unsupported", f"Unknown provider: {provider}"
@@ -463,6 +478,38 @@ class ProviderKeyBalanceService:
             "error",
             last_error or "SLAI balance request failed",
         )
+
+    async def _fetch_kie(
+        self, api_key: str
+    ) -> tuple[float | None, str | None, str, Any, str, str | None]:
+        """Fetch remaining kie.ai credits via ``GET /api/v1/chat/credit``."""
+        base = str(
+            getattr(self._settings, "kie_api_base_url", "") or "https://api.kie.ai"
+        ).rstrip("/")
+        url = f"{base}/api/v1/chat/credit"
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                url,
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+            )
+            response.raise_for_status()
+            raw = response.json()
+        if not isinstance(raw, dict):
+            return None, None, "credits", raw, "error", "kie.ai credit response was not JSON object"
+        code = raw.get("code")
+        if code is not None and int(code) != 200:
+            return (
+                None,
+                None,
+                "credits",
+                raw,
+                "error",
+                str(raw.get("msg") or f"kie.ai credit API code={code}")[:200],
+            )
+        amount, currency, unit = _normalize_kie(raw)
+        if amount is None:
+            return None, currency, unit, raw, "error", "Could not parse kie.ai credit response"
+        return amount, currency, unit, raw, "ok", None
 
     async def _fetch_openai(
         self, api_key: str

@@ -92,6 +92,7 @@ const DEFAULT_SUB_MODELS: Record<string, string> = {
   fal: 'flux-pro',
   openai: 'gpt-4o-mini',
   slai: 'xiaomi/mimo-v2.5-pro',
+  kie: 'grok-imagine-image-2-0/text-to-image',
 };
 
 // --- Helper Functions ---
