@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
 
-from platform_api.exceptions import ValidationError
+from platform_api.exceptions import PlatformAPIError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
 from platform_api.models.enums import TaskStatus
@@ -1061,21 +1061,35 @@ async def refund_local_video_operation(
             "operation_type must be 'video', 'video_manual', or 'video_merge'.",
             details={"operation_type": request.operation_type},
         )
-    await _assert_owned_channel_profile(
-        profile_service,
-        user_id=ctx.user_id,
-        channel_profile_id=request.channel_profile_id,
-    )
-    await enforcement_service.refund_failed_operation(
-        user_id=UUID(ctx.user_id),
-        channel_profile_id=request.channel_profile_id,
-        operation_type=op,
-        ai_service=_LOCAL_AI_SERVICE,
-        charged_credit_units=int(request.charged_credit_units or 0),
-        reason=request.reason,
-        ref_id=request.ref_id,
-        count=int(request.count),
-    )
+    try:
+        await _assert_owned_channel_profile(
+            profile_service,
+            user_id=ctx.user_id,
+            channel_profile_id=request.channel_profile_id,
+        )
+        await enforcement_service.refund_failed_operation(
+            user_id=UUID(ctx.user_id),
+            channel_profile_id=request.channel_profile_id,
+            operation_type=op,
+            ai_service=_LOCAL_AI_SERVICE,
+            charged_credit_units=int(request.charged_credit_units or 0),
+            reason=request.reason,
+            ref_id=request.ref_id,
+            count=int(request.count),
+        )
+    except PlatformAPIError:
+        raise
+    except Exception:
+        logger.exception(
+            "video/refund failed user=%s op=%s ref_id=%s charged=%s profile=%s reason=%s",
+            ctx.user_id,
+            op,
+            request.ref_id,
+            request.charged_credit_units,
+            request.channel_profile_id,
+            (request.reason or "")[:160],
+        )
+        raise
     return {"status": "refunded", "operation_type": op}
 
 
