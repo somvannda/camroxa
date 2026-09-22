@@ -77,15 +77,39 @@ def test_ab_variant_differs() -> None:
     assert ab_plaintext_variant(data, lane="b") != data
 
 
-def test_watermark_changes_bytes_and_is_stable_hash() -> None:
+def test_watermark_leaves_mp3_unchanged_and_hash_is_stable() -> None:
     mp3 = b"ID3\x04\x00\x00" + bytes([0, 0, 0, 30]) + b"\x00" * 30 + b"\x40" * 4000
     marked, digest = watermark_audio_bytes(
         mp3, user_id="user-1", export_id="export-1", secret="sekrit"
     )
-    assert marked != mp3
+    # MP3 is lossy: never modified. Ownership relies on server-side records.
+    assert marked == mp3
     payload = watermark_payload(user_id="user-1", export_id="export-1", secret="sekrit")
     assert payload_hash(payload) == digest
     assert embed_lsb(mp3, payload) == marked
+
+
+def test_watermark_changes_wav_bytes() -> None:
+    samples = bytes(range(256)) * 40
+    wav = (
+        b"RIFF"
+        + (36 + len(samples)).to_bytes(4, "little")
+        + b"WAVE"
+        + b"fmt "
+        + (16).to_bytes(4, "little")
+        + b"\x00" * 16
+        + b"data"
+        + len(samples).to_bytes(4, "little")
+        + samples
+    )
+    marked, digest = watermark_audio_bytes(
+        wav, user_id="user-1", export_id="export-1", secret="sekrit"
+    )
+    assert marked != wav
+    assert len(marked) == len(wav)
+    payload = watermark_payload(user_id="user-1", export_id="export-1", secret="sekrit")
+    assert payload_hash(payload) == digest
+    assert embed_lsb(wav, payload) == marked
 
 
 @pytest.mark.asyncio
