@@ -7,6 +7,23 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-09-22] — API v3 production cutover (executed)
+
+### Changed
+
+- `/api/v3` is the live API surface on production; `/api/v1` remains dual-mounted for rollback. Alembic applied through `121_upload_job_permanent_failed`; `credits_only_v3_charge` is **On**.
+- Production `admin_portal` and `music_web` rebuilt from the v3 cutover RC; nginx production routes stream/WS under `/api/v3`.
+- Executed the credits-only leftover conversion: web-subscription leftover (2 users, 827 credits) and desktop plan quota (`leftover packages × 10`; 3 users, 2,200 credits) minted as non-expiring `quota_conversion` credits. Plan per-op credit fields seeded and the `Free` plan row created.
+- Added the `kie` provider to production (key pool + last-resort image fallback); draft pricing rows created for review.
+
+### Fixed
+
+- AI routing request schema hardcoded providers as `^(deepseek|openai|fal|slai|cala|suno)$`, excluding `kie`, so saving a kie routing/fallback entry returned 422. Pattern now includes `kie` (PR #142).
+
+### Docs
+
+- Added `docs/API_V3_CUTOVER_RUNBOOK.md` (deploy + rollback).
+
 ## [2026-08-05] — Desktop 1.1.1 image modes (production)
 
 ### Added
