@@ -192,7 +192,7 @@ class SystemSettingsDraft:
     thumbnail_overlay_mode: str = "ai"
 
 
-SUNO_VERSION_OPTIONS = ("v5", "v5.5")
+SUNO_VERSION_OPTIONS = ("v6", "v6 mini", "v6 wild")
 
 
 @dataclass
@@ -200,7 +200,7 @@ class SunoSettingsDraft:
     suno_callback_url: str = ""
     suno_timeout_ms: int = 90000
     suno_retry_count: int = 3
-    suno_default_version: str = "v5.5"
+    suno_default_version: str = "v6"
     suno_merge_enabled: bool = False
     suno_merge_group_size: int = 0
     suno_credits_reserve: int = 10
@@ -320,7 +320,7 @@ def build_suno_settings_draft(settings: dict[str, Any]) -> SunoSettingsDraft:
         suno_callback_url=read_string_setting(settings, "sunoCallbackUrl"),
         suno_timeout_ms=max(1000, read_number_setting(settings, "sunoTimeoutMs", 90000)),
         suno_retry_count=max(0, read_number_setting(settings, "sunoRetryCount", 3)),
-        suno_default_version=read_string_setting(settings, "sunoDefaultVersion", "v5.5") or "v5.5",
+        suno_default_version=read_string_setting(settings, "sunoDefaultVersion", "v6") or "v6",
         suno_merge_enabled=read_boolean_setting(settings, "sunoMergeEnabled", False),
         suno_merge_group_size=max(0, read_number_setting(settings, "sunoMergeGroupSize", 0)),
         suno_credits_reserve=max(0, read_number_setting(settings, "sunoCreditsReserve", 10)),

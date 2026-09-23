@@ -102,7 +102,7 @@ DEFAULT_SETTINGS: dict = {
     "lyricsPolishStrength": 60,
     "sunoTimeoutMs": 90000,
     "sunoRetryCount": 3,
-    "sunoDefaultVersion": "v5.5",
+    "sunoDefaultVersion": "v6",
     "sunoMergeEnabled": False,
     "sunoMergeGroupSize": 5,
     "sunoApiBaseUrl": "https://api.sunoapi.org",

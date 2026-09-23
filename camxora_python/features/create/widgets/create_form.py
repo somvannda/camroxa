@@ -169,9 +169,10 @@ class CreateForm(QFrame):
         tab_row.addWidget(tab_bar)
         tab_row.addStretch(1)
         self.model = StudioComboBox()
-        self.model.addItem("V5.5", "V5_5")
-        self.model.addItem("V5", "V5")
-        self.model.setFixedWidth(92)
+        self.model.addItem("V6", "V6")
+        self.model.addItem("V6 Mini", "V6_MINI")
+        self.model.addItem("V6 Wild", "V6_WILD")
+        self.model.setFixedWidth(104)
         tab_row.addWidget(self.model)
         root.addLayout(tab_row)
 
@@ -381,7 +382,11 @@ class CreateForm(QFrame):
         data = self.model.currentData()
         if data:
             return str(data)
-        return {"V5.5": "V5_5", "V5": "V5"}.get(self.model.currentText(), "V5_5")
+        return {
+            "V6": "V6",
+            "V6 Mini": "V6_MINI",
+            "V6 Wild": "V6_WILD",
+        }.get(self.model.currentText(), "V6")
 
     def lyrics_text(self) -> str:
         return self.lyrics.editor.toPlainText().strip()

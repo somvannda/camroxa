@@ -56,7 +56,7 @@ DEFAULT_BILINGUAL_SECTION_MAP: dict[str, str] = {
 }
 
 SUNO_STYLE_MAX_LENGTH = 1000
-"""Suno customMode style cap for V4_5 / V5 / V5_5 (V4 is 200; we ship V5+)."""
+"""Suno customMode style cap for V4_5 / V5 / V5_5 / V6 (V4 is 200; we ship V5+)."""
 
 
 @dataclass(frozen=True, slots=True)

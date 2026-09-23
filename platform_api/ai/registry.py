@@ -107,10 +107,24 @@ SUNO_TEXT_MODELS: dict[str, ModelSpec] = {
     ),
 }
 
+# Suno V6 series is current (V6 default, V6_MINI fast, V6_WILD experimental).
+# V5 / V5_5 are discontinued by the provider but stay registered so existing
+# tasks and pricing rows keep resolving.
 SUNO_MUSIC_MODELS: dict[str, ModelSpec] = {
+    "V6": ModelSpec(api_id="V6", cost_tier="~12 Suno credits (~$0.06)"),
+    "V6_MINI": ModelSpec(api_id="V6_MINI", cost_tier="~12 Suno credits (~$0.06)"),
+    "V6_WILD": ModelSpec(api_id="V6_WILD", cost_tier="~12 Suno credits (~$0.06)"),
     "V5": ModelSpec(api_id="V5", cost_tier="~12 Suno credits (~$0.06)"),
     "V5_5": ModelSpec(api_id="V5_5", cost_tier="~12 Suno credits (~$0.06)"),
 }
+
+DEFAULT_SUNO_MUSIC_MODEL = "V6"
+
+# Canonical model ids accepted by the generate API (V6 series + deprecated V5).
+SUNO_MUSIC_MODEL_IDS: tuple[str, ...] = tuple(SUNO_MUSIC_MODELS.keys())
+
+# Pydantic/request validation regex for the ``model`` field.
+SUNO_MODEL_PATTERN = r"^(?:" + "|".join(SUNO_MUSIC_MODEL_IDS) + r")$"
 
 OPENAI_IMAGE_MODELS: dict[str, ModelSpec] = {
     "gpt-image-1-mini": ModelSpec(api_id="gpt-image-1-mini", cost_tier="~$0.02/img"),
@@ -235,6 +249,26 @@ def _build_cost_tiers() -> MappingProxyType[str, str]:
 _register_aliases()
 
 SUB_MODEL_COST_TIERS = _build_cost_tiers()
+
+
+def resolve_suno_model_id(version: str | None) -> str:
+    """Map a user-facing Suno version setting (e.g. ``v6``, ``v5.5``) to a model id."""
+    key = (
+        str(version or "")
+        .strip()
+        .lower()
+        .replace(".", "")
+        .replace("-", "")
+        .replace("_", "")
+        .replace(" ", "")
+    )
+    return {
+        "v6": "V6",
+        "v6mini": "V6_MINI",
+        "v6wild": "V6_WILD",
+        "v5": "V5",
+        "v55": "V5_5",
+    }.get(key, DEFAULT_SUNO_MUSIC_MODEL)
 
 
 def resolve_text_model_id(provider: str, model: str | None) -> str:

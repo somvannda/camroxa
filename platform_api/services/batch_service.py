@@ -4458,15 +4458,17 @@ class BatchService:
 
     async def _resolve_suno_model(self, user_id: UUID) -> str:
         """Resolve the current user's preferred Suno model."""
+        from platform_api.ai.registry import DEFAULT_SUNO_MUSIC_MODEL, resolve_suno_model_id
+
         if self._settings_service is None:
-            return "V5_5"
+            return DEFAULT_SUNO_MUSIC_MODEL
 
         settings = await self._settings_service.get_merged_settings(
             user_id=user_id,
             include_sensitive=False,
         )
-        configured = str(settings.get("sunoDefaultVersion", "v5.5") or "v5.5").strip().lower()
-        return "V5" if configured == "v5" else "V5_5"
+        configured = settings.get("sunoDefaultVersion", "v6")
+        return resolve_suno_model_id(configured)
 
     @staticmethod
     def _normalize_suno_pricing_model(model: str | None) -> str | None:

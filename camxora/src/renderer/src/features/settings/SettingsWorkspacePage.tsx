@@ -176,7 +176,7 @@ const IMAGE_SOURCE_MODE_OPTIONS = [
 ]
 const BACKGROUND_SOURCE_OPTIONS = [{ value: 'samples', label: 'Samples' }]
 const THUMBNAIL_OVERLAY_OPTIONS = [{ value: 'ai', label: 'AI' }]
-const SUNO_VERSION_OPTIONS = ['v5', 'v5.5']
+const SUNO_VERSION_OPTIONS = ['v6', 'v6 mini', 'v6 wild']
 const SUNO_MERGE_OPTIONS = [
   { value: 'off', label: 'Off' },
   { value: 'on', label: 'On' },
@@ -443,7 +443,7 @@ function buildSunoSettingsDraft(settings: Record<string, unknown>): SunoSettings
     sunoCallbackUrl: getStringSetting(settings, 'sunoCallbackUrl'),
     sunoTimeoutMs: Math.max(1000, getNumberSetting(settings, 'sunoTimeoutMs', 90000)),
     sunoRetryCount: Math.max(0, getNumberSetting(settings, 'sunoRetryCount', 3)),
-    sunoDefaultVersion: getStringSetting(settings, 'sunoDefaultVersion', 'v5.5') || 'v5.5',
+    sunoDefaultVersion: getStringSetting(settings, 'sunoDefaultVersion', 'v6') || 'v6',
     sunoMergeEnabled: getBoolSetting(settings, 'sunoMergeEnabled', false),
     sunoMergeGroupSize: Math.max(0, getNumberSetting(settings, 'sunoMergeGroupSize', 0)),
     sunoCreditsReserve: Math.max(0, getNumberSetting(settings, 'sunoCreditsReserve', 10)),

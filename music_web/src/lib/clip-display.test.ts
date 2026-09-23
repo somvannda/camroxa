@@ -7,15 +7,18 @@ const PHNOM_PENH = 'Asia/Phnom_Penh';
 const NOW = new Date('2026-08-26T09:00:00.000Z');
 
 describe('formatModelVersionTag', () => {
-  it('maps V5_5 and dotted aliases to v5.5', () => {
-    assert.equal(formatModelVersionTag('V5_5'), 'v5.5');
-    assert.equal(formatModelVersionTag('v5.5'), 'v5.5');
-    assert.equal(formatModelVersionTag(null), 'v5.5');
+  it('maps V6 series models', () => {
+    assert.equal(formatModelVersionTag('V6'), 'v6');
+    assert.equal(formatModelVersionTag('v6'), 'v6');
+    assert.equal(formatModelVersionTag('V6_MINI'), 'v6 mini');
+    assert.equal(formatModelVersionTag('V6_WILD'), 'v6 wild');
+    assert.equal(formatModelVersionTag(null), 'v6');
   });
 
-  it('maps other models to v5', () => {
+  it('maps legacy V5 models', () => {
+    assert.equal(formatModelVersionTag('V5_5'), 'v5.5');
+    assert.equal(formatModelVersionTag('v5.5'), 'v5.5');
     assert.equal(formatModelVersionTag('V5'), 'v5');
-    assert.equal(formatModelVersionTag('v4'), 'v5');
   });
 });
 
