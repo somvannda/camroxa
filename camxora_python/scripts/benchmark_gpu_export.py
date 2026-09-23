@@ -32,6 +32,7 @@ from features.video.services.export_job import ExportJob, ExportSettings  # noqa
 from shared.lib.export_codec import export_video_codec_label  # noqa: E402
 from shared.lib.export_tiers import resolve_export_tier_settings  # noqa: E402
 from shared.lib.ffmpeg_paths import resolve_ffmpeg_path  # noqa: E402
+from shared.lib.subprocess_utils import run_hidden  # noqa: E402
 from visualizer.audio import probe_audio_duration_sec  # noqa: E402
 
 BENCHMARK_CONTRACT_VERSION = "1.0"
@@ -216,7 +217,7 @@ def build_benchmark_metrics(
 def detect_gpu_info() -> GpuInfo:
     """Detect NVIDIA GPU via nvidia-smi when available."""
     try:
-        completed = subprocess.run(
+        completed = run_hidden(
             [
                 "nvidia-smi",
                 "--query-gpu=name,driver_version,memory.total",

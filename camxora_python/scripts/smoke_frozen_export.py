@@ -26,6 +26,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.lib.subprocess_utils import (  # noqa: E402
+    check_output_hidden,
+    popen_hidden,
+    run_hidden,
+)
+
 DEFAULT_DIST = ROOT / "dist" / "Camxora"
 DEFAULT_TEMPLATE = ROOT / "tests" / "fixtures" / "golden_frames" / "minimal" / "template.json"
 DEFAULT_BG = (
@@ -81,12 +90,11 @@ def _ffprobe_duration_sec(ffprobe: Path, media: Path) -> float:
         "default=noprint_wrappers=1:nokey=1",
         str(media),
     ]
-    out = subprocess.check_output(
+    out = check_output_hidden(
         cmd,
         text=True,
         encoding="utf-8",
         errors="replace",
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     ).strip()
     return float(out)
 
@@ -154,26 +162,12 @@ def _make_short_clip(*, ffmpeg: Path, src: Path, out: Path, seconds: float) -> N
         "192k",
         str(out),
     ]
-    subprocess.run(cmd, check=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    run_hidden(cmd, check=True)
 
 
 def _template_b64(path: Path) -> str:
     raw = json.loads(path.read_text(encoding="utf-8"))
     return base64.b64encode(json.dumps(raw, separators=(",", ":")).encode("utf-8")).decode("ascii")
-
-
-def _popen_kwargs() -> dict:
-    kwargs: dict = {}
-    if sys.platform == "win32":
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        try:
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = 0
-            kwargs["startupinfo"] = startupinfo
-        except Exception:
-            pass
-    return kwargs
 
 
 def run_one_export(
@@ -222,7 +216,7 @@ def run_one_export(
     _log(f"{label}: start timeout={timeout_s:.0f}s stop_after_analysis={stop_after_analysis}")
     _log(f"{label}: mp3={mp3.name} ({mp3.stat().st_size} bytes)")
     started = time.monotonic()
-    proc = subprocess.Popen(
+    proc = popen_hidden(
         cmd,
         cwd=str(exe.parent),
         stdout=subprocess.PIPE,
@@ -231,7 +225,6 @@ def run_one_export(
         encoding="utf-8",
         errors="replace",
         bufsize=1,
-        **_popen_kwargs(),
     )
     events: list[str] = []
     saw_analysis_done = False
@@ -508,7 +501,7 @@ def main() -> int:
                 )
                 # unique-ish by rewriting with ffmpeg -ss
                 pad2 = work / f"long_pad_{pad_i+1}_ss.mp3"
-                subprocess.run(
+                run_hidden(
                     [
                         str(ffmpeg),
                         "-y",
@@ -532,7 +525,6 @@ def main() -> int:
                         str(pad2),
                     ],
                     check=True,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 src_tracks.append(pad2)
             _log(f"parallel-long tracks ({len(src_tracks)}): " + ", ".join(p.name for p in src_tracks))

@@ -29,10 +29,10 @@ def small_project(sample_video: Path, sample_audio: Path) -> ProjectState:
 
 
 def _probe_streams(path: Path) -> str:
-    ffmpeg_exe = get_ffmpeg_exe()
-    import subprocess
+    from shared.lib.subprocess_utils import run_hidden
 
-    result = subprocess.run([ffmpeg_exe, "-i", str(path)], capture_output=True, timeout=30)
+    ffmpeg_exe = get_ffmpeg_exe()
+    result = run_hidden([ffmpeg_exe, "-i", str(path)], capture_output=True, timeout=30)
     return result.stderr.decode(errors="ignore")
 
 
