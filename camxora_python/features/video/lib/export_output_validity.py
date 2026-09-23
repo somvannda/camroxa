@@ -347,11 +347,17 @@ def export_media_looks_complete(
     *,
     ffprobe_path: str = "",
     audio_path: str = "",
+    expected_duration_sec: float = 0.0,
 ) -> bool:
     """Return True when the MP4 has a video stream and a usable duration.
 
-    When ``audio_path`` is provided, also reject exports whose duration is much
-    shorter than the source audio (incomplete / truncated encodes).
+    When ``expected_duration_sec`` is provided, the rendered length reported by
+    the visualizer is authoritative: a file that matches it is complete, and one
+    materially shorter is truncated. This avoids re-probing the source audio,
+    whose ``format=duration`` is only an estimate for MP3.
+
+    Otherwise, when ``audio_path`` is provided, reject exports whose duration is
+    much shorter than the source audio (incomplete / truncated encodes).
     """
     probe = str(ffprobe_path or "").strip() or resolve_ffprobe_path()
     if not probe:
@@ -361,6 +367,10 @@ def export_media_looks_complete(
     duration = _probe_format_duration(target_path, probe)
     if duration <= MIN_VALID_EXPORT_DURATION_SEC:
         return False
+    expected = float(expected_duration_sec or 0.0)
+    if expected > 1.0:
+        # Allow a frame or two of container rounding, reject real truncation.
+        return duration + 1.0 >= expected
     audio = str(audio_path or "").strip()
     if audio and Path(audio).is_file():
         audio_duration = _probe_format_duration(audio, probe)
@@ -375,6 +385,7 @@ def is_usable_export_output(
     ffmpeg_path: str = "",
     audio_path: str = "",
     require_media: bool = True,
+    expected_duration_sec: float = 0.0,
 ) -> bool:
     """Size gate plus optional media completeness (video stream / duration)."""
     if not is_valid_export_output(target_path):
@@ -388,7 +399,44 @@ def is_usable_export_output(
         target_path,
         ffprobe_path=probe,
         audio_path=audio_path,
+        expected_duration_sec=expected_duration_sec,
     )
+
+
+def describe_export_output_failure(
+    target_path: str,
+    *,
+    ffmpeg_path: str = "",
+    audio_path: str = "",
+    expected_duration_sec: float = 0.0,
+) -> str:
+    """Short human reason an export failed the usability gate (logs / UI)."""
+    path = Path(str(target_path or "").strip())
+    try:
+        if not path.is_file():
+            return "no output file was written"
+        size = int(path.stat().st_size)
+    except OSError:
+        return "output file is unreadable"
+    if size <= MIN_VALID_EXPORT_BYTES:
+        return f"output is too small ({size} bytes)"
+    probe = resolve_ffprobe_path(ffmpeg_path)
+    if not probe:
+        return "output failed validation"
+    if not _has_video_stream(target_path, probe):
+        return "output has no video stream"
+    duration = _probe_format_duration(target_path, probe)
+    if duration <= MIN_VALID_EXPORT_DURATION_SEC:
+        return "output duration is ~0s"
+    expected = float(expected_duration_sec or 0.0)
+    if expected > 1.0 and duration + 1.0 < expected:
+        return f"output is {duration:.1f}s but {expected:.1f}s was rendered"
+    audio = str(audio_path or "").strip()
+    if audio and Path(audio).is_file():
+        audio_duration = _probe_format_duration(audio, probe)
+        if audio_duration > 1.0 and duration < (audio_duration * MIN_AUDIO_DURATION_RATIO):
+            return f"output is {duration:.1f}s vs audio {audio_duration:.1f}s"
+    return "output failed validation"
 
 
 def resolve_written_export_path(
@@ -398,6 +446,7 @@ def resolve_written_export_path(
     audio_path: str,
     ffmpeg_path: str = "",
     require_media: bool = True,
+    expected_duration_sec: float = 0.0,
 ) -> str | None:
     """Resolve the real on-disk MP4 after export (preferred path or stem fallback)."""
     preferred = str(preferred_path or "").strip()
@@ -413,6 +462,7 @@ def resolve_written_export_path(
             ffmpeg_path=ffmpeg_path,
             audio_path=audio_path,
             require_media=require_media,
+            expected_duration_sec=expected_duration_sec,
         ):
             return candidate
     return None

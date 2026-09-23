@@ -497,6 +497,12 @@ class PipelineAutomationService(QObject):
         last_output = str(payload.get("lastOutputPath") or "").strip() or None
         completed = int(payload.get("completed") or workspace.export.total_jobs or 0)
         total = int(payload.get("total") or workspace.export.total_jobs or completed)
+        self._report_pipeline_telemetry(
+            operation_type="video",
+            track_count=total,
+            completed_count=completed,
+            codec=str(payload.get("videoCodec") or "").strip() or None,
+        )
         merge_context = dict(self._merge_context)
         merge_context["completed"] = completed
         merge_context["total"] = total
@@ -819,6 +825,9 @@ class PipelineAutomationService(QObject):
             self._merge_charge = {}
         else:
             self._refund_merge_charge(message or "Auto-merge failed.")
+            from shared.services.app_logger import log_error
+
+            log_error(message or "Auto-merge failed.", category="export")
         workspace = self._current_workspace()
         self._busy = False
         if workspace is not None:
@@ -851,6 +860,13 @@ class PipelineAutomationService(QObject):
         # Persist full crash tail (multiline) into diagnostics sync / local log file.
         if not user_stop:
             log_error(status_text, category="export")
+            if workspace is not None:
+                self._report_pipeline_telemetry(
+                    operation_type="video",
+                    track_count=int(workspace.export.total_jobs or 0),
+                    completed_count=int(workspace.export.completed_jobs or 0),
+                    codec=str(workspace.export.video_codec or "").strip() or None,
+                )
         if workspace is not None:
             # Progress row: keep first line short; detail is in diagnostics logs.
             status_line = status_text.splitlines()[0].strip() or status_text
@@ -868,6 +884,37 @@ class PipelineAutomationService(QObject):
                 )
             )
         emit_shell_status(status_text.splitlines()[0].strip() or status_text)
+
+    def _report_pipeline_telemetry(
+        self,
+        *,
+        operation_type: str,
+        track_count: int,
+        completed_count: int,
+        codec: str | None = None,
+    ) -> None:
+        """Fire-and-forget telemetry for auto-video export (was never reported)."""
+        try:
+            from features.video.lib.export_telemetry import (
+                collect_hardware_hints,
+                report_video_telemetry_async,
+            )
+
+            hw = collect_hardware_hints(codec=codec)
+            payload = {
+                "operation_type": str(operation_type),
+                "ref_id": f"pipeline:{self._active_run_key}" if self._active_run_key else None,
+                "track_count": max(0, int(track_count)),
+                "completed_count": max(0, int(completed_count)),
+                "codec": codec,
+                "hw_cpu": hw.get("hw_cpu"),
+                "hw_gpu": hw.get("hw_gpu"),
+                "hw_encoder": hw.get("hw_encoder"),
+                "app_version": "camxora_python",
+            }
+            report_video_telemetry_async(self._api, payload)
+        except Exception:
+            pass
 
     def _defer_active_run(self) -> None:
         key = str(self._active_run_key or "").strip()
