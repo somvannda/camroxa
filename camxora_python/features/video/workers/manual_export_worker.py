@@ -145,6 +145,7 @@ class VideoManualExportWorker(QThread):
                 audio_path=audio_path,
                 ffmpeg_path=ffmpeg_path,
                 require_media=True,
+                expected_duration_sec=float(coordinator.last_rendered_duration_sec or 0.0),
             )
             if not resolved:
                 detail = (

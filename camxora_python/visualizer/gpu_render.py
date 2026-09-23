@@ -4361,7 +4361,17 @@ def run_gpu_render(
         if hasattr(enc, "_err_file"):
             enc._err_file.close()
 
-    _emit_event({"status": "done", "message": "Exported MP4", "progress": 1.0, "outputPath": out_path})
+    _emit_event(
+        {
+            "status": "done",
+            "message": "Exported MP4",
+            "progress": 1.0,
+            "outputPath": out_path,
+            # Authoritative rendered length — callers validate the output against
+            # this instead of re-probing the source audio (which can be an estimate).
+            "durationSec": float(total_frames) / float(max(1, fps)),
+        }
+    )
     if ctx_factory is None and not os.environ.get("CAMXORA_DAEMON_JOB"):
         try:
             glfw.terminate()
