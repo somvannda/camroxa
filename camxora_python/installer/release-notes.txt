@@ -4,20 +4,20 @@ September 23, 2026
 
 What's new
 ----------
-• Create now generates with Suno V6 — the current model series. Pick
-  V6 (default), V6 Mini (faster), or V6 Wild (more experimental) from the
-  model selector.
-• V6 songs use the dedicated lyrics field, so the exact lyrics you write are
-  sung, with richer vocals and more natural detail.
-• Negative tags can be up to 1000 characters on V6.
+• Suno V6 model series support: V6 (default), V6 Mini (faster), and
+  V6 Wild (more experimental).
+• V6 is available on the CAMXORA music web Create page:
+  https://music.camxora.com/create
 • Settings → Default Suno version now offers v6, v6 mini, and v6 wild.
   Existing v5 / v5.5 selections keep working.
+• V6 songs use the dedicated lyrics field for richer vocals and more
+  natural detail. Negative tags can be up to 1000 characters.
 
 Requirements
 ------------
 • Installer: CamxoraSetup-1.4.0.exe
 • Production API: https://api.camxora.com/api/v3
-• Publish with Force update so older clients upgrade on app open.
+• Force update: older clients upgrade on app open.
 
 Not in this build
 -----------------
