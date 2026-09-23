@@ -28,6 +28,8 @@ for _blas_key in (
 import librosa
 import numpy as np
 
+from shared.lib.subprocess_utils import run_hidden  # noqa: E402
+
 # Fixed analysis rate — native 44.1/48 kHz makes STFT/beat_track extremely heavy
 # on dual-socket Xeon boxes (OpenBLAS oversubscription → appears hung forever).
 ANALYSIS_SAMPLE_RATE = 22050
@@ -213,7 +215,7 @@ def _load_via_ffmpeg(path_text: str, *, target_sr: int, timeout_sec: float = FFM
         "pipe:1",
     ]
     try:
-        proc = subprocess.run(
+        proc = run_hidden(
             cmd,
             capture_output=True,
             timeout=float(timeout_sec),
@@ -365,7 +367,7 @@ def _ffprobe_duration_sec(path_text: str) -> float:
         path_text,
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=20.0, check=False, text=True)
+        proc = run_hidden(cmd, capture_output=True, timeout=20.0, check=False, text=True)
     except (OSError, subprocess.TimeoutExpired):
         return 0.0
     if proc.returncode != 0:

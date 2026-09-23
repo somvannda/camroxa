@@ -11,7 +11,6 @@ and export instead of only "live while playing".
 from __future__ import annotations
 
 import logging
-import subprocess
 import tempfile
 import threading
 import uuid
@@ -21,6 +20,7 @@ import librosa
 import numpy as np
 import soundfile as sf
 
+from shared.lib.subprocess_utils import run_hidden
 from studio.media.ffmpeg_utils import get_ffmpeg_exe
 
 logger = logging.getLogger(__name__)
@@ -178,7 +178,7 @@ def _extract_video_audio_wav(path: Path, cache_dir: Path) -> Path | None:
     ffmpeg_exe = get_ffmpeg_exe()
     out_path = cache_dir / f"audio_{uuid.uuid4().hex[:9]}.wav"
     try:
-        result = subprocess.run(
+        result = run_hidden(
             [
                 ffmpeg_exe, "-y", "-i", str(path),
                 "-vn", "-acodec", "pcm_s16le", "-ar", "44100",

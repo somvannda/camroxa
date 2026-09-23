@@ -30,6 +30,8 @@ from studio.media.ffmpeg_utils import get_ffmpeg_exe
 from studio.media.video_source import VideoSourceCache
 from studio.render.compositor import render_frame
 
+from shared.lib.subprocess_utils import popen_hidden
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_FPS = 30.0
@@ -131,7 +133,7 @@ def export_project(
                 "-shortest",
                 str(output_path),
             ]
-            process = subprocess.Popen(
+            process = popen_hidden(
                 cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
             )
             assert process.stdin is not None

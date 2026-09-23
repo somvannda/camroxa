@@ -29,7 +29,11 @@ def _iter_python_files() -> list[Path]:
     files: list[Path] = []
     for path in ROOT.rglob("*.py"):
         rel = path.relative_to(ROOT).as_posix()
-        if rel.startswith("build/") or "/__pycache__/" in f"/{rel}/":
+        if (
+            rel.startswith("build/")
+            or rel.startswith("dist/")
+            or "/__pycache__/" in f"/{rel}/"
+        ):
             continue
         files.append(path)
     return files
