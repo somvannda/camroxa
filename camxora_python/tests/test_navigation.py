@@ -20,7 +20,7 @@ def test_workspace_routes_exclude_system() -> None:
     assert "merger" not in keys
     assert "music" in keys
     assert "create" in keys
-    assert "studio" in keys
+    assert "studio" not in keys
     assert "video" in keys
 
 
