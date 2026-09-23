@@ -1020,6 +1020,8 @@ class MusicViewMixin:
         self.music_suno_default_version.addItem('v6', userData='v6')
         self.music_suno_default_version.addItem('v6 mini', userData='v6 mini')
         self.music_suno_default_version.addItem('v6 wild', userData='v6 wild')
+        self.music_suno_default_version.addItem('v5.5', userData='v5.5')
+        self.music_suno_default_version.addItem('v5', userData='v5')
         self._apply_card_field(self.music_suno_default_version)
         version_wrap.addWidget(self.music_suno_default_version)
         merge_wrap = QVBoxLayout()

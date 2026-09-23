@@ -192,7 +192,7 @@ class SystemSettingsDraft:
     thumbnail_overlay_mode: str = "ai"
 
 
-SUNO_VERSION_OPTIONS = ("v6", "v6 mini", "v6 wild")
+SUNO_VERSION_OPTIONS = ("v6", "v6 mini", "v6 wild", "v5.5", "v5")
 
 
 @dataclass
