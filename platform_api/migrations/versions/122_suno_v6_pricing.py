@@ -5,8 +5,8 @@ same as V5.5, so copy the existing V5_5 (or V5 / provider-wide) music price.
 Rows copied from an existing V5_5/V5 price are trusted (``needs_review`` false);
 a provider-wide/default fallback stays flagged for admin review.
 
-Revision ID: 110_suno_v6_pricing
-Revises: 109_playback_event_detail
+Revision ID: 122_suno_v6_pricing
+Revises: 121_upload_job_permanent_failed
 Create Date: 2026-09-23
 """
 
@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "110_suno_v6_pricing"
-down_revision = "109_playback_event_detail"
+revision = "122_suno_v6_pricing"
+down_revision = "121_upload_job_permanent_failed"
 branch_labels = None
 depends_on = None
 
