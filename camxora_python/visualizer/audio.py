@@ -291,10 +291,23 @@ def _load_mono_waveform(path: str, *, target_sr: int, on_progress: ProgressCallb
             y = np.asarray(data, dtype=np.float32)
         else:
             y = np.mean(data, axis=1, dtype=np.float32)
+        decoded_sec = float(len(y)) / max(1, file_sr_i)
         _audio_diag(
-            f"soundfile.read ok duration={len(y) / max(1, file_sr_i):.2f}s "
+            f"soundfile.read ok duration={decoded_sec:.2f}s "
             f"file_sr={file_sr_i} channels={getattr(data, 'shape', None)} read_s={read_s:.2f}"
         )
+        # libsndfile/minimp3 can under-decode an MP3 (VBR / 48k / odd headers)
+        # without raising. A short decode here becomes a short MP4 that the export
+        # gate later rejects, so refuse it and fall through to the ffmpeg decoder.
+        probe_sec = _ffprobe_duration_sec(path_text)
+        if probe_sec > 1.0 and decoded_sec + 0.5 < probe_sec:
+            _audio_diag(
+                f"soundfile decode short: {decoded_sec:.2f}s vs ffprobe {probe_sec:.2f}s "
+                "-> trying ffmpeg"
+            )
+            raise RuntimeError(
+                f"soundfile decoded {decoded_sec:.2f}s but the file is {probe_sec:.2f}s"
+            )
         if file_sr_i != target:
             _progress(f"Resampling audio {file_sr_i}->{target}...")
             t1 = time.perf_counter()

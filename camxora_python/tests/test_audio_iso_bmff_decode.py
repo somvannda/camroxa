@@ -110,6 +110,52 @@ def test_librosa_fallback_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
         audio_mod._load_via_librosa("missing.mp3", target_sr=22050, timeout_sec=0.2)
 
 
+def test_short_soundfile_decode_falls_back_to_ffmpeg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Real MPEG magic so sniff() picks "mpeg" (soundfile path first).
+    path = _write(tmp_path / "song_OK.mp3", b"ID3\x04\x00\x00" + b"\x00" * 300)
+
+    import soundfile as sf
+
+    short = np.zeros(22050, dtype=np.float32)  # 1.0s decoded vs 180s on disk
+    monkeypatch.setattr(sf, "read", lambda *_a, **_k: (short.reshape(-1, 1), 22050))
+    monkeypatch.setattr(audio_mod, "_ffprobe_duration_sec", lambda _p: 180.0)
+
+    called = {"ffmpeg": False}
+
+    def fake_ffmpeg(path_text: str, *, target_sr: int, timeout_sec: float = 90.0) -> np.ndarray:
+        called["ffmpeg"] = True
+        return np.zeros(int(target_sr) * 180, dtype=np.float32)
+
+    monkeypatch.setattr(audio_mod, "_load_via_ffmpeg", fake_ffmpeg)
+    y, sr, backend = audio_mod._load_mono_waveform(str(path), target_sr=22050)
+    assert backend == "ffmpeg"
+    assert called["ffmpeg"] is True
+    assert sr == 22050
+    assert len(y) > 22050 * 100
+
+
+def test_full_soundfile_decode_is_used_without_ffmpeg(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write(tmp_path / "song_OK.mp3", b"ID3\x04\x00\x00" + b"\x00" * 300)
+
+    import soundfile as sf
+
+    full = np.zeros(22050 * 120, dtype=np.float32)
+    monkeypatch.setattr(sf, "read", lambda *_a, **_k: (full.reshape(-1, 1), 22050))
+    monkeypatch.setattr(audio_mod, "_ffprobe_duration_sec", lambda _p: 120.0)
+
+    def boom(*_a, **_k):
+        raise AssertionError("ffmpeg must not run when soundfile decoded the full file")
+
+    monkeypatch.setattr(audio_mod, "_load_via_ffmpeg", boom)
+    _y, sr, backend = audio_mod._load_mono_waveform(str(path), target_sr=22050)
+    assert backend == "soundfile"
+    assert sr == 22050
+
+
 _LIBRARY_OPUS_MP3S = [
     Path(r"F:\Suno\bass-ignition\2026-08-19_Voltage-Hinterland-Clash\8. Chase Spotlight Under Pressure_OK.mp3"),
     Path(r"F:\Suno\bass-ignition\2026-08-18_Arcade-Dawn-Rage\13. Sunline Breaks Horizon_OK.mp3"),

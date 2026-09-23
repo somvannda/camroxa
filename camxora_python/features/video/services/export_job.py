@@ -66,6 +66,7 @@ class ExportJob:
         self._cancel_requested = False
         self.backend_used: str = ""
         self.last_error_detail: str = ""
+        self.rendered_duration_sec: float = 0.0
         self._error_lines: list[str] = []
         from features.video.lib.export_cancel import new_cancel_path
 
@@ -73,6 +74,13 @@ class ExportJob:
 
     def _note_event(self, event: dict) -> None:
         append_export_event_line(self._error_lines, event)
+        try:
+            if str(event.get("status") or "").strip().lower() == "done":
+                value = event.get("durationSec")
+                if isinstance(value, (int, float)) and float(value) > 0:
+                    self.rendered_duration_sec = float(value)
+        except Exception:
+            pass
 
     def _publish_failure_detail(self, code: int) -> None:
         if int(code) == 0:

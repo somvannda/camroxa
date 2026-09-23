@@ -102,3 +102,67 @@ def test_has_video_stream_treats_returncode_zero_as_success(tmp_path: Path, monk
     video.write_bytes(b"x")
     monkeypatch.setattr(mod, "run_hidden", lambda *_a, **_k: _Result())
     assert mod._has_video_stream(str(video), str(probe)) is True
+
+
+def test_export_media_looks_complete_trusts_rendered_duration_over_mp3(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """ffprobe's MP3 estimate can exceed the real audio; the rendered length wins."""
+    from features.video.lib import export_output_validity as mod
+
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"id3")
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"ftyp")
+
+    def _fake_duration(path: str, _probe: str) -> float:
+        return 200.0 if path.endswith(".mp3") else 100.0
+
+    monkeypatch.setattr(mod, "_probe_format_duration", _fake_duration)
+    monkeypatch.setattr(mod, "_has_video_stream", lambda *_a, **_k: True)
+    assert (
+        mod.export_media_looks_complete(
+            str(video),
+            ffprobe_path="ffprobe",
+            audio_path=str(audio),
+            expected_duration_sec=100.0,
+        )
+        is True
+    )
+
+
+def test_export_media_looks_complete_rejects_short_vs_rendered(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from features.video.lib import export_output_validity as mod
+
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"ftyp")
+
+    monkeypatch.setattr(
+        mod, "_probe_format_duration", lambda *_a, **_k: 40.0
+    )
+    monkeypatch.setattr(mod, "_has_video_stream", lambda *_a, **_k: True)
+    assert (
+        mod.export_media_looks_complete(
+            str(video),
+            ffprobe_path="ffprobe",
+            expected_duration_sec=100.0,
+        )
+        is False
+    )
+
+
+def test_describe_export_output_failure_reports_reason(tmp_path: Path, monkeypatch) -> None:
+    from features.video.lib import export_output_validity as mod
+
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 8))
+
+    monkeypatch.setattr(mod, "resolve_ffprobe_path", lambda *_a, **_k: "ffprobe")
+    monkeypatch.setattr(mod, "_has_video_stream", lambda *_a, **_k: True)
+    monkeypatch.setattr(mod, "_probe_format_duration", lambda *_a, **_k: 40.0)
+    reason = mod.describe_export_output_failure(
+        str(video), expected_duration_sec=100.0
+    )
+    assert "40.0s" in reason and "100.0s" in reason
