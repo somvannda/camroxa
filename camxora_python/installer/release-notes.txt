@@ -1,34 +1,24 @@
-﻿Camxora 1.3.1
-Progress stays responsive + no auto-redo after Long completed
-August 17, 2026
+﻿Camxora 1.4.0
+Suno V6 music models
+September 23, 2026
 
 What's new
 ----------
-• Progress: Long completed albums are not re-scanned on every poll. Right-click
-  opens immediately. Active only hides finished rows; YouTube and Error stay.
-• Auto-video does not redo a Long completed album after you delete track MP4s
-  or move the folder. Rebuild / Repair / Force still regenerate.
-• Finished albums save pipeline_complete when a MERGED_*.mp4 is seen or the
-  row is already Long completed, so they stay frozen after restart.
-• Startup: Video prewarm no longer decodes the last preview MP3 until you
-  open Video.
-• Dashboard and Profile show usage as used / quota and scale add-on caps.
-
-Already in 1.3.0
-----------------
-• Real Suno .mp3 downloads (not Opus .m4a saved as .mp3).
-• Opus-in-MP4 no longer hangs the export queue.
-• Regenerate missing/broken MP4s and one-track regenerate.
-• Merge must write MERGED_*.mp4.
-• Saved Suno folder is kept across installer upgrades.
+• Create now generates with Suno V6 — the current model series. Pick
+  V6 (default), V6 Mini (faster), or V6 Wild (more experimental) from the
+  model selector.
+• V6 songs use the dedicated lyrics field, so the exact lyrics you write are
+  sung, with richer vocals and more natural detail.
+• Negative tags can be up to 1000 characters on V6.
+• Settings → Default Suno version now offers v6, v6 mini, and v6 wild.
+  Existing v5 / v5.5 selections keep working.
 
 Requirements
 ------------
-• Installer: CamxoraSetup-1.3.1.exe
+• Installer: CamxoraSetup-1.4.0.exe
 • Production API: https://api.camxora.com/api/v3
-• Publish with Force update so 1.3.0 clients upgrade on app open.
+• Publish with Force update so older clients upgrade on app open.
 
 Not in this build
 -----------------
-• Music web / credits / admin portal
 • DistroKid / WAV add-on

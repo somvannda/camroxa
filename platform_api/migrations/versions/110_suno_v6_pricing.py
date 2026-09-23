@@ -1,8 +1,9 @@
 """Seed credit pricing for the Suno V6 music models.
 
-V6, V6_MINI and V6_WILD are the current Suno music models. Copy the existing
-V5_5/V5 (or provider-wide) music price so generation is priced the moment the
-new models go live; mark rows ``needs_review`` for the admin to confirm.
+V6, V6_MINI and V6_WILD are the current Suno music models. Their price is the
+same as V5.5, so copy the existing V5_5 (or V5 / provider-wide) music price.
+Rows copied from an existing V5_5/V5 price are trusted (``needs_review`` false);
+a provider-wide/default fallback stays flagged for admin review.
 
 Revision ID: 110_suno_v6_pricing
 Revises: 109_playback_event_detail
@@ -70,7 +71,12 @@ def upgrade() -> None:
                 ),
                 60000
             ),
-            true,
+            NOT EXISTS (
+                SELECT 1 FROM credit_pricing cp
+                WHERE cp.ai_service = 'suno'
+                  AND cp.operation_type IN ('music', 'music_generation')
+                  AND COALESCE(cp.sub_model, '') IN ('V5_5', 'V5')
+            ),
             NOW(),
             NOW()
         FROM (VALUES ('V6'), ('V6_MINI'), ('V6_WILD')) AS v(model_id)
