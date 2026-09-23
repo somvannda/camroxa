@@ -223,7 +223,7 @@ def test_create_form_defaults_and_simple_hides_advanced(qapp: QApplication) -> N
     qapp.processEvents()
     assert view.form.advanced_tab.isChecked()
     assert view.form.lyrics.editor.isReadOnly()
-    assert view.form.model_code() == "V5_5"
+    assert view.form.model_code() == "V6"
     assert view.form.download_wav.isChecked() is False
     assert view.form.vocal_gender() is None
     view.form.simple_tab.click()

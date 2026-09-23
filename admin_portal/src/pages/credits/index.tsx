@@ -136,8 +136,11 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'grok-imagine-image-2-0/text-to-image', label: 'grok-imagine-image-2-0/text-to-image (kie.ai images)' },
   ],
   suno: [
-    { value: 'V5', label: 'V5' },
-    { value: 'V5_5', label: 'V5.5' },
+    { value: 'V6', label: 'V6' },
+    { value: 'V6_MINI', label: 'V6 Mini' },
+    { value: 'V6_WILD', label: 'V6 Wild' },
+    { value: 'V5', label: 'V5 (deprecated)' },
+    { value: 'V5_5', label: 'V5.5 (deprecated)' },
     { value: 'lyrics', label: 'lyrics (Suno lyric API)' },
   ],
 };

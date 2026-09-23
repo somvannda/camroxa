@@ -62,8 +62,16 @@ function formatSliderSetting(value: number | null | undefined): string {
 }
 
 function formatModelVersionTag(model: string | null | undefined): string {
-  const key = String(model || 'V5_5').trim().toUpperCase().replace('.', '_');
-  return key === 'V5_5' ? 'V5.5' : 'V5';
+  const key = String(model || 'V6')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s.-]+/g, '_');
+  if (key === 'V6_MINI') return 'V6 Mini';
+  if (key === 'V6_WILD') return 'V6 Wild';
+  if (key === 'V6') return 'V6';
+  if (key === 'V5_5') return 'V5.5';
+  if (key === 'V5') return 'V5';
+  return key.replace(/_/g, ' ');
 }
 
 function clipTrackId(generation: AdminWebMusicGeneration, clip: AdminWebMusicClip): string {

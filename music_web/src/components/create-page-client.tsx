@@ -14,6 +14,7 @@ import {
   MusicFloatingActionBar,
   MusicHorizontalTickSlider,
   MusicModelSelect,
+  type MusicModelId,
   MusicOptionCard,
   MusicPillTabs,
   MusicSectionError,
@@ -464,7 +465,7 @@ export default function CreatePageClient() {
   const [style, setStyle] = useState('');
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState<'V5' | 'V5_5'>('V5_5');
+  const [model, setModel] = useState<MusicModelId>('V6');
   const [featureTab, setFeatureTab] = useState<'audio' | 'voice' | 'inspo' | null>(null);
   const [lyricsMode, setLyricsMode] = useState<'write' | 'prompt' | 'instrumental'>('write');
   const [negativeTags, setNegativeTags] = useState('');
@@ -1490,7 +1491,7 @@ export default function CreatePageClient() {
               <div className="rounded-lg border border-white/8 bg-black/20 p-3 space-y-2 text-sm">
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">Model</span>
-                  <span className="text-white">{selectedVersion.song.model === 'V5_5' ? 'V5.5' : selectedVersion.song.model || 'V5'}</span>
+                  <span className="text-white">{formatModelVersionTag(selectedVersion.song.model)}</span>
                 </div>
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">Type</span>

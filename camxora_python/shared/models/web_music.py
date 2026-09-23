@@ -28,7 +28,7 @@ class WebMusicGenerateRequest(BaseModel):
     title: str = ""
     prompt: str = ""
     instrumental: bool = False
-    model: str = "V5_5"
+    model: str = "V6"
     negative_tags: str | None = None
     vocal_gender: str | None = None
     style_weight: float | None = None

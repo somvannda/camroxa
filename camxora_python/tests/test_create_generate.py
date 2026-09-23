@@ -20,7 +20,7 @@ from shared.lib.create_generate import (
 def _plan(**overrides: object) -> CreateGeneratePlan:
     values: dict[str, object] = {
         "mode": "simple",
-        "model": "V5_5",
+        "model": "V6",
         "title": "Night Drive",
         "lyrics": "",
         "styles": "synthwave",

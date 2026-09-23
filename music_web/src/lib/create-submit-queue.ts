@@ -13,7 +13,7 @@ export type WebMusicGenerateInput = {
   title?: string;
   prompt?: string;
   instrumental?: boolean;
-  model?: 'V5' | 'V5_5';
+  model?: 'V6' | 'V6_MINI' | 'V6_WILD';
   negative_tags?: string;
   vocal_gender?: 'm' | 'f' | 'both';
   style_weight?: number;

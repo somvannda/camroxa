@@ -3120,7 +3120,7 @@ class SettingsView(QWidget):
         )
         for widget in widgets:
             widget.blockSignals(True)
-        version = draft.suno_default_version or "v5.5"
+        version = draft.suno_default_version or "v6"
         if self._suno_version.findText(version) < 0:
             self._suno_version.addItem(version)
         self._suno_version.setCurrentText(version)

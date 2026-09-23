@@ -7,8 +7,16 @@ export type FormatGeneratedTimeOptions = {
 };
 
 export function formatModelVersionTag(model: string | null | undefined): string {
-  const key = String(model || 'V5_5').trim().toUpperCase().replace('.', '_');
-  return key === 'V5_5' ? 'v5.5' : 'v5';
+  const key = String(model || 'V6')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s.-]+/g, '_');
+  if (key === 'V6_MINI') return 'v6 mini';
+  if (key === 'V6_WILD') return 'v6 wild';
+  if (key === 'V6') return 'v6';
+  if (key === 'V5_5') return 'v5.5';
+  if (key === 'V5') return 'v5';
+  return key.toLowerCase().replace(/_/g, ' ') || 'v6';
 }
 
 function calendarDayKey(value: Date, timeZone?: string): string {

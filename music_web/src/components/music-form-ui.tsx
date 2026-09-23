@@ -209,22 +209,25 @@ export function MusicPillTabs<T extends string>({
   );
 }
 
+export type MusicModelId = 'V6' | 'V6_MINI' | 'V6_WILD';
+
 export function MusicModelSelect({
   value,
   onChange,
 }: {
-  value: 'V5' | 'V5_5';
-  onChange: (value: 'V5' | 'V5_5') => void;
+  value: MusicModelId;
+  onChange: (value: MusicModelId) => void;
 }) {
   return (
     <MusicSelect
       value={value}
-      onValueChange={(next) => onChange(next as 'V5' | 'V5_5')}
+      onValueChange={(next) => onChange(next as MusicModelId)}
       options={[
-        { value: 'V5_5', label: 'V5.5' },
-        { value: 'V5', label: 'V5' },
+        { value: 'V6', label: 'V6' },
+        { value: 'V6_MINI', label: 'V6 Mini' },
+        { value: 'V6_WILD', label: 'V6 Wild' },
       ]}
-      className="h-8 w-[5.5rem] border-white/10 text-xs font-medium"
+      className="h-8 w-[6.5rem] border-white/10 text-xs font-medium"
       triggerClassName="rounded-full px-3"
     />
   );

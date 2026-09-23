@@ -233,7 +233,22 @@ class MusicGenerationCoordinator:
         if not prompt:
             return {"ok": False, "warning_message": "Selected song has no lyrics to submit to Suno.", "error": True}
 
-        model = "V5" if str(settings.get("sunoDefaultVersion", "v5.5")).strip().lower() == "v5" else "V5_5"
+        version_key = (
+            str(settings.get("sunoDefaultVersion", "v6") or "v6")
+            .strip()
+            .lower()
+            .replace(".", "")
+            .replace("-", "")
+            .replace("_", "")
+            .replace(" ", "")
+        )
+        model = {
+            "v6": "V6",
+            "v6mini": "V6_MINI",
+            "v6wild": "V6_WILD",
+            "v5": "V5",
+            "v55": "V5_5",
+        }.get(version_key, "V6")
         db_cfg = self._db_cfg_accessor()
         request_hash = hash_suno_generate_request(
             model=model,

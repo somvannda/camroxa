@@ -86,7 +86,7 @@ class MusicSettingsCoordinator:
             "sunoCallbackUrl": self._w("music_suno_callback_url"),
             "sunoTimeoutMs": max(1000, self._wi("music_suno_timeout", 90000)),
             "sunoRetryCount": max(0, self._wi("music_suno_retry_count", 3)),
-            "sunoDefaultVersion": self._w("music_suno_default_version", "v5.5"),
+            "sunoDefaultVersion": self._w("music_suno_default_version", "v6"),
             "sunoMergeEnabled": self._w("music_suno_merge_enabled", "off") == "on",
             "sunoMergeGroupSize": max(0, self._wi("music_suno_merge_group_size", 0)),
             "sunoCreditsReserve": max(0, self._wi("music_suno_credits_reserve", 10)),
@@ -146,7 +146,7 @@ class MusicSettingsCoordinator:
         self._sw("music_suno_timeout", str(int(settings.get("sunoTimeoutMs", 90000) or 90000)))
         self._sw("music_suno_retry_count", str(int(settings.get("sunoRetryCount", 3) or 3)))
         if hasattr(host, "music_suno_default_version"):
-            version = str(settings.get("sunoDefaultVersion", "v5.5")).strip() or "v5.5"
+            version = str(settings.get("sunoDefaultVersion", "v6")).strip() or "v6"
             idx = host.music_suno_default_version.findData(version)
             host.music_suno_default_version.setCurrentIndex(idx if idx >= 0 else 0)
         if hasattr(host, "music_suno_merge_enabled"):
@@ -283,7 +283,7 @@ class MusicSettingsCoordinator:
         if hasattr(host, "music_settings_youtube_client_secret"):
             host.music_settings_youtube_client_secret.setText(str(settings.get("youtubeClientSecret", "")).strip())
         if hasattr(host, "music_suno_default_version"):
-            version = str(settings.get("sunoDefaultVersion", "v5.5")).strip() or "v5.5"
+            version = str(settings.get("sunoDefaultVersion", "v6")).strip() or "v6"
             idx = host.music_suno_default_version.findData(version)
             host.music_suno_default_version.setCurrentIndex(idx if idx >= 0 else 0)
         if hasattr(host, "music_suno_merge_enabled"):
