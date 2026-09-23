@@ -403,6 +403,42 @@ def is_usable_export_output(
     )
 
 
+def describe_export_output_failure(
+    target_path: str,
+    *,
+    ffmpeg_path: str = "",
+    audio_path: str = "",
+    expected_duration_sec: float = 0.0,
+) -> str:
+    """Short human reason an export failed the usability gate (logs / UI)."""
+    path = Path(str(target_path or "").strip())
+    try:
+        if not path.is_file():
+            return "no output file was written"
+        size = int(path.stat().st_size)
+    except OSError:
+        return "output file is unreadable"
+    if size <= MIN_VALID_EXPORT_BYTES:
+        return f"output is too small ({size} bytes)"
+    probe = resolve_ffprobe_path(ffmpeg_path)
+    if not probe:
+        return "output failed validation"
+    if not _has_video_stream(target_path, probe):
+        return "output has no video stream"
+    duration = _probe_format_duration(target_path, probe)
+    if duration <= MIN_VALID_EXPORT_DURATION_SEC:
+        return "output duration is ~0s"
+    expected = float(expected_duration_sec or 0.0)
+    if expected > 1.0 and duration + 1.0 < expected:
+        return f"output is {duration:.1f}s but {expected:.1f}s was rendered"
+    audio = str(audio_path or "").strip()
+    if audio and Path(audio).is_file():
+        audio_duration = _probe_format_duration(audio, probe)
+        if audio_duration > 1.0 and duration < (audio_duration * MIN_AUDIO_DURATION_RATIO):
+            return f"output is {duration:.1f}s vs audio {audio_duration:.1f}s"
+    return "output failed validation"
+
+
 def resolve_written_export_path(
     *,
     preferred_path: str,
