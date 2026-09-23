@@ -316,6 +316,9 @@ class VideoPipelineExportWorker(QThread):
                     ffmpeg_path=ffmpeg_path,
                     audio_path=mp3_path,
                     require_media=True,
+                    expected_duration_sec=float(
+                        getattr(job, "rendered_duration_sec", 0.0) or 0.0
+                    ),
                 ):
                     raise RuntimeError(
                         f"Video export did not produce a usable output for {Path(mp3_path).name}."

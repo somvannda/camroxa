@@ -145,6 +145,7 @@ class ExportCoordinator:
         self._progress_callbacks: list[ExportEventHandler] = []
         self._running_job_id: str | None = None
         self._last_exit_code: int = 1
+        self._last_rendered_duration_sec: float = 0.0
         self._cancel_requested = False
 
     @property
@@ -154,6 +155,10 @@ class ExportCoordinator:
     @property
     def last_exit_code(self) -> int:
         return self._last_exit_code
+
+    @property
+    def last_rendered_duration_sec(self) -> float:
+        return self._last_rendered_duration_sec
 
     def on_progress(self, callback: ExportEventHandler) -> None:
         self._progress_callbacks.append(callback)
@@ -170,6 +175,7 @@ class ExportCoordinator:
         active = _ActiveJob(job_id=job_id)
         self._running_job_id = job_id
         self._last_exit_code = 1
+        self._last_rendered_duration_sec = 0.0
         self._cancel_requested = False
         with self._lock:
             self._jobs[job_id] = active
@@ -235,6 +241,7 @@ class ExportCoordinator:
         )
 
         def _on_event(event: dict) -> None:
+            self._capture_rendered_duration(event)
             self._emit(_enrich_event(event, backend_used="in-process"))
 
         session = InProcessExportSession(
@@ -292,8 +299,21 @@ class ExportCoordinator:
         )
         active.backend = job
         code = int(job.run_blocking())
+        self._last_rendered_duration_sec = float(
+            getattr(job, "rendered_duration_sec", 0.0) or 0.0
+        )
         active.backend_name = getattr(job, "backend_used", "") or "subprocess"
         return code
+
+    def _capture_rendered_duration(self, event: dict) -> None:
+        """Remember the visualizer's rendered length for output validation."""
+        try:
+            if str(event.get("status") or "").strip().lower() == "done":
+                value = event.get("durationSec")
+                if isinstance(value, (int, float)) and float(value) > 0:
+                    self._last_rendered_duration_sec = float(value)
+        except Exception:
+            pass
 
     def _emit(self, event: dict) -> None:
         for callback in self._progress_callbacks:
