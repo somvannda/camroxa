@@ -351,13 +351,12 @@ def export_media_looks_complete(
 ) -> bool:
     """Return True when the MP4 has a video stream and a usable duration.
 
-    When ``expected_duration_sec`` is provided, the rendered length reported by
-    the visualizer is authoritative: a file that matches it is complete, and one
-    materially shorter is truncated. This avoids re-probing the source audio,
-    whose ``format=duration`` is only an estimate for MP3.
-
-    Otherwise, when ``audio_path`` is provided, reject exports whose duration is
-    much shorter than the source audio (incomplete / truncated encodes).
+    ``expected_duration_sec`` (the length the visualizer rendered) and the source
+    ``audio_path`` are both checked: a file shorter than what was rendered, or
+    materially shorter than the source audio, is treated as truncated. Checking
+    the source audio matters because a short *decode* makes both the render and
+    its reported length short — comparing only against the render would let that
+    through.
     """
     probe = str(ffprobe_path or "").strip() or resolve_ffprobe_path()
     if not probe:
@@ -368,9 +367,9 @@ def export_media_looks_complete(
     if duration <= MIN_VALID_EXPORT_DURATION_SEC:
         return False
     expected = float(expected_duration_sec or 0.0)
-    if expected > 1.0:
+    if expected > 1.0 and duration + 1.0 < expected:
         # Allow a frame or two of container rounding, reject real truncation.
-        return duration + 1.0 >= expected
+        return False
     audio = str(audio_path or "").strip()
     if audio and Path(audio).is_file():
         audio_duration = _probe_format_duration(audio, probe)

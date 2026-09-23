@@ -104,10 +104,10 @@ def test_has_video_stream_treats_returncode_zero_as_success(tmp_path: Path, monk
     assert mod._has_video_stream(str(video), str(probe)) is True
 
 
-def test_export_media_looks_complete_trusts_rendered_duration_over_mp3(
+def test_export_media_looks_complete_accepts_when_render_and_audio_agree(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """ffprobe's MP3 estimate can exceed the real audio; the rendered length wins."""
+    """A small ffprobe over-estimate of the MP3 stays within tolerance."""
     from features.video.lib import export_output_validity as mod
 
     audio = tmp_path / "audio.mp3"
@@ -115,8 +115,9 @@ def test_export_media_looks_complete_trusts_rendered_duration_over_mp3(
     video = tmp_path / "video.mp4"
     video.write_bytes(b"ftyp")
 
+    # Real case: MP3 header reads 211.6s, actual audio 208.6s, MP4 208.6s.
     def _fake_duration(path: str, _probe: str) -> float:
-        return 200.0 if path.endswith(".mp3") else 100.0
+        return 211.6 if path.endswith(".mp3") else 208.6
 
     monkeypatch.setattr(mod, "_probe_format_duration", _fake_duration)
     monkeypatch.setattr(mod, "_has_video_stream", lambda *_a, **_k: True)
@@ -125,9 +126,37 @@ def test_export_media_looks_complete_trusts_rendered_duration_over_mp3(
             str(video),
             ffprobe_path="ffprobe",
             audio_path=str(audio),
-            expected_duration_sec=100.0,
+            expected_duration_sec=208.6,
         )
         is True
+    )
+
+
+def test_export_media_looks_complete_rejects_short_vs_source_audio(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A short decode makes the render AND the MP4 short; the source audio catches it."""
+    from features.video.lib import export_output_validity as mod
+
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"id3")
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"ftyp")
+
+    def _fake_duration(path: str, _probe: str) -> float:
+        return 208.6 if path.endswith(".mp3") else 117.6
+
+    monkeypatch.setattr(mod, "_probe_format_duration", _fake_duration)
+    monkeypatch.setattr(mod, "_has_video_stream", lambda *_a, **_k: True)
+    # MP4 matches the (short) rendered length, but is far short of the source audio.
+    assert (
+        mod.export_media_looks_complete(
+            str(video),
+            ffprobe_path="ffprobe",
+            audio_path=str(audio),
+            expected_duration_sec=117.6,
+        )
+        is False
     )
 
 

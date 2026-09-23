@@ -1,24 +1,29 @@
-﻿Camxora 1.4.1
-Suno V6 models + V5.5/V5 options
+﻿Camxora 1.4.2
+Video export duration fix + UI cleanups
 September 23, 2026
 
 What's new
 ----------
-• Suno V6 model series support: V6 (default), V6 Mini (faster), and
-  V6 Wild (more experimental).
-• V5.5 and V5 stay selectable alongside the V6 series.
-• V6 is available on the CAMXORA music web Create page:
+- Video export now matches the MP3 length. Some 48 kHz VBR MP3s were decoded
+  short (libsndfile/minimp3), producing a shorter MP4 and the error "video
+  export did not produce a usable output". The export now decodes them fully.
+- Existing audio-analysis caches are invalidated on upgrade, so the decode fix
+  takes effect without manually clearing the cache.
+- Merge only proceeds when the exported MP4 actually matches the audio length.
+- Studio is hidden from the desktop sidebar.
+- No more ffmpeg console popups during export and merge.
+
+Still included from 1.4.1
+-------------------------
+- Suno V6 model series (V6, V6 Mini, V6 Wild) plus V5.5 / V5 options.
+- V6 available on the CAMXORA music web Create page:
   https://music.camxora.com/create
-• Settings → Default Suno version offers v6, v6 mini, v6 wild, v5.5, and v5.
-• V6 songs use the dedicated lyrics field for richer vocals and more
-  natural detail. Negative tags can be up to 1000 characters.
 
 Requirements
 ------------
-• Installer: CamxoraSetup-1.4.1.exe
-• Production API: https://api.camxora.com/api/v3
-• Force update: older clients upgrade on app open.
+- Installer: CamxoraSetup-1.4.2.exe
+- Production API: https://api.camxora.com/api/v3
 
 Not in this build
 -----------------
-• DistroKid / WAV add-on
+- DistroKid / WAV add-on

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 CACHE_DIR_NAME = "audio-analysis"
 
 
@@ -99,6 +99,27 @@ def get_audio_analysis_cache(
         ):
             return None
         data = np.load(npz_path, allow_pickle=False)
+        cached_duration = float(data["duration_sec"])
+        # A cache written before a decoder fix can hold a too-short duration
+        # (libsndfile/minimp3 under-decodes some 48 kHz VBR MP3s). Reject it so
+        # the export re-analyzes with the current decoder instead of rendering a
+        # short MP4 from the stale length.
+        try:
+            from visualizer.audio import _ffprobe_duration_sec
+
+            probe_duration = float(_ffprobe_duration_sec(key.source_path) or 0.0)
+        except Exception:
+            probe_duration = 0.0
+        if probe_duration > 1.0 and cached_duration + 0.5 < probe_duration:
+            log.warning(
+                "analysis cache duration short (%.1fs vs %.1fs); re-analyzing %s",
+                cached_duration,
+                probe_duration,
+                Path(key.source_path).name,
+            )
+            _safe_unlink(npz_path)
+            _safe_unlink(meta_path)
+            return None
         from visualizer.audio import AudioAnalyzer
 
         analyzer = AudioAnalyzer.from_cached_arrays(
@@ -107,7 +128,7 @@ def get_audio_analysis_cache(
             n_fft=key.n_fft,
             sample_rate=int(data["sample_rate"]),
             hop_length=int(data["hop_length"]),
-            duration_sec=float(data["duration_sec"]),
+            duration_sec=cached_duration,
             mag=data["mag"],
             freqs=data["freqs"],
             bass_idx=data["bass_idx"],
