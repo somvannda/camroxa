@@ -16,7 +16,11 @@ from features.video.lib.export_failure_log import (
     format_export_failure_message,
     is_export_milestone_message,
 )
-from features.video.lib.export_output_validity import export_matches_batch_specs, is_usable_export_output
+from features.video.lib.export_output_validity import (
+    describe_export_output_failure,
+    export_matches_batch_specs,
+    is_usable_export_output,
+)
 from features.video.lib.render_scene_request import (
     build_pipeline_export_output_path,
     build_pipeline_long_output_path,
@@ -320,8 +324,17 @@ class VideoPipelineExportWorker(QThread):
                         getattr(job, "rendered_duration_sec", 0.0) or 0.0
                     ),
                 ):
+                    reason = describe_export_output_failure(
+                        final_output_path,
+                        ffmpeg_path=ffmpeg_path,
+                        audio_path=mp3_path,
+                        expected_duration_sec=float(
+                            getattr(job, "rendered_duration_sec", 0.0) or 0.0
+                        ),
+                    )
                     raise RuntimeError(
-                        f"Video export did not produce a usable output for {Path(mp3_path).name}."
+                        f"Video export did not produce a usable output for "
+                        f"{Path(mp3_path).name} ({reason})."
                     )
                 return final_output_path
             finally:

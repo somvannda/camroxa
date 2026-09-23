@@ -151,3 +151,18 @@ def test_export_media_looks_complete_rejects_short_vs_rendered(
         )
         is False
     )
+
+
+def test_describe_export_output_failure_reports_reason(tmp_path: Path, monkeypatch) -> None:
+    from features.video.lib import export_output_validity as mod
+
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"x" * (MIN_VALID_EXPORT_BYTES + 8))
+
+    monkeypatch.setattr(mod, "resolve_ffprobe_path", lambda *_a, **_k: "ffprobe")
+    monkeypatch.setattr(mod, "_has_video_stream", lambda *_a, **_k: True)
+    monkeypatch.setattr(mod, "_probe_format_duration", lambda *_a, **_k: 40.0)
+    reason = mod.describe_export_output_failure(
+        str(video), expected_duration_sec=100.0
+    )
+    assert "40.0s" in reason and "100.0s" in reason
