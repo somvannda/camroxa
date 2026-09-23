@@ -1,21 +1,21 @@
-﻿Camxora 1.4.0
-Suno V6 music models
+﻿Camxora 1.4.1
+Suno V6 models + V5.5/V5 options
 September 23, 2026
 
 What's new
 ----------
 • Suno V6 model series support: V6 (default), V6 Mini (faster), and
   V6 Wild (more experimental).
+• V5.5 and V5 stay selectable alongside the V6 series.
 • V6 is available on the CAMXORA music web Create page:
   https://music.camxora.com/create
-• Settings → Default Suno version now offers v6, v6 mini, and v6 wild.
-  Existing v5 / v5.5 selections keep working.
+• Settings → Default Suno version offers v6, v6 mini, v6 wild, v5.5, and v5.
 • V6 songs use the dedicated lyrics field for richer vocals and more
   natural detail. Negative tags can be up to 1000 characters.
 
 Requirements
 ------------
-• Installer: CamxoraSetup-1.4.0.exe
+• Installer: CamxoraSetup-1.4.1.exe
 • Production API: https://api.camxora.com/api/v3
 • Force update: older clients upgrade on app open.
 
