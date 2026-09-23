@@ -12,7 +12,9 @@ from shared.services.software_update_service import SoftwareUpdateOffer, Softwar
 def test_get_app_version_reads_pyproject_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_version, "is_frozen_runtime", lambda: False)
     version = app_version.get_app_version()
-    assert version == "1.3.1"
+    # Track the real pyproject version so a release bump does not leave a stale
+    # hard-coded expectation behind (this test previously pinned an old release).
+    assert version == app_version._read_pyproject_version()
 
 
 def test_get_app_version_prefers_bundled_file_when_frozen(
