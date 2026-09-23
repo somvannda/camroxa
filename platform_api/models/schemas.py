@@ -12,6 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from platform_api.ai.registry import SUNO_MODEL_PATTERN
+
 
 # ---------------------------------------------------------------------------
 # Auth Schemas
@@ -64,7 +66,7 @@ class RegisterRequest(BaseModel):
 class SunoGenerationRequest(BaseModel):
     """Submit a music generation request to Suno."""
 
-    model: str = Field(pattern=r"^(V5|V5_5)$")
+    model: str = Field(pattern=SUNO_MODEL_PATTERN)
     title: str = Field(min_length=1, max_length=255)
     lyrics: str = Field(min_length=1)
     style: str = Field(min_length=1, max_length=1000)

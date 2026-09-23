@@ -311,7 +311,7 @@ def _check_assignment_pricing(
                     message=(
                         f"{label}: no credit pricing for ai_service='{ai_service}' "
                         f"operation_type='{op_type}'. Add rows for each Suno model "
-                        "(V5, V5_5) users can select."
+                        "(V6, V6_MINI, V6_WILD, V5_5, V5) users can select."
                     ),
                     operation=operation,
                     provider=provider,

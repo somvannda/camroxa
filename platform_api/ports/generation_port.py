@@ -14,7 +14,7 @@ from typing import Any, Protocol
 class SunoRequest:
     """Parameters for a Suno music generation request."""
 
-    model: str  # 'V5' or 'V5_5'
+    model: str  # 'V6', 'V6_MINI', 'V6_WILD', 'V5_5', or 'V5'
     title: str
     lyrics: str
     style: str

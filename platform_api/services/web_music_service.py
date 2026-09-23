@@ -13,6 +13,7 @@ from urllib.parse import quote
 from fastapi.responses import Response, StreamingResponse
 
 from platform_api.ai.purposes.vocal_profile import truncate_suno_style
+from platform_api.ai.registry import DEFAULT_SUNO_MUSIC_MODEL, SUNO_MUSIC_MODEL_IDS
 from platform_api.exceptions import (
     ExternalServiceError,
     ForbiddenError,
@@ -100,7 +101,7 @@ def _normalize_slider(value: float | None, *, default: float = _DEFAULT_SLIDER_V
         return parsed
     return default
 
-_VALID_MODELS = frozenset({"V5", "V5_5"})
+_VALID_MODELS = frozenset(SUNO_MUSIC_MODEL_IDS)
 
 _WEB_MUSIC_STYLE_SYSTEM_PROMPT = (
     "You are a Suno AI music production prompt engineer.\n"
@@ -843,10 +844,10 @@ class WebMusicService:
             "service.generate enter user=%s mode=%r instr=%s model=%r title_len=%s lyrics_len=%s style_len=%s prompt_len=%s workspace=%s",
             user_id, mode, instrumental, model, len(title or ""), len(lyrics or ""), len(style or ""), len(prompt or ""), workspace_id,
         )
-        normalized_model = str(model or "V5").strip().upper()
+        normalized_model = str(model or DEFAULT_SUNO_MUSIC_MODEL).strip().upper()
         if normalized_model not in _VALID_MODELS:
             raise ValidationError(
-                "model must be V5 or V5_5.",
+                "model must be one of V6, V6_MINI, V6_WILD, V5_5, V5.",
                 details={"field": "model"},
             )
         mode_key = str(mode or "advanced").strip().lower()
@@ -1088,7 +1089,7 @@ class WebMusicService:
             return
 
         request = SunoRequest(
-            model=str(row["model"] or "V5_5"),
+            model=str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL),
             title=str(row["title"] or ""),
             lyrics=str(row["lyrics"] or "Instrumental"),
             style=str(row["style"] or "Contemporary pop"),

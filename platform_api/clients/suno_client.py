@@ -677,7 +677,7 @@ class SunoClient:
         """Submit a music generation task to Suno.
 
         Args:
-            model: Suno model version (e.g. "V5", "V5_5").
+            model: Suno model version (e.g. "V6", "V6_MINI", "V6_WILD").
             title: Song title.
             lyrics: Song lyrics.
             style: Music style/genre descriptor.
@@ -734,6 +734,11 @@ class SunoClient:
             "customMode": True,
             "callBackUrl": callback,
         }
+
+        # V6 exposes a dedicated ``lyrics`` field that takes priority over
+        # ``prompt`` in custom mode. Send both so V6 sings the exact lyrics.
+        if str(model or "").strip().upper().startswith("V6"):
+            payload["lyrics"] = normalized_lyrics
 
         if negative_tags:
             payload["negativeTags"] = str(negative_tags).strip()

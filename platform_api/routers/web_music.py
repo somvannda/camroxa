@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from platform_api.ai.registry import DEFAULT_SUNO_MUSIC_MODEL, SUNO_MODEL_PATTERN
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit, enforce_rate_limit_for_endpoint
 from platform_api.middleware.abuse_detection import track_generation_attempt, track_quota_exceeded
@@ -39,11 +40,11 @@ class WebMusicGenerateRequest(BaseModel):
     lyrics: str = Field(default="", max_length=5000)
     style: str = Field(default="", max_length=1000)
     title: str = Field(default="", max_length=200)
-    # Suno V5/V5.5 customMode lyrics cap. Simple mode UI clamps to 1000 (style).
+    # Suno V6 customMode lyrics cap (V5 series also accepts 5000).
     prompt: str = Field(default="", max_length=5000)
     instrumental: bool = False
-    model: str = Field(default="V5_5", pattern=r"^(V5|V5_5)$")
-    negative_tags: str | None = Field(default=None, max_length=500)
+    model: str = Field(default=DEFAULT_SUNO_MUSIC_MODEL, pattern=SUNO_MODEL_PATTERN)
+    negative_tags: str | None = Field(default=None, max_length=1000)
     vocal_gender: Literal["m", "f", "both", ""] | None = None
     style_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     weirdness_constraint: float | None = Field(default=None, ge=0.0, le=1.0)

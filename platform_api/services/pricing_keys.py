@@ -13,7 +13,13 @@ def normalize_suno_pricing_sub_model(sub_model: str | None) -> str:
     normalized = normalize_pricing_sub_model(sub_model)
     if not normalized:
         return ""
-    key = normalized.upper().replace(".", "_").replace("-", "_")
+    key = normalized.upper().replace(".", "_").replace("-", "_").replace(" ", "_")
+    if key in {"V6", "V6_0", "V60"}:
+        return "V6"
+    if key in {"V6_MINI", "V6MINI"}:
+        return "V6_MINI"
+    if key in {"V6_WILD", "V6WILD"}:
+        return "V6_WILD"
     if key in {"V5_5", "V55"}:
         return "V5_5"
     if key == "V5":

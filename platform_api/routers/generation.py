@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
 
+from platform_api.ai.registry import SUNO_MODEL_PATTERN
 from platform_api.exceptions import ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
@@ -132,7 +133,7 @@ class LyricsSunoCheckResponse(BaseModel):
 class SunoGenerationRequest(BaseModel):
     """Request body for submitting a Suno music generation task."""
 
-    model: str = Field(pattern=r"^(V5|V5_5)$")
+    model: str = Field(pattern=SUNO_MODEL_PATTERN)
     title: str = Field(min_length=1, max_length=255)
     lyrics: str = Field(min_length=1)
     style: str = Field(min_length=1, max_length=1000)
