@@ -176,7 +176,7 @@ const IMAGE_SOURCE_MODE_OPTIONS = [
 ]
 const BACKGROUND_SOURCE_OPTIONS = [{ value: 'samples', label: 'Samples' }]
 const THUMBNAIL_OVERLAY_OPTIONS = [{ value: 'ai', label: 'AI' }]
-const SUNO_VERSION_OPTIONS = ['v6', 'v6 mini', 'v6 wild']
+const SUNO_VERSION_OPTIONS = ['v6', 'v6 mini', 'v6 wild', 'v5.5', 'v5']
 const SUNO_MERGE_OPTIONS = [
   { value: 'off', label: 'Off' },
   { value: 'on', label: 'On' },
