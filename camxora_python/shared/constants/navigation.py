@@ -190,8 +190,11 @@ def get_route_by_key(key: ShellRouteKey) -> ShellRouteMeta:
 
 
 def get_workspace_routes() -> tuple[ShellRouteMeta, ...]:
-    # Merger is reserved/placeholder — keep the route registered, hide from sidebar.
-    return tuple(r for r in SHELL_ROUTES if r.key not in ("settings", "log", "merger"))
+    # Merger is reserved/placeholder; Studio is hidden (pending its own repo).
+    # Keep both routes registered, but hide them from the sidebar.
+    return tuple(
+        r for r in SHELL_ROUTES if r.key not in ("settings", "log", "merger", "studio")
+    )
 
 
 def get_utility_routes() -> tuple[ShellRouteMeta, ...]:
