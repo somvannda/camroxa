@@ -110,6 +110,14 @@ class CreateGenerateWorker(QThread):
             )
             return
 
+        # Full runs only: fail fast when Auto Video/Merge credits are short
+        # instead of generating everything and stalling at the export stage.
+        if self._only_index is None and not self._existing_task_id:
+            gate_error = self._preflight_video_merge(plan)
+            if gate_error:
+                self.failed.emit(gate_error)
+                return
+
         for index in indexes:
             if self.isInterruptionRequested():
                 self.failed.emit("Generate cancelled.")
@@ -392,33 +400,158 @@ class CreateGenerateWorker(QThread):
             time.sleep(_POLL_SECONDS)
         raise RuntimeError(last_error)
 
+    def _charge_local(self, operation_type: str, count: int, ref_id: str) -> dict:
+        from features.video.lib.video_billing import consume_video_operation
+
+        result = consume_video_operation(
+            self._api,
+            operation_type=operation_type,
+            count=count,
+            ref_id=ref_id,
+        )
+        return {
+            "operation_type": result.operation_type,
+            "count": max(1, int(count)),
+            "charged_credit_units": int(result.charged_credit_units),
+            "ref_id": ref_id,
+        }
+
+    def _refund_local(
+        self, charge: dict | None, *, count: int | None = None, reason: str = ""
+    ) -> None:
+        if not charge:
+            return
+        from features.video.lib.video_billing import refund_video_operation
+
+        original = max(1, int(charge.get("count") or 1))
+        refund_count = original if count is None else max(0, min(original, int(count)))
+        if refund_count <= 0:
+            return
+        charged = int(charge.get("charged_credit_units") or 0)
+        refund_credits = int(round(charged * refund_count / original)) if charged else 0
+        try:
+            refund_video_operation(
+                self._api,
+                operation_type=str(charge.get("operation_type") or "video"),
+                charged_credit_units=refund_credits,
+                count=refund_count,
+                ref_id=str(charge.get("ref_id") or "") or None,
+                reason=reason or "Create automation failed",
+            )
+        except Exception:
+            pass
+
+    def _preflight_video_merge(self, plan: CreateGeneratePlan) -> str | None:
+        """Best-effort upfront gate for Auto Video/Merge (quota first, then wallet)."""
+        from shared.lib.create_generate import estimate_video_merge_ops
+        from shared.lib.music_costs import get_operation_unit_cost, map_operation_costs
+
+        video_ops, merge_ops = estimate_video_merge_ops(plan)
+        if video_ops <= 0 and merge_ops <= 0:
+            return None
+        try:
+            quota = self._api.get_quota_status()
+        except Exception as exc:
+            return f"Cannot check credits for Auto Video/Merge: {exc}"
+        try:
+            costs = map_operation_costs(self._api.get_operation_costs().items)
+        except Exception:
+            costs = {}
+        video_unit = get_operation_unit_cost(costs.get("video")) or 0.0
+        merge_unit = get_operation_unit_cost(costs.get("video_merge")) or 0.0
+        wallet_needed = video_ops * video_unit + merge_ops * merge_unit
+
+        video_quota_ok = quota.videos_remaining is None or quota.videos_remaining >= video_ops
+        merge_quota_ok = (
+            merge_ops == 0 or quota.merges_remaining is None or quota.merges_remaining >= merge_ops
+        )
+        video_daily_ok = (
+            quota.daily_videos_remaining is None or quota.daily_videos_remaining >= video_ops
+        )
+        merge_daily_ok = (
+            merge_ops == 0
+            or quota.daily_merges_remaining is None
+            or quota.daily_merges_remaining >= merge_ops
+        )
+        if video_quota_ok and merge_quota_ok and video_daily_ok and merge_daily_ok:
+            return None
+        wallet = float(quota.wallet_balance or 0)
+        if wallet >= wallet_needed:
+            return None
+        return (
+            "Not enough credits for Auto Video/Merge. This run needs about "
+            f"{wallet_needed:.4g} credits ({video_ops} video export"
+            f"{'s' if video_ops != 1 else ''}, {merge_ops} merge"
+            f"{'s' if merge_ops != 1 else ''}). Available {wallet:.4g}."
+        )
+
     def _run_auto_video(self, plan: CreateGeneratePlan) -> None:
+        from shared.lib.create_automation import (
+            find_background_image,
+            list_version_mp3s,
+            template_payload,
+        )
+
         root = Path(plan.save_folder)
         pairs = (
-            (root / VERSION_1, plan.template_v1_id),
-            (root / VERSION_2, plan.template_v2_id),
+            (root / VERSION_1, plan.template_v1_id, "v1"),
+            (root / VERSION_2, plan.template_v2_id, "v2"),
         )
-        for folder, template_id in pairs:
+        for folder, template_id, tag in pairs:
             if self.isInterruptionRequested():
                 raise RuntimeError("Generate cancelled.")
             if not str(template_id or "").strip():
                 self.progressed.emit(f"Skip Auto Video for {folder.name}: None selected.")
                 continue
-            export_version_videos(
-                folder,
-                template_id=template_id,
-                on_progress=self.progressed.emit,
-                should_stop=self.isInterruptionRequested,
-            )
-            self.files_changed.emit()
+            if template_payload(template_id) is None or find_background_image(folder) is None:
+                self.progressed.emit(f"Skip Auto Video for {folder.name}: assets not ready.")
+                continue
+            mp3s = list_version_mp3s(folder)
+            if not mp3s:
+                self.progressed.emit(f"Skip Auto Video for {folder.name}: no MP3 files.")
+                continue
+            ref_id = f"create-video:{tag}:{folder.name}"
+            charge: dict | None = None
+            try:
+                charge = self._charge_local("video", len(mp3s), ref_id)
+                written = export_version_videos(
+                    folder,
+                    template_id=template_id,
+                    on_progress=self.progressed.emit,
+                    should_stop=self.isInterruptionRequested,
+                )
+                unused = max(0, len(mp3s) - len(written or ()))
+                if unused:
+                    self._refund_local(
+                        charge, count=unused, reason="Create auto video: unused exports"
+                    )
+                self.files_changed.emit()
+            except Exception as exc:
+                self._refund_local(charge, reason=f"Create auto video failed: {exc}")
+                raise
 
     def _run_auto_merge(self, plan: CreateGeneratePlan) -> None:
+        from shared.lib.create_automation import list_mergeable_mp4s
+
         root = Path(plan.save_folder)
-        for folder, role in ((root / VERSION_1, "ok"), (root / VERSION_2, "alt")):
+        for folder, role, tag in (
+            (root / VERSION_1, "ok", "v1"),
+            (root / VERSION_2, "alt", "v2"),
+        ):
             if self.isInterruptionRequested():
                 raise RuntimeError("Generate cancelled.")
-            merge_version_folder(folder, role=role, on_progress=self.progressed.emit)
-            self.files_changed.emit()
+            if len(list_mergeable_mp4s(folder)) < 2:
+                self.progressed.emit(f"Skip merge in {folder.name}: need at least two videos.")
+                continue
+            ref_id = f"create-merge:{tag}:{folder.name}"
+            charge: dict | None = None
+            try:
+                charge = self._charge_local("video_merge", 1, ref_id)
+                merge_version_folder(folder, role=role, on_progress=self.progressed.emit)
+                self.files_changed.emit()
+            except Exception as exc:
+                self._refund_local(charge, reason=f"Create merge failed: {exc}")
+                raise
 
 
 class CreateClipDownloadWorker(QThread):

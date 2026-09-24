@@ -465,8 +465,19 @@ type MusicPlanCostBreakdown = {
   imageUnitCost: number | null
   imageJobsPerSong: number
   imageTotalCost: number | null
+  videoUnitCost: number | null
+  videoOps: number
+  videoTotalCost: number | null
+  mergeUnitCost: number | null
+  mergeOps: number
+  mergeTotalCost: number | null
   totalCost: number | null
 }
+
+// One Suno song package yields one track per channel (Primary + Secondary).
+const TRACKS_PER_SONG_PACKAGE = 2
+// Each album/channel is merged once.
+const MERGE_OPS_PER_BATCH = 2
 
 function getOperationUnitCost(item: OperationCostResponse | undefined): number | null {
   if (!item?.available || item.credits_per_operation == null) {
@@ -486,6 +497,11 @@ function getBatchGenerateTotalCost(
   autoGSuno: boolean,
   plannedDayCount: number | null,
   imageSourceMode: string,
+  videoCost?: OperationCostResponse,
+  mergeCost?: OperationCostResponse,
+  autoVideo = false,
+  autoMerge = false,
+  autoReel = false,
 ): number | null {
   if (
     songCount <= 0 ||
@@ -511,16 +527,30 @@ function getBatchGenerateTotalCost(
     totalCost += musicCost.credits_per_operation * pairCount * songCount * plannedDayCount
   }
 
-  if (!autoGenImage || imageSourceMode === 'manual') {
-    return totalCost
+  if (autoGenImage && imageSourceMode !== 'manual') {
+    if (!imageCost?.available || imageCost.credits_per_operation == null) {
+      return null
+    }
+    const imageJobsPerSong = [...primaryProfiles, ...secondaryProfiles].reduce((total, profile) => total + getProfileImageJobCount(profile), 0)
+    totalCost += imageJobsPerSong * imageCost.credits_per_operation * songCount * plannedDayCount
   }
 
-  if (!imageCost?.available || imageCost.credits_per_operation == null) {
-    return null
+  if (autoVideo && autoGSuno) {
+    if (!videoCost?.available || videoCost.credits_per_operation == null) {
+      return null
+    }
+    const branchMultiplier = autoReel ? 2 : 1
+    const videoOps = pairCount * songCount * plannedDayCount * TRACKS_PER_SONG_PACKAGE * branchMultiplier
+    totalCost += videoCost.credits_per_operation * videoOps
+    if (autoMerge) {
+      if (!mergeCost?.available || mergeCost.credits_per_operation == null) {
+        return null
+      }
+      const mergeOps = pairCount * plannedDayCount * MERGE_OPS_PER_BATCH * branchMultiplier
+      totalCost += mergeCost.credits_per_operation * mergeOps
+    }
   }
 
-  const imageJobsPerSong = [...primaryProfiles, ...secondaryProfiles].reduce((total, profile) => total + getProfileImageJobCount(profile), 0)
-  totalCost += imageJobsPerSong * imageCost.credits_per_operation * songCount * plannedDayCount
   return totalCost
 }
 
@@ -547,6 +577,11 @@ function getMusicPlanCostBreakdown(
   autoGSuno: boolean,
   plannedDayCount: number | null,
   imageSourceMode: string,
+  videoCost?: OperationCostResponse,
+  mergeCost?: OperationCostResponse,
+  autoVideo = false,
+  autoMerge = false,
+  autoReel = false,
 ): MusicPlanCostBreakdown | null {
   if (
     songCount <= 0 ||
@@ -564,6 +599,8 @@ function getMusicPlanCostBreakdown(
   const draftUnitCost = getOperationUnitCost(lyricCost)
   const sunoUnitCost = getOperationUnitCost(musicCost)
   const imageUnitCost = getOperationUnitCost(imageCost)
+  const videoUnitCost = getOperationUnitCost(videoCost)
+  const mergeUnitCost = getOperationUnitCost(mergeCost)
   const imageJobsPerSong = autoGenImage && imageSourceMode !== 'manual'
     ? [...primaryProfiles, ...secondaryProfiles].reduce((total, profile) => total + getProfileImageJobCount(profile), 0)
     : 0
@@ -576,9 +613,31 @@ function getMusicPlanCostBreakdown(
       ? null
       : imageUnitCost * imageJobsPerSong * plannedSongCount
 
+  const branchMultiplier = autoReel ? 2 : 1
+  const billableVideo = autoVideo && autoGSuno
+  const billableMerge = billableVideo && autoMerge
+  const videoOps = billableVideo ? plannedSongCount * TRACKS_PER_SONG_PACKAGE * branchMultiplier : 0
+  const mergeOps = billableMerge ? plannedBatchCount * MERGE_OPS_PER_BATCH * branchMultiplier : 0
+  const videoTotalCost = !billableVideo
+    ? 0
+    : videoUnitCost == null
+      ? null
+      : videoUnitCost * videoOps
+  const mergeTotalCost = !billableMerge
+    ? 0
+    : mergeUnitCost == null
+      ? null
+      : mergeUnitCost * mergeOps
+
   let totalCost: number | null = null
-  if (draftTotalCost != null && sunoTotalCost != null && imageTotalCost != null) {
-    totalCost = draftTotalCost + sunoTotalCost + imageTotalCost
+  if (
+    draftTotalCost != null &&
+    sunoTotalCost != null &&
+    imageTotalCost != null &&
+    videoTotalCost != null &&
+    mergeTotalCost != null
+  ) {
+    totalCost = draftTotalCost + sunoTotalCost + imageTotalCost + videoTotalCost + mergeTotalCost
   }
 
   return {
@@ -594,6 +653,12 @@ function getMusicPlanCostBreakdown(
     imageUnitCost,
     imageJobsPerSong,
     imageTotalCost,
+    videoUnitCost,
+    videoOps,
+    videoTotalCost,
+    mergeUnitCost,
+    mergeOps,
+    mergeTotalCost,
     totalCost,
   }
 }
@@ -800,15 +865,25 @@ export function MusicWorkspacePage(): React.JSX.Element {
         musicSettings.autoGSuno,
         plannedDaySpan,
         imageSourceMode,
+        operationCostByType.video,
+        operationCostByType.video_merge,
+        musicSettings.autoVideoAfterSuno,
+        musicSettings.autoMergeAfterVideo,
+        musicSettings.autoReelAfterVideo,
       ),
     [
       imageSourceMode,
       musicSettings.autoGenImage,
       musicSettings.autoGSuno,
+      musicSettings.autoMergeAfterVideo,
+      musicSettings.autoReelAfterVideo,
+      musicSettings.autoVideoAfterSuno,
       musicSettings.songCount,
       operationCostByType.background_image,
       operationCostByType.lyric,
       operationCostByType.music,
+      operationCostByType.video,
+      operationCostByType.video_merge,
       plannedDaySpan,
       primarySelectedProfiles,
       secondarySelectedProfiles,
@@ -827,15 +902,25 @@ export function MusicWorkspacePage(): React.JSX.Element {
         musicSettings.autoGSuno,
         plannedDaySpan,
         imageSourceMode,
+        operationCostByType.video,
+        operationCostByType.video_merge,
+        musicSettings.autoVideoAfterSuno,
+        musicSettings.autoMergeAfterVideo,
+        musicSettings.autoReelAfterVideo,
       ),
     [
       imageSourceMode,
       musicSettings.autoGenImage,
       musicSettings.autoGSuno,
+      musicSettings.autoMergeAfterVideo,
+      musicSettings.autoReelAfterVideo,
+      musicSettings.autoVideoAfterSuno,
       musicSettings.songCount,
       operationCostByType.background_image,
       operationCostByType.lyric,
       operationCostByType.music,
+      operationCostByType.video,
+      operationCostByType.video_merge,
       plannedDaySpan,
       primarySelectedProfiles,
       secondarySelectedProfiles,
@@ -1566,6 +1651,15 @@ export function MusicWorkspacePage(): React.JSX.Element {
                         ? `Batch total: ${musicPlanCostBreakdown.totalCost} credits`
                         : 'Batch total: unavailable'}
                     </div>
+                    {(musicSettings.autoVideoAfterSuno || musicSettings.autoMergeAfterVideo) ? (
+                      <div>
+                        {musicPlanCostBreakdown
+                          ? musicPlanCostBreakdown.videoTotalCost == null || musicPlanCostBreakdown.mergeTotalCost == null
+                            ? 'Video/Merge total: unavailable'
+                            : `Video/Merge total: ${musicPlanCostBreakdown.videoTotalCost + musicPlanCostBreakdown.mergeTotalCost} credits (${musicPlanCostBreakdown.videoOps} export, ${musicPlanCostBreakdown.mergeOps} merge)`
+                          : 'Video/Merge total: unavailable'}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="mt-1 text-[10px] text-slate-500">
                     Draft and Polish use the routed lyric model. Revisions is a non-AI history action and does not spend credits.

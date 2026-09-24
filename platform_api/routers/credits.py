@@ -739,6 +739,28 @@ async def get_operation_costs(
                     message=str(exc),
                 )
             )
+    # Local desktop operations (no AI provider): priced under the "local" provider.
+    for operation_type in ("video", "video_merge"):
+        try:
+            credits_units = await pricing_service.get_price("local", operation_type, "")
+            items.append(
+                OperationCostResponse(
+                    operation_type=operation_type,
+                    provider="local",
+                    sub_model="",
+                    credits_per_operation=units_to_credits(credits_units),
+                    available=True,
+                )
+            )
+        except Exception as exc:
+            items.append(
+                OperationCostResponse(
+                    operation_type=operation_type,
+                    provider="local",
+                    available=False,
+                    message=str(exc),
+                )
+            )
     return OperationCostsResponse(items=items)
 
 

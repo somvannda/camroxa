@@ -23,6 +23,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Music plan preflight now prices **video export + merge** (not just draft/Suno/image), so a plan cannot start and then stall at the export stage for lack of credits. The Automation card shows `N export · M merge` and real credits instead of `Later`. Create Auto Video/Merge is now gated and billed. See `docs/changelog/2026-09-24-preflight-video-merge-credits.md`.
 - Desktop Video now uses Create studio chrome (header, navy cards, purple tabs and primary actions). Preview, save, and export are unchanged. See `docs/changelog/2026-08-29-desktop-video-studio-ui.md`.
 - Desktop Settings now uses Create studio chrome (header, navy cards, purple tab chips). Save, profiles, YouTube, pools, and Suno are unchanged. See `docs/changelog/2026-08-29-desktop-settings-studio-ui.md`.
 - Desktop Marketplace now uses Create studio chrome (header, navy cards, purple All/Video/Reel chips). Catalog, search, and install are unchanged. See `docs/changelog/2026-08-29-desktop-marketplace-studio-ui.md`.

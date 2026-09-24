@@ -511,7 +511,10 @@ class AutomationCard(StudioPanel):
         suno_credits: float | None,
         image_credits: float | None,
         total_credits: float | None,
-        video_later: bool,
+        video_enabled: bool,
+        video_ops: int = 0,
+        merge_ops: int = 0,
+        video_credits: float | None = None,
     ) -> None:
         batch_label = "batch" if batches == 1 else "batches"
         self._batch_value.setText(f"{batches} {batch_label}")
@@ -519,8 +522,18 @@ class AutomationCard(StudioPanel):
         self._song_value.setText(f"{songs} {song_label}")
         self._image_value.setText(f"Image {image_jobs}")
         self._image_caption.setText(f"({image_jobs} jobs)")
-        self._video_caption.setText("Later" if video_later else "Off")
-        self._video_credits.setText("Later" if video_later else "Off")
+        self._video_caption.setText("Video / Merge")
+        if video_enabled:
+            parts = []
+            if video_ops:
+                parts.append(f"{video_ops} export")
+            if merge_ops:
+                parts.append(f"{merge_ops} merge")
+            self._video_value.setText(" · ".join(parts) or "On")
+            self._video_credits.setText(format_plan_credits(video_credits))
+        else:
+            self._video_value.setText("Off")
+            self._video_credits.setText("Off")
         self._total_credits.setText(format_plan_credits(total_credits))
         self._draft_credits.setText(format_plan_credits(draft_credits))
         self._suno_credits.setText(format_plan_credits(suno_credits))

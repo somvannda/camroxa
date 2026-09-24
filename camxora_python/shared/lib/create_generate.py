@@ -54,6 +54,19 @@ def planned_day_count(from_date: str, to_date: str) -> int:
     return max(0, get_inclusive_day_span(from_date, to_date) or 0)
 
 
+def estimate_video_merge_ops(plan: CreateGeneratePlan) -> tuple[int, int]:
+    """Return (video_ops, merge_ops) for Create Auto Video / Merge.
+
+    Every generated song lands in both Version 1 and Version 2, so a full run
+    exports one video per track (2 x song_count) and merges each version once.
+    """
+    if not plan.auto_video or plan.song_count <= 0:
+        return 0, 0
+    video_ops = plan.song_count * 2
+    merge_ops = 2 if plan.auto_merge else 0
+    return video_ops, merge_ops
+
+
 def validate_create_plan(plan: CreateGeneratePlan) -> str | None:
     if not plan.save_folder.strip():
         return "Choose a Save to folder before generating."
