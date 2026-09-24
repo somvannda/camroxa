@@ -116,6 +116,8 @@ class CreditRepository:
         reason: str,
         ref_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        *,
+        consume_lots: bool = True,
     ) -> bool:
         """Atomically deduct credits from a user's wallet.
 
@@ -123,11 +125,17 @@ class CreditRepository:
         is sufficient. This prevents overdrawing under concurrent requests
         without requiring explicit row locks.
 
+        Lots are consumed FIFO (soonest expiry first) so ``remaining_units``
+        tracks spend and expiry clawbacks stay accurate. Pass
+        ``consume_lots=False`` for expiry sweeps, which zero the target lot
+        themselves.
+
         Args:
             user_id: The UUID of the user whose wallet to deduct from.
             amount: The number of credits to deduct (must be positive).
             reason: A description of why credits are being deducted.
             ref_id: Optional reference identifier (e.g. batch_id, task_id).
+            consume_lots: Whether to reduce wallet lots (default True).
 
         Returns:
             True if the deduction succeeded, False if the balance was
@@ -157,6 +165,12 @@ class CreditRepository:
                 if row is None:
                     return False
 
+                tx_metadata = dict(metadata) if metadata else {}
+                if consume_lots:
+                    consumed = await self._consume_lots_for_debit(conn, user_id, amount)
+                    if consumed:
+                        tx_metadata["consumed_lots"] = consumed
+
                 # Record the debit transaction
                 await conn.execute(
                     """
@@ -169,7 +183,7 @@ class CreditRepository:
                     amount,
                     reason,
                     ref_id,
-                    json.dumps(metadata) if metadata else None,
+                    json.dumps(tx_metadata) if tx_metadata else None,
                 )
                 credit_log.log_deducted(
                     user_id=user_id,
@@ -187,6 +201,112 @@ class CreditRepository:
                     format_credit_log_amount(int(row["balance"])),
                 )
                 return True
+
+    async def _consume_lots_for_debit(
+        self,
+        conn: Any,
+        user_id: UUID,
+        amount: int,
+    ) -> list[dict[str, Any]]:
+        """Reduce wallet lots FIFO (soonest expiry first) by ``amount`` units.
+
+        Returns the consumed ``[{lot_id, units}]`` list so a later refund can
+        restore exactly what the debit took.
+        """
+        if amount <= 0:
+            return []
+        rows = await conn.fetch(
+            """
+            SELECT id, remaining_units
+            FROM credit_wallet_lots
+            WHERE user_id = $1 AND remaining_units > 0
+            ORDER BY expires_at ASC NULLS LAST, created_at ASC
+            FOR UPDATE
+            """,
+            user_id,
+        )
+        consumed: list[dict[str, Any]] = []
+        left = amount
+        for row in rows:
+            if left <= 0:
+                break
+            take = min(int(row["remaining_units"]), left)
+            if take <= 0:
+                continue
+            await conn.execute(
+                """
+                UPDATE credit_wallet_lots
+                SET remaining_units = remaining_units - $2
+                WHERE id = $1
+                """,
+                row["id"],
+                take,
+            )
+            consumed.append({"lot_id": str(row["id"]), "units": take})
+            left -= take
+        return consumed
+
+    async def _restore_lots_for_refund(
+        self,
+        conn: Any,
+        user_id: UUID,
+        amount: int,
+        ref_id: str | None,
+    ) -> list[dict[str, Any]]:
+        """Restore the lots consumed by the most recent debit with ``ref_id``.
+
+        Refunds mirror charges, so replay the original debit's ``consumed_lots``
+        metadata (capped at ``amount`` and each lot's ``amount_units``).
+        """
+        if amount <= 0 or not ref_id:
+            return []
+        raw = await conn.fetchval(
+            """
+            SELECT metadata
+            FROM credit_transactions
+            WHERE user_id = $1 AND ref_id = $2 AND direction = 'debit'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            ref_id,
+        )
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError):
+                return []
+        if not isinstance(raw, dict):
+            return []
+        consumed = raw.get("consumed_lots")
+        if not isinstance(consumed, list):
+            return []
+        restored: list[dict[str, Any]] = []
+        left = amount
+        for item in reversed(consumed):
+            if left <= 0:
+                break
+            if not isinstance(item, dict):
+                continue
+            lot_id = item.get("lot_id")
+            units = int(item.get("units") or 0)
+            if not lot_id or units <= 0:
+                continue
+            take = min(units, left)
+            await conn.execute(
+                """
+                UPDATE credit_wallet_lots
+                SET remaining_units = LEAST(amount_units, remaining_units + $2)
+                WHERE id = $1
+                """,
+                UUID(str(lot_id)),
+                take,
+            )
+            restored.append({"lot_id": str(lot_id), "units": take})
+            left -= take
+        return restored
 
     async def add_credits(
         self,
@@ -364,6 +484,8 @@ class CreditRepository:
                     user_id,
                     new_balance,
                 )
+
+                await self._restore_lots_for_refund(conn, user_id, amount, ref_id)
 
                 # Record the refund transaction
                 await conn.execute(

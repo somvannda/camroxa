@@ -155,6 +155,30 @@ class V3BillingStore:
         )
         return row_to_plan_dict(row) if row is not None else None
 
+    async def web_subscription_period(self, user_id: UUID) -> tuple[date, datetime] | None:
+        """Return the active web (CutLuy) subscription period (start date, end).
+
+        Used to anchor the monthly grant so it is idempotent per billing period
+        instead of re-minting daily for web subscribers.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT current_period_start, current_period_end
+            FROM web_subscriptions
+            WHERE user_id = $1
+              AND status = 'active'
+              AND current_period_end > NOW()
+            ORDER BY current_period_end DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None or row["current_period_start"] is None:
+            return None
+        start = row["current_period_start"]
+        start_date = start.date() if isinstance(start, datetime) else start
+        return start_date, row["current_period_end"]
+
     async def get_active_free_plan(self) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             f"""

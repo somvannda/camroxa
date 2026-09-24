@@ -46,7 +46,7 @@ export default function CreditBalanceCard() {
     balance.grant_remaining ?? Math.max(0, balance.monthly_credits - balance.monthly_credits_used);
   const monthlySongs = creditsToSongs(grantLeft);
   const topupSongs = creditsToSongs(balance.topup_credits);
-  const dailyRemaining = Math.max(0, balance.daily_free_limit - balance.daily_free_used);
+  const freeRemaining = Math.max(0, balance.total_credits);
   const isFreePlan = !balance.has_subscription;
 
   return (
@@ -61,7 +61,7 @@ export default function CreditBalanceCard() {
               <h2 className="font-display text-xl font-semibold text-white">Credit Balance</h2>
               <p className="text-xs text-slate-400">
                 {isFreePlan
-                  ? 'Daily free credits for music creation'
+                  ? 'Monthly free credits for music creation'
                   : 'Same wallet as desktop. CutLuy leftover still counts until one-wallet.'}
               </p>
             </div>
@@ -71,22 +71,22 @@ export default function CreditBalanceCard() {
         <div className="mb-6 pb-6 border-b border-white/10">
           <div className="flex items-baseline gap-2">
             <span className="text-5xl font-bold text-white">
-              {isFreePlan ? dailyRemaining : totalSongs}
+              {isFreePlan ? freeRemaining : totalSongs}
             </span>
             <span className="text-lg text-slate-400">
-              {isFreePlan ? 'credits left today' : 'songs'}
+              {isFreePlan ? 'credits left this month' : 'songs'}
             </span>
           </div>
           <div className="text-sm text-slate-500 mt-1">
             {isFreePlan
-              ? `${dailyRemaining} / ${balance.daily_free_limit} daily free credits`
+              ? `${freeRemaining} / ${balance.monthly_credits} monthly free credits`
               : `${balance.total_credits.toLocaleString()} credits total`}
           </div>
         </div>
 
         {isFreePlan ? (
           <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-4 text-sm text-slate-300">
-            You&apos;re on the <span className="text-white">Free</span> plan. Upgrade for more daily
+            You&apos;re on the <span className="text-white">Free</span> plan. Upgrade for more monthly
             credits, downloads, and commercial usage.
           </div>
         ) : (

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -81,6 +81,9 @@ class FakeStore:
     async def zero_lot_remaining(self, lot_id: UUID) -> None:
         return None
 
+    async def web_subscription_period(self, user_id: UUID):
+        return getattr(self, "_web_period", None)
+
 
 def _free_plan() -> dict:
     return {
@@ -89,6 +92,17 @@ def _free_plan() -> dict:
         "price_cents": 0,
         "monthly_credits": 0,
         "daily_credits": 50,
+        "billing_cycle_days": 30,
+    }
+
+
+def _free_monthly_plan() -> dict:
+    return {
+        "id": str(FREE_PLAN_ID),
+        "name": "Free",
+        "price_cents": 0,
+        "monthly_credits": 50,
+        "daily_credits": 0,
         "billing_cycle_days": 30,
     }
 
@@ -209,3 +223,41 @@ async def test_period_grant_does_not_credit_when_lot_insert_fails() -> None:
         await service.ensure_period_grant(USER_ID)
     assert wallet.balance == 0
     assert wallet.txs == []
+
+
+@pytest.mark.asyncio
+async def test_period_grant_free_monthly_does_not_stack() -> None:
+    """Regression: a Free monthly plan must mint once per calendar month."""
+    wallet = FakeWallet()
+    store = FakeStore(_free_monthly_plan())
+    service = PeriodGrantService(store=store, credit_repo=wallet)
+
+    first = await service.ensure_period_grant(USER_ID)
+    assert first["granted"] is True
+    assert first["credits"] == 50
+    assert wallet.balance == credits_to_units(50)
+
+    for _ in range(5):
+        again = await service.ensure_period_grant(USER_ID)
+        assert again["granted"] is False
+        assert again["reason"] == "already_granted"
+    assert wallet.balance == credits_to_units(50)
+    assert len(store.lots) == 1
+
+
+@pytest.mark.asyncio
+async def test_period_grant_anchors_to_web_subscription_period() -> None:
+    """Web subscribers anchor to the subscription period, not today."""
+    wallet = FakeWallet()
+    store = FakeStore(_paid_plan())
+    store.license_plan = None
+    store._web_period = (  # type: ignore[attr-defined]
+        date(2026, 9, 1),
+        datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+    service = PeriodGrantService(store=store, credit_repo=wallet)
+
+    result = await service.ensure_period_grant(USER_ID)
+    assert result["granted"] is True
+    assert result["period_start"] == "2026-09-01"
+    assert store.lots[0]["period_start"] == date(2026, 9, 1)

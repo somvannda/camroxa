@@ -199,6 +199,12 @@ class FakeAsyncPGPool:
             self._transactions.append(txn)
             return "INSERT 0 1"
 
+        # SELECT metadata FROM credit_transactions WHERE ref_id ... (refund lot restore)
+        if "select metadata" in q and "credit_transactions" in q:
+            if mode == "fetch":
+                return []
+            return None
+
         # SELECT COUNT(*) FROM credit_transactions
         if "select count" in q and "credit_transactions" in q:
             user_id = args[0]
