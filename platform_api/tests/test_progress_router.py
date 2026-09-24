@@ -177,3 +177,12 @@ def test_progress_keeps_done_when_youtube_succeeded() -> None:
 def test_progress_keeps_completed_when_pipeline_complete() -> None:
     row = _progress_row(bg_ready=1, bg_total=1, long_ready=False, pipeline_complete=True)
     assert row.stage == "Completed"
+
+
+def test_progress_music_count_clamps_retry_duplicates() -> None:
+    # Extra suno_tasks rows from a retry must never render e.g. 16/15.
+    row = _progress_row(bg_ready=1, bg_total=1, long_ready=False, saved=16)
+    assert row.music == "10/10"
+    assert row.meta.saved == 10
+    assert row.meta.download_ready == 10
+    assert row.meta.download_pending == 0

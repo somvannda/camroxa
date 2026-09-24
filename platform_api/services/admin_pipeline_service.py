@@ -281,12 +281,12 @@ async def list_admin_pipeline_board(
         SELECT
             batch_id,
             COUNT(*)::int AS total,
-            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::int AS success,
-            SUM(CASE WHEN status IN ('pending', 'running', 'processing') THEN 1 ELSE 0 END)::int AS pending,
-            SUM(CASE WHEN audio_url_ok IS NOT NULL THEN 1 ELSE 0 END)::int AS ready_ok,
-            SUM(CASE WHEN audio_url_alt IS NOT NULL THEN 1 ELSE 0 END)::int AS ready_alt,
-            SUM(CASE WHEN downloaded_ok THEN 1 ELSE 0 END)::int AS downloaded_ok,
-            SUM(CASE WHEN downloaded_alt THEN 1 ELSE 0 END)::int AS downloaded_alt,
+            (COUNT(DISTINCT song_id) FILTER (WHERE status = 'success'))::int AS success,
+            (COUNT(DISTINCT song_id) FILTER (WHERE status IN ('pending', 'running', 'processing')))::int AS pending,
+            (COUNT(DISTINCT song_id) FILTER (WHERE audio_url_ok IS NOT NULL))::int AS ready_ok,
+            (COUNT(DISTINCT song_id) FILTER (WHERE audio_url_alt IS NOT NULL))::int AS ready_alt,
+            (COUNT(DISTINCT song_id) FILTER (WHERE downloaded_ok))::int AS downloaded_ok,
+            (COUNT(DISTINCT song_id) FILTER (WHERE downloaded_alt))::int AS downloaded_alt,
             MAX(updated_at) AS music_updated_at
         FROM suno_tasks
         WHERE batch_id = ANY($1::uuid[])
