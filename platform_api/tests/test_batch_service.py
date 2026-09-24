@@ -565,6 +565,92 @@ async def test_retry_song_draft_forces_locked_ok_album(
     request = generation_service.submit_draft.await_args.args[1]
     assert request.forced_album == "Locked Album"
 
+
+@pytest.mark.asyncio
+async def test_active_suno_task_skips_failed_and_lost_audio(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    song_id = uuid4()
+
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(return_value=None)
+    assert await service._active_suno_task_for_song(song_id) is None
+
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(
+        return_value=SunoTask(song_id=song_id, status=TaskStatus.FAILED)
+    )
+    assert await service._active_suno_task_for_song(song_id) is None
+
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(
+        return_value=SunoTask(
+            song_id=song_id,
+            status=TaskStatus.SUCCESS,
+            download_unavailable_ok=True,
+        )
+    )
+    assert await service._active_suno_task_for_song(song_id) is None
+
+    live = SunoTask(song_id=song_id, status=TaskStatus.SUCCESS)
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(return_value=live)
+    assert await service._active_suno_task_for_song(song_id) is live
+
+
+@pytest.mark.asyncio
+async def test_submit_song_to_suno_skips_duplicate_live_task(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+) -> None:
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+    )
+    song_id = uuid4()
+    batch_id = uuid4()
+    song = Song(
+        id=song_id,
+        batch_id=batch_id,
+        user_id=uuid4(),
+        title="Already Done",
+        album="Album",
+        lyrics="la la",
+        batch_index=0,
+    )
+    batch = Batch(id=batch_id, user_id=song.user_id, ok_profile_id=uuid4(), song_count=1)
+    existing = SunoTask(song_id=song_id, status=TaskStatus.SUCCESS)
+    batch_repo.get_latest_suno_task_for_song = AsyncMock(return_value=existing)
+
+    task_id = await service._submit_song_to_suno(
+        song=song,
+        batch=batch,
+        user_id=str(song.user_id),
+        model="V6",
+    )
+
+    assert task_id == str(existing.id)
+    generation_service.submit_suno.assert_not_awaited()
+    batch_repo.link_suno_task.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_create_batch_rejects_inverted_date_window(
     batch_repo: AsyncMock,
