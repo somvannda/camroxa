@@ -15,6 +15,7 @@ from uuid import UUID
 from platform_api.models.enums import ImageKind
 from platform_api.repositories.streaming_repo import StreamingRepository
 from platform_api.services.storage_service import StorageService, StorageServiceError
+from platform_api.services.mp3_duration_header import ensure_mp3_duration_header_async
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
 from platform_api.services.streaming_slug import slugify
 from platform_api.services.music_genre_utils import parse_suno_clip_tags, resolve_stream_genres
@@ -723,6 +724,9 @@ class StreamingUploadService:
                 primary_url=primary_url,
                 fallback_urls=fallback_urls,
             )
+            # Write a Xing/Info header so players/ffprobe report the true length
+            # (Suno CDN MP3s omit it and over-report, so exports look short).
+            data = await ensure_mp3_duration_header_async(data)
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 
@@ -890,6 +894,7 @@ class StreamingUploadService:
                 return
 
             data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            data = await ensure_mp3_duration_header_async(data)
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 
@@ -1563,6 +1568,7 @@ class StreamingUploadService:
                 primary_url=primary_url,
                 fallback_urls=fallback_urls,
             )
+            data = await ensure_mp3_duration_header_async(data)
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
 
