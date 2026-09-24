@@ -50,6 +50,29 @@ and this project uses [Semantic Versioning](https://semver.org/).
   will not start video export until a local background PNG is ready (`long_ready`).
 - Sandbox API payload audit: `/api/v3/subscriptions/plans` omitted real `daily_credits` (Free showed 0). See `docs/changelog/2026-08-25-fix-v3-daily-grant-and-likes.md`.
 
+## [1.4.2] - 2026-09-23
+
+Desktop-only production installer `CamxoraSetup-1.4.2.exe` from `release/1.4.2`.
+Ships the Suno V6 desktop options (V6 / V6 Mini / V6 Wild + V5.5 / V5), hides the
+Studio sidebar item, and fixes the video export duration. Does **not** include the
+Create page.
+
+### Fixed
+
+- **Video export no longer produces a short MP4.** `soundfile`/libsndfile
+  under-decoded some 48 kHz VBR MP3s, and a stale analysis cache then reused the
+  short duration, so the render matched the wrong length and the export gate
+  rejected it ("video export did not produce a usable output"), stalling the
+  pipeline before merge. The decoder now falls back to ffmpeg and the cache is
+  invalidated on upgrade. See
+  `docs/changelog/2026-09-23-desktop-1.4.2-video-export-duration.md`.
+- **Merge only runs when the MP4 matches the audio length** — the source-audio
+  truncation check is kept even when the rendered length is known.
+- **Downloaded MP3s now carry a Xing/Info header** (re-muxed on download), so MP3
+  and MP4 report the same duration in players and `ffprobe`.
+- Studio is hidden from the desktop sidebar, and ffmpeg console popups during
+  export/merge are suppressed.
+
 ## [1.3.1] - 2026-08-17
 
 Desktop-only production installer `CamxoraSetup-1.3.1.exe` from `main`
