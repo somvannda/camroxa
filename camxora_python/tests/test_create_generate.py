@@ -222,3 +222,104 @@ def test_create_history_worker_pages_generations() -> None:
     assert isinstance(items, list)
     assert len(items) == 120
     assert items[0].title == "Song 0"
+
+
+def test_estimate_video_merge_ops() -> None:
+    from shared.lib.create_generate import estimate_video_merge_ops
+
+    assert estimate_video_merge_ops(_plan(auto_video=False)) == (0, 0)
+    assert estimate_video_merge_ops(_plan(song_count=15, auto_video=True, auto_merge=False)) == (30, 0)
+    assert estimate_video_merge_ops(_plan(song_count=15, auto_video=True, auto_merge=True)) == (30, 2)
+
+
+def _quota(**overrides: object):
+    from shared.models.platform import QuotaStatusResponse
+
+    values: dict[str, object] = {
+        "videos_remaining": None,
+        "merges_remaining": None,
+        "daily_videos_remaining": None,
+        "daily_merges_remaining": None,
+        "wallet_balance": 0.0,
+    }
+    values.update(overrides)
+    return QuotaStatusResponse(**values)  # type: ignore[arg-type]
+
+
+def _costs():
+    from shared.models.platform import OperationCostResponse, OperationCostsResponse
+
+    return OperationCostsResponse(
+        items=[
+            OperationCostResponse(operation_type="video", credits_per_operation=3, available=True),
+            OperationCostResponse(
+                operation_type="video_merge", credits_per_operation=10, available=True
+            ),
+        ]
+    )
+
+
+def test_create_preflight_passes_when_quota_covers() -> None:
+    from features.create.workers.create_generate_worker import CreateGenerateWorker
+
+    class FakeApi:
+        def get_quota_status(self):
+            return _quota(
+                videos_remaining=100,
+                merges_remaining=5,
+                daily_videos_remaining=100,
+                daily_merges_remaining=5,
+                wallet_balance=0.0,
+            )
+
+        def get_operation_costs(self):
+            return _costs()
+
+    plan = _plan(song_count=15, auto_video=True, auto_merge=True)
+    worker = CreateGenerateWorker(FakeApi(), plan)  # type: ignore[arg-type]
+    assert worker._preflight_video_merge(plan) is None
+
+
+def test_create_preflight_blocks_when_video_credits_short() -> None:
+    from features.create.workers.create_generate_worker import CreateGenerateWorker
+
+    class FakeApi:
+        def get_quota_status(self):
+            return _quota(
+                videos_remaining=0,
+                merges_remaining=0,
+                daily_videos_remaining=0,
+                daily_merges_remaining=0,
+                wallet_balance=1.0,
+            )
+
+        def get_operation_costs(self):
+            return _costs()
+
+    plan = _plan(song_count=15, auto_video=True, auto_merge=True)
+    worker = CreateGenerateWorker(FakeApi(), plan)  # type: ignore[arg-type]
+    error = worker._preflight_video_merge(plan)
+    assert error is not None
+    assert "Not enough credits" in error
+
+
+def test_create_preflight_wallet_covers_when_quota_exhausted() -> None:
+    from features.create.workers.create_generate_worker import CreateGenerateWorker
+
+    class FakeApi:
+        def get_quota_status(self):
+            # 15 songs x 2 videos x 3 credits + 2 merges x 10 credits = 110.
+            return _quota(
+                videos_remaining=0,
+                merges_remaining=0,
+                daily_videos_remaining=0,
+                daily_merges_remaining=0,
+                wallet_balance=110.0,
+            )
+
+        def get_operation_costs(self):
+            return _costs()
+
+    plan = _plan(song_count=15, auto_video=True, auto_merge=True)
+    worker = CreateGenerateWorker(FakeApi(), plan)  # type: ignore[arg-type]
+    assert worker._preflight_video_merge(plan) is None
