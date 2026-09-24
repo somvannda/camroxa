@@ -121,8 +121,11 @@ async def main():
                         uuid.uuid4(), r["id"], claw,
                         '{"source": "v3", "billing": "cleanup", "reason": "stacked_free_period_grant"}',
                     )
+                # Replace all grant lots with a single current-month anchor.
+                # Delete (not zero) so the (user_id, period_start) unique index
+                # does not collide with a lot the fixed code already minted.
                 await conn.execute(
-                    "UPDATE credit_wallet_lots SET remaining_units = 0 WHERE user_id = $1 AND tag = 'grant'",
+                    "DELETE FROM credit_wallet_lots WHERE user_id = $1 AND tag = 'grant'",
                     r["id"],
                 )
                 kept = min(FREE_MONTHLY_UNITS, wallet_after)
