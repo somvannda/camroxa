@@ -696,6 +696,9 @@ class BatchService:
         shuffle_mood: bool = False,
         auto_gen_image: bool = False,
         auto_gsuno: bool = False,
+        auto_video_after_suno: bool = False,
+        auto_merge_after_video: bool = False,
+        auto_reel_after_video: bool = False,
         language: str = "en",
         secondary_language: str | None = None,
         creativity_level: int = 50,
@@ -820,6 +823,20 @@ class BatchService:
             auto_gen_image=billable_auto_gen_image,
             auto_gsuno=auto_gsuno,
         )
+
+        # Local video export + merge for this batch (charged per stage later).
+        from platform_api.services.billing_mode_service import TRACKS_PER_SONG_PACKAGE
+
+        auto_video = bool(auto_video_after_suno) and auto_gsuno
+        auto_merge = auto_video and bool(auto_merge_after_video)
+        branch_multiplier = 2 if auto_reel_after_video else 1
+        video_ops = song_count * TRACKS_PER_SONG_PACKAGE * branch_multiplier if auto_video else 0
+        merge_ops = TRACKS_PER_SONG_PACKAGE * branch_multiplier if auto_merge else 0
+        if video_ops > 0:
+            total_cost += (await self._local_operation_price("video")) * video_ops
+        if merge_ops > 0:
+            total_cost += (await self._local_operation_price("video_merge")) * merge_ops
+
         image_jobs = 0
         if billable_auto_gen_image:
             image_jobs = (
@@ -834,6 +851,8 @@ class BatchService:
                 total_wallet_cost=total_cost,
                 image_jobs=image_jobs,
                 draft_ops=song_count * 2 + 1,
+                video_ops=video_ops,
+                merge_ops=merge_ops,
                 ok_profile_id=UUID(ok_profile_id),
                 alt_profile_id=UUID(alt_profile_id),
             )

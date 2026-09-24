@@ -747,10 +747,17 @@ class UsageEnforcementService:
         total_wallet_cost: int,
         image_jobs: int = 0,
         draft_ops: int | None = None,
+        video_ops: int = 0,
+        merge_ops: int = 0,
         ok_profile_id: UUID | None = None,
         alt_profile_id: UUID | None = None,
     ) -> None:
-        """Allow batch creation when subscription quota covers it or wallet is sufficient."""
+        """Allow batch creation when subscription quota covers it or wallet is sufficient.
+
+        ``video_ops`` / ``merge_ops`` are the local export/merge counts for this
+        batch (account-wide meters) so the same shortfall that used to surface at
+        the export stage is caught before the batch is created.
+        """
         from platform_api.services.billing_mode_service import subscription_covers_batch
 
         await self.enforce_fail_absorb_budget(user_id)
@@ -771,6 +778,22 @@ class UsageEnforcementService:
                 draft_ops=estimated_drafts,
                 subscription_context=ctx,
             )
+        if plan is not None and video_ops > 0:
+            await self._enforce_plan_quotas(
+                user_id=user_id,
+                channel_profile_id=None,
+                operation_type="video",
+                subscription_context=ctx,
+                additional_count=video_ops,
+            )
+        if plan is not None and merge_ops > 0:
+            await self._enforce_plan_quotas(
+                user_id=user_id,
+                channel_profile_id=None,
+                operation_type="video_merge",
+                subscription_context=ctx,
+                additional_count=merge_ops,
+            )
 
         extras = await self.period_quota_topup_extras(user_id, period_start)
         if plan is not None and await subscription_covers_batch(
@@ -781,6 +804,8 @@ class UsageEnforcementService:
             period_start=period_start,
             image_jobs=image_jobs,
             draft_ops=estimated_drafts,
+            video_ops=video_ops,
+            merge_ops=merge_ops,
             addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
             topup_extras=extras,
         ):

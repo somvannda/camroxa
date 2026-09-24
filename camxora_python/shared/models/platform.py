@@ -518,6 +518,9 @@ class BatchCreateRequest(BaseModel):
     shuffle_mood: bool = False
     auto_gen_image: bool = False
     auto_gsuno: bool = False
+    auto_video_after_suno: bool = False
+    auto_merge_after_video: bool = False
+    auto_reel_after_video: bool = False
     song_count: int = 4
     language: str = "en"
     secondary_language: str | None = None

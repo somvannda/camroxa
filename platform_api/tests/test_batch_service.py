@@ -2917,3 +2917,45 @@ async def test_preflight_blocks_on_daily_video_cap(
     assert result["can_generate"] is False
     assert "video export" in result["reason"]
     assert "8" in result["reason"]
+
+
+@pytest.mark.asyncio
+async def test_create_batch_preflights_video_and_merge(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """create_batch must pass video/merge op counts into the cost preflight."""
+    enforcement_service = AsyncMock()
+    enforcement_service.preflight_batch_cost = AsyncMock()
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+        enforcement_service,
+    )
+    await service.create_batch(
+        user_id="00000000-0000-0000-0000-000000000001",
+        ok_profile_id="00000000-0000-0000-0000-000000000002",
+        alt_profile_id="00000000-0000-0000-0000-000000000003",
+        song_count=4,
+        auto_gsuno=True,
+        auto_video_after_suno=True,
+        auto_merge_after_video=True,
+        from_date=date(2026, 6, 25),
+        to_date=date(2026, 6, 25),
+    )
+    kwargs = enforcement_service.preflight_batch_cost.await_args.kwargs
+    # 4 songs x 2 channels = 8 exports; 1 batch x 2 channels = 2 merges.
+    assert kwargs["video_ops"] == 8
+    assert kwargs["merge_ops"] == 2
