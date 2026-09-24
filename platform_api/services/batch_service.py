@@ -4976,6 +4976,25 @@ class BatchService:
                     details={"field": field_name, "terms": terms},
                 )
 
+    async def _active_suno_task_for_song(self, song_id: UUID) -> SunoTask | None:
+        """Return the song's latest live Suno task (pending/success), else ``None``.
+
+        Failures and permanently-lost audio are regenerable, so they return
+        ``None``. Anything else means a retry (draft or suno) would create a
+        duplicate ``suno_tasks`` row for the same song ΓÇö which inflated the
+        progress Music counter (e.g. 16/15) and double-billed the user.
+        """
+        latest = await self._batch_repo.get_latest_suno_task_for_song(song_id)
+        if latest is None:
+            return None
+        if is_suno_failure_status(latest.status):
+            return None
+        if bool(getattr(latest, "download_unavailable_ok", False)) or bool(
+            getattr(latest, "download_unavailable_alt", False)
+        ):
+            return None
+        return latest
+
     async def _submit_song_to_suno(
         self,
         song: Song,
@@ -4995,6 +5014,19 @@ class BatchService:
         any wallet debit are refunded while the original plan_allowance debit remains
         for owner COGS visibility.
         """
+        # Single-flight per song: a retry must never create a second task while the
+        # song already has live (pending) or finished (success) audio. Concurrent
+        # original + retry draft jobs both used to submit and double-bill.
+        existing = await self._active_suno_task_for_song(song.id)
+        if existing is not None:
+            logger.info(
+                "Skipping duplicate Suno submit for song %s: task %s is already %s.",
+                song.id,
+                existing.id,
+                existing.status,
+            )
+            return str(existing.id)
+
         payload = await self._sanitize_suno_payload(
             song,
             batch,

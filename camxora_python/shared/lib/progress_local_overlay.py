@@ -78,7 +78,9 @@ def _apply_local_music_truth(
     """When the run folder can be scanned, ``saved`` is always disk MP3 count."""
     meta = row.meta
     expected = max(1, int(meta.expected or 0))
-    local_saved = max(0, int(local_saved or 0))
+    # Retries can leave extra role MP3s on disk; never let the Music counter
+    # exceed the batch's song count (e.g. 16/15).
+    local_saved = min(max(0, int(local_saved or 0)), expected)
 
     if preserve_music or not folder_scannable:
         return row

@@ -2164,7 +2164,7 @@ class BatchRepository:
         # Suno download counts
         downloaded_count = await self._pool.fetchval(
             """
-            SELECT COUNT(*) FROM suno_tasks
+            SELECT COUNT(DISTINCT song_id) FROM suno_tasks
             WHERE batch_id = $1 AND (downloaded_ok = true OR downloaded_alt = true)
             """,
             batch_id,

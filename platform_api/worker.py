@@ -55,6 +55,39 @@ def _worker_id() -> str:
     return f"{host}:{pid}"
 
 
+# A hung handler (or a dead worker whose lock was never released) leaves a job
+# stuck in `running` forever. The sweep requeues any `running` job whose lock is
+# older than this. Must stay well above the longest legitimate job (drafts can
+# take ~30 min), so default is 1 hour.
+_DEFAULT_STALE_RUNNING_SECONDS = 3600
+# How often each live worker process runs the sweep. Dead workers cannot sweep,
+# so a surviving process recovers their orphaned jobs.
+_DEFAULT_STALE_SWEEP_INTERVAL_SECONDS = 300
+
+
+def _stale_running_seconds() -> int:
+    try:
+        return max(60, int(os.environ.get("CAMXORA_WORKER_STALE_RUNNING_SECONDS", _DEFAULT_STALE_RUNNING_SECONDS)))
+    except (TypeError, ValueError):
+        return _DEFAULT_STALE_RUNNING_SECONDS
+
+
+def _stale_sweep_interval_seconds() -> int:
+    try:
+        return max(30, int(os.environ.get("CAMXORA_WORKER_STALE_SWEEP_INTERVAL_SECONDS", _DEFAULT_STALE_SWEEP_INTERVAL_SECONDS)))
+    except (TypeError, ValueError):
+        return _DEFAULT_STALE_SWEEP_INTERVAL_SECONDS
+
+
+def _job_timeout_seconds() -> float:
+    """Optional hard timeout per job. 0 (default) disables it."""
+    try:
+        value = int(os.environ.get("CAMXORA_WORKER_JOB_TIMEOUT_SECONDS", "0"))
+    except (TypeError, ValueError):
+        return 0.0
+    return float(value) if value > 0 else 0.0
+
+
 async def _bootstrap_connections() -> None:
     """Mirror API lifespan wiring (pool + redis) without FastAPI / migrations."""
     from platform_api.config import get_settings, validate_production_settings
@@ -308,13 +341,19 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
     allowed_types = resolve_worker_job_types()
     claim_types = sorted(allowed_types)
     queue = get_job_queue_repo()
-    recovered = await queue.requeue_stale_running(older_than_seconds=1800)
+    stale_seconds = _stale_running_seconds()
+    sweep_interval = _stale_sweep_interval_seconds()
+    job_timeout = _job_timeout_seconds()
+    recovered = await queue.requeue_stale_running(older_than_seconds=stale_seconds)
     if recovered:
         logger.warning("Requeued %s stale running job(s).", recovered)
     logger.info(
-        "Worker %s draining job_queue (types=%s).",
+        "Worker %s draining job_queue (types=%s, stale=%ss, sweep=%ss, job_timeout=%ss).",
         worker_id,
         claim_types,
+        stale_seconds,
+        sweep_interval,
+        job_timeout,
     )
 
     stop = asyncio.Event()
@@ -330,7 +369,20 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
             # Windows
             signal.signal(sig, lambda *_: _ask_stop())
 
+    next_sweep = loop.time() + sweep_interval
+
     while not stop.is_set():
+        # Periodic recovery: a hung handler or a dead worker would otherwise
+        # leave its job `running` forever (the startup-only sweep never sees it).
+        if loop.time() >= next_sweep:
+            next_sweep = loop.time() + sweep_interval
+            try:
+                swept = await queue.requeue_stale_running(older_than_seconds=stale_seconds)
+                if swept:
+                    logger.warning("Periodic sweep requeued %s stale running job(s).", swept)
+            except Exception:
+                logger.exception("Periodic stale-job sweep failed; continuing.")
+
         try:
             job = await queue.claim_next(worker_id=worker_id, job_types=claim_types)
         except Exception:
@@ -363,9 +415,19 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
             job.batch_id,
         )
         try:
-            await _handle_job(job)
+            if job_timeout > 0:
+                await asyncio.wait_for(_handle_job(job), timeout=job_timeout)
+            else:
+                await _handle_job(job)
             await queue.mark_done(job.id)
             logger.info("Job %s done.", job.id)
+        except asyncio.TimeoutError:
+            status = await queue.mark_failed_or_retry(
+                job,
+                error=f"job exceeded {job_timeout:.0f}s timeout",
+                delay_seconds=min(300, 15 * max(1, job.attempts)),
+            )
+            logger.error("Job %s timed out → %s", job.id, status)
         except Exception as exc:
             status = await queue.mark_failed_or_retry(
                 job,

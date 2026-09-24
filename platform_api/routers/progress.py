@@ -220,15 +220,28 @@ def _build_row(
     row_run_dir = persisted_run_dir or resolved_run_dir
 
     expected = int(batch.get("song_count", 0) or 0)
-    unavailable = int(suno_stats.get("unavailable_ok" if role == "OK" else "unavailable_alt", 0) or 0)
     # A terminal channel must NOT make the album look complete: keep `expected`
     # at the full song count so the video pipeline waits for a real resolution
     # (recovery or regeneration) instead of exporting at 14/15.
-    saved = int(suno_stats.get("downloaded_ok" if role == "OK" else "downloaded_alt", 0) or 0)
-    download_ready = int(suno_stats.get("ready_ok" if role == "OK" else "ready_alt", 0) or 0)
+    # Retries can add extra suno_tasks rows per song; the stats query already
+    # counts DISTINCT songs, but clamp here too so Music can never render e.g.
+    # 16/15 if a stray task points at a song outside this batch.
+    cap = max(1, expected)
+    unavailable = min(
+        int(suno_stats.get("unavailable_ok" if role == "OK" else "unavailable_alt", 0) or 0),
+        cap,
+    )
+    saved = min(
+        int(suno_stats.get("downloaded_ok" if role == "OK" else "downloaded_alt", 0) or 0),
+        cap,
+    )
+    download_ready = min(
+        int(suno_stats.get("ready_ok" if role == "OK" else "ready_alt", 0) or 0),
+        cap,
+    )
     download_pending = max(0, download_ready - saved)
     song_failed = int(song_stats.get("draft_failed", 0) or 0) + int(song_stats.get("suno_failed", 0) or 0)
-    music_pending = int(suno_stats.get("pending", 0) or 0)
+    music_pending = min(int(suno_stats.get("pending", 0) or 0), cap)
     youtube = youtube_groups.get(key, youtube_batch_groups.get(batch_id, {}))
     youtube_success = int(youtube.get("success", 0) or 0)
     youtube_pending = int(youtube.get("pending", 0) or 0)
@@ -656,14 +669,14 @@ async def list_progress_rows(
         SELECT
             batch_id,
             COUNT(*)::int AS total,
-            SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END)::int AS success,
-            SUM(CASE WHEN status IN ('pending', 'running', 'processing') THEN 1 ELSE 0 END)::int AS pending,
-            SUM(CASE WHEN audio_url_ok IS NOT NULL AND NOT COALESCE(download_unavailable_ok, false) THEN 1 ELSE 0 END)::int AS ready_ok,
-            SUM(CASE WHEN audio_url_alt IS NOT NULL AND NOT COALESCE(download_unavailable_alt, false) THEN 1 ELSE 0 END)::int AS ready_alt,
-            SUM(CASE WHEN COALESCE(download_unavailable_ok, false) THEN 1 ELSE 0 END)::int AS unavailable_ok,
-            SUM(CASE WHEN COALESCE(download_unavailable_alt, false) THEN 1 ELSE 0 END)::int AS unavailable_alt,
-            SUM(CASE WHEN downloaded_ok THEN 1 ELSE 0 END)::int AS downloaded_ok,
-            SUM(CASE WHEN downloaded_alt THEN 1 ELSE 0 END)::int AS downloaded_alt,
+            (COUNT(DISTINCT song_id) FILTER (WHERE status = 'success'))::int AS success,
+            (COUNT(DISTINCT song_id) FILTER (WHERE status IN ('pending', 'running', 'processing')))::int AS pending,
+            (COUNT(DISTINCT song_id) FILTER (WHERE audio_url_ok IS NOT NULL AND NOT COALESCE(download_unavailable_ok, false)))::int AS ready_ok,
+            (COUNT(DISTINCT song_id) FILTER (WHERE audio_url_alt IS NOT NULL AND NOT COALESCE(download_unavailable_alt, false)))::int AS ready_alt,
+            (COUNT(DISTINCT song_id) FILTER (WHERE COALESCE(download_unavailable_ok, false)))::int AS unavailable_ok,
+            (COUNT(DISTINCT song_id) FILTER (WHERE COALESCE(download_unavailable_alt, false)))::int AS unavailable_alt,
+            (COUNT(DISTINCT song_id) FILTER (WHERE downloaded_ok))::int AS downloaded_ok,
+            (COUNT(DISTINCT song_id) FILTER (WHERE downloaded_alt))::int AS downloaded_alt,
             MAX(updated_at) AS music_updated_at
         FROM suno_tasks
         WHERE user_id = $1 AND batch_id = ANY($2::uuid[])
