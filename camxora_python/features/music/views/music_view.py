@@ -1043,7 +1043,7 @@ class MusicView(QWidget):
         self._update_polish_button_state()
 
         image_source_mode = normalize_image_source_mode(self._settings_raw.get("imageSourceMode"))
-        breakdown = get_music_plan_cost_breakdown(
+        cost_args = (
             self._operation_costs.get("lyric"),
             self._operation_costs.get("music"),
             self._operation_costs.get("background_image"),
@@ -1054,19 +1054,14 @@ class MusicView(QWidget):
             self._music_settings.auto_gsuno,
             day_span,
             image_source_mode,
+            self._operation_costs.get("video"),
+            self._operation_costs.get("video_merge"),
+            self._music_settings.auto_video_after_suno,
+            self._music_settings.auto_merge_after_video,
+            self._music_settings.auto_reel_after_video,
         )
-        total_cost = get_batch_generate_total_cost(
-            self._operation_costs.get("lyric"),
-            self._operation_costs.get("music"),
-            self._operation_costs.get("background_image"),
-            self._primary_profiles(),
-            self._secondary_profiles(),
-            self._music_settings.song_count,
-            self._music_settings.auto_gen_image,
-            self._music_settings.auto_gsuno,
-            day_span,
-            image_source_mode,
-        )
+        breakdown = get_music_plan_cost_breakdown(*cost_args)
+        total_cost = get_batch_generate_total_cost(*cost_args)
         preflight = self._generation_preflight
         if preflight and preflight.covered_by_subscription:
             if not self._music_settings.auto_gsuno and not self._music_settings.auto_gen_image:
@@ -1130,10 +1125,13 @@ class MusicView(QWidget):
                 suno_credits=breakdown.suno_total_cost,
                 image_credits=breakdown.image_total_cost,
                 total_credits=total_cost,
-                video_later=bool(
+                video_enabled=bool(
                     self._music_settings.auto_video_after_suno
                     or self._music_settings.auto_merge_after_video
                 ),
+                video_ops=breakdown.video_ops,
+                merge_ops=breakdown.merge_ops,
+                video_credits=breakdown.video_merge_total_cost,
             )
         self._automation_card.set_helper_text("")
         self._render_history()
@@ -1949,6 +1947,9 @@ class MusicView(QWidget):
             song_count=self._music_settings.song_count,
             auto_gen_image=self._music_settings.auto_gen_image,
             auto_gsuno=self._music_settings.auto_gsuno,
+            auto_video_after_suno=self._music_settings.auto_video_after_suno,
+            auto_merge_after_video=self._music_settings.auto_merge_after_video,
+            auto_reel_after_video=self._music_settings.auto_reel_after_video,
         )
         worker = MusicPlanPreflightWorker(self._api, payload, parent=self)
         worker.succeeded.connect(self._on_preflight_succeeded)

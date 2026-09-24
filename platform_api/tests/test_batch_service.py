@@ -7,12 +7,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from platform_api.exceptions import InsufficientCreditsError, ValidationError
+from platform_api.exceptions import InsufficientCreditsError, QuotaExceededError, ValidationError
 from platform_api.models.domain import Batch, Song, SunoTask
 from platform_api.models.enums import ChannelRole, ImageKind, TaskStatus
 from platform_api.ports.generation_port import DraftRequest, SongDraft
 from platform_api.services.batch_service import SONG_STATUS_DRAFT_READY
 from platform_api.services.batch_service import BatchService
+from platform_api.services.billing_calendar import billing_today
 
 
 @pytest.fixture
@@ -2770,3 +2771,149 @@ async def test_sync_local_progress_persists_batch_run_dir_when_flagged(
     assert kwargs["ok_run_dir"] == r"bass-drive\2026-07-13_Neon-Nights"
     # Other role left untouched (still legacy absolute).
     assert kwargs["alt_run_dir"] == r"D:\OldPC\Suno\alt\2026-07-13_Other"
+
+
+@pytest.mark.asyncio
+async def test_preflight_includes_video_and_merge_credits(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """Preflight must price local export/merge so plans cannot start short."""
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    result = await service.preflight_music_plan(
+        user_id="00000000-0000-0000-0000-000000000001",
+        ok_profile_ids=["00000000-0000-0000-0000-000000000002"],
+        alt_profile_ids=["00000000-0000-0000-0000-000000000003"],
+        from_date=date(2026, 6, 25),
+        to_date=date(2026, 6, 25),
+        song_count=4,
+        auto_gen_image=False,
+        auto_gsuno=True,
+        auto_video_after_suno=True,
+        auto_merge_after_video=True,
+    )
+    assert result["can_generate"] is True
+    # 4 songs x 2 channels = 8 exports; 1 batch x 2 channels = 2 merges.
+    assert result["video_ops"] == 8
+    assert result["merge_ops"] == 2
+    assert result["video_wallet_cost"] == 24
+    assert result["merge_wallet_cost"] == 6
+
+
+@pytest.mark.asyncio
+async def test_preflight_blocks_when_only_video_credits_missing(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """A wallet that covers music/images but not export/merge must block upfront."""
+    credit_service.get_balance = AsyncMock(return_value=0)
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+    )
+    result = await service.preflight_music_plan(
+        user_id="00000000-0000-0000-0000-000000000001",
+        ok_profile_ids=["00000000-0000-0000-0000-000000000002"],
+        alt_profile_ids=["00000000-0000-0000-0000-000000000003"],
+        from_date=date(2026, 6, 25),
+        to_date=date(2026, 6, 25),
+        song_count=4,
+        auto_gen_image=False,
+        auto_gsuno=True,
+        auto_video_after_suno=True,
+        auto_merge_after_video=True,
+    )
+    assert result["can_generate"] is False
+    assert "video export" in result["reason"]
+    assert "merge" in result["reason"]
+    assert result["video_ops"] == 8
+    assert result["merge_ops"] == 2
+
+
+@pytest.mark.asyncio
+async def test_preflight_blocks_on_daily_video_cap(
+    batch_repo: AsyncMock,
+    credit_service: AsyncMock,
+    pricing_service: AsyncMock,
+    generation_service: AsyncMock,
+    profile_repo: AsyncMock,
+    ai_routing_service: AsyncMock,
+    prompt_service: AsyncMock,
+    settings_service: AsyncMock,
+) -> None:
+    """Account-wide daily video cap must be preflighted with a clear reason."""
+    enforcement_service = AsyncMock()
+    enforcement_service.enforce_fail_absorb_budget = AsyncMock()
+    enforcement_service._resolve_subscription_context = AsyncMock(return_value=None)
+
+    async def _enforce_plan_quotas(
+        *,
+        user_id,
+        channel_profile_id,
+        operation_type,
+        subscription_context=None,
+        additional_count=1,
+        wallet_bypass_credits=None,
+    ):
+        if operation_type == "video":
+            raise QuotaExceededError(
+                "Daily generation quota exceeded.",
+                details={"error_code": "DAILY_QUOTA_EXCEEDED", "operation_type": "video"},
+            )
+
+    enforcement_service._enforce_plan_quotas = AsyncMock(side_effect=_enforce_plan_quotas)
+
+    service = make_service(
+        batch_repo,
+        credit_service,
+        pricing_service,
+        generation_service,
+        profile_repo,
+        ai_routing_service,
+        prompt_service,
+        settings_service,
+        enforcement_service,
+    )
+    today = billing_today()
+    result = await service.preflight_music_plan(
+        user_id="00000000-0000-0000-0000-000000000001",
+        ok_profile_ids=["00000000-0000-0000-0000-000000000002"],
+        alt_profile_ids=["00000000-0000-0000-0000-000000000003"],
+        from_date=today,
+        to_date=today,
+        song_count=4,
+        auto_gen_image=False,
+        auto_gsuno=True,
+        auto_video_after_suno=True,
+        auto_merge_after_video=True,
+    )
+    assert result["can_generate"] is False
+    assert "video export" in result["reason"]
+    assert "8" in result["reason"]
