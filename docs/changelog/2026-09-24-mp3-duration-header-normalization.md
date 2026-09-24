@@ -1,0 +1,69 @@
+# MP3 duration-header normalization (Xing/Info)
+
+**Date:** 2026-09-24
+**Surface:** platform_api
+**Related:** PR #155
+
+## Summary
+
+Suno's CDN MP3s omit the Xing/Info header, so ffprobe and most players estimate
+the duration from the file size and over-report by several seconds. An exported
+MP4 that carries the real audio length therefore looked shorter than the MP3 —
+the recurring "export video duration != mp3 duration" reports (edmbass1,
+tepchanpanharith). Normalize the header server-side so every download is
+correctly labelled, regardless of desktop client version.
+
+## Product impact
+
+- Desktop users downloading archived tracks from B2 get an MP3 whose reported
+  duration matches the exported video.
+- Music-web owner MP3 downloads and admin support downloads are normalized too.
+- No re-encoding: the audio bytes are unchanged (lossless remux), so quality and
+  file size are effectively identical.
+
+## Technical impact
+
+- New `platform_api/services/mp3_duration_header.py`:
+  `ensure_mp3_duration_header[_async]()` re-muxes header-less MPEG audio with
+  `ffmpeg -c copy -write_xing 1`. No-ops for Opus/M4A/WAV/already-headed files
+  and returns the original bytes on any failure (best-effort).
+- Normalized before all three B2 MP3 uploads in
+  `streaming_upload_service.py` (album, web-music, retry paths).
+- Normalized when serving web (`web_music_service.download_mp3`) and admin
+  (`admin_user_web_music.download_user_web_music_clip`) MP3 downloads.
+- ffmpeg is resolved via `CAMXORA_FFMPEG_PATH` or `PATH`; already present on the
+  API host (used by `hls_packager`).
+
+## Files touched
+
+- `platform_api/services/mp3_duration_header.py` (new)
+- `platform_api/services/streaming_upload_service.py`
+- `platform_api/services/web_music_service.py`
+- `platform_api/routers/admin_user_web_music.py`
+- `platform_api/tests/test_mp3_duration_header.py` (new)
+- `scripts/deploy/backfill_mp3_duration_headers_production.py` (new)
+
+## Migration/deploy
+
+No DB migration. Deploy `platform_api`, then run the backfill:
+
+```
+python scripts/deploy/backfill_mp3_duration_headers_production.py            # dry-run
+python scripts/deploy/backfill_mp3_duration_headers_production.py --apply
+```
+
+If `streaming.cdn_base_url` is set, purge/revalidate the CDN after backfill —
+re-uploaded objects can otherwise be served stale.
+
+## Tests
+
+- `pytest tests/test_mp3_duration_header.py tests/test_streaming_upload_service.py tests/test_web_music_router.py tests/test_admin_user_web_music.py tests/test_web_music_b2_ingest_retry.py -q` → 32 passed.
+- `ruff` clean on new code; `mypy` clean on the new module.
+
+## Follow-ups
+
+- Files already saved on a user's disk can't be changed server-side; the desktop
+  1.4.2 client backfills those on sync. Users on ≤1.4.1 who never upgrade still
+  need the 1.4.2 rollout for their existing files.
+- Consider folding header normalization into the periodic B2 backfill sweep so
+  any future header-less object self-heals.

@@ -48,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Archived and served MP3s now carry a Xing/Info header. Header-less Suno CDN MP3s made ffprobe/players over-report the duration, so an exported MP4 with the real audio length looked shorter than the MP3. MP3s are re-muxed losslessly (`ffmpeg -c copy -write_xing 1`) before every B2 upload and when serving web/admin downloads; a dry-run-first script backfills existing B2 objects. See `docs/changelog/2026-09-24-mp3-duration-header-normalization.md`.
 - `/me/credits` now returns the resolved Free/paid plan and `reset_label` (daily vs monthly). Monthly Free plans are granted on that poll. See `docs/changelog/2026-08-28-credit-reset-label-period.md`.
 - Free daily mint no longer stacks 50 credits on every `/me/credits` poll. Lot insert happens first; sandbox `duke@test.com` 4,150 was 83 stacked daily grants. Cutover now snapshots every wallet before/after leftover apply. See `docs/changelog/2026-08-25-daily-grant-idempotent-and-cutover-snapshot.md`.
 - `POST /generation/draft` no longer 500s: the router-local `DraftGenerationRequest` was missing `mood_id`/`structure_mode`. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
