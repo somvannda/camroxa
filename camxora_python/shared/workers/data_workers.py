@@ -269,10 +269,20 @@ class MusicDownloadSyncWorker(QThread):
 
                         target_file = Path(sanitize_local_path(str(target.target_path)))
                         target_path = str(target_file)
-                        from shared.lib.suno_mp3_download import file_looks_like_mpeg_audio
+                        from shared.lib.suno_mp3_download import (
+                            ensure_mp3_duration_header,
+                            file_looks_like_mpeg_audio,
+                        )
 
                         if file_looks_like_mpeg_audio(target_file):
                             downloaded = True
+                            # Backfill a Xing/Info header on already-downloaded files so
+                            # players/ffprobe report the true duration (Suno's CDN files
+                            # omit it). Best-effort; failures keep the file as-is.
+                            try:
+                                ensure_mp3_duration_header(target_file)
+                            except Exception:
+                                pass
                         else:
                             downloaded = self._download_file(target.download_url, target_path)
                     except Exception as exc:
@@ -365,6 +375,14 @@ class MusicDownloadSyncWorker(QThread):
             )
             MusicDownloadSyncWorker._discard_empty_file(path)
             return False
+        # Add a Xing/Info header so the MP3 reports its true duration; Suno's CDN
+        # files omit it, which makes players/ffprobe over-report the length.
+        try:
+            from shared.lib.suno_mp3_download import ensure_mp3_duration_header
+
+            ensure_mp3_duration_header(path)
+        except Exception:
+            pass
         return True
 
     @staticmethod
