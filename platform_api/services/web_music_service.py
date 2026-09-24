@@ -2139,6 +2139,9 @@ class WebMusicService:
             variant_key=variant_key,
             allow_suno_ingest=True,
         )
+        from platform_api.services.mp3_duration_header import ensure_mp3_duration_header_async
+
+        data = await ensure_mp3_duration_header_async(data)
         marked = await self._watermark_owner_export(
             data,
             user_id=user_id,

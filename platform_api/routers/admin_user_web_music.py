@@ -649,6 +649,9 @@ async def download_user_web_music_clip(
     del ctx
     pool = get_db_pool()
     data, filename, content_type = await _load_clip_audio(pool, user_id, task_id, variant)
+    from platform_api.services.mp3_duration_header import ensure_mp3_duration_header_async
+
+    data = await ensure_mp3_duration_header_async(data)
     try:
         from platform_api.services.content_license_service import ContentLicenseService
 
