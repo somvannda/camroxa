@@ -1,17 +1,18 @@
-﻿Camxora 1.4.2
-Video export duration fix + UI cleanups
-September 23, 2026
+﻿Camxora 1.4.4
+Build info + export duration fixes
+September 25, 2026
 
 What's new
 ----------
-- Video export now matches the MP3 length. Some 48 kHz VBR MP3s were decoded
-  short (libsndfile/minimp3), producing a shorter MP4 and the error "video
-  export did not produce a usable output". The export now decodes them fully.
-- Existing audio-analysis caches are invalidated on upgrade, so the decode fix
-  takes effect without manually clearing the cache.
-- Merge only proceeds when the exported MP4 actually matches the audio length.
-- Studio is hidden from the desktop sidebar.
-- No more ffmpeg console popups during export and merge.
+- The app now reports its real version in diagnostics and logs. Previously it
+  sent a placeholder, so support could not confirm which build a user was on.
+- Video export duration fix (from 1.4.2): exported MP4s now match the MP3
+  length. Some 48 kHz VBR MP3s were decoded short; the export now decodes them
+  fully, and existing audio-analysis caches are cleared on upgrade.
+- Downloaded MP3s now carry a correct duration header, so the MP3 and the
+  exported video report the same length.
+- Video/merge credit preflight (from 1.4.3): a music plan can no longer start
+  and then stall at the export stage for lack of credits.
 
 Still included from 1.4.1
 -------------------------
@@ -21,7 +22,7 @@ Still included from 1.4.1
 
 Requirements
 ------------
-- Installer: CamxoraSetup-1.4.2.exe
+- Installer: CamxoraSetup-1.4.4.exe
 - Production API: https://api.camxora.com/api/v3
 
 Not in this build
