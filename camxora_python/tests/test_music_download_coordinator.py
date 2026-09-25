@@ -384,3 +384,90 @@ def test_coordinator_pauses_poll_while_preview_playing(qapp: QApplication) -> No
     assert coordinator._timer.isActive()
     assert coordinator._timer.interval() == 4_000
     coordinator.stop()
+
+
+def test_sync_worker_downloads_targets_concurrently(
+    qapp: QApplication, tmp_path, monkeypatch
+) -> None:
+    """A slow target must not serialize the rest of the batch."""
+    import threading
+
+    barrier = threading.Barrier(2, timeout=2)
+
+    def fake_download(_url: str, path: str) -> bool:
+        barrier.wait()
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_bytes(b"mp3")
+        return True
+
+    monkeypatch.setattr(MusicDownloadSyncWorker, "_download_file", staticmethod(fake_download))
+
+    api = MagicMock()
+    api.list_pending_music_downloads.return_value = PendingMusicDownloadsResponse(
+        items=[
+            PendingMusicDownloadItem(
+                task_id=f"task-{index}",
+                primary=PendingMusicDownloadTarget(
+                    download_url=f"https://example.test/{index}.mp3",
+                    downloaded=False,
+                    output_dir=str(tmp_path),
+                    target_path=str(tmp_path / f"{index}.mp3"),
+                ),
+            )
+            for index in (1, 2)
+        ]
+    )
+
+    results: list[MusicDownloadSyncResult] = []
+    worker = MusicDownloadSyncWorker(api, limit=24)
+    worker.succeeded.connect(results.append)
+    worker.start()
+    assert worker.wait(15_000)
+    _pump()
+
+    assert results == [MusicDownloadSyncResult(pending_count=2, synced_count=2)]
+
+
+def test_download_many_preserves_outcomes_and_falls_back(monkeypatch) -> None:
+    import shared.workers.data_workers as data_workers_module
+
+    calls: list[str] = []
+
+    def fake_download(url: str, path: str) -> bool:
+        calls.append(url)
+        return url.endswith("b.mp3")
+
+    monkeypatch.setattr(MusicDownloadSyncWorker, "_download_file", staticmethod(fake_download))
+
+    outcomes = data_workers_module._download_many(
+        [
+            ("https://example.test/a.mp3", "", "/tmp/a.mp3"),
+            ("https://example.test/dead.mp3", "https://example.test/b.mp3", "/tmp/b.mp3"),
+        ]
+    )
+
+    assert [outcome.ok for outcome in outcomes] == [False, True]
+    assert "https://example.test/b.mp3" in calls
+
+
+def test_duration_header_backfill_runs_off_hot_path(monkeypatch) -> None:
+    import threading
+
+    import shared.workers.data_workers as data_workers_module
+
+    done = threading.Event()
+    seen: list[str] = []
+
+    def fake_ensure(path: str) -> bool:
+        seen.append(str(path))
+        done.set()
+        return True
+
+    monkeypatch.setattr(
+        "shared.lib.suno_mp3_download.ensure_mp3_duration_header", fake_ensure
+    )
+
+    data_workers_module._schedule_mp3_duration_header_backfill(["/tmp/track.mp3"])
+
+    assert done.wait(2.0)
+    assert seen == ["/tmp/track.mp3"]

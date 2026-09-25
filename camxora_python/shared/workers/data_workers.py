@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,7 +23,100 @@ from shared.services.platform_client import PlatformApiError
 from shared.services.video_workspace_service import get_video_workspace_service
 
 if TYPE_CHECKING:
+    from shared.models.platform import PendingMusicDownloadTarget
     from shared.services.workspace_cache import WorkspaceCache
+
+
+# MP3 downloads are network-bound; a small pool keeps one dead/slow Suno URL
+# from stalling the whole batch without hammering the CDN.
+_DOWNLOAD_PARALLELISM = 4
+_DOWNLOAD_TIMEOUT_S = 30.0
+
+_HEADER_BACKFILL_LOCK = threading.Lock()
+_HEADER_BACKFILL_INFLIGHT: set[str] = set()
+
+
+@dataclass(frozen=True)
+class _DownloadOutcome:
+    ok: bool
+    error: Exception | None = None
+
+
+def _download_many(
+    jobs: "list[tuple[str, str, str]]",
+    *,
+    max_workers: int = _DOWNLOAD_PARALLELISM,
+) -> "list[_DownloadOutcome]":
+    """Download many tracks through a bounded pool.
+
+    ``jobs`` are ``(url, fallback_url, target_path)`` tuples. Returns one
+    outcome per job, in the same order. A dead/slow URL only occupies a single
+    pool slot, so it can no longer stall every other pending download the way
+    the previous serial loop did.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    outcomes = [_DownloadOutcome(False, None) for _ in jobs]
+    if not jobs:
+        return outcomes
+
+    def _one(index: int, job: tuple[str, str, str]) -> tuple[int, _DownloadOutcome]:
+        url, fallback_url, target_path = job
+        try:
+            ok = MusicDownloadSyncWorker._download_file(url, target_path)
+            if not ok and fallback_url:
+                from shared.services.app_logger import log_warn
+
+                log_warn(
+                    "Suno URL expired; falling back to the archived copy.",
+                    category="music",
+                )
+                ok = MusicDownloadSyncWorker._download_file(fallback_url, target_path)
+            return index, _DownloadOutcome(bool(ok), None)
+        except Exception as exc:
+            return index, _DownloadOutcome(False, exc)
+
+    workers = max(1, min(int(max_workers or 1), len(jobs)))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mp3-dl") as pool:
+        futures = [pool.submit(_one, index, job) for index, job in enumerate(jobs)]
+        for future in futures:
+            index, outcome = future.result()
+            outcomes[index] = outcome
+    return outcomes
+
+
+def _schedule_mp3_duration_header_backfill(paths: "list[str]") -> None:
+    """Add Xing/Info headers in the background so downloads never wait on ffmpeg.
+
+    Suno's CDN MP3s omit the header, so players over-report their length. The
+    re-mux is best-effort and runs on a daemon thread after the sync completes,
+    keeping it off the download critical path.
+    """
+    targets = [str(p).strip() for p in (paths or []) if str(p or "").strip()]
+    if not targets:
+        return
+
+    def _run() -> None:
+        from shared.lib.suno_mp3_download import ensure_mp3_duration_header
+
+        for target in targets:
+            with _HEADER_BACKFILL_LOCK:
+                if target in _HEADER_BACKFILL_INFLIGHT:
+                    continue
+                _HEADER_BACKFILL_INFLIGHT.add(target)
+            try:
+                ensure_mp3_duration_header(target)
+            except Exception:
+                pass
+            finally:
+                with _HEADER_BACKFILL_LOCK:
+                    _HEADER_BACKFILL_INFLIGHT.discard(target)
+
+    threading.Thread(
+        target=_run,
+        name="mp3-duration-header-backfill",
+        daemon=True,
+    ).start()
 
 
 class DashboardOverviewWorker(QThread):
@@ -211,14 +305,18 @@ class MusicDownloadSyncWorker(QThread):
                 self.succeeded.emit(MusicDownloadSyncResult(pending_count=0, synced_count=0))
                 return
 
-            sync_map: dict[str, MusicDownloadSyncItem] = {}
-            ensured_dirs: set[str] = set()
             from shared.lib.device_workspace_paths import hydrate_local_suno_output_dir
             from shared.lib.music_download_utils import remap_pending_download_target
 
             # Hydrate device-store + push active suno root so mid-session batches
             # stop planning under a stale cloud path until the next restart.
             local_suno_base = hydrate_local_suno_output_dir(api=self._api, persist_cloud=True)
+
+            # Phase 1 — resolve every actionable channel to a concrete target and
+            # split it into "already on disk" vs "needs a network download".
+            already_present: list[tuple[str, str, PendingMusicDownloadTarget]] = []
+            pending_downloads: list[tuple[str, str, PendingMusicDownloadTarget, str]] = []
+            ensured_dirs: set[str] = set()
             for item in items:
                 for channel, target in (("primary", item.primary), ("secondary", item.secondary)):
                     if (
@@ -268,23 +366,14 @@ class MusicDownloadSyncWorker(QThread):
                         from shared.services.file_service import sanitize_local_path
 
                         target_file = Path(sanitize_local_path(str(target.target_path)))
-                        target_path = str(target_file)
-                        from shared.lib.suno_mp3_download import (
-                            ensure_mp3_duration_header,
-                            file_looks_like_mpeg_audio,
-                        )
+                        from shared.lib.suno_mp3_download import file_looks_like_mpeg_audio
 
                         if file_looks_like_mpeg_audio(target_file):
-                            downloaded = True
-                            # Backfill a Xing/Info header on already-downloaded files so
-                            # players/ffprobe report the true duration (Suno's CDN files
-                            # omit it). Best-effort; failures keep the file as-is.
-                            try:
-                                ensure_mp3_duration_header(target_file)
-                            except Exception:
-                                pass
+                            already_present.append((item.task_id, channel, target))
                         else:
-                            downloaded = self._download_file(target.download_url, target_path)
+                            pending_downloads.append(
+                                (item.task_id, channel, target, str(target_file))
+                            )
                     except Exception as exc:
                         # One item's bad/unreachable output_dir (e.g. a stale
                         # cross-machine path from another profile's pending
@@ -298,24 +387,59 @@ class MusicDownloadSyncWorker(QThread):
                             exc=exc,
                         )
                         continue
-                    if not downloaded:
-                        continue
-                    current = sync_map.get(item.task_id) or MusicDownloadSyncItem(task_id=item.task_id)
-                    if channel == "primary":
-                        sync_map[item.task_id] = current.model_copy(
-                            update={"downloaded_primary": True, "output_dir_primary": target.output_dir}
-                        )
-                    else:
-                        sync_map[item.task_id] = current.model_copy(
-                            update={
-                                "downloaded_secondary": True,
-                                "output_dir_secondary": target.output_dir,
-                            }
-                        )
+
+            # Phase 2 — fetch the missing files with a bounded pool. A single
+            # dead/slow URL can only occupy one slot, never the whole queue.
+            outcomes = _download_many(
+                [(str(t.download_url), "", path) for _, _, t, path in pending_downloads]
+            )
+
+            # Phase 3 — merge outcomes and sync download state once.
+            sync_map: dict[str, MusicDownloadSyncItem] = {}
+            present_paths: list[str] = []
+
+            def _record(
+                task_id: str,
+                channel: str,
+                target: PendingMusicDownloadTarget,
+                ok: bool,
+            ) -> None:
+                if not ok:
+                    return
+                present_paths.append(str(target.target_path or ""))
+                current = sync_map.get(task_id) or MusicDownloadSyncItem(task_id=task_id)
+                if channel == "primary":
+                    sync_map[task_id] = current.model_copy(
+                        update={"downloaded_primary": True, "output_dir_primary": target.output_dir}
+                    )
+                else:
+                    sync_map[task_id] = current.model_copy(
+                        update={
+                            "downloaded_secondary": True,
+                            "output_dir_secondary": target.output_dir,
+                        }
+                    )
+
+            for task_id, channel, target in already_present:
+                _record(task_id, channel, target, True)
+            from shared.services.app_logger import log_error
+
+            for (task_id, channel, target, _path), outcome in zip(pending_downloads, outcomes):
+                if outcome.error is not None:
+                    log_error(
+                        f"Skipping pending download for task {task_id} ({channel})",
+                        category="music",
+                        exc=outcome.error,
+                    )
+                _record(task_id, channel, target, outcome.ok)
 
             sync_items = list(sync_map.values())
             if sync_items:
                 self._api.sync_music_downloads(sync_items)
+
+            # Phase 4 — Xing/Info headers are cosmetic; backfill them on a
+            # daemon thread so they never delay the next poll cycle.
+            _schedule_mp3_duration_header_backfill(present_paths)
 
             self.succeeded.emit(
                 MusicDownloadSyncResult(pending_count=len(items), synced_count=len(sync_items))
@@ -349,7 +473,7 @@ class MusicDownloadSyncWorker(QThread):
         if not candidate:
             return False
         try:
-            with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+            with httpx.Client(timeout=_DOWNLOAD_TIMEOUT_S, follow_redirects=True) as client:
                 response = client.get(candidate)
                 response.raise_for_status()
                 content = response.content
@@ -375,14 +499,6 @@ class MusicDownloadSyncWorker(QThread):
             )
             MusicDownloadSyncWorker._discard_empty_file(path)
             return False
-        # Add a Xing/Info header so the MP3 reports its true duration; Suno's CDN
-        # files omit it, which makes players/ffprobe over-report the length.
-        try:
-            from shared.lib.suno_mp3_download import ensure_mp3_duration_header
-
-            ensure_mp3_duration_header(path)
-        except Exception:
-            pass
         return True
 
     @staticmethod
@@ -447,7 +563,7 @@ class RunFolderRecoveryWorker(QThread):
 
         from shared.lib.disk_space import get_free_bytes
         from shared.models.platform import ProgressLocalSyncItem
-        from shared.services.app_logger import log_error, log_warn
+        from shared.services.app_logger import log_error
         from shared.services.file_service import ensure_directory, read_file_bytes, sanitize_local_path
 
         if not self._batch_id or not self._profile_id or not self._new_run_dir:
@@ -500,45 +616,40 @@ class RunFolderRecoveryWorker(QThread):
             result.mp3_total = len(plan.items)
             is_primary = self._role != "ALT"
             sync_items: list[MusicDownloadSyncItem] = []
-            for item in plan.items:
-                try:
-                    ok = MusicDownloadSyncWorker._download_file(item.download_url, item.target_path)
-                    if not ok and item.fallback_download_url:
-                        # Suno's URL (primary — Suno retains audio for 14 days) is dead;
-                        # fall back to our own Backblaze-archived copy of the same track.
-                        log_warn(
-                            f"Suno URL expired for {item.title or item.task_id}; "
-                            "falling back to Backblaze copy.",
-                            category="music",
-                        )
-                        ok = MusicDownloadSyncWorker._download_file(
-                            item.fallback_download_url, item.target_path
-                        )
-                    if ok:
-                        result.mp3_downloaded += 1
-                    else:
-                        result.mp3_failed += 1
-                    # Repoint this song's tracked output_dir/downloaded state to the new
-                    # folder regardless of outcome — otherwise the account-wide background
-                    # download sync (MusicDownloadSyncWorker) keeps retrying this exact
-                    # song against the *old* (bad/full) folder forever, since it reads
-                    # per-song output_dir/downloaded state, not the batch's run_dir.
-                    sync_items.append(
-                        MusicDownloadSyncItem(
-                            task_id=item.task_id,
-                            downloaded_primary=ok if is_primary else None,
-                            downloaded_secondary=ok if not is_primary else None,
-                            output_dir_primary=normalized_dir if is_primary else None,
-                            output_dir_secondary=normalized_dir if not is_primary else None,
-                        )
-                    )
-                except Exception as exc:
+            outcomes = _download_many(
+                [
+                    (item.download_url, item.fallback_download_url or "", item.target_path)
+                    for item in plan.items
+                ]
+            )
+            present_paths: list[str] = []
+            for item, outcome in zip(plan.items, outcomes):
+                if outcome.error is not None:
                     result.mp3_failed += 1
                     log_error(
                         f"Re-download into new run folder failed for {item.title or item.task_id}",
                         category="music",
-                        exc=exc,
+                        exc=outcome.error,
                     )
+                elif outcome.ok:
+                    result.mp3_downloaded += 1
+                    present_paths.append(str(item.target_path or ""))
+                else:
+                    result.mp3_failed += 1
+                # Repoint this song's tracked output_dir/downloaded state to the new
+                # folder regardless of outcome — otherwise the account-wide background
+                # download sync (MusicDownloadSyncWorker) keeps retrying this exact
+                # song against the *old* (bad/full) folder forever, since it reads
+                # per-song output_dir/downloaded state, not the batch's run_dir.
+                sync_items.append(
+                    MusicDownloadSyncItem(
+                        task_id=item.task_id,
+                        downloaded_primary=outcome.ok if is_primary else None,
+                        downloaded_secondary=outcome.ok if not is_primary else None,
+                        output_dir_primary=normalized_dir if is_primary else None,
+                        output_dir_secondary=normalized_dir if not is_primary else None,
+                    )
+                )
             if sync_items:
                 try:
                     self._api.sync_music_downloads(sync_items)
@@ -548,6 +659,7 @@ class RunFolderRecoveryWorker(QThread):
                         category="music",
                         exc=exc,
                     )
+            _schedule_mp3_duration_header_backfill(present_paths)
         except PlatformApiError as exc:
             log_error(f"Could not list MP3s to re-download for batch {self._batch_id}", category="music", exc=exc)
 
@@ -722,38 +834,35 @@ class MissingMp3DownloadWorker(QThread):
 
         is_primary = self._role != "ALT"
         sync_items: list[MusicDownloadSyncItem] = []
-        for item in missing_items:
-            try:
-                ok = MusicDownloadSyncWorker._download_file(item.download_url, item.target_path)
-                if not ok and item.fallback_download_url:
-                    log_warn(
-                        f"Suno URL expired for {item.title or item.task_id}; "
-                        "falling back to Backblaze copy.",
-                        category="music",
-                    )
-                    ok = MusicDownloadSyncWorker._download_file(
-                        item.fallback_download_url, item.target_path
-                    )
-                if ok:
-                    result.downloaded += 1
-                else:
-                    result.failed += 1
-                sync_items.append(
-                    MusicDownloadSyncItem(
-                        task_id=item.task_id,
-                        downloaded_primary=ok if is_primary else None,
-                        downloaded_secondary=ok if not is_primary else None,
-                        output_dir_primary=normalized_dir if is_primary else None,
-                        output_dir_secondary=normalized_dir if not is_primary else None,
-                    )
-                )
-            except Exception as exc:
+        outcomes = _download_many(
+            [
+                (item.download_url, item.fallback_download_url or "", item.target_path)
+                for item in missing_items
+            ]
+        )
+        present_paths: list[str] = []
+        for item, outcome in zip(missing_items, outcomes):
+            if outcome.error is not None:
                 result.failed += 1
                 log_error(
                     f"Missing MP3 download failed for {item.title or item.task_id}",
                     category="music",
-                    exc=exc,
+                    exc=outcome.error,
                 )
+            elif outcome.ok:
+                result.downloaded += 1
+                present_paths.append(str(item.target_path or ""))
+            else:
+                result.failed += 1
+            sync_items.append(
+                MusicDownloadSyncItem(
+                    task_id=item.task_id,
+                    downloaded_primary=outcome.ok if is_primary else None,
+                    downloaded_secondary=outcome.ok if not is_primary else None,
+                    output_dir_primary=normalized_dir if is_primary else None,
+                    output_dir_secondary=normalized_dir if not is_primary else None,
+                )
+            )
         if sync_items:
             try:
                 self._api.sync_music_downloads(sync_items)
@@ -763,6 +872,7 @@ class MissingMp3DownloadWorker(QThread):
                     category="music",
                     exc=exc,
                 )
+        _schedule_mp3_duration_header_backfill(present_paths)
 
         self.succeeded.emit(result)
 
