@@ -312,6 +312,142 @@ async def main() -> None:
 asyncio.run(main())
 '''
 
+CDN_PY = r'''
+import asyncio
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "/opt/camxora/repo")
+env_path = Path("/opt/camxora/repo/platform_api/.env")
+if env_path.is_file():
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+import asyncpg
+from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+
+async def main() -> None:
+    dsn = os.environ.get("PLATFORM_DATABASE_URL", "")
+    if dsn.startswith("postgresql+asyncpg://"):
+        dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
+    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=1)
+    try:
+        config = await resolve_streaming_storage_config(pool)
+        print("CDN_BASE_URL=" + (config.cdn_base_url or "(none)"), flush=True)
+        try:
+            rows = await pool.fetch(
+                "SELECT key FROM system_settings "
+                "WHERE key ILIKE '%cloudflare%' OR key ILIKE '%purge%' "
+                "OR key ILIKE '%cache%' OR key ILIKE '%cdn%' ORDER BY key"
+            )
+            print("SETTINGS_KEYS=" + ",".join(str(r["key"]) for r in rows), flush=True)
+        except Exception as exc:
+            print("SETTINGS_KEYS_ERR", exc, flush=True)
+        env_keys = [
+            k for k in os.environ
+            if any(t in k.upper() for t in ("CLOUDFLARE", "CF_", "PURGE", "CACHE", "CDN", "BUNNY"))
+        ]
+        print("ENV_KEYS=" + ",".join(sorted(env_keys)), flush=True)
+    finally:
+        await pool.close()
+
+
+asyncio.run(main())
+'''
+
+CDNVERIFY_PY = r'''
+import asyncio
+import datetime
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "/opt/camxora/repo")
+env_path = Path("/opt/camxora/repo/platform_api/.env")
+if env_path.is_file():
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+import asyncpg
+import boto3
+import httpx
+from botocore.config import Config as BotoConfig
+from platform_api.services.mp3_duration_header import mp3_has_duration_header
+from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+
+HOURS = float(os.environ.get("HOURS") or "3")
+N = int(os.environ.get("N") or "8")
+
+
+async def main() -> None:
+    dsn = os.environ.get("PLATFORM_DATABASE_URL", "")
+    if dsn.startswith("postgresql+asyncpg://"):
+        dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
+    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=1)
+    try:
+        config = await resolve_streaming_storage_config(pool)
+        client = boto3.client(
+            "s3", endpoint_url=config.endpoint, aws_access_key_id=config.key_id,
+            aws_secret_access_key=config.application_key, region_name=config.region,
+            config=BotoConfig(signature_version="s3v4", s3={"addressing_style": "path"}),
+        )
+        rows = await pool.fetch(
+            "SELECT storage_key FROM stream_tracks "
+            "WHERE storage_key LIKE '%.mp3' AND storage_key NOT LIKE '%.cxa' "
+            "ORDER BY random() LIMIT $1",
+            N,
+        )
+        keys = [str(r["storage_key"]) for r in rows]
+        print(f"CDN_SAMPLE={len(keys)} (B2 now has headers for all MPEG keys)", flush=True)
+        cdn = config.cdn_base_url.rstrip("/")
+        if not cdn:
+            print("NO_CDN", flush=True)
+            return
+        def _b2_head(key: str) -> bytes:
+            resp = client.get_object(Bucket=config.bucket, Key=key, Range="bytes=0-8191")
+            return resp["Body"].read()
+
+        stale = 0
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
+            for key in keys:
+                url = f"{cdn}/{key}"
+                try:
+                    b2_head = await asyncio.to_thread(_b2_head, key)
+                except Exception as exc:
+                    print(f"B2_ERR {key}: {exc}", flush=True)
+                    continue
+                b2_hdr = mp3_has_duration_header(b2_head)
+                try:
+                    r = await http.get(url, headers={"Range": "bytes=0-8191"})
+                    cdn_hdr = mp3_has_duration_header(r.content)
+                    is_stale = b2_hdr and not cdn_hdr
+                    if is_stale:
+                        stale += 1
+                    print(
+                        f"b2_hdr={b2_hdr} cdn_hdr={cdn_hdr} cache={r.headers.get('cf-cache-status', '?')} "
+                        f"{'STALE ' if is_stale else ''}{key}",
+                        flush=True,
+                    )
+                except Exception as exc:
+                    print(f"CDN_ERR {key}: {exc}", flush=True)
+        print(f"CDN_STALE={stale}/{len(keys)}", flush=True)
+    finally:
+        await pool.close()
+
+
+asyncio.run(main())
+'''
+
 STATUS_CMD = r'''
 echo "=== running sweep ==="
 ps -eo pid,etimes,time,stat,pcpu,args | grep -E "mp3xing_backfill\.py|\.venv/bin/python -$" | grep -v grep || echo "(not running)"
@@ -363,6 +499,48 @@ def main() -> int:
             e = err.read().decode("utf-8", errors="replace")
             if e.strip():
                 print("STDERR:", e[-2000:])
+            return 0
+        finally:
+            client.close()
+
+    if "--cdn-verify" in sys.argv:
+        host, client = _connection()
+        print(f"=== CDN freshness check {host} ===")
+        try:
+            sftp = client.open_sftp()
+            with sftp.file("/tmp/mp3xing_cdnverify.py", "wb") as remote_file:
+                remote_file.write(CDNVERIFY_PY.encode("utf-8"))
+            sftp.close()
+            _, out, err = client.exec_command(
+                "cd /opt/camxora/repo/platform_api && N=60 PYTHONPATH=/opt/camxora/repo "
+                ".venv/bin/python /tmp/mp3xing_cdnverify.py",
+                timeout=300,
+            )
+            print(out.read().decode("utf-8", errors="replace"))
+            e = err.read().decode("utf-8", errors="replace")
+            if e.strip():
+                print("STDERR:", e[-1500:])
+            return 0
+        finally:
+            client.close()
+
+    if "--cdn" in sys.argv:
+        host, client = _connection()
+        print(f"=== CDN config {host} ===")
+        try:
+            sftp = client.open_sftp()
+            with sftp.file("/tmp/mp3xing_cdn.py", "wb") as remote_file:
+                remote_file.write(CDN_PY.encode("utf-8"))
+            sftp.close()
+            _, out, err = client.exec_command(
+                "cd /opt/camxora/repo/platform_api && PYTHONPATH=/opt/camxora/repo "
+                ".venv/bin/python /tmp/mp3xing_cdn.py",
+                timeout=120,
+            )
+            print(out.read().decode("utf-8", errors="replace"))
+            e = err.read().decode("utf-8", errors="replace")
+            if e.strip():
+                print("STDERR:", e[-1000:])
             return 0
         finally:
             client.close()
