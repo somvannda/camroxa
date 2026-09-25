@@ -7,11 +7,13 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.4] - 2026-09-25
 
 ### Fixed
 
 - Video-export telemetry and client-log uploads now report the real app version via `get_app_version()` instead of the literal string `camxora_python`, and the manual export path no longer relies on the frozen-build-unreliable `importlib.metadata.version("camxora")`. Ops can now verify which build a user runs (e.g. confirming a forced update landed).
+
+## [Unreleased]
 
 ### Added
 
