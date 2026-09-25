@@ -3215,7 +3215,11 @@ class BatchService:
                 if (str(task_id), str(variant)) in packaged:
                     continue
                 try:
-                    resolved[(str(task_id), str(variant))] = await storage.get_signed_get_url(key)
+                    # cache_bust: the CDN caches by URL for a long TTL; an
+                    # overwritten object would otherwise serve stale bytes.
+                    resolved[(str(task_id), str(variant))] = await storage.get_signed_get_url(
+                        key, cache_bust=True
+                    )
                 except Exception:
                     continue
             return resolved
@@ -4015,7 +4019,7 @@ class BatchService:
                 key = str(storage_key or "")
                 if key.endswith((".cxa", ".cxo")):
                     continue
-                urls[task_id] = await storage.get_signed_get_url(storage_key)
+                urls[task_id] = await storage.get_signed_get_url(storage_key, cache_bust=True)
             return urls
         except Exception:
             logger.warning(

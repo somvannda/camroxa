@@ -155,7 +155,7 @@ class _FakeStorage:
     def from_config(config):
         return _FakeStorage()
 
-    async def get_signed_get_url(self, key: str) -> str:
+    async def get_signed_get_url(self, key: str, *, cache_bust: bool = False) -> str:
         return f"https://cdn.test/{key.lstrip('/')}"
 
 
