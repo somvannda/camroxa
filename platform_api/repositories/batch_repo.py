@@ -1098,7 +1098,14 @@ class BatchRepository:
                 b.id IS NULL
                 OR b.updated_at >= NOW() - make_interval(days => $4)
               )
-            ORDER BY st.updated_at DESC, st.created_at DESC
+            -- Keep one pipeline's tracks contiguous so the desktop finishes a
+            -- batch before moving on instead of leaving every batch at ~50%.
+            -- Batches stay ordered by recency; tracks within a batch by index.
+            ORDER BY
+                COALESCE(b.updated_at, st.updated_at) DESC,
+                st.batch_id,
+                s.batch_index ASC NULLS LAST,
+                st.created_at ASC
             LIMIT $3
             """,
             user_id,
