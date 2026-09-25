@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 from features.video.lib.pipeline_inputs import (
     ResolvedVideoPipelineInputs,
@@ -18,6 +19,8 @@ from shared.lib.video_runtime_inspection import ProgressRuntimePresentation, Vid
 from shared.models.auth import ProfileResponse
 from shared.models.desktop import VideoWorkspaceState
 from shared.models.platform import ProgressRow
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,11 +152,17 @@ def select_next_auto_video_candidate(
 
         expected = max(1, int(row.meta.expected or 0))
         if not local_audio_downloads_ready(row):
+            logger.info(
+                "Auto-video: batch=%s role=%s stage=%s skipped — local audio downloads not ready.",
+                row.meta.batch_id,
+                row.meta.role,
+                effective_stage,
+            )
             continue
 
         inspection = inspections.get(key)
-        long_inputs, _long_reason = _branch_is_ready(row, profile, "long", workspace=workspace)
-        reel_inputs, _reel_reason = _branch_is_ready(row, profile, "reel", workspace=workspace)
+        long_inputs, long_reason = _branch_is_ready(row, profile, "long", workspace=workspace)
+        reel_inputs, reel_reason = _branch_is_ready(row, profile, "reel", workspace=workspace)
         long_outputs_ready = branch_is_conclusively_complete(
             row, "long", runtime=runtime, inspection=inspection
         ) or _has_expected_outputs(
@@ -196,6 +205,19 @@ def select_next_auto_video_candidate(
                 template_id=str(reel_inputs.recommended_template_id or ""),
                 output_resolution=None,
                 profile_id=str(row.meta.profile_id or "") or None,
+            )
+
+        # Reached only when this row produced no export candidate. Log the reason
+        # so a channel that never auto-exports reports why (missing local
+        # background/template/MP3s) instead of silently staying at Converter.
+        if long_inputs is None:
+            logger.info(
+                "Auto-video: batch=%s role=%s stage=%s not exportable — long: %s; reel: %s",
+                row.meta.batch_id,
+                row.meta.role,
+                effective_stage,
+                long_reason,
+                reel_reason,
             )
 
     return None
