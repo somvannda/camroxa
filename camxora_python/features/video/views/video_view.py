@@ -1671,13 +1671,9 @@ class VideoView(QWidget):
         if width > 0 and height > 0:
             resolution = f"{width}x{height}"
         hw = collect_hardware_hints(codec=codec)
-        app_version = None
-        try:
-            from importlib.metadata import version
+        from shared.constants.app_version import get_app_version
 
-            app_version = version("camxora")
-        except Exception:
-            app_version = None
+        app_version = get_app_version()
         payload = {
             "operation_type": operation_type,
             "ref_id": ref_id,

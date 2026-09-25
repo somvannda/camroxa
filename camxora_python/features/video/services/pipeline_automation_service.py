@@ -30,6 +30,7 @@ from features.video.services.template_normalizer import TemplateNormalizer
 from features.video.services.video_local_store import VideoLocalStore
 from features.video.workers.pipeline_export_worker import PipelineExportRequest, VideoPipelineExportWorker
 from features.video.workers.pipeline_merge_worker import PipelineMergeRequest, VideoPipelineMergeWorker
+from shared.constants.app_version import get_app_version
 from shared.models.desktop import VideoExportState, VideoWorkspaceState
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
@@ -910,7 +911,7 @@ class PipelineAutomationService(QObject):
                 "hw_cpu": hw.get("hw_cpu"),
                 "hw_gpu": hw.get("hw_gpu"),
                 "hw_encoder": hw.get("hw_encoder"),
-                "app_version": "camxora_python",
+                "app_version": get_app_version(),
             }
             report_video_telemetry_async(self._api, payload)
         except Exception:
