@@ -45,12 +45,26 @@ correctly labelled, regardless of desktop client version.
 
 ## Migration/deploy
 
-No DB migration. Deploy `platform_api`, then run the backfill:
+No DB migration. A file-scoped production hotfix ships the four changed files
+(no full tree sync):
 
 ```
-python scripts/deploy/backfill_mp3_duration_headers_production.py            # dry-run
-python scripts/deploy/backfill_mp3_duration_headers_production.py --apply
+python scripts/deploy/deploy_mp3_duration_header_production.py            # dry-run
+python scripts/deploy/deploy_mp3_duration_header_production.py --apply
 ```
+
+Then run the backfill (background job; poll with `--status`):
+
+```
+python scripts/deploy/backfill_mp3_duration_headers_production.py --apply
+python scripts/deploy/backfill_mp3_duration_headers_production.py --status
+python scripts/deploy/backfill_mp3_duration_headers_production.py --kill
+```
+
+The sweep uses ranged 8 KiB reads to find header-less MP3s, so only affected
+objects are downloaded and re-uploaded. Non-MPEG objects stored under `.mp3`
+keys (Opus-in-MP4) are left untouched. Production run (2026-09-24): 13,068 keys
+scanned, 11,189 already OK, 982 fixed, 897 non-MPEG, 0 failures.
 
 If `streaming.cdn_base_url` is set, purge/revalidate the CDN after backfill —
 re-uploaded objects can otherwise be served stale.
