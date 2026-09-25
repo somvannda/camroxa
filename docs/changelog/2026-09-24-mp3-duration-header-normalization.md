@@ -42,6 +42,7 @@ correctly labelled, regardless of desktop client version.
 - `platform_api/routers/admin_user_web_music.py`
 - `platform_api/tests/test_mp3_duration_header.py` (new)
 - `scripts/deploy/backfill_mp3_duration_headers_production.py` (new)
+- `scripts/deploy/deploy_cdn_cache_bust_production.py` (new)
 
 ## Migration/deploy
 
@@ -66,12 +67,22 @@ objects are downloaded and re-uploaded. Non-MPEG objects stored under `.mp3`
 keys (Opus-in-MP4) are left untouched. Production run (2026-09-24): 13,068 keys
 scanned, 11,189 already OK, 982 fixed, 897 non-MPEG, 0 failures.
 
-If `streaming.cdn_base_url` is set, purge/revalidate the CDN after backfill —
-re-uploaded objects can otherwise be served stale.
+Cloudflare (`media.camxora.com`) serves objects with a 1-year TTL keyed by URL,
+so re-uploaded objects kept serving stale bytes (verified live: ~7% of
+re-uploaded keys returned the old header-less file with `cf-cache-status: HIT`).
+Rather than a CDN purge, the desktop download paths now append the current
+object ETag to the CDN URL (`get_signed_get_url(..., cache_bust=True)` in
+`_resolve_pending_b2_urls` and `_resolve_b2_redownload_urls`), so the CDN
+fetches fresh content:
+
+```
+python scripts/deploy/deploy_cdn_cache_bust_production.py --apply
+```
 
 ## Tests
 
 - `pytest tests/test_mp3_duration_header.py tests/test_streaming_upload_service.py tests/test_web_music_router.py tests/test_admin_user_web_music.py tests/test_web_music_b2_ingest_retry.py -q` → 32 passed.
+- `pytest tests/test_storage_service_cache_bust.py tests/test_batch_download_health.py tests/test_streaming_catalog_playback.py -q` → 18 passed.
 - `ruff` clean on new code; `mypy` clean on the new module.
 
 ## Follow-ups
