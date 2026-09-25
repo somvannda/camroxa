@@ -6,6 +6,7 @@ from typing import Any
 
 from PySide6.QtCore import QThread, Signal
 
+from shared.constants.app_version import get_app_version
 from shared.services.app_logger import (
     SYNC_MAX_CHARS,
     SYNC_MAX_LINES,
@@ -24,7 +25,7 @@ def build_client_log_payload() -> dict[str, Any] | None:
     return {
         "content": text,
         "lineCount": line_count,
-        "appVersion": "camxora_python",
+        "appVersion": get_app_version(),
         "clientLabel": "desktop",
     }
 
