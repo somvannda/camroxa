@@ -68,9 +68,14 @@ signup-farm caps are unchanged.
 
 ## Follow-ups
 
-- Sandbox paid plans still set `daily_song_limit_per_channel = 7` vs prod 999;
-  review separately.
-- Frontend `mergeV3CreditBalance(v3, null)` dropping V2 credits is unrelated but
-  worth a look.
+- Sandbox paid plans set `daily_song_limit_per_channel = 7` vs prod 999. This is
+  **not** the reported 5/day cap: the web-music generate route never calls
+  `_enforce_plan_quotas`, and subscription plans bypass the daily quota via
+  wallet credits (`_can_wallet_daily_bypass`). No action needed for this fix;
+  the sandbox/prod drift is only worth aligning for consistency.
+- Frontend `mergeV3CreditBalance(v3, null)` mis-derives `topup_credits` and
+  `daily_free_*` because the V2 wallet is only fetched when the V3 call throws.
+  `total_credits` is correct (V3 `wallet_view` reads the shared `credit_wallets`
+  table), so this is display-only.
 - Legacy settings `web_music_free_daily_limit = 5` / `web_music_free_daily_credits = 50`
   are now redundant with credit gating.
