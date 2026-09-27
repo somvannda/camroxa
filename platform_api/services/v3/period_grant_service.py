@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
-from platform_api.services.billing_calendar import billing_today, next_billing_midnight
+from platform_api.services.billing_calendar import (
+    billing_month_start,
+    billing_today,
+    next_billing_midnight,
+    next_billing_month_start,
+)
 from platform_api.services.credit_units import credits_to_units, units_to_credits
 from platform_api.services.v3.store import V3BillingStore
 
@@ -34,10 +39,48 @@ class PeriodGrantService:
                         "v3_grant_expire",
                         ref_id=str(lot["id"]),
                         metadata={"source": "v3", "tag": "grant", "billing": "grant_expire"},
+                        consume_lots=False,
                     )
             await self._store.zero_lot_remaining(lot["id"])
             touched += 1
         return touched
+
+    async def _resolve_period(self, user_id: UUID) -> tuple[date, datetime]:
+        """Return a stable (period_start, expires_at) for the user's monthly grant.
+
+        The period must be stable within a billing cycle so the unique
+        (user_id, period_start) lot index makes the grant idempotent. Falling
+        back to ``billing_today()`` made Free/web-subscription grants re-mint
+        every day and stack for 30 days.
+        """
+        # 1) Desktop license: anchor to the license billing cycle.
+        if self._plan_repo is not None:
+            ctx = await self._plan_repo.get_user_active_subscription_context(user_id)
+            if ctx is not None:
+                from platform_api.services.billing_period_service import (
+                    period_end_for_subscription,
+                    period_start_for_subscription,
+                )
+
+                start = period_start_for_subscription(
+                    plan=ctx.plan,
+                    activated_at=ctx.activated_at,
+                )
+                end = period_end_for_subscription(plan=ctx.plan, period_start=start)
+                return start, next_billing_midnight(from_date=end)
+
+        # 2) Web (CutLuy) subscription: anchor to its current period.
+        web_period = None
+        getter = getattr(self._store, "web_subscription_period", None)
+        if getter is not None:
+            web_period = await getter(user_id)
+        if web_period is not None:
+            start, end = web_period
+            return start, end
+
+        # 3) Free / no subscription: one grant per calendar month.
+        start = billing_month_start()
+        return start, next_billing_month_start(from_date=start)
 
     async def ensure_period_grant(self, user_id: UUID) -> dict[str, Any]:
         await self.expire_unused_grants(user_id)
@@ -54,16 +97,7 @@ class PeriodGrantService:
                 "plan_id": plan["id"],
             }
 
-        period_start = billing_today()
-        if self._plan_repo is not None:
-            ctx = await self._plan_repo.get_user_active_subscription_context(user_id)
-            if ctx is not None:
-                from platform_api.services.billing_period_service import period_start_for_subscription
-
-                period_start = period_start_for_subscription(
-                    plan=ctx.plan,
-                    activated_at=ctx.activated_at,
-                )
+        period_start, expires_at = await self._resolve_period(user_id)
 
         existing = await self._store.find_period_grant(user_id, period_start)
         if existing is not None:
@@ -76,8 +110,6 @@ class PeriodGrantService:
             }
 
         units = credits_to_units(monthly)
-        cycle_days = int(plan.get("billing_cycle_days") or 30)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=max(1, cycle_days))
         lot = await self._store.insert_lot_if_absent(
             user_id=user_id,
             tag="grant",
