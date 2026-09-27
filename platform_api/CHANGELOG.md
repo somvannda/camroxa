@@ -35,6 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `POST /web-music/generate` was capped at 5 songs/day **per IP** regardless of plan or credit balance, so paid users behind a shared network got 429 `IP_DAILY_LIMIT`. Generation is now gated by credits: users who can pay for a song (paid web subscription, desktop Pro license, or positive spendable balance) are exempt from the per-IP daily cap; signup-farm caps are unchanged. See `docs/changelog/2026-09-27-web-music-credit-gated-generation.md`.
+
 ### Added
 
 - Plans store `pricing_features` (one line per /pricing bullet) and `pricing_credit_lines` (captions under the credit number). Admin can patch both. Public catalog returns them. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.

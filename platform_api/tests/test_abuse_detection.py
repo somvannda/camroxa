@@ -79,6 +79,7 @@ async def test_signup_cap_still_429s_and_freeze_is_extra(
 
 @pytest.mark.asyncio
 async def test_generation_ip_daily_cap() -> None:
+    """Users with nothing to spend still hit the per-IP farm cap."""
     redis = _FakeRedis()
     ip = "203.0.113.11"
     for _ in range(MAX_GENERATIONS_PER_IP_PER_DAY):
@@ -87,6 +88,15 @@ async def test_generation_ip_daily_cap() -> None:
         await check_ip_abuse(redis, ip, "user-2", "generation")
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail["error_code"] == "IP_DAILY_LIMIT"
+
+
+@pytest.mark.asyncio
+async def test_generation_ip_daily_cap_skipped_for_credited_users() -> None:
+    """Credit-funded users are gated by their balance, not the per-IP cap."""
+    redis = _FakeRedis()
+    ip = "203.0.113.14"
+    for _ in range(MAX_GENERATIONS_PER_IP_PER_DAY * 3):
+        await check_ip_abuse(redis, ip, "paid-user", "generation", credited=True)
 
 
 @pytest.mark.asyncio

@@ -129,8 +129,15 @@ async def check_ip_abuse(
     ip: str,
     user_id: str,
     event_type: str = "generation",
+    *,
+    credited: bool = False,
 ) -> None:
     """Check if an IP address shows signs of signup or generation farming.
+
+    ``credited`` marks a user who can pay for a generation from their own
+    balance (paid plan or credit wallet). Generation is then gated by their
+    credits, not by this per-IP farm cap — so the IP daily cap only applies
+    to accounts with nothing to spend. Signup-farm caps are unaffected.
 
     Raises:
         HTTPException: 429 if IP is blocked or over a farm cap.
@@ -212,6 +219,11 @@ async def check_ip_abuse(
         return
 
     if event_type == "generation":
+        # Credit-funded users (paid plan or credit wallet) are gated by their
+        # balance, not by this per-IP farm cap. See check_ip_abuse docstring.
+        if credited:
+            return
+
         ip_daily_key = f"abuse:ip_daily:{ip}:{_billing_day_stamp()}"
         ip_count = await redis.incr(ip_daily_key)
         await redis.expire(ip_daily_key, 90000)
@@ -225,7 +237,8 @@ async def check_ip_abuse(
             )
             raise _too_many(
                 "IP_DAILY_LIMIT",
-                f"Maximum {MAX_GENERATIONS_PER_IP_PER_DAY} free songs per day from one network. Try again tomorrow or subscribe.",
+                f"Maximum {MAX_GENERATIONS_PER_IP_PER_DAY} songs per day from one network "
+                "without credits. Add credits to keep generating.",
                 86400,
             )
 
@@ -253,21 +266,36 @@ def configure_abuse_detection(redis: RedisClient) -> None:
     _redis_client = redis
 
 
-async def _run_abuse_check(request: Request, user_id: str, event_type: str) -> None:
+async def _run_abuse_check(
+    request: Request,
+    user_id: str,
+    event_type: str,
+    *,
+    credited: bool = False,
+) -> None:
     if _redis_client is None:
         return
     ip = get_client_ip(request)
     try:
-        await check_ip_abuse(_redis_client, ip, user_id, event_type)
+        await check_ip_abuse(_redis_client, ip, user_id, event_type, credited=credited)
     except HTTPException:
         raise
     except Exception as exc:
         logger.error("Abuse detection error for IP %s: %s", ip, exc)
 
 
-async def track_generation_attempt(request: Request, user_id: str) -> None:
-    """Track a generation attempt for abuse detection."""
-    await _run_abuse_check(request, user_id, "generation")
+async def track_generation_attempt(
+    request: Request,
+    user_id: str,
+    *,
+    credited: bool = False,
+) -> None:
+    """Track a generation attempt for abuse detection.
+
+    ``credited`` skips the per-IP daily cap for users who pay from their own
+    balance (paid plan or credit wallet); their credits are the only gate.
+    """
+    await _run_abuse_check(request, user_id, "generation", credited=credited)
 
 
 async def track_quota_exceeded(request: Request, user_id: str) -> None:

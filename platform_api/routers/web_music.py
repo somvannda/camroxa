@@ -452,7 +452,12 @@ async def generate(
         body.negative_tags,
     )
     await enforce_rate_limit(http_request, ctx.user_id)
-    await track_generation_attempt(http_request, ctx.user_id)
+    # Credit-funded users are gated by their balance, not the per-IP farm cap.
+    await track_generation_attempt(
+        http_request,
+        ctx.user_id,
+        credited=await service.has_generation_credits(UUID(ctx.user_id)),
+    )
     
     try:
         payload = await service.generate(
