@@ -142,6 +142,27 @@ async def test_consume_credits_falls_back_to_daily_when_no_active_subscription()
 
 
 @pytest.mark.asyncio
+async def test_daily_free_limit_reads_the_free_plan_row() -> None:
+    db = _FakeDb()
+    service = CreditService(db)
+    db.fetch_one = AsyncMock(return_value={"daily_credits": 50})
+
+    assert await service.daily_free_limit() == 50
+    db.fetch_one.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_daily_free_limit_is_zero_without_a_free_plan_row() -> None:
+    """The retired web_music_free_daily_credits setting is no longer a fallback."""
+    db = _FakeDb()
+    service = CreditService(db)
+    db.fetch_one = AsyncMock(return_value=None)
+
+    assert await service.daily_free_limit() == 0
+    db.fetch_one.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_callback_refund_skips_desktop_pro() -> None:
     from platform_api.routers.callbacks import _refund_web_music_generation_on_failure
 

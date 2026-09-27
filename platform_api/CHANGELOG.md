@@ -35,6 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- Retired the legacy web-music free-daily settings. `web_music_free_daily_limit` (084) and `web_music_free_daily_credits` (095) are no longer read: the active **Free** plan row's `daily_credits` is the single source of truth (a missing row means 0). Alembic `123` deletes the residual `system_settings` rows. See `docs/changelog/2026-09-27-retire-web-music-free-daily-settings.md`.
+
 ### Fixed
 
 - `POST /web-music/generate` was capped at 5 songs/day **per IP** regardless of plan or credit balance, so paid users behind a shared network got 429 `IP_DAILY_LIMIT`. Generation is now gated by credits: users who can pay for a song (paid web subscription, desktop Pro license, or positive spendable balance) are exempt from the per-IP daily cap; signup-farm caps are unchanged. See `docs/changelog/2026-09-27-web-music-credit-gated-generation.md`.

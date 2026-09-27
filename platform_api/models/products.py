@@ -11,12 +11,6 @@ VALID_PRODUCTS = frozenset({PRODUCT_STUDIO, PRODUCT_MUSIC_WEB})
 SUNO_TASK_SOURCE_STUDIO = "studio"
 SUNO_TASK_SOURCE_WEB_MUSIC = "web_music"
 
-WEB_MUSIC_FREE_DAILY_LIMIT_KEY = "web_music_free_daily_limit"
-WEB_MUSIC_FREE_DAILY_LIMIT_DEFAULT = 5
-
-WEB_MUSIC_FREE_DAILY_CREDITS_KEY = "web_music_free_daily_credits"
-WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT = 50
-
 # Free music-web allowance reset cadence ("daily" | "monthly").
 # "monthly" = free pool refills once per calendar month (Phnom_Penh midnight).
 MUSIC_WEB_FREE_RESET_PERIOD_KEY = "music_web_free_reset_period"

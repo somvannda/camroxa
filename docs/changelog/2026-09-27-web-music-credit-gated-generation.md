@@ -80,4 +80,5 @@ signup-farm caps are unchanged.
   reads the shared `credit_wallets` table). Fixed by splitting the authoritative
   balance instead — see `docs/changelog/2026-09-27-web-music-credit-balance-split.md`.
 - Legacy settings `web_music_free_daily_limit = 5` / `web_music_free_daily_credits = 50`
-  are now redundant with credit gating.
+  are now redundant with credit gating. Retired in
+  `docs/changelog/2026-09-27-retire-web-music-free-daily-settings.md`.

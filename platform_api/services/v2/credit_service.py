@@ -11,8 +11,6 @@ from typing import Any, Optional
 from platform_api.models.products import (
     MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT,
     MUSIC_WEB_FREE_RESET_PERIOD_KEY,
-    WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT,
-    WEB_MUSIC_FREE_DAILY_CREDITS_KEY,
 )
 from platform_api.services.billing_calendar import (
     billing_month_start,
@@ -83,6 +81,12 @@ class CreditService:
         self._db = db
 
     async def daily_free_limit(self) -> int:
+        """Free-plan daily credits, read from the active Free plan row.
+
+        The retired ``web_music_free_daily_credits`` setting is no longer read:
+        the Free plan row is the single source of truth, and a missing or
+        unparseable grant means no free daily credits.
+        """
         plan_row = await self._db.fetch_one(
             """
             SELECT daily_credits
@@ -93,21 +97,10 @@ class CreditService:
             LIMIT 1
             """
         )
-        if plan_row is not None:
-            try:
-                return max(0, int(_row_value(plan_row, "daily_credits") or 0))
-            except (TypeError, ValueError):
-                pass
-        row = await self._db.fetch_one(
-            "SELECT value FROM system_settings WHERE key = $1",
-            WEB_MUSIC_FREE_DAILY_CREDITS_KEY,
-        )
-        raw = _row_value(row, "value")
         try:
-            limit = int(raw)
+            return max(0, int(_row_value(plan_row, "daily_credits") or 0))
         except (TypeError, ValueError):
-            limit = WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT
-        return max(0, limit)
+            return 0
 
     async def free_reset_period(self) -> str:
         """Free music-web allowance refill cadence: 'daily' or 'monthly'.
