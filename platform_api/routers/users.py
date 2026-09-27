@@ -299,8 +299,6 @@ def _save_user_avatar(*, user_id: UUID, data: bytes, content_type: str) -> str:
 
 
 MUSIC_WEB_PRODUCT = "music_web"
-WEB_MUSIC_FREE_DAILY_CREDITS_KEY = "web_music_free_daily_credits"
-WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT = 50
 
 
 async def _fetch_optional_rows(pool, query: str, *args):
@@ -344,28 +342,9 @@ def _paid_music_credit_fields(
     return remaining, limit, burned, str(plan_name) if plan_name else None
 
 
-def _free_music_credit_fields(used: int, daily_limit: int) -> tuple[int, int, float]:
-    remaining = max(0, daily_limit - used)
-    return remaining, daily_limit, float(used)
-
-
 def _studio_credits_burned(units: int | None) -> float:
     """Debit rows are stored as signed micro-units; never show negative burn."""
     return units_to_credits(abs(int(units or 0)))
-
-
-async def _web_music_daily_free_limit(pool) -> int:
-    row = await _fetch_optional_row(
-        pool,
-        "SELECT value FROM system_settings WHERE key = $1",
-        WEB_MUSIC_FREE_DAILY_CREDITS_KEY,
-    )
-    raw = None if row is None else row["value"]
-    try:
-        limit = int(raw)
-    except (TypeError, ValueError):
-        limit = WEB_MUSIC_FREE_DAILY_CREDITS_DEFAULT
-    return max(0, limit)
 
 
 def _user_to_response(

@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- Deleted the unmounted `MusicWebFreeCreditsSection`; free daily credits are edited on the **Free** plan row. See `docs/changelog/2026-09-27-retire-web-music-free-daily-settings.md`.
+
 ### Added
 
 - Credits-only plan editor has **Pricing page features** and **Pricing credit captions** textareas (one line per bullet / caption). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.

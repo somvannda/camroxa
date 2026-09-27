@@ -78,4 +78,5 @@ signup-farm caps are unchanged.
   `total_credits` is correct (V3 `wallet_view` reads the shared `credit_wallets`
   table), so this is display-only.
 - Legacy settings `web_music_free_daily_limit = 5` / `web_music_free_daily_credits = 50`
-  are now redundant with credit gating.
+  are now redundant with credit gating. Retired in
+  `docs/changelog/2026-09-27-retire-web-music-free-daily-settings.md`.
