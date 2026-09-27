@@ -260,6 +260,34 @@ class WebMusicService:
             },
         )
 
+    async def has_generation_credits(self, user_id: UUID) -> bool:
+        """True when the user can pay for a generation from their own balance.
+
+        Paid plans and any positive available balance count, including the
+        free daily credit grant. Used to exempt credit-funded users from the
+        per-IP daily generation farm cap (abuse_detection); their credits are
+        then the only gate on how many songs they generate per day.
+        """
+        try:
+            if await self._has_pro(user_id):
+                return True
+
+            if await self._credits_only_v3_enabled():
+                spendable, _music_credits, paid_web = (
+                    await self._web_music_charge_bridge().spendable_credits(user_id)
+                )
+                return paid_web or spendable > 0
+
+            if self._credit_service is None:
+                return False
+            balance = await self._credit_service.get_detailed_balance(str(user_id))
+            return bool(balance.has_subscription) or int(balance.total_available) > 0
+        except Exception:
+            logger.debug(
+                "Credit check for generation cap failed for %s", user_id, exc_info=True
+            )
+            return False
+
     async def _is_paid_queue_user(self, user_id: UUID) -> bool:
         if self._credit_service is not None:
             try:
