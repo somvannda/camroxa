@@ -73,9 +73,11 @@ signup-farm caps are unchanged.
   `_enforce_plan_quotas`, and subscription plans bypass the daily quota via
   wallet credits (`_can_wallet_daily_bypass`). No action needed for this fix;
   the sandbox/prod drift is only worth aligning for consistency.
-- Frontend `mergeV3CreditBalance(v3, null)` mis-derives `topup_credits` and
-  `daily_free_*` because the V2 wallet is only fetched when the V3 call throws.
-  `total_credits` is correct (V3 `wallet_view` reads the shared `credit_wallets`
-  table), so this is display-only.
+- Frontend `mergeV3CreditBalance(v3, null)` mis-derived the breakdown from wallet
+  grant **lots**, which are only zeroed on expiry and never on spend, so
+  `grant_remaining` / `monthly_credits_used` / `topup_credits` / `daily_free_*`
+  reported the granted amount. `total_credits` was correct (V3 `wallet_view`
+  reads the shared `credit_wallets` table). Fixed by splitting the authoritative
+  balance instead — see `docs/changelog/2026-09-27-web-music-credit-balance-split.md`.
 - Legacy settings `web_music_free_daily_limit = 5` / `web_music_free_daily_credits = 50`
   are now redundant with credit gating.
