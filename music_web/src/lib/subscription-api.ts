@@ -2,6 +2,7 @@
 
 import { musicAuthFetch } from '@/lib/auth-fetch';
 import { creditResetLabel, normalizeFeatureLines } from '@/lib/credit-display';
+import { splitCreditBalance } from '@/lib/credit-merge';
 
 export {
   PUBLIC_CARD_BULLETS,
@@ -90,54 +91,58 @@ export type V3WalletView = {
 };
 
 function asCredits(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
 }
 
+/**
+ * Map the V3 wallet view onto the shared `CreditBalance` shape.
+ *
+ * Lot `remaining_credits` is only zeroed on expiry and never on spend (charging
+ * only debits `credit_wallets`), so it reports the granted amount rather than a
+ * remainder. Splitting the authoritative wallet balance keeps the usage figures
+ * correct. Falls back to the V2 view when V3 omits a field.
+ */
 export function mergeV3CreditBalance(
   v3: V3WalletView | null,
   v2: CreditBalance | null,
 ): CreditBalance | null {
-  if (!v3 && !v2) return null;
+  if (!v3) return v2 ?? null;
 
-  const v3Balance = asCredits(v3?.balance_credits);
-  const grantRemaining = asCredits(v3?.grant_remaining_credits);
-  const planMonthly = asCredits(v3?.plan?.monthly_credits);
-  const planDaily = asCredits(v3?.plan?.daily_credits);
-  const dailyLot = (v3?.lots ?? [])
-    .filter((lot) => String(lot.tag || '') === 'daily_grant')
-    .reduce((sum, lot) => sum + asCredits(lot.remaining_credits), 0);
-
-  const hasPaidWeb = Boolean(v2?.has_subscription);
-  const planPrice = Number(v3?.plan?.price_cents ?? 0);
-  const hasPaidPlan = hasPaidWeb || planPrice > 0;
-  const total = v3Balance;
+  const total = asCredits(v3.balance_credits);
+  const planMonthly = asCredits(v3.plan?.monthly_credits);
+  const planDaily = asCredits(v3.plan?.daily_credits);
+  const hasPaidPlan = Boolean(v2?.has_subscription) || Number(v3.plan?.price_cents ?? 0) > 0;
   const dailyLimit = planDaily || asCredits(v2?.daily_free_limit);
-  const dailyRemaining = dailyLot || (!hasPaidPlan ? v3Balance : 0);
+  const monthlyPool = planMonthly || asCredits(v2?.monthly_credits);
+
+  const { dailyFree, monthlyRemaining, monthlyUsed, topup } = splitCreditBalance(
+    total,
+    dailyLimit,
+    monthlyPool,
+  );
 
   return {
     total_credits: total,
-    monthly_credits: planMonthly || grantRemaining || asCredits(v2?.monthly_credits),
-    monthly_credits_used: Math.max(0, (planMonthly || asCredits(v2?.monthly_credits)) - grantRemaining),
-    topup_credits: hasPaidWeb && v3Balance <= 0
-      ? asCredits(v2?.topup_credits)
-      : Math.max(0, v3Balance - grantRemaining - dailyRemaining),
-    daily_free_credits: dailyRemaining,
+    monthly_credits: monthlyPool,
+    monthly_credits_used: monthlyUsed,
+    topup_credits: topup,
+    daily_free_credits: dailyFree,
     daily_free_limit: dailyLimit,
-    daily_free_used: Math.max(0, dailyLimit - dailyRemaining),
+    daily_free_used: Math.max(0, dailyLimit - dailyFree),
     has_subscription: hasPaidPlan,
     reset_label: creditResetLabel({
       daily_credits: planDaily,
       monthly_credits: planMonthly,
-      reset_label: v3?.reset_label,
+      reset_label: v3.reset_label,
     }),
     current_period_end: v2?.current_period_end ?? null,
     reset_at: v2?.reset_at ?? null,
-    grant_remaining: grantRemaining,
+    grant_remaining: monthlyRemaining,
     breakdown: {
-      monthly: grantRemaining,
-      topup: Math.max(0, total - grantRemaining - dailyRemaining),
-      daily_free: dailyRemaining,
+      monthly: monthlyRemaining,
+      topup,
+      daily_free: dailyFree,
     },
   };
 }
