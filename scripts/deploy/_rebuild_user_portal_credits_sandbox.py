@@ -33,7 +33,7 @@ FILES = [
 def load_env(name: str) -> dict[str, str]:
     data: dict[str, str] = {}
     path = None
-    for root in (ROOT, Path(r"D:\\Development\\Projects\\Electron\\MusicGenerator")):
+    for root in (ROOT, Path(r"G:\\Developments\\Projects\\Camxora\\MusicGenerator")):
         cand = root / ".deploy" / name
         if cand.is_file():
             path = cand

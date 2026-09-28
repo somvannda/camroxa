@@ -15,7 +15,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR / ".venv" / "Lib" / "site-packages"))
-PRIMARY = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+PRIMARY = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 for candidate in (PRIMARY / "scripts" / "deploy", SCRIPT_DIR):
     venv_site = candidate / ".venv" / "Lib" / "site-packages"
     if venv_site.is_dir():

@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PRIMARY = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+PRIMARY = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 SCRIPT_DIR = Path(__file__).resolve().parent
 _DEPLOY_CANDIDATES = [PRIMARY / "scripts" / "deploy", SCRIPT_DIR]
 for candidate in _DEPLOY_CANDIDATES:

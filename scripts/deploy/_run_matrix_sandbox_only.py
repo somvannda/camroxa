@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-HOST_CANDIDATES = (ROOT, Path(r"D:\Development\Projects\Electron\MusicGenerator"))
+HOST_CANDIDATES = (ROOT, Path(r"G:\Developments\Projects\Camxora\MusicGenerator"))
 DEPLOY = ROOT / "scripts" / "deploy"
 sys.path.insert(0, str(DEPLOY / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(DEPLOY))

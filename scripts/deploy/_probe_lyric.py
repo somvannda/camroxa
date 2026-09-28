@@ -1,8 +1,8 @@
 ﻿from pathlib import Path
 import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-ROOT = Path(r"D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3")
-DEPLOY = Path(r"D:\Development\Projects\Electron\MusicGenerator\scripts\deploy")
+ROOT = Path(r"G:\Developments\Projects\Camxora\MusicGenerator-credits-only-api-v3")
+DEPLOY = Path(r"G:\Developments\Projects\Camxora\MusicGenerator\scripts\deploy")
 sys.path.insert(0, str(DEPLOY / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(DEPLOY))
 from deploy import ensure_deploy_key, load_sandbox_secrets, resolve_sandbox_ssh, ssh_connect

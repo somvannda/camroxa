@@ -2,7 +2,7 @@
 
 **Spec branch:** `docs/credits-only-plan-unification`  
 **Implementation branch:** `feature/credits-only-api-v3`  
-**Worktree:** `D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3`  
+**Worktree:** `G:\Developments\Projects\Camxora\MusicGenerator-credits-only-api-v3`  
 **Date:** 2026-08-23  
 **Status:** Product lock unchanged. Item 17 (one wallet) is implemented on **sandbox**. Production deploy + existing-user leftover mint wait for an explicit ask.  
 **Base:** `main` @ `193ecf1b`

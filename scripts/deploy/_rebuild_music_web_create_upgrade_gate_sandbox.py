@@ -19,7 +19,7 @@ FILES = [
 ]
 HOST_CANDIDATES = (
     ROOT,
-    Path(r"D:\Development\Projects\Electron\MusicGenerator"),
+    Path(r"G:\Developments\Projects\Camxora\MusicGenerator"),
 )
 
 

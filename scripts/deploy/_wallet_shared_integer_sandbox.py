@@ -93,7 +93,7 @@ PY'
 
 
 def load_sandbox() -> dict[str, str]:
-    for root in (ROOT, Path(r"D:\Development\Projects\Electron\MusicGenerator")):
+    for root in (ROOT, Path(r"G:\Developments\Projects\Camxora\MusicGenerator")):
         path = root / ".deploy" / "secrets.sandbox.env"
         if path.is_file():
             break

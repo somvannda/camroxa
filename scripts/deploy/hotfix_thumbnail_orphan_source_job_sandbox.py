@@ -10,7 +10,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 FILE_REPO = Path(os.environ.get("CAMXORA_HOTFIX_REPO") or SCRIPT_DIR.parents[1])
 # Secrets / paramiko venv often live on the primary checkout, not a worktree.
-_PRIMARY = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+_PRIMARY = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 _DEPLOY_CANDIDATES = [_PRIMARY / "scripts" / "deploy", SCRIPT_DIR]
 for candidate in _DEPLOY_CANDIDATES:
     venv_site = candidate / ".venv" / "Lib" / "site-packages"

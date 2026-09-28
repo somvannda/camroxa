@@ -1,6 +1,6 @@
 ﻿import sys
 from pathlib import Path
-d = Path(r"D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3\scripts\deploy")
+d = Path(r"G:\Developments\Projects\Camxora\MusicGenerator-credits-only-api-v3\scripts\deploy")
 sys.path.insert(0, str(d / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(d))
 from deploy import ensure_deploy_key, load_sandbox_secrets, resolve_sandbox_ssh, ssh_connect

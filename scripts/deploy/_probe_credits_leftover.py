@@ -1,7 +1,7 @@
 ﻿from pathlib import Path
 import json, sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-ROOT = Path(r"D:\Development\Projects\Electron\MusicGenerator-credits-only-api-v3")
+ROOT = Path(r"G:\Developments\Projects\Camxora\MusicGenerator-credits-only-api-v3")
 DEPLOY = ROOT / "scripts" / "deploy"
 sys.path.insert(0, str(DEPLOY / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(DEPLOY))

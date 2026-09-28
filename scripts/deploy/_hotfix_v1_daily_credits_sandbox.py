@@ -23,7 +23,7 @@ FILES = [
 def load_sandbox() -> dict[str, str]:
     path = ROOT / ".deploy" / "secrets.sandbox.env"
     if not path.is_file():
-        path = Path(r"D:\Development\Projects\Electron\MusicGenerator") / ".deploy" / "secrets.sandbox.env"
+        path = Path(r"G:\Developments\Projects\Camxora\MusicGenerator") / ".deploy" / "secrets.sandbox.env"
     data: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()

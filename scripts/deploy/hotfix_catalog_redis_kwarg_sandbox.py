@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 CODE_ROOT = Path(__file__).resolve().parents[2]
-HOST_REPO = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+HOST_REPO = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 if not (HOST_REPO / ".deploy" / "secrets.sandbox.env").is_file():
     HOST_REPO = CODE_ROOT
 DEPLOY = HOST_REPO / "scripts" / "deploy"
