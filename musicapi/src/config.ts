@@ -19,6 +19,22 @@ function resolveJwtSecret(): string {
   return secret;
 }
 
+/**
+ * Resolve the AES-256 key used to encrypt Suno `client_cookie` values at rest.
+ * Refuse to start when it is missing or the wrong size — silently falling back
+ * would store account cookies in plaintext, defeating the point of encrypting.
+ */
+function resolveCookieEncryptionKey(): Buffer {
+  const raw = process.env.COOKIE_ENCRYPTION_KEY ?? "";
+  if (!/^[0-9a-fA-F]{64}$/.test(raw)) {
+    throw new Error(
+      "COOKIE_ENCRYPTION_KEY must be a 64-character hex string (32 bytes). Generate one with: " +
+        "node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+    );
+  }
+  return Buffer.from(raw, "hex");
+}
+
 export const config = {
   /** Full cookie header (optional, sent as `Cookie` on Clerk requests). */
   cookie: process.env.SUNO_COOKIE ?? "",
@@ -46,6 +62,8 @@ export const config = {
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean),
   jwtSecret: resolveJwtSecret(),
+  /** AES-256-GCM key for `suno_accounts.client_cookie` at rest. */
+  cookieEncryptionKey: resolveCookieEncryptionKey(),
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",
     accountId: process.env.BAKONG_ACCOUNT_ID ?? "",

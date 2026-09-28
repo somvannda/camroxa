@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { SunoClient, AccountCreds, BillingInfo } from "./client.js";
+import { decryptCookie } from "./cookieCrypto.js";
 import { query } from "./db.js";
 
 export type RoutingPolicy = "prefer_free" | "paid_only" | "any";
@@ -59,7 +60,7 @@ export class AccountPool {
     );
     const accounts: AccountCreds[] = rows.map((r) => ({
       id: r.label,
-      clientCookie: r.client_cookie,
+      clientCookie: decryptCookie(r.client_cookie),
       deviceId: r.device_id,
       type: r.type === "paid" ? "paid" : "free",
     }));

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { pool } from "../src/db.js";
 import { hashPassword } from "../src/appAuth.js";
+import { encryptCookie } from "../src/cookieCrypto.js";
 
 function hashKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -47,7 +48,7 @@ async function main() {
       if (exists.rows.length) continue;
       await pool.query(
         "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, 'free', $2, $3)",
-        [a.id, a.clientCookie, a.deviceId],
+        [a.id, encryptCookie(a.clientCookie), a.deviceId],
       );
     }
   } catch {

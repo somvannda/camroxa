@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
+import { encryptCookie } from "./cookieCrypto.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, UserPayload } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
@@ -1864,7 +1865,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const t = type === "paid" ? "paid" : "free";
     const rows = await query<{ id: string }>(
       "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, $2, $3, $4) RETURNING id",
-      [label, t, client_cookie, device_id],
+      [label, t, encryptCookie(client_cookie), device_id],
     );
     return reply.code(201).send({ id: rows[0].id });
   });
