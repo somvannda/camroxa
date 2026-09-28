@@ -352,6 +352,119 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     );
   }
 
+  // --- job persistence -----------------------------------------------------
+  // Live job state lives in the in-memory `jobs` map for fast handler reads, but
+  // every transition is mirrored to the `jobs` table so an in-flight job survives
+  // a restart. On boot `recoverJobs()` fails out anything left pending/running.
+  async function saveJob(job: Job): Promise<void> {
+    await query(
+      `INSERT INTO jobs
+         (id, type, status, account_id, result_json, error, callback_url,
+          user_id, api_key_id, endpoint, model, prompt, credits, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, to_timestamp($14 / 1000.0), now())
+       ON CONFLICT (id) DO UPDATE SET
+         status = EXCLUDED.status,
+         account_id = EXCLUDED.account_id,
+         result_json = EXCLUDED.result_json,
+         error = EXCLUDED.error,
+         updated_at = now()`,
+      [
+        job.id,
+        job.type,
+        job.status,
+        job.accountId ?? null,
+        job.result === undefined ? null : JSON.stringify(job.result),
+        job.error ?? null,
+        job.callbackUrl ?? null,
+        job.userId ?? null,
+        job.apiKeyId ?? null,
+        job.endpoint ?? null,
+        job.model ?? null,
+        job.prompt ?? null,
+        job.credits ?? null,
+        job.createdAt,
+      ],
+    );
+  }
+
+  interface JobRow {
+    id: string;
+    type: Job["type"];
+    status: Job["status"];
+    account_id: string | null;
+    result_json: unknown;
+    error: string | null;
+    callback_url: string | null;
+    user_id: string | null;
+    api_key_id: string | null;
+    endpoint: string | null;
+    model: string | null;
+    prompt: string | null;
+    credits: number | null;
+    created_at: Date;
+  }
+
+  const JOB_COLUMNS =
+    "id, type, status, account_id, result_json, error, callback_url, user_id, api_key_id, endpoint, model, prompt, credits, created_at";
+
+  function rowToJob(row: JobRow): Job {
+    return {
+      id: row.id,
+      type: row.type,
+      status: row.status,
+      accountId: row.account_id ?? undefined,
+      result: row.result_json ?? undefined,
+      error: row.error ?? undefined,
+      callbackUrl: row.callback_url ?? undefined,
+      userId: row.user_id ?? undefined,
+      apiKeyId: row.api_key_id ?? undefined,
+      endpoint: row.endpoint ?? undefined,
+      model: row.model ?? undefined,
+      prompt: row.prompt ?? undefined,
+      credits: row.credits ?? undefined,
+      createdAt: new Date(row.created_at).getTime(),
+    };
+  }
+
+  /** Read a job from the in-memory cache, falling back to the persisted row. */
+  async function getJob(id: string): Promise<Job | null> {
+    const cached = jobs.get(id);
+    if (cached) return cached;
+    const row = await queryOne<JobRow>(`SELECT ${JOB_COLUMNS} FROM jobs WHERE id = $1`, [id]);
+    if (!row) return null;
+    const job = rowToJob(row);
+    jobs.set(job.id, job);
+    return job;
+  }
+
+  /**
+   * Fail out jobs that were still pending/running when the process stopped: the
+   * in-memory worker that would have finished them is gone, so mark them errored
+   * and finalize (usage log + callback) instead of leaving clients polling a job
+   * the server no longer knows about.
+   */
+  async function recoverJobs(): Promise<void> {
+    const rows = await query<JobRow>(
+      `SELECT ${JOB_COLUMNS} FROM jobs WHERE status IN ('pending','running','streaming')`,
+    );
+    if (rows.length === 0) return;
+    for (const row of rows) {
+      const job = rowToJob(row);
+      job.status = "error";
+      job.error = "Interrupted by server restart.";
+      jobs.set(job.id, job);
+      await saveJob(job);
+      await finalizeJob(job);
+    }
+    console.warn(`[jobs] recovered ${rows.length} interrupted job(s) as errors.`);
+  }
+
+  // Fail out interrupted jobs once the server is ready (after the DB is
+  // reachable), before we start accepting requests.
+  app.addHook("onReady", async () => {
+    await recoverJobs();
+  });
+
   function newJob(type: Job["type"], callbackUrl?: string): Job {
     const job: Job = {
       id: randomUUID(),
@@ -431,6 +544,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
 
   // --- background workers --------------------------------------------------
   async function finalizeJob(job: Job): Promise<void> {
+    await saveJob(job);
     if (job.userId && job.apiKeyId) {
       await recordUsage({
         userId: job.userId,
@@ -463,6 +577,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const maxAttempts = Math.min(3, pool.size);
     const errors: string[] = [];
 
+    await saveJob(job);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
@@ -475,6 +590,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
 
       job.status = "running";
       job.accountId = client.account.id;
+      await saveJob(job);
       try {
         const clips = await submitFactory(client);
         const ids = clips.map((c) => c.id);
@@ -511,6 +627,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const maxAttempts = Math.min(3, pool.size);
     const errors: string[] = [];
 
+    await saveJob(job);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
@@ -523,6 +640,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
 
       job.status = "running";
       job.accountId = client.account.id;
+      await saveJob(job);
       try {
         job.result = await submitFactory(client);
         job.status = "complete";
@@ -1058,7 +1176,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
-    const job = jobs.get(id);
+    const job = await getJob(id);
     if (job && job.userId === u.id) {
       const clips = normalizeClips(job.result);
       return {
@@ -1363,19 +1481,25 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
   app.get("/me/jobs/running", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
-    const live = Array.from(jobs.values()).filter(
-      (j) => j.userId === u.id && ["pending", "running", "streaming"].includes(j.status),
+    const rows = await query<JobRow>(
+      `SELECT ${JOB_COLUMNS} FROM jobs
+       WHERE user_id = $1 AND status IN ('pending','running','streaming')
+       ORDER BY created_at DESC`,
+      [u.id],
     );
-    return live.map((j) => ({
-      job_id: j.id,
-      type: j.type,
-      status: j.status,
-      endpoint: j.endpoint,
-      prompt: j.prompt,
-      model: j.model,
-      credits: j.credits,
-      created_at: j.createdAt,
-    }));
+    return rows.map((row) => {
+      const j = rowToJob(row);
+      return {
+        job_id: j.id,
+        type: j.type,
+        status: j.status,
+        endpoint: j.endpoint,
+        prompt: j.prompt,
+        model: j.model,
+        credits: j.credits,
+        created_at: j.createdAt,
+      };
+    });
   });
 
   // T3: POST /me/music and POST /me/sounds aliases for /me/generate
@@ -2390,7 +2514,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
-    const job = jobs.get(id);
+    const job = await getJob(id);
     if (!job) return reply.code(404).send({ error: "Task not found." });
     return {
       job_id: job.id,
@@ -2925,7 +3049,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       const q = (req.query ?? {}) as { taskId?: string; task_id?: string };
       const id = q.taskId || q.task_id;
       if (!id) return reply.code(400).send({ error: "taskId is required." });
-      const job = jobs.get(id);
+      const job = await getJob(id);
       if (!job) return reply.code(404).send({ error: "task not found." });
       if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
       return sunoRecordInfo(job);
