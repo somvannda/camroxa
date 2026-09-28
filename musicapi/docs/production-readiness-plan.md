@@ -63,13 +63,17 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 |---|---|---|---|---|
 | 2.1 | Persist jobs (Postgres or Redis/BullMQ); recover on restart | `feat/musicapi-job-persistence` | restart mid-job resolves | `[ ]` |
 | 2.2 | `.catch()` detached workers + `unhandledRejection`/`SIGTERM` | `fix/musicapi-worker-safety` | graceful drain | `[ ]` |
-| 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit | `[ ]` |
+| 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit | `[x]` |
 | 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[ ]` |
 | 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[ ]` |
 | 2.6 | Ordered idempotent migration runner | `feat/musicapi-migrations` | fresh + existing DB migrate | `[ ]` |
 | 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
 
 **Gate:** restart-safe; no lost/refunded-money bugs; clean migrations.
+
+> **Note (2.3):** Added `scripts/migrate-credit-ledger.ts` (`credit_transactions.job_id` + partial unique index `uq_credit_tx_job_type (job_id, type)` where `job_id IS NOT NULL`). `finalizeJob()` now calls `settleCredits(job)`: every settled job writes a `spend` row (negative amount) and a terminal `error` job additionally writes a `refund` row (positive amount) and restores the charged credits to the original `api_keys` row. Both writes use `ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING`, and the credit restore only runs when the refund insert actually returns a row, so a retried/duplicated finalize can never double-refund.
+>
+> **Verification (temp harness, since deleted):** (A) a job whose worker throws a non-retryable error reached terminal `error`, wrote `spend -2` + `refund +2`, and left `api_keys.credits` at its pre-charge value (100 → 100); (B) a successful job wrote exactly one `spend -2` row, no refund, and kept the charge (100 → 98); (C) replaying the refund insert for the same `job_id` returned 0 rows and did not move credits. `npm run typecheck` clean.
 
 ---
 
