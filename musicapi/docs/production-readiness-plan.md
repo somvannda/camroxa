@@ -121,7 +121,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 | # | Task | Branch | Verification | Status |
 |---|---|---|---|---|
-| 3.1 | Env-driven backend URL (both apps) | `fix/musicapi-fe-backend-url` | prod host via env | `[ ]` |
+| 3.1 | Env-driven backend URL (both apps) | `fix/musicapi-fe-backend-url` | prod host via env ✅ `BACKEND_URL` baked into both rewrites | `[x]` |
 | 3.2 | Real session (httpOnly cookie or documented token + 401 logout) | `feat/musicapi-session` | expired → `/login` | `[ ]` |
 | 3.3 | web-admin server-side guard (`middleware.ts` + role check) | `feat/musicapi-admin-guard` | non-admin blocked | `[ ]` |
 | 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 | `[ ]` |
@@ -132,6 +132,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI | `[ ]` |
 
 **Gate:** both apps build against prod env; no spoofable auth; no fake data.
+
+> **Note (3.1):** the functional switch already landed in Phase 0.5 (`a3700b47`): both Next apps rewrite `/backend/:path*` to `process.env.BACKEND_URL` and the browser only ever calls the relative `/backend` path, so no host is hardcoded client-side. This task closes the deploy contract: each app now ships its own `.env.example` documenting `BACKEND_URL` (with a `!.env.example` negation in each app's `.gitignore`, since the templates ignore `.env*`). Verified by building both apps with `BACKEND_URL=https://api.camxora.example` and reading `.next/routes-manifest.json` — the rewrite `destination` is `https://api.camxora.example/:path*` for **both** `web-user` and `web-admin` (env read at build time; the `localhost:4003` fallback only applies when unset).
 
 ---
 
