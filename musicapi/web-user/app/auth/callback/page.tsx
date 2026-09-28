@@ -10,6 +10,7 @@ function GoogleCallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
   const code = params.get("code") ?? "";
+  const state = params.get("state") ?? "";
   const error = params.get("error") ?? "";
 
   const [busy, setBusy] = useState(true);
@@ -25,13 +26,13 @@ function GoogleCallbackInner() {
         setErr(`Google denied access: ${error}. Please try again.`);
         return;
       }
-      if (!code) {
+      if (!code || !state) {
         setBusy(false);
-        setErr("Missing authorization code. Try signing in again.");
+        setErr("Missing authorization details. Try signing in again.");
         return;
       }
       try {
-        await completeGoogleCallback(code);
+        await completeGoogleCallback(state, code);
         if (cancelled) return;
         const redirectTo =
           (typeof window !== "undefined" &&
@@ -48,7 +49,7 @@ function GoogleCallbackInner() {
     return () => {
       cancelled = true;
     };
-  }, [code, error, router]);
+  }, [code, state, error, router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center p-6">

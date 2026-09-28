@@ -30,13 +30,15 @@ export default function GoogleSignInButton({
     setLoading(true);
     setError("");
     try {
-      const { url } = await apiFetch<{ url: string }>(
+      const { url, state } = await apiFetch<{ url: string; state: string }>(
         `/auth/google/url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
       );
 
       if (typeof window !== "undefined") {
         localStorage.setItem("google_auth_redirect", redirectTo);
-        localStorage.setItem("google_auth_redirect_uri", REDIRECT_URI);
+        // Google echoes the signed state back to the callback route; keep it as
+        // a fallback in case the query param is lost in transit.
+        localStorage.setItem("google_auth_state", state);
       }
 
       window.location.href = url;
@@ -83,20 +85,16 @@ export default function GoogleSignInButton({
   );
 }
 
-export async function completeGoogleCallback(code: string): Promise<{
+export async function completeGoogleCallback(state: string, code: string): Promise<{
   token: string;
   user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
 }> {
-  const redirectUri =
-    (typeof window !== "undefined" &&
-      localStorage.getItem("google_auth_redirect_uri")) ||
-    undefined;
   const res = await apiFetch<{
     token: string;
     user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
   }>("/auth/google/callback", {
     method: "POST",
-    body: JSON.stringify({ code, redirect_uri: redirectUri }),
+    body: JSON.stringify({ code, state }),
   });
   setSession(res.token, res.user);
   return res;

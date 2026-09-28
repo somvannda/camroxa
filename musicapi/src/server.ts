@@ -5,7 +5,7 @@ import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
 import { encryptCookie } from "./cookieCrypto.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
-import { hashPassword, verifyPassword, signToken, verifyToken, UserPayload } from "./appAuth.js";
+import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
 import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
@@ -659,30 +659,39 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
   //         or omit for user-facing default (4001).
   app.get("/auth/google/url", (req, reply) => {
     const { redirect_uri } = (req.query ?? {}) as { redirect_uri?: string };
-    const { client } = resolveGoogleClient(redirect_uri);
+    const { client, redirectUri } = resolveGoogleClient(redirect_uri);
     if (!client) {
       return reply.code(503).send({
         error:
           "Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables and restart.",
       });
     }
+    // Signed state carries the allowlisted redirect URI and is echoed back by
+    // Google; the callback verifies it instead of trusting the client.
+    const state = signOAuthState(redirectUri);
     const url = client.generateAuthUrl({
       access_type: "offline",
       scope: ["openid", "email", "profile"],
       prompt: "select_account",
+      state,
     });
-    return { url };
+    return { url, state };
   });
 
   // Step 2: Exchange the code Google returned → id_token → upsert user → return session token
-  //         Body: { code, redirect_uri? } — redirect_uri must match what was used in Step 1.
+  //         Body: { code, state } — state is the signed value returned by Step 1.
   app.post("/auth/google/callback", async (req, reply) => {
-    const { code, redirect_uri } = (req.body ?? {}) as { code?: string; redirect_uri?: string };
-    const { client } = resolveGoogleClient(redirect_uri);
+    const { code, state } = (req.body ?? {}) as { code?: string; state?: string };
+    if (!code) return reply.code(400).send({ error: "code is required." });
+    if (!state) return reply.code(400).send({ error: "state is required." });
+    const verifiedState = verifyOAuthState(state);
+    if (!verifiedState) {
+      return reply.code(400).send({ error: "Invalid or expired OAuth state." });
+    }
+    const { client } = resolveGoogleClient(verifiedState.redirectUri);
     if (!client) {
       return reply.code(503).send({ error: "Google sign-in is not configured." });
     }
-    if (!code) return reply.code(400).send({ error: "code is required." });
     try {
       const { tokens } = await client.getToken(code);
       const idToken = tokens.id_token;
@@ -691,6 +700,11 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       const payload = ticket.getPayload();
       if (!payload || !payload.email || !payload.sub) {
         return reply.code(400).send({ error: "Google did not return a valid profile." });
+      }
+      // Never trust an unverified Google email: it is used to link/merge
+      // accounts below, so an unverified address could take over a user.
+      if (payload.email_verified !== true) {
+        return reply.code(403).send({ error: "Google account email is not verified." });
       }
       const googleId = payload.sub;
       const email = payload.email.toLowerCase();
