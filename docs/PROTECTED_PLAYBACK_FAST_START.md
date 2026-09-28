@@ -3,7 +3,7 @@
 **Status:** Code on `feature/protected-playback-fast-start` (phases 0–4). Sandbox deployed 2026-08-21. Not committed. Not production.  
 **Date:** 2026-08-21  
 **Branch:** `feature/protected-playback-fast-start`  
-**Worktree:** `D:\Development\Projects\Electron\MusicGenerator-ios-safari-ship`  
+**Worktree:** `G:\Developments\Projects\Camxora\MusicGenerator-ios-safari-ship`  
 **Surfaces:** `music_web`, `platform_api`  
 **Related:** [`changelog/2026-08-20-protected-playback.md`](./changelog/2026-08-20-protected-playback.md), [`changelog/2026-08-21-ios-safari-playback.md`](./changelog/2026-08-21-ios-safari-playback.md), [`changelog/2026-08-21-protected-playback-fast-start.md`](./changelog/2026-08-21-protected-playback-fast-start.md)
 

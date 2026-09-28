@@ -23,7 +23,7 @@ from deploy import (  # noqa: E402
 
 PRODUCTION_HOST = "82.197.71.248"
 REPO = SCRIPT_DIR.parents[1]
-WORKTREE = Path(r"D:\Development\Projects\Electron\MusicGenerator-music-web-generate-assist")
+WORKTREE = Path(r"G:\Developments\Projects\Camxora\MusicGenerator-music-web-generate-assist")
 PATCHED = REPO / ".dbg" / "prod_web_music"
 
 SOURCES = {

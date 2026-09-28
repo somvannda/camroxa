@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN_DEPLOY = Path(r"D:\Development\Projects\Electron\MusicGenerator\scripts\deploy")
+MAIN_DEPLOY = Path(r"G:\Developments\Projects\Camxora\MusicGenerator\scripts\deploy")
 DEPLOY_CANDIDATES = [MAIN_DEPLOY, ROOT / "scripts" / "deploy"]
 for candidate in DEPLOY_CANDIDATES:
     venv_site = candidate / ".venv" / "Lib" / "site-packages"

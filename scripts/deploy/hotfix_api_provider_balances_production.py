@@ -21,7 +21,7 @@ from deploy import (  # noqa: E402
     ssh_connect,
 )
 
-MAIN_ROOT = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+MAIN_ROOT = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 
 # File-scoped: only provider-balance pieces + wiring from main.
 FILES = (

@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-HOST_REPO = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+HOST_REPO = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 DEPLOY = HOST_REPO / "scripts" / "deploy"
 sys.path.insert(0, str(DEPLOY / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(DEPLOY))

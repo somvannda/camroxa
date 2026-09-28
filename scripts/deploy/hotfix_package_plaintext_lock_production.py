@@ -7,9 +7,9 @@ import sys
 import time
 from pathlib import Path
 
-FILL_GAPS = Path(r"D:\Development\Projects\Electron\MusicGenerator-fill-gaps")
+FILL_GAPS = Path(r"G:\Developments\Projects\Camxora\MusicGenerator-fill-gaps")
 CODE_ROOT = Path(__file__).resolve().parents[2]
-HOST_REPO = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+HOST_REPO = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 if not (HOST_REPO / ".deploy" / "secrets.production.env").is_file():
     HOST_REPO = CODE_ROOT
 DEPLOY = HOST_REPO / "scripts" / "deploy"

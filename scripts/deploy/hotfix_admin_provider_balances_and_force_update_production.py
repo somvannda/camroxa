@@ -17,7 +17,7 @@ from deploy import (  # noqa: E402
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MAIN_ROOT = Path(r"D:\Development\Projects\Electron\MusicGenerator")
+MAIN_ROOT = Path(r"G:\Developments\Projects\Camxora\MusicGenerator")
 
 
 def main() -> int:

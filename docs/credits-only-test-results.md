@@ -115,7 +115,7 @@ Left OFF. This follow-up did not flip credits_only_v3_charge. Music pricing + cr
 
 ## Desktop morning command
 Not launched (would steal GUI session). Inspected remaining_month_card.py: CREDITS wallet + spent this month; no plan meters. If launching later:
-   cd /d D:\\Development\\Projects\\Electron\\MusicGenerator-credits-only-api-v3\\camxora_python
+   cd /d G:\\Developments\\Projects\\Camxora\\MusicGenerator-credits-only-api-v3\\camxora_python
    copy .env.sandbox.example .env if needed
    python main.py
 Host api.sandbox.camxora.com/api/v1.
