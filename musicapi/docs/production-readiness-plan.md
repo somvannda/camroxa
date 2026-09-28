@@ -123,7 +123,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 |---|---|---|---|---|
 | 3.1 | Env-driven backend URL (both apps) | `fix/musicapi-fe-backend-url` | prod host via env ✅ `BACKEND_URL` baked into both rewrites | `[x]` |
 | 3.2 | Real session (httpOnly cookie or documented token + 401 logout) | `feat/musicapi-session` | expired → `/login` ✅ `sunosession` httpOnly cookie + CSRF | `[x]` |
-| 3.3 | web-admin server-side guard (`middleware.ts` + role check) | `feat/musicapi-admin-guard` | non-admin blocked | `[ ]` |
+| 3.3 | web-admin server-side guard (`proxy.ts` + role check) | `feat/musicapi-admin-guard` | non-admin blocked ✅ cookie → `/auth/me` → `/login` | `[x]` |
 | 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 | `[ ]` |
 | 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | chart matches API | `[ ]` |
 | 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work | `[ ]` |
@@ -157,6 +157,28 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > updated to the cookie model; `authorizedFetch` (playground/downloads) now also bounces
 > to `/login` on `401`. New env docs in `.env.example`: `SESSION_COOKIE_SECURE`,
 > `FRONTEND_ORIGINS`.
+>
+> **Note (3.3):** web-admin access control is now **server-side**. The old guard was a
+> client component (`app/admin/layout.tsx` + `app/page.tsx` calling `getUser()` and
+> `router.replace`) reading a `localStorage` profile that any visitor could spoof — it
+> blocked nobody who opened devtools. Replaced by `web-admin/proxy.ts` (Next.js **16**
+> renamed the `middleware.ts` file convention to `proxy.ts` and the exported function
+> from `middleware` to `proxy`; a stale `middleware.ts` still typechecks but is **never
+> executed** at runtime, so shipping one would have been a silent hole). For `/` and
+> `/admin/:path*` the guard reads the httpOnly `sunosession` cookie, forwards it to the
+> API's `GET /auth/me`, and only calls `NextResponse.next()` when the response is OK and
+> `role === "admin"` **and** `status === "active"`; every other outcome (missing cookie,
+> non-2xx, backend unreachable, wrong role, suspended) redirects to `/login`. A rejected
+> session also clears the dead cookie (`Expires=1970`) so the login page starts clean; a
+> backend that's down is treated as **fail-closed** (redirect, cookie kept). The API stays
+> the authority — every `/admin/*` route still calls `requireAdmin` — and `JWT_SECRET`
+> never leaves the API. The `admin` layout and root page became server components that
+> only handle chrome / `redirect("/admin")`. `.env.example` documents that the guard calls
+> `${BACKEND_URL}/auth/me` (same value the `/backend/*` rewrite uses). Verified against a
+> stub `/auth/me` (port 4103): no cookie → `/login`; `role=user` → `/login` + cookie
+> cleared; `role=admin, status=suspended` → `/login` + cookie cleared; `role=admin,
+> status=active` → `200` on `/admin` and `/admin/users`; stub stopped → `/login`
+> (fail-closed). `npm run typecheck` + `npm run build` pass (`ƒ Proxy (Middleware)`).
 >
 > **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
 > Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in

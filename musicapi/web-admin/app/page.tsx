@@ -1,15 +1,7 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { getUser } from "@/lib/auth";
-
+// proxy.ts already guarantees an active admin session for "/", so just
+// land them on the console.
 export default function Home() {
-  const router = useRouter();
-  useEffect(() => {
-    const user = getUser();
-    if (!user || user.role !== "admin") router.replace("/login");
-    else router.replace("/admin");
-  }, [router]);
-  return null;
+  redirect("/admin");
 }
