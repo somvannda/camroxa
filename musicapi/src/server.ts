@@ -222,11 +222,35 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     return true;
   }
 
-  async function pickUserKey(userId: string, amount: number): Promise<DbApiKey | null> {
+  /**
+   * Atomically pick the user's oldest key that can afford `amount` and deduct the
+   * credits in a single statement, so concurrent requests can never both spend the
+   * same balance. Returns the charged key (with its new balance) or null when the
+   * user has no key that can pay. `amount <= 0` is a no-op and returns null.
+   */
+  async function chargeUserKey(userId: string, amount: number): Promise<DbApiKey | null> {
+    if (amount <= 0) return null;
     const rows = await query<DbApiKey>(
-      `SELECT id, user_id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active
-       FROM api_keys WHERE user_id = $1 AND is_active = true AND credits >= $2
-       ORDER BY created_at ASC LIMIT 1`,
+      `WITH candidate AS (
+         SELECT id FROM api_keys
+         WHERE user_id = $1
+           AND is_active = true
+           AND credits >= $2
+           AND (COALESCE(safe_spend_total, safe_spend_limit) IS NULL
+                OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs WHERE api_key_id = api_keys.id) + $2
+                   <= COALESCE(safe_spend_total, safe_spend_limit))
+           AND (safe_spend_hourly IS NULL
+                OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs
+                    WHERE api_key_id = api_keys.id AND created_at >= now() - interval '1 hour') + $2 <= safe_spend_hourly)
+           AND (safe_spend_daily IS NULL
+                OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs
+                    WHERE api_key_id = api_keys.id AND created_at >= now() - interval '1 day') + $2 <= safe_spend_daily)
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       UPDATE api_keys SET credits = credits - $2, last_used_at = now()
+       WHERE id IN (SELECT id FROM candidate) AND credits >= $2
+       RETURNING id, user_id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active`,
       [userId, amount],
     );
     return rows[0] ?? null;
@@ -343,11 +367,10 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       } catch {
         cost = 0;
       }
-      const key = cost > 0 ? await pickUserKey(u.id, cost) : null;
+      const key = await chargeUserKey(u.id, cost);
       if (cost > 0 && !key) {
         return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
       }
-      if (key && cost > 0) await charge(key, cost);
       const job = newJob(type);
       job.userId = u.id;
       if (key) job.apiKeyId = key.id;
@@ -746,9 +769,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     }
 
     const cost = await costFor(type);
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
 
     if (type === "lyrics") {
       const prompt = body.prompt as string;
@@ -804,9 +826,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       return reply.code(400).send({ error: "sunoTaskId is required." });
     }
     const cost = await costFor("recovery_audio");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("recovery_audio", (body.callBackUrl || body.callback_url) as string | undefined);
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -824,9 +845,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const clipId = (body.taskId || body.audioId || body.clip_id || body.task_id) as string | undefined;
     if (!clipId) return reply.code(400).send({ error: "taskId is required." });
     const cost = await costFor("stems");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const separationType = (body.separationType || "vocal") as "vocal" | "stems" | "advanced" | string;
     const jobType: Job["type"] =
       separationType === "stems" || separationType === "advanced" ? "stems" : "stems";
@@ -855,9 +875,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       });
     }
     const cost = await costFor("replace_section");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("replace_section");
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -879,9 +898,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     if (!clipId || !name) return reply.code(400).send({ error: "taskId and voiceName are required." });
     const styles = ((body.style as string) || undefined);
     const cost = await costFor("persona");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("persona");
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -905,9 +923,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     if (!clipId || !name) return reply.code(400).send({ error: "taskId and voiceName are required." });
     const styles = (body.style as string) || undefined;
     const cost = await costFor("voice_generate");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("voice_generate");
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -932,9 +949,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       return reply.code(400).send({ error: "upload_id or audio_url is required." });
     }
     const cost = await costFor("voice_validate");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("voice_validate");
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -950,9 +966,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const prompt = (body.prompt as string) || "";
     const cost = await costFor("voice_phrase");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("voice_phrase");
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -969,9 +984,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const extension = (body.extension as string) || "wav";
     const cost = await costFor("voice_record");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("voice_record");
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -1215,14 +1229,10 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const formatRaw = (q.format as string) || "mp3";
     const format = formatRaw === "wav" ? "wav" : "mp3";
     try {
-      try {
-        const cost = await costFor("download").catch(() => 0);
-        if (cost > 0) {
-          const key = await pickUserKey(u.id, cost).catch(() => null);
-          if (key) await charge(key, cost).catch(() => {});
-        }
-      } catch {
-        /* ignore charge errors — user can still download if billing fails */
+      const cost = await costFor("download").catch(() => 0);
+      const key = await chargeUserKey(u.id, cost);
+      if (cost > 0 && !key) {
+        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
       }
       const client = await pool.pick();
       const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36";
@@ -1374,11 +1384,10 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
         if (err) return reply.code(400).send({ error: err });
       }
       const cost = await costFor(type);
-      const key = await pickUserKey(u.id, cost);
+      const key = await chargeUserKey(u.id, cost);
       if (!key) {
         return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
       }
-      await charge(key, cost);
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
       job.apiKeyId = key.id;
@@ -1408,11 +1417,10 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
         if (err) return reply.code(400).send({ error: err });
       }
       const cost = await costFor(type);
-      const key = await pickUserKey(u.id, cost);
+      const key = await chargeUserKey(u.id, cost);
       if (!key) {
         return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
       }
-      await charge(key, cost);
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
       job.apiKeyId = key.id;
@@ -1642,9 +1650,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
         .send({ error: "clip_id, lyrics, start_s, end_s are required (end_s > start_s)." });
     }
     const cost = await costFor("replace_section");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("replace_section", (body.callback_url as string) || undefined);
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -1663,9 +1670,8 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     const clipId = body.clip_id as string | undefined;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
     const cost = await costFor("recovery_audio");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    await charge(key, cost);
     const job = newJob("recovery_audio", (body.callback_url as string) || undefined);
     job.userId = u.id;
     job.apiKeyId = key.id;
@@ -1682,11 +1688,10 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     if (!u) return;
     const { id } = req.params as { id: string };
     const cost = await costFor("timestamped_lyrics_detail");
-    const key = await pickUserKey(u.id, cost);
+    const key = await chargeUserKey(u.id, cost);
     if (!key) {
       return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
     }
-    await charge(key, cost);
     const job = newJob("timestamped_lyrics_detail");
     job.userId = u.id;
     job.apiKeyId = key.id;

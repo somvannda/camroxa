@@ -5,6 +5,9 @@
 
 Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
+> Last verified: 2026-09-28 — Phase 0 and 1.1–1.3 confirmed in code on `musicapi`
+> (`fix/musicapi-charge-race` branched from the `feat/musicapi-baseline` tip).
+
 ---
 
 ## Phase 0 — Safety net & buildable baseline
@@ -26,9 +29,9 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 | # | Task | Branch | Verification | Status |
 |---|---|---|---|---|
-| 1.1 | Remove JWT fallback; fail fast if `JWT_SECRET` missing/weak | `fix/musicapi-jwt-secret` | boot aborts without env | `[ ]` |
-| 1.2 | Gate `confirm-mock` behind explicit `NODE_ENV=development` | `fix/musicapi-confirm-mock` | 403 in prod | `[ ]` |
-| 1.3 | Enforce `charge()` on all `/me/*`; atomic select+charge | `fix/musicapi-charge-race` | no free jobs under concurrency | `[ ]` |
+| 1.1 | Remove JWT fallback; fail fast if `JWT_SECRET` missing/weak | `feat/musicapi-baseline` | boot aborts without env ✅ `f1cea1bb` | `[x]` |
+| 1.2 | Gate `confirm-mock` behind explicit `NODE_ENV=development` | `feat/musicapi-baseline` | 404 in prod ✅ `d048b35c` | `[x]` |
+| 1.3 | Enforce `charge()` on all `/me/*`; atomic select+charge | `fix/musicapi-charge-race` | no free jobs under concurrency ✅ atomic `chargeUserKey` + concurrency check | `[x]` |
 | 1.4 | Atomic KHQR confirm + admin top-up | `fix/musicapi-payment-atomic` | double-poll credits once | `[ ]` |
 | 1.5 | Callback URL allowlist (block SSRF/private ranges) | `fix/musicapi-callback-ssrf` | external URL rejected | `[ ]` |
 | 1.6 | Encrypt Suno `client_cookie` at rest | `feat/musicapi-cookie-encryption` | DB ciphertext; pool works | `[ ]` |
@@ -36,6 +39,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[ ]` |
 
 **Gate:** no free-credit or forgeable-token path; secrets safe.
+> Note: 1.1–1.2 landed as commits on `feat/musicapi-baseline` (Phase 0's branch) instead of their own branches. 1.3 replaced the non-atomic `pickUserKey()` + ignored `charge()` pattern on every `/me/*` route with a single-statement atomic `chargeUserKey()` that both selects and deducts, and 402s when it fails. 1.4–1.8 remain pending.
 
 ---
 
