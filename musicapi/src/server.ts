@@ -7,6 +7,7 @@ import { query, queryOne } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, UserPayload } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
+import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
 
 // Fallback credit costs when the `pricing` table has no row for an endpoint.
 // Real costs are read from the DB and configurable in the admin panel.
@@ -114,6 +115,26 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     keepAliveTimeout: 600_000,
   });
   const jobs = new Map<string, Job>();
+
+  // Reject unsafe caller-supplied webhook targets before any handler runs, so a
+  // bad callback_url can't later reach the internal network — or, on routes that
+  // charge first, cost the caller credits before failing.
+  app.addHook("preHandler", async (req, reply) => {
+    const body = req.body as Record<string, unknown> | undefined;
+    if (!body || typeof body !== "object") return;
+    for (const field of ["callback_url", "callBackUrl"]) {
+      const value = body[field];
+      if (typeof value !== "string" || !value.trim()) continue;
+      try {
+        await assertCallbackUrlAllowed(value);
+      } catch (err) {
+        reply.code(400).send({
+          error: err instanceof CallbackUrlError ? err.message : "callback_url is not allowed.",
+        });
+        return;
+      }
+    }
+  });
 
   // --- Google OAuth ---------------------------------------------------------
   const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
@@ -361,9 +382,15 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
   async function notify(job: Job): Promise<void> {
     if (!job.callbackUrl) return;
     try {
+      // Re-check at the sink as well: a public hostname accepted earlier can be
+      // re-pointed at an internal address before the job finishes (DNS rebinding).
+      await assertCallbackUrlAllowed(job.callbackUrl);
       await fetch(job.callbackUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        // Do not follow redirects — a 3xx to an internal address would otherwise
+        // bypass the check above.
+        redirect: "manual",
         body: JSON.stringify({
           job_id: job.id,
           type: job.type,
