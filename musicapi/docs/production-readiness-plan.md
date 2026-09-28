@@ -65,11 +65,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2.2 | `.catch()` detached workers + `unhandledRejection`/`SIGTERM` | `fix/musicapi-worker-safety` | graceful drain | `[ ]` |
 | 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit | `[ ]` |
 | 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[ ]` |
-| 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[ ]` |
+| 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[x]` |
 | 2.6 | Ordered idempotent migration runner | `feat/musicapi-migrations` | fresh + existing DB migrate | `[ ]` |
 | 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
 
 **Gate:** restart-safe; no lost/refunded-money bugs; clean migrations.
+
+> **Note (2.5):** `buildServer` now passes `trustProxy: trustProxyOption()` to Fastify. `trustProxyOption()` resolves the env var `TRUST_PROXY`: unset/`false`/`0` → `false` (default), `true` → `true`, a bare number → proxy hop count, anything else → comma-separated list of trusted addresses/CIDRs. Default is **off** so that a directly reachable server can't have `X-Forwarded-For` spoofed to defeat an API key's `ip_whitelist` (the only consumer of `req.ip`, in `requireKey`). Verified with `app.inject` against `GET /v1/credits` (key `sk-test-123`, whitelist `203.0.113.7`, socket `127.0.0.1`, `X-Forwarded-For: 203.0.113.7`): A) `TRUST_PROXY` unset → 403 (spoof ignored); B) `TRUST_PROXY=true` → 200 (real client IP used); C) `TRUST_PROXY=false` → 403; D) `TRUST_PROXY=127.0.0.1` → 200; E) whitelist on the socket IP → 200. `npm run typecheck` clean.
 
 ---
 
