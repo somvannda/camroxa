@@ -122,7 +122,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | # | Task | Branch | Verification | Status |
 |---|---|---|---|---|
 | 3.1 | Env-driven backend URL (both apps) | `fix/musicapi-fe-backend-url` | prod host via env | `[ ]` |
-| 3.2 | Real session (httpOnly cookie or documented token + 401 logout) | `feat/musicapi-session` | expired → `/login` | `[ ]` |
+| 3.2 | Real session (httpOnly cookie or documented token + 401 logout) | `feat/musicapi-session` | expired → `/login` ✅ `sunosession` httpOnly cookie + CSRF | `[x]` |
 | 3.3 | web-admin server-side guard (`middleware.ts` + role check) | `feat/musicapi-admin-guard` | non-admin blocked | `[ ]` |
 | 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 | `[ ]` |
 | 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | chart matches API | `[ ]` |
@@ -132,6 +132,34 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI | `[ ]` |
 
 **Gate:** both apps build against prod env; no spoofable auth; no fake data.
+
+> **Note (3.2):** browser sessions moved off `localStorage` to an **httpOnly cookie**.
+> The API (`src/appAuth.ts`) now emits `Set-Cookie: sunosession=<JWT>; Path=/; HttpOnly;
+> SameSite=Lax; Max-Age=604800` (`Secure` when `SESSION_COOKIE_SECURE=true`, which
+> defaults to on in production) from `POST /auth/login` and `POST /auth/google/callback`,
+> and `POST /auth/logout` clears it (`Max-Age=0`). `requireAuth` reads the cookie first
+> and still accepts `Authorization: Bearer` as a fallback, so non-browser/API-key callers
+> are unaffected. Because the cookie is sent automatically, cookie-authenticated
+> **state-changing** requests (POST/PUT/PATCH/DELETE) get a defense-in-depth **CSRF Origin
+> check** on top of `SameSite=Lax`: an `Origin` that isn't in `FRONTEND_ORIGINS`
+> (comma-separated, defaults to the two local dev frontends `http://localhost:4001,4002`)
+> is rejected `403`; same-origin/missing-Origin requests pass. Route handlers still return
+> `{ token, user }`, so the documented token flow remains valid for API clients.
+>
+> Frontends (`web-user` + `web-admin`): `lib/auth.ts` no longer stores or reads the JWT —
+> it caches only the non-sensitive profile (`suno_user`) and proactively removes any
+> `suno_token` left by an older build. `lib/api.ts` calls the API with
+> `credentials: "same-origin"`, `logout()` POSTs `/auth/logout` then clears local state,
+> and a `401` triggers `redirectToLogin()` (clear cache → `/login`). Every consumer
+> (`Sidebar`, dashboard layout, login pages, settings, Google sign-in, playground) was
+> updated to the cookie model; `authorizedFetch` (playground/downloads) now also bounces
+> to `/login` on `401`. New env docs in `.env.example`: `SESSION_COOKIE_SECURE`,
+> `FRONTEND_ORIGINS`.
+>
+> **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
+> Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in
+> prod, Origin-allowlist CSRF, `credentials: "same-origin"`, `401 → /login`) — see the
+> note above; adjust `FRONTEND_ORIGINS` in prod to the real frontend origins.
 
 ---
 

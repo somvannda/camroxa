@@ -1,4 +1,3 @@
-const TOKEN_KEY = "suno_token";
 const USER_KEY = "suno_user";
 
 export interface AuthUser {
@@ -8,18 +7,21 @@ export interface AuthUser {
   name?: string | null;
 }
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
+// The session JWT lives in an httpOnly cookie set by the API (see
+// musicapi/src/server.ts) and is deliberately unreadable from JS. Only
+// non-sensitive profile fields are cached here for rendering.
+if (typeof window !== "undefined") {
+  // Drop any JWT persisted by an older build so it can't linger in storage.
+  localStorage.removeItem("suno_token");
 }
 
-export function setSession(token: string, user: AuthUser): void {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setSession(user: AuthUser): void {
+  if (typeof window === "undefined") return;
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  if (typeof window === "undefined") return;
   localStorage.removeItem(USER_KEY);
 }
 

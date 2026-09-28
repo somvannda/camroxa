@@ -5,10 +5,13 @@ import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
 import { encryptCookie } from "./cookieCrypto.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
-import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload } from "./appAuth.js";
+import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE, serializeSessionCookie, serializeClearedSessionCookie, readCookie } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
 import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
+
+// Methods that can mutate state; used for the cookie-session CSRF origin check.
+const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 // Fallback credit costs when the `pricing` table has no row for an endpoint.
 // Real costs are read from the DB and configurable in the admin panel.
@@ -350,12 +353,24 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
   }
 
   function requireAuth(req: FastifyRequest, reply: FastifyReply): UserPayload | null {
+    const cookieToken = readCookie(req.headers.cookie, SESSION_COOKIE);
     const auth = req.headers.authorization ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const token = cookieToken ?? bearerToken;
     const user = token ? verifyToken(token) : null;
     if (!user) {
       reply.code(401).send({ error: "Unauthorized." });
       return null;
+    }
+    // Cookie-authenticated state-changing requests get an extra cross-origin
+    // check on top of the cookie's SameSite=Lax. Browsers always send Origin on
+    // such requests, so a mismatch means another site drove the call.
+    if (cookieToken && !bearerToken && UNSAFE_METHODS.has(req.method)) {
+      const origin = req.headers.origin;
+      if (origin && !config.frontendOrigins.includes(origin.replace(/\/$/, ""))) {
+        reply.code(403).send({ error: "Cross-origin request blocked." });
+        return null;
+      }
     }
     return user;
   }
@@ -887,10 +902,20 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       return reply.code(403).send({ error: "This login method is restricted to administrators." });
     }
     if (user.status !== "active") return reply.code(403).send({ error: "Account suspended." });
+    const token = signToken({ id: user.id, email: user.email, role: user.role });
+    // Also set the httpOnly session cookie so browser clients never have to
+    // store the JWT where scripts can read it.
+    reply.header("set-cookie", serializeSessionCookie(token, config.sessionCookieSecure));
     return {
-      token: signToken({ id: user.id, email: user.email, role: user.role }),
+      token,
       user: { id: user.id, email: user.email, role: user.role, name: user.name },
     };
+  });
+
+  // Clear the session cookie. Safe to call without a valid session.
+  app.post("/auth/logout", async (_req, reply) => {
+    reply.header("set-cookie", serializeClearedSessionCookie(config.sessionCookieSecure));
+    return { ok: true };
   });
 
   app.get("/auth/me", async (req, reply) => {
@@ -979,8 +1004,11 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       if (!user) return reply.code(500).send({ error: "Failed to create or find user." });
       if (user.status !== "active") return reply.code(403).send({ error: "Account suspended." });
 
+      const token = signToken({ id: user.id, email: user.email, role: user.role });
+      // Set the httpOnly session cookie alongside the (optional) body token.
+      reply.header("set-cookie", serializeSessionCookie(token, config.sessionCookieSecure));
       return reply.code(200).send({
-        token: signToken({ id: user.id, email: user.email, role: user.role }),
+        token,
         user: { id: user.id, email: user.email, role: user.role, name: user.name },
       });
     } catch (err) {
