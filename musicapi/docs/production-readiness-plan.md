@@ -66,10 +66,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit | `[ ]` |
 | 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[ ]` |
 | 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[ ]` |
-| 2.6 | Ordered idempotent migration runner | `feat/musicapi-migrations` | fresh + existing DB migrate | `[ ]` |
+| 2.6 | Ordered idempotent migration runner | `feat/musicapi-migrations` | fresh + existing DB migrate | `[x]` |
 | 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
 
 **Gate:** restart-safe; no lost/refunded-money bugs; clean migrations.
+
+> **Note (2.6):** replaced the ad-hoc `scripts/migrate.ts` (which read `scripts/schema.sql`) with an ordered, tracked, idempotent runner. Migration SQL now lives in `migrations/0001_init.sql` … `0006_credit_ledger.sql`, consolidating every previously ad-hoc script (`schema.sql`, `add-safe-spend-tiers.sql`, `migrate-google-auth`, `migrate-khqr`, plus the Phase-2 `migrate-jobs`/`migrate-credit-ledger`). The runner applies each file **in filename order**, records it in `schema_migrations (version TEXT PK, applied_at)`, and applies the file together with its bookkeeping row **in one transaction** — a failure rolls the whole file back and leaves the DB untouched. A session-level `pg_advisory_lock(4172001)` stops two runners from racing. `MIGRATIONS_DIR` is resolved relative to the script (not the CWD). All SQL is written `IF NOT EXISTS`/guarded so a pre-existing DB is adopted safely — notably the KHR-pack seed uses `WHERE NOT EXISTS (SELECT 1 FROM credit_packs WHERE currency='KHR')` because `credit_packs` has no unique key (`ON CONFLICT DO NOTHING` would re-insert duplicates every run; the legacy DB had already double-seeded to 10 rows). Verified with `npm run typecheck` (clean) and live DB tests: existing `sunoapi` DB → 6 applied and adopted; immediate re-run → `0 applied` (idempotent); fresh throwaway DB → 6 applied with exactly 5 KHR packs, re-run → `0 applied`; a deliberately failing migration → exit 1, its partial DDL rolled back, its version not recorded; a concurrent runner blocked on the advisory lock (0.69 s uncontended vs 5.05 s while the lock was held). New `.sql` files were caught by the repo-wide `*.sql` gitignore (intended for DB dumps), so a `!migrations/*.sql` negation was added to `musicapi/.gitignore` to keep the migration files trackable.
 
 ---
 
