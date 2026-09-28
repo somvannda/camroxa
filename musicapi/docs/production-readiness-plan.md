@@ -32,10 +32,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 1.4 | Atomic KHQR confirm + admin top-up | `fix/musicapi-payment-atomic` | double-poll credits once | `[ ]` |
 | 1.5 | Callback URL allowlist (block SSRF/private ranges) | `fix/musicapi-callback-ssrf` | external URL rejected | `[ ]` |
 | 1.6 | Encrypt Suno `client_cookie` at rest | `feat/musicapi-cookie-encryption` | DB ciphertext; pool works | `[ ]` |
-| 1.7 | OAuth per-request client, signed `state`, verified email | `fix/musicapi-oauth-hardening` | CSRF blocked; flow works | `[ ]` |
+| 1.7 | OAuth per-request client, signed `state`, verified email | `fix/musicapi-oauth-hardening` | CSRF blocked; flow works | `[x]` |
 | 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[ ]` |
 
 **Gate:** no free-credit or forgeable-token path; secrets safe.
+
+> **Note (1.7):** already-per-request `OAuth2Client` retained; added signed `state` (`signOAuthState`/`verifyOAuthState` in `src/appAuth.ts`, 10-min JWT via `JWT_SECRET` with a random nonce) that **binds the allowlisted `redirect_uri`**. `GET /auth/google/url` now returns `{ url, state }` and passes `state` to Google; `POST /auth/google/callback` takes `{ code, state }`, rejects missing/tampered/forged/expired state (CSRF), and derives the redirect URI from the verified state instead of trusting the client — the body `redirect_uri` is no longer accepted. The `id_token`'s `email_verified` must be `true` before the email is used to link/create a user. `web-user` (`google-signin-button.tsx`, `app/auth/callback/page.tsx`) round-trips the state from the callback URL. Verified via `npm run typecheck` (clean) and a 23-check harness: state round-trip/tamper/forge/expiry/nonce-uniqueness, allowlisted vs. non-allowlisted redirect binding, callback rejects missing code/state, and stubbed Google exchange (unverified + missing `email_verified` → 403 with no user row; verified → 200 with valid session token).
 
 ---
 
