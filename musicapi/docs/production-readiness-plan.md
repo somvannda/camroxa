@@ -62,7 +62,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | # | Task | Branch | Verification | Status |
 |---|---|---|---|---|
 | 2.1 | Persist jobs (Postgres or Redis/BullMQ); recover on restart | `feat/musicapi-job-persistence` | restart mid-job resolves | `[ ]` |
-| 2.2 | `.catch()` detached workers + `unhandledRejection`/`SIGTERM` | `fix/musicapi-worker-safety` | graceful drain | `[ ]` |
+| 2.2 | `.catch()` detached workers + `unhandledRejection`/`SIGTERM` | `fix/musicapi-worker-safety` | graceful drain | `[x]` |
 | 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit | `[ ]` |
 | 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[ ]` |
 | 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[ ]` |
@@ -70,6 +70,22 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
 
 **Gate:** restart-safe; no lost/refunded-money bugs; clean migrations.
+
+> **Note (2.2):** detached job workers are now tracked in an `inflight: Set<Promise<void>>`
+> via `trackJob()`, which attaches a `.catch()` guard so a rejected worker (e.g. a DB
+> error inside `finalizeJob`/`recordUsage`) is logged (`[jobs] worker rejected: …`)
+> instead of crashing the process as an unhandled rejection. Because a grace period is
+> expected at shutdown, `drainJobs(timeoutMs = 30_000)` (awaited by a Fastify `onClose`
+> hook) now waits for in-flight workers, bounded so a hung worker can't block exit.
+> `src/serve.ts` wires `SIGTERM`/`SIGINT` → `shutdown()` (drain via `app.close()`, then
+> `dbPool.end()`; 35 s forced-exit timer), plus `unhandledRejection` (log) and
+> `uncaughtException` (log + exit 1) handlers. `runClipJobWithRetry`/`runResultJobWithRetry`
+> are now thin `trackJob(...)` wrappers over their `…Impl` bodies, so no route changes were
+> needed. Verified via `npm run typecheck` (clean) and two harnesses: (a) a slow fake
+> worker + `app.close()` → drain waited 1514 ms for the 1500 ms worker (log `draining 1
+> in-flight job(s)`), job finalized and usage logged; (b) forcing `recordUsage` to fail
+> mid-job (pool closed under it) → the worker rejection was caught by the guard, **0**
+> `unhandledRejection` events, and the process survived.
 
 ---
 
