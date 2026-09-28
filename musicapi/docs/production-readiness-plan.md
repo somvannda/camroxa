@@ -29,13 +29,15 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 1.1 | Remove JWT fallback; fail fast if `JWT_SECRET` missing/weak | `fix/musicapi-jwt-secret` | boot aborts without env | `[ ]` |
 | 1.2 | Gate `confirm-mock` behind explicit `NODE_ENV=development` | `fix/musicapi-confirm-mock` | 403 in prod | `[ ]` |
 | 1.3 | Enforce `charge()` on all `/me/*`; atomic select+charge | `fix/musicapi-charge-race` | no free jobs under concurrency | `[ ]` |
-| 1.4 | Atomic KHQR confirm + admin top-up | `fix/musicapi-payment-atomic` | double-poll credits once | `[ ]` |
+| 1.4 | Atomic KHQR confirm + admin top-up | `fix/musicapi-payment-atomic` | double-poll credits once ✅ `withTransaction` + guarded claim | `[x]` |
 | 1.5 | Callback URL allowlist (block SSRF/private ranges) | `fix/musicapi-callback-ssrf` | external URL rejected | `[ ]` |
 | 1.6 | Encrypt Suno `client_cookie` at rest | `feat/musicapi-cookie-encryption` | DB ciphertext; pool works | `[ ]` |
 | 1.7 | OAuth per-request client, signed `state`, verified email | `fix/musicapi-oauth-hardening` | CSRF blocked; flow works | `[ ]` |
 | 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[ ]` |
 
 **Gate:** no free-credit or forgeable-token path; secrets safe.
+> Note (1.4): `/payments/khqr/status/:id` and `/payments/khqr/confirm-mock/:id` now claim the transaction with `UPDATE payment_transactions … WHERE status = 'pending' RETURNING id` and apply the credits inside one `withTransaction` (new helper in `db.ts`), so concurrent polls credit exactly once and any failure rolls back instead of half-crediting. `/admin/users/:id/credits` is now a single-statement `GREATEST(0, credits + $1)` adjust, removing the read-modify-write lost-update. Verified with a temp concurrency harness against the real DB: 12 parallel confirms → 1×200 / 11×409, balance +250 once with 1 ledger row; 10 parallel admin +7 → no lost updates; over-deduction clamps to 0.
+> Branch note: rows 1.1–1.3 are marked in the `fix/musicapi-charge-race` worktree (not yet committed), so they still read `[ ]` on this branch.
 
 ---
 

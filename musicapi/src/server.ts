@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { query, queryOne } from "./db.js";
+import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, UserPayload } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
@@ -1904,13 +1904,17 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
         [id],
       );
     }
-    const newCredits = Math.max(0, (key?.credits ?? 0) + amount);
-    await query("UPDATE api_keys SET credits = $1 WHERE id = $2", [newCredits, key!.id]);
+    // Single-statement, atomic adjust so concurrent charges/adjustments can't
+    // lose an update (the previous read-modify-write did).
+    const updated = await queryOne<{ credits: number }>(
+      "UPDATE api_keys SET credits = GREATEST(0, credits + $1) WHERE id = $2 RETURNING credits",
+      [amount, key!.id],
+    );
     await query(
       "INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'adjust', $3)",
       [id, amount, "Admin credit adjustment"],
     );
-    return { ok: true, credits: newCredits };
+    return { ok: true, credits: updated?.credits ?? key!.credits };
   });
 
   app.get("/admin/pricing", async (req, reply) => {
@@ -3685,30 +3689,36 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     }
   }
 
-  async function creditUser(user: UserPayload, amount: number, apiKeyId?: string, txId?: string): Promise<void> {
+  async function creditUser(
+    q: QueryFn,
+    user: UserPayload,
+    amount: number,
+    apiKeyId?: string,
+    txId?: string,
+  ): Promise<void> {
     if (apiKeyId) {
-      await query(
+      await q(
         "UPDATE api_keys SET credits = credits + $1 WHERE id = $2 AND user_id = $3",
         [amount, apiKeyId, user.id],
       );
     } else {
-      const keys = await query<{ id: string }>(
+      const keys = await q<{ id: string }>(
         "SELECT id FROM api_keys WHERE user_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1",
         [user.id],
       );
       if (keys.length === 0) {
-        await query(
+        await q(
           `INSERT INTO api_keys (user_id, name, key_hash, key_prefix, credits) VALUES ($1, $2, $3, $4, $5)`,
           [user.id, "Auto-Created Key", md5(randomUUID() + Date.now()), "auto_" + randomUUID().slice(0, 5), amount],
         );
       } else {
-        await query(
+        await q(
           "UPDATE api_keys SET credits = credits + $1 WHERE id = $2",
           [amount, keys[0].id],
         );
       }
     }
-    await query(
+    await q(
       `INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'purchase', $3)`,
       [user.id, amount, txId ? `KHQR top-up (ref: ${txId})` : "KHQR top-up"],
     );
@@ -3806,30 +3816,44 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     if (!tx) return reply.code(404).send({ error: "Transaction not found." });
 
     let currentStatus = tx.status;
+    let paidAt = tx.paid_at;
+    let errorMessage = tx.error_message;
     const expired = new Date(tx.expires_at).getTime() < Date.now();
 
     if (currentStatus === "pending") {
       if (expired) {
-        await query("UPDATE payment_transactions SET status = 'expired' WHERE id = $1", [tx.id]);
+        await query("UPDATE payment_transactions SET status = 'expired' WHERE id = $1 AND status = 'pending'", [tx.id]);
         currentStatus = "expired";
       } else if (tx.md5_hash) {
         const bakongStatus = await khqrCheck(tx.md5_hash);
         if (bakongStatus === "PAID") {
           try {
-            await creditUser(u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
-            await query(
-              "UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1",
-              [tx.id],
-            );
-            currentStatus = "paid";
+            // Claim the pending transaction and apply the credits in one DB
+            // transaction. The guarded UPDATE lets only the first poll claim it,
+            // so concurrent polls credit exactly once; a rollback leaves it
+            // 'pending' rather than half-credited.
+            await withTransaction(async (tq) => {
+              const claimed = await tq<{ id: string }>(
+                "UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1 AND status = 'pending' RETURNING id",
+                [tx.id],
+              );
+              if (claimed.length === 0) return;
+              await creditUser(tq, u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
+            });
           } catch (e) {
             const err = e instanceof Error ? e.message : String(e);
             await query(
-              "UPDATE payment_transactions SET status = 'failed', error_message = $1 WHERE id = $2",
+              "UPDATE payment_transactions SET status = 'failed', error_message = $1 WHERE id = $2 AND status = 'pending'",
               [err, tx.id],
             );
-            currentStatus = "failed";
           }
+          const fresh = await queryOne<{ status: string; paid_at: string | null; error_message: string | null }>(
+            "SELECT status, paid_at, error_message FROM payment_transactions WHERE id = $1",
+            [tx.id],
+          );
+          currentStatus = fresh?.status ?? tx.status;
+          paidAt = fresh?.paid_at ?? paidAt;
+          errorMessage = fresh?.error_message ?? errorMessage;
         }
       }
     }
@@ -3841,9 +3865,9 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
       credits: tx.credit_amount,
       currency: tx.currency,
       amount: Number(tx.amount),
-      paid_at: tx.paid_at,
+      paid_at: paidAt,
       expires_at: tx.expires_at,
-      error: tx.error_message,
+      error: errorMessage,
       expired: currentStatus === "expired" ? true : expired && currentStatus === "pending",
     };
   });
@@ -3869,8 +3893,16 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     if (!tx) return reply.code(404).send({ error: "Transaction not found." });
     if (tx.status !== "pending") return reply.code(409).send({ error: `Transaction already ${tx.status}.` });
     try {
-      await creditUser(u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
-      await query("UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1", [tx.id]);
+      const credited = await withTransaction(async (tq) => {
+        const claimed = await tq<{ id: string }>(
+          "UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1 AND status = 'pending' RETURNING id",
+          [tx.id],
+        );
+        if (claimed.length === 0) return false;
+        await creditUser(tq, u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
+        return true;
+      });
+      if (!credited) return reply.code(409).send({ error: "Transaction already processed." });
       return { ok: true, status: "paid" };
     } catch (e) {
       return reply.code(500).send({ error: e instanceof Error ? e.message : String(e) });
