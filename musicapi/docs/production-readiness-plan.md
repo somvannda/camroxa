@@ -61,7 +61,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 | # | Task | Branch | Verification | Status |
 |---|---|---|---|---|
-| 2.1 | Persist jobs (Postgres or Redis/BullMQ); recover on restart | `feat/musicapi-job-persistence` | restart mid-job resolves | `[ ]` |
+| 2.1 | Persist jobs (Postgres or Redis/BullMQ); recover on restart | `feat/musicapi-job-persistence` | restart mid-job resolves ✅ `jobs` table + `recoverJobs()` on boot | `[x]` |
 | 2.2 | `.catch()` detached workers + `unhandledRejection`/`SIGTERM` | `fix/musicapi-worker-safety` | graceful drain | `[ ]` |
 | 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit | `[ ]` |
 | 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[ ]` |
@@ -70,6 +70,21 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
 
 **Gate:** restart-safe; no lost/refunded-money bugs; clean migrations.
+
+> **Note (2.1):** jobs are now mirrored to a Postgres `jobs` table
+> (`scripts/migrate-jobs.ts`) while the in-memory `Map` stays as a fast read
+> cache. `saveJob()` is called on entry and on every `running` transition, and
+> `finalizeJob()` persists the terminal state before writing the usage log /
+> callback. Reads that used `jobs.get(id)` (`/me/task/:id`, `/v1/task/:id`,
+> every `*/record-info`) now go through `await getJob(id)`, which falls back to
+> the persisted row; `GET /me/jobs/running` is DB-backed. An `onReady` hook runs
+> `recoverJobs()`, which marks any job left `pending`/`running`/`streaming` at
+> boot as `error` ("Interrupted by server restart.") and finalizes it, so a
+> client polling a task that was in flight during a restart gets a resolved
+> error instead of a 404. Verified with a temp harness: a pre-seeded `running`
+> row is recovered as `error` after a cache-empty boot, the recovered and
+> completed jobs are both readable via `/v1/task/:id`, `result_json`
+> round-trips, and recovery writes a usage-log row.
 
 ---
 
