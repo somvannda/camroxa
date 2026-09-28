@@ -67,9 +67,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[ ]` |
 | 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[ ]` |
 | 2.6 | Ordered idempotent migration runner | `feat/musicapi-migrations` | fresh + existing DB migrate | `[ ]` |
-| 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
+| 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[x]` |
 
 **Gate:** restart-safe; no lost/refunded-money bugs; clean migrations.
+
+> **Note (2.7):** added `migrations/0007_perf_indexes.sql` (idempotent `CREATE INDEX IF NOT EXISTS`), delivering the two indexes once the task-2.6 migration runner is present; the files merge additively (`0001`–`0006` from 2.6, `0007` here). `idx_usage_logs_api_key` is `(api_key_id, created_at DESC)` — Postgres does not auto-index FK columns, and the safe-spend guard runs on every API-key request, summing `credits_consumed` for the key over all time, 1 hour, and 1 day, so those three sums previously seq-scanned `usage_logs`; the composite serves all three (leading column for the all-time sum, both columns for the windows) and mirrors the existing `idx_usage_logs_user`. `idx_credit_transactions_user` is `(user_id, created_at DESC)` — the FK column was unindexed, hurting `ON DELETE CASCADE` user deletes and per-user ledger reads. Also added a `!migrations/*.sql` negation to `musicapi/.gitignore` so the new file is trackable despite the repo-wide `*.sql` dump ignore. Verified with `npm run typecheck` (clean) and an `EXPLAIN (COSTS OFF)` harness: both indexes created; with `enable_seqscan = off` (dev tables are tiny, so the planner otherwise prefers seq scans) the all-time/hourly/daily `usage_logs` sums each plan an `Index Scan using idx_usage_logs_api_key` and the per-user `credit_transactions` read plans an `Index Scan using idx_credit_transactions_user` — 4/4 PASS.
 
 ---
 
