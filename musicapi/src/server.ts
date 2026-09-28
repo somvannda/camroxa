@@ -542,10 +542,46 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     }
   }
 
+  /**
+   * Record the credit movement for a settled job in `credit_transactions` and, on
+   * terminal failure, restore the charged amount to the API key.
+   *
+   * Every settled job writes a `spend` row (negative amount); a job that ends in
+   * `error` additionally writes a positive `refund` row and the credits are added
+   * back to `api_keys`. Both writes conflict on the partial unique index
+   * `uq_credit_tx_job_type (job_id, type)`, so re-running settlement for the same
+   * job is a no-op — a retried/duplicated finalize can never refund twice.
+   */
+  async function settleCredits(job: Job): Promise<void> {
+    if (!job.userId || !job.apiKeyId) return;
+    const amount = job.credits ?? 0;
+    if (amount <= 0) return;
+
+    await query(
+      `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
+       VALUES ($1, $2, 'spend', $3, $4)
+       ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING`,
+      [job.userId, -amount, `${job.type} job (${job.status})`, job.id],
+    );
+
+    if (job.status !== "error") return;
+
+    const refunded = await query<{ id: string }>(
+      `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
+       VALUES ($1, $2, 'refund', $3, $4)
+       ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [job.userId, amount, `refund for failed ${job.type} job`, job.id],
+    );
+    if (refunded.length === 0) return; // already refunded
+    await query("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [amount, job.apiKeyId]);
+  }
+
   // --- background workers --------------------------------------------------
   async function finalizeJob(job: Job): Promise<void> {
     await saveJob(job);
     if (job.userId && job.apiKeyId) {
+      await settleCredits(job);
       await recordUsage({
         userId: job.userId,
         apiKeyId: job.apiKeyId,
