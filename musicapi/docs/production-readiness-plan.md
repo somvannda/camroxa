@@ -65,7 +65,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2.2 | `.catch()` detached workers + `unhandledRejection`/`SIGTERM` | `fix/musicapi-worker-safety` | graceful drain ✅ `trackJob()` + `drainJobs()` | `[x]` |
 | 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit ✅ `settleCredits()` + ledger | `[x]` |
 | 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded ✅ `pruneJobs()` TTL + cap | `[x]` |
-| 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[ ]` |
+| 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced ✅ `TRUST_PROXY` (default off) | `[x]` |
 | 2.6 | Ordered idempotent migration runner | `feat/musicapi-migrations` | fresh + existing DB migrate | `[ ]` |
 | 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
 
@@ -109,6 +109,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > **Note (2.4):** The in-memory `jobs` map is now bounded by `pruneJobs()`, called from `newJob()`. Finished jobs (`complete`/`error`) older than `JOB_TTL_MS` (default 1h) are dropped, and if the map still exceeds `JOB_MAX_ENTRIES` (default 5000) the oldest finished jobs are dropped first (Map insertion order). In-flight jobs (`pending`/`running`/`streaming`) are never evicted. Both limits are env-overridable.
 >
 > **Verification (temp harness, since deleted):** (A) with `JOB_MAX_ENTRIES=5`, creating 12 terminal jobs left `/health` `jobs=5`; (B) with `JOB_TTL_MS=0`, 3 terminal jobs collapsed to `jobs=1`; (C) with cap/TTL `0` and a never-resolving worker, 2 in-flight jobs were retained (`jobs=2`). `npm run typecheck` clean.
+
+> **Note (2.5):** `buildServer` now passes `trustProxy: trustProxyOption()` to Fastify. `trustProxyOption()` resolves the env var `TRUST_PROXY`: unset/`false`/`0` → `false` (default), `true` → `true`, a bare number → proxy hop count, anything else → comma-separated list of trusted addresses/CIDRs. Default is **off** so that a directly reachable server can't have `X-Forwarded-For` spoofed to defeat an API key's `ip_whitelist` (the only consumer of `req.ip`, in `requireKey`). Verified with `app.inject` against `GET /v1/credits` (key `sk-test-123`, whitelist `203.0.113.7`, socket `127.0.0.1`, `X-Forwarded-For: 203.0.113.7`): A) `TRUST_PROXY` unset → 403 (spoof ignored); B) `TRUST_PROXY=true` → 200 (real client IP used); C) `TRUST_PROXY=false` → 403; D) `TRUST_PROXY=127.0.0.1` → 200; E) whitelist on the socket IP → 200. `npm run typecheck` clean.
 
 ---
 

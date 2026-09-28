@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import Fastify, { FastifyInstance, FastifyRequest, FastifyReply, FastifyServerOptions } from "fastify";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
@@ -108,9 +108,28 @@ export function loadApiKeys(path: string): ApiKey[] {
   return JSON.parse(readFileSync(path, "utf8")) as ApiKey[];
 }
 
+/**
+ * Resolve Fastify's `trustProxy` from `TRUST_PROXY` so `req.ip` is the real
+ * client address behind a reverse proxy (the socket address would otherwise be
+ * the proxy). Defaults to off: if the server is directly reachable, blindly
+ * trusting `X-Forwarded-For` lets a caller spoof its IP and defeat an API key's
+ * whitelist. Accepts "true"/"false", a hop count, or a comma-separated list of
+ * trusted addresses/CIDRs.
+ */
+function trustProxyOption(): FastifyServerOptions["trustProxy"] {
+  const raw = (process.env.TRUST_PROXY ?? "").trim();
+  if (!raw || raw === "false" || raw === "0") return false;
+  if (raw === "true") return true;
+  // A bare number is the proxy hop count. proxy-addr honors it at runtime, but
+  // Fastify's option type omits it, so it needs a cast.
+  if (/^\d+$/.test(raw)) return Number(raw) as unknown as FastifyServerOptions["trustProxy"];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 export function buildServer({ pool }: ServerDeps): FastifyInstance {
   const app = Fastify({
     logger: false,
+    trustProxy: trustProxyOption(),
     requestTimeout: 600_000,
     connectionTimeout: 600_000,
     keepAliveTimeout: 600_000,
