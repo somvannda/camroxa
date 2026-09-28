@@ -6,7 +6,6 @@ import { apiFetch } from "@/lib/api";
 import { setSession } from "@/lib/auth";
 
 interface LoginResponse {
-  token: string;
   user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
 }
 
@@ -30,7 +29,8 @@ export default function LoginPage() {
         setError("This area is for administrators only.");
         return;
       }
-      setSession(res.token, res.user);
+      // The API also sets an httpOnly session cookie; we only cache the profile.
+      setSession(res.user);
       router.replace("/admin");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");

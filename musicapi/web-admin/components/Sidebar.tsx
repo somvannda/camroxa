@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { getUser, clearSession } from "@/lib/auth";
+import { getUser } from "@/lib/auth";
+import { logout as endSession } from "@/lib/api";
 
 const NAV = [
   { href: "/admin", label: "Dashboard" },
@@ -26,8 +27,7 @@ export default function Sidebar() {
   }
 
   function logout() {
-    clearSession();
-    router.replace("/login");
+    void endSession().finally(() => router.replace("/login"));
   }
 
   return (

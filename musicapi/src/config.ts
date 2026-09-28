@@ -64,6 +64,22 @@ export const config = {
   jwtSecret: resolveJwtSecret(),
   /** AES-256-GCM key for `suno_accounts.client_cookie` at rest. */
   cookieEncryptionKey: resolveCookieEncryptionKey(),
+  /**
+   * Origins allowed to drive cookie-authenticated state-changing requests
+   * (CSRF defense-in-depth on top of the session cookie's SameSite=Lax).
+   * Comma-separated; defaults to the two local dev frontends.
+   */
+  frontendOrigins: (process.env.FRONTEND_ORIGINS ?? "http://localhost:4001,http://localhost:4002")
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean),
+  /**
+   * Whether the session cookie is marked `Secure` (only sent over HTTPS).
+   * Defaults to on in production; set SESSION_COOKIE_SECURE=false to override
+   * when the frontends are served over plain HTTP.
+   */
+  sessionCookieSecure:
+    (process.env.SESSION_COOKIE_SECURE ?? String(process.env.NODE_ENV === "production")) === "true",
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",
     accountId: process.env.BAKONG_ACCOUNT_ID ?? "",

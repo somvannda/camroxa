@@ -1,7 +1,6 @@
 "use client";
 
-import { apiFetch } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { apiFetch, redirectToLogin } from "@/lib/api";
 import { useEffect, useRef, useState } from "react";
 
 export type JobStatus = "queued" | "running" | "streaming" | "complete" | "error";
@@ -37,14 +36,13 @@ export function clipDownloadUrl(clipId: string | number | undefined | null, form
 }
 
 export async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = getToken();
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
   };
-  if (token) headers.authorization = `Bearer ${token}`;
   let res: Response;
   try {
-    res = await fetch(`/backend${path}`, { ...init, headers });
+    // Session travels in the httpOnly cookie; send it on same-origin calls.
+    res = await fetch(`/backend${path}`, { credentials: "same-origin", ...init, headers });
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     if (e instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(e.message)) {
@@ -52,6 +50,7 @@ export async function authorizedFetch(path: string, init: RequestInit = {}): Pro
     }
     throw new Error(e instanceof Error ? e.message : "Request failed");
   }
+  if (res.status === 401) redirectToLogin();
   if (!res.ok) {
     if (res.status === 499) throw new DOMException("Aborted", "AbortError");
     const body = (await res.json().catch(() => ({}))) as { error?: string };

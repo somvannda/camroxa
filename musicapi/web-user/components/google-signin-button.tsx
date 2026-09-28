@@ -86,16 +86,15 @@ export default function GoogleSignInButton({
 }
 
 export async function completeGoogleCallback(state: string, code: string): Promise<{
-  token: string;
   user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
 }> {
   const res = await apiFetch<{
-    token: string;
     user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
   }>("/auth/google/callback", {
     method: "POST",
     body: JSON.stringify({ code, state }),
   });
-  setSession(res.token, res.user);
+  // The API also sets an httpOnly session cookie; we only cache the profile.
+  setSession(res.user);
   return res;
 }

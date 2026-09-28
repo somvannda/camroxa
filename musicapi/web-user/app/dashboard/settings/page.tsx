@@ -40,7 +40,7 @@ export default function SettingsPage() {
       });
       setProfile(updated);
       const current = getUser();
-      if (current) setSession(localStorage.getItem("suno_token") ?? "", { ...current, name: updated.name });
+      if (current) setSession({ ...current, name: updated.name });
       setSuccess("Settings saved.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { getUser, clearSession } from "@/lib/auth";
+import { getUser } from "@/lib/auth";
+import { logout as endSession } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -128,8 +129,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   function logout() {
-    clearSession();
-    router.replace("/login");
+    void endSession().finally(() => router.replace("/login"));
   }
 
   return (
