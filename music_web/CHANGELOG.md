@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Khmer titles and lyrics use embedded **Khmer OS Siemreap** (self-hosted) so Unicode text renders instead of missing glyphs. Latin stays Inter / Outfit. See `docs/changelog/2026-08-26-music-web-khmer-siemreap.md`.
 - Signed-in users who open `/login` or `/register` are sent to Create (or a safe `?next=`). Unconfirmed sessions go to email verification instead of seeing another signup form. See `docs/changelog/2026-08-25-music-web-guest-only-auth.md`.
 - After the email confirmation code, users go to Create logged in, instead of landing on the register form. Already-verified sessions skip the code screen. See `docs/changelog/2026-08-25-verify-email-redirect-create.md`.
+- Linux deploys run `npm ci` cleanly again: `package-lock.json` now records the `@emnapi/core` / `@emnapi/runtime` 1.11.3 shims the Linux resolver needs, and 16 direct dependencies are no longer mis-marked `"peer": true`. Builds no longer depend on the `npm install` fallback. No dependency versions changed. See `docs/changelog/2026-09-28-music-web-npm-lockfile-emnapi.md`.
 
 ### Changed
 
