@@ -568,7 +568,44 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     policy?: RoutingPolicy;
   }
 
-  async function runClipJobWithRetry(
+  // Detached job workers run outside any request lifecycle. Track them so
+  // shutdown can drain in-flight work, and attach a `.catch()` so a rejected
+  // worker (e.g. a DB error inside `finalizeJob`) can never crash the process as
+  // an unhandled rejection.
+  const inflight = new Set<Promise<void>>();
+  function trackJob(p: Promise<void>): Promise<void> {
+    const handled = p.catch((e) => {
+      console.error("[jobs] worker rejected:", e instanceof Error ? e.stack ?? e.message : e);
+    });
+    inflight.add(handled);
+    void handled.finally(() => inflight.delete(handled));
+    return handled;
+  }
+
+  /** Await in-flight workers, bounded by `timeoutMs`, for graceful shutdown. */
+  async function drainJobs(timeoutMs = 30_000): Promise<void> {
+    if (inflight.size === 0) return;
+    const pending = [...inflight];
+    console.log(`[jobs] draining ${pending.length} in-flight job(s)...`);
+    await Promise.race([
+      Promise.allSettled(pending),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  }
+
+  app.addHook("onClose", async () => {
+    await drainJobs();
+  });
+
+  function runClipJobWithRetry(
+    job: Job,
+    submitFactory: (client: SunoClient) => Promise<import("./client.js").Clip[]>,
+    options?: RetryOptions,
+  ): Promise<void> {
+    return trackJob(runClipJobWithRetryImpl(job, submitFactory, options));
+  }
+
+  async function runClipJobWithRetryImpl(
     job: Job,
     submitFactory: (client: SunoClient) => Promise<import("./client.js").Clip[]>,
     options?: RetryOptions,
@@ -618,7 +655,15 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
   }
 
   /** Run an operation that returns a raw result (not clips to poll), with cross-account retry. */
-  async function runResultJobWithRetry(
+  function runResultJobWithRetry(
+    job: Job,
+    submitFactory: (client: SunoClient) => Promise<unknown>,
+    options?: RetryOptions,
+  ): Promise<void> {
+    return trackJob(runResultJobWithRetryImpl(job, submitFactory, options));
+  }
+
+  async function runResultJobWithRetryImpl(
     job: Job,
     submitFactory: (client: SunoClient) => Promise<unknown>,
     options?: RetryOptions,
