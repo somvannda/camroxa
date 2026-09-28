@@ -64,12 +64,16 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 2.1 | Persist jobs (Postgres or Redis/BullMQ); recover on restart | `feat/musicapi-job-persistence` | restart mid-job resolves | `[ ]` |
 | 2.2 | `.catch()` detached workers + `unhandledRejection`/`SIGTERM` | `fix/musicapi-worker-safety` | graceful drain | `[ ]` |
 | 2.3 | Refund on terminal failure; `spend`/`refund` ledger rows | `feat/musicapi-refunds-ledger` | failed job restores credit | `[ ]` |
-| 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[ ]` |
+| 2.4 | TTL/LRU eviction for job map | `chore/musicapi-job-eviction` | memory bounded | `[x]` |
 | 2.5 | `trustProxy` so IP whitelist sees real client IP | `fix/musicapi-trust-proxy` | whitelist enforced | `[ ]` |
 | 2.6 | Ordered idempotent migration runner | `feat/musicapi-migrations` | fresh + existing DB migrate | `[ ]` |
 | 2.7 | Missing indexes (`usage_logs.api_key_id`, `credit_transactions.user_id`) | `perf/musicapi-indexes` | `EXPLAIN` uses index | `[ ]` |
 
 **Gate:** restart-safe; no lost/refunded-money bugs; clean migrations.
+
+> **Note (2.4):** The in-memory `jobs` map is now bounded by `pruneJobs()`, called from `newJob()`. Finished jobs (`complete`/`error`) older than `JOB_TTL_MS` (default 1h) are dropped, and if the map still exceeds `JOB_MAX_ENTRIES` (default 5000) the oldest finished jobs are dropped first (Map insertion order). In-flight jobs (`pending`/`running`/`streaming`) are never evicted. Both limits are env-overridable.
+>
+> **Verification (temp harness, since deleted):** (A) with `JOB_MAX_ENTRIES=5`, creating 12 terminal jobs left `/health` `jobs=5`; (B) with `JOB_TTL_MS=0`, 3 terminal jobs collapsed to `jobs=1`; (C) with cap/TTL `0` and a never-resolving worker, 2 in-flight jobs were retained (`jobs=2`). `npm run typecheck` clean.
 
 ---
 

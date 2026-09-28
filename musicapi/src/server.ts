@@ -117,6 +117,33 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
   });
   const jobs = new Map<string, Job>();
 
+  // Terminal jobs only need to survive long enough for the client to poll their
+  // result, so the in-memory map is kept bounded: finished jobs older than the
+  // TTL are dropped, and if the map is still over the entry cap the oldest
+  // finished jobs are dropped first. In-flight jobs (pending/running/streaming)
+  // are never evicted.
+  const JOB_TTL_MS = Number(process.env.JOB_TTL_MS ?? 60 * 60_000);
+  const JOB_MAX_ENTRIES = Number(process.env.JOB_MAX_ENTRIES ?? 5_000);
+
+  function isTerminalJob(job: Job): boolean {
+    return job.status === "complete" || job.status === "error";
+  }
+
+  function pruneJobs(): void {
+    if (jobs.size === 0) return;
+    const now = Date.now();
+    for (const [id, job] of jobs) {
+      if (isTerminalJob(job) && now - job.createdAt > JOB_TTL_MS) jobs.delete(id);
+    }
+    if (jobs.size <= JOB_MAX_ENTRIES) return;
+    // Map preserves insertion (creation) order, so this drops the oldest
+    // evictable jobs first.
+    for (const [id, job] of jobs) {
+      if (jobs.size <= JOB_MAX_ENTRIES) break;
+      if (isTerminalJob(job)) jobs.delete(id);
+    }
+  }
+
   // Reject unsafe caller-supplied webhook targets before any handler runs, so a
   // bad callback_url can't later reach the internal network — or, on routes that
   // charge first, cost the caller credits before failing.
@@ -362,6 +389,7 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     };
     if (!job.createdAt) job.createdAt = Date.now();
     jobs.set(job.id, job);
+    pruneJobs();
     return job;
   }
 
