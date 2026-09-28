@@ -35,6 +35,16 @@ export const config = {
   deviceId: process.env.SUNO_DEVICE_ID ?? randomUUID(),
   databaseUrl:
     process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/sunoapi",
+  /**
+   * Optional host allowlist for user-supplied webhook `callback_url`s, from a
+   * comma-separated `CALLBACK_ALLOWED_HOSTS`. Empty means "any public host is
+   * allowed" (private/internal targets are always blocked); when set, a
+   * callback host must equal an entry or be a subdomain of one.
+   */
+  callbackAllowedHosts: (process.env.CALLBACK_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
   jwtSecret: resolveJwtSecret(),
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",
