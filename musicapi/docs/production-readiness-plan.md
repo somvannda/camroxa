@@ -31,11 +31,23 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 1.3 | Enforce `charge()` on all `/me/*`; atomic select+charge | `fix/musicapi-charge-race` | no free jobs under concurrency | `[ ]` |
 | 1.4 | Atomic KHQR confirm + admin top-up | `fix/musicapi-payment-atomic` | double-poll credits once | `[ ]` |
 | 1.5 | Callback URL allowlist (block SSRF/private ranges) | `fix/musicapi-callback-ssrf` | external URL rejected | `[ ]` |
-| 1.6 | Encrypt Suno `client_cookie` at rest | `feat/musicapi-cookie-encryption` | DB ciphertext; pool works | `[ ]` |
+| 1.6 | Encrypt Suno `client_cookie` at rest | `feat/musicapi-cookie-encryption` | DB ciphertext; pool works | `[x]` |
 | 1.7 | OAuth per-request client, signed `state`, verified email | `fix/musicapi-oauth-hardening` | CSRF blocked; flow works | `[ ]` |
 | 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[ ]` |
 
 **Gate:** no free-credit or forgeable-token path; secrets safe.
+
+> **Note (1.6):** `suno_accounts.client_cookie` is now encrypted with AES-256-GCM
+> (`enc:v1:<base64 iv|tag|ciphertext>`) via `src/cookieCrypto.ts`. The key comes
+> from `COOKIE_ENCRYPTION_KEY` (64 hex chars / 32 bytes) and, like `JWT_SECRET`,
+> the server **refuses to start** without it (`resolveCookieEncryptionKey`). Writes
+> encrypt in `POST /admin/accounts`, `scripts/add-paid-account.ts`, and
+> `scripts/seed.ts`; `AccountPool.fromDb()` decrypts on read. Verification: 32-check
+> harness — round-trip (incl. unicode/empty/long), random-IV uniqueness, GCM tamper
+> rejection, legacy-plaintext passthrough, and real DB integration (route stores
+> ciphertext; `fromDb()` returns the plaintext cookie). `scripts/migrate-cookie-encryption.ts`
+> converted the 2 existing rows (idempotent: re-run reports 0). Keep the key stable —
+> rotating it makes stored cookies unreadable.
 
 ---
 
