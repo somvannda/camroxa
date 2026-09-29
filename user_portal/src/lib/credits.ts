@@ -28,6 +28,23 @@ export type WalletBalanceResponse = {
   recent_transactions: WalletTransaction[];
 };
 
+/** Shape of GET /me/credits (unified credits-only wallet). */
+export type MeCreditsResponse = {
+  user_id?: string;
+  balance_credits: number;
+  balance_units?: number;
+  grant_remaining_credits?: number;
+  grant_remaining_units?: number;
+  lots?: Array<{
+    id: string;
+    tag: string;
+    amount_credits: number;
+    remaining_credits: number;
+    expires_at?: string | null;
+    period_start?: string | null;
+  }>;
+};
+
 export type BillingMode = "plan_allowance" | "wallet" | "platform_absorb" | "other";
 
 const MICRO_CREDIT = 10_000;
@@ -72,8 +89,16 @@ export function formatUsageTransactionLabel(tx: WalletTransaction): string {
 }
 
 export async function getWalletBalance(): Promise<WalletBalanceResponse> {
-  return platformJson<WalletBalanceResponse>({
-    path: "/credits/balance",
-    method: "GET",
-  });
+  // The unified wallet is the credits-only source of truth (`/me/credits`).
+  // `/credits/balance` is the legacy CutLuy ledger; keep it only for the ledger rows.
+  const [wallet, ledger] = await Promise.all([
+    platformJson<MeCreditsResponse>({ path: "/me/credits", method: "GET" }).catch(() => null),
+    platformJson<WalletBalanceResponse>({ path: "/credits/balance", method: "GET" }).catch(() => null),
+  ]);
+  return {
+    balance: wallet?.balance_credits ?? ledger?.balance ?? 0,
+    plan_quota_remaining:
+      wallet?.grant_remaining_credits ?? ledger?.plan_quota_remaining ?? null,
+    recent_transactions: ledger?.recent_transactions ?? [],
+  };
 }

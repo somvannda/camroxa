@@ -21,6 +21,8 @@ PRODUCTION_HOST = "82.197.71.248"
 
 FILES = [
     "user_portal/src/lib/billing.ts",
+    "user_portal/src/lib/credits.ts",
+    "user_portal/src/app/dashboard/page.tsx",
     "user_portal/src/app/dashboard/billing/page.tsx",
     "user_portal/src/components/dashboard/quota-renewal-card.tsx",
     "user_portal/src/components/quota-renewal-card.tsx",
