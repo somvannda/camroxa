@@ -121,6 +121,7 @@ class BillingPaymentResponse(BaseModel):
     redeem_code: str | None = None
     product_type: str = "plan"
     addon_channels: int | None = None
+    qr_string: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -348,6 +349,7 @@ def _payment_response_from_row(row: Any) -> BillingPaymentResponse:
         redeem_code=metadata.get("redeem_code"),
         product_type=str(metadata.get("product_type") or "plan"),
         addon_channels=int(metadata["addon_channels"]) if metadata.get("addon_channels") is not None else None,
+        qr_string=metadata.get("qr_string"),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -964,6 +966,10 @@ async def _create_cutluy_payment(
             is_retryable=True,
             details={"provider": "cutluy", "reason": type(exc).__name__},
         ) from exc
+
+    from platform_api.services.shared.cutluy_service import extract_cutluy_qr_string
+
+    metadata["qr_string"] = extract_cutluy_qr_string(payment) or ""
 
     created = await pool.fetchrow(
         """

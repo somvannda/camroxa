@@ -55,6 +55,7 @@ export type BillingPayment = {
   redeem_code?: string | null;
   product_type?: string;
   addon_channels?: number | null;
+  qr_string?: string | null;
   created_at: string;
   updated_at: string;
 };
