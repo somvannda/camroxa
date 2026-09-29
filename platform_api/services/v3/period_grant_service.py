@@ -111,6 +111,90 @@ class PeriodGrantService:
             "balance_credits": units_to_credits(int(await self._credit_repo.get_balance(user_id))),
         }
 
+    async def carryover_period_grant(
+        self,
+        *,
+        user_id: UUID,
+        monthly_credits: int,
+        billing_cycle_days: int,
+        new_expires_at: datetime,
+    ) -> dict[str, Any]:
+        """Roll unused grant credits into the next period on an early renewal.
+
+        The current period's remaining grant is moved into the next period's grant
+        together with the new allowance, expiring at the new license expiry. The old
+        lots are zeroed (without clawback) so the value is neither lost nor
+        double-counted.
+        """
+        from platform_api.services.billing_period_service import period_start_for_subscription
+
+        cycle_days = max(1, int(billing_cycle_days or 30))
+        monthly = max(0, int(monthly_credits or 0))
+
+        ctx = None
+        if self._plan_repo is not None:
+            ctx = await self._plan_repo.get_user_active_subscription_context(user_id)
+        current_start = period_start_for_subscription(
+            plan=ctx.plan if ctx is not None else None,
+            activated_at=ctx.activated_at if ctx is not None else None,
+        )
+        next_start = current_start + timedelta(days=cycle_days)
+
+        if await self._store.find_period_grant(user_id, next_start) is not None:
+            return {
+                "granted": False,
+                "reason": "already_granted",
+                "period_start": next_start.isoformat(),
+            }
+
+        carried = int(await self._store.grant_remaining_units(user_id))
+        allowance_units = credits_to_units(monthly)
+        if carried <= 0 and allowance_units <= 0:
+            return {
+                "granted": False,
+                "reason": "nothing_to_grant",
+                "period_start": next_start.isoformat(),
+            }
+
+        for lot in await self._store.list_lots(user_id):
+            if str(lot["tag"]) in ("grant", "daily_grant") and int(lot["remaining_units"]) > 0:
+                await self._store.zero_lot_remaining(lot["id"])
+
+        amount_units = carried + allowance_units
+        lot = await self._store.insert_lot_if_absent(
+            user_id=user_id,
+            tag="grant",
+            amount_units=amount_units,
+            expires_at=new_expires_at,
+            period_start=next_start,
+        )
+        if lot is None:
+            return {
+                "granted": False,
+                "reason": "already_granted",
+                "period_start": next_start.isoformat(),
+            }
+
+        # The carried units are already in the wallet; only the new allowance is added.
+        if allowance_units > 0:
+            await self._credit_repo.add_credits(
+                user_id,
+                allowance_units,
+                reason="v3_period_grant",
+                ref_id=f"grant:{user_id}:{next_start.isoformat()}",
+            )
+        return {
+            "granted": True,
+            "carried_units": carried,
+            "carried_credits": units_to_credits(carried),
+            "credits": monthly,
+            "amount_units": amount_units,
+            "period_start": next_start.isoformat(),
+            "expires_at": new_expires_at.isoformat(),
+            "lot_id": str(lot["id"]),
+            "balance_credits": units_to_credits(int(await self._credit_repo.get_balance(user_id))),
+        }
+
     async def ensure_daily_grant(self, user_id: UUID) -> dict[str, Any]:
         """Mint today's Free-plan daily credits into the shared wallet.
 

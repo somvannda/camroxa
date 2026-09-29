@@ -764,6 +764,27 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                         "Active license not found during renewal.",
                         details={"license_id": str(active_license.id)},
                     )
+                # Carry unused grant credits into the new period: leftover + allowance,
+                # expiring with the new period (no loss at renewal, still expires).
+                from platform_api.repositories.credit_repo import (
+                    CreditRepository as _CreditRepository,
+                )
+                from platform_api.services.v3.period_grant_service import (
+                    PeriodGrantService,
+                )
+                from platform_api.services.v3.store import V3BillingStore
+
+                grant_service = PeriodGrantService(
+                    store=V3BillingStore(pool=conn),
+                    credit_repo=_CreditRepository(pool=conn),
+                    plan_repo=PlanRepository(pool=conn),
+                )
+                await grant_service.carryover_period_grant(
+                    user_id=user_id,
+                    monthly_credits=int(plan.monthly_credits or 0),
+                    billing_cycle_days=cycle_days,
+                    new_expires_at=assigned_license.expires_at or datetime.now(timezone.utc),
+                )
             elif active_license is not None:
                 assigned_license = await license_repo.change_plan(
                     active_license.id, plan_id, plan
